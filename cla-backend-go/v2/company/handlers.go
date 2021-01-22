@@ -545,13 +545,13 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	}
 
 	log.WithFields(f).Debug("testing if user has access to project SFID...")
-	if utils.IsUserAuthorizedForProject(authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProject(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to project SFID...")
 		return true
 	}
 
 	log.WithFields(f).Debug("testing if user has access to project SFID tree...")
-	if utils.IsUserAuthorizedForProjectTree(authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectTree(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to project SFID tree...")
 		return true
 	}
@@ -591,12 +591,12 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	// Check the foundation permissions
 	f["foundationSFID"] = projectCLAGroupModel.FoundationSFID
 	log.WithFields(f).Debug("testing if user has access to parent foundation...")
-	if utils.IsUserAuthorizedForProject(authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProject(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to parent foundation...")
 		return true
 	}
 	log.WithFields(f).Debug("testing if user has access to parent foundation truee...")
-	if utils.IsUserAuthorizedForProjectTree(authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectTree(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to parent foundation tree...")
 		return true
 	}

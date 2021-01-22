@@ -37,7 +37,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				"projectSFID":    params.ProjectSFID,
 			}
 
-			if !utils.IsUserAuthorizedForProjectTree(authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 				msg := fmt.Sprintf("user %s does not have access to Get Project GitHub Organizations with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
@@ -77,7 +77,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				"projectSFID":    params.ProjectSFID,
 			}
 
-			if !utils.IsUserAuthorizedForProjectTree(authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 				msg := fmt.Sprintf("user %s does not have access to Add Project GitHub Organizations with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
@@ -146,7 +146,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
-			if !utils.IsUserAuthorizedForProjectTree(authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 				return github_organizations.NewDeleteProjectGithubOrganizationForbidden().WithPayload(&models.ErrorResponse{
 					Code: "403",
 					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Delete Project GitHub Organizations with Project scope of %s",
@@ -185,7 +185,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
-			if !utils.IsUserAuthorizedForProjectTree(authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 				return github_organizations.NewUpdateProjectGithubOrganizationConfigForbidden().WithPayload(&models.ErrorResponse{
 					Code: "403",
 					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Update Project GitHub Organizations with Project scope of %s",

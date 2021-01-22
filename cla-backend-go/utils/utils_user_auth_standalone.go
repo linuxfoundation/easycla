@@ -6,8 +6,12 @@
 package utils
 
 import (
+	"context"
 	"os"
 	"strconv"
+	"strings"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -56,53 +60,91 @@ func IsUserAuthorizedForOrganization(user *auth.User, companySFID string, adminS
 }
 
 // IsUserAuthorizedForProjectTree helper function for determining if the user is authorized for this project hierarchy/tree
-func IsUserAuthorizedForProjectTree(user *auth.User, projectSFID string, adminScopeAllowed bool) bool {
+func IsUserAuthorizedForProjectTree(ctx context.Context, user *auth.User, projectSFID string, adminScopeAllowed bool) bool {
+	f := logrus.Fields{
+		"functionName":      "utils.IsUserAuthorizedForProjectTree",
+		XREQUESTID:          ctx.Value(XREQUESTID),
+		"userName":          user.UserName,
+		"userEmail":         user.Email,
+		"projectSFID":       projectSFID,
+		"adminScopeAllowed": adminScopeAllowed,
+	}
+
 	// If we are running locally and want to disable permission checks
 	if skipPermissionChecks() {
+		log.WithFields(f).Debug("skipping permissions check")
 		return true
 	}
 
 	if adminScopeAllowed && user.Admin {
+		log.WithFields(f).Debug("admin scope is allowed and admin scope set for user")
 		return true
 	}
 
-	// Previously, we checked for user.Admin - admins should be in a separate role
-	// Previously, we checked for user.Allowed, which is currently not used (future flag that is currently not implemented)
-	return user.IsUserAuthorized(auth.Project, projectSFID, true)
+	log.WithFields(f).Debug("checking scope...")
+	val := user.IsUserAuthorized(auth.Project, projectSFID, true)
+	log.WithFields(f).Debugf("user allowed: %T", val)
+	return val
 }
 
 // IsUserAuthorizedForProject helper function for determining if the user is authorized for this project
-func IsUserAuthorizedForProject(user *auth.User, projectSFID string, adminScopeAllowed bool) bool {
+func IsUserAuthorizedForProject(ctx context.Context, user *auth.User, projectSFID string, adminScopeAllowed bool) bool {
+	f := logrus.Fields{
+		"functionName":      "utils.IsUserAuthorizedForProject",
+		XREQUESTID:          ctx.Value(XREQUESTID),
+		"userName":          user.UserName,
+		"userEmail":         user.Email,
+		"projectSFID":       projectSFID,
+		"adminScopeAllowed": adminScopeAllowed,
+	}
+
 	// If we are running locally and want to disable permission checks
 	if skipPermissionChecks() {
+		log.WithFields(f).Debug("skipping permissions check")
 		return true
 	}
 
 	if adminScopeAllowed && user.Admin {
+		log.WithFields(f).Debug("admin scope is allowed and admin scope set for user")
 		return true
 	}
 
-	// Previously, we checked for user.Admin - admins should be in a separate role
-	// Previously, we checked for user.Allowed, which is currently not used (future flag that is currently not implemented)
-	return user.IsUserAuthorizedForProjectScope(projectSFID)
+	log.WithFields(f).Debug("checking scope...")
+	val := user.IsUserAuthorizedForProjectScope(projectSFID)
+	log.WithFields(f).Debugf("user allowed: %T", val)
+	return val
 }
 
 // IsUserAuthorizedForAnyProjects helper function for determining if the user is authorized for any of the specified projects
-func IsUserAuthorizedForAnyProjects(user *auth.User, projectSFIDs []string, adminScopeAllowed bool) bool {
+func IsUserAuthorizedForAnyProjects(ctx context.Context, user *auth.User, projectSFIDs []string, adminScopeAllowed bool) bool {
+	f := logrus.Fields{
+		"functionName":      "utils.IsUserAuthorizedForAnyProjects",
+		XREQUESTID:          ctx.Value(XREQUESTID),
+		"userName":          user.UserName,
+		"userEmail":         user.Email,
+		"projectSFIDs":      strings.Join(projectSFIDs, ","),
+		"adminScopeAllowed": adminScopeAllowed,
+	}
 	// If we are running locally and want to disable permission checks
 	if skipPermissionChecks() {
+		log.WithFields(f).Debug("skipping permissions check")
 		return true
 	}
 
 	for _, projectSFID := range projectSFIDs {
-		if IsUserAuthorizedForProjectTree(user, projectSFID, adminScopeAllowed) {
+		log.WithFields(f).Debugf("checking project tree scope for: %s...", projectSFID)
+		if IsUserAuthorizedForProjectTree(ctx, user, projectSFID, adminScopeAllowed) {
+			log.WithFields(f).Debugf("project tree scope check passed for: %s...", projectSFID)
 			return true
 		}
-		if IsUserAuthorizedForProject(user, projectSFID, adminScopeAllowed) {
+		log.WithFields(f).Debugf("checking project scope for: %s...", projectSFID)
+		if IsUserAuthorizedForProject(ctx, user, projectSFID, adminScopeAllowed) {
+			log.WithFields(f).Debugf("project scope check passed for: %s...", projectSFID)
 			return true
 		}
 	}
 
+	log.WithFields(f).Debugf("project scope checks failed for: %s...", strings.Join(projectSFIDs, ","))
 	return false
 }
 

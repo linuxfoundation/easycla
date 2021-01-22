@@ -41,7 +41,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		f := logrus.Fields{
 			"functionName":        "ClaGroupCreateClaGroupHandler",
 			utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
-			"claGroupName":        aws.StringValue(params.ClaGroupInput.ClaGroupName),
+			"claGroupName":        utils.StringValue(params.ClaGroupInput.ClaGroupName),
+			"foundationSFID":      utils.StringValue(params.ClaGroupInput.FoundationSfid),
+			"cclaEnabled":         utils.BoolValue(params.ClaGroupInput.CclaEnabled),
+			"iclaEnabled":         utils.BoolValue(params.ClaGroupInput.IclaEnabled),
+			"cclaRequiresIcla":    utils.BoolValue(params.ClaGroupInput.CclaRequiresIcla),
 			"claGroupDescription": params.ClaGroupInput.ClaGroupDescription,
 			"projectSFIDList":     strings.Join(params.ClaGroupInput.ProjectSfidList, ","),
 			"authUsername":        params.XUSERNAME,
@@ -49,7 +53,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		}
 
 		// Check permissions
-		if !isUserHaveAccessToCLAProject(ctx, authUser, aws.StringValue(params.ClaGroupInput.FoundationSfid), projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAProject(ctx, authUser, utils.StringValue(params.ClaGroupInput.FoundationSfid), params.ClaGroupInput.ProjectSfidList, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user %s does not have access to create a CLA Group with project scope of: %s", authUser.UserName, aws.StringValue(params.ClaGroupInput.FoundationSfid))
 			log.WithFields(f).Warn(msg)
 			return cla_group.NewCreateClaGroupForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -117,7 +121,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		}
 
 		// Check permissions
-		if !isUserHaveAccessToCLAProject(ctx, authUser, claGroupModel.FoundationSFID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAProject(ctx, authUser, claGroupModel.FoundationSFID, []string{claGroupModel.ProjectExternalID}, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user %s does not have access to update an existing CLA Group with project scope of: %s", authUser.UserName, claGroupModel.FoundationSFID)
 			log.WithFields(f).Warn(msg)
 			return cla_group.NewUpdateClaGroupForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -190,7 +194,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		}
 
 		// Check permissions
-		if !isUserHaveAccessToCLAProject(ctx, authUser, claGroupModel.FoundationSFID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAProject(ctx, authUser, claGroupModel.FoundationSFID, []string{claGroupModel.ProjectExternalID}, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user %s does not have access to delete the CLA Group with project scope of: %s", authUser.UserName, claGroupModel.FoundationSFID)
 			log.WithFields(f).Warn(msg)
 			return cla_group.NewDeleteClaGroupForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -255,7 +259,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		}
 
 		// Check permissions
-		if !isUserHaveAccessToCLAProject(ctx, authUser, cg.FoundationSFID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAProject(ctx, authUser, cg.FoundationSFID, []string{cg.ProjectExternalID}, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user %s does not have access to enroll projects with project scope of: %s", authUser.UserName, cg.FoundationSFID)
 			log.WithFields(f).Warn(msg)
 			return cla_group.NewEnrollProjectsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -351,7 +355,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		}
 
 		// Check permissions
-		if !isUserHaveAccessToCLAProject(ctx, authUser, cg.FoundationSFID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAProject(ctx, authUser, cg.FoundationSFID, []string{cg.ProjectExternalID}, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user %s does not have access to unenroll projects with project scope of: %s", authUser.UserName, cg.FoundationSFID)
 			log.WithFields(f).Warn(msg)
 			return cla_group.NewUnenrollProjectsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -425,7 +429,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 
 		// Check permissions
 		log.WithFields(f).Debugf("checking permissions for %s", strings.Join(projectSFIDs, ","))
-		if !utils.IsUserAuthorizedForAnyProjects(authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
+		if !utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
 			msg := fmt.Sprintf("user %s does not have access to list projects with project scope of: %s", authUser.UserName, params.ProjectSFID)
 			log.WithFields(f).Warn(msg)
 			return cla_group.NewListClaGroupsUnderFoundationForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -498,22 +502,34 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 }
 
 // isUserHaveAccessToCLAProject is a helper function to determine if the user has access to the specified project
-func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, projectSFID string, projectClaGroupsRepo projects_cla_groups.Repository) bool { // nolint
+func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, parentProjectSFID string, projectSFIDs []string, projectClaGroupsRepo projects_cla_groups.Repository) bool { // nolint
 	f := logrus.Fields{
-		"functionName":   "isUserHaveAccessToCLAProject",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"projectSFID":    projectSFID,
-		"userName":       authUser.UserName,
-		"userEmail":      authUser.Email,
+		"functionName":      "isUserHaveAccessToCLAProject",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"parentProjectSFID": parentProjectSFID,
+		"projectSFIDs":      strings.Join(projectSFIDs, ","),
+		"userName":          authUser.UserName,
+		"userEmail":         authUser.Email,
 	}
 
-	log.WithFields(f).Debug("testing if user has access to project SFID")
-	if utils.IsUserAuthorizedForProject(authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
+	// Check the parent project SFID
+	log.WithFields(f).Debug("testing if user has access to the parent project SFID")
+	if utils.IsUserAuthorizedForProject(ctx, authUser, parentProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+		log.WithFields(f).Debugf("user has access to the parent project SFID: %s", parentProjectSFID)
 		return true
 	}
+	log.WithFields(f).Debugf("user does not have access to the parent project SFID: %s", parentProjectSFID)
 
-	log.WithFields(f).Debug("user doesn't have direct access to the projectSFID - loading CLA Group from project id...")
-	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+	// Check the project SFIDs
+	log.WithFields(f).Debug("testing if user has access to any of the provided project SFIDs")
+	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
+		log.WithFields(f).Debugf("user has access at least one of the provided project SFIDs: %s", strings.Join(projectSFIDs, ","))
+		return true
+	}
+	log.WithFields(f).Debugf("user does not have access any of the provided project SFID: %s", projectSFIDs)
+
+	log.WithFields(f).Debug("user doesn't have direct access to the parentProjectSFID or the provided projects SFIDs - loading CLA Group from project id...")
+	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(parentProjectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project -> cla group mapping - returning false")
 		return false
@@ -525,11 +541,11 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, proj
 
 	f["foundationSFID"] = projectCLAGroupModel.FoundationSFID
 	log.WithFields(f).Debug("testing if user has access to parent foundation...")
-	if utils.IsUserAuthorizedForProjectTree(authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectTree(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to parent foundation tree...")
 		return true
 	}
-	if utils.IsUserAuthorizedForProject(authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProject(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to parent foundation...")
 		return true
 	}
@@ -543,10 +559,10 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, proj
 		return false
 	}
 
-	projectSFIDs := getProjectIDsFromModels(f, projectCLAGroupModel.FoundationSFID, projectCLAGroupModels)
-	f["projectIDs"] = strings.Join(projectSFIDs, ",")
+	mappedProjectSFIDs := getProjectIDsFromModels(f, projectCLAGroupModel.FoundationSFID, projectCLAGroupModels)
+	f["mappedProjectSFIDs"] = strings.Join(mappedProjectSFIDs, ",")
 	log.WithFields(f).Debug("testing if user has access to any projects")
-	if utils.IsUserAuthorizedForAnyProjects(authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, mappedProjectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to at least of of the projects...")
 		return true
 	}

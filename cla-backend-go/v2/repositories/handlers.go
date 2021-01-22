@@ -42,7 +42,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				"projectSFID":    params.ProjectSFID,
 			}
 
-			if !utils.IsUserAuthorizedForProjectTree(authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 				msg := fmt.Sprintf("user %s does not have access to Get GitHub Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
@@ -90,7 +90,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				"projectSFID":    params.ProjectSFID,
 			}
 
-			if !utils.IsUserAuthorizedForProjectTree(authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 				msg := fmt.Sprintf("user %s does not have access to Add GitHub Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
@@ -147,7 +147,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				"repositoryID":   params.RepositoryID,
 			}
 
-			if !utils.IsUserAuthorizedForProjectTree(authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 				msg := fmt.Sprintf("user %s does not have access to Delete GitHub Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
@@ -205,7 +205,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				"repositoryID":   params.RepositoryID,
 			}
 
-			if !utils.IsUserAuthorizedForProjectTree(authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 				msg := fmt.Sprintf("user %s does not have access to Query Protected Branch GitHub Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
@@ -259,7 +259,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				"repositoryID":   params.RepositoryID,
 			}
 
-			if !utils.IsUserAuthorizedForProjectTree(authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 				msg := fmt.Sprintf("user %s does not have access to Update Protected Branch GitHub Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
