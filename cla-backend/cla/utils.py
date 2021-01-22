@@ -778,7 +778,7 @@ def get_full_sign_url(repository_service, installation_id, github_repository_id,
     :type project_version: string
     """
 
-    base_url = '{}/v2/repository-provider/{}/sign/{}/{}/{}'.format(cla.conf['API_BASE_URL'], repository_service,
+    base_url = '{}/v2/repository-provider/{}/sign/{}/{}/{}/#/'.format(cla.conf['API_BASE_URL'], repository_service,
                                                                    str(installation_id),
                                                                    str(github_repository_id),
                                                                    str(change_request_id))
