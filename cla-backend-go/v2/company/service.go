@@ -1332,7 +1332,7 @@ func (s *service) GetCompanyLookup(ctx context.Context, orgName string, websiteN
 	}
 	orgClient := orgService.GetClient()
 	log.WithFields(f).Debug("Looking up organization by name and website")
-	org, err := orgClient.SearchOrgLookup(orgName, websiteName)
+	org, err := orgClient.SearchOrgLookup(ctx, &orgName, &websiteName)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup organization by name or website")
 		return nil, err

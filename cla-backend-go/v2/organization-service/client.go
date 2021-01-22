@@ -543,16 +543,21 @@ func (osc *Client) CreateOrg(ctx context.Context, companyName, signingEntityName
 		signingEntityName = companyName
 	}
 
-	// Search for an existing record by website
-	existingRecords, lookupErr := osc.SearchOrganization(ctx, "", companyWebsite, "")
+	//Lookup Org based on domain
+	lookupOrg, lookupErr := osc.SearchOrgLookup(ctx, nil, &companyWebsite)
 	if lookupErr != nil {
 		log.WithFields(f).WithError(lookupErr).Warn("unable to search for existing company using company website value")
 		return nil, lookupErr
 	}
 
-	// If we have an existing record... should only be one record if any
-	if len(existingRecords) > 0 {
-		updatedModel, updateErr := osc.UpdateOrg(ctx, existingRecords[0], signingEntityName)
+	if lookupOrg.Payload.ID != "" {
+		// Get org based on ID
+		existingOrg, existingOrgErr := osc.GetOrganization(ctx, lookupOrg.Payload.ID)
+		if existingOrgErr != nil {
+			log.WithFields(f).WithError(existingOrgErr).Warnf("unable to get organization : %s ", lookupOrg.Payload.ID)
+			return nil, existingOrgErr
+		}
+		updatedModel, updateErr := osc.UpdateOrg(ctx, existingOrg, signingEntityName)
 		if updateErr != nil {
 			log.WithFields(f).WithError(updateErr).Warn("unable to update for existing company")
 			return nil, updateErr
@@ -685,12 +690,17 @@ func (osc *Client) ListOrg(ctx context.Context, orgName string) (*models.Organiz
 }
 
 // SearchOrgLookup returns organization
-func (osc *Client) SearchOrgLookup(orgName string, websiteName string) (*organizations.LookupOK, error) {
+func (osc *Client) SearchOrgLookup(ctx context.Context, orgName, websiteName *string) (*organizations.LookupOK, error) {
 	f := logrus.Fields{
 		"functionName": "organization_service.Lookup",
-		"orgName":      orgName,
-		"websiteName":  websiteName,
 	}
+	if orgName != nil {
+		f["orgName"] = *orgName
+	}
+	if websiteName != nil {
+		f["websiteName"] = *websiteName
+	}
+
 	tok, err := token.GetToken()
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to fetch token")
@@ -699,9 +709,13 @@ func (osc *Client) SearchOrgLookup(orgName string, websiteName string) (*organiz
 
 	clientAuth := runtimeClient.BearerToken(tok)
 	params := &organizations.LookupParams{
-		Name:    aws.String(orgName),
-		Domain:  aws.String(websiteName),
-		Context: context.TODO(),
+		Context: ctx,
+	}
+	if orgName != nil {
+		params.Name = orgName
+	}
+	if websiteName != nil {
+		params.Domain = websiteName
 	}
 	result, err := osc.cl.Organizations.Lookup(params, clientAuth)
 	if err != nil {
@@ -710,4 +724,5 @@ func (osc *Client) SearchOrgLookup(orgName string, websiteName string) (*organiz
 	}
 
 	return result, nil
+
 }
