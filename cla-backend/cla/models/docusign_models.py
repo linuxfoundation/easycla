@@ -780,14 +780,14 @@ class DocuSign(signing_service_interface.SigningService):
         return response_model
 
     def request_corporate_signature(self, auth_user: object,
-                                    project_id: object,
-                                    company_id: object,
+                                    project_id: str,
+                                    company_id: str,
                                     signing_entity_name: str = None,
-                                    send_as_email: object = False,
-                                    signatory_name: object = None,
-                                    signatory_email: object = None,
-                                    return_url_type: object = None,
-                                    return_url: object = None) -> object:
+                                    send_as_email: bool = False,
+                                    signatory_name: str = None,
+                                    signatory_email: str = None,
+                                    return_url_type: str = None,
+                                    return_url: str = None) -> object:
 
         fn = 'models.docusign_models.request_corporate_signature'
         cla.log.debug(f'{fn} - '
@@ -820,7 +820,8 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.debug(f'{fn} - loading user {auth_user.username}')
         users_list = User().get_user_by_username(auth_user.username)
         if users_list is None:
-            cla.log.debug(f'{fn} - unable to load auth_user by username: {auth_user.username} from the EasyCLA database.')
+            cla.log.debug(f'{fn} - unable to load auth_user by username: {auth_user.username} '
+                          'from the EasyCLA database.')
             # Lookup user in the platform user service...
             us = UserService
             # If found, create user record in our EasyCLA database
@@ -831,7 +832,8 @@ class DocuSign(signing_service_interface.SigningService):
                                 'Returning an error response')
                 return {'errors': {'user_error': 'user does not exist'}}
             if len(platform_users) > 1:
-                cla.log.warning(f'{fn} - more than one user with same username: {auth_user.username} - using first record.')
+                cla.log.warning(f'{fn} - more than one user with same username: {auth_user.username} - '
+                                'using first record.')
 
             # Grab the first user from the list - should only be one that matches the search query parameters
             platform_user = platform_users[0]
@@ -980,7 +982,8 @@ class DocuSign(signing_service_interface.SigningService):
                 signatory_name=signatory_name, signatory_email=signatory_email,
                 send_as_email=send_as_email, return_url_type=return_url_type, return_url=return_url)
 
-        cla.log.debug(f'{fn} - Previous unsigned CCLA signatures on file for project: {project_id}, company: {company_id}')
+        cla.log.debug(f'{fn} - Previous unsigned CCLA signatures on file for project: {project_id},'
+                      f'company: {company_id}')
         # TODO: should I delete all but one?
         return self.handle_signing_new_corporate_signature(
             signature=signatures[0], project=project, company=company, user=cla_manager_user,

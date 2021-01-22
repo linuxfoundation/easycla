@@ -45,14 +45,14 @@ def request_individual_signature(project_id, user_id, return_url_type, return_ur
 
 
 def request_corporate_signature(auth_user,
-                                project_id,
-                                company_id,
+                                project_id: str,
+                                company_id: str,
                                 signing_entity_name: str = None,
-                                send_as_email=False,
-                                authority_name=None,
-                                authority_email=None,
-                                return_url_type=None,
-                                return_url=None):
+                                send_as_email: bool = False,
+                                authority_name: str = None,
+                                authority_email: str = None,
+                                return_url_type: str = None,
+                                return_url: str = None):
     """
     Creates CCLA signature object that represents a company signing a CCLA.
 
@@ -80,8 +80,8 @@ def request_corporate_signature(auth_user,
     """
     return get_signing_service().request_corporate_signature(
         auth_user=auth_user,
-        project_id=str(project_id),
-        company_id=str(company_id),
+        project_id=project_id,
+        company_id=company_id,
         signing_entity_name=signing_entity_name,
         send_as_email=send_as_email,
         signatory_name=authority_name,

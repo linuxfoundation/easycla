@@ -667,6 +667,7 @@ def post_company(
         auth_user,
         company_name=company_name,
         company_manager_id=company_manager_id,
+        signing_entity_name=company_name,
         company_manager_user_name=company_manager_user_name,
         company_manager_user_email=company_manager_user_email,
         response=response,
@@ -1264,14 +1265,14 @@ def request_corporate_signature(
     # staff_verify(user) or company_manager_verify(user, company_id)
     return cla.controllers.signing.request_corporate_signature(
         auth_user=auth_user,
-        project_id=project_id,
-        company_id=company_id,
+        project_id=str(project_id),
+        company_id=str(company_id),
         signing_entity_name=signing_entity_name,
         send_as_email=send_as_email,
-        authority_name=authority_name,
-        authority_email=authority_email,
-        return_url_type=return_url_type,
-        return_url=return_url,
+        authority_name=str(authority_name),
+        authority_email=str(authority_email),
+        return_url_type=str(return_url_type),
+        return_url=str(return_url),
     )
 
 

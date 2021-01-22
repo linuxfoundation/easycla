@@ -83,10 +83,10 @@ def get_company(company_id: str):
 def create_company(auth_user: AuthUser,
                    company_name: str = None,
                    signing_entity_name: str = None,
-                   company_manager_id=None,
-                   company_manager_user_name=None,
-                   company_manager_user_email=None,
-                   user_id=None,
+                   company_manager_id: str = None,
+                   company_manager_user_name: str = None,
+                   company_manager_user_email: str = None,
+                   user_id: str = None,
                    response=None):
     """
     Creates an company and returns the newly created company in dict format.
@@ -118,7 +118,7 @@ def create_company(auth_user: AuthUser,
                              "company_id": company.get("company_id")}
                     }
 
-    cla.log.debug(f'{fn} - creating company with name: {company_name}')
+    cla.log.debug(f'{fn} - creating company with name: {company_name} with signing entity name: {signing_entity_name}')
     company = Company()
     company.set_company_id(str(uuid.uuid4()))
     company.set_company_name(company_name)
