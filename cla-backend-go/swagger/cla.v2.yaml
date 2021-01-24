@@ -3486,6 +3486,12 @@ parameters:
     description: the Salesforce ID of the Foundation
     in: query
     type: string
+  signingEntityName:
+    name: signingEntityName
+    description: The signing entity name of a Company (Salesforce and EasyCLA)
+    in: query
+    type: string
+    required: true
   path-claGroupID:
     name: claGroupID
     description: ID of the CLA Group
@@ -4428,8 +4434,16 @@ definitions:
         description: CLA Manager email
       name:
         type: string
-
+  
   company-project-cla-list:
+    type: object
+    properties:
+      list:
+        type: array
+        items:
+          $ref: '#/definitions/company-project-cla'
+
+  company-project-cla:
     type: object
     properties:
       signed_cla_list:
@@ -4470,6 +4484,16 @@ definitions:
     title: unsigned project
     description: details of unsigned project
     properties:
+      company_name:
+        type: string
+        description: The company name
+        x-omitempty: false
+        example: "The Linux Foundation"
+      signing_entity_name:
+        type: string
+        description: The company signing entity name
+        x-omitempty: false
+        example: "The Linux Foundation Subsidiary 1"
       cla_group_id:
         type: string
         x-omitempty: false
@@ -4505,6 +4529,16 @@ definitions:
     title: Active CLA of the company
     description: Details of the active CLA Group
     properties:
+      company_name:
+        type: string
+        description: The company name
+        x-omitempty: false
+        example: "The Linux Foundation"
+      signing_entity_name:
+        type: string
+        description: The company signing entity name
+        x-omitempty: false
+        example: "The Linux Foundation Subsidiary 1"
       signed_on:
         type: string
         x-omitempty: false

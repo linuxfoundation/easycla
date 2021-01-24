@@ -309,7 +309,7 @@ func (s *service) GetCompanyProjectActiveCLAs(ctx context.Context, companyID str
 		activeCla := &models.ActiveCla{}
 		out.List = append(out.List, activeCla)
 		go func(swg *sync.WaitGroup, signature *v1Models.Signature, acla *models.ActiveCla) {
-			s.fillActiveCLA(swg, signature, acla, claGroups)
+			s.fillActiveCLA(ctx, swg, signature, acla, claGroups, companyID)
 		}(&wg, sig, activeCla)
 	}
 	wg.Wait()
@@ -756,12 +756,11 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 	// Attempt to locate the company model in our database
 	log.WithFields(f).Debug("locating company by SF ID")
 	var companyModel *v1Models.Company
-	companyModel, companyErr := s.companyRepo.GetCompanyByExternalID(ctx, companySFID)
+	companies, companyErr := s.companyRepo.GetCompaniesByExternalID(ctx, companySFID)
 	if companyErr != nil {
 		// If we were unable to find the company/org in our local database, try to auto-create based
 		// on the existing SF record
 		if companyErr == company.ErrCompanyDoesNotExist {
-
 			log.WithFields(f).Debug("company not found in EasyCLA database - attempting to auto-create from platform organization service record")
 			var createCompanyErr error
 			companyModel, createCompanyErr = s.autoCreateCompany(ctx, companySFID)
@@ -786,40 +785,51 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 		return nil, err
 	}
 
-	activeCLAList, err := s.GetCompanyProjectActiveCLAs(ctx, companyModel.CompanyID, projectSFID)
-	if err != nil {
-		log.WithFields(f).Warnf("problem fetching company project active CLAs, error: %+v", err)
-		return nil, err
-	}
-
-	resp := &models.CompanyProjectClaList{
-		SignedClaList:       activeCLAList.List,
-		UnsignedProjectList: make([]*models.UnsignedProject, 0),
-	}
-
-	for _, activeCLA := range activeCLAList.List {
-		// remove cla groups for which we have signed cla
-		log.WithFields(f).Debugf("removing CLA Groups with active CLA, CLA Group: %+v, error: %+v", activeCLA, err)
-		delete(claGroups, activeCLA.ProjectID)
-	}
-
-	// fill details for not signed cla
-	for claGroupID, claGroup := range claGroups {
-		unsignedProject := &models.UnsignedProject{
-			CanSign:      canSign,
-			ClaGroupID:   claGroupID,
-			ClaGroupName: claGroup.ClaGroupName,
-			ProjectName:  claGroup.ProjectName,
-			ProjectSfid:  claGroup.ProjectSFID,
-			SubProjects:  claGroup.SubProjects,
-			IclaEnabled:  claGroup.IclaEnabled,
-			CclaEnabled:  claGroup.CclaEnabled,
+	var companyProjectClaList = make([]*models.CompanyProjectCla, 0)
+	for _, company := range companies {
+		activeCLAList, err := s.GetCompanyProjectActiveCLAs(ctx, company.CompanyID, projectSFID)
+		if err != nil {
+			log.WithFields(f).Warnf("problem fetching company project active CLAs, error: %+v", err)
+			return nil, err
 		}
-		log.WithFields(f).Debugf("adding unsigned CLA Group: %+v, error: %+v", unsignedProject, err)
-		resp.UnsignedProjectList = append(resp.UnsignedProjectList, unsignedProject)
+		var companyProjectCLA = &models.CompanyProjectCla{
+			SignedClaList:       activeCLAList.List,
+			UnsignedProjectList: make([]*models.UnsignedProject, 0),
+		}
+		for _, activeCLA := range activeCLAList.List {
+			// remove cla groups for which we have signed cla
+			log.WithFields(f).Debugf("removing CLA Groups with active CLA, CLA Group: %+v, error: %+v", activeCLA, err)
+			delete(claGroups, activeCLA.ProjectID)
+		}
+		// Get Company details
+		company, compErr := s.GetCompanyByID(ctx, company.CompanyID)
+		if compErr != nil {
+			log.WithFields(f).WithError(compErr).Warnf("unable to fetch company by ID: %s ", company.CompanyID)
+			return nil, compErr
+		}
+		// fill details for not signed cla
+		for claGroupID, claGroup := range claGroups {
+			unsignedProject := &models.UnsignedProject{
+				CompanyName:       company.CompanyName,
+				SigningEntityName: company.SigningEntityName,
+				CanSign:           canSign,
+				ClaGroupID:        claGroupID,
+				ClaGroupName:      claGroup.ClaGroupName,
+				ProjectName:       claGroup.ProjectName,
+				ProjectSfid:       claGroup.ProjectSFID,
+				SubProjects:       claGroup.SubProjects,
+				IclaEnabled:       claGroup.IclaEnabled,
+				CclaEnabled:       claGroup.CclaEnabled,
+			}
+			log.WithFields(f).Debugf("adding unsigned CLA Group: %+v, error: %+v", unsignedProject, err)
+			companyProjectCLA.UnsignedProjectList = append(companyProjectCLA.UnsignedProjectList, unsignedProject)
+		}
+		companyProjectClaList = append(companyProjectClaList, companyProjectCLA)
 	}
 
-	return resp, nil
+	return &models.CompanyProjectClaList{
+		List: companyProjectClaList,
+	}, nil
 }
 
 // GetCompanyCLAGroupManagers when provided the internal company ID and CLA Groups ID, this routine returns the list of
@@ -1086,7 +1096,10 @@ func fillProjectInfo(claManagers []*models.CompanyClaManager, claGroups map[stri
 	}
 }
 
-func (s *service) fillActiveCLA(wg *sync.WaitGroup, sig *v1Models.Signature, activeCla *models.ActiveCla, claGroups map[string]*claGroupModel) {
+func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1Models.Signature, activeCla *models.ActiveCla, claGroups map[string]*claGroupModel, companyID string) {
+	f := logrus.Fields{
+		"functionName": "fillActiveCLA",
+	}
 	defer wg.Done()
 	cg, ok := claGroups[sig.ProjectID]
 	if !ok {
@@ -1094,7 +1107,20 @@ func (s *service) fillActiveCLA(wg *sync.WaitGroup, sig *v1Models.Signature, act
 		return
 	}
 
+	// Get Company details
+	company, compErr := s.GetCompanyByID(ctx, companyID)
+	if compErr != nil {
+		log.WithFields(f).WithError(compErr).Warnf("unable to fetch company by ID: %s ", companyID)
+		return
+	}
+
 	// fill details from dynamodb
+	activeCla.CompanyName = company.CompanyName
+	if company.SigningEntityName == "" {
+		activeCla.SigningEntityName = company.CompanyName
+	} else {
+		activeCla.SigningEntityName = company.SigningEntityName
+	}
 	activeCla.ProjectID = sig.ProjectID
 	if sig.SignedOn == "" {
 		activeCla.SignedOn = sig.SignatureCreated
@@ -1133,13 +1159,13 @@ func (s *service) fillActiveCLA(wg *sync.WaitGroup, sig *v1Models.Signature, act
 		}
 		usc := v2UserService.GetClient()
 		if len(sig.SignatureACL) == 0 {
-			log.Warnf("signature : %s have empty signature_acl", sig.SignatureID)
+			log.WithFields(f).Warnf("signature : %s have empty signature_acl", sig.SignatureID)
 			return
 		}
 		lfUsername := sig.SignatureACL[0].LfUsername
 		user, err := usc.GetUserByUsername(lfUsername)
 		if err != nil {
-			log.Warnf("unable to get user with lf username : %s", lfUsername)
+			log.WithFields(f).WithError(err).Warnf("unable to get user with lf username : %s", lfUsername)
 			return
 		}
 		signatoryName = user.Name
@@ -1310,7 +1336,8 @@ func (s service) autoCreateCompany(ctx context.Context, companySFID string) (*v1
 	companyModel, companyCreateErr := s.companyRepo.CreateCompany(ctx, &v1Models.Company{
 		CompanyExternalID: companySFID,
 		CompanyName:       sfOrgModel.Name,
-		Note:              "created on-demand by v4 service based on SF Organization Service record",
+
+		Note: "created on-demand by v4 service based on SF Organization Service record",
 	})
 
 	if companyCreateErr != nil || companyModel == nil {
