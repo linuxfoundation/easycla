@@ -4494,6 +4494,8 @@ definitions:
         description: The company signing entity name
         x-omitempty: false
         example: "The Linux Foundation Subsidiary 1"
+      signing_entity_id:
+        $ref: './common/properties/internal-id.yaml'
       cla_group_id:
         type: string
         x-omitempty: false
@@ -4539,6 +4541,10 @@ definitions:
         description: The company signing entity name
         x-omitempty: false
         example: "The Linux Foundation Subsidiary 1"
+      signing_entity_id:
+        $ref: './common/properties/internal-id.yaml'
+      signature_acl:
+        $ref: './common/signature-acl.yaml'
       signed_on:
         type: string
         x-omitempty: false

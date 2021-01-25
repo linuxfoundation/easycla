@@ -812,6 +812,7 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 			unsignedProject := &models.UnsignedProject{
 				CompanyName:       company.CompanyName,
 				SigningEntityName: company.SigningEntityName,
+				SigningEntityID:   company.CompanyID,
 				CanSign:           canSign,
 				ClaGroupID:        claGroupID,
 				ClaGroupName:      claGroup.ClaGroupName,
@@ -825,6 +826,13 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 			companyProjectCLA.UnsignedProjectList = append(companyProjectCLA.UnsignedProjectList, unsignedProject)
 		}
 		companyProjectClaList = append(companyProjectClaList, companyProjectCLA)
+
+		// refresh clagroups for next company instance
+		claGroups, err = s.getCLAGroupsUnderProjectOrFoundation(ctx, projectSFID)
+		if err != nil {
+			log.WithFields(f).Warnf("problem fetching CLA Groups under project or foundation, error: %+v", err)
+			return nil, err
+		}
 	}
 
 	return &models.CompanyProjectClaList{
@@ -1114,6 +1122,17 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 		return
 	}
 
+	// Update acl
+	var acl = make([]string, 0)
+	if len(sig.SignatureACL) > 0 {
+		log.WithFields(f).Debugf("updating signature acl: %+v  list for lfusernames...", sig.SignatureACL)
+		for _, manager := range sig.SignatureACL {
+			if manager.LfUsername != "" {
+				acl = append(acl, manager.LfUsername)
+			}
+		}
+	}
+
 	// fill details from dynamodb
 	activeCla.CompanyName = company.CompanyName
 	if company.SigningEntityName == "" {
@@ -1126,6 +1145,10 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 		activeCla.SignedOn = sig.SignatureCreated
 	} else {
 		activeCla.SignedOn = sig.SignedOn
+	}
+	activeCla.SigningEntityID = companyID
+	activeCla.SignatureACL = &models.ActiveClaSignatureACL{
+		UsernameList: acl,
 	}
 	activeCla.ClaGroupName = cg.ClaGroupName
 	activeCla.SignatureID = sig.SignatureID.String()

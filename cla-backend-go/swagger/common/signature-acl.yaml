@@ -1,0 +1,10 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+title: signature acl list representing cla managers access list
+properties:
+  username_list:
+    type: array
+    items:
+      type: string
