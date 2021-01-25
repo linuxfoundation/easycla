@@ -1033,6 +1033,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
             # specified default value per issue #166
             context, body = cla.utils.assemble_cla_status(context_name, signed=True)
             sign_url = cla.conf["CLA_LANDING_PAGE"]  # Remove this once signature detail page ready.
+            sign_url = os.path.join(sign_url, "#/")
             sign_url = append_project_version_to_url(address=sign_url, project_version=project_version)
             cla.log.debug(f'Creating new CLA {state} status - {len(signed)} passed, {missing}, signing url: {sign_url}')
             create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)

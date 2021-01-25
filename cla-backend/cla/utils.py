@@ -827,6 +827,7 @@ def get_comment_badge(repository_type, all_signed, sign_url, project_version, mi
     if all_signed:
         badge_url = f'{CLA_LOGO_URL}/cla-signed.svg'
         badge_hyperlink = cla.conf["CLA_LANDING_PAGE"]
+        badge_hyperlink = os.path.join(badge_hyperlink, "#/")
         badge_hyperlink = append_project_version_to_url(address=badge_hyperlink, project_version=project_version)
         alt = "CLA Signed"
     else:
