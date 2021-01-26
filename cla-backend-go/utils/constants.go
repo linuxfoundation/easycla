@@ -27,6 +27,9 @@ const EasyCLA403Forbidden = "EasyCLA - 403 Forbidden"
 // EasyCLA404NotFound common string for handler not found error messages
 const EasyCLA404NotFound = "EasyCLA - 404 Not Found"
 
+// EasyCLA409Conflict common string for handler conflict error messages
+const EasyCLA409Conflict = "EasyCLA - 409 Conflict"
+
 // EasyCLA500InternalServerError common string for handler internal server error messages
 const EasyCLA500InternalServerError = "EasyCLA - 500 Internal Server Error"
 

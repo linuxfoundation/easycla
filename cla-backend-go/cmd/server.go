@@ -68,7 +68,7 @@ import (
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
 	"github.com/communitybridge/easycla/cla-backend-go/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/company"
+	v1Company "github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/docraptor"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi"
@@ -120,7 +120,7 @@ func init() {
 
 type combinedRepo struct {
 	users.UserRepository
-	company.IRepository
+	v1Company.IRepository
 	project.ProjectRepository
 }
 
@@ -232,8 +232,8 @@ func server(localMode bool) http.Handler {
 	gerritRepo := gerrits.NewRepository(awsSession, stage)
 	templateRepo := template.NewRepository(awsSession, stage)
 	approvalListRepo := approval_list.NewRepository(awsSession, stage)
-	companyRepo := company.NewRepository(awsSession, stage)
-	signaturesRepo := signatures.NewRepository(awsSession, stage, companyRepo, usersRepo)
+	v1CompanyRepo := v1Company.NewRepository(awsSession, stage)
+	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo)
 	projectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
 	projectRepo := project.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, projectClaGroupRepo)
 	eventsRepo := events.NewRepository(awsSession, stage)
@@ -244,7 +244,7 @@ func server(localMode bool) http.Handler {
 	// Our service layer handlers
 	eventsService := events.NewService(eventsRepo, combinedRepo{
 		usersRepo,
-		companyRepo,
+		v1CompanyRepo,
 		projectRepo,
 	})
 
@@ -259,23 +259,23 @@ func server(localMode bool) http.Handler {
 	usersService := users.NewService(usersRepo, eventsService)
 	healthService := health.New(Version, Commit, Branch, BuildDate)
 	templateService := template.NewService(stage, templateRepo, docraptorClient, awsSession)
-	projectService := project.NewService(projectRepo, repositoriesRepo, gerritRepo, projectClaGroupRepo, usersRepo)
-	v2ProjectService := v2Project.NewService(projectService, projectRepo, projectClaGroupRepo)
-	companyService := company.NewService(companyRepo, configFile.CorporateConsoleURL, userRepo, usersService)
-	v2CompanyService := v2Company.NewService(companyService, signaturesRepo, projectRepo, usersRepo, companyRepo, projectClaGroupRepo, eventsService)
-	v2SignService := sign.NewService(configFile.ClaV1ApiURL, companyRepo, projectRepo, projectClaGroupRepo, companyService)
-	signaturesService := signatures.NewService(signaturesRepo, companyService, usersService, eventsService, githubOrgValidation)
-	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, projectService, companyService, signaturesService, projectClaGroupRepo)
-	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, companyService, projectService, usersService, signaturesService, eventsService, configFile.CorporateConsoleURL)
-	repositoriesService := repositories.NewService(repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo)
+	v1ProjectService := project.NewService(projectRepo, repositoriesRepo, gerritRepo, projectClaGroupRepo, usersRepo)
+	v2ProjectService := v2Project.NewService(v1ProjectService, projectRepo, projectClaGroupRepo)
+	v1CompanyService := v1Company.NewService(v1CompanyRepo, configFile.CorporateConsoleURL, userRepo, usersService)
+	v2CompanyService := v2Company.NewService(v1CompanyService, signaturesRepo, projectRepo, usersRepo, v1CompanyRepo, projectClaGroupRepo, eventsService)
+	v2SignService := sign.NewService(configFile.ClaV1ApiURL, v1CompanyRepo, projectRepo, projectClaGroupRepo, v1CompanyService)
+	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation)
+	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, projectClaGroupRepo)
+	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, configFile.CorporateConsoleURL)
+	v1RepositoriesService := repositories.NewService(repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo)
 	v2RepositoriesService := v2Repositories.NewService(repositoriesRepo, projectClaGroupRepo, githubOrganizationsRepo)
-	v2ClaManagerService := v2ClaManager.NewService(companyService, projectService, v1ClaManagerService, usersService, repositoriesService, v2CompanyService, eventsService, projectClaGroupRepo)
-	approvalListService := approval_list.NewService(approvalListRepo, usersRepo, companyRepo, projectRepo, signaturesRepo, configFile.CorporateConsoleURL, http.DefaultClient)
+	v2ClaManagerService := v2ClaManager.NewService(v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, projectClaGroupRepo)
+	v1ApprovalListService := approval_list.NewService(approvalListRepo, usersRepo, v1CompanyRepo, projectRepo, signaturesRepo, configFile.CorporateConsoleURL, http.DefaultClient)
 	authorizer := auth.NewAuthorizer(authValidator, userRepo)
 	v2MetricsService := metrics.NewService(metricsRepo, projectClaGroupRepo)
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, repositoriesRepo, projectClaGroupRepo)
 	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, repositoriesRepo, projectClaGroupRepo)
-	autoEnableService := dynamo_events.NewAutoEnableService(repositoriesService, repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo, projectService)
+	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo, v1ProjectService)
 	v2GithubActivityService := v2GithubActivity.NewService(repositoriesRepo, eventsService, autoEnableService)
 	gerritService := gerrits.NewService(gerritRepo, &gerrits.LFGroup{
 		LfBaseURL:    configFile.LFGroup.ClientURL,
@@ -283,7 +283,7 @@ func server(localMode bool) http.Handler {
 		ClientSecret: configFile.LFGroup.ClientSecret,
 		RefreshToken: configFile.LFGroup.RefreshToken,
 	})
-	v2ClaGroupService := cla_groups.NewService(projectService, templateService, projectClaGroupRepo, v1ClaManagerService, signaturesService, metricsRepo, gerritService, repositoriesService, eventsService)
+	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, projectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 
 	sessionStore, err := dynastore.New(dynastore.Path("/"), dynastore.HTTPOnly(), dynastore.TableName(configFile.SessionStoreTableName), dynastore.DynamoDB(dynamodb.New(awsSession)))
 	if err != nil {
@@ -298,35 +298,35 @@ func server(localMode bool) http.Handler {
 
 	// Setup our API handlers
 	users.Configure(api, usersService, eventsService)
-	project.Configure(api, projectService, eventsService, gerritService, repositoriesService, signaturesService)
-	v2Project.Configure(v2API, projectService, v2ProjectService, eventsService)
+	project.Configure(api, v1ProjectService, eventsService, gerritService, v1RepositoriesService, v1SignaturesService)
+	v2Project.Configure(v2API, v1ProjectService, v2ProjectService, eventsService)
 	health.Configure(api, healthService)
 	v2Health.Configure(v2API, healthService)
 	template.Configure(api, templateService, eventsService)
 	v2Template.Configure(v2API, templateService, eventsService)
 	github.Configure(api, configFile.Github.ClientID, configFile.Github.ClientSecret, configFile.Github.AccessToken, sessionStore)
-	signatures.Configure(api, signaturesService, sessionStore, eventsService)
-	v2Signatures.Configure(v2API, projectService, projectRepo, companyService, signaturesService, sessionStore, eventsService, v2SignatureService, projectClaGroupRepo)
-	approval_list.Configure(api, approvalListService, sessionStore, signaturesService, eventsService)
-	company.Configure(api, companyService, usersService, companyUserValidation, eventsService)
+	signatures.Configure(api, v1SignaturesService, sessionStore, eventsService)
+	v2Signatures.Configure(v2API, v1ProjectService, projectRepo, v1CompanyService, v1SignaturesService, sessionStore, eventsService, v2SignatureService, projectClaGroupRepo)
+	approval_list.Configure(api, v1ApprovalListService, sessionStore, v1SignaturesService, eventsService)
+	v1Company.Configure(api, v1CompanyService, usersService, companyUserValidation, eventsService)
 	docs.Configure(api)
 	v2Docs.Configure(v2API)
 	version.Configure(api, Version, Commit, Branch, BuildDate)
 	v2Version.Configure(v2API, Version, Commit, Branch, BuildDate)
 	events.Configure(api, eventsService)
-	v2Events.Configure(v2API, eventsService, companyRepo, projectClaGroupRepo)
-	v2Metrics.Configure(v2API, v2MetricsService, companyRepo)
+	v2Events.Configure(v2API, eventsService, v1CompanyRepo, projectClaGroupRepo)
+	v2Metrics.Configure(v2API, v2MetricsService, v1CompanyRepo)
 	github_organizations.Configure(api, githubOrganizationsService, eventsService)
 	v2GithubOrganizations.Configure(v2API, v2GithubOrganizationsService, eventsService)
-	repositories.Configure(api, repositoriesService, eventsService)
+	repositories.Configure(api, v1RepositoriesService, eventsService)
 	v2Repositories.Configure(v2API, v2RepositoriesService, eventsService)
-	gerrits.Configure(api, gerritService, projectService, eventsService)
-	v2Gerrits.Configure(v2API, gerritService, projectService, eventsService, projectClaGroupRepo)
-	v2Company.Configure(v2API, v2CompanyService, companyRepo, projectClaGroupRepo, configFile.LFXPortalURL, configFile.CorporateConsoleURL)
-	cla_manager.Configure(api, v1ClaManagerService, companyService, projectService, usersService, signaturesService, eventsService, configFile.CorporateConsoleURL)
-	v2ClaManager.Configure(v2API, v2ClaManagerService, configFile.LFXPortalURL, projectClaGroupRepo, userRepo)
+	gerrits.Configure(api, gerritService, v1ProjectService, eventsService)
+	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, projectClaGroupRepo)
+	v2Company.Configure(v2API, v2CompanyService, projectClaGroupRepo, configFile.LFXPortalURL, configFile.CorporateConsoleURL)
+	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, configFile.CorporateConsoleURL)
+	v2ClaManager.Configure(v2API, v2ClaManagerService, v1CompanyService, configFile.LFXPortalURL, projectClaGroupRepo, userRepo)
 	sign.Configure(v2API, v2SignService)
-	cla_groups.Configure(v2API, v2ClaGroupService, projectService, projectClaGroupRepo, eventsService)
+	cla_groups.Configure(v2API, v2ClaGroupService, v1ProjectService, projectClaGroupRepo, eventsService)
 	v2GithubActivity.Configure(v2API, v2GithubActivityService)
 
 	userCreaterMiddleware := func(next http.Handler) http.Handler {

@@ -73,6 +73,24 @@ func ErrorResponseNotFoundWithError(reqID, msg string, err error) *models.ErrorR
 	}
 }
 
+// ErrorResponseConflict Helper function to generate a conflict error response
+func ErrorResponseConflict(reqID, msg string) *models.ErrorResponse {
+	return &models.ErrorResponse{
+		Code:       String409,
+		Message:    fmt.Sprintf("%s - %s", EasyCLA409Conflict, msg),
+		XRequestID: reqID,
+	}
+}
+
+// ErrorResponseConflictWithError Helper function to generate a conflict error message
+func ErrorResponseConflictWithError(reqID, msg string, err error) *models.ErrorResponse {
+	return &models.ErrorResponse{
+		Code:       String409,
+		Message:    fmt.Sprintf("%s - %s - error: %+v", EasyCLA409Conflict, msg, err),
+		XRequestID: reqID,
+	}
+}
+
 // ErrorResponseInternalServerError Helper function to generate an internal server error response
 func ErrorResponseInternalServerError(reqID, msg string) *models.ErrorResponse {
 	return &models.ErrorResponse{

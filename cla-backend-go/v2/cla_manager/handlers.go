@@ -15,6 +15,7 @@ import (
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 
+	v1Company "github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/cla_manager"
@@ -36,34 +37,47 @@ const (
 )
 
 // Configure is the API handler routine for CLA Manager routes
-func Configure(api *operations.EasyclaAPI, service Service, LfxPortalURL string, projectClaGroupRepo projects_cla_groups.Repository, easyCLAUserRepo v1User.RepositoryService) {
+func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1Company.IService, LfxPortalURL string, projectClaGroupRepo projects_cla_groups.Repository, easyCLAUserRepo v1User.RepositoryService) { // nolint
 	api.ClaManagerCreateCLAManagerHandler = cla_manager.CreateCLAManagerHandlerFunc(func(params cla_manager.CreateCLAManagerParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, params.CompanySFID, utils.DISALLOW_ADMIN_SCOPE) {
-			return cla_manager.NewCreateCLAManagerForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code: "403",
-				Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to CreateCLAManager with Project|Organization scope of %s | %s",
-					authUser.UserName, params.ProjectSFID, params.CompanySFID),
-				XRequestID: reqID,
-			})
+
+		f := logrus.Fields{
+			"functionName":   "cla_manager.handlers.ClaManagerCreateCLAManagerHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"CompanyID":      params.CompanyID,
+			"ProjectSFID":    params.ProjectSFID,
+			"authUser":       *params.XUSERNAME,
 		}
+
+		// Lookup the company by internal ID
+		log.WithFields(f).Debugf("looking up company by internal ID...")
+		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		if err != nil || v1CompanyModel == nil {
+			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewCreateCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		log.WithFields(f).Debug("checking permissions...")
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to DeleteCLAManager with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
+			log.WithFields(f).Warn(msg)
+			return cla_manager.NewCreateCLAManagerForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
+		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
 		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(params.ProjectSFID)
 		if err != nil {
 			if err == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
-				return cla_manager.NewCreateCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       BadRequest,
-					Message:    fmt.Sprintf("EasyCLA - 400 Bad Request - No cla group associated with this project: %s", params.ProjectSFID),
-					XRequestID: reqID,
-				})
+				msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
+				log.WithFields(f).WithError(err).Warn(msg)
+				return cla_manager.NewCreateCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
-			return cla_manager.NewCreateCLAManagerInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:       "500",
-				Message:    fmt.Sprintf("EasyCLA - 500 Internal server error. error = %s", err.Error()),
-				XRequestID: reqID,
-			})
+			return cla_manager.NewCreateCLAManagerInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, err.Error(), err))
 		}
+
 		compCLAManager, errorResponse := service.CreateCLAManager(ctx, cginfo.ClaGroupID, params, authUser.UserName)
 		if errorResponse != nil {
 			if errorResponse.Code == BadRequest {
@@ -80,21 +94,36 @@ func Configure(api *operations.EasyclaAPI, service Service, LfxPortalURL string,
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, params.CompanySFID, utils.DISALLOW_ADMIN_SCOPE) {
-			return cla_manager.NewDeleteCLAManagerForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code: "403",
-				Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to DeleteCLAManager with Project|Organization scope of %s | %s",
-					authUser.UserName, params.ProjectSFID, params.CompanySFID),
-				XRequestID: reqID,
-			})
+		f := logrus.Fields{
+			"functionName":   "cla_manager.handlers.ClaManagerDeleteCLAManagerHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"CompanyID":      params.CompanyID,
+			"ProjectSFID":    params.ProjectSFID,
+			"userLFID":       params.UserLFID,
+			"authUser":       *params.XUSERNAME,
 		}
+
+		// Lookup the company by internal ID
+		log.WithFields(f).Debugf("looking up company by internal ID...")
+		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		if err != nil || v1CompanyModel == nil {
+			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		log.WithFields(f).Debug("checking permissions...")
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to DeleteCLAManager with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
+			log.WithFields(f).Warn(msg)
+			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
 		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(params.ProjectSFID)
 		if err != nil {
-			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:       BadRequest,
-				Message:    fmt.Sprintf("EasyCLA - Bad Request. No Cla Group associated with ProjectSFID: %s ", params.ProjectSFID),
-				XRequestID: reqID,
-			})
+			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
 		errResponse := service.DeleteCLAManager(ctx, cginfo.ClaGroupID, params)
@@ -108,35 +137,35 @@ func Configure(api *operations.EasyclaAPI, service Service, LfxPortalURL string,
 	api.ClaManagerCreateCLAManagerDesigneeHandler = cla_manager.CreateCLAManagerDesigneeHandlerFunc(func(params cla_manager.CreateCLAManagerDesigneeParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "ClaManagerCreateCLAManagerDesigneeHandler",
+			"functionName":   "cla_manager.handlers.ClaManagerCreateCLAManagerDesigneeHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-			"CompanySFID":    params.CompanySFID,
+			"CompanyID":      params.CompanyID,
 			"ProjectSFID":    params.ProjectSFID,
 			"authUser":       *params.XUSERNAME,
 		}
 
+		// Lookup the company by internal ID
+		log.WithFields(f).Debugf("looking up company by internal ID...")
+		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		if err != nil || v1CompanyModel == nil {
+			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewCreateCLAManagerDesigneeBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
 		// Note: anyone create assign a CLA manager designee...no permissions checks
-		log.WithFields(f).Debugf("processing CLA Manager Desginee request")
+		log.WithFields(f).Debugf("processing create CLA Manager Desginee request")
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-		claManagerDesignee, err := service.CreateCLAManagerDesignee(ctx, params.CompanySFID, params.ProjectSFID, params.Body.UserEmail.String())
+		claManagerDesignee, err := service.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyExternalID, params.ProjectSFID, params.Body.UserEmail.String())
 		if err != nil {
 			if err == ErrCLAManagerDesigneeConflict {
 				msg := fmt.Sprintf("Conflict assigning cla manager role for Project SFID: %s ", params.ProjectSFID)
-				return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(
-					&models.ErrorResponse{
-						Message:    msg,
-						Code:       Conflict,
-						XRequestID: reqID,
-					})
+				return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
 			}
 			msg := fmt.Sprintf("user :%s, error: %+v ", authUser.Email, err)
-			return cla_manager.NewCreateCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
-				&models.ErrorResponse{
-					Message:    msg,
-					Code:       BadRequest,
-					XRequestID: reqID,
-				})
+			return cla_manager.NewCreateCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
 		log.Debugf("CLA Manager designee created : %+v", claManagerDesignee)
@@ -147,13 +176,14 @@ func Configure(api *operations.EasyclaAPI, service Service, LfxPortalURL string,
 		func(params cla_manager.CreateCLAManagerDesigneeByGroupParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "ClaManagerCreateCLAManagerDesigneeByGroupHandler",
+				"functionName":   "cla_manager.handlers.ClaManagerCreateCLAManagerDesigneeByGroupHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-				"CompanySFID":    params.CompanySFID,
+				"CompanySFID":    params.CompanyID,
 				"ClaGroupID":     params.ClaGroupID,
 				"Email":          params.Body.UserEmail.String(),
-				"authUser":       *params.XUSERNAME,
+				"authUser":       utils.StringValue(params.XUSERNAME),
 			}
 
 			// Note: anyone create assign a CLA manager designee...no permissions checks
@@ -171,41 +201,28 @@ func Configure(api *operations.EasyclaAPI, service Service, LfxPortalURL string,
 						XRequestID: reqID,
 					})
 			}
+
 			log.WithFields(f).Debugf("found %d project IDs for CLA group", len(projectCLAGroups))
 			if len(projectCLAGroups) == 0 {
 				msg := fmt.Sprintf("no projects associated with CLA Group: %s", params.ClaGroupID)
 				log.WithFields(f).Warn(msg)
-				return cla_manager.NewCreateCLAManagerDesigneeByGroupNotFound().WithXRequestID(reqID).WithPayload(
-					&models.ErrorResponse{
-						Message:    msg,
-						Code:       BadRequest,
-						XRequestID: reqID,
-					})
-
+				return cla_manager.NewCreateCLAManagerDesigneeByGroupNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
-			designeeScopes, msg, err := service.CreateCLAManagerDesigneeByGroup(ctx, params, projectCLAGroups, f)
+			designeeScopes, msg, err := service.CreateCLAManagerDesigneeByGroup(ctx, params, projectCLAGroups)
 			if err != nil {
 				if err == ErrCLAManagerDesigneeConflict {
-					return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(
-						&models.ErrorResponse{
-							Message:    msg,
-							Code:       Conflict,
-							XRequestID: reqID,
-						})
+					return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
 				}
 				log.WithFields(f).Warn(msg)
-				return cla_manager.NewCreateCLAManagerDesigneeByGroupBadRequest().WithXRequestID(reqID).WithPayload(
-					&models.ErrorResponse{
-						Message:    msg,
-						Code:       BadRequest,
-						XRequestID: reqID,
-					})
+				return cla_manager.NewCreateCLAManagerDesigneeByGroupBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
+
 			return cla_manager.NewCreateCLAManagerDesigneeByGroupOK().WithXRequestID(reqID).WithPayload(&models.ClaManagerDesignees{
 				List: designeeScopes,
 			})
 		})
+
 	api.ClaManagerIsCLAManagerDesigneeHandler = cla_manager.IsCLAManagerDesigneeHandlerFunc(func(params cla_manager.IsCLAManagerDesigneeParams) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
@@ -227,16 +244,12 @@ func Configure(api *operations.EasyclaAPI, service Service, LfxPortalURL string,
 	api.ClaManagerInviteCompanyAdminHandler = cla_manager.InviteCompanyAdminHandlerFunc(func(params cla_manager.InviteCompanyAdminParams) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+
 		// Get Contributor details
 		user, userErr := easyCLAUserRepo.GetUser(params.UserID)
 		if userErr != nil {
 			msg := fmt.Sprintf("Problem getting user by ID : %s, error: %+v ", params.UserID, userErr)
-			return cla_manager.NewInviteCompanyAdminBadRequest().WithXRequestID(reqID).WithPayload(
-				&models.ErrorResponse{
-					Code:       BadRequest,
-					Message:    msg,
-					XRequestID: reqID,
-				})
+			return cla_manager.NewInviteCompanyAdminBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, userErr))
 		}
 
 		claManagerDesignees, err := service.InviteCompanyAdmin(ctx, params.Body.ContactAdmin, params.Body.CompanyID, *params.Body.ClaGroupID, params.Body.UserEmail.String(), params.Body.Name, &user, LfxPortalURL)
@@ -288,25 +301,36 @@ func Configure(api *operations.EasyclaAPI, service Service, LfxPortalURL string,
 	api.ClaManagerCreateCLAManagerRequestHandler = cla_manager.CreateCLAManagerRequestHandlerFunc(func(params cla_manager.CreateCLAManagerRequestParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "ClaManagerCreateCLAManagerRequestHandler",
+			"functionName":   "cla_manager.handlers.ClaManagerCreateCLAManagerRequestHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-			"CompanySFID":    params.CompanySFID,
+			"CompanyID":      params.CompanyID,
 			"ProjectSFID":    params.ProjectSFID,
+			"contactAdmin":   params.Body.ContactAdmin,
+			"userFullName":   utils.StringValue(params.Body.FullName),
+			"userEmail":      params.Body.UserEmail.String(),
 			"authUser":       *params.XUSERNAME,
 		}
-		log.WithFields(f).Debugf("processing CLA Manager request")
-		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-		if !utils.IsUserAuthorizedForOrganization(authUser, params.CompanySFID, utils.ALLOW_ADMIN_SCOPE) {
-			return cla_manager.NewCreateCLAManagerRequestForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code: "403",
-				Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to CreateCLAManagerRequest with Project|Organization scope of %s | %s",
-					authUser.UserName, params.ProjectSFID, params.CompanySFID),
-				XRequestID: reqID,
-			})
+
+		// Lookup the company by internal ID
+		log.WithFields(f).Debugf("looking up company by internal ID...")
+		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		if err != nil || v1CompanyModel == nil {
+			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewCreateCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
-		claManagerDesignee, err := service.CreateCLAManagerRequest(ctx, params.Body.ContactAdmin, params.CompanySFID, params.ProjectSFID, params.Body.UserEmail.String(),
+		// Check perms...
+		if !utils.IsUserAuthorizedForOrganization(authUser, v1CompanyModel.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to CreateCLAManagerRequest with Project|Organization scope of %s | %s",
+				authUser.UserName, params.ProjectSFID, v1CompanyModel.CompanyExternalID)
+			log.WithFields(f).Warn(msg)
+			return cla_manager.NewCreateCLAManagerRequestForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
+		claManagerDesignee, err := service.CreateCLAManagerRequest(ctx, params.Body.ContactAdmin, v1CompanyModel.CompanyExternalID, params.ProjectSFID, params.Body.UserEmail.String(),
 			*params.Body.FullName, authUser, LfxPortalURL)
 
 		if err != nil {
@@ -347,48 +371,29 @@ func Configure(api *operations.EasyclaAPI, service Service, LfxPortalURL string,
 		func(params cla_manager.NotifyCLAManagersParams) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			f := logrus.Fields{
+				"functionName":      "cla_manager.handlers.ClaManagerNotifyCLAManagersHandler",
+				utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+				"companyName":       params.Body.CompanyName,
+				"signingEntityName": params.Body.SigningEntityName,
+				"userID":            params.Body.UserID,
+				"claGroupName":      params.Body.ClaGroupName,
+			}
+			log.WithFields(f).Debug("notifying CLA managers...")
 			err := service.NotifyCLAManagers(ctx, params.Body, LfxPortalURL)
 			if err != nil {
 				if err == ErrCLAUserNotFound {
+					msg := fmt.Sprintf("unable to notify cla managers - user not found: %s", params.Body.UserID)
+					log.WithFields(f).WithError(err).Warn(err)
 					return cla_manager.NewNotifyCLAManagersNotFound().WithXRequestID(reqID).WithPayload(
-						utils.ErrorResponseNotFound(
-							reqID,
-							fmt.Sprintf("unable to notify cla managers - user not found: %s", params.Body.UserID)))
+						utils.ErrorResponseNotFound(reqID, msg))
 				}
-				return cla_manager.NewNotifyCLAManagersBadRequest().WithXRequestID(reqID).WithPayload(
-					utils.ErrorResponseBadRequestWithError(reqID, fmt.Sprintf("unable to notify cla managers - cla group: %s, company: %s", params.Body.ClaGroupName, params.Body.CompanyName), err))
+
+				msg := fmt.Sprintf("unable to notify cla managers - cla group: %s, company: %s", params.Body.ClaGroupName, params.Body.CompanyName)
+				log.WithFields(f).WithError(err).Warn(err)
+				return cla_manager.NewNotifyCLAManagersBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
 			return cla_manager.NewNotifyCLAManagersNoContent().WithXRequestID(reqID)
 		})
-
-}
-
-// buildErrorMessageCreate helper function to build an error message
-func buildErrorMessageCreate(params cla_manager.CreateCLAManagerParams, err error) string {
-	return fmt.Sprintf("problem creating new CLA Manager using company SFID: %s, project SFID: %s, firstName: %s, lastName: %s, user email: %s, error: %+v",
-		params.CompanySFID, params.ProjectSFID, *params.Body.FirstName, *params.Body.LastName, *params.Body.UserEmail, err)
-}
-
-// buildErrorMessage helper function to build an error message
-func buildErrorMessageDelete(params cla_manager.DeleteCLAManagerParams, err error) string {
-	return fmt.Sprintf("problem deleting new CLA Manager Request using company SFID: %s, project SFID: %s, user ID: %s, error: %+v",
-		params.CompanySFID, params.ProjectSFID, params.UserLFID, err)
-}
-
-// buildErrorStatusCode helper function to build an error statusCodes
-func buildErrorStatusCode(err error) string {
-	if err == ErrNoOrgAdmins || err == ErrCLACompanyNotFound || err == ErrClaGroupNotFound || err == ErrCLAUserNotFound {
-		return NotFound
-	}
-	// Check if user is already assigned scope/role
-	if err == ErrRoleScopeConflict {
-		return Conflict
-	}
-	// Check if user does not exiss
-	if err == ErrNoLFID {
-		return Accepted
-	}
-	// Return Bad Request
-	return BadRequest
 }

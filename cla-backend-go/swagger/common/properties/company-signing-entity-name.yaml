@@ -3,7 +3,7 @@
 
 example: "Linux Foundation"
 type: string
-description: Name of the company
+description: Signing Entity Name of the Company
 # Pattern aligns with UI and other platform services including Org Service
 pattern: '[^<>]*' # allow everything except greater than and less than symbols
 minLength: 2

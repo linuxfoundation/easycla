@@ -2211,7 +2211,7 @@ paths:
           $ref: '#/responses/internal-server-error'
       tags:
         - signatures
-  
+
   /company/{companySFID}/user/{userLFID}/claGroupID/{claGroupID}/is-cla-manager-designee:
     get:
       summary: Checks cla-manager-designee role
@@ -2405,7 +2405,7 @@ paths:
       tags:
         - company
 
-  /company/{companySFID}/project/{projectSFID}/cla-manager/requests:
+  /company/{companyID}/project/{projectSFID}/cla-manager/requests:
     post:
       summary: Adds a CLA Manager Designee to the specified Company and Project
       description: User proposes a CLA Manager making the proposed user CLA Manager Designee
@@ -2415,7 +2415,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-projectSFID"
         - name: body
           in: body
@@ -2467,7 +2467,7 @@ paths:
         - cla-manager
 
 
-  /company/{companySFID}/project/{projectSFID}/cla-manager:
+  /company/{companyID}/project/{projectSFID}/cla-manager:
     post:
       summary: Adds a new CLA Manager to the specified Company and Project
       description: Allows an existing CLA Manager to add another CLA Manager to the specified Company and Project.
@@ -2478,7 +2478,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - name: body
           in: body
           schema:
@@ -2542,9 +2542,9 @@ paths:
       tags:
         - company
 
-  /company/{companySFID}/project/{projectSFID}/cla-manager/{userLFID}:
+  /company/{companyID}/project/{projectSFID}/cla-manager/{userLFID}:
     delete:
-      summary: Removes the CLA Manager from ACL for specified Company and Project
+      summary: Deletes the CLA Manager from CLA Manager list for specified Company and Project
       description: Allows an existing CLA Manager to remove another CLA Manager from the specified Company and Project.
       operationId: deleteCLAManager
       parameters:
@@ -2553,7 +2553,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-userLFID"
       responses:
         '204':
@@ -2573,9 +2573,7 @@ paths:
       tags:
         - cla-manager
 
-
-
-  /company/{companySFID}/claGroup/{claGroupID}/cla-manager-designee:
+  /company/{companyID}/claGroup/{claGroupID}/cla-manager-designee:
     post:
       summary: Assigns CLA Manager designee
       description: Assigns CLA Manager designee to a given user
@@ -2586,7 +2584,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-claGroupID"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - name: body
           in: body
           schema:
@@ -2620,7 +2618,7 @@ paths:
       tags:
         - cla-manager
 
-  /company/{companySFID}/project/{projectSFID}/cla-manager-designee:
+  /company/{companyID}/project/{projectSFID}/cla-manager-designee:
     post:
       summary: Assigns CLA Manager designee
       description: Assigns CLA Manager designee to a given user
@@ -2631,7 +2629,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - name: body
           in: body
           schema:
@@ -2940,6 +2938,41 @@ paths:
       tags:
         - company
 
+  /company/entityname/{signingEntityName}:
+    get:
+      summary: Gets the company by name
+      description: Returns the matching company by name
+      operationId: getCompanyBySigningEntityName
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: '#/parameters/path-signingEntityName'
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/company'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - company
+
   /company/id/{companyID}:
     delete:
       summary: Deletes the company by ID
@@ -2972,7 +3005,7 @@ paths:
           $ref: '#/responses/internal-server-error'
       tags:
         - company
-  
+
   /company/lookup:
     get:
       summary: Search companies from organization service
@@ -3047,7 +3080,7 @@ paths:
       tags:
         - company
 
-  /company/{companySFID}/project/{projectSFID}/cla-managers:
+  /company/{companyID}/project/{projectSFID}/cla-managers:
     get:
       summary: Get CLA manager of company for particular project/foundation
       description: Returns list CLA managers of the company for project/foundation
@@ -3057,7 +3090,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-projectSFID"
       responses:
         '200':
@@ -3109,7 +3142,7 @@ paths:
       tags:
         - company
 
-  /company/{companySFID}/project/{projectSFID}/active-cla-list:
+  /company/{companyID}/project/{projectSFID}/active-cla-list:
     get:
       summary: Get active CLA list of company for particular project/foundation
       description: Returns list active CLA of the company under particular project/foundation
@@ -3119,7 +3152,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-projectSFID"
       responses:
         '200':
@@ -3140,6 +3173,7 @@ paths:
           $ref: '#/responses/not-found'
       tags:
         - company
+
   /company/{companySFID}/project/{projectSFID}/contributors:
     get:
       summary: Get corporate contributors for project
@@ -3565,6 +3599,16 @@ parameters:
     type: string
     required: true
     pattern: '^([\w\d\s\-\,\./]+){2,255}$'
+  path-signingEntityName:
+    name: signingEntityName
+    type: string
+    description: Signing Entity Name of the Company
+    # Pattern aligns with UI and other platform services including Org Service
+    pattern: '[^<>]*' # allow everything except greater than and less than symbols
+    minLength: 2
+    maxLength: 100
+    in: path
+    required: true
   path-signatureID:
     name: signatureID
     description: id of the CLA signature
@@ -3973,19 +4017,19 @@ definitions:
       Source:
         type: string
         description: >-
-            The company account source, such as "Google Natural Search", "Event-Promo", "Direct Mail", or "Tradeshow".
-            If the information was found in clearbit, this value will be "clearbit".
+          The company account source, such as "Google Natural Search", "Event-Promo", "Direct Mail", or "Tradeshow".
+          If the information was found in clearbit, this value will be "clearbit".
         example: "clearbit"
       Industry:
         type: string
         description: >-
-            The company industry, such as "Banking" or "Communications"
+          The company industry, such as "Banking" or "Communications"
         example: "Education"
         pattern: '^([\w\d\s\-\,\.]+){2,40}$'
       Sector:
         type: string
         description: >-
-            The company industry sector, such as "Information Technology"
+          The company industry sector, such as "Information Technology"
         example: "Information Technology"
       Employees:
         type: string
@@ -4127,8 +4171,8 @@ definitions:
         items:
           $ref:
             '#/definitions/cla-manager-designee'
-  
-  
+
+
   user-role-status:
     type: object
     title: User Role status
@@ -4249,20 +4293,20 @@ definitions:
       assigned_on:
         type: string
         x-omitempty: false
-      company_sfid:
-        type: string
-        description: 'the Organization SalesForce ID'
+      company_id:
+        $ref: './common/properties/internal-id.yaml'
+        description: 'the Company/Organization internal ID'
         x-omitempty: false
-        example: 'abc134234adsdf43'
+      company_sfid:
+        $ref: './common/properties/external-id.yaml'
+        description: 'the Company/Organization SalesForce ID'
+        x-omitempty: false
       project_sfid:
-        type: string
+        $ref: './common/properties/external-id.yaml'
         description: 'the project SalesForce ID'
         x-omitempty: false
-        example: 'a2g17000000hyxNAAA'
       project_name:
-        type: string
-        description: 'name of the salesforce project'
-        example: 'Appium'
+        $ref: './common/properties/project-name.yaml'
         x-omitempty: false
 
   company-cla-manager:
@@ -4294,31 +4338,32 @@ definitions:
         type: string
         x-omitempty: false
       project_id:
-        type: string
+        $ref: './common/properties/internal-id.yaml'
         description: "The Project ID"
         x-omitempty: false
-        example: "e1e30240-a722-4c82-a648-121681d959c7"
       project_sfid:
-        type: string
+        $ref: './common/properties/external-id.yaml'
         description: "The Project SalesForce ID"
         x-omitempty: false
-        example: "a2g17000000hyxNAAA"
       project_name:
-        type: string
-        description: "The name of the SalesForce project"
-        example: "Appium"
+        $ref: './common/properties/cla-group-name.yaml'
         x-omitempty: false
       cla_group_name:
         $ref: './common/properties/cla-group-name.yaml'
       organization_name:
-        type: string
-        description: "The name of Salesforce organization"
+        $ref: './common/properties/company-name.yaml'
         x-omitempty: false
-        example: "Intel Corporation"
+      signing_entity_name:
+        $ref: './common/properties/company-signing-entity-name.yaml'
+        x-omitempty: false
+      organization_id:
+        $ref: './common/properties/internal-id.yaml'
+        description: "The internal organization ID"
+        x-omitempty: false
       organization_sfid:
-        type: string
+        $ref: './common/properties/external-id.yaml'
+        description: "The Salesforce organization ID"
         x-omitempty: false
-        example: "00117000015vpjXAAQ"
 
   cla-manager-user:
     type: object
@@ -4412,7 +4457,7 @@ definitions:
 
   notify-cla-manager-list:
     type: object
-    title: Cla Manager list and contributor userID for given company and Project
+    title: CLA Manager list and contributor userID for given company and Project
     description: list of CLA Manager emails and contributor userID
     properties:
       list:
@@ -4423,6 +4468,8 @@ definitions:
         type: string
       companyName:
         $ref: './common/properties/company-name.yaml'
+      signingEntityName:
+        $ref: './common/properties/company-signing-entity-name.yaml'
       claGroupName:
         $ref: './common/properties/cla-group-name.yaml'
 
@@ -4434,7 +4481,7 @@ definitions:
         description: CLA Manager email
       name:
         type: string
-  
+
   company-project-cla-list:
     type: object
     properties:
@@ -4536,6 +4583,14 @@ definitions:
         description: The company name
         x-omitempty: false
         example: "The Linux Foundation"
+      company_id:
+        $ref: './common/properties/internal-id.yaml'
+        description: 'the Company ID'
+        x-omitempty: false
+      company_sfid:
+        $ref: './common/properties/external-id.yaml'
+        description: 'the Company/Organization SalesForce ID'
+        x-omitempty: false
       signing_entity_name:
         type: string
         description: The company signing entity name

@@ -85,12 +85,13 @@ const (
 
 // Service functions for company
 type Service interface {
-	GetCompanyProjectCLAManagers(ctx context.Context, companyID, companySFID, projectSFID string) (*models.CompanyClaManagers, error)
+	GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyModel *models.Company, projectSFID string) (*models.CompanyClaManagers, error)
 	GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error)
 	GetCompanyProjectContributors(ctx context.Context, projectSFID string, companySFID string, searchTerm string) (*models.CorporateContributorList, error)
 	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string) (*models.CompanyProjectClaList, error)
 	CreateCompany(ctx context.Context, companyName, signingEntityName, companyWebsite, userEmail, userID string) (*models.CompanyOutput, error)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
+	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error)
 	GetCompanyByID(ctx context.Context, companyID string) (*models.Company, error)
 	GetCompanyBySFID(ctx context.Context, companySFID string) (*models.Company, error)
 	DeleteCompanyByID(ctx context.Context, companyID string) error
@@ -125,13 +126,17 @@ func NewService(v1CompanyService v1Company.IService, sigRepo signatures.Signatur
 	}
 }
 
-func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, companyID, companySFID, projectSFID string) (*models.CompanyClaManagers, error) {
+func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyModel *models.Company, projectSFID string) (*models.CompanyClaManagers, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCompanyProjectCLAManagers",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"projectSFID":    projectSFID,
-		"companyID":      companyID,
+		"functionName":      "GetCompanyProjectCLAManagers",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"projectSFID":       projectSFID,
+		"companyID":         v1CompanyModel.CompanyID,
+		"companySFID":       v1CompanyModel.CompanyExternalID,
+		"companyName":       v1CompanyModel.CompanyName,
+		"signingEntityName": v1CompanyModel.SigningEntityName,
 	}
+
 	log.WithFields(f).Debugf("locating CLA Group(s) under project or foundation...")
 	var err error
 	claGroups, err := s.getCLAGroupsUnderProjectOrFoundation(ctx, projectSFID)
@@ -142,9 +147,9 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, companyID, c
 
 	// get the org client for org info filling
 	orgClient := orgService.GetClient()
-	orgModel, err := orgClient.GetOrganization(ctx, companySFID)
+	orgModel, err := orgClient.GetOrganization(ctx, v1CompanyModel.CompanyExternalID)
 	if err != nil {
-		return nil, fmt.Errorf("fetching org model failed for companySFID : %s : %w", companySFID, err)
+		return nil, fmt.Errorf("fetching org model failed for companySFID : %s : %w", v1CompanyModel.CompanyExternalID, err)
 	}
 
 	signed, approved := true, true
@@ -157,7 +162,7 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, companyID, c
 			log.WithFields(f).Debugf("claGroupID missing for project : %s ", claGroup.ProjectSFID)
 			continue
 		}
-		sig, sigErr := s.signatureRepo.GetProjectCompanySignature(ctx, companyID, claGroup.ClaGroupID, &signed, &approved, nil, &maxLoad)
+		sig, sigErr := s.signatureRepo.GetProjectCompanySignature(ctx, v1CompanyModel.CompanyID, claGroup.ClaGroupID, &signed, &approved, nil, &maxLoad)
 		if sigErr != nil {
 			log.WithFields(f).Warnf("problem fetching CLA signatures, error: %+v", sigErr)
 			return nil, sigErr
@@ -178,11 +183,13 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, companyID, c
 		for _, user := range sig.SignatureACL {
 			claManagers = append(claManagers, &models.CompanyClaManager{
 				// DB doesn't have approved_on value
-				ApprovedOn:       sig.SignatureCreated,
-				LfUsername:       user.LfUsername,
-				ProjectID:        sig.ProjectID,
-				OrganizationSfid: companySFID,
-				OrganizationName: orgModel.Name,
+				ApprovedOn:        sig.SignatureCreated,
+				LfUsername:        user.LfUsername,
+				ProjectID:         sig.ProjectID,
+				OrganizationSfid:  v1CompanyModel.CompanyExternalID,
+				OrganizationID:    v1CompanyModel.CompanyID,
+				OrganizationName:  orgModel.Name,
+				SigningEntityName: v1CompanyModel.SigningEntityName,
 			})
 			lfUsernames.Add(user.LfUsername)
 		}
@@ -205,9 +212,9 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, companyID, c
 	// fill project info
 	fillProjectInfo(claManagers, claGroups)
 	// fetch the cla_manager.added events so can fill the addedOn field
-	claManagerAddedEvents, err := s.eventService.GetCompanyEvents(companyID, events.ClaManagerCreated, nil, aws.Int64(100), true)
+	claManagerAddedEvents, err := s.eventService.GetCompanyEvents(v1CompanyModel.CompanyID, events.ClaManagerCreated, nil, aws.Int64(100), true)
 	if err != nil {
-		log.WithFields(f).Warnf("fetching events for companyID failed : %s : %v", companyID, err)
+		log.WithFields(f).Warnf("fetching events for companyID failed : %s : %v", v1CompanyModel.CompanyID, err)
 		return nil, err
 	}
 	// fill events info
@@ -472,10 +479,39 @@ func (s *service) GetCompanyByName(ctx context.Context, companyName string) (*mo
 	return &v2CompanyModel, nil
 }
 
+// GetCompanyBySigningEntityName retrieves the company by signing entity name
+func (s *service) GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error) {
+	f := logrus.Fields{
+		"functionName":      "company.service.GetCompanyBySigningEntityName",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"signingEntityName": signingEntityName,
+	}
+
+	companyModel, err := s.companyRepo.GetCompanyBySigningEntityName(ctx, signingEntityName)
+	if err != nil {
+		return nil, err
+	}
+
+	if companyModel == nil {
+		log.WithFields(f).Debugf("search by company signing entity name: %s didn't locate the record", signingEntityName)
+		return nil, nil
+	}
+
+	// Convert from v1 to v2 model - use helper: Copy(toValue interface{}, fromValue interface{})
+	var v2CompanyModel v2Models.Company
+	copyErr := copier.Copy(&v2CompanyModel, &companyModel)
+	if copyErr != nil {
+		log.WithFields(f).Warnf("problem converting v1 company model to a v2 company model, error: %+v", copyErr)
+		return nil, copyErr
+	}
+
+	return &v2CompanyModel, nil
+}
+
 // GetCompanyByID retrieves the company by internal ID
 func (s *service) GetCompanyByID(ctx context.Context, companyID string) (*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCompanyByID",
+		"functionName":   "company.service.GetCompanyByID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 	}
@@ -502,7 +538,7 @@ func (s *service) GetCompanyByID(ctx context.Context, companyID string) (*models
 
 func (s *service) AssociateContributor(ctx context.Context, companySFID string, userEmail string) (*models.Contributor, error) {
 	f := logrus.Fields{
-		"functionName":   "AssociateContributor",
+		"functionName":   "company.service.AssociateContributor",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 		"userEmail":      userEmail,
@@ -549,7 +585,7 @@ func (s *service) AssociateContributor(ctx context.Context, companySFID string, 
 //CreateContributor creates contributor for contributor prospect
 func (s *service) CreateContributor(ctx context.Context, companyID string, projectID string, userEmail string, ClaGroupID string) (*models.Contributor, error) {
 	f := logrus.Fields{
-		"functionName":   "CreateContributor",
+		"functionName":   "company.service.CreateContributor",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 		"projectID":      projectID,
@@ -639,7 +675,7 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 //AssociateContributorByGroup creates contributor by group for contributor prospect
 func (s *service) AssociateContributorByGroup(ctx context.Context, companySFID, userEmail string, projectCLAGroups []*projects_cla_groups.ProjectClaGroup, ClaGroupID string) ([]*models.Contributor, string, error) {
 	f := logrus.Fields{
-		"functionName":   "AssociateContributorByGroup",
+		"functionName":   "company.service.AssociateContributorByGroup",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 		"ClaGroupID":     ClaGroupID,
@@ -682,7 +718,7 @@ func (s *service) AssociateContributorByGroup(ctx context.Context, companySFID, 
 // GetCompanyBySFID retrieves the company by external SFID
 func (s *service) GetCompanyBySFID(ctx context.Context, companySFID string) (*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCompanyBySFID",
+		"functionName":   "company.service.GetCompanyBySFID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 	}
@@ -736,7 +772,7 @@ func (s *service) DeleteCompanyBySFID(ctx context.Context, companyID string) err
 
 func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string) (*models.CompanyProjectClaList, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCompanyProjectCLA",
+		"functionName":   "company.service.GetCompanyProjectCLA",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"authUserName":   authUser.UserName,
 		"authUserEmail":  authUser.Email,
@@ -844,7 +880,7 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 // corresponding CLA managers
 func (s *service) GetCompanyCLAGroupManagers(ctx context.Context, companyID, claGroupID string) (*models.CompanyClaManagers, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCompanyCLAGroupManagers",
+		"functionName":   "company.service.GetCompanyCLAGroupManagers",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 		"claGroupID":     claGroupID,
@@ -1023,7 +1059,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, id s
 
 func (s *service) getAllCCLASignatures(ctx context.Context, companyID string) ([]*v1Models.Signature, error) {
 	f := logrus.Fields{
-		"functionName":   "getAllCCLASignatures",
+		"functionName":   "company.service.getAllCCLASignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 	}
@@ -1066,7 +1102,7 @@ func getUsersInfo(lfUsernames []string) (map[string]*v2UserServiceModels.User, e
 
 func fillUsersInfo(claManagers []*models.CompanyClaManager, usermap map[string]*v2UserServiceModels.User) {
 	f := logrus.Fields{
-		"functionName": "fillUsersInfo",
+		"functionName": "company.service.fillUsersInfo",
 	}
 	log.WithFields(f).Debug("filling users info...")
 
@@ -1090,7 +1126,7 @@ func fillUsersInfo(claManagers []*models.CompanyClaManager, usermap map[string]*
 
 func fillProjectInfo(claManagers []*models.CompanyClaManager, claGroups map[string]*claGroupModel) {
 	f := logrus.Fields{
-		"functionName": "fillProjectInfo",
+		"functionName": "company.service.fillProjectInfo",
 	}
 	log.WithFields(f).Debug("filling project info...")
 	for _, claManager := range claManagers {
@@ -1106,7 +1142,9 @@ func fillProjectInfo(claManagers []*models.CompanyClaManager, claGroups map[stri
 
 func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1Models.Signature, activeCla *models.ActiveCla, claGroups map[string]*claGroupModel, companyID string) {
 	f := logrus.Fields{
-		"functionName": "fillActiveCLA",
+		"functionName":   "v1CompanyModel.service.fillActiveCLA",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyID,
 	}
 	defer wg.Done()
 	cg, ok := claGroups[sig.ProjectID]
@@ -1116,9 +1154,9 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 	}
 
 	// Get Company details
-	company, compErr := s.GetCompanyByID(ctx, companyID)
+	v1CompanyModel, compErr := s.GetCompanyByID(ctx, companyID)
 	if compErr != nil {
-		log.WithFields(f).WithError(compErr).Warnf("unable to fetch company by ID: %s ", companyID)
+		log.WithFields(f).WithError(compErr).Warnf("unable to fetch v1CompanyModel by ID: %s ", companyID)
 		return
 	}
 
@@ -1134,11 +1172,11 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 	}
 
 	// fill details from dynamodb
-	activeCla.CompanyName = company.CompanyName
-	if company.SigningEntityName == "" {
-		activeCla.SigningEntityName = company.CompanyName
+	activeCla.CompanyName = v1CompanyModel.CompanyName
+	if v1CompanyModel.SigningEntityName == "" {
+		activeCla.SigningEntityName = v1CompanyModel.CompanyName
 	} else {
-		activeCla.SigningEntityName = company.SigningEntityName
+		activeCla.SigningEntityName = v1CompanyModel.SigningEntityName
 	}
 	activeCla.ProjectID = sig.ProjectID
 	if sig.SignedOn == "" {
@@ -1151,6 +1189,8 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 		UsernameList: acl,
 	}
 	activeCla.ClaGroupName = cg.ClaGroupName
+	activeCla.CompanyID = companyID
+	activeCla.CompanySfid = v1CompanyModel.CompanyExternalID
 	activeCla.SignatureID = sig.SignatureID.String()
 
 	// fill details from project service
@@ -1264,7 +1304,7 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 
 func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, companySFID string, projectSFID string) ([]*v1Models.Signature, error) {
 	f := logrus.Fields{
-		"functionName":   "getAllCompanyProjectEmployeeSignatures",
+		"functionName":   "company.service.getAllCompanyProjectEmployeeSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 		"projectSFID":    projectSFID,
@@ -1290,7 +1330,7 @@ func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, co
 // get company and project in parallel
 func (s *service) getCompanyAndClaGroup(ctx context.Context, companySFID, projectSFID string) (*v1Models.Company, *v1Models.ClaGroup, error) {
 	f := logrus.Fields{
-		"functionName":   "getCompanyAndClaGroup",
+		"functionName":   "company.service.getCompanyAndClaGroup",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 		"projectSFID":    projectSFID,
@@ -1333,7 +1373,7 @@ func (s *service) getCompanyAndClaGroup(ctx context.Context, companySFID, projec
 // autoCreateCompany helper function to create a new company record based on the SF ID and underlying record in SF
 func (s service) autoCreateCompany(ctx context.Context, companySFID string) (*v1Models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "autoCreateCompany",
+		"functionName":   "company.service.autoCreateCompany",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 	}
