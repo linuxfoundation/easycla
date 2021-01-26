@@ -164,11 +164,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - name: companyID
-          description: the company ID
-          in: path
-          type: string
-          required: true
+        - $ref: '#/parameters/path-companyID'
       responses:
         '200':
           description: 'Success'
@@ -312,7 +308,7 @@ paths:
       tags:
         - metrics
 
-  /metrics/company/{companySFID}/project/{projectSFID}:
+  /metrics/company/{companyID}/project/{projectSFID}:
     get:
       summary: List project metrics for a company
       description: Returns list of project metrics for company
@@ -322,7 +318,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-projectSFID"
       responses:
         '200':
