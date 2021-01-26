@@ -7,11 +7,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/LF-Engineering/lfx-kit/auth"
 	v1Company "github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/metrics"
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime/middleware"
 )
@@ -95,22 +98,29 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyRepo v1Comp
 		func(params metrics.ListCompanyProjectMetricsParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			f := logrus.Fields{
+				"functionName":   "MetricsListCompanyProjectMetricsHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"companyID":      params.CompanyID,
+			}
+			// Lookup the company by internal ID
+			log.WithFields(f).Debugf("looking up company by internal ID...")
+			company, compErr := v1CompanyRepo.GetCompany(ctx, params.CompanyID)
+			if compErr != nil {
+				log.WithFields(f).Warnf("unable to fetch company by ID:%s ", params.CompanyID)
+				return metrics.NewListCompanyProjectMetricsBadRequest().WithPayload(errorResponse(reqID, compErr))
+			}
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-			if !utils.IsUserAuthorizedForOrganization(authUser, params.CompanySFID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForOrganization(authUser, company.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
 				return metrics.NewListCompanyProjectMetricsForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 					Code: "403",
 					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to List Company Project Metrics with Organization scope of %s",
-						authUser.UserName, params.CompanySFID),
+						authUser.UserName, company.CompanyExternalID),
 					XRequestID: reqID,
 				})
 			}
-			comp, err := v1CompanyRepo.GetCompanyByExternalID(ctx, params.CompanySFID)
-			if err != nil {
-				if err == v1Company.ErrCompanyDoesNotExist {
-					return metrics.NewListCompanyProjectMetricsNotFound().WithXRequestID(reqID)
-				}
-			}
-			result, err := service.ListCompanyProjectMetrics(comp.CompanyID, params.ProjectSFID)
+
+			result, err := service.ListCompanyProjectMetrics(params.CompanyID, params.ProjectSFID)
 			if err != nil {
 				return metrics.NewListCompanyProjectMetricsBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
