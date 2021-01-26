@@ -279,13 +279,20 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 				"authUserName":   authUser.UserName,
 				"authUserEmail":  authUser.Email,
 				"projectSFID":    params.ProjectSFID,
-				"companySFID":    params.CompanySFID,
+				"companyID":      params.CompanyID,
 			}
-			if !utils.IsUserAuthorizedForOrganization(authUser, params.CompanySFID, utils.ALLOW_ADMIN_SCOPE) {
+
+			v1Company, compErr := v1CompanyRepo.GetCompany(ctx, params.CompanyID)
+			if compErr != nil {
+				log.WithFields(f).Warnf("unable to fetch company by ID:%s ", params.CompanyID)
+				return events.NewGetCompanyProjectEventsBadRequest().WithPayload(errorResponse(reqID, compErr))
+			}
+
+			if !utils.IsUserAuthorizedForOrganization(authUser, v1Company.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
 				return events.NewGetCompanyProjectEventsForbidden().WithPayload(&models.ErrorResponse{
 					Code: "403",
 					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to GetCompanyProject Events with Organization scope of %s",
-						authUser.UserName, params.CompanySFID),
+						authUser.UserName, v1Company.CompanyExternalID),
 					XRequestID: reqID,
 				})
 			}
@@ -300,7 +307,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 
 			var result *v1Models.EventList
 			if projectDetails.ProjectType == utils.ProjectTypeProjectGroup {
-				result, err = service.GetCompanyFoundationEvents(params.CompanySFID, params.ProjectSFID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents))
+				result, err = service.GetCompanyFoundationEvents(v1Company.CompanyExternalID, params.CompanyID, params.ProjectSFID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents))
 			} else {
 				pm, perr := projectsClaGroupsRepo.GetClaGroupIDForProject(params.ProjectSFID)
 				if perr != nil {
@@ -314,7 +321,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 					log.WithFields(f).WithError(perr).Warnf("problem determining CLA Group for project SFID: %s", params.ProjectSFID)
 					return events.NewGetCompanyProjectEventsInternalServerError().WithPayload(errorResponse(reqID, perr))
 				}
-				result, err = service.GetCompanyClaGroupEvents(params.CompanySFID, pm.ClaGroupID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents))
+				result, err = service.GetCompanyClaGroupEvents(v1Company.CompanyExternalID, params.CompanyID, pm.ClaGroupID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents))
 			}
 			if err != nil {
 				log.WithFields(f).WithError(err).Warn("problem loading events")

@@ -59,8 +59,8 @@ type Repository interface {
 	SearchEvents(params *eventOps.SearchEventsParams, pageSize int64) (*models.EventList, error)
 	GetRecentEvents(pageSize int64) (*models.EventList, error)
 
-	GetCompanyFoundationEvents(companySFID, foundationSFID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
-	GetCompanyClaGroupEvents(companySFID, claGroupID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
+	GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
+	GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
 	GetCompanyEvents(companyID, eventType string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
 	GetFoundationEvents(foundationSFID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error)
 	GetClaGroupEvents(claGroupID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error)
@@ -308,7 +308,7 @@ func (repo *repository) SearchEvents(params *eventOps.SearchEventsParams, pageSi
 }
 
 // queryEventsTable queries events table on index
-func (repo *repository) queryEventsTable(indexName string, condition expression.KeyConditionBuilder, nextKey *string, pageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
+func (repo *repository) queryEventsTable(indexName string, condition expression.KeyConditionBuilder, filter *expression.ConditionBuilder, nextKey *string, pageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
 	f := logrus.Fields{
 		"functionName": "events.queryEventsTable",
 		"indexName":    indexName,
@@ -320,10 +320,14 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 
 	log.WithFields(f).Debug("querying events table")
 	builder := expression.NewBuilder() // .WithProjection(buildProjection())
+
 	// The table we're interested in
 	tableName := fmt.Sprintf("cla-%s-events", repo.stage)
 
 	builder = builder.WithKeyCondition(condition)
+	if filter != nil {
+		builder = builder.WithFilter(*filter)
+	}
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
 	if err != nil {
@@ -464,17 +468,25 @@ func buildNextKey(indexName string, event *models.Event) (string, error) {
 }
 
 // GetCompanyFoundationEvents returns the list of events for foundation and company
-func (repo *repository) GetCompanyFoundationEvents(companySFID, foundationSFID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
+func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
 	key := fmt.Sprintf("%s#%s", companySFID, foundationSFID)
 	keyCondition := expression.Key("company_sfid_foundation_sfid").Equal(expression.Value(key))
-	return repo.queryEventsTable(CompanySFIDFoundationSFIDEpochIndex, keyCondition, nextKey, paramPageSize, all, nil)
+	var filter expression.ConditionBuilder
+	if companyID != "" {
+		filter = expression.Name("company_id").Equal(expression.Value(companyID))
+	}
+	return repo.queryEventsTable(CompanySFIDFoundationSFIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
 }
 
 // GetCompanyClaGroupEvents returns the list of events for cla group and the company
-func (repo *repository) GetCompanyClaGroupEvents(companySFID, claGroupID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
+func (repo *repository) GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
 	key := fmt.Sprintf("%s#%s", companySFID, claGroupID)
 	keyCondition := expression.Key("company_sfid_project_id").Equal(expression.Value(key))
-	return repo.queryEventsTable(CompanySFIDProjectIDEpochIndex, keyCondition, nextKey, paramPageSize, all, nil)
+	var filter expression.ConditionBuilder
+	if companyID != "" {
+		filter = expression.Name("company_id").Equal(expression.Value(companyID))
+	}
+	return repo.queryEventsTable(CompanySFIDProjectIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
 }
 
 // GetCompanyEvents returns the list of events for given company id and event types
@@ -482,19 +494,19 @@ func (repo *repository) GetCompanyEvents(companyID, eventType string, nextKey *s
 	keyCondition := expression.Key("company_id").Equal(expression.Value(companyID)).And(
 		expression.Key("event_type").Equal(expression.Value(eventType)))
 
-	return repo.queryEventsTable(CompanyIDEventTypeIndex, keyCondition, nextKey, paramPageSize, all, nil)
+	return repo.queryEventsTable(CompanyIDEventTypeIndex, keyCondition, nil, nextKey, paramPageSize, all, nil)
 }
 
 // GetFoundationEvents returns the list of foundation events
 func (repo *repository) GetFoundationEvents(foundationSFID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
 	keyCondition := expression.Key("event_foundation_sfid").Equal(expression.Value(foundationSFID))
-	return repo.queryEventsTable(EventFoundationSFIDEpochIndex, keyCondition, nextKey, paramPageSize, all, searchTerm)
+	return repo.queryEventsTable(EventFoundationSFIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
 
 // GetClaGroupEvents returns the list of cla-group events
 func (repo *repository) GetClaGroupEvents(claGroupID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
 	keyCondition := expression.Key("event_project_id").Equal(expression.Value(claGroupID))
-	return repo.queryEventsTable(EventProjectIDEpochIndex, keyCondition, nextKey, paramPageSize, all, searchTerm)
+	return repo.queryEventsTable(EventProjectIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
 
 // toString encodes the map as a string

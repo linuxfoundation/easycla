@@ -1068,7 +1068,7 @@ paths:
       tags:
         - events
 
-  /company/{companySFID}/project/{projectSFID}/events:
+  /company/{companyID}/project/{projectSFID}/events:
     get:
       summary: Get recent events of company and project
       description: Returns list of events of company and project
@@ -1080,7 +1080,7 @@ paths:
         - $ref: "#/parameters/x-email"
         - $ref: '#/parameters/pageSize'
         - $ref: '#/parameters/path-projectSFID'
-        - $ref: '#/parameters/path-companySFID'
+        - $ref: '#/parameters/path-companyID'
         - $ref: '#/parameters/nextKey'
         - $ref: '#/parameters/returnAllEvents'
       produces:
