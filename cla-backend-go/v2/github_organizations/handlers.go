@@ -13,7 +13,6 @@ import (
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/github_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/github"
@@ -23,6 +22,7 @@ import (
 
 // Configure setups handlers on api with service
 func Configure(api *operations.EasyclaAPI, service Service, eventService events.Service) {
+
 	api.GithubOrganizationsGetProjectGithubOrganizationsHandler = github_organizations.GetProjectGithubOrganizationsHandlerFunc(
 		func(params github_organizations.GetProjectGithubOrganizationsParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
@@ -30,7 +30,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
 			f := logrus.Fields{
-				"functionName":   "GitHubOrganizationsGetProjectGithubOrganizationsHandler",
+				"functionName":   "github_organizations.handlers.GitHubOrganizationsGetProjectGithubOrganizationsHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"authUser":       authUser.UserName,
 				"authEmail":      authUser.Email,
@@ -70,7 +70,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
 
 			f := logrus.Fields{
-				"functionName":   "GitHubOrganizationsAddProjectGithubOrganizationHandler",
+				"functionName":   "github_organization.handlers.GitHubOrganizationsAddProjectGithubOrganizationHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"authUser":       authUser.UserName,
 				"authEmail":      authUser.Email,
@@ -145,26 +145,32 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			f := logrus.Fields{
+				"functionName":   "github_organization.handlers.GithubOrganizationsDeleteProjectGithubOrganizationHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"projectSFID":    params.ProjectSFID,
+				"orgName":        params.OrgName,
+				"authUser":       authUser.UserName,
+				"authEmail":      authUser.Email,
+			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				return github_organizations.NewDeleteProjectGithubOrganizationForbidden().WithPayload(&models.ErrorResponse{
-					Code: "403",
-					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Delete Project GitHub Organizations with Project scope of %s",
-						authUser.UserName, params.ProjectSFID),
-					XRequestID: reqID,
-				})
+				msg := fmt.Sprintf("user %s does not have access to Delete Project GitHub Organizations with Project scope of %s",
+					authUser.UserName, params.ProjectSFID)
+				log.WithFields(f).Debug(msg)
+				return github_organizations.NewDeleteProjectGithubOrganizationForbidden().WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
 			err := service.DeleteGithubOrganization(ctx, params.ProjectSFID, params.OrgName)
 			if err != nil {
 				if strings.Contains(err.Error(), "getProjectNotFound") {
-					return github_organizations.NewDeleteProjectGithubOrganizationNotFound().WithPayload(&models.ErrorResponse{
-						Code:       "404",
-						Message:    fmt.Sprintf("project not found with given ID. [%s]", params.ProjectSFID),
-						XRequestID: reqID,
-					})
+					msg := fmt.Sprintf("project not found with given SFID: %s", params.ProjectSFID)
+					log.WithFields(f).Debug(msg)
+					return github_organizations.NewDeleteProjectGithubOrganizationNotFound().WithPayload(utils.ErrorResponseNotFoundWithError(reqID, msg, err))
 				}
-				return github_organizations.NewDeleteProjectGithubOrganizationBadRequest().WithPayload(errorResponse(reqID, err))
+				msg := fmt.Sprintf("problem deleting GitHub Organization with project SFID: %s for organization: %s", params.ProjectSFID, params.OrgName)
+				log.WithFields(f).Debug(msg)
+				return github_organizations.NewDeleteProjectGithubOrganizationBadRequest().WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
 			eventService.LogEvent(&events.LogEventArgs{
@@ -185,64 +191,52 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
+			f := logrus.Fields{
+				"functionName":   "github_organization.handlers.GithubOrganizationsUpdateProjectGithubOrganizationConfigHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"projectSFID":    params.ProjectSFID,
+				"orgName":        params.OrgName,
+				"authUser":       authUser.UserName,
+				"authEmail":      authUser.Email,
+			}
+
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				return github_organizations.NewUpdateProjectGithubOrganizationConfigForbidden().WithPayload(&models.ErrorResponse{
-					Code: "403",
-					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Update Project GitHub Organizations with Project scope of %s",
-						authUser.UserName, params.ProjectSFID),
-					XRequestID: reqID,
-				})
+				msg := fmt.Sprintf("user %s does not have access to Update Project GitHub Organizations with Project scope of %s",
+					authUser.UserName, params.ProjectSFID)
+				log.WithFields(f).Debug(msg)
+				return github_organizations.NewUpdateProjectGithubOrganizationConfigForbidden().WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
 			if params.Body.AutoEnabled == nil {
-				return github_organizations.NewUpdateProjectGithubOrganizationConfigBadRequest().WithPayload(&models.ErrorResponse{
-					Code:       "400",
-					Message:    "EasyCLA - 400 Bad Request - missing auto enable value in body",
-					XRequestID: reqID,
-				})
+				msg := fmt.Sprintf("missing auto enable value in request body for project SFID: %s for organization: %s", params.ProjectSFID, params.OrgName)
+				log.WithFields(f).Debug(msg)
+				return github_organizations.NewUpdateProjectGithubOrganizationConfigBadRequest().WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
 			if !utils.ValidateAutoEnabledClaGroupID(params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
-				return github_organizations.NewAddProjectGithubOrganizationBadRequest().WithPayload(&models.ErrorResponse{
-					Code:    "400",
-					Message: "EasyCLA - 400 Bad Request - AutoEnabledClaGroupID can't be empty when AutoEnabled",
-				})
+				msg := fmt.Sprintf("AutoEnabledClaGroupID can't be empty when AutoEnabled flag is set to true - issue in request body for project SFID: %s for organization: %s", params.ProjectSFID, params.OrgName)
+				log.WithFields(f).Debug(msg)
+				return github_organizations.NewUpdateProjectGithubOrganizationConfigBadRequest().WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
 			err := service.UpdateGithubOrganization(ctx, params.ProjectSFID, params.OrgName, *params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
 			if err != nil {
-				return github_organizations.NewUpdateProjectGithubOrganizationConfigBadRequest().WithPayload(errorResponse(reqID, err))
+				msg := fmt.Sprintf("problem updating GitHub Organization for project SFID: %s for organization: %s", params.ProjectSFID, params.OrgName)
+				log.WithFields(f).Debug(msg)
+				return github_organizations.NewUpdateProjectGithubOrganizationConfigBadRequest().WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
+			// Log the event
 			eventService.LogEvent(&events.LogEventArgs{
 				LfUsername:        authUser.UserName,
 				EventType:         events.GitHubOrganizationUpdated,
 				ExternalProjectID: params.ProjectSFID,
 				EventData: &events.GitHubOrganizationUpdatedEventData{
 					GitHubOrganizationName: params.OrgName,
-					AutoEnabled:            *params.Body.AutoEnabled,
+					AutoEnabled:            utils.BoolValue(params.Body.AutoEnabled),
 				},
 			})
 
 			return github_organizations.NewUpdateProjectGithubOrganizationConfigOK()
 		})
-}
-
-type codedResponse interface {
-	Code() string
-}
-
-func errorResponse(reqID string, err error) *models.ErrorResponse {
-	code := ""
-	if e, ok := err.(codedResponse); ok {
-		code = e.Code()
-	}
-
-	e := models.ErrorResponse{
-		Code:       code,
-		Message:    err.Error(),
-		XRequestID: reqID,
-	}
-
-	return &e
 }

@@ -39,7 +39,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":        "ClaGroupCreateClaGroupHandler",
+			"functionName":        "cla_groups.handlers.ClaGroupCreateClaGroupHandler",
 			utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
 			"claGroupName":        utils.StringValue(params.ClaGroupInput.ClaGroupName),
 			"foundationSFID":      utils.StringValue(params.ClaGroupInput.FoundationSfid),
@@ -85,7 +85,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "ClaGroupUpdateClaGroupHandler",
+			"functionName":   "cla_groups.handlers.ClaGroupUpdateClaGroupHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"authUsername":   params.XUSERNAME,
@@ -160,7 +160,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "ClaGroupDeleteClaGroupHandler",
+			"functionName":   "cla_groups.handlers.ClaGroupDeleteClaGroupHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"authUsername":   params.XUSERNAME,
@@ -226,7 +226,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":    "ClaGroupEnrollProjectsHandler",
+			"functionName":    "cla_groups.handlers.ClaGroupEnrollProjectsHandler",
 			utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 			"ClaGroupID":      params.ClaGroupID,
 			"authUsername":    params.XUSERNAME,
@@ -323,7 +323,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":    "ClaGroupUnenrollProjectsHandler",
+			"functionName":    "cla_groups.handlers.ClaGroupUnenrollProjectsHandler",
 			utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 			"ClaGroupID":      params.ClaGroupID,
 			"authUsername":    params.XUSERNAME,
@@ -395,7 +395,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "ClaGroupListClaGroupsUnderFoundationHandler",
+			"functionName":   "cla_groups.handlers.ClaGroupListClaGroupsUnderFoundationHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSFID,
 			"authUsername":   params.XUSERNAME,
@@ -504,7 +504,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 // isUserHaveAccessToCLAProject is a helper function to determine if the user has access to the specified project
 func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, parentProjectSFID string, projectSFIDs []string, projectClaGroupsRepo projects_cla_groups.Repository) bool { // nolint
 	f := logrus.Fields{
-		"functionName":      "isUserHaveAccessToCLAProject",
+		"functionName":      "cla_groups.handlers.isUserHaveAccessToCLAProject",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"parentProjectSFID": parentProjectSFID,
 		"projectSFIDs":      strings.Join(projectSFIDs, ","),
