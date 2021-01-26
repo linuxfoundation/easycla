@@ -88,7 +88,7 @@ type Service interface {
 	GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyModel *models.Company, projectSFID string) (*models.CompanyClaManagers, error)
 	GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error)
 	GetCompanyProjectContributors(ctx context.Context, projectSFID string, companySFID string, searchTerm string) (*models.CorporateContributorList, error)
-	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string) (*models.CompanyProjectClaList, error)
+	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error)
 	CreateCompany(ctx context.Context, companyName, signingEntityName, companyWebsite, userEmail, userID string) (*models.CompanyOutput, error)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
 	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error)
@@ -770,7 +770,7 @@ func (s *service) DeleteCompanyBySFID(ctx context.Context, companyID string) err
 	return s.companyRepo.DeleteCompanyBySFID(ctx, companyID)
 }
 
-func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string) (*models.CompanyProjectClaList, error) {
+func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error) {
 	f := logrus.Fields{
 		"functionName":   "company.service.GetCompanyProjectCLA",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -792,7 +792,9 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 	// Attempt to locate the company model in our database
 	log.WithFields(f).Debug("locating company by SF ID")
 	var companyModel *v1Models.Company
-	companies, companyErr := s.companyRepo.GetCompaniesByExternalID(ctx, companySFID)
+	var companies []*v1Models.Company
+	var companyErr error
+	companies, companyErr = s.companyRepo.GetCompaniesByExternalID(ctx, companySFID)
 	if companyErr != nil {
 		// If we were unable to find the company/org in our local database, try to auto-create based
 		// on the existing SF record
@@ -822,6 +824,16 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 	}
 
 	var companyProjectClaList = make([]*models.CompanyProjectCla, 0)
+	if companyID != nil {
+		log.WithFields(f).Debugf("Filtering company for ID: %s ", *companyID)
+		index, found := findCompany(companies, *companyID)
+		if found {
+			log.WithFields(f).Debugf("Found company: %v ", companies[index])
+			companies = []*v1Models.Company{companies[index]}
+		} else {
+			companies = []*v1Models.Company{}
+		}
+	}
 	for _, company := range companies {
 		activeCLAList, err := s.GetCompanyProjectActiveCLAs(ctx, company.CompanyID, projectSFID)
 		if err != nil {
@@ -1566,4 +1578,13 @@ func validateRequestCompanyAdmin(userID string, claManagerName string, contribut
 	}
 
 	return nil
+}
+
+func findCompany(companies []*v1Models.Company, companyID string) (int, bool) {
+	for index, company := range companies {
+		if company.CompanyID == companyID {
+			return index, true
+		}
+	}
+	return -1, false
 }

@@ -3240,6 +3240,7 @@ paths:
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-companySFID"
         - $ref: "#/parameters/path-projectSFID"
+        - $ref: "#/parameters/companyID"
       responses:
         '200':
           description: 'Success'
@@ -3526,6 +3527,11 @@ parameters:
     in: query
     type: string
     required: true
+  companyID:
+    name: companyID
+    description: The internal company ID representing signing entity name instance (EasyCLA)
+    in: query
+    type: string
   path-claGroupID:
     name: claGroupID
     description: ID of the CLA Group

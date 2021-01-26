@@ -195,7 +195,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			}
 
 			log.WithFields(f).Debug("loading project company CLAs")
-			result, err := service.GetCompanyProjectCLA(ctx, authUser, params.CompanySFID, params.ProjectSFID)
+			result, err := service.GetCompanyProjectCLA(ctx, authUser, params.CompanySFID, params.ProjectSFID, params.CompanyID)
 			if err != nil {
 				msg := "unable to load project company CLAs"
 				log.WithFields(f).WithError(err).Warn(msg)
