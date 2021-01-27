@@ -158,7 +158,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		// Note: anyone create assign a CLA manager designee...no permissions checks
 		log.WithFields(f).Debugf("processing create CLA Manager Desginee request")
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-		claManagerDesignee, err := service.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyExternalID, params.ProjectSFID, params.Body.UserEmail.String())
+		claManagerDesignee, err := service.CreateCLAManagerDesignee(ctx, params.CompanyID, params.ProjectSFID, params.Body.UserEmail.String())
 		if err != nil {
 			if err == ErrCLAManagerDesigneeConflict {
 				msg := fmt.Sprintf("Conflict assigning cla manager role for Project SFID: %s ", params.ProjectSFID)

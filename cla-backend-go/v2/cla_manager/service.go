@@ -37,7 +37,6 @@ import (
 	v2OrgService "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	v2UserService "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
-	v2UserModels "github.com/communitybridge/easycla/cla-backend-go/v2/user-service/models"
 )
 
 var (
@@ -979,7 +978,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		// check if claGroup is signed at foundation level
 		foundationSFID := projectCLAGroups[0].FoundationSFID
 		log.WithFields(f).Debugf("Create cla manager designee for foundation : %s ", foundationSFID)
-		claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, organization.ID, foundationSFID, userEmail)
+		claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, companyID, foundationSFID, userEmail)
 		if err != nil {
 			msg := fmt.Sprintf("Problem creating cla Manager Designee for user : %s, error: %+v ", userEmail, err)
 			log.WithFields(f).Warn(msg)
@@ -989,7 +988,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 	} else {
 		for _, pcg := range projectCLAGroups {
 			log.WithFields(f).Debugf("Create cla manager designee for Project SFID: %s", pcg.ProjectSFID)
-			claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, organization.ID, pcg.ProjectSFID, userEmail)
+			claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, companyID, pcg.ProjectSFID, userEmail)
 			if err != nil {
 				msg := fmt.Sprintf("Problem creating cla Manager Designee for user : %s, error: %+v ", userEmail, err)
 				log.WithFields(f).Warn(msg)
@@ -997,10 +996,6 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 			}
 			designeeScopes = append(designeeScopes, claManagerDesignee)
 		}
-	}
-	conversionErr := s.convertGHUserToContact(ctx, contributor)
-	if conversionErr != nil {
-		return nil, conversionErr
 	}
 
 	log.Debugf("Sending Email to CLA Manager Designee email: %s ", userEmail)
@@ -1438,47 +1433,6 @@ Once complete, notify the user %s and they will be able to add you as a CLA Mana
 func buildErrorMessage(errPrefix string, claGroupID string, params cla_manager.CreateCLAManagerParams, err error) string {
 	return fmt.Sprintf("%s - problem creating new CLA Manager Request using company ID: %s, project ID: %s, first name: %s, last name: %s, user email: %s, error: %+v",
 		errPrefix, params.CompanyID, claGroupID, *params.Body.FirstName, *params.Body.LastName, *params.Body.UserEmail, err)
-}
-
-func (s *service) convertGHUserToContact(ctx context.Context, contributor *v1User.User) error {
-	f := logrus.Fields{
-		"functionName":   "cla_manager.service.convertGHUserToContact",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	}
-
-	userService := v2UserService.GetClient()
-	log.Infof("Checking if GH User: %s, GH ID: %s has LFID for contact conversion ", contributor.UserGithubUsername, contributor.UserGithubID)
-	var GHUserLF *v2UserModels.User
-	var GHUserErr error
-	if contributor.LFEmail != "" {
-		GHUserLF, GHUserErr = userService.SearchUserByEmail(contributor.LFEmail)
-		if GHUserErr != nil {
-			msg := fmt.Sprintf("GH UserEmail: %s has no LF Login ", contributor.LFEmail)
-			log.Warn(msg)
-		}
-
-	} else if contributor.LFUsername != "" {
-		GHUserLF, GHUserErr = userService.GetUserByUsername(contributor.LFUsername)
-		if GHUserErr != nil {
-			msg := fmt.Sprintf("GH Username: %s has no LF Login ", contributor.LFUsername)
-			log.Warn(msg)
-		}
-	}
-
-	if GHUserLF != nil {
-		// Convert user to contact
-		if GHUserLF.Type == utils.Lead {
-			// convert user to contact
-			log.WithFields(f).Debug("converting lead to contact")
-			err := userService.ConvertToContact(GHUserLF.ID)
-			if err != nil {
-				msg := fmt.Sprintf("converting lead to contact failed: %v", err)
-				log.WithFields(f).Warn(msg)
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func companyV1toV2(v1CompanyModel *v1Models.Company) *models.Company {
