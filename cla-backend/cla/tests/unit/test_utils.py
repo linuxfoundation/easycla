@@ -225,6 +225,27 @@ def test_append_project_version_to_url():
     assert "version=1" in url
     assert "something=else" in url
 
+    # try the weird case with # in url
+    url = "https://dev.lfcla.com/#/"
+    url = append_project_version_to_url(address=url, project_version="v2")
+    assert "version=2" in url
+    assert "version=1" not in url
+
+    url = "https://dev.lfcla.com/#/"
+    url = append_project_version_to_url(address=url, project_version="")
+    assert "version=1" in url
+    assert "version=2" not in url
+
+    url = "https://dev.lfcla.com/#/"
+    url = append_project_version_to_url(address=url, project_version=None)
+    assert "version=1" in url
+    assert "version=2" not in url
+
+    url = "https://dev.lfcla.com/#/?something=else"
+    url = append_project_version_to_url(address=url, project_version="")
+    assert "version=1" in url
+    assert "something=else" in url
+    assert "version=2" not in url
 
 if __name__ == '__main__':
     unittest.main()

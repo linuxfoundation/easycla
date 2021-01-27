@@ -779,9 +779,9 @@ def get_full_sign_url(repository_service, installation_id, github_repository_id,
     """
 
     base_url = '{}/v2/repository-provider/{}/sign/{}/{}/{}/#/'.format(cla.conf['API_BASE_URL'], repository_service,
-                                                                   str(installation_id),
-                                                                   str(github_repository_id),
-                                                                   str(change_request_id))
+                                                                      str(installation_id),
+                                                                      str(github_repository_id),
+                                                                      str(change_request_id))
 
     return append_project_version_to_url(address=base_url, project_version=project_version)
 
@@ -801,6 +801,30 @@ def append_project_version_to_url(address: str, project_version: str) -> str:
     if "version" in f.args:
         return address
     f.args["version"] = version
+
+    # seem if the url has # in it (https://dev.lfcla.com/#/) the underlying urllib is being confused
+    # In[7]: url_parts = list(urlparse.urlparse(address))
+    # In[8]: url_parts
+    # Out[8]: ['https', 'dev.lfcla.com', '/', '', '', '/']
+    # In [9]: query = dict(urlparse.parse_qsl(url_parts[4]))
+    # In[12]: query["version"] = "1"
+    # In[13]: query
+    # Out[13]: {'version': '1'}
+    #
+    # In[14]: url_parts[4] = urlencode(query)
+    #
+    # In[15]: print(urlparse.urlunparse(url_parts))
+    # https://dev.lfcla.com/?version = 1#/
+
+    final_url = f.url
+    final_url = final_url.rstrip("/")
+    if final_url.endswith("#"):
+        final_url = final_url.rstrip("#")
+        parts = final_url.split("?")
+        if len(parts) > 2:
+            return f.url
+        return "#/?".join(parts)
+
     return f.url
 
 
