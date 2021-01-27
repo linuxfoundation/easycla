@@ -9,6 +9,8 @@ import inspect
 import json
 import os
 import urllib.parse
+import urllib.parse as urlparse
+from urllib.parse import urlencode
 from datetime import datetime
 from typing import List, Optional
 
@@ -16,7 +18,6 @@ import falcon
 import requests
 from hug.middleware import SessionMiddleware
 from requests_oauthlib import OAuth2Session
-from furl import furl
 
 import cla
 from cla.models import DoesNotExist
@@ -797,35 +798,24 @@ def append_project_version_to_url(address: str, project_version: str) -> str:
     if project_version and project_version == 'v2':
         version = "2"
 
-    f = furl(address)
-    if "version" in f.args:
+    # seem if the url has # in it (https://dev.lfcla.com/#/version=1) the underlying urllib is being confused
+    # In[21]: list(urlparse.urlparse(address))
+    # Out[21]: ['https', 'dev.lfcla.com', '/', '', '', '/#/?version=1']
+
+    query = {}
+    if "?" in address:
+        query = dict(urlparse.parse_qsl(address.split("?")[1]))
+
+    # we don't alter for now
+    if "version" in query:
         return address
-    f.args["version"] = version
 
-    # seem if the url has # in it (https://dev.lfcla.com/#/) the underlying urllib is being confused
-    # In[7]: url_parts = list(urlparse.urlparse(address))
-    # In[8]: url_parts
-    # Out[8]: ['https', 'dev.lfcla.com', '/', '', '', '/']
-    # In [9]: query = dict(urlparse.parse_qsl(url_parts[4]))
-    # In[12]: query["version"] = "1"
-    # In[13]: query
-    # Out[13]: {'version': '1'}
-    #
-    # In[14]: url_parts[4] = urlencode(query)
-    #
-    # In[15]: print(urlparse.urlunparse(url_parts))
-    # https://dev.lfcla.com/?version = 1#/
+    query["version"] = version
+    query_params_str = urlencode(query)
 
-    final_url = f.url
-    final_url = final_url.rstrip("/")
-    if final_url.endswith("#"):
-        final_url = final_url.rstrip("#")
-        parts = final_url.split("?")
-        if len(parts) > 2:
-            return f.url
-        return "#/?".join(parts)
-
-    return f.url
+    if "?" in address:
+        return "?".join([address.split("?")[0], query_params_str])
+    return "?".join([address, query_params_str])
 
 
 def get_comment_badge(repository_type, all_signed, sign_url, project_version, missing_user_id=False,

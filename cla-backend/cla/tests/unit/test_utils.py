@@ -192,60 +192,93 @@ def test_get_full_sign_url():
 
 
 def test_append_project_version_to_url():
-    url = "http://localhost:5000/v1/sign"
-    url = append_project_version_to_url(address=url, project_version="v1")
+    original_url = "http://localhost:5000/v1/sign"
+    url = append_project_version_to_url(address=original_url, project_version="v1")
+    print(url)
     assert "?version=1" in url
+    assert original_url in url
 
-    url = "http://localhost:5000/v1/sign"
-    url = append_project_version_to_url(address=url, project_version="v2")
+    original_url = "http://localhost:5000/v1/sign"
+    url = append_project_version_to_url(address=original_url, project_version="v2")
+    print(url)
     assert "?version=2" in url
     assert "http://localhost:5000/v1/sign?version=2" == url
+    assert original_url in url
 
-    url = "http://localhost:5000/v1/sign"
-    url = append_project_version_to_url(address=url, project_version=None)
+    original_url = "http://localhost:5000/v1/sign"
+    url = append_project_version_to_url(address=original_url, project_version=None)
+    print(url)
     assert "?version=1" in url
+    assert original_url in url
 
-    url = "http://localhost:5000/v1/sign"
-    url = append_project_version_to_url(address=url, project_version="invalid")
+    original_url = "http://localhost:5000/v1/sign"
+    url = append_project_version_to_url(address=original_url, project_version="invalid")
+    print(url)
     assert "?version=1" in url
+    assert original_url in url
 
-    url = "http://localhost:5000/v1/sign?something=else"
-    url = append_project_version_to_url(address=url, project_version="v2")
+    original_url = "http://localhost:5000/v1/sign?something=else"
+    url = append_project_version_to_url(address=original_url, project_version="v2")
+    print(url)
     assert "version=2" in url
     assert "something=else" in url
+    assert original_url in url
 
-    url = "http://localhost:5000/v1/sign?version=1"
-    url = append_project_version_to_url(address=url, project_version="v2")
+    original_url = "http://localhost:5000/v1/sign?version=1"
+    url = append_project_version_to_url(address=original_url, project_version="v2")
+    print(url)
     assert "version=2" not in url
     assert "version=1" in url
+    assert original_url in url
 
-    url = "http://localhost:5000/v1/sign?something=else&version=1"
-    url = append_project_version_to_url(address=url, project_version="v2")
+    original_url = "http://localhost:5000/v1/sign?something=else&version=1"
+    url = append_project_version_to_url(address=original_url, project_version="v2")
+    print(url)
     assert "version=2" not in url
     assert "version=1" in url
     assert "something=else" in url
+    assert original_url in url
 
     # try the weird case with # in url
-    url = "https://dev.lfcla.com/#/"
-    url = append_project_version_to_url(address=url, project_version="v2")
+    original_url = "https://dev.lfcla.com/#/"
+    url = append_project_version_to_url(address=original_url, project_version="v2")
+    print(url)
     assert "version=2" in url
     assert "version=1" not in url
+    assert original_url in url
 
-    url = "https://dev.lfcla.com/#/"
-    url = append_project_version_to_url(address=url, project_version="")
+    original_url = "https://dev.lfcla.com/#/"
+    url = append_project_version_to_url(address=original_url, project_version="")
+    print(url)
     assert "version=1" in url
     assert "version=2" not in url
+    assert original_url in url
 
-    url = "https://dev.lfcla.com/#/"
-    url = append_project_version_to_url(address=url, project_version=None)
+    original_url = "https://dev.lfcla.com/#/"
+    url = append_project_version_to_url(address=original_url, project_version=None)
+    print(url)
     assert "version=1" in url
     assert "version=2" not in url
+    assert original_url in url
 
-    url = "https://dev.lfcla.com/#/?something=else"
-    url = append_project_version_to_url(address=url, project_version="")
+    original_url= "https://dev.lfcla.com/#/#/?something=else"
+    url = append_project_version_to_url(address=original_url, project_version="")
+    print(url)
     assert "version=1" in url
     assert "something=else" in url
     assert "version=2" not in url
+    assert original_url in url
+
+    # check for crazier example ...
+    original_url = "https://dev.lfcla.com/1/#/2/#/3/#/?something=else&this=that"
+    url = append_project_version_to_url(address=original_url, project_version="")
+    print(url)
+    assert "version=1" in url
+    assert "something=else" in url
+    assert "this=that" in url
+    assert "version=2" not in url
+    assert original_url in url
+
 
 if __name__ == '__main__':
     unittest.main()
