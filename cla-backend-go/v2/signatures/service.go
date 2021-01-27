@@ -53,12 +53,12 @@ type service struct {
 
 // Service contains method of v2 signature service
 type Service interface {
-	GetProjectCompanySignatures(ctx context.Context, companySFID string, projectSFID string) (*models.Signatures, error)
+	GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error)
 	GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
 	GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
 	GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string) (*models.IclaSignatures, error)
-	GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companySFID string) ([]byte, error)
-	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companySFID *string, searchTerm *string) (*models.CorporateContributorList, error)
+	GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error)
+	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companySFID string, searchTerm *string) (*models.CorporateContributorList, error)
 	GetSignedDocument(ctx context.Context, signatureID string) (*models.SignedDocument, error)
 	GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error)
 	GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error)
@@ -79,18 +79,14 @@ func NewService(awsSession *session.Session, signaturesBucketName string, v1Proj
 	}
 }
 
-func (s *service) GetProjectCompanySignatures(ctx context.Context, companySFID string, projectSFID string) (*models.Signatures, error) {
-	companyModel, err := s.v1CompanyService.GetCompanyByExternalID(ctx, companySFID)
-	if err != nil {
-		return nil, err
-	}
+func (s *service) GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error) {
 	pm, err := s.projectsClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
 	if err != nil {
 		return nil, err
 	}
 	signed := true
 	approved := true
-	sig, err := s.v1SignatureService.GetProjectCompanySignature(ctx, companyModel.CompanyID, pm.ClaGroupID, &signed, &approved, nil, aws.Int64(HugePageSize))
+	sig, err := s.v1SignatureService.GetProjectCompanySignature(ctx, companyID, pm.ClaGroupID, &signed, &approved, nil, aws.Int64(HugePageSize))
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +97,7 @@ func (s *service) GetProjectCompanySignatures(ctx context.Context, companySFID s
 		resp.ResultCount = 1
 		resp.Signatures = append(resp.Signatures, sig)
 	}
-	return v2SignaturesReplaceCompanyID(resp, companyModel.CompanyID, companySFID)
+	return v2SignaturesReplaceCompanyID(resp, companyID, companySFID)
 }
 
 func eclaSigCsvLine(sig *v1Models.CorporateContributor) string {
@@ -116,14 +112,9 @@ func eclaSigCsvLine(sig *v1Models.CorporateContributor) string {
 	return fmt.Sprintf("\n%s,%s,%s,%s,\"%s\"", sig.GithubID, sig.LinuxFoundationID, sig.Name, sig.Email, dateTime)
 }
 
-func (s service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companySFID string) ([]byte, error) {
+func (s service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error) {
 	var b bytes.Buffer
-	comp, companyErr := s.v1CompanyService.GetCompanyByExternalID(ctx, companySFID)
-	if companyErr != nil {
-		return nil, companyErr
-	}
-
-	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &comp.CompanyID, nil)
+	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -265,30 +256,18 @@ func (s service) IsZipPresentOnS3(zipFilePath string) (bool, error) {
 	return true, nil
 }
 
-func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companySFID *string, searchTerm *string) (*models.CorporateContributorList, error) {
+func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID string, searchTerm *string) (*models.CorporateContributorList, error) {
 	f := logrus.Fields{
 		"functionName": "GetClaGroupCorporateContributors",
 		"claGroupID":   claGroupID,
-	}
-	if companySFID != nil {
-		f["companySFID"] = *companySFID
+		"companyID":    companyID,
 	}
 	if searchTerm != nil {
 		f["searchTerm"] = *searchTerm
 	}
 
-	var companyID *string
-	if companySFID != nil {
-		log.WithFields(f).Debug("loading company by companySFID...")
-		companyModel, err := s.v1CompanyService.GetCompanyByExternalID(ctx, *companySFID)
-		if err != nil {
-			return nil, err
-		}
-		companyID = &companyModel.CompanyID
-	}
-
 	log.WithFields(f).Debug("querying CLA corporate contributors...")
-	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, companyID, searchTerm)
+	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, searchTerm)
 	if err != nil {
 		return nil, err
 	}

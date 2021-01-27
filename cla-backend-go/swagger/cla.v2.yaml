@@ -1641,7 +1641,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-claGroupID"
-        - $ref: "#/parameters/companySFID"
+        - $ref: "#/parameters/companyID"
         - $ref: '#/parameters/searchTerm'
       responses:
         '200':
@@ -1987,7 +1987,7 @@ paths:
   # --------------------------------------------------------
   # Employee CLA Endpoints - CSV Report Download
   # --------------------------------------------------------
-  /signatures/project/{claGroupID}/company/{companySFID}/employee/csv:
+  /signatures/project/{claGroupID}/company/{companyID}/employee/csv:
     get:
       summary: Downloads all employee CLA information as a CSV document for this project
       description: Downloads the employee CLA information as a CSV document for this project
@@ -1998,7 +1998,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-claGroupID"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
       produces:
         - text/json
         - text/csv
@@ -2022,7 +2022,7 @@ paths:
       tags:
         - signatures
 
-  /signatures/project/{projectSFID}/company/{companySFID}:
+  /signatures/project/{projectSFID}/company/{companyID}:
     get:
       summary: Get project company ccla signatures
       description: Returns a list of ccla signature models when provided the project ID and company ID
@@ -2033,7 +2033,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - $ref: '#/parameters/sortOrder'
       responses:
         '200':
@@ -2055,7 +2055,7 @@ paths:
       tags:
         - signatures
 
-  /signatures/company/{companySFID}:
+  /signatures/company/{companyID}:
     get:
       summary: Get company signatures
       description: Returns a list of company signatures when provided the company ID
@@ -2065,7 +2065,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: '#/parameters/path-companySFID'
+        - $ref: '#/parameters/path-companyID'
         - $ref: '#/parameters/signatureType'
         - $ref: '#/parameters/pageSize'
         - $ref: '#/parameters/nextKey'
@@ -2130,7 +2130,7 @@ paths:
       tags:
         - signatures
 
-  /signatures/project/{projectSFID}/company/{companySFID}/employee:
+  /signatures/project/{projectSFID}/company/{companyID}/employee:
     get:
       summary: Get project company signatures for the employees
       description: Returns a list of employee project signature models when provided the project ID and company ID
@@ -2141,7 +2141,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - $ref: '#/parameters/pageSize'
         - $ref: '#/parameters/nextKey'
         - $ref: '#/parameters/sortOrder'
@@ -2165,7 +2165,7 @@ paths:
       tags:
         - signatures
 
-  /signatures/project/{projectSFID}/company/{companySFID}/clagroup/{claGroupID}/approval-list:
+  /signatures/project/{projectSFID}/company/{companyID}/clagroup/{claGroupID}/approval-list:
     put:
       summary: Updates the Project / Organization/Company Approval list
       description: API to update the project and organization/company approval list.
@@ -2176,7 +2176,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - name: claGroupID
           in: path
           type: string

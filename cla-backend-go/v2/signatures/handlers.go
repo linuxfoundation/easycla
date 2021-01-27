@@ -99,13 +99,29 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"projectSFID":    params.ProjectSFID,
-			"companySFID":    params.CompanySFID,
+			"companyID":      params.CompanyID,
+		}
+
+		companyModel, err := companyService.GetCompany(ctx, params.CompanyID)
+		if err != nil {
+			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
+			log.Warn(msg)
+			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+				return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
+					Code:    "404",
+				})
+			}
+			return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+				Message: "EasyCLA - 400 Bad Request - error getting company - " + msg,
+				Code:    "400",
+			})
 		}
 
 		// Must be in the Project|Organization Scope to see this - signature ACL is double-checked in the service level when the signature is loaded
-		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, params.CompanySFID, utils.DISALLOW_ADMIN_SCOPE) {
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, companyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
 			msg := fmt.Sprintf("user %s does not have access to update Project Company Approval List with Project|Organization scope of %s | %s",
-				authUser.UserName, params.ProjectSFID, params.CompanySFID)
+				authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
 			return signatures.NewUpdateApprovalListForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
@@ -116,15 +132,6 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 			msg := "validation error of the approval list"
 			log.WithFields(f).Warn(msg)
 			return validationError
-		}
-
-		// Lookup the internal company ID when provided the external ID via the v1SignatureGService call
-		log.WithFields(f).Debug("loading company by company SFID")
-		companyModel, compErr := companyService.GetCompanyByExternalID(ctx, params.CompanySFID)
-		if compErr != nil || companyModel == nil {
-			msg := fmt.Sprintf("unable to locate company by external company ID: %s", params.CompanySFID)
-			log.WithFields(f).Warn(msg)
-			return signatures.NewUpdateApprovalListNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
 		}
 
 		log.WithFields(f).Debug("loading CLA groups by projectSFID")
@@ -145,7 +152,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 
 		// Convert the v2 input parameters to a v1 model
 		v1ApprovalList := v1Models.ApprovalList{}
-		err := copier.Copy(&v1ApprovalList, params.Body)
+		err = copier.Copy(&v1ApprovalList, params.Body)
 		if err != nil {
 			msg := "unable to convert v1 to v2 approval list"
 			log.WithFields(f).Warn(msg)
@@ -435,25 +442,41 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 			"functionName":   "SignaturesGetProjectCompanySignaturesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSFID,
-			"companySFID":    params.CompanySFID,
+			"companyID":      params.CompanyID,
+		}
+
+		companyModel, err := companyService.GetCompany(ctx, params.CompanyID)
+		if err != nil {
+			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
+			log.Warn(msg)
+			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+				return signatures.NewGetProjectCompanySignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
+					Code:    "404",
+				})
+			}
+			return signatures.NewGetProjectCompanySignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+				Message: "EasyCLA - 400 Bad Request - error getting company - " + msg,
+				Code:    "400",
+			})
 		}
 
 		// Must be in the one of the above scopes to see this
 		// - if project scope (like a PM)
 		// - if project|organization scope (like CLA Manager, CLA Signatory)
 		// - if organization scope (like company admin)
-		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, params.ProjectSFID, params.CompanySFID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, params.ProjectSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user %s is not authorized to view project company signatures any scope of project: %s, organization %s",
-				authUser.UserName, params.ProjectSFID, params.CompanySFID)
+				authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
 			return signatures.NewGetProjectCompanySignaturesForbidden().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseForbidden(reqID, msg))
 		}
 
 		log.WithFields(f).Debug("loading project company signatures...")
-		projectSignatures, err := v2service.GetProjectCompanySignatures(ctx, params.CompanySFID, params.ProjectSFID)
+		projectSignatures, err := v2service.GetProjectCompanySignatures(ctx, params.CompanyID, companyModel.CompanyExternalID, params.ProjectSFID)
 		if err != nil {
-			msg := fmt.Sprintf("error retrieving project signatures for project: %s, company: %s", params.ProjectSFID, params.CompanySFID)
+			msg := fmt.Sprintf("error retrieving project signatures for project: %s, company: %s", params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
 			return signatures.NewGetProjectCompanySignaturesBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
@@ -470,55 +493,37 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 			"functionName":   "SignaturesGetProjectCompanyEmployeeSignaturesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSFID,
-			"companySFID":    params.CompanySFID,
+			"companyID":      params.CompanyID,
 			"nextKey":        aws.StringValue(params.NextKey),
 			"pageSize":       aws.Int64Value(params.PageSize),
 		}
 
-		// Try to load the company model - use both approaches - internal and external
-		var companyModel *v1Models.Company
-		var err error
-		// Internal IDs are UUIDv4 - external are not
-		if utils.IsUUIDv4(params.CompanySFID) {
-			// Oops - not provided a SFID - but an internal ID - that'iclaNotSupported ok, we'll lookup via the internal ID
-			log.WithFields(f).Debug("companySFID provided as internal ID - looking up record by internal ID")
-			// Lookup the company model by internal ID
-			companyModel, err = companyService.GetCompany(ctx, params.CompanySFID)
-			if companyModel != nil && companyModel.CompanyExternalID == "" {
-				msg := fmt.Sprintf("problem loading company - company external ID not defined - comapny ID: %s", params.CompanySFID)
-				log.WithFields(f).WithError(err).Warn(msg)
-				return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(
-					reqID, msg))
-			}
-		} else {
-			// Lookup the company model by external ID
-			log.WithFields(f).Debug("companySFID provided as external ID - looking up record by external ID")
-			companyModel, err = companyService.GetCompanyByExternalID(ctx, params.CompanySFID)
-		}
+		companyModel, err := companyService.GetCompany(ctx, params.CompanyID)
 		if err != nil {
-			var companyDoesNotExistErr utils.CompanyDoesNotExist
-			if errors.Is(err, &companyDoesNotExistErr) {
-				msg := "problem loading company by ID"
-				log.WithFields(f).WithError(err).Warn(msg)
-				return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(
-					utils.ErrorResponseNotFoundWithError(reqID, msg, err))
+			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
+			log.Warn(msg)
+			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+				return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
+					Code:    "404",
+				})
 			}
-
-			log.WithFields(f).WithError(err).Warnf("problem loading company by ID")
-			return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(
-				utils.ErrorResponseBadRequestWithError(reqID, fmt.Sprintf("problem loading company by ID: %s", params.CompanySFID), err))
+			return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+				Message: "EasyCLA - 400 Bad Request - error getting company - " + msg,
+				Code:    "400",
+			})
 		}
 		if companyModel == nil {
-			msg := fmt.Sprintf("problem loading company by ID: %s", params.CompanySFID)
+			msg := fmt.Sprintf("problem loading company by ID: %s", params.CompanyID)
 			log.WithFields(f).WithError(err).Warn(msg)
 			return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseNotFound(reqID, msg))
 		}
 
 		log.WithFields(f).Debug("checking access control permissions...")
-		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, params.ProjectSFID, params.CompanySFID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, params.ProjectSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user %s is not authorized to view project company signatures any scope of project: %s, organization %s",
-				authUser.UserName, params.ProjectSFID, params.CompanySFID)
+				authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.Warn(msg)
 			return signatures.NewGetProjectCompanyEmployeeSignaturesForbidden().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseForbidden(reqID, msg))
@@ -548,9 +553,9 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		})
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("error retrieving employee project signatures for project: %s, company: %s, error: %+v",
-				params.ProjectSFID, params.CompanySFID, err)
+				params.ProjectSFID, params.CompanyID, err)
 			return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(
-				reqID, fmt.Sprintf("unable to fetch employee signatures for project ID: %s and company: %s", params.ProjectSFID, params.CompanySFID), err))
+				reqID, fmt.Sprintf("unable to fetch employee signatures for project ID: %s and company: %s", params.ProjectSFID, params.CompanyID), err))
 		}
 
 		resp, err := v2Signatures(projectSignatures)
@@ -573,24 +578,29 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		f := logrus.Fields{
 			"functionName":   "SignaturesGetCompanySignaturesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-			"companySFID":    params.CompanySFID,
+			"companyID":      params.CompanyID,
 			"companyName":    aws.StringValue(params.CompanyName),
 			"signatureType":  aws.StringValue(params.SignatureType),
 			"nextKey":        aws.StringValue(params.NextKey),
 			"pageSize":       aws.Int64Value(params.PageSize),
 		}
 
-		// Lookup the internal company ID
-		companyModel, err := companyService.GetCompanyByExternalID(ctx, params.CompanySFID)
+		companyModel, err := companyService.GetCompany(ctx, params.CompanyID)
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("problem loading company by SFID - returning empty response")
-			// Not sure this is the correct response as the LFX UI/Admin console wants 200 empty lists instead of non-200 status back
-			return signatures.NewGetCompanySignaturesOK().WithXRequestID(reqID).WithPayload(&models.Signatures{
-				Signatures:  []*models.Signature{},
-				ResultCount: 0,
-				TotalCount:  0,
+			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
+			log.Warn(msg)
+			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+				return signatures.NewGetCompanySignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
+					Code:    "404",
+				})
+			}
+			return signatures.NewGetCompanySignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+				Message: "EasyCLA - 400 Bad Request - error getting company - " + msg,
+				Code:    "400",
 			})
 		}
+
 		if companyModel == nil {
 			log.WithFields(f).WithError(err).Warnf("problem loading company model by ID - returning empty response")
 			// Not sure this is the correct response as the LFX UI/Admin console wants 200 empty lists instead of non-200 status back
@@ -696,7 +706,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 			"functionName":   "SignaturesDownloadProjectSignatureEmployeeAsCSVHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
-			"companySFID":    params.CompanySFID,
+			"companyID":      params.CompanyID,
 		}
 		log.WithFields(f).Debug("processing request...")
 
@@ -731,8 +741,24 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 			//	utils.ErrorResponseBadRequest(reqID, cclaNotSupportedForCLAGroup))
 		}
 
+		companyModel, err := companyService.GetCompany(ctx, params.CompanyID)
+		if err != nil {
+			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
+			log.Warn(msg)
+			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+				return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
+					Code:    "404",
+				})
+			}
+			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+				Message: "EasyCLA - 400 Bad Request - error getting company - " + msg,
+				Code:    "400",
+			})
+		}
+
 		log.WithFields(f).Debug("checking access control permissions for user...")
-		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, claGroupModel.FoundationSFID, params.CompanySFID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, claGroupModel.FoundationSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
 			msg := fmt.Sprintf(" user %s is not authorized to view project employee signatures any scope of project",
 				authUser.UserName)
 			log.Warn(msg)
@@ -741,9 +767,9 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for corporate contributor signatures...")
-		result, err := v2service.GetClaGroupCorporateContributorsCsv(ctx, params.ClaGroupID, params.CompanySFID)
+		result, err := v2service.GetClaGroupCorporateContributorsCsv(ctx, params.ClaGroupID, params.CompanyID)
 		if err != nil {
-			msg := fmt.Sprintf("problem getting corporate contributors CSV for CLA Group: %s with company: %s", params.ClaGroupID, params.CompanySFID)
+			msg := fmt.Sprintf("problem getting corporate contributors CSV for CLA Group: %s with company: %s", params.ClaGroupID, companyModel.CompanyExternalID)
 			if _, ok := err.(*organizations.GetOrgNotFound); ok {
 				formatErr := errors.New("error retrieving company using companySFID")
 				return signatures.NewDownloadProjectSignatureEmployeeAsCSVNotFound().WithXRequestID(reqID).WithPayload(
@@ -830,15 +856,31 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 			"functionName":   "SignaturesListClaGroupCorporateContributorsHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
-			"companySFID":    params.CompanySFID,
+			"companyID":      params.CompanyID,
 		}
 
-		// Make sure the user has provided the companySFID
-		if params.CompanySFID == nil {
-			msg := "missing companySFID as input"
+		// Make sure the user has provided the companyID
+		if params.CompanyID == nil {
+			msg := "missing companyID as input"
 			log.WithFields(f).Warn(msg)
 			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseBadRequest(reqID, msg))
+		}
+
+		companyModel, err := companyService.GetCompany(ctx, *params.CompanyID)
+		if err != nil {
+			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", *params.CompanyID, err)
+			log.Warn(msg)
+			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+				return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
+					Code:    "404",
+				})
+			}
+			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+				Message: "EasyCLA - 400 Bad Request - error getting company - " + msg,
+				Code:    "400",
+			})
 		}
 
 		// Lookup the CLA Group by ID - make sure it's valid
@@ -868,18 +910,18 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		f["foundationSFID"] = claGroupModel.FoundationSFID
 
 		log.WithFields(f).Debug("checking access control permissions for user...")
-		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, claGroupModel.FoundationSFID, *params.CompanySFID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, claGroupModel.FoundationSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user %s is not authorized to view project CCLA signatures any scope of project or project|organization scope with company ID: %s",
-				authUser.UserName, aws.StringValue(params.CompanySFID))
+				authUser.UserName, companyModel.CompanyID)
 			log.Warn(msg)
 			return signatures.NewListClaGroupCorporateContributorsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for CCLA signatures...")
-		result, err := v2service.GetClaGroupCorporateContributors(ctx, params.ClaGroupID, params.CompanySFID, params.SearchTerm)
+		result, err := v2service.GetClaGroupCorporateContributors(ctx, params.ClaGroupID, *params.CompanyID, params.SearchTerm)
 		if err != nil {
-			msg := fmt.Sprintf("problem getting corporate contributors for CLA Group: %s with company: %s", params.ClaGroupID, *params.CompanySFID)
+			msg := fmt.Sprintf("problem getting corporate contributors for CLA Group: %s with company: %s", params.ClaGroupID, *params.CompanyID)
 			if _, ok := err.(*organizations.GetOrgNotFound); ok {
 				formatErr := errors.New("error retrieving company using companySFID")
 				return signatures.NewListClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
