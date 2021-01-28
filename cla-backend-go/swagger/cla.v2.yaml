@@ -3170,7 +3170,7 @@ paths:
       tags:
         - company
 
-  /company/{companySFID}/project/{projectSFID}/contributors:
+  /company/{companyID}/project/{projectSFID}/contributors:
     get:
       summary: Get corporate contributors for project
       description: Returns list of corporate contributors for project
@@ -3180,7 +3180,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companySFID"
+        - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-projectSFID"
         - $ref: "#/parameters/searchTerm"
       responses:

@@ -473,7 +473,7 @@ func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, found
 	keyCondition := expression.Key("company_sfid_foundation_sfid").Equal(expression.Value(key))
 	var filter expression.ConditionBuilder
 	if companyID != "" {
-		filter = expression.Name("company_id").Equal(expression.Value(companyID))
+		filter = expression.Name("event_company_id").Equal(expression.Value(companyID))
 	}
 	return repo.queryEventsTable(CompanySFIDFoundationSFIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
 }
@@ -484,7 +484,7 @@ func (repo *repository) GetCompanyClaGroupEvents(companySFID, companyID, claGrou
 	keyCondition := expression.Key("company_sfid_project_id").Equal(expression.Value(key))
 	var filter expression.ConditionBuilder
 	if companyID != "" {
-		filter = expression.Name("company_id").Equal(expression.Value(companyID))
+		filter = expression.Name("event_company_id").Equal(expression.Value(companyID))
 	}
 	return repo.queryEventsTable(CompanySFIDProjectIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
 }

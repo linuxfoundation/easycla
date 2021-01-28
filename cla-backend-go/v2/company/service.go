@@ -323,16 +323,16 @@ func (s *service) GetCompanyProjectActiveCLAs(ctx context.Context, companyID str
 	return &out, nil
 }
 
-func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID string, companySFID string, searchTerm string) (*models.CorporateContributorList, error) {
+func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID string, companyID string, searchTerm string) (*models.CorporateContributorList, error) {
 	f := logrus.Fields{
 		"functionName":   "GetCompanyProjectContributors",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
-		"companySFID":    companySFID,
+		"companyID":      companyID,
 		"searchTerm":     searchTerm,
 	}
 	list := make([]*models.CorporateContributor, 0)
-	sigs, err := s.getAllCompanyProjectEmployeeSignatures(ctx, companySFID, projectSFID)
+	sigs, err := s.getAllCompanyProjectEmployeeSignatures(ctx, companyID, projectSFID)
 	if err != nil {
 		log.WithFields(f).Warnf("problem fetching all company project employee signatures, error: %+v", err)
 		return nil, err
@@ -1314,19 +1314,18 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 	result <- &contributor
 }
 
-func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, companySFID string, projectSFID string) ([]*v1Models.Signature, error) {
+func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, companyID string, projectSFID string) ([]*v1Models.Signature, error) {
 	f := logrus.Fields{
 		"functionName":   "company.service.getAllCompanyProjectEmployeeSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"companySFID":    companySFID,
+		"companyID":      companyID,
 		"projectSFID":    projectSFID,
 	}
 	log.WithFields(f).Debug("getAllCompanyProjectEmployeeSignatures")
-	comp, claGroup, err := s.getCompanyAndClaGroup(ctx, companySFID, projectSFID)
+	_, claGroup, err := s.getCompanyAndClaGroup(ctx, companyID, projectSFID)
 	if err != nil {
 		return nil, err
 	}
-	companyID := comp.CompanyID
 	params := v1SignatureParams.GetProjectCompanyEmployeeSignaturesParams{
 		HTTPRequest: nil,
 		CompanyID:   companyID,
@@ -1340,11 +1339,11 @@ func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, co
 }
 
 // get company and project in parallel
-func (s *service) getCompanyAndClaGroup(ctx context.Context, companySFID, projectSFID string) (*v1Models.Company, *v1Models.ClaGroup, error) {
+func (s *service) getCompanyAndClaGroup(ctx context.Context, companyID, projectSFID string) (*v1Models.Company, *v1Models.ClaGroup, error) {
 	f := logrus.Fields{
 		"functionName":   "company.service.getCompanyAndClaGroup",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"companySFID":    companySFID,
+		"companyID":      companyID,
 		"projectSFID":    projectSFID,
 	}
 	var comp *v1Models.Company
@@ -1355,7 +1354,7 @@ func (s *service) getCompanyAndClaGroup(ctx context.Context, companySFID, projec
 	cp.Add(2)
 	go func() {
 		defer cp.Done()
-		comp, companyErr = s.companyRepo.GetCompanyByExternalID(ctx, companySFID)
+		comp, companyErr = s.companyRepo.GetCompany(ctx, companyID)
 	}()
 	go func() {
 		defer cp.Done()

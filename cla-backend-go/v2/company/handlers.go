@@ -150,22 +150,31 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				"functionName":   "company.handlers.CompanyGetCompanyProjectContributorsHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"projectSFID":    params.ProjectSFID,
-				"companySFID":    params.CompanySFID,
+				"companyID":      params.CompanyID,
+			}
+
+			// Lookup the company by internal ID
+			log.WithFields(f).Debugf("looking up company by internal ID...")
+			v1CompanyModel, err := service.GetCompanyByID(ctx, params.CompanyID)
+			if err != nil || v1CompanyModel == nil {
+				msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+				log.WithFields(f).WithError(err).Warn(msg)
+				return company.NewGetCompanyProjectActiveClaBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
 			// PM - check if authorized by project scope - allow if PM has project ID scope that matches
 			// Contact,Community Program Manager,CLA Manager,CLA Manager Designee,Company Admin - check if authorized by organization scope - allow if {Contact,Community Program Manager,CLA Manager,CLA Manager Designee,Company Admin} has organization ID scope that matches
 			// CLA Manager - check if authorized by project|organization scope - allow if CLA Manager (for example) has project ID + org DI scope that matches
 			log.WithFields(f).Debug("checking permissions")
-			if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, params.ProjectSFID, params.CompanySFID, projectClaGroupRepo) {
+			if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, projectClaGroupRepo) {
 				return company.NewGetCompanyProjectContributorsForbidden().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseForbidden(
 						reqID,
 						fmt.Sprintf("user %s does not have access to get contributors with Project scope of %s or Project|Organization scope of %s | %s",
-							authUser.UserName, params.ProjectSFID, params.ProjectSFID, params.CompanySFID)))
+							authUser.UserName, params.ProjectSFID, params.ProjectSFID, params.CompanyID)))
 			}
 
-			result, err := service.GetCompanyProjectContributors(ctx, params.ProjectSFID, params.CompanySFID, utils.StringValue(params.SearchTerm))
+			result, err := service.GetCompanyProjectContributors(ctx, params.ProjectSFID, params.CompanyID, utils.StringValue(params.SearchTerm))
 			if err != nil {
 				if err == v1Company.ErrCompanyDoesNotExist {
 					return company.NewGetCompanyProjectContributorsNotFound().WithXRequestID(reqID)
