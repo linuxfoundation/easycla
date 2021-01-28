@@ -3,7 +3,10 @@
 
 package utils
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ConversionError is an error model for representing conversion errors
 type ConversionError struct {
@@ -153,37 +156,6 @@ func (e *ProjectCLAGroupMappingNotFound) Unwrap() error {
 	return e.Err
 }
 
-// CompanyDoesNotExist is an error model for company does not exist errors
-type CompanyDoesNotExist struct {
-	CompanyName string
-	CompanyID   string
-	CompanySFID string
-	Err         error
-}
-
-// Error is an error string function for company does not exist errs
-func (e *CompanyDoesNotExist) Error() string {
-	var errMsg = "company does not exist"
-	if e.CompanyName == "" {
-		errMsg = fmt.Sprintf("%s company name: %s", errMsg, e.CompanyName)
-	}
-	if e.CompanyID == "" {
-		errMsg = fmt.Sprintf("%s company id: %s", errMsg, e.CompanyID)
-	}
-	if e.CompanySFID == "" {
-		errMsg = fmt.Sprintf("%s company sfid: %s", errMsg, e.CompanySFID)
-	}
-	if e.Err != nil {
-		errMsg = fmt.Sprintf("%s error: %+v", errMsg, e.Err)
-	}
-	return errMsg
-}
-
-// Unwrap method returns its contained error
-func (e *CompanyDoesNotExist) Unwrap() error {
-	return e.Err
-}
-
 // GitHubOrgNotFound is an error model for GitHub Organization not found errors
 type GitHubOrgNotFound struct {
 	ProjectSFID      string
@@ -217,5 +189,45 @@ func (e *CompanyAdminNotFound) Error() string {
 
 // Unwrap method returns its contained error
 func (e *CompanyAdminNotFound) Unwrap() error {
+	return e.Err
+}
+
+// CompanyNotFound is an error model for company not found errors
+type CompanyNotFound struct {
+	Message                  string
+	CompanyID                string
+	CompanySFID              string
+	CompanyName              string
+	CompanySigningEntityName string
+	Err                      error
+}
+
+// Error is an error string function for Salesforce Project not found errors
+func (e *CompanyNotFound) Error() string {
+	msg := "company does not exist "
+	if e.Message != "" {
+		msg = e.Message
+	}
+	if e.CompanyName != "" {
+		msg = fmt.Sprintf("%s - company name: %s ", msg, e.CompanyName)
+	}
+	if e.CompanySigningEntityName != "" {
+		msg = fmt.Sprintf("%s - company sigining entity name: %s ", msg, e.CompanySigningEntityName)
+	}
+	if e.CompanyID != "" {
+		msg = fmt.Sprintf("%s - company ID: %s ", msg, e.CompanyID)
+	}
+	if e.CompanySFID != "" {
+		msg = fmt.Sprintf("%s - company SFID: %s ", msg, e.CompanySFID)
+	}
+	if e.Err != nil {
+		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())
+	}
+
+	return strings.TrimSpace(msg)
+}
+
+// Unwrap method returns its contained error
+func (e *CompanyNotFound) Unwrap() error {
 	return e.Err
 }

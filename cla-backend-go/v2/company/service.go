@@ -487,14 +487,37 @@ func (s *service) GetCompanyBySigningEntityName(ctx context.Context, signingEnti
 		"signingEntityName": signingEntityName,
 	}
 
+	log.WithFields(f).Warn("looking up company record by signing entity name...")
 	companyModel, err := s.companyRepo.GetCompanyBySigningEntityName(ctx, signingEntityName)
 	if err != nil {
-		return nil, err
+		if _, ok := err.(*utils.CompanyNotFound); ok { // nolint
+			// As a backup, in case the signing entity name was not set on the old records, lookup the company by it's normal name
+			log.WithFields(f).Debugf("signing entity name not found. as a backup, searching company by name using signing entity name value: %s", signingEntityName)
+			companyModel, err = s.companyRepo.GetCompanyByName(ctx, signingEntityName)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("unable to lookup company name by attempting to use the signing entity name")
+				return nil, err
+			}
+		} else {
+			log.WithFields(f).WithError(err).Warn("unable to lookup company by signing entity name")
+			return nil, err
+		}
 	}
 
 	if companyModel == nil {
 		log.WithFields(f).Debugf("search by company signing entity name: %s didn't locate the record", signingEntityName)
-		return nil, nil
+		// As a backup, in case the signing entity name was not set on the old records, lookup the company by it's normal name
+		log.WithFields(f).Debugf("as a backup, searching company by name using signing entity name value: %s", signingEntityName)
+		companyModel, err = s.companyRepo.GetCompanyByName(ctx, signingEntityName)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to lookup company name by attempting to use the signing entity name")
+			return nil, err
+		}
+
+		if companyModel == nil {
+			log.WithFields(f).Debugf("search by company name: %s didn't locate the record", signingEntityName)
+			return nil, nil
+		}
 	}
 
 	// Convert from v1 to v2 model - use helper: Copy(toValue interface{}, fromValue interface{})
@@ -726,7 +749,7 @@ func (s *service) GetCompanyBySFID(ctx context.Context, companySFID string) (*mo
 	if err != nil {
 		// If we were unable to find the company/org in our local database, try to auto-create based
 		// on the existing SF record
-		if err == company.ErrCompanyDoesNotExist {
+		if _, ok := err.(*utils.CompanyNotFound); ok {
 			log.WithFields(f).Debug("company not found in EasyCLA database - attempting to auto-create from platform organization service record")
 			newCompanyModel, createCompanyErr := s.autoCreateCompany(ctx, companySFID)
 			if createCompanyErr != nil {
@@ -736,7 +759,10 @@ func (s *service) GetCompanyBySFID(ctx context.Context, companySFID string) (*mo
 			}
 			if newCompanyModel == nil {
 				log.WithFields(f).Warnf("problem creating company from SF records - created model is nil")
-				return nil, company.ErrCompanyDoesNotExist
+				return nil, &utils.CompanyNotFound{
+					Message:     "unable to auto-create company",
+					CompanySFID: companySFID,
+				}
 			}
 			// Success, fall through and continue processing
 			companyModel = newCompanyModel
@@ -798,21 +824,24 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 	if companyErr != nil {
 		// If we were unable to find the company/org in our local database, try to auto-create based
 		// on the existing SF record
-		if companyErr == company.ErrCompanyDoesNotExist {
-			log.WithFields(f).Debug("company not found in EasyCLA database - attempting to auto-create from platform organization service record")
+		if _, ok := companyErr.(*utils.CompanyNotFound); ok { // nolint
+			log.WithFields(f).WithError(companyErr).Debug("company not found in EasyCLA database - attempting to auto-create from platform organization service record")
 			var createCompanyErr error
 			companyModel, createCompanyErr = s.autoCreateCompany(ctx, companySFID)
 			if createCompanyErr != nil {
-				log.WithFields(f).Warnf("problem creating company from platform organization SF record, error: %+v",
-					createCompanyErr)
+				log.WithFields(f).WithError(createCompanyErr).Warn("problem creating company from platform organization SF record")
 				return nil, createCompanyErr
 			}
 			if companyModel == nil {
 				log.WithFields(f).Warnf("problem creating company from SF records - created model is nil")
-				return nil, company.ErrCompanyDoesNotExist
+				return nil, &utils.CompanyNotFound{
+					Message:     "unable to auto-create company",
+					CompanySFID: companySFID,
+				}
 			}
 			// Success, fall through and continue processing
 		} else {
+			log.WithFields(f).WithError(companyErr).Warnf("problem fetching company by SFID")
 			return nil, companyErr
 		}
 	}
@@ -1401,8 +1430,12 @@ func (s service) autoCreateCompany(ctx context.Context, companySFID string) (*v1
 
 	// If we were unable to lookup the company record in SF - we tried our best - return not exist error
 	if sfOrgModel == nil {
-		log.WithFields(f).Warn("unable to locate platform organization record by SF ID - record not found")
-		return nil, company.ErrCompanyDoesNotExist
+		msg := "unable to locate platform organization record by SF ID - record not found"
+		log.WithFields(f).Warn(msg)
+		return nil, &utils.CompanyNotFound{
+			Message:     msg,
+			CompanySFID: companySFID,
+		}
 	}
 
 	log.WithFields(f).Debug("found platform organization record in SF")

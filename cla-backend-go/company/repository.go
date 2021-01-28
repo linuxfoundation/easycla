@@ -5,7 +5,6 @@ package company
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -26,11 +25,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/gofrs/uuid"
-)
-
-// errors
-var (
-	ErrCompanyDoesNotExist = errors.New("company does not exist")
 )
 
 // IRepository interface methods
@@ -176,8 +170,12 @@ func (repo repository) GetCompanyByExternalID(ctx context.Context, companySFID s
 	}
 	if len(companyRecords) == 0 {
 		log.WithFields(f).Debug("no records found")
-		return nil, ErrCompanyDoesNotExist
+		return nil, &utils.CompanyNotFound{
+			Message:   "no company records found for SFID",
+			CompanyID: companySFID,
+		}
 	}
+
 	log.WithFields(f).Debugf("loaded %d records", len(companyRecords))
 	// For debug when problems occur
 	f["companyName"] = companyRecords[0].CompanyName
@@ -195,7 +193,10 @@ func (repo repository) GetCompanyByExternalID(ctx context.Context, companySFID s
 	}
 	f["signingEntityNames"] = strings.Join(signingEntityNames, ";")
 	log.WithFields(f).Warning("unable to match company name with existing signing entity names")
-	return nil, ErrCompanyDoesNotExist
+	return nil, &utils.CompanyNotFound{
+		Message:   "company record not found - unable to match company name with existing signing entity names",
+		CompanyID: companySFID,
+	}
 }
 
 // GetCompaniesByExternalID returns a list of companies based on the company external ID. A company will have more than one if/when the SF record has multiple entity names - for which we create separate EasyCLA company records
@@ -232,9 +233,13 @@ func (repo repository) GetCompaniesByExternalID(ctx context.Context, companySFID
 	}
 
 	if len(results.Items) == 0 {
-		log.WithFields(f).Debug("no records found")
-		return nil, ErrCompanyDoesNotExist
+		log.WithFields(f).Debug("no company records found")
+		return nil, &utils.CompanyNotFound{
+			Message:     "no company records found with matching external SFID",
+			CompanySFID: companySFID,
+		}
 	}
+
 	var dbCompanyModels []DBModel
 	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &dbCompanyModels)
 	if err != nil {
@@ -279,8 +284,13 @@ func (repo repository) GetCompanyBySigningEntityName(ctx context.Context, signin
 	}
 
 	if len(results.Items) == 0 {
-		return nil, ErrCompanyDoesNotExist
+		return nil, &utils.CompanyNotFound{
+			Message:                  "no company with signing entity name found",
+			CompanySigningEntityName: signingEntityName,
+			Err:                      nil,
+		}
 	}
+
 	dbCompanyModel := DBModel{}
 	err = dynamodbattribute.UnmarshalMap(results.Items[0], &dbCompanyModel)
 	if err != nil {
@@ -366,7 +376,10 @@ func (repo repository) GetCompany(ctx context.Context, companyID string) (*model
 	}
 
 	if len(companyTableData.Item) == 0 {
-		return nil, ErrCompanyDoesNotExist
+		return nil, &utils.CompanyNotFound{
+			Message:   "no company matching company record",
+			CompanyID: companyID,
+		}
 	}
 
 	dbCompanyModel := DBModel{}

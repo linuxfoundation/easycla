@@ -169,6 +169,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - users
     delete:
@@ -200,6 +202,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - users
 
@@ -365,6 +369,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - signatures
 
@@ -396,6 +402,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - signatures
 
@@ -429,6 +437,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - signatures
 
@@ -460,6 +470,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - signatures
 
@@ -492,6 +504,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - signatures
 
@@ -564,6 +578,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - signatures
     delete:
@@ -598,6 +614,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - signatures
     post:
@@ -632,6 +650,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - signatures
 
@@ -1198,6 +1218,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - company
 
@@ -1261,6 +1283,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - company
 
@@ -1291,6 +1315,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - company
 
@@ -1321,6 +1347,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - company
 
@@ -1351,6 +1379,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - company
 
@@ -1589,6 +1619,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
         '409':
           $ref: '#/responses/conflict'
       tags:
@@ -1625,6 +1657,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
         '409':
           $ref: '#/responses/conflict'
       tags:
@@ -1694,6 +1728,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
         '409':
           $ref: '#/responses/conflict'
       tags:
@@ -1795,6 +1831,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
         '409':
           $ref: '#/responses/conflict'
       tags:
@@ -2093,6 +2131,8 @@ paths:
           $ref: '#/responses/unauthorized'
         403:
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - github-repositories
     get:
@@ -2119,6 +2159,8 @@ paths:
           $ref: '#/responses/unauthorized'
         403:
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - github-repositories
   /project/{projectSFID}/github/repositories/{repositoryID}:
@@ -2259,10 +2301,10 @@ paths:
             $ref: '#/definitions/gerrit-repo-list'
         '400':
           $ref: '#/responses/invalid-request'
-        '404':
-          $ref: '#/responses/not-found'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
         '500':
           $ref: '#/responses/internal-server-error'
       tags:
@@ -2293,6 +2335,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
       tags:
         - gerrits
 
@@ -2327,6 +2371,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
         '409':
           $ref: '#/responses/conflict'
       tags:

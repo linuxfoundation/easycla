@@ -17,11 +17,13 @@ import (
 
 // GitHubOrgAddedEvent github repository added event
 func (s *service) GitHubOrgAddedEvent(event events.DynamoDBEventRecord) error {
+	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName": "dynamodb_events.GitHubOrgAddedEvent",
-		"eventName":    event.EventName,
-		"eventSource":  event.EventSource,
-		"eventID":      event.EventID,
+		"functionName":   "dynamodb_events.github_organization.GitHubOrgAddedEvent",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"eventName":      event.EventName,
+		"eventSource":    event.EventSource,
+		"eventID":        event.EventID,
 	}
 
 	log.WithFields(f).Debug("processing event")
@@ -35,7 +37,7 @@ func (s *service) GitHubOrgAddedEvent(event events.DynamoDBEventRecord) error {
 	// If the branch protection value was updated from false to true....
 	if newGitHubOrg.BranchProtectionEnabled {
 		log.WithFields(f).Debug("branchProtectionEnabled - processing...")
-		return s.enableBranchProtectionForGithubOrg(f, newGitHubOrg)
+		return s.enableBranchProtectionForGithubOrg(ctx, newGitHubOrg)
 	}
 
 	if newGitHubOrg.AutoEnabled {
@@ -49,11 +51,13 @@ func (s *service) GitHubOrgAddedEvent(event events.DynamoDBEventRecord) error {
 
 // GitHubOrgUpdatedEvent github repository updated event
 func (s *service) GitHubOrgUpdatedEvent(event events.DynamoDBEventRecord) error {
+	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName": "dynamodb_events.GitHubOrgUpdatedEvent",
-		"eventName":    event.EventName,
-		"eventSource":  event.EventSource,
-		"eventID":      event.EventID,
+		"functionName":   "dynamodb_events.github_organization.GitHubOrgUpdatedEvent",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"eventName":      event.EventName,
+		"eventSource":    event.EventSource,
+		"eventID":        event.EventID,
 	}
 
 	log.WithFields(f).Debug("processing event")
@@ -72,7 +76,7 @@ func (s *service) GitHubOrgUpdatedEvent(event events.DynamoDBEventRecord) error 
 	// If the branch protection value was updated from false to true....
 	if !oldGitHubOrg.BranchProtectionEnabled && newGitHubOrg.BranchProtectionEnabled {
 		log.WithFields(f).Debug("transition of branchProtectionEnabled false => true - processing...")
-		return s.enableBranchProtectionForGithubOrg(f, newGitHubOrg)
+		return s.enableBranchProtectionForGithubOrg(ctx, newGitHubOrg)
 	}
 
 	if !oldGitHubOrg.AutoEnabled && newGitHubOrg.AutoEnabled {
@@ -87,11 +91,11 @@ func (s *service) GitHubOrgUpdatedEvent(event events.DynamoDBEventRecord) error 
 func (s *service) GitHubOrgDeletedEvent(event events.DynamoDBEventRecord) error {
 	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName":   "dynamodb_events.GitHubOrgDeletedEvent",
+		"functionName":   "dynamodb_events.github_organization.GitHubOrgDeletedEvent",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"eventName":      event.EventName,
 		"eventSource":    event.EventSource,
 		"eventID":        event.EventID,
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
 	log.WithFields(f).Debug("processing event")
@@ -127,7 +131,19 @@ func (s *service) GitHubOrgDeletedEvent(event events.DynamoDBEventRecord) error 
 	return nil
 }
 
-func (s *service) enableBranchProtectionForGithubOrg(f logrus.Fields, newGitHubOrg github_organizations.GithubOrganization) error {
+func (s *service) enableBranchProtectionForGithubOrg(ctx context.Context, newGitHubOrg github_organizations.GithubOrganization) error {
+	f := logrus.Fields{
+		"functionName":               "dynamo_events.github_organization.enableBranchProtectionForGithubOrg",
+		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
+		"projectSFID":                newGitHubOrg.ProjectSFID,
+		"organizationName":           newGitHubOrg.OrganizationName,
+		"organizationSFID":           newGitHubOrg.OrganizationSFID,
+		"organizationInstallationID": newGitHubOrg.OrganizationInstallationID,
+		"autoEnabled":                newGitHubOrg.AutoEnabled,
+		"branchProtectionEnabled":    newGitHubOrg.BranchProtectionEnabled,
+		"autoEnabledCLAGroupID":      newGitHubOrg.AutoEnabledClaGroupID,
+	}
+
 	// Locate the repositories already saved under this organization
 	log.WithFields(f).Debugf("loading repositories under the organization : %s", newGitHubOrg.OrganizationName)
 	repos, err := s.repositoryService.GetRepositoriesByOrganizationName(context.Background(), newGitHubOrg.OrganizationName)
@@ -136,10 +152,10 @@ func (s *service) enableBranchProtectionForGithubOrg(f logrus.Fields, newGitHubO
 		return err
 	}
 
-	ctx := context.Background()
 	log.WithFields(f).Debugf("creating a new GitHub client object for org: %s...", newGitHubOrg.OrganizationName)
 	gitHubClient, clientErr := githubutils.NewGithubAppClient(newGitHubOrg.OrganizationInstallationID)
 	if clientErr != nil {
+		log.WithFields(f).WithError(clientErr).Warnf("unable to create a new GitHub app client using the installation ID: %d", newGitHubOrg.OrganizationInstallationID)
 		return clientErr
 	}
 

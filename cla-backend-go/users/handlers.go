@@ -74,7 +74,7 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		}
 		// Update supports two scenarios:
 		// 1) user has LF login and their record has the LF login as part of their existing User record - should find and match - OK, otherwise permission denied
-		// 2) user has new LF login and their record does not have the LF login as part of their existing User record - need to lookup by other means, such as Github Username
+		// 2) user has new LF login and their record does not have the LF login as part of their existing User record - need to lookup by other means, such as GitHub Username
 		//   option 2 can happen when GH user gets a user record auto-created and later they need a login for v2 (create company, etc.)
 		//   option 2 will be called after they create their login to update their user record with the new login details
 		//   option 2 we will search by github username to find the old record - but we can't compare LF login with the existing record because it won't be set yet

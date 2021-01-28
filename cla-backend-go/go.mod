@@ -47,6 +47,8 @@ require (
 	github.com/pelletier/go-toml v1.8.0 // indirect
 	github.com/rs/cors v1.7.0
 	github.com/savaki/dynastore v0.0.0-20171109173440-28d8558bb429
+	github.com/shurcooL/githubv4 v0.0.0-20201206200315-234843c633fa
+	github.com/shurcooL/graphql v0.0.0-20200928012149-18c5c3165e3a
 	github.com/sirupsen/logrus v1.7.0
 	github.com/spf13/afero v1.3.0 // indirect
 	github.com/spf13/cast v1.3.1 // indirect

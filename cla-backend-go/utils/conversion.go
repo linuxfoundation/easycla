@@ -31,3 +31,8 @@ func BoolValue(input *bool) bool {
 	}
 	return *input
 }
+
+// Bool function convert boolean to boolean pointer
+func Bool(input bool) *bool {
+	return &input
+}

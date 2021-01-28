@@ -23,7 +23,6 @@ LINT_VERSION=v1.29.0
 SWAGGER_TOOL_VERSION=v0.24.0
 GO_PKGS=$(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/)
 GO_FILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')
-TEST_ENV=AWS_REGION=us-east-1 DYNAMODB_AWS_REGION=us-east-1 AWS_PROFILE=bar AWS_ACCESS_KEY_ID=foo AWS_SECRET_ACCESS_KEY=bar
 
 .PHONY: generate setup tool-setup setup-dev setup-deploy clean-all clean swagger up fmt test run deps build build-mac build-aws-lambda user-subscribe-lambda qc lint
 
@@ -170,7 +169,7 @@ fmt:
 
 test:
 	@echo "Running unit tests..."
-	@ $(TEST_ENV) go test -v $(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/) -coverprofile=cover.out
+	@go test -v $(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/) -coverprofile=cover.out
 
 mock:
 	@echo "Re-Generating mocks"

@@ -223,7 +223,7 @@ func server(localMode bool) http.Handler {
 	if err != nil {
 		logrus.Panic(err)
 	}
-	github.Init(configFile.Github.AppID, configFile.Github.AppPrivateKey, configFile.Github.AccessToken)
+	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
 
 	// Our backend repository handlers
 	userRepo := user.NewDynamoRepository(awsSession, stage)
@@ -304,7 +304,7 @@ func server(localMode bool) http.Handler {
 	v2Health.Configure(v2API, healthService)
 	template.Configure(api, templateService, eventsService)
 	v2Template.Configure(v2API, templateService, eventsService)
-	github.Configure(api, configFile.Github.ClientID, configFile.Github.ClientSecret, configFile.Github.AccessToken, sessionStore)
+	github.Configure(api, configFile.GitHub.ClientID, configFile.GitHub.ClientSecret, configFile.GitHub.AccessToken, sessionStore)
 	signatures.Configure(api, v1SignaturesService, sessionStore, eventsService)
 	v2Signatures.Configure(v2API, v1ProjectService, projectRepo, v1CompanyService, v1SignaturesService, sessionStore, eventsService, v2SignatureService, projectClaGroupRepo)
 	approval_list.Configure(api, v1ApprovalListService, sessionStore, v1SignaturesService, eventsService)

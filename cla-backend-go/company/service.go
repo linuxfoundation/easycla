@@ -634,7 +634,7 @@ func (s service) GetCompanyByExternalID(ctx context.Context, companySFID string)
 		return comp, nil
 	}
 
-	if err == ErrCompanyDoesNotExist {
+	if _, ok := err.(*utils.CompanyNotFound); ok {
 		comp, err = s.CreateOrgFromExternalID(ctx, "", companySFID)
 		if err != nil {
 			return comp, err
@@ -675,7 +675,7 @@ func (s service) GetCompanyBySigningEntityName(ctx context.Context, signingEntit
 		return comp, nil
 	}
 
-	if err == ErrCompanyDoesNotExist {
+	if _, ok := err.(*utils.CompanyNotFound); ok {
 		log.WithFields(f).Debugf("Company with signing entity name %s does not exist", signingEntityName)
 		comp, err = s.CreateOrgFromExternalID(ctx, signingEntityName, companySFID)
 		if err != nil {

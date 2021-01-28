@@ -54,7 +54,7 @@ func NewAutoEnableService(repositoryService repositories.Service,
 	}
 }
 
-// autoEnableServiceProvider is an abstraction helping with managing autoEnabled flag for Github Organization
+// autoEnableServiceProvider is an abstraction helping with managing autoEnabled flag for GitHub Organization
 // having it separated in its own struct makes testing easier.
 type autoEnableServiceProvider struct {
 	repositoryService repositories.Service

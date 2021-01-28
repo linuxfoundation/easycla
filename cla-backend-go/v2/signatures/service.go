@@ -123,7 +123,7 @@ func (s service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGro
 		return nil, errors.New("not Found")
 	}
 
-	b.WriteString(`Github ID,LF_ID,Name,Email,Date Signed`)
+	b.WriteString(`GitHub ID,LF_ID,Name,Email,Date Signed`)
 	for _, sig := range result.List {
 		b.WriteString(eclaSigCsvLine(sig))
 	}
@@ -136,7 +136,7 @@ func (s service) GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID str
 	if err != nil {
 		return nil, err
 	}
-	b.WriteString(`Github ID,LF_ID,Name,Email,Date Signed`)
+	b.WriteString(`GitHub ID,LF_ID,Name,Email,Date Signed`)
 	for _, sig := range result.List {
 		b.WriteString(iclaSigCsvLine(sig))
 	}

@@ -91,7 +91,7 @@ func init() {
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
 
 	token.Init(configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret, configFile.Auth0Platform.URL, configFile.Auth0Platform.Audience)
-	github.Init(configFile.Github.AppID, configFile.Github.AppPrivateKey, configFile.Github.AccessToken)
+	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
 
 	user_service.InitClient(configFile.APIGatewayURL, configFile.AcsAPIKey)
 	project_service.InitClient(configFile.APIGatewayURL)

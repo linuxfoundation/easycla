@@ -63,7 +63,7 @@ func GetStage() string {
 	return stage
 }
 
-// GetConfig returns the configration SSM based on stage, e.g. dev, test, stage or prod
+// GetConfig returns the configuration SSM based on stage, e.g. dev, test, stage or prod
 func GetConfig() config.Config {
 	return configVars
 }

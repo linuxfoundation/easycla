@@ -2899,6 +2899,75 @@ paths:
       tags:
         - gerrits
 
+  /company/{companyID}:
+    get:
+      summary: Get Company By Internal ID
+      description: Returns the company by internal ID
+      operationId: getCompanyByInternalID
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/company'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - company
+
+  /company/external/{companySFID}:
+    get:
+      summary: Get Company by External SFID
+      description: Returns the company by external ID
+      operationId: getCompanyByExternalID
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: companySFID
+          in: path
+          type: string
+          required: true
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/company'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - company
+
   /company/name/{companyName}:
     get:
       summary: Gets the company by name
@@ -2936,8 +3005,8 @@ paths:
 
   /company/entityname/{signingEntityName}:
     get:
-      summary: Gets the company by name
-      description: Returns the matching company by name
+      summary: Gets the company by signing entity namename
+      description: Returns the matching company by signing entity name
       operationId: getCompanyBySigningEntityName
       parameters:
         - $ref: "#/parameters/x-request-id"

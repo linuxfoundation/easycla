@@ -1,0 +1,25 @@
+query BranchProtectionRule($organizationOwner: String!, $repositoryName: String!) {
+    repository(owner: $organizationOwner, name: $repositoryName) {
+        id
+        createdAt
+        branchProtectionRules(first: 100) {
+            totalCount
+            nodes {
+                pattern
+                id
+                allowsDeletions
+                requiredApprovingReviewCount
+                requiredStatusCheckContexts
+            }
+            edges {
+                node {
+                    allowsDeletions
+                    id
+                    pattern
+                }
+            }
+        }
+        diskUsage
+        hasIssuesEnabled
+    }
+}

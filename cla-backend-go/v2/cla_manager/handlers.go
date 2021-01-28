@@ -310,7 +310,8 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			"contactAdmin":   params.Body.ContactAdmin,
 			"userFullName":   utils.StringValue(params.Body.FullName),
 			"userEmail":      params.Body.UserEmail.String(),
-			"authUser":       *params.XUSERNAME,
+			"authUserName":   utils.StringValue(params.XUSERNAME),
+			"authUserEmail":  utils.StringValue(params.XEMAIL),
 		}
 
 		// Lookup the company by internal ID

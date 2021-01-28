@@ -8,6 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/shurcooL/githubv4"
 
 	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/google/go-github/v33/github"
@@ -75,6 +78,15 @@ func NewGithubAppClient(installationID int64) (*github.Client, error) {
 		return nil, err
 	}
 	return github.NewClient(&http.Client{Transport: itr}), nil
+}
+
+// NewGithubV4AppClient creates a new github v4 client from the supplied installationID
+func NewGithubV4AppClient(installationID int64) (*githubv4.Client, error) {
+	authTransport, err := ghinstallation.New(http.DefaultTransport, int64(getGithubAppID()), installationID, []byte(getGithubAppPrivateKey()))
+	if err != nil {
+		return nil, err
+	}
+	return githubv4.NewClient(&http.Client{Transport: authTransport, Timeout: 5 * time.Second}), nil
 }
 
 // NewGithubOauthClient creates github client from global accessToken

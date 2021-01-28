@@ -9,13 +9,16 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/swag"
+	"github.com/sirupsen/logrus"
 
 	"github.com/jinzhu/copier"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
 	githubpkg "github.com/google/go-github/v33/github"
+	"github.com/shurcooL/githubv4"
 	"go.uber.org/ratelimit"
 	"golang.org/x/time/rate"
 )
@@ -265,6 +268,189 @@ func (bp *BranchProtectionRepository) EnableBranchProtection(ctx context.Context
 		return wErr
 	}
 	return err
+}
+
+// GetRepositoryIDFromName when provided the organization and repository name, returns the repository ID
+func GetRepositoryIDFromName(ctx context.Context, installationID int64, repositoryOwner, repositoryName string) (string, error) {
+	f := logrus.Fields{
+		"functionName":    "github.GetRepositoryIDFromName",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"installationID":  installationID,
+		"repositoryOwner": repositoryOwner,
+		"repositoryName":  repositoryName,
+	}
+
+	log.WithFields(f).Debugf("loading GitHub v4 client using installation ID: %d", installationID)
+	client, clientErr := NewGithubV4AppClient(installationID)
+	if clientErr != nil {
+		log.WithFields(f).WithError(clientErr).Warnf("problem creating GitHub v4 API client with installation ID: %d", installationID)
+		return "", clientErr
+	}
+	log.WithFields(f).Debugf("loaded GitHub v4 client using installation ID: %d", installationID)
+
+	// Define the graphql query
+	//"query": "query{repository(name: \"test1\", owner: \"deal-test-org\") {id}}"
+	var query struct {
+		Viewer struct {
+			Login githubv4.String
+		}
+		Repository struct {
+			ID string
+		} `graphql:"repository(owner:$repositoryOwner, name:$repositoryName)"`
+	}
+
+	// Define the variables for the query
+	variables := map[string]interface{}{
+		"repositoryOwner": githubv4.String(repositoryOwner),
+		"repositoryName":  githubv4.String(repositoryName),
+	}
+
+	log.WithFields(f).Debug("executing the query...")
+	err := client.Query(ctx, &query, variables)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem executing GitHub v4 query using: %+v with variables: %+v",
+			query, variables)
+		return "", err
+	}
+
+	log.WithFields(f).Debugf("User %s looked up repository ID: %s wth installation ID: %d using repository name: %s",
+		query.Viewer.Login, query.Repository.ID, installationID, repositoryName)
+	return query.Repository.ID, nil
+}
+
+// GetRepositoryBranchProtection when provided the organization and repository name, returns the repository branch protection rules/info
+func GetRepositoryBranchProtection(ctx context.Context, installationID int64, repositoryOwner, repositoryName string) error {
+	f := logrus.Fields{
+		"functionName":    "github.GetRepositoryBranchProtection",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"installationID":  installationID,
+		"repositoryOwner": repositoryOwner,
+		"repositoryName":  repositoryName,
+	}
+
+	// NOTE: This function is not complete - does not return the values as we are still evaluating/testing this API
+
+	log.WithFields(f).Debugf("loading GitHub v4 client using installation ID: %d", installationID)
+	client, clientErr := NewGithubV4AppClient(installationID)
+	if clientErr != nil {
+		log.WithFields(f).WithError(clientErr).Warnf("problem creating GitHub v4 API client with installation ID: %d", installationID)
+		return clientErr
+	}
+	log.WithFields(f).Debugf("loaded GitHub v4 client using installation ID: %d", installationID)
+
+	// Define the graphql query
+	/*
+		query {
+		  repository(owner: "lee-dohm", name: "test-repo") {
+		    branchProtectionRules(first: 10) {
+		      nodes {
+		        pattern
+		      }
+		    }
+		  }
+		}
+	*/
+	var query struct {
+		Viewer struct {
+			Login githubv4.String
+		}
+		//Repository struct {
+		//	BranchProtectionRepositoryOption struct {
+		//	}
+		//} `graphql:"repository(owner:$repositoryOwner, name:$repositoryName)"`
+	}
+
+	// Define the variables for the query
+	variables := map[string]interface{}{
+		"repositoryOwner": githubv4.String(repositoryOwner),
+		"repositoryName":  githubv4.String(repositoryName),
+	}
+
+	log.WithFields(f).Debug("executing the query...")
+	err := client.Query(ctx, &query, variables)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem executing GitHub v4 query using: %+v with variables: %+v",
+			query, variables)
+		return err
+	}
+
+	// NOTE: still need to implement logic above
+	return nil
+}
+
+// EnableBranchProtectionForAll sets the branch protection for all branches for the specified repository
+func EnableBranchProtectionForAll(ctx context.Context, installationID int64, repositoryOwner, repositoryName string, enforceAdmin bool, enableStatusChecks, disableStatusChecks []string) error {
+	f := logrus.Fields{
+		"functionName":        "github.EnableBranchProtectionForAll",
+		utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
+		"installationID":      installationID,
+		"repositoryOwner":     repositoryOwner,
+		"repositoryName":      repositoryName,
+		"enforceAdmin":        enforceAdmin,
+		"enableStatusChecks":  strings.Join(enableStatusChecks, ","),
+		"disableStatusChecks": strings.Join(disableStatusChecks, ","),
+	}
+
+	log.WithFields(f).Debugf("loading GitHub v4 client using installation ID: %d", installationID)
+	client, clientErr := NewGithubV4AppClient(installationID)
+	if clientErr != nil {
+		log.WithFields(f).WithError(clientErr).Warnf("problem creating GitHub v4 API client with installation ID: %d", installationID)
+		return clientErr
+	}
+	log.WithFields(f).Debugf("loaded GitHub v4 client using installation ID: %d", installationID)
+
+	// Define the graphql mutation/update
+	// This is a sample, not implemented yet
+	var mutation struct {
+		AddReaction struct {
+			Reaction struct {
+				Content githubv4.ReactionContent
+			}
+			Subject struct {
+				ID githubv4.ID
+			}
+		} `graphql:"addReaction(input: $input)"`
+		Repository struct {
+			ID string
+		} `graphql:"repository(repositoryOwner:$repositoryOwner, name:$repositoryName)"`
+	}
+
+	// Lookup the unique repository ID from the organization and repository name
+	repositoryID, lookupErr := GetRepositoryIDFromName(ctx, installationID, repositoryOwner, repositoryName)
+	if lookupErr != nil {
+		log.WithFields(f).WithError(lookupErr).Warnf("problem loading repository ID from repository owner and repository name values using installation ID: %d", installationID)
+		return lookupErr
+	}
+
+	input := githubv4.CreateBranchProtectionRuleInput{
+		RepositoryID:                 repositoryID,
+		Pattern:                      "**/**",
+		RequiresApprovingReviews:     nil,
+		RequiredApprovingReviewCount: nil,
+		RequiresCommitSignatures:     nil,
+		RequiresLinearHistory:        nil,
+		AllowsForcePushes:            githubv4.NewBoolean(false),
+		AllowsDeletions:              nil,
+		IsAdminEnforced:              githubv4.NewBoolean(githubv4.Boolean(enforceAdmin)),
+		RequiresStatusChecks:         githubv4.NewBoolean(len(enableStatusChecks) > 0),
+		RequiresStrictStatusChecks:   nil,
+		RequiresCodeOwnerReviews:     nil,
+		DismissesStaleReviews:        nil,
+		RestrictsReviewDismissals:    nil,
+		ReviewDismissalActorIDs:      nil,
+		RestrictsPushes:              nil,
+		PushActorIDs:                 nil,
+		RequiredStatusCheckContexts:  nil,
+		ClientMutationID:             nil,
+	}
+
+	// Define the variables for the query
+	variables := map[string]interface{}{
+		"repositoryOwner": githubv4.String(repositoryOwner),
+		"repositoryName":  githubv4.String(repositoryName),
+	}
+
+	return client.Mutate(ctx, &mutation, input, variables)
 }
 
 // createBranchProtectionRequest creates a branch protection request from existing protection

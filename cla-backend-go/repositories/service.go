@@ -20,7 +20,7 @@ import (
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 )
 
-// Service contains functions of Github Repository service
+// Service contains functions of GitHub Repository service
 type Service interface {
 	AddGithubRepository(ctx context.Context, externalProjectID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
 	EnableRepository(ctx context.Context, repositoryID string) error

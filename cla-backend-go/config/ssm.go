@@ -65,6 +65,10 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-gh-access-token-%s", stage),
 		fmt.Sprintf("cla-gh-app-id-%s", stage),
 		fmt.Sprintf("cla-gh-app-private-key-%s", stage),
+		fmt.Sprintf("cla-gh-test-organization-%s", stage),
+		fmt.Sprintf("cla-gh-test-organization-installation-id-%s", stage),
+		fmt.Sprintf("cla-gh-test-repository-%s", stage),
+		fmt.Sprintf("cla-gh-test-repository-id-%s", stage),
 		fmt.Sprintf("cla-corporate-base-%s", stage),
 		fmt.Sprintf("cla-corporate-v2-base-%s", stage),
 		fmt.Sprintf("cla-doc-raptor-api-key-%s", stage),
@@ -118,20 +122,28 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		case fmt.Sprintf("cla-auth0-algorithm-%s", stage):
 			config.Auth0.Algorithm = resp.value
 		case fmt.Sprintf("cla-gh-oauth-client-id-go-backend-%s", stage):
-			config.Github.ClientID = resp.value
+			config.GitHub.ClientID = resp.value
 		case fmt.Sprintf("cla-gh-oauth-secret-go-backend-%s", stage):
-			config.Github.ClientSecret = resp.value
+			config.GitHub.ClientSecret = resp.value
 		case fmt.Sprintf("cla-gh-access-token-%s", stage):
-			config.Github.AccessToken = resp.value
+			config.GitHub.AccessToken = resp.value
 		case fmt.Sprintf("cla-gh-app-id-%s", stage):
 			githubAppID, err := strconv.Atoi(resp.value)
 			if err != nil {
 				errMsg := fmt.Sprintf("invalid value of key: %s", fmt.Sprintf("cla-gh-app-id-%s", stage))
 				log.WithFields(f).WithError(err).Fatal(errMsg)
 			}
-			config.Github.AppID = githubAppID
+			config.GitHub.AppID = githubAppID
 		case fmt.Sprintf("cla-gh-app-private-key-%s", stage):
-			config.Github.AppPrivateKey = resp.value
+			config.GitHub.AppPrivateKey = resp.value
+		case fmt.Sprintf("cla-gh-test-organization-%s", stage):
+			config.GitHub.TestOrganization = resp.value
+		case fmt.Sprintf("cla-gh-test-organization-installation-id-%s", stage):
+			config.GitHub.TestOrganizationInstallationID = resp.value
+		case fmt.Sprintf("cla-gh-test-repository-%s", stage):
+			config.GitHub.TestRepository = resp.value
+		case fmt.Sprintf("cla-gh-test-repository-id-%s", stage):
+			config.GitHub.TestRepositoryID = resp.value
 
 		case fmt.Sprintf("cla-corporate-base-%s", stage):
 			corporateConsoleURLValue := resp.value

@@ -106,7 +106,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		if err != nil {
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
 			log.Warn(msg)
-			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+			if _, ok := err.(*utils.CompanyNotFound); ok {
 				return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
 					Code:    "404",
@@ -449,7 +449,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		if err != nil {
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
 			log.Warn(msg)
-			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+			if _, ok := err.(*utils.CompanyNotFound); ok {
 				return signatures.NewGetProjectCompanySignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
 					Code:    "404",
@@ -502,7 +502,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		if err != nil {
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
 			log.Warn(msg)
-			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+			if _, ok := err.(*utils.CompanyNotFound); ok {
 				return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
 					Code:    "404",
@@ -589,7 +589,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		if err != nil {
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
 			log.Warn(msg)
-			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+			if _, ok := err.(*utils.CompanyNotFound); ok {
 				return signatures.NewGetCompanySignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
 					Code:    "404",
@@ -745,7 +745,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		if err != nil {
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
 			log.Warn(msg)
-			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+			if _, ok := err.(*utils.CompanyNotFound); ok {
 				return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
 					Code:    "404",
@@ -871,7 +871,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		if err != nil {
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", *params.CompanyID, err)
 			log.Warn(msg)
-			if errors.Is(err, company.ErrCompanyDoesNotExist) {
+			if _, ok := err.(*utils.CompanyNotFound); ok {
 				return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
 					Code:    "404",

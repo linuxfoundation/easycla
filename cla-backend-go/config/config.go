@@ -38,8 +38,8 @@ type Config struct {
 	// AWS
 	AWS AWS `json:"aws"`
 
-	// Github Application
-	Github Github `json:"github"`
+	// GitHub Application
+	GitHub GitHub `json:"github"`
 
 	// Dynamo Session Store
 	SessionStoreTableName string `json:"sessionStoreTableName"`
@@ -110,13 +110,17 @@ type AWS struct {
 	Region string `json:"region"`
 }
 
-// Github model
-type Github struct {
-	ClientID      string `json:"clientId"`
-	ClientSecret  string `json:"clientSecret"`
-	AccessToken   string `json:"accessToken"`
-	AppID         int    `json:"app_id"`
-	AppPrivateKey string `json:"app_private_key"`
+// GitHub model
+type GitHub struct {
+	ClientID                       string `json:"clientId"`
+	ClientSecret                   string `json:"clientSecret"`
+	AccessToken                    string `json:"accessToken"`
+	AppID                          int    `json:"app_id"`
+	AppPrivateKey                  string `json:"app_private_key"`
+	TestOrganization               string `json:"test_organization"`
+	TestOrganizationInstallationID string `json:"test_organization_installation_id"`
+	TestRepository                 string `json:"test_repository"`
+	TestRepositoryID               string `json:"test_repository_id"`
 }
 
 // MetricsReport keeps the config needed to send the metrics data report
