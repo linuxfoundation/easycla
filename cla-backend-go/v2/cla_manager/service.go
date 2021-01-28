@@ -94,7 +94,7 @@ type Service interface {
 	DeleteCLAManager(ctx context.Context, claGroupID string, params cla_manager.DeleteCLAManagerParams) *models.ErrorResponse
 	InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, lFxPortalURL string) ([]*models.ClaManagerDesignee, error)
 	CreateCLAManagerDesignee(ctx context.Context, companyID string, projectID string, userEmail string) (*models.ClaManagerDesignee, error)
-	CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companySFID string, projectID string, userEmail string, fullName string, authUser *auth.User, LfxPortalURL string) (*models.ClaManagerDesignee, error)
+	CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User, LfxPortalURL string) (*models.ClaManagerDesignee, error)
 	NotifyCLAManagers(ctx context.Context, notifyCLAManagers *models.NotifyClaManagerList, LfxPortalURL string) error
 	CreateCLAManagerDesigneeByGroup(ctx context.Context, params cla_manager.CreateCLAManagerDesigneeByGroupParams, projectCLAGroups []*projects_cla_groups.ProjectClaGroup) ([]*models.ClaManagerDesignee, string, error)
 	IsCLAManagerDesignee(ctx context.Context, companySFID, claGroupID, userLFID string) (*models.UserRoleStatus, error)
@@ -576,7 +576,7 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 
 	if signedAtFoundationLevel {
 		if foundationSFID != "" {
-			claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyExternalID, foundationSFID, userEmail)
+			claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyID, foundationSFID, userEmail)
 			if err != nil {
 				if err == ErrCLAManagerDesigneeConflict {
 					msg := fmt.Sprintf("Conflict assigning cla manager role for Foundation SFID: %s ", foundationSFID)
@@ -607,7 +607,7 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 			go func(swg *sync.WaitGroup, pcg *projects_cla_groups.ProjectClaGroup, designeeChannel chan *result) {
 				defer swg.Done()
 				log.WithFields(f).Debugf("creating CLA Manager Designee for Project SFID: %s", pcg.ProjectSFID)
-				claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyExternalID, pcg.ProjectSFID, userEmail)
+				claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyID, pcg.ProjectSFID, userEmail)
 				var output result
 				if err != nil {
 					if err == ErrCLAManagerDesigneeConflict {
@@ -647,12 +647,12 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 }
 
 // CreateCLAManagerRequest service method
-func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companySFID string, projectID string, userEmail string, fullName string, authUser *auth.User, LfxPortalURL string) (*models.ClaManagerDesignee, error) {
+func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User, LfxPortalURL string) (*models.ClaManagerDesignee, error) {
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.CreateCLAManagerRequest",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"contactAdmin":   contactAdmin,
-		"companySFID":    companySFID,
+		"companyID":      companyID,
 		"projectID":      projectID,
 		"userEmail":      userEmail,
 		"fullName":       fullName,
@@ -664,7 +664,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 
 	log.WithFields(f).Debugf("loading company by external ID...")
 	// Search for salesForce Company aka external Company
-	v1CompanyModel, companyErr := s.companyService.GetCompanyByExternalID(ctx, companySFID)
+	v1CompanyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
 	if companyErr != nil {
 		msg := fmt.Sprintf("EasyCLA - 400 Bad Request - %s", companyErr)
 		log.Warn(msg)
@@ -703,17 +703,17 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 	if contactAdmin {
 		log.WithFields(f).Debug("sending email to company Admin")
 		log.WithFields(f).Debug("querying user admin scopes...")
-		scopes, listScopeErr := orgService.ListOrgUserAdminScopes(ctx, companySFID, nil)
+		scopes, listScopeErr := orgService.ListOrgUserAdminScopes(ctx, v1CompanyModel.CompanyExternalID, nil)
 		if listScopeErr != nil {
 			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - Admin lookup error for organisation SFID: %s, error: %+v ",
-				companySFID, listScopeErr)
+				v1CompanyModel.CompanyExternalID, listScopeErr)
 			log.WithFields(f).Warn(msg)
 			return nil, listScopeErr
 		}
 
 		if len(scopes.Userroles) == 0 {
 			msg := fmt.Sprintf("EasyCLA - 404 NotFound - No admins for organization SFID: %s",
-				companySFID)
+				v1CompanyModel.CompanyExternalID)
 			log.WithFields(f).Warn(msg)
 			return nil, ErrNoOrgAdmins
 		}
@@ -748,7 +748,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 		msg := fmt.Sprintf("User: %s does not have an LF Login", userEmail)
 		log.WithFields(f).Warn(msg)
 		// Send email
-		sendEmailErr := sendEmailToUserWithNoLFID(ctx, projectSF.Name, authUser.UserName, authUser.Email, fullName, userEmail, companySFID, &projectSF.ID, utils.CLADesigneeRole)
+		sendEmailErr := sendEmailToUserWithNoLFID(ctx, projectSF.Name, authUser.UserName, authUser.Email, fullName, userEmail, v1CompanyModel.CompanyExternalID, &projectSF.ID, utils.CLADesigneeRole)
 		if sendEmailErr != nil {
 			log.WithFields(f).Warnf("Error sending email: %+v", sendEmailErr)
 			return nil, sendEmailErr
@@ -761,7 +761,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 	}
 
 	log.WithFields(f).Debug("sending CLA manager designee request...")
-	claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, companySFID, projectID, userEmail)
+	claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, companyID, projectID, userEmail)
 	if err != nil {
 		// Check conflict for role scope
 		if _, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict); ok {
