@@ -58,14 +58,14 @@ func entriesAreValid(params signatures.UpdateApprovalListParams) (string, bool) 
 
 	// Ensure the domains are valid
 	for _, domain := range params.Body.AddDomainApprovalList {
-		msg, valid := utils.ValidDomain(domain)
+		msg, valid := utils.ValidDomain(domain, true)
 		if !valid {
 			isValid = false
 			listOfErrors = append(listOfErrors, fmt.Sprintf("invalid add approval list domain %s - %s", domain, msg))
 		}
 	}
 	for _, domain := range params.Body.RemoveDomainApprovalList {
-		msg, valid := utils.ValidDomain(domain)
+		msg, valid := utils.ValidDomain(domain, true)
 		if !valid {
 			isValid = false
 			listOfErrors = append(listOfErrors, fmt.Sprintf("invalid remove approval list domain %s - %s", domain, msg))

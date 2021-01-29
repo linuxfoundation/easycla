@@ -186,7 +186,7 @@ func ValidEmail(email string) bool {
 }
 
 // ValidDomain tests the specified domain string, returns true if domain is valid, returns false otherwise
-func ValidDomain(domain string) (string, bool) {
+func ValidDomain(domain string, allowWildcard bool) (string, bool) { // nolint
 	domain = strings.TrimSpace(domain)
 
 	switch {
@@ -213,14 +213,28 @@ func ValidDomain(domain string) (string, bool) {
 			l = i + 1
 			continue
 		}
-		// test label character validity, note: tests are ordered by decreasing validity frequency
-		if !(b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-' || b >= 'A' && b <= 'Z') {
-			// show the printable unicode character starting at byte offset i
-			c, _ := utf8.DecodeRuneInString(domain[i:])
-			if c == utf8.RuneError {
-				return fmt.Sprintf("invalid character at offset %d", i), false
+
+		// If wildcard domains are allowed, e.g. *.linuxfoundation.org
+		if allowWildcard {
+			// test label character validity, note: tests are ordered by decreasing validity frequency
+			if !(b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-' || b == '*' || b >= 'A' && b <= 'Z') {
+				// show the printable unicode character starting at byte offset i
+				c, _ := utf8.DecodeRuneInString(domain[i:])
+				if c == utf8.RuneError {
+					return fmt.Sprintf("invalid character at offset %d", i), false
+				}
+				return fmt.Sprintf("invalid character '%c' at offset %d", c, i), false
 			}
-			return fmt.Sprintf("invalid character '%c' at offset %d", c, i), false
+		} else {
+			// test label character validity, note: tests are ordered by decreasing validity frequency
+			if !(b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-' || b >= 'A' && b <= 'Z') {
+				// show the printable unicode character starting at byte offset i
+				c, _ := utf8.DecodeRuneInString(domain[i:])
+				if c == utf8.RuneError {
+					return fmt.Sprintf("invalid character at offset %d", i), false
+				}
+				return fmt.Sprintf("invalid character '%c' at offset %d", c, i), false
+			}
 		}
 	}
 
