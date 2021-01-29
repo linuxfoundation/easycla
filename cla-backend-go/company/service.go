@@ -710,6 +710,14 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 		var signingEntityNames []string
 		if len(org.SigningEntityName) > 0 {
 			signingEntityNames = utils.TrimSpaceFromItems(org.SigningEntityName)
+			// Auto-create on-demand from SF
+			for _, signingEntityName := range signingEntityNames {
+				// By looking up the signing entity name in our own DB, we auto-create the record if it doesn't exist
+				_, lookupErr := s.GetCompanyBySigningEntityName(ctx, signingEntityName, org.ID)
+				if lookupErr != nil {
+					log.WithFields(f).WithError(lookupErr).Warnf("problem locating company record using signing entity name: %s with SFID: %s", signingEntityName, org.ID)
+				}
+			}
 		}
 		result.List = append(result.List, &models.Org{
 			OrganizationID:      org.ID,
