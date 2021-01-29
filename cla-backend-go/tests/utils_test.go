@@ -242,20 +242,52 @@ func TestValidDomain(t *testing.T) {
 		"slack.com",
 		"slack-domain-with-dash.com",
 	}
+
+	validWildcardDomains := []string{
+		"linuxfoundation.org",
+		"wikipedia.org",
+		"google.com",
+		"slack.com",
+		"slack-domain-with-dash.com",
+		"*.google.com",
+		"*.us.google.com",
+	}
+
 	inValidDomains := []string{
+		"*.google.com", // test case with allowWildcards = false
 		"linuxfoundation_org",
+		"*.linuxfoundation_org", // test case with allowWildcards = false
 		"/linuxfoundation.org",
 		"linuxfoundation+fun.org",
 		"user_linuxfoundation.org",
 	}
 
+	inWildcardValidDomains := []string{
+		"linuxfoundation_org",
+		"/linuxfoundation.org",
+		"linuxfoundation+fun.org",
+		"*.linuxfoundation+fun.org",
+		"user_linuxfoundation.org",
+		"*.user_linuxfoundation.org",
+	}
+
 	for _, domain := range validDomains {
-		msg, valid := utils.ValidDomain(domain)
+		msg, valid := utils.ValidDomain(domain, false)
+		assert.True(t, valid, fmt.Sprintf("valid domain %s %s", domain, msg))
+	}
+
+	for _, domain := range validWildcardDomains {
+		msg, valid := utils.ValidDomain(domain, true)
 		assert.True(t, valid, fmt.Sprintf("valid domain %s %s", domain, msg))
 	}
 
 	for _, domain := range inValidDomains {
-		msg, valid := utils.ValidDomain(domain)
+		msg, valid := utils.ValidDomain(domain, false)
+		assert.False(t, valid, fmt.Sprintf("invalid domain %s %s", domain, msg))
+	}
+
+	for _, domain := range inWildcardValidDomains {
+		msg, valid := utils.ValidDomain(domain, true)
 		assert.False(t, valid, fmt.Sprintf("invalid domain %s %s", domain, msg))
 	}
 }
