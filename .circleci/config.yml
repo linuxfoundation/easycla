@@ -261,13 +261,21 @@ jobs:
       - run:
           name: Test
           command: |
-            cd cla-backend-go
-            make test
+            if [[ "${STAGE}" == "dev" ]]; then
+              cd cla-backend-go
+              make test
+            else
+              echo "Skipping test - only runs in dev stage."
+            fi
       - run:
           name: Lint
           command: |
-            cd cla-backend-go
-            make lint
+            if [[ "${STAGE}" == "dev" ]]; then
+              cd cla-backend-go
+              make lint
+            else
+              echo "Skipping lint - only runs in dev stage."
+            fi
       - run:
           name: Move Binary
           command: |

@@ -5,6 +5,7 @@ package tests
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"testing"
 
@@ -21,8 +22,17 @@ func TestGetRepositoryIDFromName(t *testing.T) {
 	ctx := utils.NewContext()
 
 	// Need to initialize the system to load the configuration which contains a number of SSM parameters
-	viper.Set("STAGE", "dev")
-	viper.Set("DYNAMODB_AWS_REGION", "us-east-1")
+	stage := os.Getenv("STAGE")
+	if stage == "" {
+		assert.Fail(t, "set STAGE environment variable to run unit and functional tests.")
+	}
+	dynamodbRegion := os.Getenv("DYNAMODB_AWS_REGION")
+	if dynamodbRegion == "" {
+		assert.Fail(t, "set DYNAMODB_AWS_REGION environment variable to run unit and functional tests.")
+	}
+
+	viper.Set("STAGE", stage)
+	viper.Set("DYNAMODB_AWS_REGION", dynamodbRegion)
 	ini.Init()
 	_, err := ini.GetAWSSession()
 	if err != nil {
