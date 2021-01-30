@@ -491,6 +491,22 @@ class DocuSign(signing_service_interface.SigningService):
                 # more than one of the companies with Signed CCLAs
                 if len(ccla_signatures) > 0:
                     found_ccla = True
+                    # Need to load the correct company record
+                    try:
+                        company_id = ccla_signatures[0].get_signature_reference_id()
+                        cla.log.debug(f'{fn} - loading correct signed CCLA company by id: '
+                                      f'{ccla_signatures[0].get_signature_reference_id()} '
+                                      f'with signed entity name: {ccla_signatures[0].get_signing_entity_name()} ...')
+                        company.load(ccla_signatures[0].get_signature_reference_id())
+                        cla.log.debug(f'{fn} - loaded company {company.get_company_name()} '
+                                      f'with signing entity name: {company.get_signing_entity_name()} '
+                                      f'for {request_info}.')
+                    except DoesNotExist:
+                        cla.log.warning(f'{fn} - company does NOT exist '
+                                        f'using company_id: {ccla_signatures[0].get_signature_reference_id()} '
+                                        f'for: {request_info}')
+                        return {'errors': {'company_id': f'Company ({ccla_signatures[0].get_signature_reference_id()}) '
+                                                         'does not exist.'}}
                     break
 
             # if we didn't fine a signed CCLA under any of the other companies...
