@@ -611,19 +611,23 @@ func (s service) getRemoveGitHubContributors(approvalList *models.ApprovalList) 
 func (s service) sendRequestAccessEmailToContributors(authUser *auth.User, companyModel *models.Company, claGroupModel *models.ClaGroup, approvalList *models.ApprovalList) {
 	addEmailUsers := s.getAddEmailContributors(approvalList)
 	for _, user := range addEmailUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "added", "to", "you are authorized to contribute to")
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "added", "to",
+			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
 	}
 	removeEmailUsers := s.getRemoveEmailContributors(approvalList)
 	for _, user := range removeEmailUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "removed", "from", "you are no longer authorized to contribute to")
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "removed", "from",
+			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
 	}
 	addGitHubUsers := s.getAddGitHubContributors(approvalList)
 	for _, user := range addGitHubUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "added", "to", "you are authorized to contribute to")
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "added", "to",
+			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
 	}
 	removeGitHubUsers := s.getRemoveGitHubContributors(approvalList)
 	for _, user := range removeGitHubUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "removed", "from", "you are no longer authorized to contribute to")
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "removed", "from",
+			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
 	}
 }
 
@@ -817,12 +821,12 @@ func sendRequestAccessEmailToContributorRecipient(authUser *auth.User, companyMo
 <p>Hello %s,</p>
 <p>This is a notification email from EasyCLA regarding the project %s.</p>
 <p>You have been %s %s the Approval List of %s for %s by CLA Manager %s. This means that %s on behalf of %s.</p>
-<p>If you had previously submitted one or more pull requests to %s that had failed, you should 
-close and re-open the pull request to force a recheck by the EasyCLA system.</p>
+<p>If you had previously submitted a pull request to EasyCLA Test Group that had failed, 
+you can now go back to it and follow the link to verify with your organization.</p>
 %s
 %s`,
 		recipientName, projectName, addRemove, toFrom,
-		companyName, projectName, authUser.UserName, authorizedString, projectName, projectName,
+		companyName, projectName, authUser.UserName, authorizedString, projectName,
 		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
 
 	err := utils.SendEmail(subject, body, recipients)
