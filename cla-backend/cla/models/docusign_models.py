@@ -473,7 +473,7 @@ class DocuSign(signing_service_interface.SigningService):
             # Lookup the other companies by external id...will have 1 or more (current record plus possibly others)...
             company_list = company.get_company_by_external_id(company_external_id)
             # This shouldn't happen, let's trap for it anyway
-            if len(company_list) == 0:
+            if not company_list:
                 cla.log.warning(f'{fn} - project {project.get_project_name()} and '
                                 f'company {company.get_company_name()} - unable to lookup companies by external id: '
                                 f'{company_external_id} - {request_info}')
