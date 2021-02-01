@@ -469,7 +469,14 @@ class DocuSign(signing_service_interface.SigningService):
                                 f'company {company.get_company_name()} - company missing external id - '
                                 f'{request_info}')
                 cla.log.warning(msg)
-                return {'errors': {'missing_ccla': 'Company does not have CCLA with this project'}}
+                return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
+                                   'company_id': actual_company_id,
+                                   'company_name': company.get_company_name(),
+                                   'signing_entity_name': company.get_signing_entity_name(),
+                                   'company_external_id': company.get_company_external_id(),
+                                   }
+                        }
+
             # Lookup the other companies by external id...will have 1 or more (current record plus possibly others)...
             company_list = company.get_company_by_external_id(company_external_id)
             # This shouldn't happen, let's trap for it anyway
@@ -478,7 +485,13 @@ class DocuSign(signing_service_interface.SigningService):
                                 f'company {company.get_company_name()} - unable to lookup companies by external id: '
                                 f'{company_external_id} - {request_info}')
                 cla.log.warning(msg)
-                return {'errors': {'missing_ccla': 'Company does not have CCLA with this project'}}
+                return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
+                                   'company_id': actual_company_id,
+                                   'company_name': company.get_company_name(),
+                                   'signing_entity_name': company.get_signing_entity_name(),
+                                   'company_external_id': company.get_company_external_id(),
+                                   }
+                        }
 
             # As we loop, let's use a flag to keep track if we find a CCLA
             found_ccla = False
@@ -520,7 +533,13 @@ class DocuSign(signing_service_interface.SigningService):
             if not found_ccla:
                 # Give up
                 cla.log.warning(msg)
-                return {'errors': {'missing_ccla': 'Company does not have CCLA with this project'}}
+                return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
+                                   'company_id': actual_company_id,
+                                   'company_name': company.get_company_name(),
+                                   'signing_entity_name': company.get_signing_entity_name(),
+                                   'company_external_id': company.get_company_external_id(),
+                                   }
+                        }
 
         # Add a note in the log if we have more than 1 signed and approved CCLA signature
         if len(ccla_signatures) > 1:
