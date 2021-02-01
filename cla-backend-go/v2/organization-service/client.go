@@ -91,7 +91,11 @@ func (osc *Client) CreateOrgUserRoleOrgScope(ctx context.Context, emailID string
 	result, err := osc.cl.Organizations.CreateOrgUsrRoleScopes(params, clientAuth)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to assign user to organization")
-		return err
+		_, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict)
+		if !ok {
+			return err
+		}
+		log.WithFields(f).Warn("the role already assigned for the user skipping")
 	}
 
 	log.WithFields(f).Debugf("Successfully assigned user to organization, result: %#v", result)
