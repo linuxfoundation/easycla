@@ -538,7 +538,13 @@ class DocuSign(signing_service_interface.SigningService):
         if not user.is_approved(ccla_signature):
             # TODO: DAD - update this warning message
             cla.log.warning(f'{fn} - user is not authorized for this CCLA: {request_info}')
-            return {'errors': {'ccla_approval_list': 'user not authorized for this ccla'}}
+            return {'errors': {'ccla_approval_list': 'user not authorized for this ccla',
+                               'company_id': actual_company_id,
+                               'company_name': company.get_company_name(),
+                               'signing_entity_name': company.get_signing_entity_name(),
+                               'company_external_id': company.get_company_external_id(),
+                               }
+                    }
 
         cla.log.info(f'{fn} - user is approved for this CCLA: {request_info}')
 

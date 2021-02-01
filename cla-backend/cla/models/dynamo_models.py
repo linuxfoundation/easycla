@@ -3346,11 +3346,12 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
 
     def get_company_by_external_id(self, company_external_id: str):
         company_generator = self.model.company_external_id_index.query(company_external_id)
+        companies = []
         for company_model in company_generator:
             company = Company()
             company.model = company_model
-            return company
-        return None
+            companies.append(company)
+        return companies
 
     def all(self, ids: List[str] = None):
         if ids is None:

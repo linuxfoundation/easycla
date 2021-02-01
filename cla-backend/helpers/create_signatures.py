@@ -20,7 +20,10 @@ USER_GITHUB_ID = 123
 user = get_user_instance().get_user_by_github_id(USER_GITHUB_ID)
 project1 = get_project_instance().get_projects_by_external_id(PROJECT_EXTERNAL_ID1)[0]
 project2 = get_project_instance().get_projects_by_external_id(PROJECT_EXTERNAL_ID2)[0]
-company = get_company_instance().get_company_by_external_id(COMPANY_EXTERNAL_ID)
+company_list = get_company_instance().get_company_by_external_id(COMPANY_EXTERNAL_ID)
+company = None
+if company_list:
+    company = company_list[0]
 
 # Test ICLA Agreement.
 sig_id = str(uuid.uuid4())
