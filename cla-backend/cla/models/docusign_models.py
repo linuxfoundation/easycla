@@ -370,7 +370,10 @@ class DocuSign(signing_service_interface.SigningService):
         # Returns an error if any of the above is false.
 
         fn = 'docusign_models.check_and_prepare_employee_signature'
-        request_info = f'project: {project_id}, company: {company_id}, user: {user_id}'
+        # Keep a variable with the actual company_id - may swap the original selected company id to use another
+        # company id if another signing entity name (another related company) is already signed
+        actual_company_id = company_id
+        request_info = f'project: {project_id}, company: {actual_company_id}, user: {user_id}'
         cla.log.info(f'{fn} - check and prepare employee signature for {request_info}')
 
         # Ensure the project exists
@@ -386,12 +389,12 @@ class DocuSign(signing_service_interface.SigningService):
         # Ensure the company exists
         company = Company()
         try:
-            cla.log.debug(f'{fn} - loading company by id: {company_id}...')
-            company.load(str(company_id))
+            cla.log.debug(f'{fn} - loading company by id: {actual_company_id}...')
+            company.load(str(actual_company_id))
             cla.log.debug(f'{fn} - company {company.get_company_name()} exists for: {request_info}')
         except DoesNotExist:
             cla.log.warning(f'{fn} - company does NOT exist for: {request_info}')
-            return {'errors': {'company_id': f'Company ({company_id}) does not exist.'}}
+            return {'errors': {'company_id': f'Company ({actual_company_id}) does not exist.'}}
 
         # Ensure the user exists
         user = User()
@@ -493,7 +496,11 @@ class DocuSign(signing_service_interface.SigningService):
                     found_ccla = True
                     # Need to load the correct company record
                     try:
-                        company_id = ccla_signatures[0].get_signature_reference_id()
+                        # Reset the actual company id value since we found a CCLA under a related signing entity name
+                        # company
+                        actual_company_id = ccla_signatures[0].get_signature_reference_id()
+                        # Reset the request_info string with the updated company_id, will use it for debug/warning below
+                        request_info = f'project: {project_id}, company: {actual_company_id}, user: {user_id}'
                         cla.log.debug(f'{fn} - loading correct signed CCLA company by id: '
                                       f'{ccla_signatures[0].get_signature_reference_id()} '
                                       f'with signed entity name: {ccla_signatures[0].get_signing_entity_name()} ...')
@@ -535,10 +542,12 @@ class DocuSign(signing_service_interface.SigningService):
 
         cla.log.info(f'{fn} - user is approved for this CCLA: {request_info}')
 
-        # Assume this company is the user's employer.
+        # Assume this company is the user's employer. Associated the company with the user in the EasyCLA user record
+        # For v2, we make the association with the platform via the platform project service via a separate API
+        # call from the UI
         # TODO: DAD - we should check to see if they already have a company id assigned
-        if user.get_user_company_id() != company_id:
-            user.set_user_company_id(str(company_id))
+        if user.get_user_company_id() != actual_company_id:
+            user.set_user_company_id(str(actual_company_id))
             event_data = (f'The user {user.get_user_name()} with GitHub username '
                           f'{user.get_github_username()} ('
                           f'{user.get_user_github_id()}) and user ID '
@@ -551,7 +560,7 @@ class DocuSign(signing_service_interface.SigningService):
                              f'project {project.get_project_name()}.')
             Event.create_event(
                 event_type=EventType.UserAssociatedWithCompany,
-                event_company_id=company_id,
+                event_company_id=actual_company_id,
                 event_company_name=company.get_company_name(),
                 event_project_id=project_id,
                 event_project_name=project.get_project_name(),
