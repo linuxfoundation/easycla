@@ -238,7 +238,7 @@ func (repo repository) GetGithubOrganizations(ctx context.Context, projectSFID s
 
 func (repo repository) GetGithubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error) {
 	f := logrus.Fields{
-		"functionName":      "GetGitHubOrganizations",
+		"functionName":      "GetGithubOrganizationsByParent",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"parentProjectSFID": parentProjectSFID,
 	}
