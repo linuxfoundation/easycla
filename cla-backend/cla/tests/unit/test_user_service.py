@@ -17,6 +17,7 @@ def mock_pcg():
     pcg.set_cla_group_id('foo_cla_group_id')
     yield pcg
 
+
 @patch('cla.user_service.ProjectCLAGroup.get_by_cla_group_id')
 @patch('cla.user_service.UserService._list_org_user_scopes')
 def test_user_has_role_scope(mock_user_scopes, mock_pcgs, mock_pcg):

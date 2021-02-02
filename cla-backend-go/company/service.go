@@ -670,22 +670,12 @@ func (s service) GetCompanyBySigningEntityName(ctx context.Context, signingEntit
 	}
 	log.WithFields(f).Debug("Searching company by signing entity name...")
 	comp, err := s.repo.GetCompanyBySigningEntityName(ctx, signingEntityName)
-	if err == nil {
+	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem searching organizations by signing entity name")
-		return comp, nil
+		return nil, err
 	}
 
-	if _, ok := err.(*utils.CompanyNotFound); ok {
-		log.WithFields(f).Debugf("Company with signing entity name %s does not exist", signingEntityName)
-		comp, err = s.CreateOrgFromExternalID(ctx, signingEntityName, companySFID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("Unable to create organization from external ID: %s using signing entity name: %s", companySFID, signingEntityName)
-			return comp, err
-		}
-		return comp, nil
-	}
-
-	return nil, err
+	return comp, nil
 }
 
 func (s service) SearchOrganizationByName(ctx context.Context, orgName string, websiteName string, filter string) (*models.OrgList, error) {
@@ -712,10 +702,10 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 			signingEntityNames = utils.TrimSpaceFromItems(org.SigningEntityName)
 			// Auto-create on-demand from SF
 			for _, signingEntityName := range signingEntityNames {
-				// By looking up the signing entity name in our own DB, we auto-create the record if it doesn't exist
-				_, lookupErr := s.GetCompanyBySigningEntityName(ctx, signingEntityName, org.ID)
-				if lookupErr != nil {
-					log.WithFields(f).WithError(lookupErr).Warnf("problem locating company record using signing entity name: %s with SFID: %s", signingEntityName, org.ID)
+				// Auto-create the internal record, if needed
+				_, err = s.CreateOrgFromExternalID(ctx, signingEntityName, org.ID)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warnf("Unable to create organization from external ID: %s using signing entity name: %s", org.ID, signingEntityName)
 				}
 			}
 		}
@@ -737,8 +727,30 @@ func (s service) CreateOrgFromExternalID(ctx context.Context, signingEntityName,
 		"companySFID":       companySFID,
 		"signingEntityName": signingEntityName,
 	}
+
+	var companyModel *models.Company
+	var lookupErr error
+	if signingEntityName == "" {
+		// Lookup the company in our database...does it exist?
+		companyModel, lookupErr = s.GetCompanyByExternalID(ctx, companySFID)
+		if lookupErr != nil {
+			log.WithFields(f).WithError(lookupErr).Debug("problem locating internal company record by signing entity name and SFID - must not exist yet")
+		}
+	} else {
+		// Lookup the company in our database...does it exist?
+		companyModel, lookupErr = s.GetCompanyBySigningEntityName(ctx, signingEntityName, companySFID)
+		if lookupErr != nil {
+			log.WithFields(f).WithError(lookupErr).Debug("problem locating internal company record by signing entity name and SFID - must not exist yet")
+		}
+	}
+
+	// Already exists - no need to create in our own database
+	if companyModel != nil {
+		return companyModel, nil
+	}
+
 	osc := organization_service.GetClient()
-	log.WithFields(f).Debugf("Searching organization by company SFID...")
+	log.WithFields(f).Debugf("Searching organization by company SFID in the organization service...")
 	org, err := osc.GetOrganization(ctx, companySFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("getting organization details failed")
