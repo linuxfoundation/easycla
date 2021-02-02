@@ -270,7 +270,7 @@ func server(localMode bool) http.Handler {
 	v1RepositoriesService := repositories.NewService(repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo)
 	v2RepositoriesService := v2Repositories.NewService(repositoriesRepo, projectClaGroupRepo, githubOrganizationsRepo)
 	v2ClaManagerService := v2ClaManager.NewService(v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, projectClaGroupRepo)
-	v1ApprovalListService := approval_list.NewService(approvalListRepo, usersRepo, v1CompanyRepo, projectRepo, signaturesRepo, configFile.CorporateConsoleURL, http.DefaultClient)
+	v1ApprovalListService := approval_list.NewService(approvalListRepo, usersRepo, v1CompanyRepo, projectRepo, signaturesRepo, configFile.CorporateConsoleV2URL, http.DefaultClient)
 	authorizer := auth.NewAuthorizer(authValidator, userRepo)
 	v2MetricsService := metrics.NewService(metricsRepo, projectClaGroupRepo)
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, repositoriesRepo, projectClaGroupRepo)

@@ -1377,12 +1377,12 @@ func sendDesigneeEmailToUserWithNoLFID(ctx context.Context, requesterUsername, r
 	<p> This email will guide you to completing the CLA Manager role assignment </p>
 	<p>1. Accept Invite link below will take you SSO login page where you can login with your LF Login or create a LF Login and then login.</p>
 	<p>2. After logging in SSO screen should direct you to CLA Corporate Console page where you will see the project you a re associated with.</p>
-	<p>3. Click on workflow steps to complete the signup process. Please follow this documentation to help you guide through the process - https://docs.linuxfoundation.org/lfx/easycla/ccla-managers-and-ccla-signatories</p>
+	<p>3. Click on workflow steps to complete the signup process. Please follow this documentation to help you guide through the process - https://docs.linuxfoundation.org/lfx/v/v2/easycla/corporate-cla-manager-designee-or-initial-cla-manager/sign-corporate-cla-for-a-company</p>
 	<p>4. Once you have completed CLA Manager workflow you will be able to manage the approved list of contributors </p>
 	<p> <a href="USERACCEPTLINK">Accept Invite</a> </p>
 	%s
 	%s
-	`, userWithNoLFIDName, requesterUsername, requesterEmail, organizationName, projectName,
+	`, userWithNoLFIDName, requesterUsername, requesterEmail, projectName, organizationName,
 		utils.GetEmailHelpContent(true), utils.GetEmailSignOffContent())
 	acsClient := v2AcsService.GetClient()
 	automate := false
