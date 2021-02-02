@@ -21,6 +21,9 @@ from cla.models import repository_service_interface, DoesNotExist
 from cla.models.dynamo_models import Repository, GitHubOrg
 from cla.utils import get_project_instance, append_project_version_to_url
 
+# some emails we want to exclude when we register the users
+EXCLUDE_GITHUB_EMAILS = ["noreply.github.com"]
+
 
 class GitHub(repository_service_interface.RepositoryService):
     """
@@ -577,7 +580,18 @@ class GitHub(repository_service_interface.RepositoryService):
         cla.log.debug('GitHub user emails: %s', emails)
         if 'error' in emails:
             return emails
-        return [item['email'] for item in emails if item['verified']]
+
+        verified_emails = [item['email'] for item in emails if item['verified']]
+        excluded_emails = [email for email in verified_emails
+                           if any([email.endswith(e) for e in EXCLUDE_GITHUB_EMAILS])]
+        included_emails = [email for email in verified_emails
+                           if not any([email.endswith(e) for e in EXCLUDE_GITHUB_EMAILS])]
+
+        if len(included_emails) > 0:
+            return included_emails
+
+        # something we're not very happy about but probably it can happen
+        return excluded_emails
 
     def get_primary_user_email(self, request) -> Union[Optional[str], dict]:
         """

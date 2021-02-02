@@ -75,6 +75,8 @@ var (
 const (
 	// NoAccount represents user with no company
 	NoAccount = "Individual - No Account"
+	// used for filtering when fetching contributor email
+	excludedNoReplyEmails = "noreply.github.com"
 )
 
 type service struct {
@@ -965,7 +967,8 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 			return nil, projectErr
 		}
 
-		sendErr := sendDesigneeEmailToUserWithNoLFID(ctx, contributor.UserName, contributor.UserEmails[0], name, userEmail, organization.Name, organization.ID, sfProject.Name, &foundationSFID, "cla-manager-designee")
+		contibutorEmail := GetNonNoReplyUserEmail(contributor.UserEmails)
+		sendErr := sendDesigneeEmailToUserWithNoLFID(ctx, contributor.UserName, contibutorEmail, name, userEmail, organization.Name, organization.ID, sfProject.Name, &foundationSFID, "cla-manager-designee")
 		if sendErr != nil {
 			msg := fmt.Sprintf("Problem sending email to user: %s , error: %+v", userEmail, sendErr)
 			log.Warn(msg)
@@ -1448,4 +1451,28 @@ func companyV1toV2(v1CompanyModel *v1Models.Company) *models.Company {
 		Updated:           v1CompanyModel.Updated,
 		Version:           v1CompanyModel.Version,
 	}
+}
+
+// GetNonNoReplyUserEmail tries to fetch an email which doesn't have noreply string in it
+// but if it's the only one we have it'll still be returned
+func GetNonNoReplyUserEmail(userEmails []string) string {
+	if len(userEmails) == 0 {
+		return ""
+	}
+
+	excludedEmails := []string{}
+
+	for _, email := range userEmails {
+		if strings.HasSuffix(email, excludedNoReplyEmails) {
+			excludedEmails = append(excludedEmails, email)
+			continue
+		}
+		return email
+	}
+
+	if len(excludedEmails) > 0 {
+		return excludedEmails[0]
+	}
+
+	return ""
 }

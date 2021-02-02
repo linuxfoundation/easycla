@@ -9,6 +9,7 @@ from github import Github
 import cla
 from cla.models.github_models import get_pull_request_commit_authors, handle_commit_from_user, MockGitHub
 from cla.models.dynamo_models import Signature, Project
+from cla.models.github_models import GitHub as GithubModel
 
 
 class TestGitHubModels(unittest.TestCase):
@@ -140,6 +141,89 @@ class TestGithubModelsPrComment(unittest.TestCase):
             "issue": {"number": 1},
             "installation": {"id": 1},
         })
+
+
+class TestGithubUserEmails(unittest.TestCase):
+
+    def test_empty_emails(self):
+        with patch.object(GithubModel, "_fetch_github_emails") as _fetch_github_emails:
+            _fetch_github_emails.return_value = []
+            github = GithubModel()
+            emails = github.get_user_emails(None, "fake_client_id")
+            assert not emails
+
+    def test_emails_with_noreply(self):
+        with patch.object(GithubModel, "_fetch_github_emails") as _fetch_github_emails:
+            _fetch_github_emails.return_value = [
+                {
+                    "email": "octocat@users.noreply.github.com",
+                    "verified": True,
+                    "primary": True,
+                    "visibility": "public"
+                },
+                {
+                    "email": "pumacat@gmail.com",
+                    "verified": True,
+                    "primary": True,
+                    "visibility": "public"
+                },
+                {
+                    "email": "pumacat+notveried@gmail.com",
+                    "verified": False,
+                    "primary": True,
+                    "visibility": "public"
+                }
+            ]
+            github = GithubModel()
+            emails = github.get_user_emails(None, "fake_client_id")
+            assert emails
+            assert len(emails) == 1
+            assert emails == ["pumacat@gmail.com"]
+
+    def test_emails_with_noreply_single(self):
+        with patch.object(GithubModel, "_fetch_github_emails") as _fetch_github_emails:
+            _fetch_github_emails.return_value = [
+                {
+                    "email": "octocat@users.noreply.github.com",
+                    "verified": True,
+                    "primary": True,
+                    "visibility": "public"
+                },
+            ]
+            github = GithubModel()
+            emails = github.get_user_emails(None, "fake_client_id")
+            assert emails
+            assert len(emails) == 1
+            assert emails == ["octocat@users.noreply.github.com"]
+
+    def test_emails_without_noreply(self):
+        with patch.object(GithubModel, "_fetch_github_emails") as _fetch_github_emails:
+            _fetch_github_emails.return_value = [
+                {
+                    "email": "pumacat@gmail.com",
+                    "verified": True,
+                    "primary": True,
+                    "visibility": "public"
+                },
+                {
+                    "email": "pumacat2@gmail.com",
+                    "verified": True,
+                    "primary": True,
+                    "visibility": "public"
+                },
+                {
+                    "email": "pumacat+notveried@gmail.com",
+                    "verified": False,
+                    "primary": True,
+                    "visibility": "public"
+                }
+            ]
+            github = GithubModel()
+            emails = github.get_user_emails(None, "fake_client_id")
+            assert emails
+            assert len(emails) == 2
+            assert "pumacat@gmail.com" in emails
+            assert "pumacat2@gmail.com" in emails
 
 
 if __name__ == '__main__':
