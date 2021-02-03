@@ -219,7 +219,7 @@ func (s *service) SignatureSignedEvent(event events.DynamoDBEventRecord) error {
 			if signedAtFoundation {
 				log.WithFields(f).Debugf("removing existing %s role for project: '%s' (%s) and company: '%s' (%s)",
 					utils.CLADesigneeRole, projectCLAGroups[0].ProjectName, foundationSFID, companyModel.CompanyName, companyModel.CompanyExternalID)
-				err = s.removeCLAPermissionsByProjectOrganizationRole(foundationSFID, companyModel.CompanyExternalID, []string{utils.CLADesigneeRole})
+				err = s.removeCLAPermissionsByProjectOrganizationRole(ctx, foundationSFID, companyModel.CompanyExternalID, []string{utils.CLADesigneeRole})
 				if err != nil {
 					log.WithFields(f).Warnf("failed to remove %s roles for project: '%s' (%s) and company: '%s' (%s), error: %+v",
 						utils.CLADesigneeRole, projectCLAGroups[0].ProjectName, foundationSFID, companyModel.CompanyName, companyModel.CompanyExternalID, err)
@@ -231,7 +231,7 @@ func (s *service) SignatureSignedEvent(event events.DynamoDBEventRecord) error {
 						// Remove any roles that were previously assigned for cla-manager-designee
 						log.WithFields(f).Debugf("removing existing %s role for project: '%s' (%s) and company: '%s' (%s)",
 							utils.CLADesigneeRole, projectCLAGroup.ProjectName, projectCLAGroup.ProjectSFID, companyModel.CompanyName, companyModel.CompanyExternalID)
-						err = s.removeCLAPermissionsByProjectOrganizationRole(projectCLAGroup.ProjectSFID, companyModel.CompanyExternalID, []string{utils.CLADesigneeRole})
+						err = s.removeCLAPermissionsByProjectOrganizationRole(ctx, projectCLAGroup.ProjectSFID, companyModel.CompanyExternalID, []string{utils.CLADesigneeRole})
 						if err != nil {
 							log.WithFields(f).Warnf("failed to remove %s roles for project: '%s' (%s) and company: '%s' (%s), error: %+v",
 								utils.CLADesigneeRole, projectCLAGroup.ProjectName, projectCLAGroup.ProjectSFID, companyModel.CompanyName, companyModel.CompanyExternalID, err)

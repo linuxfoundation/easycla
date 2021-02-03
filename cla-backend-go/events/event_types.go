@@ -80,6 +80,7 @@ const (
 	ContributorAssignCLADesigneeType  = "contributor.assign_designee"
 	ConvertUserToContactType          = "lfx_user.convert_to_contact"
 	AssignUserRoleScopeType           = "lfx_org_service.assign_user_role_scope"
+	RemoveUserRoleScopeType           = "lfx_org_service.remove_user_role_scope"
 
 	ProjectServiceCLAEnabled  = "project.service.cla.enabled"
 	ProjectServiceCLADisabled = "project.service.cla.disabled"

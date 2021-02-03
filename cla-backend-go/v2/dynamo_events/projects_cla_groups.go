@@ -4,6 +4,7 @@
 package dynamo_events
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -35,11 +36,13 @@ type ProjectClaGroup struct {
 
 // ProjectServiceEnableCLAServiceHandler handles enabling the CLA Service attribute from the project service
 func (s *service) ProjectServiceEnableCLAServiceHandler(event events.DynamoDBEventRecord) error {
+	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName": "ProjectServiceEnableCLAServiceHandler",
-		"eventID":      event.EventID,
-		"eventName":    event.EventName,
-		"eventSource":  event.EventSource,
+		"functionName":   "dynamo_events.projects_cla_groups.ProjectServiceEnableCLAServiceHandler",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"eventID":        event.EventID,
+		"eventName":      event.EventName,
+		"eventSource":    event.EventSource,
 	}
 
 	log.WithFields(f).Debug("processing request")
@@ -55,39 +58,43 @@ func (s *service) ProjectServiceEnableCLAServiceHandler(event events.DynamoDBEve
 	f["foundationSFID"] = newProject.FoundationSFID
 
 	psc := v2ProjectService.GetClient()
-	log.WithFields(f).Debug("enabling CLA service...")
+	log.WithFields(f).Debug("looking up project by SFID...")
 	projectDetails, prjerr := psc.GetProject(newProject.ProjectSFID)
 	if prjerr != nil {
-		log.WithError(err).Warn("enable to get project details")
+		log.WithError(err).Warnf("unable to get project details from SFID: %s", newProject.ProjectSFID)
 	}
 	projectName := newProject.ProjectSFID
 	if projectDetails != nil {
 		projectName = projectDetails.Name
+		f["projectName"] = projectName
 	}
+
 	start, _ := utils.CurrentTime()
+	log.WithFields(f).Debugf("enabling CLA service for project %s with ID: %s", projectName, newProject.ProjectSFID)
 	err = psc.EnableCLA(newProject.ProjectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("enabling CLA service failed")
 		return err
 	}
 	finish, _ := utils.CurrentTime()
+	log.WithFields(f).Debugf("enabled CLA service for project %s with ID: %s", projectName, newProject.ProjectSFID)
 	log.WithFields(f).Debugf("enabling CLA service completed - took: %s", finish.Sub(start).String())
 
 	// Log the event
 	eventErr := s.eventsRepo.CreateEvent(&models.Event{
 		ContainsPII:            false,
-		EventData:              fmt.Sprintf("enabled CLA service for project: %s", projectName),
-		EventSummary:           fmt.Sprintf("enabled CLA service for project: %s", projectName),
+		EventData:              fmt.Sprintf("enabled CLA service for project: %s with ID: %s", projectName, newProject.ProjectSFID),
 		EventFoundationSFID:    newProject.FoundationSFID,
 		EventProjectExternalID: newProject.ProjectSFID,
 		EventProjectID:         newProject.ClaGroupID,
+		EventProjectName:       projectName,
 		EventProjectSFID:       newProject.ProjectSFID,
+		EventProjectSFName:     projectName,
+		EventSummary:           fmt.Sprintf("enabled CLA service for project: %s", projectName),
 		EventType:              claEvents.ProjectServiceCLAEnabled,
 		LfUsername:             "easycla system",
 		UserID:                 "easycla system",
 		UserName:               "easycla system",
-		// EventProjectName:       "",
-		EventProjectSFName: projectName,
 	})
 	if eventErr != nil {
 		log.WithFields(f).WithError(eventErr).Warn("problem logging event for enabling CLA service")
@@ -99,11 +106,13 @@ func (s *service) ProjectServiceEnableCLAServiceHandler(event events.DynamoDBEve
 
 // ProjectServiceDisableCLAServiceHandler handles disabling/removing the CLA Service attribute from the project service
 func (s *service) ProjectServiceDisableCLAServiceHandler(event events.DynamoDBEventRecord) error {
+	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName": "ProjectServiceDisableCLAServiceHandler",
-		"eventID":      event.EventID,
-		"eventName":    event.EventName,
-		"eventSource":  event.EventSource,
+		"functionName":   "dynamo_events.projects_cla_groups.ProjectServiceDisableCLAServiceHandler",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"eventID":        event.EventID,
+		"eventName":      event.EventName,
+		"eventSource":    event.EventSource,
 	}
 
 	log.WithFields(f).Debug("processing request")
@@ -120,31 +129,42 @@ func (s *service) ProjectServiceDisableCLAServiceHandler(event events.DynamoDBEv
 	f["FoundationSFID"] = oldProject.FoundationSFID
 
 	psc := v2ProjectService.GetClient()
+	log.WithFields(f).Debug("looking up project by SFID...")
+	projectDetails, prjerr := psc.GetProject(oldProject.ProjectSFID)
+	if prjerr != nil {
+		log.WithError(err).Warnf("unable to get project details from SFID: %s", oldProject.ProjectSFID)
+	}
+	projectName := oldProject.ProjectSFID
+	if projectDetails != nil {
+		projectName = projectDetails.Name
+		f["projectName"] = projectName
+	}
+
 	// Gathering metrics - grab the time before the API call
 	before, _ := utils.CurrentTime()
-	log.WithFields(f).Debug("disabling CLA service")
+	log.WithFields(f).Debugf("disabling CLA service for project %s with ID: %s", projectName, oldProject.ProjectSFID)
 	err = psc.DisableCLA(oldProject.ProjectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("disabling CLA service failed")
 		return err
 	}
-	log.WithFields(f).Debugf("disabling CLA service took %s", time.Since(before).String())
+	log.WithFields(f).Debugf("disabled CLA service for project %s with ID: %s", projectName, oldProject.ProjectSFID)
+	log.WithFields(f).Debugf("disabling CLA service completed - took %s", time.Since(before).String())
 
 	// Log the event
 	eventErr := s.eventsRepo.CreateEvent(&models.Event{
 		ContainsPII:            false,
-		EventData:              fmt.Sprintf("disabled CLA service for project: %s", oldProject.ProjectSFID),
-		EventSummary:           fmt.Sprintf("disabled CLA service for project: %s", oldProject.ProjectSFID),
+		EventData:              fmt.Sprintf("disabled CLA service for project: %s with ID: %s", projectName, oldProject.ProjectSFID),
 		EventFoundationSFID:    oldProject.FoundationSFID,
 		EventProjectExternalID: oldProject.ProjectSFID,
 		EventProjectID:         oldProject.ClaGroupID,
+		EventProjectName:       projectName,
 		EventProjectSFID:       oldProject.ProjectSFID,
+		EventSummary:           fmt.Sprintf("disabled CLA service for project: %s", projectName),
 		EventType:              claEvents.ProjectServiceCLADisabled,
 		LfUsername:             "easycla system",
 		UserID:                 "easycla system",
 		UserName:               "easycla system",
-		// EventProjectName:       "",
-		// EventProjectSFName:     "",
 	})
 	if eventErr != nil {
 		log.WithFields(f).WithError(eventErr).Warn("problem logging event for disabling CLA service")
@@ -157,7 +177,7 @@ func (s *service) ProjectServiceDisableCLAServiceHandler(event events.DynamoDBEv
 func (s *service) ProjectUnenrolledDisableRepositoryHandler(event events.DynamoDBEventRecord) error {
 	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName":   "ProjectUnenrolledDisableRepositoryHandler",
+		"functionName":   "dynamo_events.projects_cla_groups.ProjectUnenrolledDisableRepositoryHandler",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"eventID":        event.EventID,
 		"eventName":      event.EventName,
@@ -231,11 +251,13 @@ func (s *service) ProjectUnenrolledDisableRepositoryHandler(event events.DynamoD
 
 // AddCLAPermissions handles adding CLA permissions
 func (s *service) AddCLAPermissions(event events.DynamoDBEventRecord) error {
+	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName": "AddCLAPermissions",
-		"eventID":      event.EventID,
-		"eventName":    event.EventName,
-		"eventSource":  event.EventSource,
+		"functionName":   "dynamo_events.projects_cla_groups.AddCLAPermissions",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"eventID":        event.EventID,
+		"eventName":      event.EventName,
+		"eventSource":    event.EventSource,
 	}
 
 	log.WithFields(f).Debug("processing event")
@@ -252,14 +274,14 @@ func (s *service) AddCLAPermissions(event events.DynamoDBEventRecord) error {
 	f["FoundationSFID"] = newProject.FoundationSFID
 
 	// Add any relevant CLA Manager permissions for this CLA Group/Project SFID
-	permErr := s.addCLAManagerPermissions(newProject.ClaGroupID, newProject.ProjectSFID)
+	permErr := s.addCLAManagerPermissions(ctx, newProject.ClaGroupID, newProject.ProjectSFID)
 	if permErr != nil {
 		log.WithFields(f).WithError(permErr).Warn("problem adding CLA Manager permissions for projectSFID")
 		// Ok - don't fail for now
 	}
 
 	// Add any relevant CLA Manager Designee permissions for this CLA Group/Project SFID
-	permErr = s.addCLAManagerDesigneePermissions(newProject.ClaGroupID, newProject.FoundationSFID, newProject.ProjectSFID)
+	permErr = s.addCLAManagerDesigneePermissions(ctx, newProject.ClaGroupID, newProject.FoundationSFID, newProject.ProjectSFID)
 	if permErr != nil {
 		log.WithFields(f).WithError(permErr).Warn("problem adding CLA Manager Designee permissions for projectSFID")
 		// Ok - don't fail for now
@@ -270,11 +292,13 @@ func (s *service) AddCLAPermissions(event events.DynamoDBEventRecord) error {
 
 // RemoveCLAPermissions handles removing existing CLA permissions
 func (s *service) RemoveCLAPermissions(event events.DynamoDBEventRecord) error {
+	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName": "RemoveCLAPermissions",
-		"eventID":      event.EventID,
-		"eventName":    event.EventName,
-		"eventSource":  event.EventSource,
+		"functionName":   "dynamo_events.projects_cla_groups.RemoveCLAPermissions",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"eventID":        event.EventID,
+		"eventName":      event.EventName,
+		"eventSource":    event.EventSource,
 	}
 
 	log.WithFields(f).Debug("processing event")
@@ -291,7 +315,7 @@ func (s *service) RemoveCLAPermissions(event events.DynamoDBEventRecord) error {
 	f["FoundationSFID"] = oldProject.FoundationSFID
 
 	// Remove any CLA related permissions
-	permErr := s.removeCLAPermissions(oldProject.ProjectSFID)
+	permErr := s.removeCLAPermissions(ctx, oldProject.ProjectSFID)
 	if permErr != nil {
 		log.WithFields(f).WithError(permErr).Warn("problem removing CLA permissions for projectSFID")
 		// Ok - don't fail for now
@@ -300,12 +324,25 @@ func (s *service) RemoveCLAPermissions(event events.DynamoDBEventRecord) error {
 	return nil
 }
 
-func (s *service) addCLAManagerDesigneePermissions(claGroupID, foundationSFID, projectSFID string) error {
-	ctx := utils.NewContext()
+func (s *service) addCLAManagerDesigneePermissions(ctx context.Context, claGroupID, foundationSFID, projectSFID string) error {
 	f := logrus.Fields{
-		"functionName": "addCLAManagerDesigneePermissions",
-		"claGroupID":   claGroupID,
-		"projectSFID":  projectSFID,
+		"functionName":   "dynamo_events.projects_cla_groups.addCLAManagerDesigneePermissions",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"projectSFID":    projectSFID,
+	}
+
+	// Lookup the project name
+	log.WithFields(f).Debugf("looking up project by SFID: %s", projectSFID)
+	psc := v2ProjectService.GetClient()
+	projectModel, err := psc.GetProject(projectSFID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup project record by projectSFID")
+	}
+	projectName := ""
+	if projectModel != nil {
+		projectName = projectModel.Name
+		f["projectName"] = projectName
 	}
 
 	//handle userscopes per project(users with Designee role)
@@ -377,11 +414,50 @@ func (s *service) addCLAManagerDesigneePermissions(claGroupID, foundationSFID, p
 				orgID := strings.Split(userScope.ObjectID, "|")[1]
 				email := userScope.Email
 
+				// Lookup the organization name
+				log.WithFields(f).Debugf("looking up organization by SFID: %s", orgID)
+				orgModel, orgLookupErr := orgClient.GetOrganization(ctx, orgID)
+				if orgLookupErr != nil {
+					log.WithFields(f).WithError(orgLookupErr).Warnf("unable to lookup organization record by organziation SFID: %s", orgID)
+				}
+				orgName := ""
+				if orgModel != nil {
+					orgName = orgModel.Name
+					log.WithFields(f).Debugf("found organization by SFID: %s - Name: %s", orgID, orgName)
+				}
+
+				log.WithFields(f).Debugf("assiging role: %s to user %s with email %s for project: %s, company: %s...",
+					utils.CLAManagerRole, userScope.Username, email, projectSFID, orgID)
 				roleErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, email, projectSFID, orgID, claManagerDesigneeRoleID)
 				if roleErr != nil {
 					log.WithFields(f).WithError(roleErr).Warnf("%s, role assignment for user %s failed for this project: %s, company: %s ",
 						utils.CLADesigneeRole, email, projectSFID, orgID)
 					return
+				}
+
+				msgSummary := fmt.Sprintf("assigned role: %s to user %s with email %s for project: %s, company: %s",
+					utils.CLAManagerRole, userScope.Username, email, projectName, orgName)
+				msg := fmt.Sprintf("assigned role: %s to user %s with email %s for project: %s with SFID: %s, company: %s with SFID: %s",
+					utils.CLAManagerRole, userScope.Username, email, projectName, projectSFID, orgName, orgID)
+				log.WithFields(f).Debug(msg)
+				// Log the event
+				eventErr := s.eventsRepo.CreateEvent(&models.Event{
+					ContainsPII:            false,
+					EventCompanySFID:       orgID,
+					EventData:              msg,
+					EventProjectExternalID: projectSFID,
+					EventProjectID:         claGroupID,
+					EventProjectName:       projectName,
+					EventProjectSFID:       projectSFID,
+					EventCompanyName:       orgName,
+					EventSummary:           msgSummary,
+					EventType:              claEvents.AssignUserRoleScopeType,
+					LfUsername:             "easycla system",
+					UserID:                 "easycla system",
+					UserName:               "easycla system",
+				})
+				if eventErr != nil {
+					log.WithFields(f).WithError(eventErr).Warnf("unable to create event log entry for %s with msg: %s", claEvents.AssignUserRoleScopeType, msg)
 				}
 			}(userScope)
 		}
@@ -395,14 +471,27 @@ func (s *service) addCLAManagerDesigneePermissions(claGroupID, foundationSFID, p
 }
 
 // addCLAManagerPermissions handles adding the CLA Manager permissions for the specified SF project
-func (s *service) addCLAManagerPermissions(claGroupID, projectSFID string) error {
-	ctx := utils.NewContext()
+func (s *service) addCLAManagerPermissions(ctx context.Context, claGroupID, projectSFID string) error {
 	f := logrus.Fields{
-		"functionName": "addCLAManagerPermissions",
-		"projectSFID":  projectSFID,
-		"claGroupID":   claGroupID,
+		"functionName":   "dynamo_events.projects_cla_groups.addCLAManagerPermissions",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+		"claGroupID":     claGroupID,
 	}
 	log.WithFields(f).Debug("adding CLA Manager permissions...")
+
+	// Lookup the project name
+	log.WithFields(f).Debugf("looking up project by SFID: %s", projectSFID)
+	psc := v2ProjectService.GetClient()
+	projectModel, err := psc.GetProject(projectSFID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup project record by projectSFID")
+	}
+	projectName := ""
+	if projectModel != nil {
+		projectName = projectModel.Name
+		f["projectName"] = projectName
+	}
 
 	sigModels, err := s.signatureRepo.GetProjectSignatures(ctx, signatures.GetProjectSignaturesParams{
 		ClaType:   aws.String(utils.ClaTypeCCLA),
@@ -489,20 +578,45 @@ func (s *service) addCLAManagerPermissions(claGroupID, projectSFID string) error
 
 				// Does the user already have the cla-manager role?
 				if hasRole {
-					log.WithFields(f).Debugf("user %s/%s already has role %s for the project %s and organization %s",
+					log.WithFields(f).Debugf("user %s/%s already has role %s for the project %s and organization %s - skipping assignment",
 						signatureUserModel.LfUsername, userModel.ID, utils.CLAManagerRole, projectSFID, companySFID)
 					// Nothing to do here - move along...
 					return
 				}
 
 				// Finally....assign the role to this user
-				roleErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, aws.StringValue(userModel.Email), projectSFID, companySFID, claManagerRoleID)
+				log.WithFields(f).Debugf("assiging role: %s to user %s/%s/%s for project: %s, company: %s...",
+					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, *userModel.Email, projectSFID, companySFID)
+				roleErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, utils.StringValue(userModel.Email), projectSFID, companySFID, claManagerRoleID)
 				if roleErr != nil {
 					log.WithFields(f).WithError(roleErr).Warnf("%s, role assignment for user user %s/%s/%s failed for this project: %s, company: %s",
-						utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, *userModel.Email, projectSFID, companySFID)
+						utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, utils.StringValue(userModel.Email), projectSFID, companySFID)
 					return
 				}
-
+				msg := fmt.Sprintf("assigned role: %s to user %s/%s/%s for project: %s with SFID:%s, company: %s with SFID: %s",
+					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, utils.StringValue(userModel.Email), projectName, projectSFID, companyModel.CompanyName, companySFID)
+				msgSummary := fmt.Sprintf("assigned role: %s to user %s/%s/%s for project: %s, company: %s",
+					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, utils.StringValue(userModel.Email), projectName, companyModel.CompanyName)
+				log.WithFields(f).Debug(msg)
+				// Log the event
+				eventErr := s.eventsRepo.CreateEvent(&models.Event{
+					ContainsPII:            false,
+					EventCompanyName:       companyModel.CompanyName,
+					EventCompanySFID:       companySFID,
+					EventData:              msg,
+					EventProjectExternalID: projectSFID,
+					EventProjectID:         claGroupID,
+					EventProjectName:       projectName,
+					EventProjectSFID:       projectSFID,
+					EventSummary:           msgSummary,
+					EventType:              claEvents.AssignUserRoleScopeType,
+					LfUsername:             "easycla system",
+					UserID:                 "easycla system",
+					UserName:               "easycla system",
+				})
+				if eventErr != nil {
+					log.WithFields(f).WithError(eventErr).Warnf("unable to create event log entry for %s with msg: %s", claEvents.AssignUserRoleScopeType, msg)
+				}
 			}(signatureUserModel)
 		}
 
@@ -515,36 +629,119 @@ func (s *service) addCLAManagerPermissions(claGroupID, projectSFID string) error
 }
 
 // removeCLAPermissions handles removing CLA Group (projects table) permissions for the specified project
-func (s *service) removeCLAPermissions(projectSFID string) error {
+func (s *service) removeCLAPermissions(ctx context.Context, projectSFID string) error {
 	f := logrus.Fields{
-		"functionName": "removeCLAPermissions",
-		"projectSFID":  projectSFID,
+		"functionName":   "dynamo_events.projects_cla_groups.removeCLAPermissions",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
 	}
 	log.WithFields(f).Debug("removing CLA permissions...")
 
+	// Lookup the project name
+	log.WithFields(f).Debugf("looking up project by SFID: %s", projectSFID)
+	psc := v2ProjectService.GetClient()
+	projectModel, err := psc.GetProject(projectSFID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup project record by projectSFID")
+	}
+	projectName := ""
+	if projectModel != nil {
+		projectName = projectModel.Name
+		f["projectName"] = projectName
+	}
+
 	client := acsService.GetClient()
-	err := client.RemoveCLAUserRolesByProject(projectSFID, []string{utils.CLAManagerRole, utils.CLADesigneeRole, utils.CLASignatoryRole})
+	roleNames := []string{utils.CLAManagerRole, utils.CLADesigneeRole, utils.CLASignatoryRole}
+
+	log.WithFields(f).Debugf("removing roles: %s for all users for project: %s", strings.Join(roleNames, ","), projectSFID)
+	err = client.RemoveCLAUserRolesByProject(projectSFID, roleNames)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem removing CLA user roles by projectSFID")
+	}
+	msg := fmt.Sprintf("removed roles: %s for all users for project: %s", strings.Join(roleNames, ","), projectSFID)
+	log.WithFields(f).Debug(msg)
+
+	// Log the event
+	eventErr := s.eventsRepo.CreateEvent(&models.Event{
+		ContainsPII:            false,
+		EventData:              msg,
+		EventProjectExternalID: projectSFID,
+		EventProjectName:       projectName,
+		EventProjectSFID:       projectSFID,
+		EventSummary:           msg,
+		EventType:              claEvents.RemoveUserRoleScopeType,
+		LfUsername:             "easycla system",
+		UserID:                 "easycla system",
+		UserName:               "easycla system",
+	})
+	if eventErr != nil {
+		log.WithFields(f).WithError(eventErr).Warnf("unable to create event log entry for %s with msg: %s", claEvents.RemoveUserRoleScopeType, msg)
 	}
 
 	return err
 }
 
 // removeCLAPermissionsByProjectOrganizationRole handles removal of the specified role for the given SF Project and SF Organization
-func (s *service) removeCLAPermissionsByProjectOrganizationRole(projectSFID, organizationSFID string, roleNames []string) error {
+func (s *service) removeCLAPermissionsByProjectOrganizationRole(ctx context.Context, projectSFID, organizationSFID string, roleNames []string) error {
 	f := logrus.Fields{
-		"functionName":     "removeCLAPermissionsByProjectOrganizationRole",
+		"functionName":     "dynamo_events.projects_cla_groups.removeCLAPermissionsByProjectOrganizationRole",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
 		"projectSFID":      projectSFID,
 		"organizationSFID": organizationSFID,
 		"roleNames":        strings.Join(roleNames, ","),
 	}
 
-	log.WithFields(f).Debug("removing CLA permissions...")
+	// Lookup the project name
+	log.WithFields(f).Debugf("looking up project by SFID: %s", projectSFID)
+	psc := v2ProjectService.GetClient()
+	projectModel, err := psc.GetProject(projectSFID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup project record by projectSFID")
+	}
+	projectName := ""
+	if projectModel != nil {
+		projectName = projectModel.Name
+		f["projectName"] = projectName
+	}
+
+	// Lookup the organization name
+	log.WithFields(f).Debugf("looking up organization by SFID: %s", organizationSFID)
+	orgClient := organizationService.GetClient()
+	orgModel, orgLookupErr := orgClient.GetOrganization(ctx, organizationSFID)
+	if orgLookupErr != nil {
+		log.WithFields(f).WithError(orgLookupErr).Warnf("unable to lookup organization record by organziation SFID: %s", organizationSFID)
+	}
+	orgName := ""
+	if orgModel != nil {
+		orgName = orgModel.Name
+		log.WithFields(f).Debugf("found organization by SFID: %s - Name: %s", organizationSFID, orgName)
+	}
+
+	log.WithFields(f).Debugf("removing roles: %s for all users for project: %s, companay: %s", strings.Join(roleNames, ","), projectSFID, organizationSFID)
 	client := acsService.GetClient()
-	err := client.RemoveCLAUserRolesByProjectOrganization(projectSFID, organizationSFID, roleNames)
+	err = client.RemoveCLAUserRolesByProjectOrganization(projectSFID, organizationSFID, roleNames)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem removing CLA user roles by projectSFID and organizationSFID")
+	}
+	msg := fmt.Sprintf("removed roles: %s for all users for project: %s, companay: %s", strings.Join(roleNames, ","), projectSFID, organizationSFID)
+	log.WithFields(f).Debug(msg)
+
+	// Log the event
+	eventErr := s.eventsRepo.CreateEvent(&models.Event{
+		ContainsPII:            false,
+		EventCompanySFID:       organizationSFID,
+		EventData:              msg,
+		EventProjectExternalID: projectSFID,
+		EventProjectName:       projectName,
+		EventProjectSFID:       projectSFID,
+		EventSummary:           msg,
+		EventType:              claEvents.RemoveUserRoleScopeType,
+		LfUsername:             "easycla system",
+		UserID:                 "easycla system",
+		UserName:               "easycla system",
+	})
+	if eventErr != nil {
+		log.WithFields(f).WithError(eventErr).Warnf("unable to create event log entry for %s with msg: %s", claEvents.RemoveUserRoleScopeType, msg)
 	}
 
 	return err
