@@ -2057,6 +2057,19 @@ def populate_signature_from_ccla_callback(content: str, ccla_tree: ET, signature
     else:
         cla.log.warning(f'{fn} - unable to locate signatory_name field from docusign callback')
 
+    signing_entity_name_field = ccla_tree.find(".//*[@name='corporation_name']")
+    if signing_entity_name_field is not None:
+        signing_entity_name = signing_entity_name_field.find(DocuSign.TAGS['field_value'])
+        if signing_entity_name is not None:
+            signing_entity_name = signing_entity_name.text
+            cla.log.debug(f'{fn} - located signing_entity_name_field value in the docusign document callback - '
+                          f'setting user_docusign_name attribute: {signing_entity_name} value in the signature')
+            signature.set_signing_entity_name(signing_entity_name)
+        else:
+            cla.log.warning(f'{fn} - unable to extract signing_entity_name field_value from docusign callback')
+    else:
+        cla.log.warning(f'{fn} - unable to locate signing_entity_name field from docusign callback')
+
     # seems the content could be bytes
     if hasattr(content, "decode"):
         content = content.decode("utf-8")
