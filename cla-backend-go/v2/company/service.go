@@ -943,7 +943,7 @@ func (s *service) GetCompanyCLAGroupManagers(ctx context.Context, companyID, cla
 	if sigModel == nil {
 		log.WithFields(f).Warnf("unable to query CCLA signature using Company ID: %s and CLA Group ID: %s, signed: true, approved: true - no signature found",
 			companyID, claGroupID)
-		return nil, nil
+		return &models.CompanyClaManagers{}, nil
 	}
 
 	projectModel, projErr := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
