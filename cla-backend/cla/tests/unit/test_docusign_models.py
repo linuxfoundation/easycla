@@ -712,7 +712,9 @@ def test_populate_signature_from_ccla_callback():
     assert signature.get_user_docusign_name() == "Example Signatory"
     assert signature.get_user_docusign_date_signed() == "2020-12-17T07:44:08.503"
     assert signature.get_user_docusign_raw_xml() == content
+    assert signature.get_signing_entity_name() == "The Linux Foundation"
     assert "user_docusign_name" in signature.to_dict()
+    assert "signing_entity_name" in signature.to_dict()
     assert "user_docusign_date_signed" in signature.to_dict()
     assert "user_docusign_raw_xml" not in signature.to_dict()
     assert "user_docusign_name" in str(signature)
