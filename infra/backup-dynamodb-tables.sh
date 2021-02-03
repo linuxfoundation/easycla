@@ -78,7 +78,7 @@ declare -a tables=( "cla-${env}-ccla-whitelist-requests"
 #------------------------------------------------------------------------------
 # Perform the database table backup
 #------------------------------------------------------------------------------
-log "Backing up tables for environemnt ${_Y}${env}${_W} using aws profile ${_Y}${profile}${_W}."
+log "Backing up tables for environment ${_Y}${env}${_W} using aws profile ${_Y}${profile}${_W}."
 for table in "${tables[@]}"; do
   cmd="aws --profile ${profile} --region ${region} dynamodb create-backup --table-name ${table} --backup-name ${table}-${current_date}"
   log "Running command: ${cmd}"
