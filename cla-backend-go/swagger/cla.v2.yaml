@@ -4039,7 +4039,6 @@ definitions:
       - userEmail
       - companyName
       - companyWebsite
-      - signingEntityName
     properties:
       companyName:
         $ref: './common/properties/company-name.yaml'

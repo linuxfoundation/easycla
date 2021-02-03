@@ -424,6 +424,11 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 
 	// Create Easy CLA Company
 	log.WithFields(f).Debugf("Creating EasyCLA company: %s ", companyName)
+
+	if signingEntityName == "" {
+		log.WithFields(f).Debugf("Setting signing entity with company name value :%s ", companyName)
+		signingEntityName = companyName
+	}
 	// OrgID used as externalID for the easyCLA Company
 	// Create a new company model for the create function
 	createCompanyModel := &v1Models.Company{
