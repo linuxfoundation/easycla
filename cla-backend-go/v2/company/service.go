@@ -1232,7 +1232,7 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 	activeCla.ClaGroupName = cg.ClaGroupName
 	activeCla.CompanyID = companyID
 	activeCla.CompanySfid = v1CompanyModel.CompanyExternalID
-	activeCla.SignatureID = sig.SignatureID.String()
+	activeCla.SignatureID = sig.SignatureID
 
 	// fill details from project service
 	activeCla.ProjectName = cg.ProjectName
@@ -1248,7 +1248,7 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 	go func() {
 		var err error
 		defer cwg.Done()
-		cclaURL, err = utils.GetDownloadLink(utils.SignedCLAFilename(sig.ProjectID, sig.SignatureType, sig.SignatureReferenceID.String(), sig.SignatureID.String()))
+		cclaURL, err = utils.GetDownloadLink(utils.SignedCLAFilename(sig.ProjectID, sig.SignatureType, sig.SignatureReferenceID, sig.SignatureID))
 		if err != nil {
 			log.Error("fillActiveCLA : unable to get ccla s3 link", err)
 			return
@@ -1314,7 +1314,7 @@ func (s *service) filterClaProjects(ctx context.Context, projects []*v2ProjectSe
 
 func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepository, sig *v1Models.Signature, result chan *models.CorporateContributor, searchTerm string) {
 	defer wg.Done()
-	user, err := usersRepo.GetUser(sig.SignatureReferenceID.String())
+	user, err := usersRepo.GetUser(sig.SignatureReferenceID)
 	if err != nil {
 		log.Error("fillCorporateContributorModel: unable to get user info", err)
 		return

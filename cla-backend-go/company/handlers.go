@@ -347,17 +347,23 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 	api.OrganizationSearchOrganizationHandler = organization.SearchOrganizationHandlerFunc(func(params organization.SearchOrganizationParams) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":             "company.handler.OrganizationSearchOrganizationHandler",
+			"companyName":              params.CompanyName,
+			"websiteName":              params.WebsiteName,
+			"includeSigningEntityName": params.IncludeSigningEntityName,
+		}
 
 		if params.CompanyName == nil && params.WebsiteName == nil && params.DollarFilter == nil {
-			log.Debugf("CompanyName or WebsiteName or filter atleast one required")
+			log.WithFields(f).Debugf("CompanyName or WebsiteName or filter at least one required")
 			return organization.NewSearchOrganizationBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(errors.New("companyName or websiteName or filter at least one required")))
 		}
 
 		companyName, websiteName, filter := validateParams(params)
 
-		result, err := service.SearchOrganizationByName(ctx, companyName, websiteName, filter)
+		result, err := service.SearchOrganizationByName(ctx, companyName, websiteName, utils.BoolValue(params.IncludeSigningEntityName), filter)
 		if err != nil {
-			log.Warnf("error occured while search org %s. error = %s", *params.CompanyName, err.Error())
+			log.Warnf("error occurred while search org %s. error = %s", *params.CompanyName, err.Error())
 			return organization.NewSearchOrganizationInternalServerError().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 		return organization.NewSearchOrganizationOK().WithXRequestID(reqID).WithPayload(result)

@@ -115,10 +115,10 @@ func (s *service) SetInitialCLAManagerACSPermissions(ctx context.Context, signat
 	}
 
 	log.WithFields(f).Debug("locating company record by signature reference ID...")
-	company, err := s.companyRepo.GetCompany(ctx, sig.SignatureReferenceID.String())
+	company, err := s.companyRepo.GetCompany(ctx, sig.SignatureReferenceID)
 	if err != nil {
 		log.WithFields(f).Warnf("unable to lookup company by signature reference ID: %s, error: %+v",
-			sig.SignatureReferenceID.String(), err)
+			sig.SignatureReferenceID, err)
 		return err
 	}
 

@@ -11,7 +11,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/strfmt"
 	"github.com/jinzhu/copier"
 	"github.com/sirupsen/logrus"
 )
@@ -43,8 +42,8 @@ func v2SignaturesReplaceCompanyID(src *v1Models.Signatures, internalID, external
 
 	// Replace the internal ID with the External ID
 	for _, sig := range dst.Signatures {
-		if sig.SignatureReferenceID.String() == internalID {
-			sig.SignatureReferenceID = strfmt.UUID4(externalID)
+		if sig.SignatureReferenceID == internalID {
+			sig.SignatureReferenceID = externalID
 		}
 	}
 

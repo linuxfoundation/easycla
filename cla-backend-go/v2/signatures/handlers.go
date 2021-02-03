@@ -268,7 +268,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		}
 		if signatureModel != nil {
 			projectID = signatureModel.ProjectID
-			companyID = signatureModel.SignatureReferenceID.String()
+			companyID = signatureModel.SignatureReferenceID
 		}
 
 		eventsService.LogEvent(&events.LogEventArgs{
@@ -335,7 +335,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		}
 		if signatureModel != nil {
 			projectID = signatureModel.ProjectID
-			companyID = signatureModel.SignatureReferenceID.String()
+			companyID = signatureModel.SignatureReferenceID
 		}
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:  events.ApprovalListGitHubOrganizationDeleted,
@@ -967,7 +967,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 				utils.ErrorResponseForbidden(reqID, fmt.Sprintf("user %s does not have access to the specified signature", authUser.UserName)))
 		}
 
-		doc, err := v2service.GetSignedDocument(ctx, signatureModel.SignatureID.String())
+		doc, err := v2service.GetSignedDocument(ctx, signatureModel.SignatureID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("problem fetching signed document")
 			if strings.Contains(err.Error(), "bad request") {
@@ -1297,15 +1297,15 @@ func isUserHaveAccessOfSignedSignaturePDF(ctx context.Context, authUser *auth.Us
 
 	// Corporate signature...we can check the company details
 	if signature.SignatureType == CclaSignatureType {
-		comp, err := companyService.GetCompany(ctx, signature.SignatureReferenceID.String())
+		comp, err := companyService.GetCompany(ctx, signature.SignatureReferenceID)
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("failed to load company record using signature reference id: %s", signature.SignatureReferenceID.String())
+			log.WithFields(f).WithError(err).Warnf("failed to load company record using signature reference id: %s", signature.SignatureReferenceID)
 			return false, err
 		}
 
 		// No company SFID? Then, we can't check permissions...
 		if comp == nil || comp.CompanyExternalID == "" {
-			log.WithFields(f).Warnf("failed to load company record with external SFID using signature reference id: %s", signature.SignatureReferenceID.String())
+			log.WithFields(f).Warnf("failed to load company record with external SFID using signature reference id: %s", signature.SignatureReferenceID)
 			return false, err
 		}
 

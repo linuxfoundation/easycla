@@ -6,10 +6,8 @@ title: A signature model
 description: A signature - may be an ICLA or CCLA signature
 properties:
   signatureID:
-    type: string
     description: the signature ID
-    example: 'c71c469a-55ea-492d-9722-fd30b31da2aa'
-    format: uuid4
+    $ref: './common/properties/internal-id.yaml'
   claType:
     type: string
     description: >
@@ -45,10 +43,8 @@ properties:
     minLength: 2
     maxLength: 12
   signatureReferenceID:
-    type: string
     description: the signature reference ID which references a compnay ID or user ID
-    example: 'c71c469a-55ea-492d-9722-fd30b31da2aa'
-    format: uuid4
+    $ref: './common/properties/internal-id.yaml'
   signatureReferenceName:
     type: string
   signatureReferenceNameLower:
@@ -70,9 +66,9 @@ properties:
   userName:
     type: string
   companyName:
-    type: string
-    description: the company name
-    pattern: '^([\w\p{L}][\w\s\p{L}()\[\]+\-/%!@#$]*){2,255}$'
+    $ref: './common/properties/company-name.yaml'
+  signingEntityName:
+    $ref: './common/properties/company-signing-entity-name.yaml'
   projectID:
     type: string
     description: the CLA Group ID

@@ -53,7 +53,7 @@ type IService interface { // nolint
 	RejectCompanyAccessRequest(ctx context.Context, companyInviteID string) (*InviteModel, error)
 
 	// calls org service
-	SearchOrganizationByName(ctx context.Context, orgName string, websiteName string, filter string) (*models.OrgList, error)
+	SearchOrganizationByName(ctx context.Context, orgName string, websiteName string, includeSigningEntityName bool, filter string) (*models.OrgList, error)
 
 	sendRequestAccessEmail(ctx context.Context, companyModel *models.Company, requesterName, requesterEmail, recipientName, recipientAddress string)
 	sendRequestApprovedEmailToRecipient(ctx context.Context, companyModel *models.Company, recipientName, recipientAddress string)
@@ -678,13 +678,14 @@ func (s service) GetCompanyBySigningEntityName(ctx context.Context, signingEntit
 	return comp, nil
 }
 
-func (s service) SearchOrganizationByName(ctx context.Context, orgName string, websiteName string, filter string) (*models.OrgList, error) {
+func (s service) SearchOrganizationByName(ctx context.Context, orgName string, websiteName string, includeSigningEntityName bool, filter string) (*models.OrgList, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.SearchOrganizationByName",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"orgName":        orgName,
-		"websiteName":    websiteName,
-		"filter":         filter,
+		"functionName":             "company.service.SearchOrganizationByName",
+		utils.XREQUESTID:           ctx.Value(utils.XREQUESTID),
+		"orgName":                  orgName,
+		"websiteName":              websiteName,
+		"includeSigningEntityName": includeSigningEntityName,
+		"filter":                   filter,
 	}
 
 	osc := organization_service.GetClient()
@@ -697,24 +698,33 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 
 	result := &models.OrgList{List: make([]*models.Org, 0, len(orgs))}
 	for _, org := range orgs {
-		var signingEntityNames []string
-		if len(org.SigningEntityName) > 0 {
-			signingEntityNames = utils.TrimSpaceFromItems(org.SigningEntityName)
-			// Auto-create on-demand from SF
-			for _, signingEntityName := range signingEntityNames {
-				// Auto-create the internal record, if needed
-				_, err = s.CreateOrgFromExternalID(ctx, signingEntityName, org.ID)
-				if err != nil {
-					log.WithFields(f).WithError(err).Warnf("Unable to create organization from external ID: %s using signing entity name: %s", org.ID, signingEntityName)
+		if includeSigningEntityName {
+			var signingEntityNames []string
+			if len(org.SigningEntityName) > 0 {
+				signingEntityNames = utils.TrimSpaceFromItems(org.SigningEntityName)
+				// Auto-create on-demand from SF
+				for _, signingEntityName := range signingEntityNames {
+					// Auto-create the internal record, if needed
+					_, err = s.CreateOrgFromExternalID(ctx, signingEntityName, org.ID)
+					if err != nil {
+						log.WithFields(f).WithError(err).Warnf("Unable to create organization from external ID: %s using signing entity name: %s", org.ID, signingEntityName)
+					}
 				}
 			}
+			result.List = append(result.List, &models.Org{
+				OrganizationID:      org.ID,
+				OrganizationName:    org.Name,
+				SigningEntityNames:  signingEntityNames,
+				OrganizationWebsite: org.Link,
+			})
+		} else {
+			result.List = append(result.List, &models.Org{
+				OrganizationID:      org.ID,
+				OrganizationName:    org.Name,
+				SigningEntityNames:  []string{},
+				OrganizationWebsite: org.Link,
+			})
 		}
-		result.List = append(result.List, &models.Org{
-			OrganizationID:      org.ID,
-			OrganizationName:    org.Name,
-			SigningEntityNames:  signingEntityNames,
-			OrganizationWebsite: org.Link,
-		})
 	}
 	return result, nil
 }

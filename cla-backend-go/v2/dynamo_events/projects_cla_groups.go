@@ -408,7 +408,7 @@ func (s *service) addCLAManagerPermissions(claGroupID, projectSFID string) error
 		ClaType:   aws.String(utils.ClaTypeCCLA),
 		PageSize:  aws.Int64(1000),
 		ProjectID: claGroupID,
-	}, 1000)
+	})
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem querying CCLA signatures for CLA Group - skipping %s role review/assignment for this project", utils.CLAManagerRole)
 		return err
@@ -434,7 +434,7 @@ func (s *service) addCLAManagerPermissions(claGroupID, projectSFID string) error
 
 		// Make sure we can load the company and grab the SFID
 		sig := sig
-		companyInternalID := sig.SignatureReferenceID.String()
+		companyInternalID := sig.SignatureReferenceID
 		log.WithFields(f).Debugf("locating company by internal ID: %s", companyInternalID)
 		companyModel, err := s.companyRepo.GetCompany(ctx, companyInternalID)
 		if err != nil {

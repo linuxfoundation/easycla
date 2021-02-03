@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations"
@@ -207,7 +209,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		}
 		if signatureModel != nil {
 			projectID = signatureModel.ProjectID
-			companyID = signatureModel.SignatureReferenceID.String()
+			companyID = signatureModel.SignatureReferenceID
 		}
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:  events.ApprovalListGitHubOrganizationAdded,
@@ -257,7 +259,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		}
 		if signatureModel != nil {
 			projectID = signatureModel.ProjectID
-			companyID = signatureModel.SignatureReferenceID.String()
+			companyID = signatureModel.SignatureReferenceID
 		}
 
 		eventsService.LogEvent(&events.LogEventArgs{
@@ -286,6 +288,32 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		}
 
 		return signatures.NewGetProjectSignaturesOK().WithXRequestID(reqID).WithPayload(projectSignatures)
+	})
+
+	api.SignaturesCreateProjectSummaryReportHandler = signatures.CreateProjectSummaryReportHandlerFunc(func(params signatures.CreateProjectSummaryReportParams, claUser *user.CLAUser) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":   "signature.handlers.SignaturesCreateProjectSummaryReportHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"projectID":      params.ProjectID,
+			"claType":        utils.StringValue(params.ClaType),
+			"signatureType":  utils.StringValue(params.SignatureType),
+			"nextKey":        utils.StringValue(params.NextKey),
+			"searchField":    utils.StringValue(params.SearchField),
+			"searchTerm":     utils.StringValue(params.SearchTerm),
+			"sortOrder":      utils.StringValue(params.SortOrder),
+			"fullMatch":      utils.BoolValue(params.FullMatch),
+			"pageSize":       utils.Int64Value(params.PageSize),
+		}
+		projectSummaryReport, err := service.CreateProjectSummaryReport(ctx, params)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("error creating project summary report for projectID: %s, error: %+v",
+				params.ProjectID, err)
+			return signatures.NewGetProjectSignaturesBadRequest().WithPayload(errorResponse(err))
+		}
+
+		return signatures.NewCreateProjectSummaryReportOK().WithXRequestID(reqID).WithPayload(projectSummaryReport)
 	})
 
 	// Get Project Company Signatures

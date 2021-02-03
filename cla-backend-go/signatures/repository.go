@@ -9,9 +9,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
-
-	"github.com/go-openapi/strfmt"
 
 	"github.com/sirupsen/logrus"
 
@@ -60,7 +57,8 @@ type SignatureRepository interface {
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string) (*models.Signature, error)
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string) (*models.Signature, error)
 	GetSignatureACL(ctx context.Context, signatureID string) ([]string, error)
-	GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams, pageSize int64) (*models.Signatures, error)
+	GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error)
+	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error)
 	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, pageSize int64) (*models.Signatures, error)
@@ -663,9 +661,9 @@ func addConditionToFilter(filter expression.ConditionBuilder, cond expression.Co
 }
 
 // GetProjectSignatures returns a list of signatures for the specified project
-func (repo repository) GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams, pageSize int64) (*models.Signatures, error) {
+func (repo repository) GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error) {
 	f := logrus.Fields{
-		"functionName":   "GetProjectSignatures",
+		"functionName":   "signatures.repository.GetProjectSignatures",
 		"tableName":      repo.signatureTableName,
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     params.ProjectID,
@@ -731,7 +729,7 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 				signatureTypeExpression := expression.Name("signature_type").Equal(expression.Value(params.SignatureType))
 				filter = addConditionToFilter(filter, signatureTypeExpression, &filterAdded)
 			}
-			if *params.SignatureType == "ccla" {
+			if *params.SignatureType == utils.ClaTypeCCLA {
 				signatureReferenceIDExpression := expression.Name("signature_reference_id").AttributeExists()
 				signatureUserCclaCompanyIDExpression := expression.Name("signature_user_ccla_company_id").AttributeNotExists()
 				filter = addConditionToFilter(filter, signatureReferenceIDExpression, &filterAdded)
@@ -855,10 +853,229 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 	totalCount := *describeTableResult.Table.ItemCount
 	if int64(len(sigs)) > realPageSize {
 		sigs = sigs[0:realPageSize]
-		lastEvaluatedKey = sigs[realPageSize-1].SignatureID.String()
+		lastEvaluatedKey = sigs[realPageSize-1].SignatureID
 	}
 
 	return &models.Signatures{
+		ProjectID:      params.ProjectID,
+		ResultCount:    int64(len(sigs)),
+		TotalCount:     totalCount,
+		LastKeyScanned: lastEvaluatedKey,
+		Signatures:     sigs,
+	}, nil
+}
+
+// CreateProjectSummaryReport generates a project summary report based on the specified input
+func (repo repository) CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error) { // nolint
+	f := logrus.Fields{
+		"functionName":   "signatures.repository.CreateProjectSummaryReport",
+		"tableName":      repo.signatureTableName,
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     params.ProjectID,
+		"signatureType":  aws.StringValue(params.SignatureType),
+		"searchField":    aws.StringValue(params.SearchField),
+		"searchTerm":     aws.StringValue(params.SearchTerm),
+		"fullMatch":      aws.BoolValue(params.FullMatch),
+		"pageSize":       aws.Int64Value(params.PageSize),
+		"nextKey":        aws.StringValue(params.NextKey),
+		"sortOrder":      aws.StringValue(params.SortOrder),
+		"companyIDList":  params.Body,
+	}
+
+	indexName := SignatureProjectIDIndex
+	if params.SortOrder != nil && *params.SortOrder != "" {
+		indexName = SignatureProjectDateIDIndex
+	}
+
+	realPageSize := int64(100)
+	if params.PageSize != nil && *params.PageSize > 0 {
+		realPageSize = *params.PageSize
+	}
+
+	// This is the key we want to match
+	condition := expression.Key("signature_project_id").Equal(expression.Value(params.ProjectID))
+
+	builder := expression.NewBuilder().WithProjection(buildProjection())
+	var filter expression.ConditionBuilder
+	var filterAdded bool
+
+	if params.ClaType != nil {
+		filterAdded = true
+		if strings.ToLower(*params.ClaType) == utils.ClaTypeICLA {
+			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
+				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
+				And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
+				And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
+				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+
+		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeECLA {
+			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
+				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
+				And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
+				And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
+				And(expression.Name("signature_user_ccla_company_id").AttributeExists())
+		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeCCLA {
+			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)).
+				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany))).
+				And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
+				And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
+				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+		}
+	} else {
+		if params.SearchField != nil {
+			searchFieldExpression := expression.Name("signature_reference_type").Equal(expression.Value(params.SearchField))
+			filter = addConditionToFilter(filter, searchFieldExpression, &filterAdded)
+		}
+
+		if params.SignatureType != nil {
+			if params.SearchTerm != nil && (params.FullMatch != nil && !*params.FullMatch) {
+				indexName = SignatureProjectIDTypeIndex
+				condition = condition.And(expression.Key("signature_type").Equal(expression.Value(strings.ToLower(*params.SignatureType))))
+			} else {
+				signatureTypeExpression := expression.Name("signature_type").Equal(expression.Value(params.SignatureType))
+				filter = addConditionToFilter(filter, signatureTypeExpression, &filterAdded)
+			}
+			if *params.SignatureType == utils.ClaTypeCCLA {
+				signatureReferenceIDExpression := expression.Name("signature_reference_id").AttributeExists()
+				signatureUserCclaCompanyIDExpression := expression.Name("signature_user_ccla_company_id").AttributeNotExists()
+				filter = addConditionToFilter(filter, signatureReferenceIDExpression, &filterAdded)
+				filter = addConditionToFilter(filter, signatureUserCclaCompanyIDExpression, &filterAdded)
+			}
+		}
+
+		if params.SearchTerm != nil {
+			if *params.FullMatch {
+				indexName = SignatureReferenceSearchIndex
+				condition = condition.And(expression.Key("signature_reference_name_lower").Equal(expression.Value(strings.ToLower(*params.SearchTerm))))
+			} else {
+				searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(*params.SearchTerm)).Or(expression.Name("user_email").Contains(strings.ToLower(*params.SearchTerm)))
+				filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
+			}
+		}
+
+		// Filter condition to cater for approved and signed signatures
+		signatureApprovedExpression := expression.Name("signature_approved").Equal(expression.Value(true))
+		filter = addConditionToFilter(filter, signatureApprovedExpression, &filterAdded)
+
+		signatureSignedExpression := expression.Name("signature_signed").Equal(expression.Value(true))
+		filter = addConditionToFilter(filter, signatureSignedExpression, &filterAdded)
+	}
+
+	if len(params.Body) > 0 {
+		// expression.Name("Color").In(expression.Value("red"), expression.Value("green"), expression.Value("blue"))
+		var referenceIDExpressions []expression.OperandBuilder
+		for _, value := range params.Body {
+			referenceIDExpressions = append(referenceIDExpressions, expression.Value(value))
+		}
+		if len(referenceIDExpressions) == 1 {
+			filter = addConditionToFilter(filter, expression.Name("signature_reference_id").In(referenceIDExpressions[0]), &filterAdded)
+		} else if len(referenceIDExpressions) > 1 {
+			filter = addConditionToFilter(filter, expression.Name("signature_reference_id").In(referenceIDExpressions[0], referenceIDExpressions[1:]...), &filterAdded)
+		}
+	}
+
+	if filterAdded {
+		builder = builder.WithFilter(filter)
+	}
+	builder = builder.WithKeyCondition(condition)
+
+	// Use the nice builder to create the expression
+	expr, err := builder.Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for project signature query, projectID: %s, error: %v",
+			params.ProjectID, err)
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		FilterExpression:          expr.Filter(),
+		TableName:                 aws.String(repo.signatureTableName),
+		Limit:                     aws.Int64(realPageSize), // The maximum number of items to evaluate (not necessarily the number of matching items)
+		IndexName:                 aws.String(indexName),   // Name of a secondary index to scan
+	}
+	f["indexName"] = indexName
+
+	// If we have the next key, set the exclusive start key value
+	if params.NextKey != nil {
+		log.WithFields(f).Debugf("received a nextKey, value: %s", *params.NextKey)
+		// The primary key of the first item that this operation will evaluate.
+		// and the query key (if not the same)
+		queryInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: params.NextKey,
+			},
+			"signature_project_id": {
+				S: &params.ProjectID,
+			},
+		}
+		if params.FullMatch != nil && *params.FullMatch && params.SearchTerm != nil {
+			queryInput.ExclusiveStartKey["signature_reference_name_lower"] = &dynamodb.AttributeValue{
+				S: params.SearchTerm,
+			}
+		}
+	}
+
+	sigs := make([]*models.SignatureSummary, 0)
+	var lastEvaluatedKey string
+
+	// Loop until we have all the records
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
+		// Make the DynamoDB Query API call
+		log.WithFields(f).Debugf("Running signature project query using queryInput: %+v", queryInput)
+		results, errQuery := repo.dynamoDBClient.Query(queryInput)
+		if errQuery != nil {
+			log.WithFields(f).Warnf("error retrieving project signature ID for project: %s, error: %v",
+				params.ProjectID, errQuery)
+			return nil, errQuery
+		}
+
+		// Convert the list of DB models to a list of response models
+		signatureList, modelErr := repo.buildProjectSignatureSummaryModels(ctx, results, params.ProjectID)
+		if modelErr != nil {
+			log.WithFields(f).Warnf("error converting DB model to response model for signatures with project %s, error: %v",
+				params.ProjectID, modelErr)
+			return nil, modelErr
+		}
+
+		// Add to the signatures response model to the list
+		sigs = append(sigs, signatureList...)
+
+		//log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey)
+		if results.LastEvaluatedKey["signature_id"] != nil {
+			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			lastEvaluatedKey = ""
+		}
+
+		if int64(len(sigs)) >= realPageSize {
+			break
+		}
+	}
+
+	// How many total records do we have - may not be up-to-date as this value is updated only periodically
+	describeTableInput := &dynamodb.DescribeTableInput{
+		TableName: &repo.signatureTableName,
+	}
+	describeTableResult, err := repo.dynamoDBClient.DescribeTable(describeTableInput)
+	if err != nil {
+		log.WithFields(f).Warnf("error retrieving total record count for project: %s, error: %v", params.ProjectID, err)
+		return nil, err
+	}
+
+	// Meta-data for the response
+	totalCount := *describeTableResult.Table.ItemCount
+	if int64(len(sigs)) > realPageSize {
+		sigs = sigs[0:realPageSize]
+		lastEvaluatedKey = sigs[realPageSize-1].SignatureID
+	}
+
+	return &models.SignatureReport{
 		ProjectID:      params.ProjectID,
 		ResultCount:    int64(len(sigs)),
 		TotalCount:     totalCount,
@@ -1258,7 +1475,7 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	totalCount := *describeTableResult.Table.ItemCount
 	if int64(len(sigs)) > pageSize {
 		sigs = sigs[0:pageSize]
-		lastEvaluatedKey = sigs[pageSize-1].SignatureID.String()
+		lastEvaluatedKey = sigs[pageSize-1].SignatureID
 	}
 
 	return &models.Signatures{
@@ -1373,7 +1590,7 @@ func (repo repository) GetCompanySignatures(ctx context.Context, params signatur
 	}
 	if int64(len(sigs)) > pageSize {
 		sigs = sigs[0:pageSize]
-		lastEvaluatedKey = sigs[pageSize-1].SignatureID.String()
+		lastEvaluatedKey = sigs[pageSize-1].SignatureID
 	}
 
 	// Meta-data for the response
@@ -1761,7 +1978,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
 			var rmColErr error
-			sig, rmColErr = repo.removeColumn(ctx, sig.SignatureID.String(), columnName)
+			sig, rmColErr = repo.removeColumn(ctx, sig.SignatureID, columnName)
 			if rmColErr != nil {
 				msg := fmt.Sprintf("unable to remove column %s for signature for company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t",
 					columnName, companyID, projectID, signed, approved)
@@ -1782,7 +1999,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
 			var rmColErr error
-			sig, rmColErr = repo.removeColumn(ctx, sig.SignatureID.String(), columnName)
+			sig, rmColErr = repo.removeColumn(ctx, sig.SignatureID, columnName)
 			if rmColErr != nil {
 				msg := fmt.Sprintf("unable to remove column %s for signature for company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t",
 					columnName, companyID, projectID, signed, approved)
@@ -1803,7 +2020,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
 			var rmColErr error
-			sig, rmColErr = repo.removeColumn(ctx, sig.SignatureID.String(), columnName)
+			sig, rmColErr = repo.removeColumn(ctx, sig.SignatureID, columnName)
 			if rmColErr != nil {
 				msg := fmt.Sprintf("unable to remove column %s for signature for company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t",
 					columnName, companyID, projectID, signed, approved)
@@ -1824,7 +2041,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
 			var rmColErr error
-			sig, rmColErr = repo.removeColumn(ctx, sig.SignatureID.String(), columnName)
+			sig, rmColErr = repo.removeColumn(ctx, sig.SignatureID, columnName)
 			if rmColErr != nil {
 				msg := fmt.Sprintf("unable to remove column %s for signature for company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t",
 					columnName, companyID, projectID, signed, approved)
@@ -1854,7 +2071,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 		TableName: aws.String(repo.signatureTableName),
 		Key: map[string]*dynamodb.AttributeValue{
 			"signature_id": {
-				S: aws.String(sig.SignatureID.String()),
+				S: aws.String(sig.SignatureID),
 			},
 		},
 		ExpressionAttributeNames:  expressionAttributeNames,
@@ -2071,260 +2288,6 @@ func (repo repository) AddSignedOn(ctx context.Context, signatureID string) erro
 
 	log.WithFields(f).Debug("successfully updated signed on date...")
 	return nil
-}
-
-// buildProjectSignatureModels converts the response model into a response data model
-func (repo repository) buildProjectSignatureModels(ctx context.Context, results *dynamodb.QueryOutput, projectID string, loadACLDetails bool) ([]*models.Signature, error) {
-	f := logrus.Fields{
-		"functionName":   "buildProjectSignatureModels",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"projectID":      projectID,
-	}
-	var sigs []*models.Signature
-
-	// The DB signature model
-	var dbSignatures []ItemSignature
-
-	err := dynamodbattribute.UnmarshalListOfMaps(results.Items, &dbSignatures)
-	if err != nil {
-		log.WithFields(f).Warnf("error unmarshalling signatures from database for project: %s, error: %v",
-			projectID, err)
-		return nil, err
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(len(dbSignatures))
-	for _, dbSignature := range dbSignatures {
-
-		// Set the signature type in the response
-		var claType = ""
-		// Corporate Signature
-		if dbSignature.SignatureReferenceType == utils.SignatureReferenceTypeCompany && dbSignature.SignatureType == utils.SignatureTypeCCLA {
-			claType = utils.ClaTypeCCLA
-		}
-		// Employee Signature
-		if dbSignature.SignatureReferenceType == utils.SignatureReferenceTypeUser && dbSignature.SignatureType == utils.SignatureTypeCLA && dbSignature.SignatureUserCompanyID != "" {
-			claType = utils.ClaTypeECLA
-		}
-
-		// Individual Signature
-		if dbSignature.SignatureReferenceType == utils.SignatureReferenceTypeUser && dbSignature.SignatureType == utils.SignatureTypeCLA && dbSignature.SignatureUserCompanyID == "" {
-			claType = utils.ClaTypeICLA
-		}
-
-		sig := &models.Signature{
-			SignatureID:                 strfmt.UUID4(dbSignature.SignatureID),
-			ClaType:                     claType,
-			SignatureCreated:            dbSignature.DateCreated,
-			SignatureModified:           dbSignature.DateModified,
-			SignatureType:               dbSignature.SignatureType,
-			SignatureReferenceID:        strfmt.UUID4(dbSignature.SignatureReferenceID),
-			SignatureReferenceName:      dbSignature.SignatureReferenceName,
-			SignatureReferenceNameLower: dbSignature.SignatureReferenceNameLower,
-			SignatureSigned:             dbSignature.SignatureSigned,
-			SignatureApproved:           dbSignature.SignatureApproved,
-			SignatureMajorVersion:       dbSignature.SignatureDocumentMajorVersion,
-			SignatureMinorVersion:       dbSignature.SignatureDocumentMinorVersion,
-			Version:                     dbSignature.SignatureDocumentMajorVersion + "." + dbSignature.SignatureDocumentMinorVersion,
-			SignatureReferenceType:      dbSignature.SignatureReferenceType,
-			ProjectID:                   dbSignature.SignatureProjectID,
-			Created:                     dbSignature.DateCreated,
-			Modified:                    dbSignature.DateModified,
-			EmailApprovalList:           dbSignature.EmailWhitelist,
-			DomainApprovalList:          dbSignature.DomainWhitelist,
-			GithubUsernameApprovalList:  dbSignature.GitHubWhitelist,
-			GithubOrgApprovalList:       dbSignature.GitHubOrgWhitelist,
-			UserName:                    dbSignature.UserName,
-			UserLFID:                    dbSignature.UserLFUsername,
-			UserGHID:                    dbSignature.UserGithubUsername,
-			SignedOn:                    dbSignature.SignedOn,
-			SignatoryName:               dbSignature.SignatoryName,
-			UserDocusignName:            dbSignature.UserDocusignName,
-			UserDocusignDateSigned:      dbSignature.UserDocusignDateSigned,
-		}
-		sigs = append(sigs, sig)
-		go func(sigModel *models.Signature, signatureUserCompanyID string, sigACL []string) {
-			defer wg.Done()
-			var companyName = ""
-			var userName = ""
-			var userLFID = ""
-			var userGHID = ""
-			var userGHUsername = ""
-			var swg sync.WaitGroup
-			swg.Add(2)
-
-			go func() {
-				defer swg.Done()
-				if sigModel.SignatureReferenceType == "user" {
-					userModel, userErr := repo.usersRepo.GetUser(sigModel.SignatureReferenceID.String())
-					if userErr != nil || userModel == nil {
-						log.WithFields(f).Warnf("unable to lookup user using id: %s, error: %v", sigModel.SignatureReferenceID, userErr)
-					} else {
-						userName = userModel.Username
-						userLFID = userModel.LfUsername
-						userGHID = userModel.GithubID
-						userGHUsername = userModel.GithubUsername
-					}
-
-					if signatureUserCompanyID != "" {
-						dbCompanyModel, companyErr := repo.companyRepo.GetCompany(ctx, signatureUserCompanyID)
-						if companyErr != nil {
-							log.WithFields(f).Warnf("unable to lookup company using id: %s, error: %v", signatureUserCompanyID, companyErr)
-						} else {
-							companyName = dbCompanyModel.CompanyName
-						}
-					}
-				} else if sigModel.SignatureReferenceType == "company" {
-					dbCompanyModel, companyErr := repo.companyRepo.GetCompany(ctx, sigModel.SignatureReferenceID.String())
-					if companyErr != nil {
-						log.WithFields(f).Warnf("unable to lookup company using id: %s, error: %v", sigModel.SignatureReferenceID, companyErr)
-					} else {
-						companyName = dbCompanyModel.CompanyName
-					}
-				}
-			}()
-
-			var signatureACL []models.User
-			go func() {
-				defer swg.Done()
-				for _, userName := range sigACL {
-					if loadACLDetails {
-						userModel, userErr := repo.usersRepo.GetUserByUserName(userName, true)
-						if userErr != nil {
-							log.WithFields(f).Warnf("unable to lookup user using username: %s, error: %v", userName, userErr)
-						} else {
-							if userModel == nil {
-								log.WithFields(f).Warnf("User looking for username is null: %s for signature: %s", userName, sigModel.SignatureID)
-							} else {
-								signatureACL = append(signatureACL, *userModel)
-							}
-						}
-					} else {
-						signatureACL = append(signatureACL, models.User{LfUsername: userName})
-					}
-				}
-			}()
-			swg.Wait()
-			sigModel.CompanyName = companyName
-			sigModel.UserName = userName
-			sigModel.UserLFID = userLFID
-			sigModel.UserGHID = userGHID
-			sigModel.UserGHUsername = userGHUsername
-			sigModel.SignatureACL = signatureACL
-		}(sig, dbSignature.SignatureUserCompanyID, dbSignature.SignatureACL)
-	}
-	wg.Wait()
-	return sigs, nil
-}
-
-// buildResponse is a helper function which converts a database model to a GitHub organization response model
-func buildResponse(items []*dynamodb.AttributeValue) []models.GithubOrg {
-	// Convert to a response model
-	var orgs []models.GithubOrg
-	for _, org := range items {
-		selected := true
-		orgs = append(orgs, models.GithubOrg{
-			ID:       org.S,
-			Selected: &selected,
-		})
-	}
-
-	return orgs
-}
-
-// buildApprovalAttributeList builds the updated approval list based on the added and removed values
-func buildApprovalAttributeList(ctx context.Context, existingList, addEntries, removeEntries []string) *dynamodb.AttributeValue {
-	f := logrus.Fields{
-		"functionName":   "buildApprovalAttributeList",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	}
-	var updatedList []string
-	log.WithFields(f).Debugf("buildApprovalAttributeList - existing: %+v, add entries: %+v, remove entries: %+v",
-		existingList, addEntries, removeEntries)
-
-	// Add the existing entries to our response
-	for _, value := range existingList {
-		// No duplicates allowed
-		if !utils.StringInSlice(value, updatedList) {
-			log.WithFields(f).Debugf("buildApprovalAttributeList - adding existing entry: %s", value)
-			updatedList = append(updatedList, strings.TrimSpace(value))
-		} else {
-			log.WithFields(f).Debugf("buildApprovalAttributeList - skipping existing entry: %s", value)
-		}
-	}
-
-	// For all the new values...
-	for _, value := range addEntries {
-		// No duplicates allowed
-		if !utils.StringInSlice(value, updatedList) {
-			log.WithFields(f).Debugf("buildApprovalAttributeList - adding new entry: %s", value)
-			updatedList = append(updatedList, strings.TrimSpace(value))
-		} else {
-			log.WithFields(f).Debugf("buildApprovalAttributeList - skipping new entry: %s", value)
-		}
-	}
-
-	// Remove the items
-	log.WithFields(f).Debugf("buildApprovalAttributeList - before: %+v - removing entries: %+v", updatedList, removeEntries)
-	updatedList = utils.RemoveItemsFromList(updatedList, removeEntries)
-	log.WithFields(f).Debugf("buildApprovalAttributeList - after: %+v - removing entries: %+v", updatedList, removeEntries)
-
-	// Remove any duplicates - shouldn't have any if checked before adding
-	log.WithFields(f).Debugf("buildApprovalAttributeList - before: %+v - removing duplicates", updatedList)
-	updatedList = utils.RemoveDuplicates(updatedList)
-	log.WithFields(f).Debugf("buildApprovalAttributeList - after: %+v - removing duplicates", updatedList)
-
-	// Convert to the response type
-	var responseList []*dynamodb.AttributeValue
-	for _, value := range updatedList {
-		responseList = append(responseList, &dynamodb.AttributeValue{S: aws.String(value)})
-	}
-
-	return &dynamodb.AttributeValue{L: responseList}
-}
-
-// buildCompanyIDList is a helper function to convert the DB response models into a simple list of company IDs
-func (repo repository) buildCompanyIDList(ctx context.Context, results *dynamodb.QueryOutput) ([]SignatureCompanyID, error) {
-	f := logrus.Fields{
-		"functionName":   "buildCompanyIDList",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	}
-	var response []SignatureCompanyID
-
-	// The DB signature model
-	var dbSignatures []ItemSignature
-	err := dynamodbattribute.UnmarshalListOfMaps(results.Items, &dbSignatures)
-	if err != nil {
-		log.WithFields(f).Warnf("error unmarshalling signatures from database, error: %v", err)
-		return nil, err
-	}
-
-	// Loop and extract the company ID (signature_reference_id) value
-	for _, item := range dbSignatures {
-		// Lookup the company by ID - try to get more information like the external ID and name
-		companyModel, companyLookupErr := repo.companyRepo.GetCompany(ctx, item.SignatureReferenceID)
-		// Start building a model for this entry in the list
-		signatureCompanyID := SignatureCompanyID{
-			SignatureID: item.SignatureID,
-			CompanyID:   item.SignatureReferenceID,
-		}
-
-		if companyLookupErr != nil || companyModel == nil {
-			log.WithFields(f).Warnf("problem looking up company using id: %s, error: %+v",
-				item.SignatureReferenceID, companyLookupErr)
-			response = append(response, signatureCompanyID)
-		} else {
-			if companyModel.CompanyExternalID != "" {
-				signatureCompanyID.CompanySFID = companyModel.CompanyExternalID
-			}
-			if companyModel.CompanyName != "" {
-				signatureCompanyID.CompanyName = companyModel.CompanyName
-			}
-			response = append(response, signatureCompanyID)
-		}
-	}
-
-	return response, nil
 }
 
 func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string) (*models.IclaSignatures, error) {

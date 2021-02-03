@@ -617,9 +617,15 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 	api.CompanySearchCompanyLookupHandler = company.SearchCompanyLookupHandlerFunc(func(params company.SearchCompanyLookupParams) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":   "company.handlers.CompanyGetCompanyByInternalIDHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"companyName":    params.CompanyName,
+			"websiteName":    params.WebsiteName,
+		}
 
 		if params.CompanyName == nil && params.WebsiteName == nil {
-			log.Debugf("CompanyName or WebsiteName atleast one required")
+			log.WithFields(f).Debugf("CompanyName or WebsiteName at least one required")
 			return company.NewSearchCompanyLookupBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, errors.New("companyName or websiteName at least one required")))
 		}
 
@@ -628,7 +634,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 		result, err := service.GetCompanyLookup(ctx, companyName, websiteName)
 		if err != nil {
 			msg := fmt.Sprintf("error occured while search orgname %s, websitename %s", companyName, websiteName)
-			log.Warnf("error occured while search orgname %s, websitename %s. error = %s", companyName, websiteName, err.Error())
+			log.WithFields(f).WithError(err).Warnf("error occured while search orgname %s, websitename %s. error = %s", companyName, websiteName, err.Error())
 			if _, ok := err.(*organizations.LookupNotFound); ok {
 				return company.NewSearchCompanyLookupNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, msg, err))

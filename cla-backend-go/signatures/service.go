@@ -36,6 +36,7 @@ type SignatureService interface {
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string) (*models.Signature, error)
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string) (*models.Signature, error)
 	GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error)
+	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, params signatures.GetProjectCompanySignaturesParams) (*models.Signatures, error)
 	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams) (*models.Signatures, error)
@@ -94,13 +95,18 @@ func (s service) GetCorporateSignature(ctx context.Context, claGroupID, companyI
 // GetProjectSignatures returns the list of signatures associated with the specified project
 func (s service) GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error) {
 
-	const defaultPageSize int64 = 10
-	var pageSize = defaultPageSize
-	if params.PageSize != nil {
-		pageSize = *params.PageSize
+	projectSignatures, err := s.repo.GetProjectSignatures(ctx, params)
+	if err != nil {
+		return nil, err
 	}
 
-	projectSignatures, err := s.repo.GetProjectSignatures(ctx, params, pageSize)
+	return projectSignatures, nil
+}
+
+// CreateProjectSummaryReport generates a project summary report based on the specified input
+func (s service) CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error) {
+
+	projectSignatures, err := s.repo.CreateProjectSummaryReport(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +470,7 @@ func (s service) InvalidateProjectRecords(ctx context.Context, projectID string,
 					log.WithFields(f).Warnf("Unable to update signature: %s with project name: %s, error: %v",
 						sigID, projName, updateErr)
 				}
-			}(signature.SignatureID.String(), projectName)
+			}(signature.SignatureID, projectName)
 		}
 
 		// Wait until all the workers are done
@@ -799,10 +805,12 @@ func (s service) GetClaGroupICLASignatures(ctx context.Context, claGroupID strin
 }
 
 func (s service) GetClaGroupCCLASignatures(ctx context.Context, claGroupID string) (*models.Signatures, error) {
+	pageSize := utils.Int64(1000)
 	return s.repo.GetProjectSignatures(ctx, signatures.GetProjectSignaturesParams{
 		ClaType:   aws.String(utils.ClaTypeCCLA),
 		ProjectID: claGroupID,
-	}, 1000)
+		PageSize:  pageSize,
+	})
 }
 
 func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error) {

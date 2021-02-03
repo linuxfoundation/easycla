@@ -374,6 +374,49 @@ paths:
       tags:
         - signatures
 
+  /signatures/project/{projectID}/summary-report:
+    post:
+      summary: Creates a summary report
+      description: Creates a summary report when provided the project ID
+      security:
+        - OauthSecurity: [ ]
+      operationId: createProjectSummaryReport
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/path-projectID"
+        - $ref: '#/parameters/pageSize'
+        - $ref: '#/parameters/nextKey'
+        - $ref: '#/parameters/searchTerm'
+        - $ref: '#/parameters/searchField'
+        - $ref: '#/parameters/fullMatch'
+        - $ref: '#/parameters/signatureType'
+        - $ref: '#/parameters/claType'
+        - $ref: '#/parameters/sortOrder'
+        - name: body
+          in: body
+          schema:
+            $ref: '#/definitions/company-id-list'
+          required: false
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/signature-report'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - signatures
+
   /signatures/project/{projectID}/company/{companyID}:
     get:
       summary: Get Project Company Signatures
@@ -1160,6 +1203,7 @@ paths:
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: '#/parameters/companyName'
+        - $ref: '#/parameters/include-signing-entity-name'
         - name: websiteName
           in: query
           type: string
@@ -2597,6 +2641,13 @@ parameters:
         those are the available fields to use
       </p>
 
+  include-signing-entity-name:
+    name: include-signing-entity-name
+    in: query
+    type: boolean
+    default: false
+    required: false
+
 definitions:
   version:
     $ref: './common/version.yaml'
@@ -2668,6 +2719,12 @@ definitions:
 
   github-org:
     $ref: './common/github-org.yaml'
+
+  company-id-list:
+    type: array
+    description: A list of company internal IDs
+    items:
+      type: string
 
   company-invite-user:
     type: object
@@ -2876,6 +2933,10 @@ definitions:
     $ref: './common/signatures.yaml'
   signature:
     $ref: './common/signature.yaml'
+  signature-report:
+    $ref: './common/signature-report.yaml'
+  signature-summary:
+    $ref: './common/signature-summary.yaml'
   approval-list:
     $ref: './common/signature-approval-list.yaml'
 

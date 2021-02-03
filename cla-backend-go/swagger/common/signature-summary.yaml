@@ -1,0 +1,62 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+title: A signature summary model
+description: A signature summary model
+properties:
+  signatureID:
+    description: the signature ID for a compnay record
+    $ref: './common/properties/internal-id.yaml'
+  projectID:
+    description: the CLA Group ID
+    $ref: './common/properties/internal-id.yaml'
+  claType:
+    type: string
+    description: >
+      CLA Type field - identifies the specify signature type - individual, employee or corporate signature, valid options:
+      * `icla` - for individual contributor signature records (individuals not associated with a corporation)
+      * `ecla` - for employee contributor signature records (acknowledgements from corporate contributors)
+      * `ccla` - for corporate contributor signature records (created by CLA Signatories and managed by CLA Managers)
+    enum: [ icla,ecla,ccla ]
+  signatureSigned:
+    type: boolean
+    description: the signature signed flag - true or false value
+    example: true
+  signatureApproved:
+    type: boolean
+    description: the signature approved flag - true or false value
+    example: true
+  signatureReferenceType:
+    type: string
+    description: the signature reference type - either user or company
+    example: 'user'
+    minLength: 2
+    maxLength: 12
+  signatureReferenceID:
+    description: the signature reference ID which references a compnay ID or user ID
+    $ref: './common/properties/internal-id.yaml'
+  signatureReferenceName:
+    type: string
+  signatureReferenceNameLower:
+    type: string
+  signatureType:
+    type: string
+    description: the signature type - either cla or ccla
+    example: 'ccla'
+    minLength: 2
+    maxLength: 12
+  signedOn:
+    type: string
+  signatoryName:
+    type: string
+  companyName:
+    $ref: './common/properties/company-name.yaml'
+  signingEntityName:
+    $ref: './common/properties/company-signing-entity-name.yaml'
+  userDocusignName:
+    type: string
+    description: full name used on docusign document
+  userDocusignDateSigned:
+    type: string
+    description: docusign signature date
