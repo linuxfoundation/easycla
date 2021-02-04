@@ -100,8 +100,8 @@ export class ClaConsoleSectionComponent implements OnInit {
     window.open(AppSettings.CONTRIBUTORS_LEARN_MORE, '_blank');
   }
 
-  onClickVersion(version) {
-    this.selectedVersion = version;
+  onClickVersion(version?) {
+    this.selectedVersion = version ? version : '';
   }
 
   onClickVersionProceed() {
