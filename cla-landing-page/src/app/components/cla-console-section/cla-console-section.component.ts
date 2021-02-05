@@ -1,14 +1,14 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
 
-import { Component, Input, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { Component, Input, isDevMode, OnInit, TemplateRef, ViewChild } from '@angular/core';
 import { AppSettings } from 'src/app/config/app-settings';
 import { StorageService } from 'src/app/core/services/storage.service';
 import { EnvConfig } from 'src/app/config/cla-env-utils';
 import { ActivatedRoute } from '@angular/router';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { LandingPageService } from 'src/app/service/landing-page.service';
-
+declare let process: any;
 @Component({
   selector: 'app-cla-console-section',
   templateUrl: './cla-console-section.component.html',
@@ -23,6 +23,7 @@ export class ClaConsoleSectionComponent implements OnInit {
   selectedVersion: string;
   error: string;
   consoleType: string;
+  env: string;
 
   constructor(
     private storageService: StorageService,
@@ -44,6 +45,7 @@ export class ClaConsoleSectionComponent implements OnInit {
   }
 
   ngOnInit() {
+    this.env = process.env.NODE_ENV;
     this.version = this.router.snapshot.queryParamMap.get('version');
     const element: any = document.getElementById('lfx-header');
     let projectConsoleUrl = EnvConfig.default[AppSettings.PROJECT_CONSOLE_LINK] + '#/login';
@@ -100,8 +102,8 @@ export class ClaConsoleSectionComponent implements OnInit {
     window.open(AppSettings.CONTRIBUTORS_LEARN_MORE, '_blank');
   }
 
-  onClickVersion(version?) {
-    this.selectedVersion = version ? version : '';
+  onClickVersion(version) {
+    this.selectedVersion = (this.env === 'production') ? '' : version;
   }
 
   onClickVersionProceed() {
