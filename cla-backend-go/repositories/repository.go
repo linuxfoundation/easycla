@@ -94,7 +94,7 @@ func (r repo) AddGithubRepository(ctx context.Context, externalProjectID string,
 	_, err := r.GetRepositoryByGithubID(ctx, utils.StringValue(input.RepositoryExternalID), true)
 	if err != nil {
 		// Expecting Not found - no issue if not found - all other error we throw
-		if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
+		if _, ok := err.(*utils.GitHubRepositoryNotFound); !ok {
 			return nil, err
 		}
 	} else {
