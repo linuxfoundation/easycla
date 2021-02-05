@@ -740,18 +740,11 @@ func (s service) CreateOrgFromExternalID(ctx context.Context, signingEntityName,
 
 	var companyModel *models.Company
 	var lookupErr error
-	if signingEntityName == "" {
-		// Lookup the company in our database...does it exist?
-		companyModel, lookupErr = s.GetCompanyByExternalID(ctx, companySFID)
-		if lookupErr != nil {
-			log.WithFields(f).WithError(lookupErr).Debug("problem locating internal company record by signing entity name and SFID - must not exist yet")
-		}
-	} else {
-		// Lookup the company in our database...does it exist?
-		companyModel, lookupErr = s.GetCompanyBySigningEntityName(ctx, signingEntityName, companySFID)
-		if lookupErr != nil {
-			log.WithFields(f).WithError(lookupErr).Debug("problem locating internal company record by signing entity name and SFID - must not exist yet")
-		}
+
+	// Lookup the company in our database...does it exist?
+	companyModel, lookupErr = s.GetCompanyBySigningEntityName(ctx, signingEntityName, companySFID)
+	if lookupErr != nil {
+		log.WithFields(f).WithError(lookupErr).Debug("problem locating internal company record by signing entity name and SFID - must not exist yet")
 	}
 
 	// Already exists - no need to create in our own database
