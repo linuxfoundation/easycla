@@ -81,7 +81,7 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			}
 			ghRepo, err := service.GetRepository(ctx, params.RepositoryID)
 			if err != nil {
-				if err == ErrGithubRepositoryNotFound {
+				if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
 					return github_repositories.NewDeleteProjectGithubRepositoryNotFound()
 				}
 				return github_repositories.NewDeleteProjectGithubRepositoryBadRequest().WithPayload(errorResponse(err))

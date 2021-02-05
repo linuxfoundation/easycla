@@ -117,8 +117,8 @@ func (s *service) AddGithubRepository(ctx context.Context, externalProjectID str
 	existingModel, err := s.GetRepositoryByName(ctx, utils.StringValue(input.RepositoryName))
 	if err != nil {
 		// If not found - ok, otherwise we have a bigger problem
-		if errors.Is(err, ErrGithubRepositoryNotFound) {
-			log.WithFields(f).Debug("existing repository not found - will create")
+		if notFoundErr, ok := err.(*utils.GitHubRepositoryNotFound); ok {
+			log.WithFields(f).WithError(notFoundErr).Debug("existing repository not found - will create")
 		} else {
 			return nil, err
 		}
@@ -126,10 +126,10 @@ func (s *service) AddGithubRepository(ctx context.Context, externalProjectID str
 
 	if existingModel != nil {
 		log.WithFields(f).Debug("existing repository found - enabling it...")
-		err := s.EnableRepositoryWithCLAGroupID(ctx, existingModel.RepositoryID, utils.StringValue(input.RepositoryProjectID))
-		if err != nil {
-			log.WithFields(f).WithError(err).Warn("problem enabling repository")
-			return nil, err
+		enableErr := s.EnableRepositoryWithCLAGroupID(ctx, existingModel.RepositoryID, utils.StringValue(input.RepositoryProjectID))
+		if enableErr != nil {
+			log.WithFields(f).WithError(enableErr).Warn("problem enabling repository")
+			return nil, enableErr
 		}
 
 		return s.repo.GetRepository(ctx, existingModel.RepositoryID)
