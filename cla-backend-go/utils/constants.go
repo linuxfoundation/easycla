@@ -120,5 +120,8 @@ const RecordModified = "MODIFY"
 //RecordAdded dynami event on adding a record
 const RecordAdded = "INSERT"
 
-//GithubRepoNotFound representing not found repos for CLAGroupID
-const GithubRepoNotFound = "github repository not found"
+//GithubRepoNotFound is a string that indicates the GitHub repository is not found
+const GithubRepoNotFound = "GitHub repository not found"
+
+//GithubRepoExists  is a string that indicates the GitHub repository already exists
+const GithubRepoExists = "GitHub repository exists"

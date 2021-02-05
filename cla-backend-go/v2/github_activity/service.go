@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/dynamo_events"
@@ -113,7 +115,7 @@ func (s *eventHandlerService) handleRepositoryRemovedAction(sender *github.User,
 	repositoryExternalID := strconv.FormatInt(*repo.ID, 10)
 	repoModel, err := s.githubRepo.GetRepositoryByGithubID(context.Background(), repositoryExternalID, true)
 	if err != nil {
-		if errors.Is(err, repositories.ErrGithubRepositoryNotFound) {
+		if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
 			log.Warnf("event for non existing local repo : %s, nothing to do", *repo.FullName)
 			return nil
 		}

@@ -21,7 +21,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/github_repositories"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/jinzhu/copier"
@@ -100,6 +99,12 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 			result, err := service.AddGithubRepository(ctx, params.ProjectSFID, params.GithubRepositoryInput)
 			if err != nil {
+				if _, ok := err.(*utils.GitHubRepositoryExists); ok {
+					msg := fmt.Sprintf("unable to add repository - repository already exists for projectSFID: %s", params.ProjectSFID)
+					log.WithFields(f).WithError(err).Warn(msg)
+					return github_repositories.NewAddProjectGithubRepositoryConflict().WithPayload(
+						utils.ErrorResponseConflictWithError(reqID, msg, err))
+				}
 				msg := fmt.Sprintf("problem adding github repositories for projectSFID: %s", params.ProjectSFID)
 				log.WithFields(f).WithError(err).Warn(msg)
 				return github_repositories.NewAddProjectGithubRepositoryBadRequest().WithPayload(
@@ -157,7 +162,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 			ghRepo, err := service.GetRepository(ctx, params.RepositoryID)
 			if err != nil {
-				if err == repositories.ErrGithubRepositoryNotFound {
+				if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
 					msg := fmt.Sprintf("repository not found for projectSFID: %s", params.ProjectSFID)
 					log.WithFields(f).WithError(err).Warn(msg)
 					return github_repositories.NewDeleteProjectGithubRepositoryNotFound().WithPayload(
@@ -215,7 +220,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 			protectedBranch, err := service.GetProtectedBranch(ctx, params.ProjectSFID, params.RepositoryID)
 			if err != nil {
-				if err == repositories.ErrGithubRepositoryNotFound {
+				if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
 					msg := fmt.Sprintf("unable to locatate branch protection projectSFID: %s, repository: %s", params.ProjectSFID, params.RepositoryID)
 					log.WithFields(f).WithError(err).Warn(msg)
 					return github_repositories.NewGetProjectGithubRepositoryBranchProtectionNotFound().WithPayload(
@@ -270,8 +275,8 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			protectedBranch, err := service.UpdateProtectedBranch(ctx, params.RepositoryID, params.ProjectSFID, params.GithubRepositoryBranchProtectionInput)
 			if err != nil {
 				log.Warnf("update protected branch failed for repo %s : %v", params.RepositoryID, err)
-				if err == repositories.ErrGithubRepositoryNotFound {
-					msg := fmt.Sprintf("unable to update branch protection projectSFID: %s, repository: %s", params.ProjectSFID, params.RepositoryID)
+				if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
+					msg := fmt.Sprintf("unable to update branch protection for projectSFID: %s, repository: %s", params.ProjectSFID, params.RepositoryID)
 					log.WithFields(f).WithError(err).Warn(msg)
 					return github_repositories.NewGetProjectGithubRepositoryBranchProtectionNotFound().WithPayload(
 						utils.ErrorResponseNotFound(reqID, msg))

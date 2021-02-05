@@ -1288,6 +1288,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
         '500':
           $ref: '#/responses/internal-server-error'
       tags:
@@ -1438,6 +1440,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
         '500':
           $ref: '#/responses/internal-server-error'
       tags:

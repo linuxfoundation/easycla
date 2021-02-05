@@ -179,7 +179,7 @@ type CompanyAdminNotFound struct {
 	Err         error
 }
 
-// Error is an error string function for Salesforce Project not found errors
+// Error is an error string function for the CompanyAdminNotFound model
 func (e *CompanyAdminNotFound) Error() string {
 	if e.Err == nil {
 		return fmt.Sprintf("company admin for company with ID %s not found", e.CompanySFID)
@@ -202,7 +202,7 @@ type CompanyNotFound struct {
 	Err                      error
 }
 
-// Error is an error string function for Salesforce Project not found errors
+// Error is an error string function for the CompanyNotFound model
 func (e *CompanyNotFound) Error() string {
 	msg := "company does not exist "
 	if e.Message != "" {
@@ -229,5 +229,61 @@ func (e *CompanyNotFound) Error() string {
 
 // Unwrap method returns its contained error
 func (e *CompanyNotFound) Unwrap() error {
+	return e.Err
+}
+
+// GitHubRepositoryNotFound is an error model for a GitHub repository not found
+type GitHubRepositoryNotFound struct {
+	Message        string
+	RepositoryName string
+	Err            error
+}
+
+// Error is an error string function for the GitHubRepositoryNotFound model
+func (e *GitHubRepositoryNotFound) Error() string {
+	msg := GithubRepoNotFound
+	if e.Message != "" {
+		msg = e.Message
+	}
+	if e.RepositoryName != "" {
+		msg = fmt.Sprintf("%s - repository: %s ", msg, e.RepositoryName)
+	}
+	if e.Err != nil {
+		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())
+	}
+
+	return strings.TrimSpace(msg)
+}
+
+// Unwrap method returns its contained error
+func (e *GitHubRepositoryNotFound) Unwrap() error {
+	return e.Err
+}
+
+// GitHubRepositoryExists is an error model for when a GitHub repository already exists
+type GitHubRepositoryExists struct {
+	Message        string
+	RepositoryName string
+	Err            error
+}
+
+// Error is an error string function for the GitHubRepositoryExists model
+func (e *GitHubRepositoryExists) Error() string {
+	msg := GithubRepoNotFound
+	if e.Message != "" {
+		msg = e.Message
+	}
+	if e.RepositoryName != "" {
+		msg = fmt.Sprintf("%s - repository: %s ", msg, e.RepositoryName)
+	}
+	if e.Err != nil {
+		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())
+	}
+
+	return strings.TrimSpace(msg)
+}
+
+// Unwrap method returns its contained error
+func (e *GitHubRepositoryExists) Unwrap() error {
 	return e.Err
 }

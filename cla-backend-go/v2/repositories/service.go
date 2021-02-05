@@ -36,6 +36,7 @@ type Service interface {
 	DisableRepository(ctx context.Context, repositoryID string) error
 	ListProjectRepositories(ctx context.Context, projectSFID string) (*v1Models.ListGithubRepositories, error)
 	GetRepository(ctx context.Context, repositoryID string) (*v1Models.GithubRepository, error)
+	GetRepositoryByName(ctx context.Context, repositoryName string) (*v1Models.GithubRepository, error)
 	DisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
 	GetProtectedBranch(ctx context.Context, projectSFID, repositoryID string) (*v2Models.GithubRepositoryBranchProtection, error)
 	UpdateProtectedBranch(ctx context.Context, projectSFID, repositoryID string, input *v2Models.GithubRepositoryBranchProtectionInput) (*v2Models.GithubRepositoryBranchProtection, error)
@@ -123,6 +124,28 @@ func (s *service) AddGithubRepository(ctx context.Context, projectSFID string, i
 		log.WithFields(f).WithError(err).Warn("unable to get repository by external ID")
 		return nil, err
 	}
+
+	// Check if exists already
+	existingRepositoryModel, lookupErr := s.GetRepositoryByName(ctx, utils.StringValue(ghRepo.FullName))
+	if lookupErr != nil {
+		// If we have the repository not found error - this is ok - we are expecting this
+		if notFoundErr, ok := lookupErr.(*utils.GitHubRepositoryNotFound); ok {
+			log.WithFields(f).WithError(notFoundErr).Debugf("GitHub repository lookup didn't find a match for existing repository name: %s - ok to create", utils.StringValue(ghRepo.FullName))
+		} else {
+			// Some other error - not good...
+			return nil, lookupErr
+		}
+	}
+
+	// We already have an existing repository model with the same name
+	if existingRepositoryModel != nil {
+		msg := fmt.Sprintf("GitHub repository already exists with repository name: %s", utils.StringValue(ghRepo.FullName))
+		log.WithFields(f).Warn(msg)
+		return nil, &utils.GitHubRepositoryExists{
+			Message: msg,
+		}
+	}
+
 	in := &v1Models.GithubRepositoryInput{
 		RepositoryExternalID:       input.RepositoryGithubID,
 		RepositoryName:             ghRepo.FullName,
@@ -255,6 +278,10 @@ func (s *service) ListProjectRepositories(ctx context.Context, projectSFID strin
 
 func (s *service) GetRepository(ctx context.Context, repositoryID string) (*v1Models.GithubRepository, error) {
 	return s.repo.GetRepository(ctx, repositoryID)
+}
+
+func (s *service) GetRepositoryByName(ctx context.Context, repositoryName string) (*v1Models.GithubRepository, error) {
+	return s.repo.GetRepositoryByName(ctx, repositoryName)
 }
 
 func (s *service) GetProtectedBranch(ctx context.Context, projectSFID, repositoryID string) (*v2Models.GithubRepositoryBranchProtection, error) {

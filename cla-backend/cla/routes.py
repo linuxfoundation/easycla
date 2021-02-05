@@ -1245,6 +1245,12 @@ def request_corporate_signature(
            'authority_email': 'string',
            'return_url': <optional>}
 
+    {
+      "project_id": "d8cead54-92b7-48c5-a2c8-b1e295e8f7f1",
+      "company_id": "83f61e34-4457-45a6-a7ab-449ad6efcfbb",
+      "return_url": "https://corporate.v1.easycla.lfx.linuxfoundation.org/#/company/83f61e34-4457-45a6-a7ab-449ad6efcfbb"
+    }
+
     Creates a new signature given project and company IDs. The manager will be redirected to the
     return_url once signature is complete.
 

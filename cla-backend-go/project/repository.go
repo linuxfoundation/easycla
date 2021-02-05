@@ -83,7 +83,7 @@ type repo struct {
 // CreateCLAGroup creates a new CLA Group
 func (repo *repo) CreateCLAGroup(ctx context.Context, claGroupModel *models.ClaGroup) (*models.ClaGroup, error) {
 	f := logrus.Fields{
-		"functionName":      "CreateCLAGroup",
+		"functionName":      "project.repository.CreateCLAGroup",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"projectName":       claGroupModel.ProjectName,
 		"projectExternalID": claGroupModel.ProjectExternalID,
@@ -147,7 +147,7 @@ func (repo *repo) CreateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 
 func (repo *repo) getCLAGroupByID(ctx context.Context, claGroupID string, loadCLAGroupDetails bool) (*models.ClaGroup, error) {
 	f := logrus.Fields{
-		"functionName":       "getCLAGroupByID",
+		"functionName":       "project.repository.getCLAGroupByID",
 		utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
 		"claGroupID":         claGroupID,
 		"loadProjectDetails": loadCLAGroupDetails,
@@ -202,7 +202,7 @@ func (repo *repo) GetCLAGroupByID(ctx context.Context, claGroupID string, loadRe
 // GetCLAGroupsByExternalID queries the database and returns a list of the cla groups
 func (repo *repo) GetCLAGroupsByExternalID(ctx context.Context, params *project.GetProjectsByExternalIDParams, loadRepoDetails bool) (*models.ClaGroups, error) {
 	f := logrus.Fields{
-		"functionName":    "GetCLAGroupsByExternalID",
+		"functionName":    "project.repository.GetCLAGroupsByExternalID",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"ProjectSFID":     params.ProjectSFID,
 		"NextKey":         params.NextKey,
@@ -302,7 +302,7 @@ func (repo *repo) GetCLAGroupsByExternalID(ctx context.Context, params *project.
 // GetClaGroupsByFoundationID queries the database and returns a list of all cla_groups associated with foundation
 func (repo *repo) GetClaGroupsByFoundationSFID(ctx context.Context, foundationSFID string, loadRepoDetails bool) (*models.ClaGroups, error) {
 	f := logrus.Fields{
-		"functionName":    "GetClaGroupsByFoundationSFID",
+		"functionName":    "project.repository.GetClaGroupsByFoundationSFID",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"foundationSFID":  foundationSFID,
 		"loadRepoDetails": loadRepoDetails,
@@ -363,7 +363,7 @@ func (repo *repo) GetClaGroupsByFoundationSFID(ctx context.Context, foundationSF
 // GetClaGroupsByProjectSFID returns cla_group associated with project
 func (repo *repo) GetClaGroupByProjectSFID(ctx context.Context, projectSFID string, loadRepoDetails bool) (*models.ClaGroup, error) {
 	f := logrus.Fields{
-		"functionName":    "GetClaGroupByProjectSFID",
+		"functionName":    "project.repository.GetClaGroupByProjectSFID",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"projectSFID":     projectSFID,
 		"loadRepoDetails": loadRepoDetails,
@@ -382,7 +382,7 @@ func (repo *repo) GetClaGroupByProjectSFID(ctx context.Context, projectSFID stri
 // GetCLAGroupByName returns the project model associated for the specified project name
 func (repo *repo) GetCLAGroupByName(ctx context.Context, projectName string) (*models.ClaGroup, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCLAGroupByName",
+		"functionName":   "project.repository.GetCLAGroupByName",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectName":    projectName,
 		"tableName":      repo.claGroupTable,
@@ -442,7 +442,7 @@ func (repo *repo) GetCLAGroupByName(ctx context.Context, projectName string) (*m
 // GetExternalCLAGroup returns the project model associated for the specified external project ID
 func (repo *repo) GetExternalCLAGroup(ctx context.Context, projectExternalID string) (*models.ClaGroup, error) {
 	f := logrus.Fields{
-		"functionName":      "GetExternalCLAGroup",
+		"functionName":      "project.repository.GetExternalCLAGroup",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"projectExternalID": projectExternalID,
 		"tableName":         repo.claGroupTable}
@@ -499,7 +499,7 @@ func (repo *repo) GetExternalCLAGroup(ctx context.Context, projectExternalID str
 // GetCLAGroups queries the database and returns a list of the projects
 func (repo *repo) GetCLAGroups(ctx context.Context, params *project.GetProjectsParams) (*models.ClaGroups, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCLAGroups",
+		"functionName":   "project.repository.GetCLAGroups",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"searchField":    params.SearchField,
 		"searchTerm":     params.SearchTerm,
@@ -596,7 +596,7 @@ func (repo *repo) GetCLAGroups(ctx context.Context, params *project.GetProjectsP
 // DeleteCLAGroup deletes the CLAGroup by claGroupID
 func (repo *repo) DeleteCLAGroup(ctx context.Context, claGroupID string) error {
 	f := logrus.Fields{
-		"functionName":   "DeleteCLAGroup",
+		"functionName":   "project.repository.DeleteCLAGroup",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"tableName":      repo.claGroupTable}
@@ -635,7 +635,7 @@ func (repo *repo) DeleteCLAGroup(ctx context.Context, claGroupID string) error {
 // UpdateCLAGroup updates the project by claGroupID
 func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaGroup) (*models.ClaGroup, error) {
 	f := logrus.Fields{
-		"functionName":            "UpdateCLAGroup",
+		"functionName":            "project.repository.UpdateCLAGroup",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
 		"ProjectID":               claGroupModel.ProjectID,
 		"ProjectName":             claGroupModel.ProjectName,
@@ -754,7 +754,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 
 func (repo *repo) UpdateRootCLAGroupRepositoriesCount(ctx context.Context, claGroupID string, diff int64, reset bool) error {
 	f := logrus.Fields{
-		"functionName":   "UpdateRootCLAGroupRepositoriesCount",
+		"functionName":   "project.repository.UpdateRootCLAGroupRepositoriesCount",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"diff":           diff,

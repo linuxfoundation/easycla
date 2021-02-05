@@ -923,11 +923,11 @@ class DocuSign(signing_service_interface.SigningService):
                       f'project id: {project_id}, '
                       f'company id: {company_id}, '
                       f'signing entity name: {signing_entity_name}, '
-                      f'send email: {send_as_email}',
+                      f'send email: {send_as_email}, ',
                       f'signatory name: {signatory_name}, '
-                      f'signatory email: {signatory_email} '
-                      f'return url type: {return_url_type}',
-                      f'return url: {return_url}',
+                      f'signatory email: {signatory_email}, '
+                      f'return url type: {return_url_type}, ',
+                      f'return url: {return_url}'
                       )
 
         # Auth user is the currently logged in user - the user who started the signing process
@@ -1062,11 +1062,16 @@ class DocuSign(signing_service_interface.SigningService):
             company.load(str(company_id))
             cla.log.debug(f'{fn} - Loaded company {company}')
 
+            if signing_entity_name is None:
+                if company.get_signing_entity_name() is None:
+                    signing_entity_name = company.get_company_name()
+                else:
+                    signing_entity_name = company.get_signing_entity_name()
+
             # Should be the same values...what do we do if they do not match?
             if company.get_signing_entity_name() != signing_entity_name:
                 cla.log.warning(f'{fn} - signing entity name provided: {signing_entity_name} '
                                 f'does not match the DB company record: {company.get_signing_entity_name()}')
-
         except DoesNotExist as err:
             cla.log.warning(f'{fn} - Unable to load company by id: {company_id}. '
                             'Returning an error response')

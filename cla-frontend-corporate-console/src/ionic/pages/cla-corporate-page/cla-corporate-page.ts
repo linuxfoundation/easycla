@@ -5,14 +5,13 @@ import { Component } from '@angular/core';
 import { IonicPage, NavController, NavParams } from 'ionic-angular';
 import { ClaService } from '../../services/cla.service';
 import { generalConstants } from '../../constant/general';
-import { EnvConfig } from '../../services/cla.env.utils';
 
 @IonicPage({
-  segment: 'project/:projectId'
+  segment: 'project/:projectId',
 })
 @Component({
   selector: 'cla-corporate-page',
-  templateUrl: 'cla-corporate-page.html'
+  templateUrl: 'cla-corporate-page.html',
 })
 export class ClaCorporatePage {
   projectId: string;
@@ -28,7 +27,7 @@ export class ClaCorporatePage {
   constructor(
     public navCtrl: NavController,
     public navParams: NavParams,
-    private claService: ClaService
+    private claService: ClaService,
   ) {
     this.getDefaults();
     this.projectId = navParams.get('projectId');
@@ -37,10 +36,10 @@ export class ClaCorporatePage {
 
   getDefaults() {
     this.project = {
-      project_name: ''
+      project_name: '',
     };
     this.signature = {
-      sign_url: ''
+      sign_url: '',
     };
   }
 
@@ -64,8 +63,10 @@ export class ClaCorporatePage {
     let signatureRequest = {
       project_id: this.projectId,
       company_id: this.company.company_id,
-      // TODO: Switch this to intermediary loading screen as docusign postback has delay
-      return_url: this.getReturnUrl()
+      send_as_email: false,
+      authority_name: localStorage.getItem('user_name'),
+      authority_email: localStorage.getItem('user_email'),
+      return_url: this.getReturnUrl(),
     };
 
     this.claService.postCorporateSignatureRequest(signatureRequest).subscribe((response) => {
