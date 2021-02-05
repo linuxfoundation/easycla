@@ -90,11 +90,13 @@ func (dbCompanyModel *DBModel) toModel() (*models.Company, error) {
 }
 
 // dbModelsToResponseModels is a helper routine to convert the (internal) database model to a (public) swagger model
-func dbModelsToResponseModels(ctx context.Context, dbModels []DBModel) ([]*models.Company, error) {
+func dbModelsToResponseModels(ctx context.Context, dbModels []DBModel, includeChildCompanies bool) ([]*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "company.models.dbModelsToResponseModels",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"functionName":          "company.models.dbModelsToResponseModels",
+		utils.XREQUESTID:        ctx.Value(utils.XREQUESTID),
+		"includeChildCompanies": includeChildCompanies,
 	}
+
 	var companyModels []*models.Company
 	var err error
 	for _, dbModel := range dbModels {
@@ -103,8 +105,16 @@ func dbModelsToResponseModels(ctx context.Context, dbModels []DBModel) ([]*model
 			log.WithFields(f).WithError(conversionErr).Warn("unable to convert db model to company model")
 			err = conversionErr
 		} else {
-			log.WithFields(f).Debugf("Converted %+v to %+v", dbModel, respModel)
-			companyModels = append(companyModels, respModel)
+			// log.WithFields(f).Debugf("Converted %+v to %+v", dbModel, respModel)
+			if includeChildCompanies {
+				companyModels = append(companyModels, respModel)
+			} else {
+				// only include if company is not a signing entity name with different name
+				if respModel.SigningEntityName == "" || respModel.CompanyName == respModel.SigningEntityName {
+					companyModels = append(companyModels, respModel)
+					break // no need to continue
+				}
+			}
 		}
 	}
 

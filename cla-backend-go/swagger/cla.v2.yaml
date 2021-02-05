@@ -4679,15 +4679,19 @@ definitions:
         x-omitempty: false
         example: "2019-07-18T11:38:13.144674+0000"
       project_id:
-        type: string
-        description: The CLA Group/Project ID
+        title: CLA Group ID
+        description: The CLA Group/Project ID - here for backwards compatiablity
+        $ref: './common/properties/internal-id.yaml'
         x-omitempty: false
-        example: "e1e30240-a722-4c82-a648-121681d959c7"
+      cla_group_id:
+        title: CLA Group ID
+        description: The CLA Group ID
+        $ref: './common/properties/internal-id.yaml'
+        x-omitempty: false
       project_sfid:
-        type: string
+        $ref: './common/properties/external-id.yaml'
         description: The project SalesForce ID
         x-omitempty: false
-        example: "a2g17000000hyxNAAA"
       project_name:
         type: string
         description: The project name
@@ -4708,11 +4712,14 @@ definitions:
         example: "John Doe"
         x-omitempty: false
       signature_id:
-        type: string
-        example: "55ec4162-9e41-47da-a643-f81666953a51"
+        $ref: './common/properties/external-id.yaml'
+        title: Signature ID
+        description: The internal signature ID
         x-omitempty: false
       project_logo:
         type: string
+        title: Project Logo
+        description: the project logo
         example: "http://wwwlinuxfoundation.org/logo.gif"
         x-omitempty: false
       cla_group_name:

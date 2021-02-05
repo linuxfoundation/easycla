@@ -840,11 +840,13 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 	}
 	claGroupsChannel := make(chan *CLAGroupsResult, 1)
 
-	// Separate go routine
+	log.WithFields(f).Debug("scheduling query for companies...")
+	const includeChildCompanies = false // Include child/other signing entity name records?
+	// Separate go routine - we will get 0 or more companies (Company + separate companies for each signing entity names)
 	go func(ctx context.Context, companySFID string, companyID *string) {
 		// Attempt to locate the companyModel model in our database
 		log.WithFields(f).Debug("locating companyModel by SF ID")
-		companies, companyErr := s.companyRepo.GetCompaniesByExternalID(ctx, companySFID)
+		companies, companyErr := s.companyRepo.GetCompaniesByExternalID(ctx, companySFID, includeChildCompanies)
 		if companyErr != nil {
 			// If we were unable to find the companyModel/org in our local database, try to auto-create based
 			// on the existing SF record
@@ -901,6 +903,7 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 	}(ctx, companySFID, companyID)
 
 	// Separate go routine
+	log.WithFields(f).Debug("scheduling query for CLA Groups for this project...")
 	go func(ctx context.Context, projectSFID string) {
 		claGroups, err := s.getCLAGroupsUnderProjectOrFoundation(ctx, projectSFID)
 		if err != nil {
@@ -918,15 +921,19 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 	}(ctx, projectSFID)
 
 	// Grab the results
+	log.WithFields(f).Debug("waiting for companies query to finish...")
 	companyResponse := <-companiesChannel
 	if companyResponse.CompanyError != nil {
 		return nil, companyResponse.CompanyError
 	}
+	log.WithFields(f).Debugf("companies query finished - %d companies found", len(companyResponse.Companies))
 
+	log.WithFields(f).Debug("waiting for CLA Groups query to finish...")
 	claGroupResponse := <-claGroupsChannel
 	if claGroupResponse.CLAGroupError != nil {
 		return nil, claGroupResponse.CLAGroupError
 	}
+	log.WithFields(f).Debugf("cla groups query finished - %d CLA Groups found", len(claGroupResponse.CLAGroups))
 
 	// Setup another channel to fetch all these results
 	type CompanyProjectCLAList struct {
@@ -937,6 +944,7 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 
 	// For each company...
 	for _, companyModel := range companyResponse.Companies {
+		log.WithFields(f).Debugf("scheduling query for company project CLAs for company: %s...", companyModel.CompanyName)
 		go func(ctx context.Context, companyModel *v1Models.Company, projectSFID string, claGroups map[string]*claGroupModel) {
 
 			// Fetch the active CLA list for this project + company
@@ -953,7 +961,6 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 			inactiveCLAGroups := claGroups
 			for _, activeCLA := range activeCLAList.List {
 				// remove cla groups for which we have signed cla
-				log.WithFields(f).Debugf("removing CLA Groups with active CLA, CLA Group: %+v, error: %+v", activeCLA, err)
 				delete(inactiveCLAGroups, activeCLA.ProjectID)
 			}
 
@@ -986,18 +993,10 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 				CompanyProjectCLA:      companyProjectCLA,
 			}
 		}(ctx, companyModel, projectSFID, claGroupResponse.CLAGroups)
-
-		/*
-			// refresh clagroups for next companyModel instance
-			claGroups, err = s.getCLAGroupsUnderProjectOrFoundation(ctx, projectSFID)
-			if err != nil {
-				log.WithFields(f).Warnf("problem fetching CLA Groups under project or foundation, error: %+v", err)
-				return nil, err
-			}
-		*/
 	}
 
 	// Grab the results
+	log.WithFields(f).Debug("waiting for company project CLA results to finish...")
 	var companyProjectClaList []*models.CompanyProjectCla
 	for i := 0; i < len(companyResponse.Companies); i++ {
 		companyProjectCLAResponse := <-companyProjectCLAChannel
@@ -1008,6 +1007,7 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 		// No error, save the value
 		companyProjectClaList = append(companyProjectClaList, companyProjectCLAResponse.CompanyProjectCLA)
 	}
+	log.WithFields(f).Debugf("company project cla groups query finished - %d responses", len(companyResponse.Companies))
 
 	return &models.CompanyProjectClaList{
 		List: companyProjectClaList,
@@ -1094,42 +1094,57 @@ func v2ProjectToMap(projectDetails *v2ProjectServiceModels.ProjectOutputDetailed
 	return epmap, nil
 }
 
-func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, id string) (map[string]*claGroupModel, error) {
+func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, projectSFID string) (map[string]*claGroupModel, error) {
+	f := logrus.Fields{
+		"functionName":   "company.service.getCLAGroupsUnderProjectOrFoundation",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+	}
+
 	result := make(map[string]*claGroupModel)
 	psc := v2ProjectService.GetClient()
-	projectDetails, err := psc.GetProject(id)
+	log.WithFields(f).Debug("loading project SFID...")
+	projectDetails, err := psc.GetProject(projectSFID)
 	if err != nil {
 		return nil, err
 	}
+	log.WithFields(f).Debug("loaded project SFID")
+
 	var allProjectMapping []*projects_cla_groups.ProjectClaGroup
 	if projectDetails.ProjectType == FoundationType {
 		// get all projects for all cla group under foundation
-		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForFoundation(id)
+		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForFoundation(projectSFID)
 		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get project IDs for foundation SFID: %s", projectSFID)
 			return nil, err
 		}
 	} else {
 		// get cla group id from project
-		projectMapping, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(id)
+		projectMapping, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
 		if perr != nil {
+			log.WithFields(f).WithError(perr).Warnf("unable to get CLA group IDs for project SFID: %s", projectSFID)
 			return nil, err
 		}
 		// get all projects for that cla group
 		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(projectMapping.ClaGroupID)
 		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get project IDs for CLA Group: %s", projectMapping.ClaGroupID)
 			return nil, err
 		}
 		if len(allProjectMapping) > 1 {
 			// reload data in projectDetails for all projects of foundation
 			projectDetails, err = psc.GetProject(projectDetails.Foundation.ID)
 			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to load project from project service using SFID: %s", projectDetails.Foundation.ID)
 				return nil, err
 			}
 		}
 	}
+
 	// v2ProjectMap will contains projectSFID -> salesforce details of that project
 	v2ProjectMap, err := v2ProjectToMap(projectDetails)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to convert project to project map")
 		return nil, err
 	}
 	// for all cla-groups create claGroupModel
@@ -1156,7 +1171,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, id s
 			// get cla-group info
 			cginfo, err := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
 			if err != nil || cginfo == nil {
-				log.Warnf("Unable to get details of cla_group: %s", claGroupID)
+				log.WithFields(f).Warnf("Unable to get details of cla_group: %s", claGroupID)
 				return
 			}
 			claGroup.ClaGroupName = cginfo.ProjectName
@@ -1174,7 +1189,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, id s
 				for _, spid := range claGroup.SubProjectIDs {
 					subProject, ok := v2ProjectMap[spid]
 					if !ok {
-						log.Warnf("Unable to fill details for cla_group: %s with project details of %s", claGroupID, spid)
+						log.WithFields(f).Warnf("Unable to fill details for cla_group: %s with project details of %s", claGroupID, spid)
 						return
 					}
 					claGroup.SubProjects = append(claGroup.SubProjects, subProject.Name)
@@ -1182,7 +1197,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, id s
 			}
 			project, ok := v2ProjectMap[pid]
 			if !ok {
-				log.Warnf("Unable to fill details for cla_group: %s with project details of %s", claGroupID, claGroup.ProjectSFID)
+				log.WithFields(f).Warnf("Unable to fill details for cla_group: %s with project details of %s", claGroupID, claGroup.ProjectSFID)
 				return
 			}
 			claGroup.ProjectLogo = project.ProjectLogo
@@ -1191,7 +1206,11 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, id s
 			claGroup.ProjectSFID = pid
 		}(id, cg)
 	}
+
+	log.WithFields(f).Debug("waiting for queries to finish...")
 	wg.Wait()
+	log.WithFields(f).Debug("queries finished")
+
 	return result, nil
 }
 
@@ -1287,7 +1306,7 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 	defer wg.Done()
 	cg, ok := claGroups[sig.ProjectID]
 	if !ok {
-		log.Warn("unable to get project details")
+		log.WithFields(f).Warn("unable to get project details")
 		return
 	}
 
@@ -1308,6 +1327,7 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 			}
 		}
 	}
+	sort.Strings(acl)
 
 	// fill details from dynamodb
 	activeCla.CompanyName = v1CompanyModel.CompanyName
@@ -1316,7 +1336,8 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 	} else {
 		activeCla.SigningEntityName = v1CompanyModel.SigningEntityName
 	}
-	activeCla.ProjectID = sig.ProjectID
+	activeCla.ProjectID = sig.ProjectID // for backwards compatibility
+	activeCla.ClaGroupID = sig.ProjectID
 	if sig.SignedOn == "" {
 		activeCla.SignedOn = sig.SignatureCreated
 	} else {
@@ -1336,7 +1357,9 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 	activeCla.ProjectSfid = cg.ProjectSFID
 	activeCla.ProjectType = cg.ProjectType
 	activeCla.ProjectLogo = cg.ProjectLogo
+	sort.Strings(cg.SubProjects)
 	activeCla.SubProjects = cg.SubProjects
+
 	var signatoryName string
 	var cwg sync.WaitGroup
 	cwg.Add(2)
@@ -1347,7 +1370,7 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 		defer cwg.Done()
 		cclaURL, err = utils.GetDownloadLink(utils.SignedCLAFilename(sig.ProjectID, sig.SignatureType, sig.SignatureReferenceID, sig.SignatureID))
 		if err != nil {
-			log.Error("fillActiveCLA : unable to get ccla s3 link", err)
+			log.WithFields(f).WithError(err).Warn("fillActiveCLA : unable to get ccla s3 link", err)
 			return
 		}
 	}()

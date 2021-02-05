@@ -39,7 +39,7 @@ type IService interface { // nolint
 	GetCompanies(ctx context.Context) (*models.Companies, error)
 	GetCompany(ctx context.Context, companyID string) (*models.Company, error)
 	GetCompanyByExternalID(ctx context.Context, companySFID string) (*models.Company, error)
-	GetCompaniesByExternalID(ctx context.Context, companySFID string) ([]*models.Company, error)
+	GetCompaniesByExternalID(ctx context.Context, companySFID string, includeChildCompanies bool) ([]*models.Company, error)
 	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName, companySFID string) (*models.Company, error)
 	SearchCompanyByName(ctx context.Context, companyName string, nextKey string) (*models.Companies, error)
 	GetCompaniesByUserManager(ctx context.Context, userID string) (*models.Companies, error)
@@ -644,15 +644,16 @@ func (s service) GetCompanyByExternalID(ctx context.Context, companySFID string)
 	return nil, err
 }
 
-func (s service) GetCompaniesByExternalID(ctx context.Context, companySFID string) ([]*models.Company, error) {
+func (s service) GetCompaniesByExternalID(ctx context.Context, companySFID string, includeChildCompanies bool) ([]*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.GetCompaniesByExternalID",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"companySFID":    companySFID,
+		"functionName":          "company.service.GetCompaniesByExternalID",
+		utils.XREQUESTID:        ctx.Value(utils.XREQUESTID),
+		"companySFID":           companySFID,
+		"includeChildCompanies": includeChildCompanies,
 	}
 
 	log.WithFields(f).Debug("Searching companies by external ID...")
-	comp, err := s.repo.GetCompaniesByExternalID(ctx, companySFID)
+	comp, err := s.repo.GetCompaniesByExternalID(ctx, companySFID, includeChildCompanies)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to locate matching records by companySFID")
 		return nil, err

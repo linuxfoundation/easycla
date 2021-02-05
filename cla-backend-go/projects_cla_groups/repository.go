@@ -96,7 +96,7 @@ func (repo *repo) queryClaGroupsProjects(keyCondition expression.KeyConditionBui
 
 	var projectClaGroups []*ProjectClaGroup
 	for {
-		log.WithFields(f).Debugf("running query using input: %+v", queryInput)
+		// log.WithFields(f).Debugf("running query using input: %+v", queryInput)
 		results, errQuery := repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
 			log.WithFields(f).Warnf("error retrieving project cla-groups, error: %v", errQuery)

@@ -33,7 +33,7 @@ type IRepository interface { //nolint
 	GetCompanies(ctx context.Context) (*models.Companies, error)
 	GetCompany(ctx context.Context, companyID string) (*models.Company, error)
 	GetCompanyByExternalID(ctx context.Context, companySFID string) (*models.Company, error)
-	GetCompaniesByExternalID(ctx context.Context, companySFID string) ([]*models.Company, error)
+	GetCompaniesByExternalID(ctx context.Context, companySFID string, includeChildCompanies bool) ([]*models.Company, error)
 	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
 	SearchCompanyByName(ctx context.Context, companyName string, nextKey string) (*models.Companies, error)
@@ -157,17 +157,14 @@ func (repo repository) GetCompanyByExternalID(ctx context.Context, companySFID s
 		"companySFID":    companySFID,
 	}
 
-	// Historically, we would only have zero or one companySF record in the DB. In v2 we introduced the Signing Entity
-	// Name concept where we would create a new EasyCLA record in the DB for each signing entity name - this allowed CLA
-	// Managers/Designee to have separate signature records pointing to separate company records. As a result, these
-	// new companies would also be attached to the same SF parent company results in this API response returning zero or
-	// more records. To make this backwards compatible for v1, we will still honor this API call and return the company
-	// record where the entity name is either missing or the same as the company name.
-	companyRecords, err := repo.GetCompaniesByExternalID(ctx, companySFID)
+	const includeChildCompanies = false // Include child/other signing entity name records?
+	companyRecords, err := repo.GetCompaniesByExternalID(ctx, companySFID, includeChildCompanies)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to unmarshall response from the database")
 		return nil, err
 	}
+	log.WithFields(f).Debugf("loaded %d records", len(companyRecords))
+
 	if len(companyRecords) == 0 {
 		log.WithFields(f).Debug("no records found")
 		return nil, &utils.CompanyNotFound{
@@ -176,36 +173,18 @@ func (repo repository) GetCompanyByExternalID(ctx context.Context, companySFID s
 		}
 	}
 
-	log.WithFields(f).Debugf("loaded %d records", len(companyRecords))
-	// For debug when problems occur
-	f["companyName"] = companyRecords[0].CompanyName
-	var signingEntityNames []string
-
-	// To support backward compatibility, search for the case where the signing entity name is empty or where the
-	// signing entity name matches the company name
-	for _, companyModel := range companyRecords {
-		// Save in case we can't find it - we'll show on the output
-		signingEntityNames = append(signingEntityNames, companyModel.SigningEntityName)
-		// If this is our record...
-		if companyModel.SigningEntityName == "" || companyModel.SigningEntityName == companyModel.CompanyName {
-			return companyModel, nil
-		}
-	}
-	f["signingEntityNames"] = strings.Join(signingEntityNames, ";")
-	log.WithFields(f).Warning("unable to match company name with existing signing entity names")
-	return nil, &utils.CompanyNotFound{
-		Message:   "company record not found - unable to match company name with existing signing entity names",
-		CompanyID: companySFID,
-	}
+	return companyRecords[0], nil
 }
 
 // GetCompaniesByExternalID returns a list of companies based on the company external ID. A company will have more than one if/when the SF record has multiple entity names - for which we create separate EasyCLA company records
-func (repo repository) GetCompaniesByExternalID(ctx context.Context, companySFID string) ([]*models.Company, error) {
+func (repo repository) GetCompaniesByExternalID(ctx context.Context, companySFID string, includeChildCompanies bool) ([]*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "company.repository.GetCompaniesByExternalID",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"companySFID":    companySFID,
+		"functionName":          "company.repository.GetCompaniesByExternalID",
+		utils.XREQUESTID:        ctx.Value(utils.XREQUESTID),
+		"companySFID":           companySFID,
+		"includeChildCompanies": includeChildCompanies,
 	}
+
 	condition := expression.Key("company_external_id").Equal(expression.Value(companySFID))
 	builder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildCompanyProjection())
 	// Use the nice builder to create the expression
@@ -248,7 +227,7 @@ func (repo repository) GetCompaniesByExternalID(ctx context.Context, companySFID
 	}
 
 	log.WithFields(f).Debug("converting database records to a response model...")
-	return dbModelsToResponseModels(ctx, dbCompanyModels)
+	return dbModelsToResponseModels(ctx, dbCompanyModels, includeChildCompanies)
 }
 
 // GetCompanyBySigningEntityName search the company by signing entity name
