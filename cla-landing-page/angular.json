@@ -127,6 +127,12 @@
           "configurations": {
             "production": {
               "browserTarget": "landing-page:build:production"
+            },
+            "staging": {
+              "browserTarget": "landing-page:build:staging"
+            },
+            "dev": {
+              "browserTarget": "landing-page:build:dev"
             }
           }
         },

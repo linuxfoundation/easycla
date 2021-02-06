@@ -814,7 +814,7 @@ jobs:
             echo "Running pre-fetch config: 'yarn prebuild:${STAGE}'..."
             yarn prebuild:${STAGE}
             echo "Running build..."
-            yarn build
+            yarn build:${STAGE}
 
             echo "Running deploy in folder: `pwd`"
             SLS_DEBUG=* ../node_modules/serverless/bin/serverless.js deploy -s ${STAGE} -r ${AWS_REGION} --verbose

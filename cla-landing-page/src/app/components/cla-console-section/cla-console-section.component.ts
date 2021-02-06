@@ -1,13 +1,15 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
 
-import { Component, Input, isDevMode, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { Component, Input, OnInit, TemplateRef, ViewChild } from '@angular/core';
 import { AppSettings } from 'src/app/config/app-settings';
 import { StorageService } from 'src/app/core/services/storage.service';
 import { EnvConfig } from 'src/app/config/cla-env-utils';
 import { ActivatedRoute } from '@angular/router';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { LandingPageService } from 'src/app/service/landing-page.service';
+import { environment } from 'src/environments/environment';
+
 declare let process: any;
 @Component({
   selector: 'app-cla-console-section',
@@ -24,6 +26,7 @@ export class ClaConsoleSectionComponent implements OnInit {
   error: string;
   consoleType: string;
   env: string;
+  public environment = environment;
 
   constructor(
     private storageService: StorageService,

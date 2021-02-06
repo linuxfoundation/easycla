@@ -2,5 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 export const environment = {
+  environment: 'dev',
   production: false
 };
