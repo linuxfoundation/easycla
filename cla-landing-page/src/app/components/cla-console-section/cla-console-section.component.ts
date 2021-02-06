@@ -48,7 +48,6 @@ export class ClaConsoleSectionComponent implements OnInit {
   }
 
   ngOnInit() {
-    this.env = process.env.NODE_ENV;
     this.version = this.router.snapshot.queryParamMap.get('version');
     const element: any = document.getElementById('lfx-header');
     let projectConsoleUrl = EnvConfig.default[AppSettings.PROJECT_CONSOLE_LINK] + '#/login';
@@ -106,7 +105,7 @@ export class ClaConsoleSectionComponent implements OnInit {
   }
 
   onClickVersion(version) {
-    this.selectedVersion = (this.env === 'production') ? '' : version;
+    this.selectedVersion = (environment.environment === 'prod') ? '' : version;
   }
 
   onClickVersionProceed() {
