@@ -422,124 +422,132 @@ class DocuSign(signing_service_interface.SigningService):
             # Save our message
             msg = (f'{fn} - project {project.get_project_name()} and '
                    f'company {company.get_company_name()} does not have CCLA for: {request_info}')
+            cla.log.debug(msg)
 
-            # Ok - long story here, we could have the tricky situation where now that we've added a concept of Signing
-            # Entity Names we have, basically, a set of 'child' companies all under a common external_id (SFID).  This
-            # would have been so much simpler if SF supported Parent/Child company relationships to model things like
-            # Subsidiary and Patten holding companies.
+            return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
+                               'company_id': actual_company_id,
+                               'company_name': company.get_company_name(),
+                               'signing_entity_name': company.get_signing_entity_name(),
+                               'company_external_id': company.get_company_external_id(),
+                               }
+                    }
+            # # Ok - long story here, we could have the tricky situation where now that we've added a concept of Signing
+            # # Entity Names we have, basically, a set of 'child' companies all under a common external_id (SFID).  This
+            # # would have been so much simpler if SF supported Parent/Child company relationships to model things like
+            # # Subsidiary and Patten holding companies.
+            # #
+            # # Scenario:
+            # #
+            # # Deal Company  (SFID: 123, CompanyID: AAA)
+            # #     Deal Company Subsidiary 1 - (SFID: 123, CompanyID: BBB)
+            # #     Deal Company Subsidiary 2 - (SFID: 123, CompanyID: CCC) - SIGNED!
+            # #     Deal Company Subsidiary 3 - (SFID: 123, CompanyID: DDD)
+            # #     Deal Company Subsidiary 4 - (SFID: 123, CompanyID: EEE)
+            # #
+            # # Now - the check-prepare-employee signature request could have come from any of the above companies with
+            # # different a company_id - the contributor may have selected the correct option (CCC), the one that was
+            # # signed and executed by a Signatory...or maybe none have been signed...or perhaps another one was signed
+            # # such as companyID BBB.
+            # #
+            # # Originally, we designed the system to keep track of all these sub-companies separately - different CLA
+            # # managers, different approval lists, etc.
+            # #
+            # # Later, the stakeholders wanted to group these all together as one but keep track of the signing entity
+            # # name for each project | company. They wanted to allow the users to select one for each (project |
+            # # organization) pair.
+            # #
+            # # So, we could have CLA signatories/managers wanting:
+            # #
+            # # - Project OpenCue + Deal Company Subsidiary 2
+            # # - Project OpenVDB + Deal Company Subsidiary 4
+            # # - Project OpenTelemetry + Deal Company
+            # #
+            # # As a result, we need to query the entire company family under the same external_id for a signed CCLA.
+            # # Currently, we only allow 1 of these to be signed for each Project | Company pair. Later, we may change
+            # # this behavior (it's been debated).
+            # #
+            # # Let's see if they signed the CCLA for another of the Company/Signed Entity Names for this
+            # # project - if so, let's return that one, if not, return the error
             #
-            # Scenario:
+            # # First, grab the current company's external ID/SFID
+            # company_external_id = company.get_company_external_id()
+            # # if missing, not much we can do...
+            # if company_external_id is None:
+            #     cla.log.warning(f'{fn} - project {project.get_project_name()} and '
+            #                     f'company {company.get_company_name()} - company missing external id - '
+            #                     f'{request_info}')
+            #     cla.log.warning(msg)
+            #     return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
+            #                        'company_id': actual_company_id,
+            #                        'company_name': company.get_company_name(),
+            #                        'signing_entity_name': company.get_signing_entity_name(),
+            #                        'company_external_id': company.get_company_external_id(),
+            #                        }
+            #             }
             #
-            # Deal Company  (SFID: 123, CompanyID: AAA)
-            #     Deal Company Subsidiary 1 - (SFID: 123, CompanyID: BBB)
-            #     Deal Company Subsidiary 2 - (SFID: 123, CompanyID: CCC) - SIGNED!
-            #     Deal Company Subsidiary 3 - (SFID: 123, CompanyID: DDD)
-            #     Deal Company Subsidiary 4 - (SFID: 123, CompanyID: EEE)
+            # # Lookup the other companies by external id...will have 1 or more (current record plus possibly others)...
+            # company_list = company.get_company_by_external_id(company_external_id)
+            # # This shouldn't happen, let's trap for it anyway
+            # if not company_list:
+            #     cla.log.warning(f'{fn} - project {project.get_project_name()} and '
+            #                     f'company {company.get_company_name()} - unable to lookup companies by external id: '
+            #                     f'{company_external_id} - {request_info}')
+            #     cla.log.warning(msg)
+            #     return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
+            #                        'company_id': actual_company_id,
+            #                        'company_name': company.get_company_name(),
+            #                        'signing_entity_name': company.get_signing_entity_name(),
+            #                        'company_external_id': company.get_company_external_id(),
+            #                        }
+            #             }
             #
-            # Now - the check-prepare-employee signature request could have come from any of the above companies with
-            # different a company_id - the contributor may have selected the correct option (CCC), the one that was
-            # signed and executed by a Signatory...or maybe none have been signed...or perhaps another one was signed
-            # such as companyID BBB.
+            # # As we loop, let's use a flag to keep track if we find a CCLA
+            # found_ccla = False
+            # for other_company in company_list:
+            #     cla.log.debug(f'{fn} - loading CCLA signatures by cla group: {project.get_project_name()} '
+            #                   f'and company id: {other_company.get_company_id()}...')
+            #     ccla_signatures = Signature().get_ccla_signatures_by_company_project(
+            #         company_id=other_company.get_company_id(),
+            #         project_id=project_id
+            #     )
             #
-            # Originally, we designed the system to keep track of all these sub-companies separately - different CLA
-            # managers, different approval lists, etc.
+            #     # Do we have a signed CCLA for this project|company ? If so, we found it - use it! Should NOT have
+            #     # more than one of the companies with Signed CCLAs
+            #     if len(ccla_signatures) > 0:
+            #         found_ccla = True
+            #         # Need to load the correct company record
+            #         try:
+            #             # Reset the actual company id value since we found a CCLA under a related signing entity name
+            #             # company
+            #             actual_company_id = ccla_signatures[0].get_signature_reference_id()
+            #             # Reset the request_info string with the updated company_id, will use it for debug/warning below
+            #             request_info = f'project: {project_id}, company: {actual_company_id}, user: {user_id}'
+            #             cla.log.debug(f'{fn} - loading correct signed CCLA company by id: '
+            #                           f'{ccla_signatures[0].get_signature_reference_id()} '
+            #                           f'with signed entity name: {ccla_signatures[0].get_signing_entity_name()} ...')
+            #             company.load(ccla_signatures[0].get_signature_reference_id())
+            #             cla.log.debug(f'{fn} - loaded company {company.get_company_name()} '
+            #                           f'with signing entity name: {company.get_signing_entity_name()} '
+            #                           f'for {request_info}.')
+            #         except DoesNotExist:
+            #             cla.log.warning(f'{fn} - company does NOT exist '
+            #                             f'using company_id: {ccla_signatures[0].get_signature_reference_id()} '
+            #                             f'for: {request_info}')
+            #             return {'errors': {'company_id': f'Company ({ccla_signatures[0].get_signature_reference_id()}) '
+            #                                              'does not exist.'}}
+            #         break
             #
-            # Later, the stakeholders wanted to group these all together as one but keep track of the signing entity
-            # name for each project | company. They wanted to allow the users to select one for each (project |
-            # organization) pair.
-            #
-            # So, we could have CLA signatories/managers wanting:
-            #
-            # - Project OpenCue + Deal Company Subsidiary 2
-            # - Project OpenVDB + Deal Company Subsidiary 4
-            # - Project OpenTelemetry + Deal Company
-            #
-            # As a result, we need to query the entire company family under the same external_id for a signed CCLA.
-            # Currently, we only allow 1 of these to be signed for each Project | Company pair. Later, we may change
-            # this behavior (it's been debated).
-            #
-            # Let's see if they signed the CCLA for another of the Company/Signed Entity Names for this
-            # project - if so, let's return that one, if not, return the error
-
-            # First, grab the current company's external ID/SFID
-            company_external_id = company.get_company_external_id()
-            # if missing, not much we can do...
-            if company_external_id is None:
-                cla.log.warning(f'{fn} - project {project.get_project_name()} and '
-                                f'company {company.get_company_name()} - company missing external id - '
-                                f'{request_info}')
-                cla.log.warning(msg)
-                return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
-                                   'company_id': actual_company_id,
-                                   'company_name': company.get_company_name(),
-                                   'signing_entity_name': company.get_signing_entity_name(),
-                                   'company_external_id': company.get_company_external_id(),
-                                   }
-                        }
-
-            # Lookup the other companies by external id...will have 1 or more (current record plus possibly others)...
-            company_list = company.get_company_by_external_id(company_external_id)
-            # This shouldn't happen, let's trap for it anyway
-            if not company_list:
-                cla.log.warning(f'{fn} - project {project.get_project_name()} and '
-                                f'company {company.get_company_name()} - unable to lookup companies by external id: '
-                                f'{company_external_id} - {request_info}')
-                cla.log.warning(msg)
-                return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
-                                   'company_id': actual_company_id,
-                                   'company_name': company.get_company_name(),
-                                   'signing_entity_name': company.get_signing_entity_name(),
-                                   'company_external_id': company.get_company_external_id(),
-                                   }
-                        }
-
-            # As we loop, let's use a flag to keep track if we find a CCLA
-            found_ccla = False
-            for other_company in company_list:
-                cla.log.debug(f'{fn} - loading CCLA signatures by cla group: {project.get_project_name()} '
-                              f'and company id: {other_company.get_company_id()}...')
-                ccla_signatures = Signature().get_ccla_signatures_by_company_project(
-                    company_id=other_company.get_company_id(),
-                    project_id=project_id
-                )
-
-                # Do we have a signed CCLA for this project|company ? If so, we found it - use it! Should NOT have
-                # more than one of the companies with Signed CCLAs
-                if len(ccla_signatures) > 0:
-                    found_ccla = True
-                    # Need to load the correct company record
-                    try:
-                        # Reset the actual company id value since we found a CCLA under a related signing entity name
-                        # company
-                        actual_company_id = ccla_signatures[0].get_signature_reference_id()
-                        # Reset the request_info string with the updated company_id, will use it for debug/warning below
-                        request_info = f'project: {project_id}, company: {actual_company_id}, user: {user_id}'
-                        cla.log.debug(f'{fn} - loading correct signed CCLA company by id: '
-                                      f'{ccla_signatures[0].get_signature_reference_id()} '
-                                      f'with signed entity name: {ccla_signatures[0].get_signing_entity_name()} ...')
-                        company.load(ccla_signatures[0].get_signature_reference_id())
-                        cla.log.debug(f'{fn} - loaded company {company.get_company_name()} '
-                                      f'with signing entity name: {company.get_signing_entity_name()} '
-                                      f'for {request_info}.')
-                    except DoesNotExist:
-                        cla.log.warning(f'{fn} - company does NOT exist '
-                                        f'using company_id: {ccla_signatures[0].get_signature_reference_id()} '
-                                        f'for: {request_info}')
-                        return {'errors': {'company_id': f'Company ({ccla_signatures[0].get_signature_reference_id()}) '
-                                                         'does not exist.'}}
-                    break
-
-            # if we didn't fine a signed CCLA under any of the other companies...
-            if not found_ccla:
-                # Give up
-                cla.log.warning(msg)
-                return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
-                                   'company_id': actual_company_id,
-                                   'company_name': company.get_company_name(),
-                                   'signing_entity_name': company.get_signing_entity_name(),
-                                   'company_external_id': company.get_company_external_id(),
-                                   }
-                        }
+            # # if we didn't fine a signed CCLA under any of the other companies...
+            # if not found_ccla:
+            #     # Give up
+            #     cla.log.warning(msg)
+            #     return {'errors': {'missing_ccla': 'Company does not have CCLA with this project.',
+            #                        'company_id': actual_company_id,
+            #                        'company_name': company.get_company_name(),
+            #                        'signing_entity_name': company.get_signing_entity_name(),
+            #                        'company_external_id': company.get_company_external_id(),
+            #                        }
+            #             }
 
         # Add a note in the log if we have more than 1 signed and approved CCLA signature
         if len(ccla_signatures) > 1:
