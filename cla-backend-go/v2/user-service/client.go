@@ -381,3 +381,18 @@ func (usc *Client) UpdateUserAccount(userSFID string, orgID string) error {
 	log.WithFields(f).Debugf("successfully updated user: %s", result)
 	return nil
 }
+
+// GetPrimaryEmail gets user primary email
+func (usc *Client) GetPrimaryEmail(user *models.User) string {
+	f := logrus.Fields{
+		"functionName": "GetPrimaryEmail",
+	}
+	primaryEmail := ""
+	for _, email := range user.Emails {
+		if *email.IsPrimary {
+			log.WithFields(f).Debugf("Found primary email : %s ", *email.EmailAddress)
+			primaryEmail = *email.EmailAddress
+		}
+	}
+	return primaryEmail
+}

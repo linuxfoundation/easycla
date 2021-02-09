@@ -562,7 +562,7 @@ func (s *service) addCLAManagerPermissions(ctx context.Context, claGroupID, proj
 						signatureUserModel.LfUsername, utils.CLAManagerRole)
 					return
 				}
-				if userModel == nil || userModel.ID == "" || userModel.Email == nil {
+				if userModel == nil || userModel.ID == "" || userClient.GetPrimaryEmail(userModel) == "" {
 					log.WithFields(f).Warnf("unable to lookup user %s - user object is empty or missing either the ID or email - skipping %s role review/assigment for project: %s, company: %s",
 						signatureUserModel.LfUsername, utils.CLAManagerRole, projectSFID, companySFID)
 					return
@@ -586,7 +586,7 @@ func (s *service) addCLAManagerPermissions(ctx context.Context, claGroupID, proj
 
 				// Finally....assign the role to this user
 				log.WithFields(f).Debugf("assiging role: %s to user %s/%s/%s for project: %s, company: %s...",
-					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, *userModel.Email, projectSFID, companySFID)
+					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, userClient.GetPrimaryEmail(userModel), projectSFID, companySFID)
 				roleErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, utils.StringValue(userModel.Email), projectSFID, companySFID, claManagerRoleID)
 				if roleErr != nil {
 					log.WithFields(f).WithError(roleErr).Warnf("%s, role assignment for user user %s/%s/%s failed for this project: %s, company: %s",
