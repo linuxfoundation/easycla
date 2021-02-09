@@ -73,7 +73,7 @@ func NewRepository(awsSession *session.Session, stage string) Repository {
 
 func (repo *repo) queryClaGroupsProjects(keyCondition expression.KeyConditionBuilder, indexName *string) ([]*ProjectClaGroup, error) {
 	f := logrus.Fields{
-		"functionName": "queryClaGroupsProjects",
+		"functionName": "project_cla_groups.repository.queryClaGroupsProjects",
 		"indexName":    aws.StringValue(indexName),
 		"keyCondition": fmt.Sprintf("%+v", keyCondition),
 	}
@@ -125,7 +125,7 @@ func (repo *repo) queryClaGroupsProjects(keyCondition expression.KeyConditionBui
 // GetClaGroupIDForProject retrieves the CLA Group ID for the project
 func (repo *repo) GetClaGroupIDForProject(projectSFID string) (*ProjectClaGroup, error) {
 	f := logrus.Fields{
-		"functionName": "GetClaGroupIDForProject",
+		"functionName": "project_cla_groups.repository.GetClaGroupIDForProject",
 		"tableName":    repo.tableName,
 		"projectSFID":  projectSFID,
 	}
@@ -182,7 +182,7 @@ func (repo *repo) GetProjectsIdsForFoundation(foundationSFID string) ([]*Project
 }
 
 func (repo *repo) GetProjectsIdsForAllFoundation() ([]*ProjectClaGroup, error) {
-	f := logrus.Fields{"functionName": "GetProjectsIdsForAllFoundation", "tableName": repo.tableName}
+	f := logrus.Fields{"functionName": "project_cla_groups.repository.GetProjectsIdsForAllFoundation", "tableName": repo.tableName}
 	scanInput := &dynamodb.ScanInput{
 		TableName: aws.String(repo.tableName),
 	}
@@ -212,7 +212,7 @@ func (repo *repo) GetProjectsIdsForAllFoundation() ([]*ProjectClaGroup, error) {
 // AssociateClaGroupWithProject creates entry in db to track cla_group association with project/foundation
 func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID string, foundationSFID string) error {
 	f := logrus.Fields{
-		"functionName":   "AssociateClaGroupWithProject",
+		"functionName":   "project_cla_groups.repository.AssociateClaGroupWithProject",
 		"claGroupID":     claGroupID,
 		"projectSFID":    projectSFID,
 		"foundationSFID": foundationSFID,
@@ -247,6 +247,7 @@ func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID st
 			claGroupLookupErr, NotDefined)
 	}
 
+	_, nowStr := utils.CurrentTime()
 	input := &ProjectClaGroup{
 		ProjectSFID:    projectSFID,
 		ProjectName:    projectName,
@@ -254,7 +255,10 @@ func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID st
 		ClaGroupName:   claGroupName,
 		FoundationSFID: foundationSFID,
 		FoundationName: foundationName,
+		Note:           fmt.Sprintf("Associate CLA Group with project API request on: %s", nowStr),
 		Version:        "v1",
+		DateCreated:    nowStr,
+		DateModified:   nowStr,
 	}
 
 	av, err := dynamodbattribute.MarshalMap(input)
@@ -296,7 +300,7 @@ func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID st
 // RemoveProjectAssociatedWithClaGroup removes all associated project with cla_group
 func (repo *repo) RemoveProjectAssociatedWithClaGroup(claGroupID string, projectSFIDList []string, all bool) error {
 	f := logrus.Fields{
-		"functionName":    "RemoveProjectAssociatedWithClaGroup",
+		"functionName":    "project_cla_groups.repository.RemoveProjectAssociatedWithClaGroup",
 		"claGroupID":      claGroupID,
 		"projectSFIDList": projectSFIDList,
 		"all":             all,
@@ -392,7 +396,7 @@ func (repo *repo) GetCLAGroup(claGroupID string) (*ProjectClaGroup, error) {
 // UpdateRepositoriesCount updates the repositories count
 func (repo *repo) UpdateRepositoriesCount(projectSFID string, diff int64, reset bool) error {
 	f := logrus.Fields{
-		"functionName": "UpdateRepositoriesCount",
+		"functionName": "project_cla_groups.repository.UpdateRepositoriesCount",
 		"projectSFID":  projectSFID,
 		"diff":         diff,
 		"reset":        reset,

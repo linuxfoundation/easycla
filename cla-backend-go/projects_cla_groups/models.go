@@ -13,7 +13,10 @@ type ProjectClaGroup struct {
 	FoundationSFID    string `dynamodbav:"foundation_sfid" json:"foundation_sfid"`
 	FoundationName    string `dynamodbav:"foundation_name" json:"foundation_name"`
 	RepositoriesCount int64  `dynamodbav:"repositories_count" json:"repositories_count"`
+	Note              string `dynamodbav:"version" json:"note"`
 	Version           string `dynamodbav:"version" json:"version"`
+	DateCreated       string `dynamodbav:"version" json:"date_created"`
+	DateModified      string `dynamodbav:"version" json:"date_modified"`
 }
 
 // Quick model to grab the bare minimum values

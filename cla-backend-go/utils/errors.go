@@ -192,6 +192,42 @@ func (e *CompanyAdminNotFound) Unwrap() error {
 	return e.Err
 }
 
+// UserNotFound is an error model for users not found errors
+type UserNotFound struct {
+	Message   string
+	UserLFID  string
+	UserName  string
+	UserEmail string
+	Err       error
+}
+
+// Error is an error string function for the CompanyNotFound model
+func (e *UserNotFound) Error() string {
+	msg := "user does not exist "
+	if e.Message != "" {
+		msg = e.Message
+	}
+	if e.UserLFID != "" {
+		msg = fmt.Sprintf("%s - user LFID: %s ", msg, e.UserLFID)
+	}
+	if e.UserName != "" {
+		msg = fmt.Sprintf("%s - user name: %s ", msg, e.UserName)
+	}
+	if e.UserEmail != "" {
+		msg = fmt.Sprintf("%s - email: %s ", msg, e.UserEmail)
+	}
+	if e.Err != nil {
+		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())
+	}
+
+	return strings.TrimSpace(msg)
+}
+
+// Unwrap method returns its contained error
+func (e *UserNotFound) Unwrap() error {
+	return e.Err
+}
+
 // CompanyNotFound is an error model for company not found errors
 type CompanyNotFound struct {
 	Message                  string
