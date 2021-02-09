@@ -9,6 +9,9 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/sirupsen/logrus"
+
 	"github.com/LF-Engineering/lfx-models/models/event"
 	usersModels "github.com/LF-Engineering/lfx-models/models/users"
 	"github.com/aws/aws-lambda-go/events"
@@ -37,15 +40,18 @@ var (
 )
 
 func init() {
+	f := logrus.Fields{
+		"functionName": "userSubscribeLambda.main.init",
+	}
 	var awsSession = session.Must(session.NewSession(&aws.Config{}))
 	stage := os.Getenv("STAGE")
 	if stage == "" {
-		log.Fatal("stage not set")
+		log.WithFields(f).Fatal("stage not set")
 	}
-	log.Infof("STAGE set to %s\n", stage)
+	log.WithFields(f).Infof("STAGE set to %s\n", stage)
 	configFile, err := config.LoadConfig("", awsSession, stage)
 	if err != nil {
-		log.Panicf("Unable to load config - Error: %v", err)
+		log.WithFields(f).WithError(err).Panicf("Unable to load config - Error: %v", err)
 	}
 
 	token.Init(configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret, configFile.Auth0Platform.URL, configFile.Auth0Platform.Audience)
@@ -54,41 +60,128 @@ func init() {
 
 // Handler is the user subscribe handler lambda entry function
 func Handler(ctx context.Context, snsEvent events.SNSEvent) error {
+	f := logrus.Fields{
+		"functionName": "userSubscribeLambda.main.Handler",
+	}
 	if len(snsEvent.Records) == 0 {
-		log.Warn("SNS event contained 0 records - ignoring message.")
+		log.WithFields(f).Warn("SNS event contained 0 records - ignoring message.")
 		return nil
 	}
 
 	for _, message := range snsEvent.Records {
-		log.Infof("Processing message id: '%s' for event source '%s'\n", message.SNS.MessageID, message.EventSource)
+		log.WithFields(f).Infof("Processing message id: '%s' for event source '%s'", message.SNS.MessageID, message.EventSource)
 
-		log.Debugf("Unmarshalling message body: '%s'", message.SNS.Message)
-
-		// log.Debugf("Unmarshalling message body: '%s'", message.SNS.Message)
+		log.WithFields(f).Debugf("Unmarshalling message body: '%s'", message.SNS.Message)
 		var model event.Event
 		err := model.UnmarshalBinary([]byte(message.SNS.Message))
 		if err != nil {
-			log.Warnf("Error: %v, JSON unmarshal failed - unable to process message: %s", err, message.SNS.MessageID)
+			log.WithFields(f).Warnf("Error: %v, JSON unmarshal failed - unable to process message: %s", err, message.SNS.MessageID)
 			return err
 		}
 
+		log.WithFields(f).Debugf("Processing model.Type: %s", model.Type)
 		switch model.Type {
+		case "UserSignedUp":
+			log.WithFields(f).Debugf("Detected model.Type: %s - processing...", model.Type)
+			Create(model)
 		case "UserUpdatedProfile":
-			Write(model)
+			log.WithFields(f).Debugf("Detected model.Type: %s - processing...", model.Type)
+			Update(model)
 		default:
-			log.Warnf("unrecognized message type: %s - unable to process message ", model.Type)
+			log.WithFields(f).Warnf("unrecognized message type: %s - unable to process message ", model.Type)
 		}
 
 	}
 	return nil
 }
 
-// Write saves the user data model to persistent storage
-func Write(user event.Event) {
+// Create saves the user data model to persistent storage
+func Create(user event.Event) {
+	f := logrus.Fields{
+		"functionName": "userSubscribeLambda.main.Create",
+	}
+
+	uc := &usersModels.UserCreated{}
+	err := mapstructure.Decode(user.Data, uc)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to decode event")
+		return
+	}
+
+	var userDetails *models.User
+	var userErr error
+	var awsSession = session.Must(session.NewSession(&aws.Config{}))
+
+	stage := os.Getenv("STAGE")
+	if stage == "" {
+		log.Fatal("stage not set")
+	}
+	usersRepo := users.NewRepository(awsSession, stage)
+
+	userDetails, userErr = usersRepo.GetUserByLFUserName(uc.Username)
+	if userErr != nil {
+		log.WithFields(f).WithError(userErr).Warnf("unable to locate user by LfUsername: %s", uc.Username)
+	}
+
+	if userDetails != nil {
+		log.WithFields(f).Warnf("unable to create user - user already created: %s", uc.Username)
+	}
+
+	userServiceClient := user_service.GetClient()
+	sfdcUserObject, err := userServiceClient.GetUserByUsername(uc.Username)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to locate user by SFID: %s", uc.Username)
+		return
+	}
+	if sfdcUserObject == nil {
+		log.WithFields(f).Debugf("User-service model is nil so skipping user %s", uc.Username)
+		return
+	}
+
+	log.WithFields(f).Debugf("Salesforce user-service object : %+v", sfdcUserObject)
+
+	var primaryEmail string
+	var emails []string
+	for _, email := range sfdcUserObject.Emails {
+		if *email.IsPrimary {
+			primaryEmail = *email.EmailAddress
+		}
+		emails = append(emails, *email.EmailAddress)
+	}
+
+	_, nowStr := utils.CurrentTime()
+	createUserModel := &models.User{
+		Admin:          false,
+		DateCreated:    nowStr,
+		DateModified:   nowStr,
+		Emails:         emails,
+		LfEmail:        primaryEmail,
+		LfUsername:     sfdcUserObject.Username,
+		Note:           "Create via user-service event",
+		UserExternalID: sfdcUserObject.ID,
+		UserID:         userDetails.UserID,
+		Username:       fmt.Sprintf("%s %s", sfdcUserObject.FirstName, sfdcUserObject.LastName),
+		Version:        "v1",
+	}
+
+	log.WithFields(f).Debugf("Creating user in Dynamo DB : %+v", createUserModel)
+	_, createErr := usersRepo.CreateUser(createUserModel)
+	if createErr != nil {
+		log.WithFields(f).Warnf("unable to create user by LfUsername: %s", uc.Username)
+		return
+	}
+}
+
+// Update saves the user data model to persistent storage
+func Update(user event.Event) {
+	f := logrus.Fields{
+		"functionName": "userSubscribeLambda.main.Update",
+	}
 
 	uc := &usersModels.UserUpdated{}
 	err := mapstructure.Decode(user.Data, uc)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to decode event")
 		return
 	}
 
@@ -104,15 +197,14 @@ func Write(user event.Event) {
 
 	userDetails, userErr = usersRepo.GetUserByLFUserName(*uc.Username)
 	if userErr != nil {
-		log.Warnf("Error - unable to locate user by LfUsername: %s, error: %+v", *uc.Username, userErr)
-		log.Error("", userErr)
+		log.WithFields(f).WithError(userErr).Warnf("unable to locate user by LfUsername: %s", *uc.Username)
 	}
 
 	if userDetails == nil {
 		for _, email := range uc.Emails {
 			userDetails, userErr = usersRepo.GetUserByEmail(*email.EmailAddress)
 			if userErr != nil {
-				log.Warnf("Error - unable to locate user by LfUsername: %s, error: %+v", *uc.Username, userErr)
+				log.WithFields(f).WithError(userErr).Warnf("unable to locate user by LfUsername: %s", *uc.Username)
 			}
 		}
 	}
@@ -120,28 +212,31 @@ func Write(user event.Event) {
 	if userDetails == nil {
 		userDetails, userErr = usersRepo.GetUserByExternalID(uc.UserID)
 		if userErr != nil {
-			log.Warnf("Error - unable to locate user by UserExternalID: %s, error: %+v", uc.UserID, userErr)
+			log.WithFields(f).WithError(userErr).Warnf("unable to locate user by UserExternalID: %s", uc.UserID)
 		}
 	}
 
 	if userDetails == nil {
-		log.Debugf("User model is nil so skipping user %s", *uc.Username)
+		log.WithFields(f).Debugf("User model is nil - adding as new user %s...", *uc.Username)
+		// Attempt to create the user from the upate model
+		createFromUpdateErr := createUserFromUpdatedModel(uc)
+		if createFromUpdateErr != nil {
+			log.WithFields(f).WithError(createFromUpdateErr).Warnf("unable to create new user record from user service update message: %s", uc.UserID)
+		}
 		return
 	}
 
 	userServiceClient := user_service.GetClient()
-
 	sfdcUserObject, err := userServiceClient.GetUser(uc.UserID)
 	if err != nil {
-		log.Warnf("Error - unable to locate user by SFID: %s, error: %+v", uc.UserID, userErr)
-		log.Error("", userErr)
+		log.WithFields(f).WithError(err).Warnf("unable to locate user by SFID: %s, error: %+v", uc.UserID, userErr)
 		return
 	}
 
-	log.Debugf("Salesforce user-service object : %+v", sfdcUserObject)
+	log.WithFields(f).Debugf("Salesforce user-service object : %+v", sfdcUserObject)
 
 	if sfdcUserObject == nil {
-		log.Debugf("User-service model is nil so skipping user %s with SFID %s", *uc.Username, uc.UserID)
+		log.WithFields(f).Debugf("User-service model is nil so skipping user %s with SFID %s", *uc.Username, uc.UserID)
 		return
 	}
 
@@ -155,37 +250,90 @@ func Write(user event.Event) {
 	}
 
 	updateUserModel := &models.UserUpdate{
+		Emails:         emails,
 		LfEmail:        primaryEmail,
 		LfUsername:     sfdcUserObject.Username,
 		Note:           "Update via user-service event",
 		UserExternalID: sfdcUserObject.ID,
 		UserID:         userDetails.UserID,
 		Username:       fmt.Sprintf("%s %s", sfdcUserObject.FirstName, sfdcUserObject.LastName),
-		Emails:         emails,
 	}
 
-	log.Debugf("Updating user in Dynamo DB : %+v", updateUserModel)
-
+	log.WithFields(f).Debugf("Updating user in Dynamo DB : %+v", updateUserModel)
 	_, updateErr := usersRepo.Save(updateUserModel)
 	if updateErr != nil {
-		log.Warnf("Error - unable to update user by LfUsername: %s, error: %+v", *uc.Username, updateErr)
+		log.WithFields(f).Warnf("Error - unable to update user by LfUsername: %s, error: %+v", *uc.Username, updateErr)
 		return
 	}
 }
 
+func createUserFromUpdatedModel(userModelUpdated *usersModels.UserUpdated) error {
+	f := logrus.Fields{
+		"functionName": "userSubscribeLambda.main.createUserFromUpdatedModel",
+		"userID":       userModelUpdated.UserID,
+		"userName":     userModelUpdated.Username,
+	}
+
+	var awsSession = session.Must(session.NewSession(&aws.Config{}))
+
+	stage := os.Getenv("STAGE")
+	if stage == "" {
+		log.Fatal("stage not set")
+	}
+	userServiceClient := user_service.GetClient()
+	sfdcUserObject, err := userServiceClient.GetUser(userModelUpdated.UserID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to locate user by ID: %s", userModelUpdated.UserID)
+		return err
+	}
+
+	var primaryEmail string
+	var emails []string
+	for _, email := range sfdcUserObject.Emails {
+		if *email.IsPrimary {
+			primaryEmail = *email.EmailAddress
+		}
+		emails = append(emails, *email.EmailAddress)
+	}
+
+	newUserModel := &models.User{
+		Emails:         emails,
+		LfEmail:        primaryEmail,
+		LfUsername:     sfdcUserObject.Username,
+		Note:           "Update via user-service event",
+		UserExternalID: sfdcUserObject.ID,
+		UserID:         userModelUpdated.UserID,
+		Username:       fmt.Sprintf("%s %s", sfdcUserObject.FirstName, sfdcUserObject.LastName),
+	}
+
+	log.WithFields(f).Debugf("Creating user in Dynamo DB : %+v", newUserModel)
+	usersRepo := users.NewRepository(awsSession, stage)
+
+	_, createErr := usersRepo.CreateUser(newUserModel)
+	if createErr != nil {
+		log.WithFields(f).WithError(createErr).Warnf("unable to create user by LfUsername: %s", *userModelUpdated.Username)
+		return createErr
+	}
+
+	return nil
+}
+
 func main() {
+	f := logrus.Fields{
+		"functionName": "userSubscribeLambda.main.main",
+	}
 	var err error
 
 	// Show the version and build info
-	log.Infof("Name                  : userSubscribe handler")
-	log.Infof("Version               : %s", version)
-	log.Infof("Git commit hash       : %s", commit)
-	log.Infof("Build date            : %s", buildDate)
-	log.Infof("Golang OS             : %s", runtime.GOOS)
-	log.Infof("Golang Arch           : %s", runtime.GOARCH)
+	log.WithFields(f).Infof("Name                  : userSubscribe handler")
+	log.WithFields(f).Infof("Version               : %s", version)
+	log.WithFields(f).Infof("Git commit hash       : %s", commit)
+	log.WithFields(f).Infof("Build date            : %s", buildDate)
+	log.WithFields(f).Infof("Golang OS             : %s", runtime.GOOS)
+	log.WithFields(f).Infof("Golang Arch           : %s", runtime.GOARCH)
 
 	err = cmd.Start(Handler)
 	if err != nil {
-		log.Fatal(err)
+		log.WithFields(f).WithError(err).Fatal(err)
 	}
 }
