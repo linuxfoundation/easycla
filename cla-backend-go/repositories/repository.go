@@ -44,9 +44,13 @@ const (
 	RepositoryNameIndex                        = "repository-name-index"
 )
 
+// ErrRepositoryDoesNotExist ...
+var ErrRepositoryDoesNotExist = errors.New("repository does not exist")
+
 // Repository defines functions of Repositories
 type Repository interface {
 	AddGithubRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
+	UpdateGithubRepository(ctx context.Context, repositoryID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
 	UpdateClaGroupID(ctx context.Context, repositoryID, claGroupID string) error
 	EnableRepository(ctx context.Context, repositoryID string) error
 	EnableRepositoryWithCLAGroupID(ctx context.Context, repositoryID, claGroupID string) error
@@ -140,6 +144,122 @@ func (r repo) AddGithubRepository(ctx context.Context, externalProjectID string,
 	}
 
 	return repository.toModel(), nil
+}
+
+// UpdateGithubRepository updates the repository record for given ID
+func (r *repo) UpdateGithubRepository(ctx context.Context, repositoryID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+
+	externalID := utils.StringValue(input.RepositoryExternalID)
+	projectSFID := utils.StringValue(input.RepositoryProjectID)
+	repositoryName := utils.StringValue(input.RepositoryName)
+	repositoryOrganizationName := utils.StringValue(input.RepositoryOrganizationName)
+	repositoryType := utils.StringValue(input.RepositoryType)
+	repositoryURL := utils.StringValue(input.RepositoryURL)
+
+	f := logrus.Fields{
+		"functionName":               "repositories.repository.UpdateGitHubRepository",
+		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
+		"repositoryID":               repositoryID,
+		"externalProjectID":          externalID,
+		"projectSFID":                projectSFID,
+		"repositoryName":             repositoryName,
+		"repositoryOrganizationName": repositoryOrganizationName,
+		"repositoryType":             repositoryType,
+		"repositoryURL":              repositoryURL,
+	}
+
+	log.WithFields(f).Debugf("updating Repository : %s... ", repositoryID)
+
+	repoModel, repoErr := r.GetRepository(ctx, repositoryID)
+	if repoErr != nil {
+		log.WithFields(f).Warnf("update error locating the repository ID : %s , error: %+v ", repositoryID, repoErr)
+		return nil, repoErr
+	}
+
+	if repoModel == nil {
+		log.WithFields(f).Warnf("Repository does not exist for repo: %s ", repositoryID)
+		return nil, ErrRepositoryDoesNotExist
+	}
+
+	expressionAttributeNames := map[string]*string{}
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
+	updateExpression := "SET "
+
+	if projectSFID != "" && repoModel.ProjectSFID != projectSFID {
+		log.WithFields(f).Debugf("adding projectSFID : %s ", projectSFID)
+		expressionAttributeNames["#P"] = aws.String("project_sfid")
+		expressionAttributeValues[":p"] = &dynamodb.AttributeValue{S: aws.String(projectSFID)}
+		updateExpression = updateExpression + " #P = :p, "
+	}
+
+	if externalID != "" && repoModel.RepositoryExternalID != externalID {
+		log.WithFields(f).Debugf("adding externalID : %s ", externalID)
+		expressionAttributeNames["#E"] = aws.String("repository_external_id")
+		expressionAttributeValues[":e"] = &dynamodb.AttributeValue{S: aws.String(externalID)}
+		updateExpression = updateExpression + " #E = :e, "
+	}
+
+	if repositoryName != "" && repoModel.RepositoryName != repositoryName {
+		log.WithFields(f).Debugf("adding repositoryName : %s ", repositoryName)
+		expressionAttributeNames["#N"] = aws.String("repository_name")
+		expressionAttributeValues[":n"] = &dynamodb.AttributeValue{S: aws.String(repositoryName)}
+		updateExpression = updateExpression + " #N = :n, "
+	}
+
+	if repositoryOrganizationName != "" && repoModel.RepositoryOrganizationName != repositoryOrganizationName {
+		log.WithFields(f).Debugf("adding repositoryOrganizationName : %s ", repositoryOrganizationName)
+		expressionAttributeNames["#O"] = aws.String("repository_organization_name")
+		expressionAttributeValues[":o"] = &dynamodb.AttributeValue{S: aws.String(repositoryOrganizationName)}
+		updateExpression = updateExpression + " #O = :o, "
+	}
+
+	if repositoryType != "" && repoModel.RepositoryType != repositoryType {
+		log.WithFields(f).Debugf("adding repositoryType : %s ", repositoryType)
+		expressionAttributeNames["#T"] = aws.String("repository_type")
+		expressionAttributeValues[":t"] = &dynamodb.AttributeValue{S: aws.String(repositoryType)}
+		updateExpression = updateExpression + " #T = :t, "
+	}
+
+	if repositoryURL != "" && repoModel.RepositoryURL != repositoryURL {
+		log.WithFields(f).Debugf("adding repositoryURL : %s ", repositoryURL)
+		expressionAttributeNames["#U"] = aws.String("repository_url")
+		expressionAttributeValues[":u"] = &dynamodb.AttributeValue{S: aws.String(repositoryURL)}
+		updateExpression = updateExpression + " #U = :u, "
+	}
+
+	if input.Enabled != nil && repoModel.Enabled != *input.Enabled {
+		log.WithFields(f).Debugf("adding enabled flag: %+v", *input.Enabled)
+		expressionAttributeNames["#EN"] = aws.String("enabled")
+		expressionAttributeValues[":en"] = &dynamodb.AttributeValue{BOOL: input.Enabled}
+		updateExpression = updateExpression + " #EN = :en, "
+	}
+
+	_, currentTimeString := utils.CurrentTime()
+	log.WithFields(f).Debugf("adding date_modified: %s", currentTimeString)
+	expressionAttributeNames["#M"] = aws.String("date_modified")
+	expressionAttributeValues[":m"] = &dynamodb.AttributeValue{S: aws.String(currentTimeString)}
+	updateExpression = updateExpression + " #M = :m "
+
+	// Assemble the query input parameters
+	updateInput := &dynamodb.UpdateItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"repository_id": {
+				S: aws.String(repositoryID),
+			},
+		},
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		UpdateExpression:          &updateExpression,
+		TableName:                 aws.String(r.repositoryTableName),
+	}
+
+	_, updateErr := r.dynamoDBClient.UpdateItem(updateInput)
+	if updateErr != nil {
+		log.WithFields(f).Warnf("error updatingRepository by repositoryID: %s, error: %v", repositoryID, updateErr)
+		return nil, updateErr
+	}
+
+	return r.GetRepository(ctx, repositoryID)
 }
 
 // UpdateClaGroupID updates the claGroupID of the repository

@@ -22,3 +22,6 @@ properties:
     type: string
   repositoryUrl:
     type: string
+  enabled:
+    type: boolean
+    default: true
