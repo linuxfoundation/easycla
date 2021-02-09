@@ -9,6 +9,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+
+	"github.com/communitybridge/easycla/cla-backend-go/emails"
+
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
@@ -41,25 +45,27 @@ type IService interface {
 }
 
 type service struct {
-	repo           IRepository
-	userRepo       users.UserRepository
-	companyRepo    company.IRepository
-	projectRepo    project.ProjectRepository
-	signatureRepo  signatures.SignatureRepository
-	corpConsoleURL string
-	httpClient     *http.Client
+	repo                       IRepository
+	userRepo                   users.UserRepository
+	companyRepo                company.IRepository
+	projectRepo                project.ProjectRepository
+	signatureRepo              signatures.SignatureRepository
+	projectsCLAGroupRepository projects_cla_groups.Repository
+	corpConsoleURL             string
+	httpClient                 *http.Client
 }
 
 // NewService creates a new whitelist service
-func NewService(repo IRepository, userRepo users.UserRepository, companyRepo company.IRepository, projectRepo project.ProjectRepository, signatureRepo signatures.SignatureRepository, corpConsoleURL string, httpClient *http.Client) IService {
+func NewService(repo IRepository, projectsCLAGroupRepository projects_cla_groups.Repository, userRepo users.UserRepository, companyRepo company.IRepository, projectRepo project.ProjectRepository, signatureRepo signatures.SignatureRepository, corpConsoleURL string, httpClient *http.Client) IService {
 	return service{
-		repo:           repo,
-		userRepo:       userRepo,
-		companyRepo:    companyRepo,
-		projectRepo:    projectRepo,
-		signatureRepo:  signatureRepo,
-		corpConsoleURL: corpConsoleURL,
-		httpClient:     httpClient,
+		repo:                       repo,
+		projectsCLAGroupRepository: projectsCLAGroupRepository,
+		userRepo:                   userRepo,
+		companyRepo:                companyRepo,
+		projectRepo:                projectRepo,
+		signatureRepo:              signatureRepo,
+		corpConsoleURL:             corpConsoleURL,
+		httpClient:                 httpClient,
 	}
 }
 
@@ -225,7 +231,7 @@ func (s service) sendRequestSentEmail(companyModel *models.Company, claGroupMode
 	// CLA Manager Name/Email from a list, send this to this recipient (CLA Manager) - otherwise we will send to all
 	// CLA Managers on the Signature ACL
 	if recipientName != "" && recipientEmail != "" {
-		s.sendRequestEmailToRecipient(companyModel, claGroupModel, contributorName, contributorEmail, recipientName, recipientEmail, message)
+		s.sendRequestEmailToRecipient(s.projectsCLAGroupRepository, companyModel, claGroupModel, contributorName, contributorEmail, recipientName, recipientEmail, message)
 		return
 	}
 
@@ -246,47 +252,37 @@ func (s service) sendRequestSentEmail(companyModel *models.Company, claGroupMode
 			log.Warnf("unable to send email to manager: %+v - no email on file...", manager)
 		} else {
 			// Send the email
-			s.sendRequestEmailToRecipient(companyModel, claGroupModel, contributorName, contributorEmail, manager.Username, whichEmail, message)
+			s.sendRequestEmailToRecipient(s.projectsCLAGroupRepository, companyModel, claGroupModel, contributorName, contributorEmail, manager.Username, whichEmail, message)
 		}
 	}
 }
 
 // sendRequestEmailToRecipient generates and sends an email to the specified recipient
-func (s service) sendRequestEmailToRecipient(companyModel *models.Company, claGroupModel *models.ClaGroup, contributorName, contributorEmail, recipientName, recipientAddress, message string) {
+func (s service) sendRequestEmailToRecipient(projectClaGroupRepository projects_cla_groups.Repository, companyModel *models.Company, claGroupModel *models.ClaGroup, contributorName, contributorEmail, recipientName, recipientAddress, message string) {
 	companyName := companyModel.CompanyName
 	projectName := claGroupModel.ProjectName
-
-	var optionalMessage = ""
-	if message != "" {
-		optionalMessage = fmt.Sprintf("<p>%s included the following message in the request:</p>", contributorName)
-		optionalMessage += fmt.Sprintf("<br/><p>%s</p><br/", message)
-	}
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Request to Authorize %s for %s", contributorName, projectName)
 	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>%s (%s) has requested to be added to the Approved List as an authorized contributor from
-%s to the project %s. You are receiving this message as a CLA Manager from %s for
-%s.</p>
-%s
-<p>If you want to add them to the Approved List, please
-<a href="https://%s#/company/%s" target="_blank">log into the EasyCLA Corporate
-Console</a>, where you can approve this user's request by selecting the 'Manage Approved List' and adding the
-contributor's email, the contributor's entire email domain, their GitHub ID or the entire GitHub Organization for the
-repository. This will permit them to begin contributing to %s on behalf of %s.</p>
-<p>If you are not certain whether to add them to the Approved List, please reach out to them directly to discuss.</p>
-%s
-%s`,
-		recipientName, projectName, contributorName, contributorEmail,
-		companyName, projectName, companyName, projectName,
-		optionalMessage, s.corpConsoleURL,
-		companyModel.CompanyID, projectName, companyName,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
-
-	err := utils.SendEmail(subject, body, recipients)
+	body, err := emails.RenderRequestToAuthorizeTemplate(projectClaGroupRepository, claGroupModel.Version, claGroupModel.ProjectExternalID,
+		emails.RequestToAuthorizeTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: recipientName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+			},
+			ContributorName:     contributorName,
+			ContributorEmail:    contributorEmail,
+			OptionalMessage:     message,
+			CorporateConsoleURL: s.corpConsoleURL,
+			CompanyID:           companyModel.CompanyID,
+		})
+	if err != nil {
+		log.Warnf("rendering email template : %s failed : %v", emails.RequestToAuthorizeTemplateName, err)
+		return
+	}
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
@@ -299,9 +295,7 @@ func (s service) sendRequestRejectedEmailToRecipient(companyModel *models.Compan
 	companyName := companyModel.CompanyName
 	projectName := claGroupModel.ProjectName
 
-	var claManagerText = ""
-	claManagerText += "<ul>"
-
+	emailCLAManagerParams := []emails.ClaManagerInfoParams{}
 	// Build a fancy text string with CLA Manager name <email> as an HTML unordered list
 	for _, manager := range signature.SignatureACL {
 
@@ -318,29 +312,32 @@ func (s service) sendRequestRejectedEmailToRecipient(companyModel *models.Compan
 		if whichEmail == "" {
 			log.Warnf("unable to send email to manager: %+v - no email on file...", manager)
 		} else {
-			claManagerText += fmt.Sprintf("<li>%s <%s></li>", manager.Username, whichEmail)
+			emailCLAManagerParams = append(emailCLAManagerParams, emails.ClaManagerInfoParams{
+				LfUsername: manager.Username,
+				Email:      whichEmail,
+			})
 		}
 	}
-	claManagerText += "</ul>"
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Approval List Request Denied for Project %s", projectName)
 	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>Your request to get added to the approval list from %s for %s was denied by one of the existing CLA Managers.
-If you have further questions about this denial, please contact one of the existing CLA Managers from
-%s for %s:</p>
-%s
-%s
-%s`,
-		recipientName, projectName,
-		companyName, projectName, companyName, projectName,
-		claManagerText,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
-
-	err := utils.SendEmail(subject, body, recipients)
+	body, err := emails.RenderTemplate(claGroupModel.Version, emails.ApprovalListRejectedTemplateName,
+		emails.ApprovalListRejectedTemplate,
+		emails.ApprovalListRejectedTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: recipientName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+				CLAManagers:   emailCLAManagerParams,
+			},
+		},
+	)
+	if err != nil {
+		log.Warnf("rendering email failed for : %s : %v", emails.ApprovalListRejectedTemplateName, err)
+		return
+	}
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {

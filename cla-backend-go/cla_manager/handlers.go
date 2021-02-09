@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/communitybridge/easycla/cla-backend-go/emails"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/cla_manager"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -801,27 +803,23 @@ func sendRequestAccessEmailToCLAManagers(companyModel *models.Company, claGroupM
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: New CLA Manager Access Request for %s on %s", companyName, projectName)
 	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>You are currently listed as a CLA Manager from %s for the project %s. This means that you are able to maintain the
-list of employees allowed to contribute to %s on behalf of your company, as well as view and manage the list of
-your company’s CLA Managers for %s.</p>
-<p>%s (%s) has requested to be added as another CLA Manager from %s for %s. This would permit them to maintain the
-lists of approved contributors and CLA Managers as well.</p>
-<p>If you want to permit this, please log into the <a href="%s" target="_blank">EasyCLA Corporate Console</a>,
-select your company, then select the %s project. From the CLA Manager requests, you can approve this user as an
-additional CLA Manager.</p>
-%s
-%s
-`,
-		recipientName, projectName,
-		companyName, projectName, projectName, projectName,
-		requesterName, requesterEmail, companyName, projectName,
-		utils.GetCorporateURL(claGroupModel.Version == utils.V2), projectName,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+	body, err := emails.RenderTemplate(claGroupModel.Version, emails.RequestAccessToCLAManagersTemplateName,
+		emails.RequestAccessToCLAManagersTemplate, emails.RequestAccessToCLAManagersTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: recipientName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+			},
+			RequesterName:  requesterName,
+			RequesterEmail: requesterEmail,
+			CorporateURL:   utils.GetCorporateURL(claGroupModel.Version == utils.V2),
+		})
+	if err != nil {
+		log.Warnf("rendering email template : %s failed : %v", emails.RequestAccessToCLAManagersTemplateName, err)
+		return
+	}
 
-	err := utils.SendEmail(subject, body, recipients)
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
@@ -836,23 +834,25 @@ func sendRequestApprovedEmailToCLAManagers(companyModel *models.Company, claGrou
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Access Approval Notice for %s", projectName)
 	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>The following user has been approved as a CLA Manager from %s for the project %s. This means that they can now
-maintain the list of employees allowed to contribute to %s on behalf of your company, as well as view and manage the
-list of company’s CLA Managers for %s.</p>
-<ul>
-<li>%s (%s)</li>
-</ul>
-%s
-%s`,
-		recipientName, projectName,
-		companyName, projectName, projectName, projectName,
-		requesterName, requesterEmail,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+	body, err := emails.RenderTemplate(
+		claGroupModel.Version,
+		emails.RequestApprovedToCLAManagersTemplateName,
+		emails.RequestApprovedToCLAManagersTemplate,
+		emails.RequestApprovedToCLAManagersTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: recipientName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+			},
+			RequesterName:  requesterName,
+			RequesterEmail: requesterEmail,
+		})
 
-	err := utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		log.Warnf("rendering email template : %s failed : %v", emails.RequestApprovedToCLAManagersTemplateName, err)
+		return
+	}
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
@@ -867,22 +867,20 @@ func sendRequestApprovedEmailToRequester(companyModel *models.Company, claGroupM
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: New CLA Manager Access Approved for %s", projectName)
 	recipients := []string{requesterEmail}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>You have now been approved as a CLA Manager from %s for the project %s.  This means that you can now maintain the
-list of employees allowed to contribute to %s on behalf of your company, as well as view and manage the list of your
-company’s CLA Managers for %s.</p>
-<p> To get started, please log into the <a href="%s" target="_blank">EasyCLA Corporate Console</a>, and select your
-company and then the project %s. From here you will be able to edit the list of approved employees and CLA Managers.</p>
-%s
-%s`,
-		requesterName, projectName,
-		companyName, projectName, projectName, projectName,
-		utils.GetCorporateURL(claGroupModel.Version == utils.V2), projectName,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
-
-	err := utils.SendEmail(subject, body, recipients)
+	body, err := emails.RenderTemplate(claGroupModel.Version, emails.RequestApprovedToRequesterTemplateName,
+		emails.RequestApprovedToRequesterTemplate, emails.RequestApprovedToRequesterTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: requesterName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+			},
+			CorporateURL: utils.GetCorporateURL(claGroupModel.Version == utils.V2),
+		})
+	if err != nil {
+		log.Warnf("email template : %s failed rendering : %s", emails.RequestApprovedToRequesterTemplateName, err)
+		return
+	}
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
@@ -897,22 +895,27 @@ func sendRequestDeniedEmailToCLAManagers(companyModel *models.Company, claGroupM
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Access Denied Notice for %s", projectName)
 	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>The following user has been denied as a CLA Manager from %s for the project %s. This means that they will not
-be able to maintain the list of employees allowed to contribute to %s on behalf of your company.</p>
-<ul>
-<li>%s (%s)</li>
-</ul>
-%s
-%s`,
-		recipientName, projectName,
-		companyName, projectName, projectName,
-		requesterName, requesterEmail,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+	body, err := emails.RenderTemplate(
+		claGroupModel.Version,
+		emails.RequestDeniedToCLAManagersTemplateName,
+		emails.RequestDeniedToCLAManagersTemplate,
+		emails.RequestDeniedToCLAManagersTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: recipientName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+			},
+			RequesterName:  requesterName,
+			RequesterEmail: requesterEmail,
+		},
+	)
 
-	err := utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		log.Warnf("email template render : %s failed : %v", emails.RequestDeniedToCLAManagersTemplateName, err)
+		return
+	}
+
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
@@ -927,18 +930,22 @@ func sendRequestDeniedEmailToRequester(companyModel *models.Company, claGroupMod
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: New CLA Manager Access Denied for %s", projectName)
 	recipients := []string{requesterEmail}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>You have been denied as a CLA Manager from %s for the project %s. This means that you can not maintain the
-list of employees allowed to contribute to %s on behalf of your company.</p>
-%s
-%s`,
-		requesterName, projectName,
-		companyName, projectName, projectName,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+	body, err := emails.RenderTemplate(claGroupModel.Version, emails.RequestDeniedToRequesterTemplateName,
+		emails.RequestDeniedToRequesterTemplate,
+		emails.RequestDeniedToRequesterTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: requesterName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+			},
+		})
 
-	err := utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		log.Warnf("email template rendering %s failed : %v", emails.RequestDeniedToRequesterTemplateName, err)
+		return
+	}
+
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {

@@ -7,6 +7,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/communitybridge/easycla/cla-backend-go/emails"
+	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
@@ -37,25 +40,27 @@ type IService interface {
 }
 
 type service struct {
-	repo                IRepository
-	companyService      company.IService
-	projectService      project.Service
-	usersService        users.Service
-	sigService          signatures.SignatureService
-	eventsService       events.Service
-	corporateConsoleURL string
+	repo                 IRepository
+	projectClaRepository projects_cla_groups.Repository
+	companyService       company.IService
+	projectService       project.Service
+	usersService         users.Service
+	sigService           signatures.SignatureService
+	eventsService        events.Service
+	corporateConsoleURL  string
 }
 
 // NewService creates a new service object
-func NewService(repo IRepository, companyService company.IService, projectService project.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, corporateConsoleURL string) IService {
+func NewService(repo IRepository, projectClaRepository projects_cla_groups.Repository, companyService company.IService, projectService project.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, corporateConsoleURL string) IService {
 	return service{
-		repo:                repo,
-		companyService:      companyService,
-		projectService:      projectService,
-		usersService:        usersService,
-		sigService:          sigService,
-		eventsService:       eventsService,
-		corporateConsoleURL: corporateConsoleURL,
+		repo:                 repo,
+		projectClaRepository: projectClaRepository,
+		companyService:       companyService,
+		projectService:       projectService,
+		usersService:         usersService,
+		sigService:           sigService,
+		eventsService:        eventsService,
+		corporateConsoleURL:  corporateConsoleURL,
 	}
 }
 
@@ -324,7 +329,7 @@ func (s service) RemoveClaManager(ctx context.Context, companyID string, claGrou
 	}
 
 	// Notify the removed manager
-	sendRemovedClaManagerEmailToRecipient(companyModel, claGroupModel, userModel.LfUsername, userModel.LfEmail, claManagers)
+	sendRemovedClaManagerEmailToRecipient(s.projectClaRepository, companyModel, claGroupModel, userModel.LfUsername, userModel.LfEmail, claManagers)
 
 	// Send an event
 	s.eventsService.LogEvent(&events.LogEventArgs{
@@ -356,22 +361,25 @@ func sendClaManagerAddedEmailToUser(companyModel *models.Company, claGroupModel 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Added as CLA Manager for Project :%s", projectName)
 	recipients := []string{requesterEmail}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>You have been added as a CLA Manager from %s for the project %s.  This means that you can now maintain the
-list of employees allowed to contribute to %s on behalf of your company, as well as view and manage the list of your
-company’s CLA Managers for %s.</p>
-<p> To get started, please log into the <a href="%s" target="_blank">EasyCLA Corporate Console</a>, and select your
-company and then the project %s. From here you will be able to edit the list of approved employees and CLA Managers.</p>
-%s
-%s`,
-		requesterName, projectName,
-		companyName, projectName, projectName, projectName,
-		utils.GetCorporateURL(claGroupModel.Version == utils.V2), projectName,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+	body, err := emails.RenderTemplate(
+		claGroupModel.Version,
+		emails.ClaManagerAddedEToUserTemplateName,
+		emails.ClaManagerAddedEToUserTemplate,
+		emails.ClaManagerAddedEToUserTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: requesterName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+			},
+			CorporateURL: utils.GetCorporateURL(claGroupModel.Version == utils.V2),
+		},
+	)
+	if err != nil {
+		log.Warnf("email template render : %s failed : %v", emails.ClaManagerAddedEToUserTemplateName, err)
+		return
+	}
 
-	err := utils.SendEmail(subject, body, recipients)
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
@@ -386,23 +394,24 @@ func sendClaManagerAddedEmailToCLAManagers(companyModel *models.Company, claGrou
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Added Notice for %s", projectName)
 	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>The following user has been added as a CLA Manager from %s for the project %s. This means that they can now
-maintain the list of employees allowed to contribute to %s on behalf of your company, as well as view and manage the
-list of company’s CLA Managers for %s.</p>
-<ul>
-<li>%s (%s)</li>
-</ul>
-%s
-%s`,
-		recipientName, projectName,
-		companyName, projectName, projectName, projectName,
-		name, email,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+	body, err := emails.RenderTemplate(claGroupModel.Version, emails.ClaManagerAddedToCLAManagersTemplateName,
+		emails.ClaManagerAddedToCLAManagersTemplate,
+		emails.ClaManagerAddedToCLAManagersTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: recipientName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+			},
+			Name:  name,
+			Email: email,
+		})
 
-	err := utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		log.Warnf("email template render : %s failed : %v", emails.ClaManagerAddedToCLAManagersTemplate, err)
+		return
+	}
+
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
@@ -411,12 +420,12 @@ list of company’s CLA Managers for %s.</p>
 }
 
 // sendRequestRejectedEmailToRecipient generates and sends an email to the specified recipient
-func sendRemovedClaManagerEmailToRecipient(companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress string, claManagers []models.User) {
+func sendRemovedClaManagerEmailToRecipient(projectsClaGroupRepository projects_cla_groups.Repository, companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress string, claManagers []models.User) {
 	companyName := companyModel.CompanyName
 	projectName := claGroupModel.ProjectName
 
-	var companyManagerText = ""
-	companyManagerText += "<ul>"
+	emailCLAManagerParams := []emails.ClaManagerInfoParams{}
+
 	log.Debugf("CLA Managers found: %+v", claManagers)
 
 	// Build a fancy text string with CLA Manager name <email> as an HTML unordered list
@@ -450,28 +459,30 @@ func sendRemovedClaManagerEmailToRecipient(companyModel *models.Company, claGrou
 		} else {
 			log.Warnf("Username: %s", companyAdmin.LfUsername)
 			log.Warnf("Email: %s ", whichEmail)
-			companyManagerText += fmt.Sprintf("<li>%s %s</li>", companyAdmin.LfUsername, whichEmail)
+			emailCLAManagerParams = append(emailCLAManagerParams, emails.ClaManagerInfoParams{
+				LfUsername: companyAdmin.LfUsername,
+				Email:      whichEmail,
+			})
 		}
 	}
-
-	companyManagerText += "</ul>"
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Removed as CLA Manager for Project %s", projectName)
 	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>You have been removed as a CLA Manager from %s for the project %s.</p>
-<p>If you have further questions about this, please contact one of the existing managers from
-%s:</p>
-%s
-%s
-%s`,
-		recipientName, projectName, companyName, projectName, companyName, companyManagerText,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+	body, err := emails.RenderRemovedCLAManagerTemplate(
+		projectsClaGroupRepository,
+		claGroupModel.Version,
+		recipientName,
+		companyName,
+		claGroupModel.ProjectExternalID,
+		emailCLAManagerParams)
 
-	err := utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		log.Warnf("rendering the email content failed for : %s", emails.RemovedCLAManagerTemplateName)
+		return
+	}
+
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
@@ -486,17 +497,25 @@ func sendClaManagerDeleteEmailToCLAManagers(companyModel *models.Company, claGro
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Removed Notice for %s", projectName)
 	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>%s(%s) has been removed as a CLA Manager from %s for the project %s.</p>
-%s
-%s
-`,
-		recipientName, projectName, name, email, companyName, projectName,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+	body, err := emails.RenderTemplate(claGroupModel.Version,
+		emails.ClaManagerDeletedToCLAManagersTemplateName,
+		emails.ClaManagerDeletedToCLAManagersTemplate,
+		emails.ClaManagerDeletedToCLAManagersTemplateParams{
+			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				RecipientName: recipientName,
+				ProjectName:   projectName,
+				CompanyName:   companyName,
+			},
+			Name:  name,
+			Email: email,
+		})
 
-	err := utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		log.Warnf("email template render : %s failed : %v", emails.ClaManagerDeletedToCLAManagersTemplateName, err)
+		return
+	}
+
+	err = utils.SendEmail(subject, body, recipients)
 	if err != nil {
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
