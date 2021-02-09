@@ -6,7 +6,10 @@ package utils
 // String400 string version of 400 - http bad request
 const String400 = "400"
 
-// String403 string version of 403 - http not authorized
+// String401 string version of 401 - http unauthorized
+const String401 = "401"
+
+// String403 string version of 403 - http forbidden
 const String403 = "403"
 
 // String404 string version of 404 - http not found
@@ -20,6 +23,9 @@ const String500 = "500"
 
 // EasyCLA400BadRequest common string for handler bad request error messages
 const EasyCLA400BadRequest = "EasyCLA - 400 Bad Request"
+
+// EasyCLA401Unauthorized common string for handler unauthorized error messages
+const EasyCLA401Unauthorized = "EasyCLA - 401 Unauthorized"
 
 // EasyCLA403Forbidden common string for handler forbidden error messages
 const EasyCLA403Forbidden = "EasyCLA - 403 Forbidden"

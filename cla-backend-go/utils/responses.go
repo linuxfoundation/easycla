@@ -37,6 +37,24 @@ func ErrorResponseBadRequestWithError(reqID, msg string, err error) *models.Erro
 	}
 }
 
+// ErrorResponseUnauthorized Helper function to generate an unauthorized error response
+func ErrorResponseUnauthorized(reqID, msg string) *models.ErrorResponse {
+	return &models.ErrorResponse{
+		Code:       String401,
+		Message:    fmt.Sprintf("%s - %s", EasyCLA401Unauthorized, msg),
+		XRequestID: reqID,
+	}
+}
+
+// ErrorResponseUnauthorizedWithError Helper function to generate an unauthorized error response
+func ErrorResponseUnauthorizedWithError(reqID, msg string, err error) *models.ErrorResponse {
+	return &models.ErrorResponse{
+		Code:       String401,
+		Message:    fmt.Sprintf("%s - %s - error: %+v", EasyCLA401Unauthorized, msg, err),
+		XRequestID: reqID,
+	}
+}
+
 // ErrorResponseForbidden Helper function to generate a forbidden error response
 func ErrorResponseForbidden(reqID, msg string) *models.ErrorResponse {
 	return &models.ErrorResponse{

@@ -5,28 +5,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
-    - name: Run Snyk to check for vulnerabilities (Node)
-      uses: snyk/actions/node@master
-      continue-on-error: true
+#    - name: Run Snyk to check for vulnerabilities (Node)
+#      uses: snyk/actions/node@master
+#      continue-on-error: true
+#      env:
+#        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+#      with:
+#        command: monitor
+#    - name: Run Snyk to check for vulnerabilities (Golang)
+#      uses: snyk/actions/golang@master
+#      continue-on-error: true
+#      env:
+#        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+#      with:
+#        command: monitor
+    - name: Install dependencies (cla-backend)
+      run: |
+        python -m pip install --upgrade pip wheel
+        pip install -r cla-backend/requirements.txt
+    - uses: snyk/actions/setup@master
+    - name: Run Snyk to check for vulnerabilities (all)
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        command: monitor
-    - name: Run Snyk to check for vulnerabilities (Golang)
-      uses: snyk/actions/golang@master
-      continue-on-error: true
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        command: monitor
-    - name: Run Snyk to check for vulnerabilities (Python)
-      uses: snyk/actions/python@master
-      continue-on-error: true
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        command: monitor
-    - name: Upload result to GitHub Code Scanning
-      uses: github/codeql-action/upload-sarif@v1
-      with:
-        sarif_file: snyk.sarif
+      run: |
+        snyk monitor --detection-depth=99 --dev --all-projects --org=${{ secrets.SNYK_ORG }}
+
+#    - name: Run Snyk to check for vulnerabilities (Python)
+#      uses: snyk/actions/python@master
+#      continue-on-error: true
+#      env:
+#        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+#      with:
+#        command: monitor
+#    - name: Upload result to GitHub Code Scanning
+#      uses: github/codeql-action/upload-sarif@v1
+#      with:
+#        sarif_file: snyk.sarif

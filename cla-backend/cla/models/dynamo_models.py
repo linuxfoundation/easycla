@@ -1103,7 +1103,7 @@ class Project(model_interfaces.Project):  # pylint: disable=too-many-public-meth
 
         return project_dict
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
@@ -1529,7 +1529,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         """
         cla.log.warning("{} for user: {}".format(msg, self))
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
@@ -2030,7 +2030,7 @@ class Repository(model_interfaces.Repository):
     def to_dict(self):
         return dict(self.model)
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
@@ -2433,7 +2433,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
                 del d[k]
         return d
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
@@ -2960,17 +2960,27 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
     def get_managers(self):
         return self.get_managers_by_signature_acl(self.get_signature_acl())
 
-    def all(self, ids=None):
+    def all(self, ids: str = None) -> List[Signature]:
         if ids is None:
             signatures = self.model.scan()
         else:
             signatures = SignatureModel.batch_get(ids)
         ret = []
         for signature in signatures:
-            agr = Signature()
-            agr.model = signature
-            ret.append(agr)
+            sig = Signature()
+            sig.model = signature
+            ret.append(sig)
         return ret
+
+    def all_limit(self, limit: Optional[int] = None, last_evaluated_key: Optional[str] = None) -> \
+            (List[Signature], str, int):
+        result_iterator = self.model.scan(limit=limit, last_evaluated_key=last_evaluated_key)
+        ret = []
+        for signature in result_iterator:
+            sig = Signature()
+            sig.model = signature
+            ret.append(sig)
+        return ret, result_iterator.last_evaluated_key, result_iterator.total_count
 
 
 class ProjectCLAGroupModel(BaseModel):
@@ -3175,6 +3185,7 @@ class CompanyModel(BaseModel):
     signing_entity_name_index = SigningEntityNameIndex()
     company_external_id_index = ExternalCompanyIndex()
     company_acl = UnicodeSetAttribute(default=set())
+    note = UnicodeAttribute(null=True)
 
 
 class Company(model_interfaces.Company):  # pylint: disable=too-many-public-methods
@@ -3190,6 +3201,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             company_name=None,
             signing_entity_name=None,
             company_acl=None,
+            note=None,
     ):
         super(Company).__init__()
         self.model = CompanyModel()
@@ -3202,6 +3214,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
         else:
             self.model.signing_entity_name = company_name
         self.model.company_acl = company_acl
+        self.model.note = note
 
     def __str__(self) -> str:
         return (
@@ -3210,7 +3223,8 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             f"signing_entity_name: {self.model.signing_entity_name}, "
             f"external id: {self.model.company_external_id}, "
             f"manager id: {self.model.company_manager_id}, "
-            f"acl: {self.model.company_acl}"
+            f"acl: {self.model.company_acl}, "
+            f"note: {self.model.note}"
         )
 
     def to_dict(self) -> dict:
@@ -3254,12 +3268,15 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
         return self.model.company_name
 
     def get_signing_entity_name(self) -> str:
-        if self.model.signing_entity_name is None:
-            return self.model.company_name
+        # if self.model.signing_entity_name is None:
+        #    return self.model.company_name
         return self.model.signing_entity_name
 
     def get_company_acl(self) -> Optional[List[str]]:
         return self.model.company_acl
+
+    def get_note(self) -> str:
+        return self.model.note
 
     def set_company_id(self, company_id: str) -> None:
         self.model.company_id = company_id
@@ -3278,6 +3295,15 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
 
     def set_company_acl(self, company_acl_username: str) -> None:
         self.model.company_acl = set([company_acl_username])
+
+    def set_note(self, note: str) -> None:
+        self.model.note = note
+
+    def update_note(self, note: str) -> None:
+        if self.model.note:
+            self.model.note = self.model.note + ' ' + note
+        else:
+            self.model.note = note
 
     def set_date_modified(self) -> None:
         """
@@ -3513,7 +3539,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
             ret["organization_sfid"] = None
         return ret
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
@@ -3740,7 +3766,7 @@ class Gerrit(model_interfaces.Gerrit):  # pylint: disable=too-many-public-method
     def set_group_name_ccla(self, group_name_ccla):
         self.model.group_name_ccla = group_name_ccla
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
@@ -3942,7 +3968,7 @@ class CLAManagerRequest(model_interfaces.CLAManagerRequest):  # pylint: disable=
     def set_status(self, status):
         self.model.status = status
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
@@ -4002,7 +4028,7 @@ class UserPermissions(model_interfaces.UserPermissions):  # pylint: disable=too-
         ret = dict(self.model)
         return ret
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
@@ -4092,7 +4118,7 @@ class CompanyInvite(model_interfaces.CompanyInvite):
             invites.append(invite)
         return invites
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
@@ -4198,7 +4224,7 @@ class Event(model_interfaces.Event):
     def to_dict(self):
         return dict(self.model)
 
-    def save(self):
+    def save(self) -> None:
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 

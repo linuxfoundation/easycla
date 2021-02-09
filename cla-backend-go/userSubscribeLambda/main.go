@@ -61,7 +61,8 @@ func init() {
 // Handler is the user subscribe handler lambda entry function
 func Handler(ctx context.Context, snsEvent events.SNSEvent) error {
 	f := logrus.Fields{
-		"functionName": "userSubscribeLambda.main.Handler",
+		"functionName":   "userSubscribeLambda.main.Handler",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 	if len(snsEvent.Records) == 0 {
 		log.WithFields(f).Warn("SNS event contained 0 records - ignoring message.")
@@ -79,14 +80,17 @@ func Handler(ctx context.Context, snsEvent events.SNSEvent) error {
 			return err
 		}
 
-		log.WithFields(f).Debugf("Processing model.Type: %s", model.Type)
+		f["modelType"] = model.Type
+		log.WithFields(f).Debugf("Processing message type: %s", model.Type)
 		switch model.Type {
 		case "UserSignedUp":
-			log.WithFields(f).Debugf("Detected model.Type: %s - processing...", model.Type)
-			Create(model)
+			log.WithFields(f).Debugf("Detected message type: %s - processing...", model.Type)
+			Create(ctx, model)
 		case "UserUpdatedProfile":
-			log.WithFields(f).Debugf("Detected model.Type: %s - processing...", model.Type)
-			Update(model)
+			log.WithFields(f).Debugf("Detected message type: %s - processing...", model.Type)
+			Update(ctx, model)
+		case "UserAuthenticated":
+			log.WithFields(f).Debugf("Ignoring message type: %s", model.Type)
 		default:
 			log.WithFields(f).Warnf("unrecognized message type: %s - unable to process message ", model.Type)
 		}
@@ -96,9 +100,10 @@ func Handler(ctx context.Context, snsEvent events.SNSEvent) error {
 }
 
 // Create saves the user data model to persistent storage
-func Create(user event.Event) {
+func Create(ctx context.Context, user event.Event) {
 	f := logrus.Fields{
-		"functionName": "userSubscribeLambda.main.Create",
+		"functionName":   "userSubscribeLambda.main.Create",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
 	uc := &usersModels.UserCreated{}
@@ -118,6 +123,7 @@ func Create(user event.Event) {
 	}
 	usersRepo := users.NewRepository(awsSession, stage)
 
+	log.WithFields(f).Debugf("locating user by username: %s in EasyCLA's database...", uc.Username)
 	userDetails, userErr = usersRepo.GetUserByLFUserName(uc.Username)
 	if userErr != nil {
 		log.WithFields(f).WithError(userErr).Warnf("unable to locate user by LfUsername: %s", uc.Username)
@@ -128,9 +134,10 @@ func Create(user event.Event) {
 	}
 
 	userServiceClient := user_service.GetClient()
+	log.WithFields(f).Debugf("locating user by username: %s in the user service...", uc.Username)
 	sfdcUserObject, err := userServiceClient.GetUserByUsername(uc.Username)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to locate user by SFID: %s", uc.Username)
+		log.WithFields(f).WithError(err).Warnf("unable to locate user by username: %s", uc.Username)
 		return
 	}
 	if sfdcUserObject == nil {
@@ -173,9 +180,10 @@ func Create(user event.Event) {
 }
 
 // Update saves the user data model to persistent storage
-func Update(user event.Event) {
+func Update(ctx context.Context, user event.Event) {
 	f := logrus.Fields{
-		"functionName": "userSubscribeLambda.main.Update",
+		"functionName":   "userSubscribeLambda.main.Update",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
 	uc := &usersModels.UserUpdated{}

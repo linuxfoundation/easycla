@@ -7,6 +7,9 @@ import (
 	"context"
 	"fmt"
 
+	user_service "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
+	"github.com/sirupsen/logrus"
+
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/cla_manager"
@@ -254,10 +257,18 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
+		f := logrus.Fields{
+			"functionName":   "cla_manager.handler.ClaManagerApproveCLAManagerRequestHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"projectID":      params.ProjectID,
+			"CompanyID":      params.CompanyID,
+			"RequestID":      params.RequestID,
+		}
+
 		companyModel, companyErr := companyService.GetCompany(ctx, params.CompanyID)
 		if companyErr != nil || companyModel == nil {
 			msg := buildErrorMessageForApprove(params, companyErr)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewCreateCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -267,7 +278,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		claGroupModel, projectErr := projectService.GetCLAGroupByID(ctx, params.ProjectID)
 		if projectErr != nil || claGroupModel == nil {
 			msg := buildErrorMessageForApprove(params, projectErr)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewCreateCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -284,14 +295,14 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		})
 		if sigErr != nil || sigModels == nil {
 			msg := buildErrorMessageForApprove(params, sigErr)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: "CLA Manager Approve Request - error reading CCLA Signatures - " + msg,
 				Code:    "400",
 			})
 		}
 		if len(sigModels.Signatures) > 1 {
-			log.Warnf("returned multiple CCLA signature models for company ID: %s, project ID: %s for request ID: %s",
+			log.WithFields(f).Warnf("returned multiple CCLA signature models for company ID: %s, project ID: %s for request ID: %s",
 				params.CompanyID, params.ProjectID, params.RequestID)
 		}
 
@@ -309,7 +320,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		request, err := service.ApproveRequest(params.CompanyID, params.ProjectID, params.RequestID)
 		if err != nil {
 			msg := buildErrorMessageForApprove(params, err)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -320,7 +331,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		_, aclErr := sigService.AddCLAManager(ctx, sigModel.SignatureID, request.UserID)
 		if aclErr != nil {
 			msg := buildErrorMessageForApprove(params, aclErr)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -360,11 +371,18 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 	api.ClaManagerDenyCLAManagerRequestHandler = cla_manager.DenyCLAManagerRequestHandlerFunc(func(params cla_manager.DenyCLAManagerRequestParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":   "cla_manager.handler.ClaManagerDenyCLAManagerRequestHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"projectID":      params.ProjectID,
+			"CompanyID":      params.CompanyID,
+			"RequestID":      params.RequestID,
+		}
 
 		companyModel, companyErr := companyService.GetCompany(ctx, params.CompanyID)
 		if companyErr != nil || companyModel == nil {
 			msg := buildErrorMessageForDeny(params, companyErr)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDenyCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -374,7 +392,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		claGroupModel, projectErr := projectService.GetCLAGroupByID(ctx, params.ProjectID)
 		if projectErr != nil || claGroupModel == nil {
 			msg := buildErrorMessageForDeny(params, projectErr)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDenyCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -391,14 +409,14 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		})
 		if sigErr != nil || sigModels == nil {
 			msg := buildErrorMessageForDeny(params, sigErr)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: "CLA Manager Deny Request - error reading CCLA Signatures - " + msg,
 				Code:    "400",
 			})
 		}
 		if len(sigModels.Signatures) > 1 {
-			log.Warnf("returned multiple CCLA signature models for company ID: %s, project ID: %s for request ID: %s",
+			log.WithFields(f).Warnf("returned multiple CCLA signature models for company ID: %s, project ID: %s for request ID: %s",
 				params.CompanyID, params.ProjectID, params.RequestID)
 		}
 
@@ -415,7 +433,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		request, err := service.DenyRequest(params.CompanyID, params.ProjectID, params.RequestID)
 		if err != nil {
 			msg := buildErrorMessageForDeny(params, err)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDenyCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -455,6 +473,13 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 	api.ClaManagerDeleteCLAManagerRequestHandler = cla_manager.DeleteCLAManagerRequestHandlerFunc(func(params cla_manager.DeleteCLAManagerRequestParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":   "cla_manager.handler.ClaManagerDeleteCLAManagerRequestHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"projectID":      params.ProjectID,
+			"CompanyID":      params.CompanyID,
+			"RequestID":      params.RequestID,
+		}
 
 		// Make sure the company id exists...
 		companyModel, companyErr := companyService.GetCompany(ctx, params.CompanyID)
@@ -470,7 +495,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		claGroupModel, projectErr := projectService.GetCLAGroupByID(ctx, params.ProjectID)
 		if projectErr != nil || claGroupModel == nil {
 			msg := buildErrorMessageForDelete(params, projectErr)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDenyCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -481,7 +506,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		request, err := service.GetRequest(params.RequestID)
 		if err != nil {
 			msg := buildErrorMessageForDelete(params, err)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDeleteCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -490,7 +515,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 
 		if request == nil {
 			msg := buildErrorMessageForDelete(params, err)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDeleteCLAManagerRequestNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "404",
@@ -507,14 +532,16 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		})
 		if sigErr != nil || sigModels == nil {
 			msg := buildErrorMessageForDelete(params, sigErr)
-			log.Warn(msg)
-			return cla_manager.NewDeleteCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: "EasyCLA - 400 Bad Request - CLA Manager Delete Request - error reading CCLA Signatures - " + msg,
-				Code:    "400",
-			})
+			log.WithFields(f).Warn(msg)
+			return cla_manager.NewDeleteCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ToV1ErrorResponse(
+					utils.ErrorResponseBadRequest(
+						reqID,
+						"CLA Manager Delete Request - error reading CCLA Signatures - "+msg,
+					)))
 		}
 		if len(sigModels.Signatures) > 1 {
-			log.Warnf("returned multiple CCLA signature models for company ID: %s, project ID: %s for request ID: %s",
+			log.WithFields(f).Warnf("returned multiple CCLA signature models for company ID: %s, project ID: %s for request ID: %s",
 				params.CompanyID, params.ProjectID, params.RequestID)
 		}
 
@@ -523,7 +550,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		if !currentUserInACL(claUser, claManagers) {
 			msg := fmt.Sprintf("EasyCLA - 401 Unauthorized - CLA Manager %s / %s / %s not authorized to delete requests for company ID: %s, project ID: %s",
 				claUser.UserID, claUser.Name, claUser.LFEmail, params.CompanyID, params.ProjectID)
-			log.Debug(msg)
+			log.WithFields(f).Debug(msg)
 			return cla_manager.NewDeleteCLAManagerRequestUnauthorized().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "401",
@@ -534,7 +561,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		deleteErr := service.DeleteRequest(params.RequestID)
 		if deleteErr != nil {
 			msg := buildErrorMessageForDelete(params, deleteErr)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDeleteCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Message: msg,
 				Code:    "400",
@@ -558,41 +585,50 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			},
 		})
 
-		log.Debug("CLA Manager Delete - Returning Success")
+		log.WithFields(f).Debug("CLA Manager Delete - Returning Success")
 		return cla_manager.NewDeleteCLAManagerRequestNoContent().WithXRequestID(reqID)
 	})
 
 	api.ClaManagerAddCLAManagerHandler = cla_manager.AddCLAManagerHandlerFunc(func(params cla_manager.AddCLAManagerParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":   "cla_manager.handler.ClaManagerAddCLAManagerHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"projectID":      params.ProjectID,
+			"CompanyID":      params.CompanyID,
+			"UserLFID":       params.Body.UserLFID,
+			"UserEmail":      params.Body.UserEmail,
+			"UserName":       params.Body.UserName,
+		}
 
+		log.WithFields(f).Debug("looking up user by user id...")
 		userModel, userErr := usersService.GetUserByLFUserName(params.Body.UserLFID)
 		if userErr != nil || userModel == nil {
-			msg := fmt.Sprintf("User lookup for user by LFID: %s failed ", params.Body.UserLFID)
-			log.Warn(msg)
-			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: "EasyCLA - 400 Bad Request - Add CLA Manager - error getting user - " + msg,
-				Code:    "400",
-			})
+			log.WithFields(f).Warnf("Add CLA Manager - user lookup by LFID: %s failed - attempting to lookup in SF...", params.Body.UserLFID)
+			userServiceClient := user_service.GetClient()
+			sfdcUserObject, userServiceLookupErr := userServiceClient.GetUserByUsername(params.Body.UserLFID)
+			if userServiceLookupErr != nil || sfdcUserObject == nil {
+				msg := fmt.Sprintf("Add CLA Manager - user lookup by LFID: %s failed ", params.Body.UserLFID)
+				log.WithFields(f).Warn(msg)
+				return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ToV1ErrorResponse(utils.ErrorResponseBadRequest(reqID, msg)))
+			}
 		}
 		companyModel, companyErr := companyService.GetCompany(ctx, params.CompanyID)
 		if companyErr != nil || companyModel == nil {
-			msg := fmt.Sprintf("User lookup for company by ID: %s failed ", params.CompanyID)
+			msg := fmt.Sprintf("Add CLA Manager - error getting company by ID: %s failed ", params.CompanyID)
 			log.Warn(msg)
-			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: "EasyCLA - 400 Bad Request - Add CLA Manager - error getting company - " + msg,
-				Code:    "400",
-			})
+			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ToV1ErrorResponse(utils.ErrorResponseBadRequest(reqID, msg)))
 		}
 
 		claGroupModel, projectErr := projectService.GetCLAGroupByID(ctx, params.ProjectID)
 		if projectErr != nil || claGroupModel == nil {
-			msg := fmt.Sprintf("User lookup for project by ID: %s failed ", params.ProjectID)
+			msg := fmt.Sprintf("Add CLA Manager - error getting project - lookup for project by ID: %s failed ", params.ProjectID)
 			log.Warn(msg)
-			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: "EasyCLA - 400 Bad Request - Add CLA Manager - error getting project - " + msg,
-				Code:    "400",
-			})
+			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ToV1ErrorResponse(utils.ErrorResponseBadRequest(reqID, msg)))
 		}
 
 		// Look up signature ACL to ensure the user is allowed to add CLA managers
@@ -606,10 +642,8 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		if sigErr != nil || sigModels == nil {
 			msg := buildErrorMessageAddManager("Add CLA Manager - signature lookup error", params, sigErr)
 			log.Warn(msg)
-			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: "EasyCLA - 400 Bad Request - Add CLA Manager - error reading CCLA Signatures - " + msg,
-				Code:    "400",
-			})
+			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ToV1ErrorResponse(utils.ErrorResponseBadRequest(reqID, msg)))
 		}
 		if len(sigModels.Signatures) > 1 {
 			log.Warnf("returned multiple CCLA signature models for company ID: %s, project ID: %s",
@@ -622,10 +656,8 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			msg := fmt.Sprintf("EasyCLA - 401 Unauthorized - User %s / %s / %s is not authorized to add a CLA Manager for company ID: %s, project ID: %s",
 				claUser.UserID, claUser.Name, claUser.LFEmail, params.CompanyID, params.ProjectID)
 			log.Debug(msg)
-			return cla_manager.NewAddCLAManagerUnauthorized().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: msg,
-				Code:    "401",
-			})
+			return cla_manager.NewAddCLAManagerUnauthorized().WithXRequestID(reqID).WithPayload(
+				utils.ToV1ErrorResponse(utils.ErrorResponseUnauthorized(reqID, msg)))
 		}
 
 		// Audit Event sent from service upon success
@@ -633,10 +665,8 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		if addErr != nil {
 			msg := buildErrorMessageAddManager("Add CLA Manager - Service Error", params, addErr)
 			log.Warn(msg)
-			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: msg,
-				Code:    "400",
-			})
+			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ToV1ErrorResponse(utils.ErrorResponseBadRequest(reqID, msg)))
 		}
 
 		return cla_manager.NewAddCLAManagerOK().WithXRequestID(reqID).WithPayload(signature)
@@ -646,16 +676,29 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 	api.ClaManagerDeleteCLAManagerHandler = cla_manager.DeleteCLAManagerHandlerFunc(func(params cla_manager.DeleteCLAManagerParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":   "cla_manager.handler.ClaManagerDeleteCLAManagerHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"projectID":      params.ProjectID,
+			"CompanyID":      params.CompanyID,
+			"UserLFID":       params.UserLFID,
+		}
+
+		log.WithFields(f).Debug("looking up user by user id...")
 
 		userModel, userErr := usersService.GetUserByLFUserName(params.UserLFID)
 		if userErr != nil || userModel == nil {
-			msg := fmt.Sprintf("User lookup for user by LFID: %s failed ", params.UserLFID)
-			log.Warn(msg)
-			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: "EasyCLA - 400 Bad Request - Delete CLA Manager - error getting user - " + msg,
-				Code:    "400",
-			})
+			log.WithFields(f).Warnf("user lookup by LFID: %s failed - attempting to lookup in SF...", params.UserLFID)
+			userServiceClient := user_service.GetClient()
+			sfdcUserObject, userServiceLookupErr := userServiceClient.GetUserByUsername(params.UserLFID)
+			if userServiceLookupErr != nil || sfdcUserObject == nil {
+				msg := fmt.Sprintf("Delete CLA Manager - user lookup by LFID: %s failed ", params.UserLFID)
+				log.WithFields(f).Warn(msg)
+				return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ToV1ErrorResponse(utils.ErrorResponseBadRequest(reqID, msg)))
+			}
 		}
+
 		companyModel, companyErr := companyService.GetCompany(ctx, params.CompanyID)
 		if companyErr != nil || companyModel == nil {
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed ", params.CompanyID)

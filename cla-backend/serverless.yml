@@ -577,10 +577,10 @@ functions:
 
   # User Subscribe event for dynamodb cla-stage-users table.
   easyClaUserSubscribe:
-    name: easy-cla-user-subscribe
+    handler: user-subscribe-lambda
+    name: ${self:service}-${opt:stage, self:provider.stage, 'dev'}-user-subscribe-lambda
     runtime: go1.x
     description: Update easycla user data to user object in dynamodb
-    handler: user-subscribe-lambda
     package:
       individually: true
       include:
