@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/jinzhu/copier"
 	"github.com/sirupsen/logrus"
 
 	"github.com/go-openapi/swag"
@@ -142,16 +141,15 @@ func (s *service) AddGithubRepository(ctx context.Context, projectSFID string, i
 	if existingRepositoryModel != nil && !existingRepositoryModel.Enabled {
 		msg := fmt.Sprintf("Github repository : %s  disabled and shall get re-enabled... ", utils.StringValue(ghRepo.FullName))
 		log.WithFields(f).Debug(msg)
-		var v1Input v1Models.GithubRepositoryInput
-		err := copier.Copy(&v1Input, &input)
-		if err != nil {
-			log.WithFields(f).Error("unable to create v1GithubRepository input")
-			return nil, err
+		enabled := true
+		v1Input := &v1Models.GithubRepositoryInput{
+			Enabled:                    &enabled,
+			RepositoryProjectID:        input.ClaGroupID,
+			RepositoryOrganizationName: input.GithubOrganizationName,
 		}
-		// Enabled repository
-		*v1Input.Enabled = true
+
 		// Update Repo details in case of any changes
-		updatedRepository, updateErr := s.repo.UpdateGithubRepository(ctx, existingRepositoryModel.RepositoryID, &v1Input)
+		updatedRepository, updateErr := s.repo.UpdateGithubRepository(ctx, existingRepositoryModel.RepositoryID, v1Input)
 		if updateErr != nil {
 			return nil, updateErr
 		}
