@@ -612,9 +612,31 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 				msg := fmt.Sprintf("Add CLA Manager - user lookup by LFID: %s failed ", params.Body.UserLFID)
 				log.WithFields(f).Warn(msg)
 				return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
-					utils.ToV1ErrorResponse(utils.ErrorResponseBadRequest(reqID, msg)))
+					utils.ToV1ErrorResponse(utils.ErrorResponseBadRequestWithError(reqID, msg, userServiceLookupErr)))
+			}
+
+			_, nowStr := utils.CurrentTime()
+			userModel, userErr = usersService.CreateUser(&models.User{
+				Admin:          false,
+				DateCreated:    nowStr,
+				DateModified:   nowStr,
+				Emails:         userServiceClient.EmailsToSlice(sfdcUserObject),
+				GithubUsername: sfdcUserObject.GithubID, //this is the github username
+				LfEmail:        userServiceClient.GetPrimaryEmail(sfdcUserObject),
+				LfUsername:     sfdcUserObject.Username,
+				Note:           "created from SF record",
+				UserExternalID: sfdcUserObject.ID,
+				Username:       sfdcUserObject.Username,
+				Version:        "v1",
+			}, claUser)
+			if userErr != nil || userModel == nil {
+				msg := fmt.Sprintf("Add CLA Manager - user lookup by LFID: %s failed ", params.Body.UserLFID)
+				log.WithFields(f).Warn(msg)
+				return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ToV1ErrorResponse(utils.ErrorResponseBadRequestWithError(reqID, msg, userErr)))
 			}
 		}
+
 		companyModel, companyErr := companyService.GetCompany(ctx, params.CompanyID)
 		if companyErr != nil || companyModel == nil {
 			msg := fmt.Sprintf("Add CLA Manager - error getting company by ID: %s failed ", params.CompanyID)
@@ -696,6 +718,27 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 				log.WithFields(f).Warn(msg)
 				return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
 					utils.ToV1ErrorResponse(utils.ErrorResponseBadRequest(reqID, msg)))
+			}
+
+			_, nowStr := utils.CurrentTime()
+			userModel, userErr = usersService.CreateUser(&models.User{
+				Admin:          false,
+				DateCreated:    nowStr,
+				DateModified:   nowStr,
+				Emails:         userServiceClient.EmailsToSlice(sfdcUserObject),
+				GithubUsername: sfdcUserObject.GithubID, //this is the github username
+				LfEmail:        userServiceClient.GetPrimaryEmail(sfdcUserObject),
+				LfUsername:     sfdcUserObject.Username,
+				Note:           "created from SF record",
+				UserExternalID: sfdcUserObject.ID,
+				Username:       sfdcUserObject.Username,
+				Version:        "v1",
+			}, claUser)
+			if userErr != nil || userModel == nil {
+				msg := fmt.Sprintf("Add CLA Manager - user lookup by LFID: %s failed ", params.UserLFID)
+				log.WithFields(f).Warn(msg)
+				return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ToV1ErrorResponse(utils.ErrorResponseBadRequestWithError(reqID, msg, userErr)))
 			}
 		}
 

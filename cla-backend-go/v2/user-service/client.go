@@ -396,3 +396,15 @@ func (usc *Client) GetPrimaryEmail(user *models.User) string {
 	}
 	return primaryEmail
 }
+
+// EmailsToSlice converts a user model's email addresses to a string slice
+func (usc *Client) EmailsToSlice(user *models.User) []string {
+	var emailList []string
+	for _, email := range user.Emails {
+		if email.EmailAddress != nil {
+			emailList = append(emailList, *email.EmailAddress)
+		}
+	}
+
+	return emailList
+}
