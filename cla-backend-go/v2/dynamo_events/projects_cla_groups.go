@@ -587,16 +587,16 @@ func (s *service) addCLAManagerPermissions(ctx context.Context, claGroupID, proj
 				// Finally....assign the role to this user
 				log.WithFields(f).Debugf("assiging role: %s to user %s/%s/%s for project: %s, company: %s...",
 					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, userClient.GetPrimaryEmail(userModel), projectSFID, companySFID)
-				roleErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, utils.StringValue(userModel.Email), projectSFID, companySFID, claManagerRoleID)
+				roleErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, userClient.GetPrimaryEmail(userModel), projectSFID, companySFID, claManagerRoleID)
 				if roleErr != nil {
 					log.WithFields(f).WithError(roleErr).Warnf("%s, role assignment for user user %s/%s/%s failed for this project: %s, company: %s",
-						utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, utils.StringValue(userModel.Email), projectSFID, companySFID)
+						utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, userClient.GetPrimaryEmail(userModel), projectSFID, companySFID)
 					return
 				}
 				msg := fmt.Sprintf("assigned role: %s to user %s/%s/%s for project: %s with SFID:%s, company: %s with SFID: %s",
-					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, utils.StringValue(userModel.Email), projectName, projectSFID, companyModel.CompanyName, companySFID)
+					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, userClient.GetPrimaryEmail(userModel), projectName, projectSFID, companyModel.CompanyName, companySFID)
 				msgSummary := fmt.Sprintf("assigned role: %s to user %s/%s/%s for project: %s, company: %s",
-					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, utils.StringValue(userModel.Email), projectName, companyModel.CompanyName)
+					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, userClient.GetPrimaryEmail(userModel), projectName, companyModel.CompanyName)
 				log.WithFields(f).Debug(msg)
 				// Log the event
 				eventErr := s.eventsRepo.CreateEvent(&models.Event{
