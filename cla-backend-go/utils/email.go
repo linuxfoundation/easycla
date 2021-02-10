@@ -123,6 +123,5 @@ support</a>.</p>`
 
 // GetEmailSignOffContent returns the standard email sign-off details
 func GetEmailSignOffContent() string {
-	return `<p>Thanks,</p>
-<p>The LF Engineering Team</p>`
+	return `<p>EasyCLA Support Team</p>`
 }
