@@ -27,7 +27,7 @@ const (
 and is requesting to be approved as a contributor for your organization: </p>
 <p>{{.CLAGroupName}} - Signing Entity Name: {{.UserDetails}}</p>
 <p> Approval can be done at {{.LfxPortalURL}} </p>
-<p>Please notify the contributor once they are added so that they may complete the contribution process.</p>
+<p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their code contribution.</p>
 `
 )
 
@@ -79,7 +79,7 @@ const (
 <p>{{.UserDetails}}</p>
 <p>Before the user contribution can be accepted, your organization must sign a CLA.
 <p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for any of the projects {{range $index, $projectName := .ProjectNames}}{{if $index}},{{end}}{{$projectName}}{{end}}.</p>
-<p>Please notify the contributor once they are added so that they may complete the contribution process.</p>
+<p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their code contribution.</p>
 `
 )
 
@@ -141,7 +141,7 @@ const (
 <p> {{.ContributorID}} ({{.ContributorName}}) </p>
 <p>Before the user contribution can be accepted, your organization must sign a CLA.
 <p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for one of the project(s) {{ range $index, $projectName := .ProjectNames}}{{if $index}},{{end}}{{$projectName}}{{end}}. </p>
-<p>Please notify the contributor once they are added so that they may complete the contribution process.</p>
+<p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their code contribution.</p>
 `
 )
 
