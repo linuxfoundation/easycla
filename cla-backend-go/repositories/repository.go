@@ -150,7 +150,6 @@ func (r repo) AddGithubRepository(ctx context.Context, externalProjectID string,
 func (r *repo) UpdateGithubRepository(ctx context.Context, repositoryID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
 
 	externalID := utils.StringValue(input.RepositoryExternalID)
-	projectSFID := utils.StringValue(input.RepositoryProjectID)
 	repositoryName := utils.StringValue(input.RepositoryName)
 	repositoryOrganizationName := utils.StringValue(input.RepositoryOrganizationName)
 	repositoryType := utils.StringValue(input.RepositoryType)
@@ -161,7 +160,6 @@ func (r *repo) UpdateGithubRepository(ctx context.Context, repositoryID string, 
 		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
 		"repositoryID":               repositoryID,
 		"externalProjectID":          externalID,
-		"projectSFID":                projectSFID,
 		"repositoryName":             repositoryName,
 		"repositoryOrganizationName": repositoryOrganizationName,
 		"repositoryType":             repositoryType,
@@ -184,13 +182,6 @@ func (r *repo) UpdateGithubRepository(ctx context.Context, repositoryID string, 
 	expressionAttributeNames := map[string]*string{}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
 	updateExpression := "SET "
-
-	if projectSFID != "" && repoModel.ProjectSFID != projectSFID {
-		log.WithFields(f).Debugf("adding projectSFID : %s ", projectSFID)
-		expressionAttributeNames["#P"] = aws.String("project_sfid")
-		expressionAttributeValues[":p"] = &dynamodb.AttributeValue{S: aws.String(projectSFID)}
-		updateExpression = updateExpression + " #P = :p, "
-	}
 
 	if externalID != "" && repoModel.RepositoryExternalID != externalID {
 		log.WithFields(f).Debugf("adding externalID : %s ", externalID)
