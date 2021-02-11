@@ -192,14 +192,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			log.WithFields(f).Debugf("getting project IDs for CLA group")
 			projectCLAGroups, getErr := projectClaGroupRepo.GetProjectsIdsForClaGroup(params.ClaGroupID)
 			if getErr != nil {
-				msg := fmt.Sprintf("Error getting SF projects for claGroup: %s ", params.ClaGroupID)
-				log.WithFields(f).Warn(msg)
+				msg := fmt.Sprintf("error getting SF projects for claGroup: %s ", params.ClaGroupID)
+				log.WithFields(f).WithError(getErr).Warn(msg)
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupBadRequest().WithXRequestID(reqID).WithPayload(
-					&models.ErrorResponse{
-						Message:    msg,
-						Code:       BadRequest,
-						XRequestID: reqID,
-					})
+					utils.ErrorResponseBadRequestWithError(reqID, msg, getErr))
 			}
 
 			log.WithFields(f).Debugf("found %d project IDs for CLA group", len(projectCLAGroups))
@@ -211,10 +207,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 			designeeScopes, msg, err := service.CreateCLAManagerDesigneeByGroup(ctx, params, projectCLAGroups)
 			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("problem creating cla manager designee for CLA Group: %s with user email: %s", params.ClaGroupID, params.Body.UserEmail)
 				if err == ErrCLAManagerDesigneeConflict {
 					return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
 				}
-				log.WithFields(f).Warn(msg)
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
