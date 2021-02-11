@@ -100,7 +100,8 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		return s.repo.GetGithubOrganizationsByParent(ctx, parentProjectSFID)
 	}
 
-	log.WithFields(f).Debugf("no parent or parent is %s - search criteria exhausted", utils.TheLinuxFoundation)
+	log.WithFields(f).Debugf("no parent or parent is %s or %s - search criteria exhausted",
+		utils.TheLinuxFoundation, utils.TheLinuxFoundation)
 	return gitHubOrgModels, err
 }
 

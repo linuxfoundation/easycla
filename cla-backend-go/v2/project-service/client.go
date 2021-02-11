@@ -104,8 +104,8 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 	}
 
 	// Do they have a parent?
-	if projectModel.Parent == "" || projectModel.Parent == utils.TheLinuxFoundation {
-		log.WithFields(f).Debugf("no parent for projectSFID or %s is the parent...", utils.TheLinuxFoundation)
+	if projectModel.Parent == "" || projectModel.Parent == utils.TheLinuxFoundation || projectModel.Parent == utils.LFProjectsLLC {
+		log.WithFields(f).Debugf("no parent for projectSFID or %s or %s is the parent...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return projectSFID, nil
 	}
 
@@ -116,7 +116,7 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 // IsTheLinuxFoundation returns true if the specified project SFID is the The Linux Foundation project
 func (pmm *Client) IsTheLinuxFoundation(projectSFID string) (bool, error) {
 	f := logrus.Fields{
-		"functionName": "IsTheLinuxFoundation",
+		"functionName": "project-service.IsTheLinuxFoundation",
 	}
 
 	log.WithFields(f).Debug("querying project...")
@@ -126,9 +126,9 @@ func (pmm *Client) IsTheLinuxFoundation(projectSFID string) (bool, error) {
 		return false, err
 	}
 
-	if projectModel.Name == utils.TheLinuxFoundation {
+	if projectModel.Name == utils.TheLinuxFoundation || projectModel.Name == utils.LFProjectsLLC {
 		// Save into our cache for next time
-		log.WithFields(f).Debug("project is the linux foundation...")
+		log.WithFields(f).Debugf("project is %s or %s...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return true, nil
 	}
 
@@ -158,9 +158,9 @@ func (pmm *Client) IsParentTheLinuxFoundation(projectSFID string) (bool, error) 
 		return false, err
 	}
 
-	if parentProjectModel.Name == utils.TheLinuxFoundation {
+	if parentProjectModel.Name == utils.TheLinuxFoundation || parentProjectModel.Name == utils.LFProjectsLLC {
 		// Save into our cache for next time
-		log.WithFields(f).Debug("parent project is the linux foundation...")
+		log.WithFields(f).Debugf("parent project is %s or %s...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return true, nil
 	}
 

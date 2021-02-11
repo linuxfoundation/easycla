@@ -45,6 +45,9 @@ const GitHubBotName = "EasyCLA"
 // TheLinuxFoundation is the name of the super parent for many Salesforce Foundations/Project Groups
 const TheLinuxFoundation = "The Linux Foundation"
 
+// LFProjectsLLC is the LF project LLC name of the super parent for many Salesforce Foundations/Project Groups
+const LFProjectsLLC = "LF Projects, LLC"
+
 // ProjectUnfunded  is a constant that represents a SF project that is unfunded
 const ProjectUnfunded = "Unfunded"
 

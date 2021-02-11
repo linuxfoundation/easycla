@@ -85,7 +85,9 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	}
 
 	var parentProjectSFID string
-	if (projectServiceRecord.Foundation != nil && projectServiceRecord.Foundation.Name == utils.TheLinuxFoundation) || projectServiceRecord.ProjectType == utils.ProjectTypeProjectGroup {
+	if (projectServiceRecord.Foundation != nil &&
+		(projectServiceRecord.Foundation.Name == utils.TheLinuxFoundation || projectServiceRecord.Foundation.Name == utils.LFProjectsLLC)) ||
+		projectServiceRecord.ProjectType == utils.ProjectTypeProjectGroup {
 		parentProjectSFID = projectSFID
 	} else {
 		parentProjectSFID = projectServiceRecord.Parent
@@ -261,7 +263,7 @@ func (s service) AddGithubOrganization(ctx context.Context, projectSFID string, 
 	}
 
 	var parentProjectSFID string
-	if project.Parent == "" || project.Parent == utils.TheLinuxFoundation {
+	if project.Parent == "" || project.Parent == utils.TheLinuxFoundation || project.Parent == utils.LFProjectsLLC {
 		parentProjectSFID = projectSFID
 	} else {
 		parentProjectSFID = project.Parent

@@ -319,6 +319,6 @@ func buildSFProjectSummary(sfProject *v2ProjectServiceModels.ProjectOutputDetail
 		Slug:         sfProject.Slug,
 		Status:       sfProject.Status,
 		Type:         sfProject.Type,
-		IsStandalone: (sfProject.Type != utils.ProjectTypeProjectGroup) && (sfProject.Parent == "" || sfProject.Parent == utils.TheLinuxFoundation),
+		IsStandalone: (sfProject.Type != utils.ProjectTypeProjectGroup) && (sfProject.Parent == "" || sfProject.Parent == utils.TheLinuxFoundation || sfProject.Parent == utils.LFProjectsLLC),
 	}
 }

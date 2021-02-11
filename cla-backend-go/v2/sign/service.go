@@ -123,7 +123,7 @@ func validateCorporateSignatureInput(input *models.CorporateSignatureInput) erro
 	return nil
 }
 
-func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error) {
+func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error) { // nolint
 	f := logrus.Fields{
 		"functionName":      "sign.RequestCorporateSignature",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
@@ -173,7 +173,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	}
 
 	var claGroupID string
-	if project.Parent == "" || project.Parent == utils.TheLinuxFoundation {
+	if project.Parent == "" || project.Parent == utils.TheLinuxFoundation || project.Parent == utils.LFProjectsLLC {
 		// this is root project
 		cgmlist, perr := s.projectClaGroupsRepo.GetProjectsIdsForFoundation(utils.StringValue(input.ProjectSfid))
 		if perr != nil {
