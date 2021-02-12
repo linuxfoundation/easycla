@@ -600,7 +600,7 @@ func (osc *Client) CreateOrg(ctx context.Context, companyName, signingEntityName
 				Industry:          &industry,
 				Source:            &companySource,
 				Type:              &companyType,
-				LogoURL:           &logoURL,
+				LogoURL:           logoURL,
 				SigningEntityName: []string{signingEntityName},
 			},
 			Context: ctx,
@@ -613,7 +613,7 @@ func (osc *Client) CreateOrg(ctx context.Context, companyName, signingEntityName
 			Industry:          &industry,
 			Source:            &companySource,
 			Type:              &companyType,
-			LogoURL:           &logoURL,
+			LogoURL:           logoURL,
 			SigningEntityName: []string{signingEntityName},
 		})
 		result, err := osc.cl.Organizations.CreateOrg(params, clientAuth)
