@@ -104,8 +104,8 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 	}
 
 	// Do they have a parent?
-	if projectModel.Parent == "" || (projectModel.Foundation != nil &&
-		(projectModel.Foundation.Name == utils.TheLinuxFoundation || projectModel.Foundation.Name == utils.LFProjectsLLC)) {
+	if projectModel.Parent == "" || (projectModel.ParentHierarchy != nil &&
+		(projectModel.ParentHierarchy.Name == utils.TheLinuxFoundation || projectModel.ParentHierarchy.Name == utils.LFProjectsLLC)) {
 		log.WithFields(f).Debugf("no parent for projectSFID or %s or %s is the parent...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return projectSFID, nil
 	}
