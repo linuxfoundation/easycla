@@ -86,7 +86,8 @@ func (s *service) AddGithubRepository(ctx context.Context, projectSFID string, i
 		return nil, err
 	}
 	var externalProjectID string
-	if project.Parent == "" || project.Parent == utils.TheLinuxFoundation || project.Parent == utils.LFProjectsLLC {
+	if project.Parent == "" || (project.Foundation != nil &&
+		(project.Foundation.Name == utils.TheLinuxFoundation || project.Foundation.Name == utils.LFProjectsLLC)) {
 		externalProjectID = projectSFID
 	} else {
 		externalProjectID = project.Parent
