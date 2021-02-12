@@ -173,8 +173,8 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	}
 
 	var claGroupID string
-	if project.Parent == "" || (project.Foundation != nil &&
-		(project.Foundation.Name == utils.TheLinuxFoundation || project.Foundation.Name == utils.LFProjectsLLC)) {
+	if project.Parent == "" || (project.ParentHierarchy != nil &&
+		(project.ParentHierarchy.Name == utils.TheLinuxFoundation || project.ParentHierarchy.Name == utils.LFProjectsLLC)) {
 		// this is root project
 		cgmlist, perr := s.projectClaGroupsRepo.GetProjectsIdsForFoundation(utils.StringValue(input.ProjectSfid))
 		if perr != nil {
