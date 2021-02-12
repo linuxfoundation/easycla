@@ -37,6 +37,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	acs_service "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
+	orgModels "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/models"
 
 	orgService "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
@@ -89,7 +90,8 @@ type Service interface {
 	GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error)
 	GetCompanyProjectContributors(ctx context.Context, projectSFID string, companySFID string, searchTerm string) (*models.CorporateContributorList, error)
 	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error)
-	CreateCompany(ctx context.Context, companyName, signingEntityName, companyWebsite, userEmail, userID string) (*models.CompanyOutput, error)
+	CreateCompany(ctx context.Context, companyName, signingEntityName, companyWebsite, userEmail, userID, note string) (*models.CompanyOutput, error)
+	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization) (*models.CompanyOutput, error)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
 	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error)
 	GetCompanyByID(ctx context.Context, companyID string) (*models.Company, error)
@@ -369,7 +371,7 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID
 	}, nil
 }
 
-func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityName, companyWebsite, userEmail, userID string) (*models.CompanyOutput, error) {
+func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityName, companyWebsite, userEmail, userID string, note string) (*models.CompanyOutput, error) {
 	f := logrus.Fields{
 		"functionName":      "CreateCompany",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
@@ -378,6 +380,7 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 		"companyWebsite":    companyWebsite,
 		"userEmail":         userEmail,
 		"userID":            userID,
+		"note":              note,
 	}
 	var lfUser *v2UserServiceModels.User
 
@@ -399,11 +402,11 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 		log.WithFields(f).Warn(msg)
 	}
 	if lfUser != nil && lfUser.Username == "" {
-		msg := fmt.Sprintf("User: %s has no LF username", userEmail)
+		msg := fmt.Sprintf("User: %+v has no LF login/username", lfUser)
 		log.WithFields(f).Warn(msg)
 	}
 	if lfUser != nil && lfUser.Username != "" {
-		log.WithFields(f).Debugf("User :%s has been assigned the %s role to organization: %s ",
+		log.WithFields(f).Debugf("User: %s has been assigned the %s role to organization: %s ",
 			userEmail, utils.CompanyAdminRole, org.Name)
 		// Assign company-admin to user
 		roleID, adminErr := acsClient.GetRoleID(utils.CompanyAdminRole)
@@ -444,6 +447,12 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 		CompanyName:       companyName,
 		SigningEntityName: signingEntityName,
 	}
+	if lfUser != nil && lfUser.Username != "" {
+		createCompanyModel.CompanyACL = []string{lfUser.Username}
+	}
+	if note != "" {
+		createCompanyModel.Note = note
+	}
 
 	_, createErr := s.companyRepo.CreateCompany(ctx, createCompanyModel)
 	//easyCLAErr := s.repo.CreateCompany(companyName, org.ID, userID)
@@ -460,6 +469,22 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 		LogoURL:           org.LogoURL,
 		CompanyID:         org.ID,
 	}, nil
+}
+
+func (s *service) CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization) (*models.CompanyOutput, error) {
+	f := logrus.Fields{
+		"functionName":       "company.service.CreateCompanyFromSFModel",
+		utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
+		"organizationID":     orgModel.Name,
+		"organizationName":   orgModel.Name,
+		"organizationType":   orgModel.Type,
+		"organizationLink":   orgModel.Link,
+		"organizationStatus": orgModel.Status,
+	}
+
+	log.WithFields(f).Debug("Creating company...")
+	return s.CreateCompany(ctx, orgModel.Name, orgModel.Name, orgModel.Link,
+		"", "", fmt.Sprintf("created from platform organization service model: %s", orgModel.ID))
 }
 
 // GetCompanyByName deletes the company by name

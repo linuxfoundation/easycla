@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 
+	organization_service "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
+
 	"github.com/aws/aws-sdk-go/aws"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -344,7 +346,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			}
 
 			log.WithFields(f).Debug("creating company...")
-			companyModel, err := service.CreateCompany(ctx, *params.Input.CompanyName, params.Input.SigningEntityName, *params.Input.CompanyWebsite, params.Input.UserEmail.String(), params.UserID)
+			companyModel, err := service.CreateCompany(ctx, *params.Input.CompanyName, params.Input.SigningEntityName, *params.Input.CompanyWebsite, params.Input.UserEmail.String(), params.UserID, "")
 			if err != nil {
 				log.Warnf("error returned from create company api: %+v", err)
 				if strings.Contains(err.Error(), "website already exists") {
@@ -373,14 +375,35 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 
 			log.WithFields(f).Debug("loading company by name")
 			companyModel, err := service.GetCompanyByName(ctx, params.CompanyName)
-			if err != nil {
-				msg := fmt.Sprintf("unable to locate company by name: %s", params.CompanyName)
-				log.WithFields(f).WithError(err).Warn(msg)
-				return company.NewGetCompanyByNameBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+			if err != nil || companyModel == nil {
+				log.WithFields(f).Warn("unable to lookup company by name in local database. trying organization service...")
+				osClient := organization_service.GetClient()
+				orgModels, orgLookupErr := osClient.SearchOrganization(ctx, params.CompanyName, "", "")
+				if orgLookupErr != nil || len(orgModels) == 0 {
+					msg := fmt.Sprintf("unable to locate organization '%s' in the organization service", params.CompanyName)
+					log.WithFields(f).WithError(err).Warn(msg)
+					return company.NewGetCompanyByNameNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+				}
+
+				log.WithFields(f).Debugf("found company: '%s' in the organization service - creating local record...", params.CompanyName)
+				companyModels, companyCreateErr := service.CreateCompanyFromSFModel(ctx, orgModels[0])
+				if companyCreateErr != nil || companyModels == nil {
+					msg := fmt.Sprintf("unable to create company '%s' from salesforce record", params.CompanyName)
+					log.WithFields(f).WithError(err).Warn(msg)
+					return company.NewGetCompanyByNameInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, companyCreateErr))
+				}
+
+				log.WithFields(f).Debugf("loading company: %s by name after creation...", params.CompanyName)
+				companyModel, err = service.GetCompanyByName(ctx, params.CompanyName)
+				if err != nil {
+					msg := fmt.Sprintf("unable to locate company '%s' after creating...", params.CompanyName)
+					log.WithFields(f).WithError(err).Warn(msg)
+					return company.NewGetCompanyByNameNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+				}
 			}
 
 			if companyModel == nil {
-				msg := fmt.Sprintf("unable to locate company by name: %s", params.CompanyName)
+				msg := fmt.Sprintf("unable to load company by name: %s", params.CompanyName)
 				log.WithFields(f).Warn(msg)
 				return company.NewGetCompanyByNameNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
 			}
