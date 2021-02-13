@@ -12,16 +12,31 @@ required:
 properties:
   repositoryExternalID:
     type: string
+    description: the repository external identifier, such as the GitHub ID of the repo
+    example: '337730995'
   repositoryName:
     type: string
+    description: the repository name
+    example: 'cncf/landscape'
   repositoryOrganizationName:
     type: string
+    description: the repository organization
+    example: 'cncf'
   repositoryProjectID:
-    type: string
+    description: CLA Group ID
+    $ref: './common/properties/internal-id.yaml'
   repositoryType:
     type: string
+    description: the repository type
+    example: 'github'
   repositoryUrl:
     type: string
+    description: the repository URL
+    example: 'https://github.com/cncf/landscape'
   enabled:
     type: boolean
+    description: 'the enabled flag: true or false Repositories can be disabled from CLA to prevent CLA checks'
     default: true
+  note:
+    description: optional note added to the record
+    type: string

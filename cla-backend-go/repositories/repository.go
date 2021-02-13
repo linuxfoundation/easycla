@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -154,6 +155,7 @@ func (r *repo) UpdateGithubRepository(ctx context.Context, repositoryID string, 
 	repositoryOrganizationName := utils.StringValue(input.RepositoryOrganizationName)
 	repositoryType := utils.StringValue(input.RepositoryType)
 	repositoryURL := utils.StringValue(input.RepositoryURL)
+	note := input.Note
 
 	f := logrus.Fields{
 		"functionName":               "repositories.repository.UpdateGitHubRepository",
@@ -216,6 +218,25 @@ func (r *repo) UpdateGithubRepository(ctx context.Context, repositoryID string, 
 		expressionAttributeNames["#U"] = aws.String("repository_url")
 		expressionAttributeValues[":u"] = &dynamodb.AttributeValue{S: aws.String(repositoryURL)}
 		updateExpression = updateExpression + " #U = :u, "
+	}
+
+	if note != "" {
+		log.WithFields(f).Debugf("adding note: %s ", note)
+		noteValue := note
+		if !strings.HasSuffix(noteValue, ".") {
+			noteValue = fmt.Sprintf("%s.", noteValue)
+		}
+		// If we have a previous value - just concat the value to the end
+		if repoModel.Note != "" {
+			if strings.HasSuffix(strings.TrimSpace(repoModel.Note), ".") {
+				noteValue = fmt.Sprintf("%s %s", repoModel.Note, noteValue)
+			} else {
+				noteValue = fmt.Sprintf("%s. %s", repoModel.Note, noteValue)
+			}
+		}
+		expressionAttributeNames["#N"] = aws.String("note")
+		expressionAttributeValues[":n"] = &dynamodb.AttributeValue{S: aws.String(noteValue)}
+		updateExpression = updateExpression + " #N = :n, "
 	}
 
 	if input.Enabled != nil && repoModel.Enabled != *input.Enabled {

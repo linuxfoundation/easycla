@@ -140,13 +140,17 @@ func (s *service) AddGithubRepository(ctx context.Context, projectSFID string, i
 
 	// We already have an existing repository model with the same name
 	if existingRepositoryModel != nil && !existingRepositoryModel.Enabled {
-		msg := fmt.Sprintf("Github repository : %s  disabled and shall get re-enabled... ", utils.StringValue(ghRepo.FullName))
+		msg := fmt.Sprintf("Github repository: %s previously disabled - will re-enabled... ", utils.StringValue(ghRepo.FullName))
 		log.WithFields(f).Debug(msg)
 		enabled := true
+
+		_, now := utils.CurrentTime()
+
 		v1Input := &v1Models.GithubRepositoryInput{
 			Enabled:                    &enabled,
-			RepositoryProjectID:        input.ClaGroupID,
 			RepositoryOrganizationName: input.GithubOrganizationName,
+			RepositoryProjectID:        input.ClaGroupID,
+			Note:                       fmt.Sprintf("re-enabling repository on %s.", now),
 		}
 
 		// Update Repo details in case of any changes

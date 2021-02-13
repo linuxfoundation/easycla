@@ -3785,10 +3785,15 @@ definitions:
     properties:
       repository_github_id:
         type: string
+        description: the repository external identifier, such as the GitHub ID of the repo
+        example: '337730995'
       github_organization_name:
         type: string
+        description: the repository organization
+        example: 'cncf'
       cla_group_id:
-        type: string
+        description: CLA Group ID
+        $ref: './common/properties/internal-id.yaml'
 
   github-repository-branch-protection-status-checks:
     type: object
