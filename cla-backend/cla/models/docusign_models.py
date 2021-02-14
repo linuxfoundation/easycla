@@ -934,8 +934,6 @@ class DocuSign(signing_service_interface.SigningService):
                       f'send email: {send_as_email}, ',
                       f'signatory name: {signatory_name}, '
                       f'signatory email: {signatory_email}, '
-                      f'return url type: {return_url_type}, ',
-                      f'return url: {return_url}'
                       )
 
         # Auth user is the currently logged in user - the user who started the signing process
@@ -1140,9 +1138,10 @@ class DocuSign(signing_service_interface.SigningService):
                           default_values: Optional[Dict[str, Any]] = None,
                           preferred_email: str = None):  # pylint: disable=too-many-locals
 
+        fn = 'populate_sign_url'
         sig_type = signature.get_signature_reference_type()
 
-        cla.log.debug(f'populate_sign_url - Populating sign_url for signature {signature.get_signature_id()} '
+        cla.log.debug(f'{fn} - Populating sign_url for signature {signature.get_signature_id()} '
                       f'using callback: {callback_url} '
                       f'with authority_or_signatory_name {authority_or_signatory_name} '
                       f'with authority_or_signatory_email {authority_or_signatory_email} '
@@ -1160,35 +1159,35 @@ class DocuSign(signing_service_interface.SigningService):
         user_signature_name = 'Unknown'
         user_signature_email = 'Unknown'
 
-        cla.log.debug(f'populate_sign_url - {sig_type} - processing signing request...')
+        cla.log.debug(f'{fn} - {sig_type} - processing signing request...')
 
         if sig_type == 'company':
             # For CCLA - use provided CLA Manager information
             user_signature_name = cla_manager_name
             user_signature_email = cla_manager_email
-            cla.log.debug(f'populate_sign_url - {sig_type} - user_signature name/email will be CLA Manager name/info: '
+            cla.log.debug(f'{fn} - {sig_type} - user_signature name/email will be CLA Manager name/info: '
                           f'{user_signature_name} / {user_signature_email}...')
 
             try:
                 # Grab the company id from the signature
-                cla.log.debug('populate_sign_url - CCLA - '
+                cla.log.debug('{fn} - CCLA - '
                               f'Loading company id: {signature.get_signature_reference_id()}')
                 company.load(signature.get_signature_reference_id())
-                cla.log.debug(f'populate_sign_url - {sig_type} - loaded company: {company}')
+                cla.log.debug(f'{fn} - {sig_type} - loaded company: {company}')
             except DoesNotExist:
-                cla.log.warning(f'populate_sign_url - {sig_type} - '
+                cla.log.warning(f'{fn} - {sig_type} - '
                                 'No CLA manager associated with this company - can not sign CCLA')
                 return
             except Exception as e:
-                cla.log.warning(f'populate_sign_url - {sig_type} - No CLA manager lookup error: {e}')
+                cla.log.warning(f'{fn} - {sig_type} - No CLA manager lookup error: {e}')
                 return
         elif sig_type == 'user':
             if not send_as_email:
                 try:
-                    cla.log.debug(f'populate_sign_url - {sig_type} - '
+                    cla.log.debug(f'{fn} - {sig_type} - '
                                   f'loading user by reference id: {signature.get_signature_reference_id()}')
                     user.load(signature.get_signature_reference_id())
-                    cla.log.debug(f'populate_sign_url - {sig_type} - loaded user by '
+                    cla.log.debug(f'{fn} - {sig_type} - loaded user by '
                                   f'id: {user.get_user_id()}, '
                                   f'name: {user.get_user_name()}, '
                                   f'email: {user.get_user_email()}')
@@ -1197,45 +1196,45 @@ class DocuSign(signing_service_interface.SigningService):
                     if not user.get_user_email() is None:
                         user_signature_email = user.get_user_email()
                 except DoesNotExist:
-                    cla.log.warning(f'populate_sign_url - {sig_type} - no user associated with this signature '
+                    cla.log.warning(f'{fn} - {sig_type} - no user associated with this signature '
                                     f'id: {signature.get_signature_reference_id()} - can not sign ICLA')
                     return
                 except Exception as e:
-                    cla.log.warning(f'populate_sign_url - {sig_type} - no user associated with this signature - '
+                    cla.log.warning(f'{fn} - {sig_type} - no user associated with this signature - '
                                     f'id: {signature.get_signature_reference_id()}, '
                                     f'error: {e}')
                     return
 
                 cla.log.debug(
-                    f'populate_sign_url - {sig_type} - user_signature name/email will be user from signature: '
+                    f'{fn} - {sig_type} - user_signature name/email will be user from signature: '
                     f'{user_signature_name} / {user_signature_email}...')
         else:
-            cla.log.warning(f'populate_sign_url - unsupported signature type: {sig_type}')
+            cla.log.warning(f'{fn} - unsupported signature type: {sig_type}')
             return
 
         # Fetch the document template to sign.
         project = Project()
-        cla.log.debug(f'populate_sign_url - {sig_type} - '
+        cla.log.debug(f'{fn} - {sig_type} - '
                       f'loading project by id: {signature.get_signature_project_id()}')
         project.load(signature.get_signature_project_id())
-        cla.log.debug(f'populate_sign_url - {sig_type} - '
+        cla.log.debug(f'{fn} - {sig_type} - '
                       f'loaded project by id: {signature.get_signature_project_id()} - '
                       f'project: {project}')
 
         # Load the appropriate document
         if sig_type == 'company':
-            cla.log.debug(f'populate_sign_url - {sig_type} - loading project_corporate_document...')
+            cla.log.debug(f'{fn} - {sig_type} - loading project_corporate_document...')
             document = project.get_project_corporate_document()
             if document is None:
-                cla.log.error(f'populate_sign_url - {sig_type} - Could not get sign url for project: {project}. '
+                cla.log.error(f'{fn} - {sig_type} - Could not get sign url for project: {project}. '
                               'Project has no corporate CLA document set. Returning...')
                 return
-            cla.log.debug(f'populate_sign_url - {sig_type} - loaded project_corporate_document...')
+            cla.log.debug(f'{fn} - {sig_type} - loaded project_corporate_document...')
         else:  # sig_type == 'user'
-            cla.log.debug(f'populate_sign_url - {sig_type} - loading project_individual_document...')
+            cla.log.debug(f'{fn} - {sig_type} - loading project_individual_document...')
             document = project.get_project_individual_document()
             if document is None:
-                cla.log.error(f'populate_sign_url - {sig_type} - Could not get sign url for project: {project}. '
+                cla.log.error(f'{fn} - {sig_type} - Could not get sign url for project: {project}. '
                               'Project has no individual CLA document set. Returning...')
                 return
             cla.log.debug(f'populate_sign_url - {sig_type} - loaded project_individual_document...')
@@ -1250,7 +1249,7 @@ class DocuSign(signing_service_interface.SigningService):
                 cla.log.debug(message)
                 self.client.void_envelope(envelope_id, message)
             except Exception as e:
-                cla.log.warning(f'populate_sign_url - {sig_type} - DocuSign error while voiding the envelope - '
+                cla.log.warning(f'{fn} - {sig_type} - DocuSign error while voiding the envelope - '
                                 f'regardless, continuing on..., error: {e}')
 
         # Not sure what should be put in as documentId.
@@ -1258,7 +1257,7 @@ class DocuSign(signing_service_interface.SigningService):
         tabs = get_docusign_tabs_from_document(document, document_id, default_values=default_values)
 
         if send_as_email:
-            cla.log.warning(f'populate_sign_url - {sig_type} - assigning signatory name/email: '
+            cla.log.warning(f'{fn} - {sig_type} - assigning signatory name/email: '
                             f'{authority_or_signatory_name} / {authority_or_signatory_email}')
             # Sending email to authority
             signatory_email = authority_or_signatory_email
@@ -1268,7 +1267,7 @@ class DocuSign(signing_service_interface.SigningService):
             project_name = project.get_project_name()
             company_name = company.get_company_name()
 
-            cla.log.debug(f'populate_sign_url - {sig_type} - sending document as email with '
+            cla.log.debug(f'{fn} - {sig_type} - sending document as email with '
                           f'name: {signatory_name}, email: {signatory_email} '
                           f'project name: {project_name}, company: {company_name}')
 
@@ -1330,7 +1329,7 @@ class DocuSign(signing_service_interface.SigningService):
             pdf = io.BytesIO(content)
 
         doc_name = document.get_document_name()
-        cla.log.debug(f'populate_sign_url - {sig_type} - docusign document '
+        cla.log.debug(f'{fn} - {sig_type} - docusign document '
                       f'name: {doc_name}, id: {document_id}, content type: {content_type}')
         document = pydocusign.Document(name=doc_name, documentId=document_id, data=pdf)
 
@@ -1373,9 +1372,10 @@ class DocuSign(signing_service_interface.SigningService):
             signature.set_signature_sign_url(sign_url)
 
         # Save Envelope ID in signature.
-        cla.log.debug(f'populate_sign_url - {sig_type} - saving signature to database...')
+        cla.log.debug(f'{fn} - {sig_type} - saving signature to database...')
         signature.set_signature_envelope_id(envelope.envelopeId)
         signature.save()
+        cla.log.debug(f'{fn} - {sig_type} - saved signature to database - id: {signature.get_signature_id()}...')
         cla.log.debug(f'populate_sign_url - {sig_type} - complete')
 
     def signed_individual_callback(self, content, installation_id, github_repository_id, change_request_id):
