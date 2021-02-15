@@ -319,7 +319,7 @@ func buildSFProjectSummary(sfProject *v2ProjectServiceModels.ProjectOutputDetail
 		Slug:        sfProject.Slug,
 		Status:      sfProject.Status,
 		Type:        sfProject.Type,
-		IsStandalone: (sfProject.Type != utils.ProjectTypeProjectGroup) && (sfProject.Parent == "" || (sfProject.ParentHierarchy != nil &&
-			(sfProject.ParentHierarchy.Name == utils.TheLinuxFoundation || sfProject.ParentHierarchy.Name == utils.LFProjectsLLC))),
+		IsStandalone: (sfProject.Type != utils.ProjectTypeProjectGroup) && (sfProject.Parent == "" || (sfProject.Foundation != nil &&
+			(sfProject.Foundation.Name == utils.TheLinuxFoundation || sfProject.Foundation.Name == utils.LFProjectsLLC))),
 	}
 }
