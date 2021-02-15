@@ -84,10 +84,12 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		return nil, err
 	}
 
+	log.Debugf("project record: %+v ", projectServiceRecord)
+
 	var parentProjectSFID string
 	if (projectServiceRecord.Foundation != nil &&
 		(projectServiceRecord.Foundation.Name == utils.TheLinuxFoundation || projectServiceRecord.Foundation.Name == utils.LFProjectsLLC)) ||
-		projectServiceRecord.ProjectType == utils.ProjectTypeProjectGroup {
+		projectServiceRecord.Parent == "" {
 		parentProjectSFID = projectSFID
 	} else {
 		parentProjectSFID = projectServiceRecord.Parent
