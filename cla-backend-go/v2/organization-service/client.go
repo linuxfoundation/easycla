@@ -71,7 +71,7 @@ func (osc *Client) CreateOrgUserRoleOrgScope(ctx context.Context, emailID string
 
 	params := &organizations.CreateOrgUsrRoleScopesParams{
 		CreateRoleScopes: &models.CreateRolescopes{
-			EmailAddress: &emailID,
+			EmailAddress: emailID,
 			ObjectID:     &organizationID,
 			ObjectType:   aws.String("organization"),
 			RoleID:       &roleID,
@@ -219,7 +219,7 @@ func (osc *Client) CreateOrgUserRoleOrgScopeProjectOrg(ctx context.Context, emai
 
 	params := &organizations.CreateOrgUsrRoleScopesParams{
 		CreateRoleScopes: &models.CreateRolescopes{
-			EmailAddress: &emailID,
+			EmailAddress: emailID,
 			ObjectID:     aws.String(fmt.Sprintf("%s|%s", projectID, organizationID)),
 			ObjectType:   aws.String("project|organization"),
 			RoleID:       &roleID,
