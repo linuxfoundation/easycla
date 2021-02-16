@@ -174,7 +174,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 
 	var claGroupID string
 	if project.Parent == "" || (project.Foundation != nil &&
-		(project.Foundation.Name == utils.TheLinuxFoundation || project.Foundation.Name == utils.LFProjectsLLC)) || project.ProjectType == utils.ProjectTypeProjectGroup {
+		(project.Foundation.Name == utils.TheLinuxFoundation || project.Foundation.Name == utils.LFProjectsLLC)) {
 		cgm, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(utils.StringValue(input.ProjectSfid))
 		if perr != nil {
 			log.WithFields(f).WithError(err).Warn("unable to lookup CLA Group ID for this project SFID")
