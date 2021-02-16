@@ -1668,12 +1668,12 @@ class DocuSign(signing_service_interface.SigningService):
                 event_data = (f'Corporate signature '
                               f'signed for project {project.get_project_name()} '
                               f'and company {company.get_company_name()} '
-                              f'by user {user.get_user_name()}, '
+                              f'by {signature.get_signatory_name()}, '
                               f'params: {param_str}')
                 event_summary = (f'A corporate signature '
                                  f'was signed for project {project.get_project_name()} '
                                  f'and company {company.get_company_name()} '
-                                 f'by user {user.get_user_name()}.')
+                                 f'by {signature.get_signatory_name()}.')
                 Event.create_event(
                     event_type=EventType.CompanySignatureSigned,
                     event_project_id=project_id,
