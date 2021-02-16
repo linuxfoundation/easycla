@@ -333,7 +333,8 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				"userID":            params.UserID,
 				"companyName":       aws.StringValue(params.Input.CompanyName),
 				"companyWebsite":    aws.StringValue(params.Input.CompanyWebsite),
-				"signingEntityName": aws.StringValue(&params.Input.SigningEntityName),
+				"signingEntityName": params.Input.SigningEntityName,
+				"userEmail":         params.Input.UserEmail.String(),
 			}
 			// No permissions needed - anyone can create a company
 

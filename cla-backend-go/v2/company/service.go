@@ -373,7 +373,7 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID
 
 func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityName, companyWebsite, userEmail, userID string, note string) (*models.CompanyOutput, error) {
 	f := logrus.Fields{
-		"functionName":      "CreateCompany",
+		"functionName":      "service.CreateCompany",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"companyName":       companyName,
 		"signingEntityName": signingEntityName,
@@ -386,11 +386,20 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 
 	// Create SalesForce company
 	orgClient := orgService.GetClient()
-	log.WithFields(f).Debugf("Creating Organization: %s, Signing Entity Name: %s, Website: %s", companyName, signingEntityName, companyWebsite)
+	log.WithFields(f).Debugf("Creating Organization: %s, Signing Entity Name: %s, Website: %s in SalesForce...", companyName, signingEntityName, companyWebsite)
 	org, err := orgClient.CreateOrg(ctx, companyName, signingEntityName, companyWebsite)
 	if err != nil {
 		log.WithFields(f).Warnf("unable to create platform organization service, error: %+v", err)
 		return nil, err
+	}
+
+	// Company Service switched the company name based on ClearBit???
+	if org.Name != companyName {
+		log.WithFields(f).Debugf("create SalesForce company changed the company name - new name is: %s", org.Name)
+		companyName = org.Name
+		signingEntityName = org.Name
+		f["updatedCompanyName"] = org.Name
+		f["updatedSigningEntityName"] = org.Name
 	}
 
 	acsClient := acs_service.GetClient()
@@ -432,12 +441,13 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 	}
 
 	// Create Easy CLA Company
-	log.WithFields(f).Debugf("Creating EasyCLA company: %s ", companyName)
+	log.WithFields(f).Debugf("Creating EasyCLA company: %s", companyName)
 
 	if signingEntityName == "" {
-		log.WithFields(f).Debugf("Setting signing entity with company name value :%s ", companyName)
+		log.WithFields(f).Debugf("Setting signing entity with company name value: %s", companyName)
 		signingEntityName = companyName
 	}
+
 	// OrgID used as externalID for the easyCLA Company
 	// Create a new company model for the create function
 	createCompanyModel := &v1Models.Company{

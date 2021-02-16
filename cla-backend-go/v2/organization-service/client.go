@@ -703,12 +703,8 @@ func (osc *Client) ListOrg(ctx context.Context, orgName string) (*models.Organiz
 func (osc *Client) SearchOrgLookup(ctx context.Context, orgName, websiteName *string) (*organizations.LookupOK, error) {
 	f := logrus.Fields{
 		"functionName": "organization_service.Lookup",
-	}
-	if orgName != nil {
-		f["orgName"] = *orgName
-	}
-	if websiteName != nil {
-		f["websiteName"] = *websiteName
+		"orgName":      utils.StringValue(orgName),
+		"websiteName":  utils.StringValue(websiteName),
 	}
 
 	tok, err := token.GetToken()
