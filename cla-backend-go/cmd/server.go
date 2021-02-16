@@ -591,13 +591,23 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 		log.WithFields(f).WithError(err).Warn("parsing failed")
 		return
 	}
+	f["claUserName"] = claUser.Name
+	f["claUserID"] = claUser.UserID
+	f["claUserLFUsername"] = claUser.LFUsername
+	f["claUserLFEmail"] = claUser.LFEmail
+	f["claUserEmails"] = strings.Join(claUser.Emails, ",")
 
 	// search if user exist in database by username
 	userModel, err := usersService.GetUserByLFUserName(claUser.LFUsername)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("searching user by lf-username failed")
-		return
+		if err, ok := err.(*utils.UserNotFound); ok {
+			log.WithFields(f).Debug("unable to locate user by lf-email")
+		} else {
+			log.WithFields(f).WithError(err).Warn("searching user by lf-username failed")
+			return
+		}
 	}
+	// If found - just return
 	if userModel != nil {
 		return
 	}
@@ -605,9 +615,14 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 	// search if user exist in database by username
 	userModel, err = usersService.GetUserByEmail(claUser.LFEmail)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("searching user by lf-email failed")
-		return
+		if err, ok := err.(*utils.UserNotFound); ok {
+			log.WithFields(f).Debug("unable to locate user by lf-email")
+		} else {
+			log.WithFields(f).WithError(err).Warn("searching user by lf-email failed")
+			return
+		}
 	}
+	// If found - just return
 	if userModel != nil {
 		return
 	}
@@ -618,7 +633,7 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 		LfUsername: claUser.LFUsername,
 		Username:   claUser.Name,
 	}
-	log.WithFields(f).WithField("user", newUser).Debug("creating new user")
+	log.WithFields(f).Debug("creating new user")
 	userModel, err = usersService.CreateUser(newUser, nil)
 	if err != nil {
 		log.WithFields(f).WithField("user", newUser).WithError(err).Warn("creating new user failed")

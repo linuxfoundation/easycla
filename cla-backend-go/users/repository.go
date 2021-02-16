@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
+
 	"github.com/sirupsen/logrus"
 
 	"github.com/go-openapi/errors"
@@ -678,9 +680,15 @@ func (repo repository) GetUserByEmail(userEmail string) (*models.User, error) {
 	}
 
 	if len(dbUserModels) == 0 {
-		return nil, errors.NotFound("user not found when searching by lf_email: %s", userEmail)
+		return nil, &utils.UserNotFound{
+			Message:   fmt.Sprintf("user not found when searching by lf email: %s", userEmail),
+			UserLFID:  "",
+			UserName:  "",
+			UserEmail: userEmail,
+			Err:       nil,
+		}
 	} else if len(dbUserModels) > 1 {
-		log.WithFields(f).WithError(err).Warnf("retrieved %d results for the lf_email query when we should return 0 or 1", len(dbUserModels))
+		log.WithFields(f).Warnf("retrieved %d results for the lf_email query when we should return 0 or 1", len(dbUserModels))
 	}
 
 	return convertDBUserModel(dbUserModels[0]), nil

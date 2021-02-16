@@ -81,6 +81,9 @@ func (s service) Save(user *models.UserUpdate, claUser *user.CLAUser) (*models.U
 
 // Delete deletes the user record
 func (s service) Delete(userID string, claUser *user.CLAUser) error {
+	if userID == "" {
+		return errors.New("userID is empty")
+	}
 	err := s.repo.Delete(userID)
 	if err != nil {
 		return err
@@ -100,12 +103,10 @@ func (s service) Delete(userID string, claUser *user.CLAUser) error {
 
 // GetUser attempts to locate the user by the user id field
 func (s service) GetUser(userID string) (*models.User, error) {
-	userModel, err := s.repo.GetUser(userID)
-	if err != nil {
-		return nil, err
+	if userID == "" {
+		return nil, errors.New("userID is empty")
 	}
-
-	return userModel, nil
+	return s.repo.GetUser(userID)
 }
 
 // GetuserByLFUserName returns the user record associated with the LF Username value
@@ -118,40 +119,29 @@ func (s service) GetUserByLFUserName(lfUserName string) (*models.User, error) {
 
 // GetUserByUserName attempts to locate the user by the user name field
 func (s service) GetUserByUserName(userName string, fullMatch bool) (*models.User, error) {
-	userModel, err := s.repo.GetUserByUserName(userName, fullMatch)
-	if err != nil {
-		return nil, err
+	if userName == "" {
+		return nil, errors.New("username is empty")
 	}
-
-	return userModel, nil
+	return s.repo.GetUserByUserName(userName, fullMatch)
 }
 
 // GetUserByEmail fetches the user by email
 func (s service) GetUserByEmail(userEmail string) (*models.User, error) {
-	userModel, err := s.repo.GetUserByEmail(userEmail)
-	if err != nil {
-		return nil, err
+	if userEmail == "" {
+		return nil, errors.New("userEmail is empty")
 	}
-
-	return userModel, nil
+	return s.repo.GetUserByEmail(userEmail)
 }
 
 // GetUserByGitHubUsername fetches the user by GitHub username
 func (s service) GetUserByGitHubUsername(gitHubUsername string) (*models.User, error) {
-	userModel, err := s.repo.GetUserByGitHubUsername(gitHubUsername)
-	if err != nil {
-		return nil, err
+	if gitHubUsername == "" {
+		return nil, errors.New("gitHubUsername is empty")
 	}
-
-	return userModel, nil
+	return s.repo.GetUserByGitHubUsername(gitHubUsername)
 }
 
 // SearchUsers attempts to locate the user by the searchField and searchTerm fields
 func (s service) SearchUsers(searchField string, searchTerm string, fullMatch bool) (*models.Users, error) {
-	userModel, err := s.repo.SearchUsers(searchField, searchTerm, fullMatch)
-	if err != nil {
-		return nil, err
-	}
-
-	return userModel, nil
+	return s.repo.SearchUsers(searchField, searchTerm, fullMatch)
 }
