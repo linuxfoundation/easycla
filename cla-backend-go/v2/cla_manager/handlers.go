@@ -37,7 +37,7 @@ const (
 )
 
 // Configure is the API handler routine for CLA Manager routes
-func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1Company.IService, LfxPortalURL string, projectClaGroupRepo projects_cla_groups.Repository, easyCLAUserRepo v1User.RepositoryService) { // nolint
+func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1Company.IService, LfxPortalURL, CorporateConsoleV2URL string, projectClaGroupRepo projects_cla_groups.Repository, easyCLAUserRepo v1User.RepositoryService) { // nolint
 	api.ClaManagerCreateCLAManagerHandler = cla_manager.CreateCLAManagerHandlerFunc(func(params cla_manager.CreateCLAManagerParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
@@ -377,7 +377,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				"claGroupName":      params.Body.ClaGroupName,
 			}
 			log.WithFields(f).Debug("notifying CLA managers...")
-			err := service.NotifyCLAManagers(ctx, params.Body, LfxPortalURL)
+			err := service.NotifyCLAManagers(ctx, params.Body, CorporateConsoleV2URL)
 			if err != nil {
 				if err == ErrCLAUserNotFound {
 					msg := fmt.Sprintf("unable to notify cla managers - user not found: %s", params.Body.UserID)

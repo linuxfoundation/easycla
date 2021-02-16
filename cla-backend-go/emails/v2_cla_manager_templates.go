@@ -11,9 +11,9 @@ import (
 // V2ContributorApprovalRequestTemplateParams is email template params for V2ContributorApprovalRequestTemplate
 type V2ContributorApprovalRequestTemplateParams struct {
 	CLAManagerTemplateParams
-	SigningEntityName string
-	UserDetails       string
-	LfxPortalURL      string
+	SigningEntityName     string
+	UserDetails           string
+	CorporateConsoleV2URL string
 }
 
 const (
@@ -23,10 +23,10 @@ const (
 	V2ContributorApprovalRequestTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the organization {{.CompanyName}}.</p>
-<p>The following contributor would like to submit a contribution to the {{.SigningEntityName}} CLA Group
+<p>The following contributor would like to submit a contribution to the {{if .SigningEntityName}}{{.SigningEntityName}}{{else}}{{.CompanyName}}{{end}} CLA Group {{.CLAGroupName}}
 and is requesting to be approved as a contributor for your organization: </p>
-<p>{{.CLAGroupName}} - Signing Entity Name: {{.UserDetails}}</p>
-<p> Approval can be done at {{.LfxPortalURL}} </p>
+<p>{{.CLAGroupName}} - {{.UserDetails}}</p>
+<p> Approval can be done at {{.CorporateConsoleV2URL}} </p>
 <p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their code contribution.</p>
 `
 )

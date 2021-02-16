@@ -99,7 +99,7 @@ type Service interface {
 	InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, lFxPortalURL string) ([]*models.ClaManagerDesignee, error)
 	CreateCLAManagerDesignee(ctx context.Context, companyID string, projectID string, userEmail string) (*models.ClaManagerDesignee, error)
 	CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User, LfxPortalURL string) (*models.ClaManagerDesignee, error)
-	NotifyCLAManagers(ctx context.Context, notifyCLAManagers *models.NotifyClaManagerList, LfxPortalURL string) error
+	NotifyCLAManagers(ctx context.Context, notifyCLAManagers *models.NotifyClaManagerList, CorporateConsoleV2URL string) error
 	CreateCLAManagerDesigneeByGroup(ctx context.Context, params cla_manager.CreateCLAManagerDesigneeByGroupParams, projectCLAGroups []*projects_cla_groups.ProjectClaGroup) ([]*models.ClaManagerDesignee, string, error)
 	IsCLAManagerDesignee(ctx context.Context, companySFID, claGroupID, userLFID string) (*models.UserRoleStatus, error)
 }
@@ -1067,7 +1067,7 @@ func validateInviteCompanyAdmin(contactAdmin bool, userEmail string, name string
 	return nil
 }
 
-func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *models.NotifyClaManagerList, LfxPortalURL string) error {
+func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *models.NotifyClaManagerList, CorporateConsoleV2URL string) error {
 	f := logrus.Fields{
 		"functionName":      "cla_manager.service.NotifyCLAManagers",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
@@ -1087,13 +1087,13 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 
 	log.Debugf("Sending notification emails to CLA Managers: %+v", notifyCLAManagers.List)
 	for _, claManager := range notifyCLAManagers.List {
-		sendEmailToCLAManager(ctx, claManager.Name, claManager.Email.String(), userModel, notifyCLAManagers.CompanyName, notifyCLAManagers.SigningEntityName, notifyCLAManagers.ClaGroupName, LfxPortalURL)
+		sendEmailToCLAManager(ctx, claManager.Name, claManager.Email.String(), userModel, notifyCLAManagers.CompanyName, notifyCLAManagers.SigningEntityName, notifyCLAManagers.ClaGroupName, CorporateConsoleV2URL)
 	}
 
 	return nil
 }
 
-func sendEmailToCLAManager(ctx context.Context, manager string, managerEmail string, userModel *v1Models.User, company, signingEntityName, claGroupName, lfxPortalURL string) {
+func sendEmailToCLAManager(ctx context.Context, manager string, managerEmail string, userModel *v1Models.User, company, signingEntityName, claGroupName, corporateConsoleV2URL string) {
 	f := logrus.Fields{
 		"functionName":      "cla_manager.service.sendEmailToCLAManager",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
@@ -1115,9 +1115,9 @@ func sendEmailToCLAManager(ctx context.Context, manager string, managerEmail str
 				CompanyName:   company,
 				CLAGroupName:  claGroupName,
 			},
-			SigningEntityName: signingEntityName,
-			UserDetails:       getFormattedUserDetails(userModel),
-			LfxPortalURL:      lfxPortalURL,
+			SigningEntityName:     signingEntityName,
+			UserDetails:           getFormattedUserDetails(userModel),
+			CorporateConsoleV2URL: corporateConsoleV2URL,
 		},
 	)
 	if err != nil {

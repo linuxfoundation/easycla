@@ -18,9 +18,8 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 			CLAGroupName:  "JohnsCLAGroupName",
 			CompanyName:   "JohnsCompany",
 		},
-		SigningEntityName: "SigningEntityNameValue",
-		UserDetails:       "UserDetailsValue",
-		LfxPortalURL:      "http://LfxPortalURL.com",
+		UserDetails:           "UserDetailsValue",
+		CorporateConsoleV2URL: "http://CorporateConsoleV2URL.com",
 	}
 
 	result, err := RenderTemplate(utils.V1, V2ContributorApprovalRequestTemplateName, V2ContributorApprovalRequestTemplate,
@@ -28,9 +27,20 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the organization JohnsCompany")
-	assert.Contains(t, result, "contribution to the SigningEntityNameValue CLA Group")
-	assert.Contains(t, result, "JohnsCLAGroupName - Signing Entity Name: UserDetailsValue")
-	assert.Contains(t, result, "Approval can be done at http://LfxPortalURL.com")
+	assert.Contains(t, result, "contribution to the JohnsCompany CLA Group JohnsCLAGroupName")
+	assert.Contains(t, result, "JohnsCLAGroupName - UserDetailsValue")
+	assert.Contains(t, result, "Approval can be done at http://CorporateConsoleV2URL.com")
+
+	params.SigningEntityName = "SigningEntityNameValue"
+
+	result, err = RenderTemplate(utils.V1, V2ContributorApprovalRequestTemplateName, V2ContributorApprovalRequestTemplate,
+		params)
+	assert.NoError(t, err)
+	assert.Contains(t, result, "Hello JohnsClaManager")
+	assert.Contains(t, result, "regarding the organization JohnsCompany")
+	assert.Contains(t, result, "contribution to the SigningEntityNameValue CLA Group JohnsCLAGroupName")
+	assert.Contains(t, result, "JohnsCLAGroupName - UserDetailsValue")
+	assert.Contains(t, result, "Approval can be done at http://CorporateConsoleV2URL.com")
 }
 
 func TestV2OrgAdminTemplate(t *testing.T) {
