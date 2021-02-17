@@ -6,6 +6,8 @@ package company
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -727,6 +729,18 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 			})
 		}
 	}
+
+	// Sort the results
+	sort.Slice(result.List, func(i, j int) bool {
+		switch strings.Compare(strings.ToLower(result.List[i].OrganizationName), strings.ToLower(result.List[j].OrganizationName)) {
+		case -1:
+			return true
+		case 1:
+			return false
+		}
+		return strings.ToLower(result.List[i].OrganizationWebsite) > strings.ToLower(result.List[j].OrganizationWebsite)
+	})
+
 	return result, nil
 }
 
