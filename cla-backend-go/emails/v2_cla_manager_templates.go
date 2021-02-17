@@ -4,6 +4,8 @@
 package emails
 
 import (
+	"strings"
+
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
@@ -130,18 +132,27 @@ type V2ToCLAManagerDesigneeTemplateParams struct {
 	CorporateConsole string
 }
 
+// GetProjectsOrProject returns the single Project or comma saparated projects if more than one
+func (p V2ToCLAManagerDesigneeTemplateParams) GetProjectsOrProject() string {
+	if len(p.ProjectNames) == 1 {
+		return " " + p.ProjectNames[0]
+	}
+
+	return "s " + strings.Join(p.ProjectNames, ", ")
+}
+
 const (
 	// V2ToCLAManagerDesigneeTemplateName is email template name for V2ToCLAManagerDesigneeTemplate
 	V2ToCLAManagerDesigneeTemplateName = "V2ToCLAManagerDesigneeTemplateName"
 	// V2ToCLAManagerDesigneeTemplate is email template for
 	V2ToCLAManagerDesigneeTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project(s) {{range $index, $projectName := .ProjectNames}}{{if $index}},{{end}}{{$projectName}}{{end}}.</p>
+<p>This is a notification email from EasyCLA regarding the project{{.GetProjectsOrProject}}.</p>
 <p>The following contributor is requesting to sign CLA for organization: </p>
 <p> {{.ContributorID}} ({{.ContributorName}}) </p>
 <p>Before the user contribution can be accepted, your organization must sign a CLA.
-<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for one of the project(s) {{ range $index, $projectName := .ProjectNames}}{{if $index}},{{end}}{{$projectName}}{{end}}. </p>
-<p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their code contribution.</p>
+<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for one of the project{{.GetProjectsOrProject}}. </p>
+<p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they may complete the contribution process.</p>
 `
 )
 

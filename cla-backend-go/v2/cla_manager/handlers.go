@@ -248,7 +248,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			return cla_manager.NewInviteCompanyAdminBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, userErr))
 		}
 
-		claManagerDesignees, err := service.InviteCompanyAdmin(ctx, params.Body.ContactAdmin, params.Body.CompanyID, *params.Body.ClaGroupID, params.Body.UserEmail.String(), params.Body.Name, &user, LfxPortalURL)
+		claManagerDesignees, err := service.InviteCompanyAdmin(ctx, params.Body.ContactAdmin, params.Body.CompanyID, *params.Body.ClaGroupID, params.Body.UserEmail.String(), params.Body.Name, &user, LfxPortalURL, CorporateConsoleV2URL)
 
 		if err != nil {
 			statusCode := buildErrorStatusCode(err)

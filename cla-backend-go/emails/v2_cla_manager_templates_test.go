@@ -134,10 +134,20 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project(s) Project1,Project2")
+	assert.Contains(t, result, "regarding the projects Project1, Project2")
 	assert.Contains(t, result, "<p> ContributorIDValue (ContributorNameValue) </p>")
 	assert.Contains(t, result, "Kindly login to this portal http://CorporateConsole.com")
-	assert.Contains(t, result, "CLA for one of the project(s) Project1,Project2")
+	assert.Contains(t, result, "CLA for one of the projects Project1, Project2")
+
+	params.ProjectNames = []string{"Project1"}
+	result, err = RenderTemplate(utils.V1, V2ToCLAManagerDesigneeTemplateName, V2ToCLAManagerDesigneeTemplate,
+		params)
+	assert.NoError(t, err)
+	assert.Contains(t, result, "Hello JohnsClaManager")
+	assert.Contains(t, result, "regarding the project Project1")
+	assert.Contains(t, result, "<p> ContributorIDValue (ContributorNameValue) </p>")
+	assert.Contains(t, result, "Kindly login to this portal http://CorporateConsole.com")
+	assert.Contains(t, result, "CLA for one of the project Project1")
 
 }
 

@@ -96,7 +96,7 @@ type service struct {
 type Service interface {
 	CreateCLAManager(ctx context.Context, claGroupID string, params cla_manager.CreateCLAManagerParams, authUsername string) (*models.CompanyClaManager, *models.ErrorResponse)
 	DeleteCLAManager(ctx context.Context, claGroupID string, params cla_manager.DeleteCLAManagerParams) *models.ErrorResponse
-	InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, lFxPortalURL string) ([]*models.ClaManagerDesignee, error)
+	InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, lFxPortalURL, CorporateConsoleV2URL string) ([]*models.ClaManagerDesignee, error)
 	CreateCLAManagerDesignee(ctx context.Context, companyID string, projectID string, userEmail string) (*models.ClaManagerDesignee, error)
 	CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User, LfxPortalURL string) (*models.ClaManagerDesignee, error)
 	NotifyCLAManagers(ctx context.Context, notifyCLAManagers *models.NotifyClaManagerList, CorporateConsoleV2URL string) error
@@ -836,7 +836,7 @@ func (s *service) ValidateInviteCompanyAdminCheck(ctx context.Context, f logrus.
 	return nil
 }
 
-func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, LfxPortalURL string) ([]*models.ClaManagerDesignee, error) {
+func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, LfxPortalURL, CorporateConsoleV2URL string) ([]*models.ClaManagerDesignee, error) {
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.InviteCompanyAdmin",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -1006,10 +1006,10 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 	log.Debugf("Sending Email to CLA Manager Designee email: %s ", userEmail)
 
 	if contributor.LFUsername != "" && contributor.LFEmail != "" && len(projectSFs) > 0 {
-		sendEmailToCLAManagerDesignee(ctx, LfxPortalURL, organization.Name, projectSFs, userEmail, user.Name, contributor.LFEmail, contributor.LFUsername)
+		sendEmailToCLAManagerDesignee(ctx, CorporateConsoleV2URL, organization.Name, projectSFs, userEmail, user.Name, contributor.LFEmail, contributor.LFUsername)
 	} else {
 		contributorUserName, contributorEmail := getContributorPublicEmail(contributor)
-		sendEmailToCLAManagerDesignee(ctx, LfxPortalURL, organization.Name, projectSFs, userEmail, user.Name, contributorUserName, contributorEmail)
+		sendEmailToCLAManagerDesignee(ctx, CorporateConsoleV2URL, organization.Name, projectSFs, userEmail, user.Name, contributorUserName, contributorEmail)
 	}
 
 	log.Debugf("CLA Manager designee created : %+v", designeeScopes)
