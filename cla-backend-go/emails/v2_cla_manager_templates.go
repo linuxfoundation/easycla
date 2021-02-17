@@ -150,6 +150,7 @@ type V2DesigneeToUserWithNoLFIDTemplateParams struct {
 	CLAManagerTemplateParams
 	RequesterUserName string
 	RequesterEmail    string
+	CorporateConsole  string
 }
 
 const (
@@ -157,14 +158,13 @@ const (
 	V2DesigneeToUserWithNoLFIDTemplateName = "V2DesigneeToUserWithNoLFIDTemplateName"
 	// V2DesigneeToUserWithNoLFIDTemplate is email template for
 	V2DesigneeToUserWithNoLFIDTemplate = `
-<p>Hello {{.RecipientName}}, </p>
-<p> User {{.RequesterUserName}} ({{.RequesterEmail}}) was trying to add you as a CLA Manager for Project {{.GetProjectNameOrFoundation}}, CLA Group {{.CLAGroupName}} and Company {{.CompanyName}} but was unable to identify your account details in the EasyCLA system </p>
-<p> This email will guide you to completing the CLA Manager role assignment </p>
-<p>1. Accept Invite link below will take you SSO login page where you can login with your LF Login or create a LF Login and then login.</p>
-<p>2. After logging in SSO screen should direct you to CLA Corporate Console page where you will see the project you a re associated with.</p>
-<p>3. Click on workflow steps to complete the signup process. Please follow this documentation to help you guide through the process - https://docs.linuxfoundation.org/lfx/v/v2/easycla/corporate-cla-manager-designee-or-initial-cla-manager/sign-corporate-cla-for-a-company</p>
-<p>4. Once you have completed CLA Manager workflow you will be able to manage the approved list of contributors </p>
-<p> <a href="USERACCEPTLINK">Accept Invite</a> </p>
+<p>Hello {{.RecipientName}},</p>
+<p>This is a notification email from EasyCLA regarding the project {{.GetProjectNameOrFoundation}}.</p>
+<p>The following contributor would like to contribute to {{.GetProjectNameOrFoundation}} on behalf of your organization: {{.CompanyName}}.</p>
+<p>{{.RequesterUserName}} ({{.RequesterEmail}})</p>
+<p>Before the user's contribution can be accepted, your organization must sign a CLA.</p>
+<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for the project {{.GetProjectNameOrFoundation}}.</p>
+<p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they may complete the contribution process.</p>
 `
 )
 

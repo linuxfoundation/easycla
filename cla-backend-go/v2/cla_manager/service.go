@@ -970,7 +970,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		}
 
 		contibutorEmail := GetNonNoReplyUserEmail(contributor.UserEmails)
-		sendErr := sendDesigneeEmailToUserWithNoLFID(ctx, s.projectCGRepo, contributor.UserName, contibutorEmail, name, userEmail, organization.Name, organization.ID, sfProject.Name, &foundationSFID, "cla-manager-designee")
+		sendErr := sendDesigneeEmailToUserWithNoLFID(ctx, s.projectCGRepo, contributor.UserName, contibutorEmail, name, userEmail, organization.Name, organization.ID, sfProject.Name, &foundationSFID, "cla-manager-designee", LfxPortalURL)
 		if sendErr != nil {
 			msg := fmt.Sprintf("Problem sending email to user: %s , error: %+v", userEmail, sendErr)
 			log.Warn(msg)
@@ -1370,15 +1370,16 @@ func sendEmailToCLAManagerDesignee(ctx context.Context, corporateConsole string,
 	}
 }
 
-func sendDesigneeEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID, projectName string, projectID *string, role string) error {
+func sendDesigneeEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID, projectName string, projectID *string, role string, corporateConsoleV2URL string) error {
 	f := logrus.Fields{
-		"functionName":        "cla_manager.service.sendDesigneeEmailToUserWithNoLFID",
-		utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
-		"userWithNoLFIDName":  userWithNoLFIDName,
-		"userWithNoLFIDEmail": userWithNoLFIDEmail,
-		"organizationID":      organizationID,
-		"projectID":           utils.StringValue(projectID),
-		"role":                role,
+		"functionName":          "cla_manager.service.sendDesigneeEmailToUserWithNoLFID",
+		utils.XREQUESTID:        ctx.Value(utils.XREQUESTID),
+		"userWithNoLFIDName":    userWithNoLFIDName,
+		"userWithNoLFIDEmail":   userWithNoLFIDEmail,
+		"organizationID":        organizationID,
+		"projectID":             utils.StringValue(projectID),
+		"role":                  role,
+		"corporateConsoleV2URL": corporateConsoleV2URL,
 	}
 
 	subject := fmt.Sprintf("EasyCLA: Invitation to create LF Login and complete process of becoming CLA Manager for project: %s ", projectName)
@@ -1391,6 +1392,7 @@ func sendDesigneeEmailToUserWithNoLFID(ctx context.Context, repository projects_
 			},
 			RequesterUserName: requesterUsername,
 			RequesterEmail:    requesterEmail,
+			CorporateConsole:  corporateConsoleV2URL,
 		})
 
 	if err != nil {

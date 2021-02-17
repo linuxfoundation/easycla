@@ -4763,13 +4763,11 @@ definitions:
         example: false
         description: send signing request as email. This should be set to true when requestor is not signatory.
       authority_name:
-        type: string
-        example: 'John Doe'
-        description: name of the cla signatory
-        pattern: "^[a-zA-Z0-9]+(([',. -][a-zA-Z0-9 ])?[a-zA-Z0-9]*)*$"
+        description: the name of the CLA signatory
+        $ref: './common/properties/user-name.yaml'
       authority_email:
         $ref: './common/properties/email.yaml'
-        description: Email of the CLA Signatory
+        description: the email of the CLA Signatory
       return_url:
         type: string
         example: 'https://corporate.dev.lfcla.com/#/company/eb4d7d71-693f-4047-bf8d-10d0e7764969'
