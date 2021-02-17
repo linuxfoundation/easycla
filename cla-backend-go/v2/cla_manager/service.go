@@ -932,8 +932,17 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		}
 
 		for _, admin := range scopes.Userroles {
-			// Check if is Gerrit User or GH User
-			contributorEmailToOrgAdmin(admin.Contact.EmailAddress, admin.Contact.Name, organization.Name, projectSFs, userModel, LfxPortalURL)
+			// Email details are masked so an extra query to get user details is used
+			log.WithFields(f).Debugf("Getting email for user with ID: %s ", admin.Contact.ID)
+
+			adminUser, adminErr := userService.GetUser(admin.Contact.ID)
+			if adminErr != nil {
+				msg := fmt.Sprintf("Failed to get user for ID: %s ", admin.Contact.ID)
+				log.Warn(msg)
+				return nil, adminErr
+			}
+
+			contributorEmailToOrgAdmin(userService.GetPrimaryEmail(adminUser), admin.Contact.Name, organization.Name, projectSFs, userModel, LfxPortalURL)
 			designeeScope := models.ClaManagerDesignee{
 				Email: strfmt.Email(admin.Contact.EmailAddress),
 				Name:  admin.Contact.Name,
