@@ -1775,31 +1775,11 @@ class DocuSign(signing_service_interface.SigningService):
             project = Project()
             project.load(signature.get_signature_project_id())
         except DoesNotExist as err:
-            cla.log.warning(f'{fn} - unable to load project by id: {project.get_project_id()} - '
+            cla.log.warning(f'{fn} - unable to load project by id: {signature.get_signature_project_id()} - '
                             'unable to send email to user')
             return
 
-        # subject = 'EasyCLA: Signed Document'
-        # body = 'Thank you for signing the CLA! Your signed document is attached to this email.'
-        if icla:
-            pdf_link = (f'{cla.conf["API_BASE_URL"]}/v3/'
-                        f'signatures/{project.get_project_id()}/'
-                        f'{user.get_user_id()}/icla/pdf')
-        else:
-            pdf_link = (f'{cla.conf["API_BASE_URL"]}/v3/'
-                        f'signatures/{project.get_project_id()}/'
-                        f'{signature.get_signature_reference_id()}/ccla/pdf')
-        subject = f'EasyCLA: CLA Signature Signed for {project.get_project_name()}'
-        body = f'''
-            <p>Hello {"Contributor" if icla else "CLA Signatory"},</p>
-            <p>This is a notification email from EasyCLA regarding the project {project.get_project_name()}.</p>
-            <p>Thank you for signing the CLA.  You can download the PDF document
-               <a href="{pdf_link}" target="_blank" alt="{'ICLA' if icla else 'CCLA'} Document Link">
-               from our website<a>.
-            </p>
-            '''
-        body = append_email_help_sign_off_content(body, project.get_version())
-
+        subject, body = document_signed_email_content(icla=icla, project=project, signature=signature, user=user)
         # Third, send the email.
         cla.log.debug(f'{fn} - sending signed CLA document to {recipient} with subject: {subject}')
         cla.utils.get_email_service().send(subject, body, recipient)
@@ -2187,3 +2167,40 @@ def generate_manager_and_contributor_list(managers, contributors=None):
     lines = '\n'.join([str(line) for line in lines])
 
     return lines
+
+
+def document_signed_email_content(icla: bool, project: Project, signature: Signature, user: User) -> (str, str):
+    """
+    document_signed_email_content prepares the email subject and body content for the signed documents
+    :return:
+    """
+    # subject = 'EasyCLA: Signed Document'
+    # body = 'Thank you for signing the CLA! Your signed document is attached to this email.'
+    if icla:
+        pdf_link = (f'{cla.conf["API_BASE_URL"]}/v3/'
+                    f'signatures/{project.get_project_id()}/'
+                    f'{user.get_user_id()}/icla/pdf')
+    else:
+        pdf_link = (f'{cla.conf["API_BASE_URL"]}/v3/'
+                    f'signatures/{project.get_project_id()}/'
+                    f'{signature.get_signature_reference_id()}/ccla/pdf')
+
+    recipient_name = user.get_user_name() or user.get_lf_username() or None
+    # some defensive code
+    if not recipient_name:
+        if icla:
+            recipient_name = "Contributor"
+        else:
+            recipient_name = "CLA Manager"
+
+    subject = f'EasyCLA: CLA Signature Signed for {project.get_project_name()}'
+    body = f'''
+                <p>Hello {recipient_name},</p>
+                <p>This is a notification email from EasyCLA regarding the project {project.get_project_name()}.</p>
+                <p>The CLA for {project.get_project_name()} has been signed.  You can download the PDF document
+                   <a href="{pdf_link}" target="_blank" alt="{'ICLA' if icla else 'CCLA'} Document Link">
+                   from our website</a>.
+                </p>
+                '''
+    body = append_email_help_sign_off_content(body, project.get_version())
+    return subject, body

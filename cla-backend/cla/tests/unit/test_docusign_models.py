@@ -4,8 +4,8 @@
 import xml.etree.ElementTree as ET
 
 from cla.models.docusign_models import populate_signature_from_ccla_callback, populate_signature_from_icla_callback, \
-    create_default_company_values
-from cla.models.dynamo_models import Signature, Company
+    create_default_company_values, document_signed_email_content
+from cla.models.dynamo_models import Signature, Company, Project, User
 
 content_icla_agreement_date = """<?xml version="1.0" encoding="utf-8"?>
 <DocuSignEnvelopeInformation xmlns:xsd="http://www.w3.org/2001/XMLSchema"
@@ -796,3 +796,67 @@ def test_create_default_company_values():
 
     assert "corporation_name" not in values
     assert "corporation" not in values
+
+
+def test_document_signed_email_content():
+    user = User()
+    user.set_user_id("user_id_value")
+    user.set_user_name("john")
+
+    p = Project(
+        project_id="project_id_value",
+        project_name="JohnsProject",
+    )
+
+    s = Signature(
+        signature_reference_id="signature_reference_id_value"
+    )
+
+    subject, body = document_signed_email_content(
+        icla=False,
+        project=p,
+        signature=s,
+        user=user
+    )
+
+    assert subject is not None
+    assert body is not None
+
+    assert "Signature Signed for JohnsProject" in subject
+    assert "Hello john" in body
+    assert "EasyCLA regarding the project JohnsProject" in body
+    assert "The CLA for JohnsProject has been signed" in body
+
+    # try with different recipient names
+    user.set_user_name(None)
+    user.set_lf_username("johnlf")
+
+    subject, body = document_signed_email_content(
+        icla=False,
+        project=p,
+        signature=s,
+        user=user
+    )
+
+    assert "Hello johnlf" in body
+
+    user.set_lf_username(None)
+
+    subject, body = document_signed_email_content(
+        icla=False,
+        project=p,
+        signature=s,
+        user=user
+    )
+
+    assert "Hello CLA Manager" in body
+
+    subject, body = document_signed_email_content(
+        icla=True,
+        project=p,
+        signature=s,
+        user=user
+    )
+
+    assert "Hello Contributor" in body
+
