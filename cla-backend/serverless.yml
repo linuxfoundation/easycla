@@ -313,6 +313,7 @@ provider:
     CLA_CONTRIBUTOR_BASE: ${file(./env.json):cla-contributor-base, ssm:/cla-contributor-base-${opt:stage}}
     CLA_CONTRIBUTOR_V2_BASE: ${file(./env.json):cla-contributor-v2-base, ssm:/cla-contributor-v2-base-${opt:stage}}
     CLA_CORPORATE_BASE: ${file(./env.json):cla-corporate-base, ssm:/cla-corporate-base-${opt:stage}}
+    CLA_CORPORATE_V2_BASE: ${file(./env.json):cla-corporate-v2-base, ssm:/cla-corporate-v2-base-${opt:stage}}
     CLA_LANDING_PAGE: ${file(./env.json):cla-landing-page, ssm:/cla-landing-page-${opt:stage}}
     CLA_SIGNATURE_FILES_BUCKET: ${file(./env.json):cla-signature-files-bucket, ssm:/cla-signature-files-bucket-${opt:stage}~true}
     CLA_BUCKET_LOGO_URL: ${file(./env.json):cla-logo-url, ssm:/cla-logo-url-${opt:stage}~true}

@@ -825,7 +825,7 @@ def test_document_signed_email_content():
     assert "Signature Signed for JohnsProject" in subject
     assert "Hello john" in body
     assert "EasyCLA regarding the project JohnsProject" in body
-    assert "The CLA for JohnsProject has been signed" in body
+    assert "The CLA has now been signed." in body
 
     # try with different recipient names
     user.set_user_name(None)
