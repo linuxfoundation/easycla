@@ -28,6 +28,8 @@ from cla.models.event_types import EventType
 
 API_BASE_URL = os.environ.get('CLA_API_BASE', '')
 CLA_LOGO_URL = os.environ.get('CLA_BUCKET_LOGO_URL', '')
+CORPORATE_BASE = os.environ.get('CLA_CORPORATE_BASE', '')
+CORPORATE_V2_BASE = os.environ.get('CLA_CORPORATE_V2_BASE', '')
 
 
 def get_cla_path():
@@ -1543,6 +1545,13 @@ def get_email_help_content(show_v2_help_link: bool) -> str:
 def get_email_sign_off_content() -> str:
     return '<p>Thanks,</p><p>EasyCLA Support Team</p>'
 
+def get_corporate_url(project_version: str) -> str:
+    """
+    helper method that returns appropriate corporate link based on EasyCLA version
+    :param project_version: cla_group version(v1|v2)
+    :return: default is v1 corporate console
+    """
+    return CORPORATE_V2_BASE if project_version == 'v2' else CORPORATE_BASE
 
 def append_email_help_sign_off_content(body: str, project_version: str) -> str:
     """

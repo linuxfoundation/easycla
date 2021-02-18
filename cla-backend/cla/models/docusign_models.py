@@ -29,7 +29,7 @@ from cla.models.dynamo_models import Signature, User, \
 from cla.models.event_types import EventType
 from cla.models.s3_storage import S3Storage
 from cla.user_service import UserService
-from cla.utils import get_email_help_content, append_email_help_sign_off_content
+from cla.utils import get_email_help_content, append_email_help_sign_off_content, get_corporate_url
 
 api_base_url = os.environ.get('CLA_API_BASE', '')
 root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
@@ -42,6 +42,8 @@ lf_group_client_id = os.environ.get('LF_GROUP_CLIENT_ID', '')
 lf_group_client_secret = os.environ.get('LF_GROUP_CLIENT_SECRET', '')
 lf_group_refresh_token = os.environ.get('LF_GROUP_REFRESH_TOKEN', '')
 lf_group = LFGroup(lf_group_client_url, lf_group_client_id, lf_group_client_secret, lf_group_refresh_token)
+
+
 
 
 class ProjectDoesNotExist(Exception):
@@ -1895,7 +1897,7 @@ def get_org_from_return_url(repo_provider_type, return_url, orgs):
     :param return_url: The URL will be redirected after signature done.
     :type return_url: string
     :return: List of Organizations of any repo service provider.
-    :rtype: [any_repo_service_provider.Organization]
+    :rtype: [any_repo_service_provider.Organization] 
     """
     if repo_provider_type == 'github':
         split_url = return_url.split('/')  # parse repo name from URL
@@ -2184,6 +2186,8 @@ def document_signed_email_content(icla: bool, project: Project, signature: Signa
         pdf_link = (f'{cla.conf["API_BASE_URL"]}/v3/'
                     f'signatures/{project.get_project_id()}/'
                     f'{signature.get_signature_reference_id()}/ccla/pdf')
+    
+    corporate_url = get_corporate_url(project.get_version())
 
     recipient_name = user.get_user_name() or user.get_lf_username() or None
     # some defensive code
@@ -2194,12 +2198,12 @@ def document_signed_email_content(icla: bool, project: Project, signature: Signa
             recipient_name = "CLA Manager"
 
     subject = f'EasyCLA: CLA Signature Signed for {project.get_project_name()}'
-    body = f'''
+    body =  f'''
                 <p>Hello {recipient_name},</p>
                 <p>This is a notification email from EasyCLA regarding the project {project.get_project_name()}.</p>
-                <p>The CLA for {project.get_project_name()} has been signed.  You can download the PDF document
+                <p>The CLA has now been signed. You can download the signed CLA as a PDF 
                    <a href="{pdf_link}" target="_blank" alt="{'ICLA' if icla else 'CCLA'} Document Link">
-                   from our website</a>.
+                   here</a>, or from within the <a href="{corporate_url}" target="_blank"> EasyCLA CLA Manager console </a>.
                 </p>
                 '''
     body = append_email_help_sign_off_content(body, project.get_version())
