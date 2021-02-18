@@ -174,7 +174,8 @@ const (
 <p>The following contributor would like to contribute to {{.GetProjectNameOrFoundation}} on behalf of your organization: {{.CompanyName}}.</p>
 <p>{{.RequesterUserName}} ({{.RequesterEmail}})</p>
 <p>Before the user's contribution can be accepted, your organization must sign a CLA.</p>
-<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for the project {{.GetProjectNameOrFoundation}}.</p>
+<p>Please click on <a href="USERACCEPTLINK">Accept Invite</a> to create your LF Login.</p>
+<p>After login, you will be redirected to this portal {{.CorporateConsole}} where you can sign the CLA for the project {{.GetProjectNameOrFoundation}}.</p>
 <p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they may complete the contribution process.</p>
 `
 )
