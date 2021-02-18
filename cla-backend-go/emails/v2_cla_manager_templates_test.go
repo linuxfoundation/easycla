@@ -170,7 +170,7 @@ func TestV2DesigneeToUserWithNoLFIDTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager,")
 	assert.Contains(t, result, "The following contributor would like to contribute to JohnsProjectExternal on behalf of your organization: JohnsCompany.")
-	assert.Contains(t, result, "Kindly login to this portal https://corporate.dev.lfcla.com and sign the CLA for the project JohnsProjectExternal.")
+	assert.Contains(t, result, "you will be redirected to this portal https://corporate.dev.lfcla.com where you can sign the CLA for the project JohnsProjectExternal")
 }
 
 func TestV2CLAManagerToUserWithNoLFIDTemplate(t *testing.T) {
