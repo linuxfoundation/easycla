@@ -893,7 +893,7 @@ func sendRequestAccessEmailToCLAManagers(companyModel *models.Company, claGroupM
 		emails.RequestAccessToCLAManagersTemplate, emails.RequestAccessToCLAManagersTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: recipientName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 			},
 			RequesterName:  requesterName,
@@ -927,7 +927,7 @@ func sendRequestApprovedEmailToCLAManagers(companyModel *models.Company, claGrou
 		emails.RequestApprovedToCLAManagersTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: recipientName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 			},
 			RequesterName:  requesterName,
@@ -957,7 +957,7 @@ func sendRequestApprovedEmailToRequester(companyModel *models.Company, claGroupM
 		emails.RequestApprovedToRequesterTemplate, emails.RequestApprovedToRequesterTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: requesterName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 			},
 			CorporateURL: utils.GetCorporateURL(claGroupModel.Version == utils.V2),
@@ -988,7 +988,7 @@ func sendRequestDeniedEmailToCLAManagers(companyModel *models.Company, claGroupM
 		emails.RequestDeniedToCLAManagersTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: recipientName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 			},
 			RequesterName:  requesterName,
@@ -1021,7 +1021,7 @@ func sendRequestDeniedEmailToRequester(companyModel *models.Company, claGroupMod
 		emails.RequestDeniedToRequesterTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: requesterName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 			},
 		})

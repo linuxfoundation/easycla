@@ -269,7 +269,7 @@ func (s service) sendRequestEmailToRecipient(projectClaGroupRepository projects_
 		emails.RequestToAuthorizeTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: recipientName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 			},
 			ContributorName:     contributorName,
@@ -327,7 +327,7 @@ func (s service) sendRequestRejectedEmailToRecipient(companyModel *models.Compan
 		emails.ApprovalListRejectedTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: recipientName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 				CLAManagers:   emailCLAManagerParams,
 			},

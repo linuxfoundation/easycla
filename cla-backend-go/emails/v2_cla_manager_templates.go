@@ -6,6 +6,8 @@ package emails
 import (
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project"
+
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
@@ -38,7 +40,6 @@ type V2OrgAdminTemplateParams struct {
 	CLAManagerTemplateParams
 	SenderName       string
 	SenderEmail      string
-	ProjectList      []string
 	CorporateConsole string
 }
 
@@ -49,23 +50,37 @@ const (
 	V2OrgAdminTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the CLA setup and signing process for {{.CompanyName}}.</p>
-<p> {{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA for {{.CompanyName}} in support of the following projects: </p>
+<p> {{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA for {{.CompanyName}} in support of the following project: </p>
 <ul>
-	{{range .ProjectList}}
-		<li>{{.}}</li>
-	{{end}}
+	<li>{{.Project.ExternalProjectName}}</li>
 </ul>
 <p>Before the contribution can be accepted, your organization must sign a CLA. 
-Either you or someone whom to designate from your company can login to this portal ({{.CorporateConsole}}) and sign the CLA for this project {{.ProjectName}} </p>
+Either you or someone whom to designate from your company can login to this portal ({{.CorporateConsole}}) and sign the CLA for this project {{.Project.GetProjectFullURL}} </p>
 <p>If you are not the CLA Manager, please forward this email to the appropriate person so that they can start the CLA process.</p>
 <p> Please notify the user once CLA setup is complete.</p>
 `
 )
 
+// RenderV2OrgAdminTemplate renders V2OrgAdminTemplate
+func RenderV2OrgAdminTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFID string, params V2OrgAdminTemplateParams) (string, error) {
+	if err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projectSFID, &params.CLAManagerTemplateParams); err != nil {
+		return "", err
+	}
+
+	projectParams, err := PrefillCLAProjectParams(repository, projectService, []string{projectSFID}, params.CorporateConsole)
+	if err != nil {
+		return "", err
+	}
+
+	params.Project = projectParams[0]
+
+	return RenderTemplate(utils.V2, V2OrgAdminTemplateName, V2OrgAdminTemplate, params)
+}
+
 // V2ContributorToOrgAdminTemplateParams is email template params for V2ContributorToOrgAdminTemplate
 type V2ContributorToOrgAdminTemplateParams struct {
 	CLAManagerTemplateParams
-	ProjectNames     []string
+	Projects         []CLAProjectParams
 	UserDetails      string
 	CorporateConsole string
 }
@@ -76,21 +91,34 @@ const (
 	// V2ContributorToOrgAdminTemplate is email template for
 	V2ContributorToOrgAdminTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project(s) {{range $index, $projectName := .ProjectNames}}{{if $index}},{{end}}{{$projectName}}{{end}}</p>
+<p>This is a notification email from EasyCLA regarding the project(s) {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.ExternalProjectName}}{{end}}</p>
 <p>The following contributor is requesting to sign CLA for organization: {{.CompanyName}}</p>
 <p>{{.UserDetails}}</p>
 <p>Before the user contribution can be accepted, your organization must sign a CLA.
-<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for any of the projects {{range $index, $projectName := .ProjectNames}}{{if $index}},{{end}}{{$projectName}}{{end}}.</p>
+<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for any of the projects {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}.</p>
 <p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their code contribution.</p>
 `
 )
+
+// RenderV2ContributorToOrgAdminTemplate renders V2ContributorToOrgAdminTemplate
+func RenderV2ContributorToOrgAdminTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string, params V2ContributorToOrgAdminTemplateParams) (string, error) {
+	// prefill the projects data
+	projects, err := PrefillCLAProjectParams(repository, projectService, projectSFIDs, params.CorporateConsole)
+	if err != nil {
+		return "", err
+	}
+
+	params.Projects = projects
+
+	return RenderTemplate(utils.V2, V2ContributorToOrgAdminTemplateName,
+		V2ContributorToOrgAdminTemplate, params)
+}
 
 // V2CLAManagerDesigneeCorporateTemplateParams is email params for V2CLAManagerDesigneeCorporateTemplate
 type V2CLAManagerDesigneeCorporateTemplateParams struct {
 	CLAManagerTemplateParams
 	SenderName       string
 	SenderEmail      string
-	ProjectList      []string
 	CorporateConsole string
 }
 
@@ -103,22 +131,28 @@ const (
 <p>This is a notification email from EasyCLA regarding the CLA setup and signing process for {{.CompanyName}}.</p>
 <p> {{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA for {{.CompanyName}} in support of the following projects: </p>
 <ul>
-	{{range .ProjectList}}
-		<li>{{.}}</li>
-	{{end}}
+	<li>{{.Project.ExternalProjectName}}</li>
 </ul>
 <p>Before the contribution can be accepted, your organization must sign a CLA. 
-Either you or someone whom to designate from your company can login to this portal ({{.CorporateConsole}}) and sign the CLA for this project {{.ProjectName}} </p>
+Either you or someone whom to designate from your company can login to this portal ({{.CorporateConsole}}) and sign the CLA for this project {{.Project.GetProjectFullURL}} </p>
 <p>If you are not the CLA Manager, please forward this email to the appropriate person so that they can start the CLA process.</p>
 <p> Please notify the user once CLA setup is complete.</p>
 `
 )
 
 // RenderV2CLAManagerDesigneeCorporateTemplate renders V2CLAManagerDesigneeCorporateTemplate
-func RenderV2CLAManagerDesigneeCorporateTemplate(repository projects_cla_groups.Repository, projectSFID string, params V2CLAManagerDesigneeCorporateTemplateParams) (string, error) {
+func RenderV2CLAManagerDesigneeCorporateTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFID string, params V2CLAManagerDesigneeCorporateTemplateParams) (string, error) {
 	if err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projectSFID, &params.CLAManagerTemplateParams); err != nil {
 		return "", err
 	}
+
+	projects, err := PrefillCLAProjectParams(repository, projectService, []string{projectSFID}, params.CorporateConsole)
+	if err != nil {
+		return "", err
+	}
+
+	// assing the prefilled project
+	params.Project = projects[0]
 
 	return RenderTemplate(utils.V2, V2CLAManagerDesigneeCorporateTemplateName, V2CLAManagerDesigneeCorporateTemplate, params)
 }
@@ -126,7 +160,7 @@ func RenderV2CLAManagerDesigneeCorporateTemplate(repository projects_cla_groups.
 // V2ToCLAManagerDesigneeTemplateParams is email params for V2ToCLAManagerDesigneeTemplate
 type V2ToCLAManagerDesigneeTemplateParams struct {
 	RecipientName    string
-	ProjectNames     []string
+	Projects         []CLAProjectParams
 	ContributorID    string
 	ContributorName  string
 	CorporateConsole string
@@ -134,11 +168,16 @@ type V2ToCLAManagerDesigneeTemplateParams struct {
 
 // GetProjectsOrProject returns the single Project or comma saparated projects if more than one
 func (p V2ToCLAManagerDesigneeTemplateParams) GetProjectsOrProject() string {
-	if len(p.ProjectNames) == 1 {
-		return " " + p.ProjectNames[0]
+	if len(p.Projects) == 1 {
+		return " " + p.Projects[0].ExternalProjectName
 	}
 
-	return "s " + strings.Join(p.ProjectNames, ", ")
+	var projectNames []string
+	for _, p := range p.Projects {
+		projectNames = append(projectNames, p.ExternalProjectName)
+	}
+
+	return "s " + strings.Join(projectNames, ", ")
 }
 
 const (
@@ -151,10 +190,24 @@ const (
 <p>The following contributor is requesting to sign CLA for organization: </p>
 <p> {{.ContributorID}} ({{.ContributorName}}) </p>
 <p>Before the user contribution can be accepted, your organization must sign a CLA.
-<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for one of the project{{.GetProjectsOrProject}}. </p>
+<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for one of the project(s) {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}. </p>
 <p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they may complete the contribution process.</p>
 `
 )
+
+// RenderV2ToCLAManagerDesigneeTemplate renders V2ToCLAManagerDesigneeTemplate
+func RenderV2ToCLAManagerDesigneeTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string, params V2ToCLAManagerDesigneeTemplateParams) (string, error) {
+	// prefill the projects data
+	projects, err := PrefillCLAProjectParams(repository, projectService, projectSFIDs, params.CorporateConsole)
+	if err != nil {
+		return "", err
+	}
+
+	params.Projects = projects
+
+	return RenderTemplate(utils.V2, V2ToCLAManagerDesigneeTemplateName,
+		V2ToCLAManagerDesigneeTemplate, params)
+}
 
 // V2DesigneeToUserWithNoLFIDTemplateParams is email params for V2DesigneeToUserWithNoLFIDTemplate
 type V2DesigneeToUserWithNoLFIDTemplateParams struct {
@@ -175,7 +228,7 @@ const (
 <p>{{.RequesterUserName}} ({{.RequesterEmail}})</p>
 <p>Before the user's contribution can be accepted, your organization must sign a CLA.</p>
 <p>Please click on <a href="USERACCEPTLINK">Accept Invite</a> to create your LF Login.</p>
-<p>After login, you will be redirected to this portal {{.CorporateConsole}} where you can sign the CLA for the project {{.GetProjectNameOrFoundation}}.</p>
+<p>After login, you will be redirected to this portal {{.CorporateConsole}} where you can sign the CLA for the project {{.Project.GetProjectFullURL}}.</p>
 <p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they may complete the contribution process.</p>
 `
 )
@@ -185,6 +238,9 @@ func RenderV2DesigneeToUserWithNoLFIDTemplate(repository projects_cla_groups.Rep
 	if err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projectSFID, &params.CLAManagerTemplateParams); err != nil {
 		return "", err
 	}
+
+	// assign the corporate console so we can show the link of the project
+	params.Project.CorporateConsole = params.CorporateConsole
 
 	return RenderTemplate(utils.V2, V2DesigneeToUserWithNoLFIDTemplateName,
 		V2DesigneeToUserWithNoLFIDTemplate, params)
@@ -204,8 +260,8 @@ const (
 	V2CLAManagerToUserWithNoLFIDTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the Project {{.GetProjectNameOrFoundation}} and CLA Group {{.CLAGroupName}} in the EasyCLA system.</p>
-<p>User {{.RequesterUserName}} ({{.RequesterEmail}}) was trying to add you as a CLA Manager for Project {{.ProjectName}} but was unable to identify your account details in
-the EasyCLA system. In order to become a CLA Manager for Project {{.ProjectName}}, you will need to accept invite below.
+<p>User {{.RequesterUserName}} ({{.RequesterEmail}}) was trying to add you as a CLA Manager for Project {{.Project.ExternalProjectName}} but was unable to identify your account details in
+the EasyCLA system. In order to become a CLA Manager for Project {{.Project.ExternalProjectName}}, you will need to accept invite below.
 Once complete, notify the user {{.RequesterUserName}} and they will be able to add you as a CLA Manager.</p>
 <p> <a href="USERACCEPTLINK">Accept Invite</a> </p>
 `
@@ -216,7 +272,6 @@ func RenderV2CLAManagerToUserWithNoLFIDTemplate(repository projects_cla_groups.R
 	params := V2CLAManagerToUserWithNoLFIDTemplateParams{
 		CLAManagerTemplateParams: CLAManagerTemplateParams{
 			RecipientName: recipientName,
-			ProjectName:   projectName,
 		},
 		RequesterUserName: requesterName,
 		RequesterEmail:    requesterEmail,
