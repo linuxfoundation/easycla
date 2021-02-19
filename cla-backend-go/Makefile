@@ -19,7 +19,7 @@ LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X m
 BUILD_TAGS=-tags aws_lambda
 
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
-LINT_VERSION=v1.29.0
+LINT_VERSION=v1.37.0
 SWAGGER_TOOL_VERSION=v0.24.0
 GO_PKGS=$(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/)
 GO_FILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')
@@ -52,6 +52,9 @@ setup-dev: tool-setup
 	@echo "Installing cover..."
 	gobin golang.org/x/tools/cmd/cover
 	@echo "Installing multi-file-swagger tool..."
+	@echo "Downloading golangci-lint version $(LINT_VERSION)..."
+	@# Latest releases: https://github.com/golangci/golangci-lint/releases
+	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(shell go env GOPATH)/bin $(LINT_VERSION)
 	cd $(dir $(realpath $(firstword $(MAKEFILE_LIST))))swagger && pip3 install virtualenv && virtualenv .venv && source .venv/bin/activate && pip3 install -r requirements.txt
 
 setup_deploy: setup-deploy
@@ -287,12 +290,7 @@ build-functional-tests-mac: deps
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(FUNCTIONAL_TESTS_BIN)-mac cmd/functional_tests/main.go
 	@chmod +x $(FUNCTIONAL_TESTS_BIN)-mac
 
-$(LINT_TOOL):
-	@echo "Downloading golangci-lint version $(LINT_VERSION)..."
-	@# Latest releases: https://github.com/golangci/golangci-lint/releases
-	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(shell go env GOPATH)/bin $(LINT_VERSION)
-
-lint: $(LINT_TOOL)
-	@cd $(MAKEFILE_DIR) && echo "Running lint..." && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "Lint check passed."
+lint:
+	@cd $(MAKEFILE_DIR) && echo "Running lint..." && $(LINT_TOOL) --version && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "Lint check passed."
 	@cd $(MAKEFILE_DIR) && ./check-headers.sh
 
