@@ -205,12 +205,19 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 		return err
 	}
 
-	// Let's check the foundation provided - does it have a parent? Only allowed parent is TLF
-	if foundationProjectDetails.Parent != "" && !isLFParent {
-		log.WithFields(f).Warnf("input validation failure - foundation_sfid of %s has a parent other than %s or %s which is: %s",
-			foundationSFID, utils.TheLinuxFoundation, utils.LFProjectsLLC, foundationProjectDetails.Parent)
-		return fmt.Errorf("bad request: input validation failure - foundation_sfid of %s has a parent other than %s or %s which is: %s",
-			foundationSFID, utils.TheLinuxFoundation, utils.LFProjectsLLC, foundationProjectDetails.Parent)
+	for _, projectSFID := range projectSFIDList {
+		projectDetails, projErr := psc.GetProject(projectSFID)
+		if projErr != nil {
+			return err
+		}
+
+		if foundationProjectDetails.Parent != "" && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
+			msg := fmt.Sprintf("input validation failure - foundationSFID: %s , foundationType: %s , projectSFID: %s , projectType: %s ",
+				foundationProjectDetails.Parent, foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
+			log.WithFields(f).Warnf(msg)
+			return fmt.Errorf(msg)
+		}
+
 	}
 
 	// Comment out the below as we want to support stand-alone projects
@@ -308,11 +315,19 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 		return err
 	}
 
-	if foundationProjectDetails.Parent != "" && !isLFParent {
-		log.WithFields(f).Warnf("input validation failure - foundation_sfid of %s has a parent other than %s or %s which is: %s",
-			foundationSFID, utils.TheLinuxFoundation, utils.LFProjectsLLC, foundationProjectDetails.Parent)
-		return fmt.Errorf("bad request: input validation failure - foundation_sfid of %s has a parent other than %s or %s which is: %s",
-			foundationSFID, utils.TheLinuxFoundation, utils.LFProjectsLLC, foundationProjectDetails.Parent)
+	for _, projectSFID := range projectSFIDList {
+		projectDetails, projErr := psc.GetProject(projectSFID)
+		if projErr != nil {
+			return err
+		}
+
+		if foundationProjectDetails.Parent != "" && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
+			msg := fmt.Sprintf("input validation failure - foundationSFID: %s , foundationType: %s , projectSFID: %s , projectType: %s ",
+				foundationProjectDetails.Parent, foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
+			log.WithFields(f).Warnf(msg)
+			return fmt.Errorf(msg)
+		}
+
 	}
 
 	// Comment out the below as we want to support stand-alone projects

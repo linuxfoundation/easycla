@@ -36,6 +36,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	v1Template "github.com/communitybridge/easycla/cla-backend-go/template"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	v2ProjectServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/models"
 	"github.com/sirupsen/logrus"
 )
 
@@ -340,7 +341,7 @@ func (s *service) UpdateCLAGroup(ctx context.Context, claGroupModel *v1Models.Cl
 }
 
 // ListClaGroupsForFoundationOrProject returns the CLA Group list for the specified foundation ID
-func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, projectOrFoundationSFID string) (*models.ClaGroupListSummary, error) {
+func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, projectOrFoundationSFID string) (*models.ClaGroupListSummary, error) { // nolint
 	f := logrus.Fields{
 		"functionName":            "ListClaGroupsForFoundationOrProject",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
@@ -365,12 +366,31 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 		return nil, &utils.SFProjectNotFound{ProjectSFID: projectOrFoundationSFID}
 	}
 
+	// Try and check if parent exists and projectType
+	var parentDetails *v2ProjectServiceModels.ProjectOutputDetailed
+	var parentDetailErr error
+
+	if sfProjectModelDetails.Parent != "" {
+		var parentSFID string
+		// Use utility function that considers TLF and LF Projects, LLC
+		parentSFID, parentDetailErr = v2ProjectService.GetClient().GetParentProject(projectOrFoundationSFID)
+		if parentDetailErr != nil {
+			return nil, parentDetailErr
+		}
+
+		// Get Parent
+		parentDetails, parentDetailErr = v2ProjectService.GetClient().GetProject(parentSFID)
+		if parentDetailErr != nil {
+			return nil, parentDetailErr
+		}
+	}
+
 	// Lookup the foundation name - need this if we were a project - need to lookup parent ID/Name
 	var foundationID = sfProjectModelDetails.ID
 	var foundationName = sfProjectModelDetails.Name
 
 	// If it's a project...
-	if sfProjectModelDetails.ProjectType == utils.ProjectTypeProject {
+	if sfProjectModelDetails.ProjectType == utils.ProjectTypeProject || (parentDetails != nil && (parentDetails.ProjectType == utils.ProjectTypeProjectGroup && sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup)) {
 		// Since this is a project and not a foundation, we'll want to set he parent foundation ID and name (which is
 		// our parent in this case)
 		log.WithFields(f).Debug("found 'project' in platform project service.")
@@ -413,7 +433,7 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 			v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1CLAGroupData)
 		}
 
-	} else if sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup {
+	} else if parentDetails != nil && (parentDetails.ProjectType == utils.ProjectTypeProjectGroup && sfProjectModelDetails.ProjectType != utils.ProjectTypeProjectGroup) {
 		log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
 		projectCLAGroups, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(projectOrFoundationSFID)
 		if lookupErr != nil {
