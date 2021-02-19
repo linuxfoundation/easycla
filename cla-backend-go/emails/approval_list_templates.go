@@ -16,8 +16,8 @@ const (
 	// ApprovalListRejectedTemplate is email template for
 	ApprovalListRejectedTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project {{.ProjectName}}.</p>
-<p>Your request to get added to the approval list from {{.CompanyName}} for {{.ProjectName}} was denied by one of the existing CLA Managers.
+<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}}.</p>
+<p>Your request to get added to the approval list from {{.CompanyName}} for {{.Project.ExternalProjectName}} was denied by one of the existing CLA Managers.
 If you have further questions about this denial, please contact one of the existing CLA Managers from
 {{.CompanyName}} for {{.CompanyName}}:</p>
 <ul>
@@ -46,8 +46,8 @@ const (
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the project {{.GetProjectNameOrFoundation}} and CLA Group {{.CLAGroupName}}.</p>
 <p>{{.ContributorName}} ({{.ContributorEmail}}) has requested to be added to the Approved List as an authorized contributor from
-{{.CompanyName}} to the project {{.ProjectName}}. You are receiving this message as a CLA Manager from {{.CompanyName}} for
-{{.ProjectName}}.</p>
+{{.CompanyName}} to the project {{.Project.ExternalProjectName}}. You are receiving this message as a CLA Manager from {{.CompanyName}} for
+{{.Project.ExternalProjectName}}.</p>
 {{if .OptionalMessage}}
 <p>{{.ContributorName}} included the following message in the request:</p>
 <br/><p>{{.OptionalMessage}}</p><br/>
@@ -56,7 +56,7 @@ const (
 <a href="https://{{.CorporateConsoleURL}}#/company/{{.CompanyID}}" target="_blank">log into the EasyCLA Corporate
 Console</a>, where you can approve this user's request by selecting the 'Manage Approved List' and adding the
 contributor's email, the contributor's entire email domain, their GitHub ID or the entire GitHub Organization for the
-repository. This will permit them to begin contributing to {{.ProjectName}} on behalf of {{.CompanyName}}.</p>
+repository. This will permit them to begin contributing to {{.Project.ExternalProjectName}} on behalf of {{.CompanyName}}.</p>
 <p>If you are not certain whether to add them to the Approved List, please reach out to them directly to discuss.</p>
 `
 )

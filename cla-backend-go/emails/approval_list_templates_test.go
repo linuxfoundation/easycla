@@ -14,7 +14,7 @@ func TestApprovalListRejectedTemplate(t *testing.T) {
 	params := ApprovalListRejectedTemplateParams{
 		CLAManagerTemplateParams: CLAManagerTemplateParams{
 			RecipientName: "JohnsClaManager",
-			ProjectName:   "JohnsProject",
+			Project:       CLAProjectParams{ExternalProjectName: "JohnsProject"},
 			CompanyName:   "JohnsCompany",
 			CLAManagers: []ClaManagerInfoParams{
 				{LfUsername: "LFUserName", Email: "LFEmail"},
@@ -34,11 +34,10 @@ func TestApprovalListRejectedTemplate(t *testing.T) {
 func TestRequestToAuthorizeTemplate(t *testing.T) {
 	params := RequestToAuthorizeTemplateParams{
 		CLAManagerTemplateParams: CLAManagerTemplateParams{
-			RecipientName:       "JohnsClaManager",
-			ProjectName:         "JohnsProject",
-			CLAGroupName:        "JohnsProject",
-			ExternalProjectName: "JohnsProjectExternal",
-			CompanyName:         "JohnsCompany",
+			RecipientName: "JohnsClaManager",
+			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
+			CLAGroupName:  "JohnsProject",
+			CompanyName:   "JohnsCompany",
 			CLAManagers: []ClaManagerInfoParams{
 				{LfUsername: "LFUserName", Email: "LFEmail"},
 			},
@@ -56,7 +55,7 @@ func TestRequestToAuthorizeTemplate(t *testing.T) {
 	assert.Contains(t, result, "regarding the project JohnsProjectExternal and CLA Group JohnsProject")
 	assert.Contains(t, result, "ContributorNameValue (ContributorEmailValue) has requested")
 	assert.Contains(t, result, "<a href=\"https://CorporateConsoleURLValue#/company/CompanyIDValue\" target=\"_blank\">")
-	assert.Contains(t, result, "contributing to JohnsProject on behalf of JohnsCompany")
+	assert.Contains(t, result, "contributing to JohnsProjectExternal on behalf of JohnsCompany")
 
 	params.OptionalMessage = "OptionalMessageValue"
 	result, err = RenderTemplate(utils.V1, RequestToAuthorizeTemplateName, RequestToAuthorizeTemplate,

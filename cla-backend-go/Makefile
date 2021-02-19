@@ -293,6 +293,6 @@ $(LINT_TOOL):
 	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(shell go env GOPATH)/bin $(LINT_VERSION)
 
 lint: $(LINT_TOOL)
-	@cd $(MAKEFILE_DIR) && echo "Running lint..." && $(LINT_TOOL) run --allow-parallel-runners --config=.golangci.yaml ./... && echo "Lint check passed."
+	@cd $(MAKEFILE_DIR) && echo "Running lint..." && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "Lint check passed."
 	@cd $(MAKEFILE_DIR) && ./check-headers.sh
 

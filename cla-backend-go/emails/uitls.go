@@ -4,9 +4,12 @@
 package emails
 
 import (
+	"context"
 	"errors"
+	"fmt"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 )
 
@@ -23,10 +26,14 @@ func PrefillCLAManagerTemplateParamsFromClaGroup(repository projects_cla_groups.
 	}
 
 	params.CLAGroupName = projectCLAGroup.ClaGroupName
-	params.ProjectName = projectCLAGroup.ClaGroupName
-	params.FoundationName = projectCLAGroup.FoundationName
-	params.ExternalProjectName = projectCLAGroup.ProjectName
-
+	params.Project = CLAProjectParams{
+		ExternalProjectName:     projectCLAGroup.ProjectName,
+		ProjectSFID:             projectSFID,
+		FoundationName:          projectCLAGroup.FoundationName,
+		FoundationSFID:          projectCLAGroup.FoundationSFID,
+		SignedAtFoundationLevel: false,
+		CorporateConsole:        "",
+	}
 	projects, err := repository.GetProjectsIdsForClaGroup(projectCLAGroup.ClaGroupID)
 	if err != nil {
 		return err
@@ -34,4 +41,45 @@ func PrefillCLAManagerTemplateParamsFromClaGroup(repository projects_cla_groups.
 
 	params.ChildProjectCount = len(projects)
 	return nil
+}
+
+// PrefillCLAProjectParams for each supplied projectSFIDs gets the claGroup info + checks if the project is signed at
+// foundation level which is important for email rendering
+func PrefillCLAProjectParams(repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string, corporateConsole string) ([]CLAProjectParams, error) {
+	if len(projectSFIDs) == 0 {
+		return nil, nil
+	}
+
+	var claProjectParams []CLAProjectParams
+	// keeping a cache so we can safe some of the remote svc calls
+	signedAtFoundationLevelCache := map[string]bool{}
+	for _, pSFID := range projectSFIDs {
+		projectCLAGroup, err := repository.GetClaGroupIDForProject(pSFID)
+		if err != nil {
+			return nil, fmt.Errorf("fetching project : %s failed: %v", pSFID, err)
+		}
+
+		params := CLAProjectParams{
+			ExternalProjectName: projectCLAGroup.ProjectName,
+			ProjectSFID:         pSFID,
+			FoundationName:      projectCLAGroup.FoundationName,
+			FoundationSFID:      projectCLAGroup.FoundationSFID,
+			CorporateConsole:    corporateConsole,
+		}
+		signed, found := signedAtFoundationLevelCache[projectCLAGroup.FoundationSFID]
+		if found {
+			params.SignedAtFoundationLevel = signed
+		}
+
+		signedResult, err := projectService.SignedAtFoundationLevel(context.Background(), projectCLAGroup.FoundationSFID)
+		if err != nil {
+			return nil, fmt.Errorf("fetching the SignedAtFoundationLevel for foundation : %s failed : %v", projectCLAGroup.FoundationSFID, err)
+		}
+		params.SignedAtFoundationLevel = signedResult
+		signedAtFoundationLevelCache[projectCLAGroup.FoundationSFID] = signedResult
+
+		claProjectParams = append(claProjectParams, params)
+	}
+
+	return claProjectParams, nil
 }

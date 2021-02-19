@@ -368,7 +368,7 @@ func sendClaManagerAddedEmailToUser(companyModel *models.Company, claGroupModel 
 		emails.ClaManagerAddedEToUserTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: requesterName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 			},
 			CorporateURL: utils.GetCorporateURL(claGroupModel.Version == utils.V2),
@@ -399,7 +399,7 @@ func sendClaManagerAddedEmailToCLAManagers(companyModel *models.Company, claGrou
 		emails.ClaManagerAddedToCLAManagersTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: recipientName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 			},
 			Name:  name,
@@ -503,7 +503,7 @@ func sendClaManagerDeleteEmailToCLAManagers(companyModel *models.Company, claGro
 		emails.ClaManagerDeletedToCLAManagersTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: recipientName,
-				ProjectName:   projectName,
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
 			},
 			Name:  name,
