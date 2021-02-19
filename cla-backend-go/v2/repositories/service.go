@@ -31,7 +31,7 @@ import (
 
 // Service contains functions of GitHub Repositories service
 type Service interface {
-	AddGithubRepository(ctx context.Context, projectSFID string, input *models.GithubRepositoryInput) (*v1Models.GithubRepository, error)
+	AddGithubRepositories(ctx context.Context, projectSFID string, input *models.GithubRepositoryInput) ([]*v1Models.GithubRepository, error)
 	EnableRepository(ctx context.Context, repositoryID string) error
 	DisableRepository(ctx context.Context, repositoryID string) error
 	ListProjectRepositories(ctx context.Context, projectSFID string) (*v1Models.ListGithubRepositories, error)
@@ -70,21 +70,24 @@ func NewService(repo v1Repositories.Repository, pcgRepo projects_cla_groups.Repo
 	}
 }
 
-func (s *service) AddGithubRepository(ctx context.Context, projectSFID string, input *models.GithubRepositoryInput) (*v1Models.GithubRepository, error) {
+func (s *service) AddGithubRepositories(ctx context.Context, projectSFID string, input *models.GithubRepositoryInput) ([]*v1Models.GithubRepository, error) {
 	f := logrus.Fields{
-		"functionName":           "AddGitHubRepository",
+		"functionName":           "AddGithubRepositories",
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
 		"projectSFID":            projectSFID,
 		"claGroupID":             utils.StringValue(input.ClaGroupID),
 		"githubOrganizationName": utils.StringValue(input.GithubOrganizationName),
-		"repositoryGitHubID":     utils.StringValue(input.RepositoryGithubID),
+		"repositoryGitHubID":     input.RepositoryGithubID,
+		"repositoryGithubIds":    input.RepositoryGithubIds,
 	}
+
 	psc := v2ProjectService.GetClient()
 	project, err := psc.GetProject(projectSFID)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to load projectSFID")
+		log.WithFields(f).WithError(err).Warn("unable to load projectSFID from the platform project service")
 		return nil, err
 	}
+
 	var externalProjectID string
 	if project.Parent == "" || (project.Foundation != nil &&
 		(project.Foundation.Name == utils.TheLinuxFoundation || project.Foundation.Name == utils.LFProjectsLLC)) {
@@ -92,6 +95,7 @@ func (s *service) AddGithubRepository(ctx context.Context, projectSFID string, i
 	} else {
 		externalProjectID = project.Parent
 	}
+
 	allMappings, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(aws.StringValue(input.ClaGroupID))
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to get project IDs for CLA Group")
@@ -115,69 +119,104 @@ func (s *service) AddGithubRepository(ctx context.Context, projectSFID string, i
 	if len(org.List) == 0 {
 		return nil, errors.New("github app not installed on github organization")
 	}
-	repoGithubID, err := strconv.ParseInt(utils.StringValue(input.RepositoryGithubID), 10, 64)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to convert repository github ID to an integer - invalid value")
-		return nil, err
-	}
-	ghRepo, err := github.GetRepositoryByExternalID(ctx, org.List[0].OrganizationInstallationID, repoGithubID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to get repository by external ID")
-		return nil, err
+
+	// Updated to process a list of repository IDs - take the list (may be empty) and add the single repository GH ID if it was set
+	repositoryIDList := input.RepositoryGithubIds
+	if input.RepositoryGithubID != "" {
+		repositoryIDList = append(repositoryIDList, input.RepositoryGithubID)
 	}
 
-	// Check if exists already
-	existingRepositoryModel, lookupErr := s.GetRepositoryByName(ctx, utils.StringValue(ghRepo.FullName))
-	if lookupErr != nil {
-		// If we have the repository not found error - this is ok - we are expecting this
-		if notFoundErr, ok := lookupErr.(*utils.GitHubRepositoryNotFound); ok {
-			log.WithFields(f).WithError(notFoundErr).Debugf("GitHub repository lookup didn't find a match for existing repository name: %s - ok to create", utils.StringValue(ghRepo.FullName))
+	// Remove any silly duplicates that may come
+	repositoryIDList = utils.RemoveDuplicates(repositoryIDList)
+
+	var response []*v1Models.GithubRepository
+
+	// For each repository ID provided...
+	// If this is slow, may want to optimize by making separate go routines for each item in the list
+	for _, repoID := range repositoryIDList {
+		// Convert the string value to an integer
+		repoGithubID, err := strconv.ParseInt(repoID, 10, 64)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to convert repository github ID %s to an integer - invalid value", repoID)
+			return nil, err
+		}
+
+		log.WithFields(f).Debugf("loading GitHub repository by external id: %d", repoGithubID)
+		ghRepo, err := github.GetRepositoryByExternalID(ctx, org.List[0].OrganizationInstallationID, repoGithubID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to load repository by external ID: %d", repoGithubID)
+			return nil, err
+		}
+		log.WithFields(f).Debugf("loaded GitHub repository by external id: %d - url: %s", repoGithubID, utils.StringValue(ghRepo.URL))
+
+		// Check if this repository exists in our database
+		log.WithFields(f).Debugf("checking if GitHub repository by name: %s exists...", utils.StringValue(ghRepo.FullName))
+		existingRepositoryModel, lookupErr := s.GetRepositoryByName(ctx, utils.StringValue(ghRepo.FullName))
+		if lookupErr != nil {
+			// If we have the repository not found error - this is ok - we are expecting this
+			if notFoundErr, ok := lookupErr.(*utils.GitHubRepositoryNotFound); ok {
+				log.WithFields(f).WithError(notFoundErr).Debugf("GitHub repository lookup didn't find a match for existing repository name: %s - ok to create", utils.StringValue(ghRepo.FullName))
+			} else {
+				// Some other error - not good...
+				log.WithFields(f).WithError(lookupErr).Warnf("GitHub repository lookup failed for repository name: %s", utils.StringValue(ghRepo.FullName))
+				return nil, lookupErr
+			}
+		}
+
+		// We already have an existing repository model with the same name
+		if existingRepositoryModel != nil {
+			if !existingRepositoryModel.Enabled {
+				msg := fmt.Sprintf("Github repository: %s previously disabled - will re-enabled... ", utils.StringValue(ghRepo.FullName))
+				log.WithFields(f).Debug(msg)
+				enabled := true
+
+				_, now := utils.CurrentTime()
+
+				log.WithFields(f).Debugf("Updating GitHub repository - setting enabled: true, OrgName: %s, CLA Group ID: %s",
+					utils.StringValue(input.GithubOrganizationName), utils.StringValue(input.ClaGroupID))
+				v1Input := &v1Models.GithubRepositoryInput{
+					Enabled:                    &enabled,
+					RepositoryOrganizationName: input.GithubOrganizationName,
+					RepositoryProjectID:        input.ClaGroupID,
+					Note:                       fmt.Sprintf("re-enabling repository on %s.", now),
+				}
+
+				// Update Repo details in case of any changes
+				updatedRepository, updateErr := s.repo.UpdateGithubRepository(ctx, existingRepositoryModel.RepositoryID, v1Input)
+				if updateErr != nil {
+					log.WithFields(f).WithError(updateErr).Warnf("unable to update GitHub repository with name: %s, id: %s, using input: %+v", utils.StringValue(ghRepo.FullName), existingRepositoryModel.RepositoryID, v1Input)
+					return nil, updateErr
+				}
+
+				// Append the results to our response model
+				response = append(response, updatedRepository)
+			} else {
+				log.WithFields(f).Warnf("GitHub repository already exists with repository name: %s and is already enabled - skipping update", utils.StringValue(ghRepo.FullName))
+				continue
+			}
 		} else {
-			// Some other error - not good...
-			return nil, lookupErr
+			// No record exists...
+			log.WithFields(f).Debug("no existing GitHub repository configured - creating...")
+			in := &v1Models.GithubRepositoryInput{
+				RepositoryExternalID:       &repoID, // nolint
+				RepositoryName:             ghRepo.FullName,
+				RepositoryOrganizationName: input.GithubOrganizationName,
+				RepositoryProjectID:        input.ClaGroupID,
+				RepositoryType:             aws.String("github"),
+				RepositoryURL:              ghRepo.HTMLURL,
+			}
+
+			addedModel, addErr := s.repo.AddGithubRepository(ctx, externalProjectID, projectSFID, in)
+			if addErr != nil {
+				return nil, addErr
+			}
+
+			// Append the results to our response model
+			response = append(response, addedModel)
 		}
 	}
 
-	// We already have an existing repository model with the same name
-	if existingRepositoryModel != nil && !existingRepositoryModel.Enabled {
-		msg := fmt.Sprintf("Github repository: %s previously disabled - will re-enabled... ", utils.StringValue(ghRepo.FullName))
-		log.WithFields(f).Debug(msg)
-		enabled := true
-
-		_, now := utils.CurrentTime()
-
-		v1Input := &v1Models.GithubRepositoryInput{
-			Enabled:                    &enabled,
-			RepositoryOrganizationName: input.GithubOrganizationName,
-			RepositoryProjectID:        input.ClaGroupID,
-			Note:                       fmt.Sprintf("re-enabling repository on %s.", now),
-		}
-
-		// Update Repo details in case of any changes
-		updatedRepository, updateErr := s.repo.UpdateGithubRepository(ctx, existingRepositoryModel.RepositoryID, v1Input)
-		if updateErr != nil {
-			return nil, updateErr
-		}
-		return updatedRepository, nil
-	}
-
-	if existingRepositoryModel != nil {
-		msg := fmt.Sprintf("GitHub repository already exists with repository name: %s", utils.StringValue(ghRepo.FullName))
-		log.WithFields(f).Warn(msg)
-		return nil, &utils.GitHubRepositoryExists{
-			Message: msg,
-		}
-	}
-
-	in := &v1Models.GithubRepositoryInput{
-		RepositoryExternalID:       input.RepositoryGithubID,
-		RepositoryName:             ghRepo.FullName,
-		RepositoryOrganizationName: input.GithubOrganizationName,
-		RepositoryProjectID:        input.ClaGroupID,
-		RepositoryType:             aws.String("github"),
-		RepositoryURL:              ghRepo.HTMLURL,
-	}
-	return s.repo.AddGithubRepository(ctx, externalProjectID, projectSFID, in)
+	return response, nil
 }
 
 func (s *service) EnableRepository(ctx context.Context, repositoryID string) error {

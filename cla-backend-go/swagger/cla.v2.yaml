@@ -1433,7 +1433,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/github-repository'
+            $ref: '#/definitions/list-github-repositories'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -3779,10 +3779,15 @@ definitions:
   github-repository-input:
     type: object
     required:
-      - repository_github_id
       - github_organization_name
       - cla_group_id
     properties:
+      repository_github_ids:
+        type: array
+        items:
+          description: the repository external identifier, such as the GitHub ID of the repo
+          type: string
+          example: '337730995'
       repository_github_id:
         type: string
         description: the repository external identifier, such as the GitHub ID of the repo

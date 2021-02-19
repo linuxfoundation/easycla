@@ -82,11 +82,15 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
 			f := logrus.Fields{
-				"functionName":   "GitHubRepositoriesAddProjectGithubRepositoryHandler",
-				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-				"authUser":       authUser.UserName,
-				"authEmail":      authUser.Email,
-				"projectSFID":    params.ProjectSFID,
+				"functionName":           "GitHubRepositoriesAddProjectGithubRepositoryHandler",
+				utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
+				"authUser":               authUser.UserName,
+				"authEmail":              authUser.Email,
+				"projectSFID":            params.ProjectSFID,
+				"claGroupID":             utils.StringValue(params.GithubRepositoryInput.ClaGroupID),
+				"githubOrganizationName": utils.StringValue(params.GithubRepositoryInput.GithubOrganizationName),
+				"repositoryGitHubID":     params.GithubRepositoryInput.RepositoryGithubID,
+				"repositoryGitHubIDs":    strings.Join(params.GithubRepositoryInput.RepositoryGithubIds, ","),
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
@@ -97,7 +101,17 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 					utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			result, err := service.AddGithubRepository(ctx, params.ProjectSFID, params.GithubRepositoryInput)
+			// If no repository GitHub ID values provided...
+			// RepositoryGithubID - provided by the older retool UI which provides only one value
+			// RepositoryGithubIds - provided by new PCC which passes multiple values
+			if params.GithubRepositoryInput.RepositoryGithubID == "" && len(params.GithubRepositoryInput.RepositoryGithubIds) == 0 {
+				msg := "missing repository GitHub ID value(s)"
+				log.WithFields(f).Warn(msg)
+				return github_repositories.NewAddProjectGithubRepositoryBadRequest().WithPayload(
+					utils.ErrorResponseBadRequest(reqID, msg))
+			}
+
+			results, err := service.AddGithubRepositories(ctx, params.ProjectSFID, params.GithubRepositoryInput)
 			if err != nil {
 				if _, ok := err.(*utils.GitHubRepositoryExists); ok {
 					msg := fmt.Sprintf("unable to add repository - repository already exists for projectSFID: %s", params.ProjectSFID)
@@ -111,23 +125,25 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			// Log the event
-			eventService.LogEvent(&events.LogEventArgs{
-				EventType:         events.RepositoryAdded,
-				ProjectID:         utils.StringValue(params.GithubRepositoryInput.ClaGroupID),
-				ExternalProjectID: params.ProjectSFID,
-				LfUsername:        authUser.UserName,
-				ClaGroupModel: &v1Models.ClaGroup{
-					ProjectExternalID: params.ProjectSFID,
+			// Log the events
+			for _, result := range results {
+				eventService.LogEvent(&events.LogEventArgs{
+					EventType:         events.RepositoryAdded,
 					ProjectID:         utils.StringValue(params.GithubRepositoryInput.ClaGroupID),
-				},
-				EventData: &events.RepositoryAddedEventData{
-					RepositoryName: result.RepositoryName,
-				},
-			})
+					ExternalProjectID: params.ProjectSFID,
+					LfUsername:        authUser.UserName,
+					ClaGroupModel: &v1Models.ClaGroup{
+						ProjectExternalID: params.ProjectSFID,
+						ProjectID:         utils.StringValue(params.GithubRepositoryInput.ClaGroupID),
+					},
+					EventData: &events.RepositoryAddedEventData{
+						RepositoryName: result.RepositoryName,
+					},
+				})
+			}
 
-			response := &models.GithubRepository{}
-			err = copier.Copy(response, result)
+			var v2ResponseList []*models.GithubRepository
+			err = copier.Copy(&v2ResponseList, results)
 			if err != nil {
 				msg := fmt.Sprintf("problem converting response for projectSFID: %s", params.ProjectSFID)
 				log.WithFields(f).WithError(err).Warn(msg)
@@ -135,7 +151,10 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 					utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
 			}
 
-			return github_repositories.NewAddProjectGithubRepositoryOK().WithPayload(response)
+			v2Response := &models.ListGithubRepositories{}
+			v2Response.List = v2ResponseList
+
+			return github_repositories.NewAddProjectGithubRepositoryOK().WithPayload(v2Response)
 		})
 
 	api.GithubRepositoriesDeleteProjectGithubRepositoryHandler = github_repositories.DeleteProjectGithubRepositoryHandlerFunc(
