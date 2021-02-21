@@ -1,20 +1,22 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
 
-package emails
+package tests
 
 import (
 	"testing"
+
+	"github.com/communitybridge/easycla/cla-backend-go/emails"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
-	params := V2ContributorApprovalRequestTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+	params := emails.V2ContributorApprovalRequestTemplateParams{
+		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProject"},
+			Project:       emails.CLAProjectParams{ExternalProjectName: "JohnsProject"},
 			CLAGroupName:  "JohnsCLAGroupName",
 			CompanyName:   "JohnsCompany",
 		},
@@ -22,7 +24,7 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 		CorporateConsoleV2URL: "http://CorporateConsoleV2URL.com",
 	}
 
-	result, err := RenderTemplate(utils.V1, V2ContributorApprovalRequestTemplateName, V2ContributorApprovalRequestTemplate,
+	result, err := emails.RenderTemplate(utils.V1, emails.V2ContributorApprovalRequestTemplateName, emails.V2ContributorApprovalRequestTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
@@ -33,7 +35,7 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 
 	params.SigningEntityName = "SigningEntityNameValue"
 
-	result, err = RenderTemplate(utils.V1, V2ContributorApprovalRequestTemplateName, V2ContributorApprovalRequestTemplate,
+	result, err = emails.RenderTemplate(utils.V1, emails.V2ContributorApprovalRequestTemplateName, emails.V2ContributorApprovalRequestTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
@@ -44,10 +46,10 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 }
 
 func TestV2OrgAdminTemplate(t *testing.T) {
-	params := V2OrgAdminTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+	params := emails.V2OrgAdminTemplateParams{
+		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 			RecipientName: "JohnsClaManager",
-			Project: CLAProjectParams{
+			Project: emails.CLAProjectParams{
 				ExternalProjectName: "JohnsProject",
 				ProjectSFID:         "ProjectSFIDValue",
 				FoundationSFID:      "FoundationSFIDValue",
@@ -61,7 +63,7 @@ func TestV2OrgAdminTemplate(t *testing.T) {
 		CorporateConsole: "http://CorporateConsole.com",
 	}
 
-	result, err := RenderTemplate(utils.V1, V2OrgAdminTemplateName, V2OrgAdminTemplate,
+	result, err := emails.RenderTemplate(utils.V1, emails.V2OrgAdminTemplateName, emails.V2OrgAdminTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
@@ -74,14 +76,14 @@ func TestV2OrgAdminTemplate(t *testing.T) {
 }
 
 func TestV2ContributorToOrgAdminTemplate(t *testing.T) {
-	params := V2ContributorToOrgAdminTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+	params := emails.V2ContributorToOrgAdminTemplateParams{
+		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProject"},
+			Project:       emails.CLAProjectParams{ExternalProjectName: "JohnsProject"},
 			CLAGroupName:  "JohnsCLAGroupName",
 			CompanyName:   "JohnsCompany",
 		},
-		Projects: []CLAProjectParams{
+		Projects: []emails.CLAProjectParams{
 			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
 			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
 		},
@@ -89,7 +91,7 @@ func TestV2ContributorToOrgAdminTemplate(t *testing.T) {
 		CorporateConsole: "http://CorporateConsole.com",
 	}
 
-	result, err := RenderTemplate(utils.V1, V2ContributorToOrgAdminTemplateName, V2ContributorToOrgAdminTemplate,
+	result, err := emails.RenderTemplate(utils.V1, emails.V2ContributorToOrgAdminTemplateName, emails.V2ContributorToOrgAdminTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
@@ -101,10 +103,10 @@ func TestV2ContributorToOrgAdminTemplate(t *testing.T) {
 }
 
 func TestV2CLAManagerDesigneeCorporateTemplate(t *testing.T) {
-	params := V2CLAManagerDesigneeCorporateTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+	params := emails.V2CLAManagerDesigneeCorporateTemplateParams{
+		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 			RecipientName: "JohnsClaManager",
-			Project: CLAProjectParams{
+			Project: emails.CLAProjectParams{
 				ExternalProjectName: "JohnsProject",
 				FoundationSFID:      "FoundationSFIDValue",
 				ProjectSFID:         "ProjectSFIDValue",
@@ -118,7 +120,7 @@ func TestV2CLAManagerDesigneeCorporateTemplate(t *testing.T) {
 		CorporateConsole: "http://CorporateConsole.com",
 	}
 
-	result, err := RenderTemplate(utils.V1, V2CLAManagerDesigneeCorporateTemplateName, V2CLAManagerDesigneeCorporateTemplate,
+	result, err := emails.RenderTemplate(utils.V1, emails.V2CLAManagerDesigneeCorporateTemplateName, emails.V2CLAManagerDesigneeCorporateTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
@@ -131,9 +133,9 @@ func TestV2CLAManagerDesigneeCorporateTemplate(t *testing.T) {
 }
 
 func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
-	params := V2ToCLAManagerDesigneeTemplateParams{
+	params := emails.V2ToCLAManagerDesigneeTemplateParams{
 		RecipientName: "JohnsClaManager",
-		Projects: []CLAProjectParams{
+		Projects: []emails.CLAProjectParams{
 			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
 			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
 		},
@@ -142,7 +144,7 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 		CorporateConsole: "http://CorporateConsole.com",
 	}
 
-	result, err := RenderTemplate(utils.V1, V2ToCLAManagerDesigneeTemplateName, V2ToCLAManagerDesigneeTemplate,
+	result, err := emails.RenderTemplate(utils.V1, emails.V2ToCLAManagerDesigneeTemplateName, emails.V2ToCLAManagerDesigneeTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
@@ -151,10 +153,10 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 	assert.Contains(t, result, "Kindly login to this portal http://CorporateConsole.com")
 	assert.Contains(t, result, `CLA for one of the project(s) <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>,<a href="http://CorporateConsole.com/foundation/FoundationSFID2/project/ProjectSFID2/cla" target="_blank">Project2</a>`)
 
-	params.Projects = []CLAProjectParams{
+	params.Projects = []emails.CLAProjectParams{
 		{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
 	}
-	result, err = RenderTemplate(utils.V1, V2ToCLAManagerDesigneeTemplateName, V2ToCLAManagerDesigneeTemplate,
+	result, err = emails.RenderTemplate(utils.V1, emails.V2ToCLAManagerDesigneeTemplateName, emails.V2ToCLAManagerDesigneeTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
@@ -166,10 +168,10 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 }
 
 func TestV2DesigneeToUserWithNoLFIDTemplate(t *testing.T) {
-	params := V2DesigneeToUserWithNoLFIDTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+	params := emails.V2DesigneeToUserWithNoLFIDTemplateParams{
+		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 			RecipientName: "JohnsClaManager",
-			Project: CLAProjectParams{
+			Project: emails.CLAProjectParams{
 				ExternalProjectName:     "JohnsProjectExternal",
 				CorporateConsole:        "https://corporate.dev.lfcla.com",
 				FoundationSFID:          "FoundationSFIDValue",
@@ -183,7 +185,7 @@ func TestV2DesigneeToUserWithNoLFIDTemplate(t *testing.T) {
 		CorporateConsole:  "https://corporate.dev.lfcla.com",
 	}
 
-	result, err := RenderTemplate(utils.V1, V2DesigneeToUserWithNoLFIDTemplateName, V2DesigneeToUserWithNoLFIDTemplate,
+	result, err := emails.RenderTemplate(utils.V1, emails.V2DesigneeToUserWithNoLFIDTemplateName, emails.V2DesigneeToUserWithNoLFIDTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager,")
@@ -193,10 +195,10 @@ func TestV2DesigneeToUserWithNoLFIDTemplate(t *testing.T) {
 }
 
 func TestV2CLAManagerToUserWithNoLFIDTemplate(t *testing.T) {
-	params := V2CLAManagerToUserWithNoLFIDTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+	params := emails.V2CLAManagerToUserWithNoLFIDTemplateParams{
+		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
+			Project:       emails.CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
 			CLAGroupName:  "JohnsCLAGroupName",
 			CompanyName:   "JohnsCompany",
 		},
@@ -204,7 +206,7 @@ func TestV2CLAManagerToUserWithNoLFIDTemplate(t *testing.T) {
 		RequesterEmail:    "RequesterEmailValue",
 	}
 
-	result, err := RenderTemplate(utils.V1, V2CLAManagerToUserWithNoLFIDTemplateName, V2CLAManagerToUserWithNoLFIDTemplate,
+	result, err := emails.RenderTemplate(utils.V1, emails.V2CLAManagerToUserWithNoLFIDTemplateName, emails.V2CLAManagerToUserWithNoLFIDTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
