@@ -35,7 +35,7 @@ type IService interface {
 	PendingRequest(companyID, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 	DeleteRequest(requestID string) error
 
-	AddClaManager(ctx context.Context, companyID string, claGroupID string, LFID string) (*models.Signature, error)
+	AddClaManager(ctx context.Context, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error)
 	RemoveClaManager(ctx context.Context, companyID string, claGroupID string, LFID string) (*models.Signature, error)
 }
 
@@ -187,7 +187,7 @@ func (s service) DeleteRequest(requestID string) error {
 }
 
 // AddClaManager Adds LFID to Signature Access Control List list
-func (s service) AddClaManager(ctx context.Context, companyID string, claGroupID string, LFID string) (*models.Signature, error) {
+func (s service) AddClaManager(ctx context.Context, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error) {
 
 	userModel, userErr := s.usersService.GetUserByLFUserName(LFID)
 	if userErr != nil || userModel == nil {
@@ -236,7 +236,7 @@ func (s service) AddClaManager(ctx context.Context, companyID string, claGroupID
 			manager.Username, manager.LfEmail)
 	}
 	// Notify the added user
-	sendClaManagerAddedEmailToUser(companyModel, claGroupModel, userModel.Username, userModel.LfEmail)
+	sendClaManagerAddedEmailToUser(companyModel, claGroupModel, userModel.Username, userModel.LfEmail, projectSFName)
 
 	// Send an event
 	s.eventsService.LogEvent(&events.LogEventArgs{
@@ -354,9 +354,14 @@ func (s service) RemoveClaManager(ctx context.Context, companyID string, claGrou
 	return updatedSignature, nil
 }
 
-func sendClaManagerAddedEmailToUser(companyModel *models.Company, claGroupModel *models.ClaGroup, requesterName, requesterEmail string) {
+func sendClaManagerAddedEmailToUser(companyModel *models.Company, claGroupModel *models.ClaGroup, requesterName, requesterEmail, projectSFName string) {
 	companyName := companyModel.CompanyName
 	projectName := claGroupModel.ProjectName
+	templateName := emails.ClaManagerAddedEToUserTemplate
+	if claGroupModel.Version == "v2" {
+		templateName = emails.V2ClaManagerAddedEToUserTemplate
+		projectName = projectSFName
+	}
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Added as CLA Manager for Project :%s", projectName)
@@ -364,12 +369,13 @@ func sendClaManagerAddedEmailToUser(companyModel *models.Company, claGroupModel 
 	body, err := emails.RenderTemplate(
 		claGroupModel.Version,
 		emails.ClaManagerAddedEToUserTemplateName,
-		emails.ClaManagerAddedEToUserTemplate,
+		templateName,
 		emails.ClaManagerAddedEToUserTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: requesterName,
 				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
 				CompanyName:   companyName,
+				CLAGroupName:  claGroupModel.ProjectName,
 			},
 			CorporateURL: utils.GetCorporateURL(claGroupModel.Version == utils.V2),
 		},

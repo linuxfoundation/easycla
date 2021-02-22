@@ -27,11 +27,10 @@ const (
 	V2ContributorApprovalRequestTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the organization {{.CompanyName}}.</p>
-<p>The following contributor would like to submit a contribution to the {{if .SigningEntityName}}{{.SigningEntityName}}{{else}}{{.CompanyName}}{{end}} CLA Group {{.CLAGroupName}}
-and is requesting to be approved as a contributor for your organization: </p>
-<p>{{.CLAGroupName}} - {{.UserDetails}}</p>
+<p>The following contributor would like to submit a contribution to the CLA Group {{.CLAGroupName}} and is requesting to be approved as a contributor for your organization: </p>
+<p>{{.UserDetails}}</p>
 <p> Approval can be done at {{.CorporateConsoleV2URL}} </p>
-<p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their code contribution.</p>
+<p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their contribution.</p>
 `
 )
 
@@ -49,8 +48,8 @@ const (
 	// V2OrgAdminTemplate is email template for
 	V2OrgAdminTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the CLA setup and signing process for {{.CompanyName}}.</p>
-<p> {{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA for {{.CompanyName}} in support of the following project: </p>
+<p>This is a notification email from EasyCLA regarding the CLA setup and signing process for the organization {{.CompanyName}}.</p>
+<p> {{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA in support of the following project(s): </p>
 <ul>
 	<li>{{.Project.ExternalProjectName}}</li>
 </ul>
@@ -92,11 +91,11 @@ const (
 	V2ContributorToOrgAdminTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the project(s) {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.ExternalProjectName}}{{end}}</p>
-<p>The following contributor is requesting to sign CLA for organization: {{.CompanyName}}</p>
+<p>The following contributor is requesting to sign the CLA for the organization: {{.CompanyName}}</p>
 <p>{{.UserDetails}}</p>
 <p>Before the user contribution can be accepted, your organization must sign a CLA.
-<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for any of the projects {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}.</p>
-<p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their code contribution.</p>
+<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}.</p>
+<p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their contribution.</p>
 `
 )
 
@@ -128,8 +127,8 @@ const (
 	// V2CLAManagerDesigneeCorporateTemplate is email template for
 	V2CLAManagerDesigneeCorporateTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the CLA setup and signing process for {{.CompanyName}}.</p>
-<p> {{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA for {{.CompanyName}} in support of the following projects: </p>
+<p>This is a notification email from EasyCLA regarding the CLA setup and signing process for the organization {{.CompanyName}}.</p>
+<p> {{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA for the organization {{.CompanyName}} in support of the following project(s): </p>
 <ul>
 	<li>{{.Project.ExternalProjectName}}</li>
 </ul>
@@ -164,12 +163,13 @@ type V2ToCLAManagerDesigneeTemplateParams struct {
 	ContributorID    string
 	ContributorName  string
 	CorporateConsole string
+	CompanyName      string
 }
 
-// GetProjectsOrProject returns the single Project or comma saparated projects if more than one
+// GetProjectsOrProject returns the single Project or comma separated projects if more than one
 func (p V2ToCLAManagerDesigneeTemplateParams) GetProjectsOrProject() string {
 	if len(p.Projects) == 1 {
-		return " " + p.Projects[0].ExternalProjectName
+		return p.Projects[0].ExternalProjectName
 	}
 
 	var projectNames []string
@@ -177,7 +177,7 @@ func (p V2ToCLAManagerDesigneeTemplateParams) GetProjectsOrProject() string {
 		projectNames = append(projectNames, p.ExternalProjectName)
 	}
 
-	return "s " + strings.Join(projectNames, ", ")
+	return strings.Join(projectNames, ", ")
 }
 
 const (
@@ -186,12 +186,12 @@ const (
 	// V2ToCLAManagerDesigneeTemplate is email template for
 	V2ToCLAManagerDesigneeTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project{{.GetProjectsOrProject}}.</p>
-<p>The following contributor is requesting to sign CLA for organization: </p>
+<p>This is a notification email from EasyCLA regarding the project(s): {{.GetProjectsOrProject}}.</p>
+<p>The following contributor is requesting to sign the CLA for the organization {{.CompanyName}}: </p>
 <p> {{.ContributorID}} ({{.ContributorName}}) </p>
 <p>Before the user contribution can be accepted, your organization must sign a CLA.
-<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for one of the project(s) {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}. </p>
-<p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they may complete the contribution process.</p>
+<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for one of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}. </p>
+<p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they can complete the contribution process.</p>
 `
 )
 
@@ -226,10 +226,10 @@ const (
 <p>This is a notification email from EasyCLA regarding the project {{.GetProjectNameOrFoundation}}.</p>
 <p>The following contributor would like to contribute to {{.GetProjectNameOrFoundation}} on behalf of your organization: {{.CompanyName}}.</p>
 <p>{{.RequesterUserName}} ({{.RequesterEmail}})</p>
-<p>Before the user's contribution can be accepted, your organization must sign a CLA.</p>
+<p>Before the user contribution can be accepted, your organization must sign a CLA.</p>
 <p>Please click on <a href="USERACCEPTLINK">Accept Invite</a> to create your LF Login.</p>
 <p>After login, you will be redirected to this portal {{.CorporateConsole}} where you can sign the CLA for the project {{.Project.GetProjectFullURL}}.</p>
-<p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they may complete the contribution process.</p>
+<p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they can complete the contribution process.</p>
 `
 )
 
@@ -259,9 +259,9 @@ const (
 	// V2CLAManagerToUserWithNoLFIDTemplate is email template
 	V2CLAManagerToUserWithNoLFIDTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the Project {{.GetProjectNameOrFoundation}} and CLA Group {{.CLAGroupName}} in the EasyCLA system.</p>
-<p>User {{.RequesterUserName}} ({{.RequesterEmail}}) was trying to add you as a CLA Manager for Project {{.Project.ExternalProjectName}} but was unable to identify your account details in
-the EasyCLA system. In order to become a CLA Manager for Project {{.Project.ExternalProjectName}}, you will need to accept invite below.
+<p>This is a notification email from EasyCLA regarding the Project {{.GetProjectNameOrFoundation}} and CLA Group {{.CLAGroupName}}.</p>
+<p>User {{.RequesterUserName}} ({{.RequesterEmail}}) was trying to add you as a CLA Manager for the Project {{.Project.ExternalProjectName}} but was unable to identify your account details in
+the EasyCLA system. In order to become a CLA Manager for the Project {{.Project.ExternalProjectName}}, you will need to accept the invite below.
 Once complete, notify the user {{.RequesterUserName}} and they will be able to add you as a CLA Manager.</p>
 <p> <a href="USERACCEPTLINK">Accept Invite</a> </p>
 `

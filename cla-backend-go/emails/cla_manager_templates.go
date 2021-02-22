@@ -165,10 +165,20 @@ const (
 	// ClaManagerAddedEToUserTemplate is email template for
 	ClaManagerAddedEToUserTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}}.</p>
-<p>You have been added as a CLA Manager from {{.CompanyName}} for the project {{.Project.ExternalProjectName}}.  This means that you can now maintain the
+<p>This is a notification email from EasyCLA regarding the project {{.CLAGroupName}}.</p>
+<p>You have been added as a CLA Manager from {{.CompanyName}} for the project {{.CLAGroupName}}.  This means that you can now maintain the
 list of employees allowed to contribute to {{.Project.ExternalProjectName}} on behalf of your company, as well as view and manage the list of your
-company’s CLA Managers for {{.Project.ExternalProjectName}}.</p>
+company’s CLA Managers for {{.CLAGroupName}}.</p>
+<p> To get started, please log into the <a href="{{.CorporateURL}}" target="_blank">EasyCLA Corporate Console</a>, and select your
+company and then the project {{.CLAGroupName}}. From here you will be able to edit the list of approved employees and CLA Managers.</p>
+`
+	//V2ClaManagerAddedEToUserTemplate email template for cla manager v2
+	V2ClaManagerAddedEToUserTemplate = `
+<p>Hello {{.RecipientName}},</p>
+<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}} and CLA Group {{.CLAGroupName}}.</p>
+<p>You have been added as a CLA Manager for the organization {{.CompanyName}} and the project {{.Project.ExternalProjectName}}.  This means that you can now maintain the
+list of employees allowed to contribute to the project {{.Project.ExternalProjectName}} on behalf of your company, as well as view and manage the list of your
+company’s CLA Managers for the CLA Group {{.CLAGroupName}}.</p>
 <p> To get started, please log into the <a href="{{.CorporateURL}}" target="_blank">EasyCLA Corporate Console</a>, and select your
 company and then the project {{.Project.ExternalProjectName}}. From here you will be able to edit the list of approved employees and CLA Managers.</p>
 `
