@@ -683,7 +683,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		}
 
 		// Audit Event sent from service upon success
-		signature, addErr := service.AddClaManager(ctx, params.CompanyID, params.ProjectID, params.Body.UserLFID)
+		signature, addErr := service.AddClaManager(ctx, params.CompanyID, params.ProjectID, params.Body.UserLFID, "")
 		if addErr != nil {
 			msg := buildErrorMessageAddManager("Add CLA Manager - Service Error", params, addErr)
 			log.Warn(msg)
