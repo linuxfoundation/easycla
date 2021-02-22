@@ -23,12 +23,19 @@ func (s *service) ProcessCLAGroupUpdateEvents(event events.DynamoDBEventRecord) 
 
 	log.WithFields(f).Debug("processing event")
 
-	var updatedProject project.DBProjectModel
+	var oldProject, updatedProject project.DBProjectModel
 	err := unmarshalStreamImage(event.Change.NewImage, &updatedProject)
 	if err != nil {
-		log.WithFields(f).Warnf("unable to unmarshal project model, error: %+v", err)
+		log.WithFields(f).Warnf("unable to unmarshal new project model, error: %+v", err)
 		return err
 	}
+
+	err = unmarshalStreamImage(event.Change.OldImage, &oldProject)
+	if err != nil {
+		log.WithFields(f).Warnf("unable to unmarshal old project model, error: %+v", err)
+		return err
+	}
+
 	log.WithFields(f).Debugf("decoded project record from stream: %+v", updatedProject)
 
 	// Update any DB records that have CLA Approval Requests from Contributors - need to update Name, etc. if that has changed
@@ -44,13 +51,25 @@ func (s *service) ProcessCLAGroupUpdateEvents(event events.DynamoDBEventRecord) 
 		log.WithFields(f).Warnf("unable to update cla manager request with updated CLA Group information, error: %+v", approvalListRequestErr)
 	}
 
+	if oldProject.ProjectName != updatedProject.ProjectName {
+		claProjects, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(updatedProject.ProjectID)
+		if err != nil {
+			log.WithFields(f).Warnf("unabled to update cla group name : %v", err)
+			return nil
+		}
+
+		for _, claProject := range claProjects {
+			if err := s.projectsClaGroupRepo.UpdateClaGroupName(claProject.ProjectSFID, updatedProject.ProjectName); err != nil {
+				log.WithFields(f).Warnf("updating cla project : %s with name : %s failed : %v", claProject.ProjectSFID, updatedProject.ProjectName, err)
+				return nil
+			}
+		}
+		log.WithFields(f).Infof("updating related cla projects with name : %s", updatedProject.ProjectName)
+	}
+
 	// TODO - update other tables:
 	//  cla-%s-metrics,
-	//  cla-%s-projects-cla-groups,
 	//  cla-%s-gerrit-instances,
-	// possibly add/update cla_group_name/project_name to other tables:
-	//  cla-%-repositories
-	//  cla-%-signatures
 
 	return nil
 }

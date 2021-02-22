@@ -54,6 +54,7 @@ type Repository interface {
 	IsExistingFoundationLevelCLAGroup(foundationSFID string) (bool, error)
 	IsAssociated(projectSFID string, claGroupID string) (bool, error)
 	UpdateRepositoriesCount(projectSFID string, diff int64, reset bool) error
+	UpdateClaGroupName(projectSFID string, claGroupName string) error
 }
 
 type repo struct {
@@ -451,6 +452,60 @@ func (repo *repo) UpdateRepositoriesCount(projectSFID string, diff int64, reset 
 
 	if updateErr != nil {
 		log.WithFields(f).WithError(updateErr).Warn("update repositories count failed")
+	}
+
+	return updateErr
+}
+
+// UpdateClaGroupName updates cla group name for given projectSFID
+func (repo *repo) UpdateClaGroupName(projectSFID string, claGroupName string) error {
+	f := logrus.Fields{
+		"functionName": "project_cla_groups.repository.UpdateClaGroupName",
+		"projectSFID":  projectSFID,
+		"claGroupName": claGroupName,
+	}
+
+	// Check to see if we have an existing record
+	existingProjectCLAGroupMapping, err := repo.GetClaGroupIDForProject(projectSFID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup existing project cla group mapping")
+		return err
+	}
+	if existingProjectCLAGroupMapping == nil {
+		log.WithFields(f).Warn("unable to lookup existing project cla group mapping - response is empty")
+		return &utils.ProjectCLAGroupMappingNotFound{
+			ProjectSFID: projectSFID,
+			CLAGroupID:  "",
+			Err:         nil,
+		}
+	}
+
+	expressionAttributeNames := map[string]*string{}
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
+	var updateExpression string
+
+	// update repositories_count based on reset flag
+	expressionAttributeNames["#N"] = aws.String("cla_group_name")
+	expressionAttributeValues[":n"] = &dynamodb.AttributeValue{S: &claGroupName}
+	updateExpression = "SET #N = :n"
+
+	_, now := utils.CurrentTime()
+	expressionAttributeNames["#M"] = aws.String("date_modified")
+	expressionAttributeValues[":m"] = &dynamodb.AttributeValue{S: aws.String(now)}
+	updateExpression = updateExpression + ", #M = :m"
+
+	_, updateErr := repo.dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
+		UpdateExpression:          aws.String(updateExpression),
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		Key: map[string]*dynamodb.AttributeValue{
+			"project_sfid": {S: aws.String(projectSFID)},
+		},
+		TableName: aws.String(repo.tableName),
+	})
+
+	if updateErr != nil {
+		log.WithFields(f).WithError(updateErr).Warn("update cla group name failed")
 	}
 
 	return updateErr
