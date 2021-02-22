@@ -390,7 +390,7 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 	var foundationName = sfProjectModelDetails.Name
 
 	// If it's a project...
-	if sfProjectModelDetails.ProjectType == utils.ProjectTypeProject || (parentDetails != nil && (parentDetails.ProjectType == utils.ProjectTypeProjectGroup && sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup)) {
+	if utils.IsProjectCategory(sfProjectModelDetails, parentDetails) {
 		// Since this is a project and not a foundation, we'll want to set he parent foundation ID and name (which is
 		// our parent in this case)
 		log.WithFields(f).Debug("found 'project' in platform project service.")
@@ -433,7 +433,7 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 			v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1CLAGroupData)
 		}
 
-	} else if (parentDetails != nil && (parentDetails.ProjectType == utils.ProjectTypeProjectGroup && sfProjectModelDetails.ProjectType != utils.ProjectTypeProjectGroup)) || (sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup) {
+	} else if sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup {
 		log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
 		projectCLAGroups, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(projectOrFoundationSFID)
 		if lookupErr != nil {

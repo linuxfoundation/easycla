@@ -23,3 +23,8 @@ func IsProjectHaveChildren(project *models.ProjectOutputDetailed) bool {
 	// a project model with a project list means it has children
 	return len(project.Projects) > 0
 }
+
+// IsProjectCategory determines if a given project is categorised as cla project sfid
+func IsProjectCategory(project *models.ProjectOutputDetailed, parent *models.ProjectOutputDetailed) bool {
+	return project.ProjectType == ProjectTypeProject || (!IsProjectHasRootParent(project) && parent.ProjectType == ProjectTypeProjectGroup && project.ProjectType == ProjectTypeProjectGroup)
+}

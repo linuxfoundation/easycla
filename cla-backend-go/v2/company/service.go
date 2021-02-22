@@ -1165,7 +1165,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 	var allProjectMapping []*projects_cla_groups.ProjectClaGroup
 
 	// Determine query index (foundation or project)
-	if parentProjectDetails != nil && (parentProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup) {
+	if !utils.IsProjectCategory(projectDetails, parentProjectDetails) {
 		// get all projects for all cla group under foundation
 		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForFoundation(projectSFID)
 		if err != nil {

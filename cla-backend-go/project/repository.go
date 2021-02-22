@@ -354,6 +354,8 @@ func (repo *repo) GetClaGroupsByFoundationSFID(ctx context.Context, foundationSF
 		}
 	}
 
+	log.WithFields(f).Debugf("foundation projects!: %#v ", projects)
+
 	return &models.ClaGroups{
 		ResultCount: int64(len(projects)),
 		Projects:    projects,
