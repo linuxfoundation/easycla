@@ -433,7 +433,7 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 			v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1CLAGroupData)
 		}
 
-	} else if parentDetails != nil && (parentDetails.ProjectType == utils.ProjectTypeProjectGroup && sfProjectModelDetails.ProjectType != utils.ProjectTypeProjectGroup) {
+	} else if (parentDetails != nil && (parentDetails.ProjectType == utils.ProjectTypeProjectGroup && sfProjectModelDetails.ProjectType != utils.ProjectTypeProjectGroup)) || (sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup) {
 		log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
 		projectCLAGroups, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(projectOrFoundationSFID)
 		if lookupErr != nil {
