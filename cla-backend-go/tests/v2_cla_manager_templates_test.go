@@ -95,10 +95,10 @@ func TestV2ContributorToOrgAdminTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project(s) Project1,Project2")
-	assert.Contains(t, result, "sign the CLA for the organization: JohnsCompany")
+	assert.Contains(t, result, "would like to submit a contribution to Project1,Project2")
+	assert.Contains(t, result, "your organization must sign a CLA.")
 	assert.Contains(t, result, "<p>UserDetailsValue</p>")
-	assert.Contains(t, result, "Kindly login to this portal http://CorporateConsole.com")
+	assert.Contains(t, result, "Please notify the contributor once they are added so that they may complete the contribution process")
 	assert.Contains(t, result, `CLA for any of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>,<a href="http://CorporateConsole.com/foundation/FoundationSFID2/project/ProjectSFID2/cla" target="_blank">Project2</a>`)
 }
 
