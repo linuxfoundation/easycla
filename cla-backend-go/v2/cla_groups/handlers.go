@@ -28,6 +28,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	v2ProjectServiceClient "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/client/project"
+	v2ProjectServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/models"
 	"github.com/go-openapi/runtime/middleware"
 )
 
@@ -281,7 +282,20 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 					}
 					return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFoundWithError(reqID, msg, projectErr))
 				}
-				if project.ProjectType == utils.ProjectTypeProjectGroup {
+				var parentProject *v2ProjectServiceModels.ProjectOutputDetailed
+				// Handle the ONAP edge case
+				if project.Parent != "" {
+					parentProject, projectErr = psc.GetProject(project.Parent)
+					if parentProject == nil || projectErr != nil {
+						msg := fmt.Sprintf("Failed to get parent: %s", project.Parent)
+						log.WithFields(f).Warnf(msg)
+						return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload((&models.ErrorResponse{
+							Code:    "400",
+							Message: msg,
+						}))
+					}
+				}
+				if (project.Parent != "" && !utils.IsProjectCategory(project, parentProject)) || (!utils.IsProjectHasRootParent(project) && project.ProjectType == utils.ProjectTypeProjectGroup) {
 					msg := fmt.Sprintf("Unable to enroll salesforce foundation project: %s in project level cla-group.", projectSFID)
 					return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 				}
