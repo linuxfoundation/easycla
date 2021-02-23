@@ -90,12 +90,11 @@ const (
 	// V2ContributorToOrgAdminTemplate is email template for
 	V2ContributorToOrgAdminTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project(s) {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.ExternalProjectName}}{{end}}</p>
-<p>The following contributor is requesting to sign the CLA for the organization: {{.CompanyName}}</p>
+<p>The following contributor would like to submit a contribution to {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.ExternalProjectName}}{{end}} and is requesting to be added to the approval list as a contributor for your organization:</p>
 <p>{{.UserDetails}}</p>
-<p>Before the user contribution can be accepted, your organization must sign a CLA.
-<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}.</p>
-<p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their contribution.</p>
+<p>Before the contribution can be accepted, your organization must sign a CLA. Either you or someone whom you designate from your company can login to this portal and sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}.</p>
+<p>Please notify the contributor once they are added so that they may complete the contribution process.</p>
+
 `
 )
 
