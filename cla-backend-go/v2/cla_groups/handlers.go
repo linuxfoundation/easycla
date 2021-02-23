@@ -295,7 +295,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 						}))
 					}
 				}
-				if (project.Parent != "" && !utils.IsProjectCategory(project, parentProject)) || (!utils.IsProjectHasRootParent(project) && project.ProjectType == utils.ProjectTypeProjectGroup) {
+				if (project.Parent != "" && !utils.IsProjectCategory(project, parentProject)) || (utils.IsProjectHasRootParent(project) && project.ProjectType == utils.ProjectTypeProjectGroup) {
 					msg := fmt.Sprintf("Unable to enroll salesforce foundation project: %s in project level cla-group.", projectSFID)
 					return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 				}
