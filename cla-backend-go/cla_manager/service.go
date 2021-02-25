@@ -308,6 +308,13 @@ func (s service) RemoveClaManager(ctx context.Context, companyID string, claGrou
 		return nil, sigErr
 	}
 
+	if len(sigModel.SignatureACL) <= 1 {
+		// Can't delete the only remaining CLA Manager....
+		return nil, &utils.CLAManagerError{
+			Message: "unable to remove the only remaining CLA Manager - signed CLAs must have at least one CLA Manager",
+		}
+	}
+
 	// Update the signature ACL
 	updatedSignature, aclErr := s.sigService.RemoveCLAManager(ctx, sigModel.SignatureID, LFID)
 	if aclErr != nil || updatedSignature == nil {

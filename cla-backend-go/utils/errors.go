@@ -323,3 +323,27 @@ func (e *GitHubRepositoryExists) Error() string {
 func (e *GitHubRepositoryExists) Unwrap() error {
 	return e.Err
 }
+
+// CLAManagerError is an error model for when a CLA Manager error occurs
+type CLAManagerError struct {
+	Message string
+	Err     error
+}
+
+// Error is an error string function for the CLAManagerError model
+func (e *CLAManagerError) Error() string {
+	msg := "CLA Manager Error"
+	if e.Message != "" {
+		msg = e.Message
+	}
+	if e.Err != nil {
+		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())
+	}
+
+	return strings.TrimSpace(msg)
+}
+
+// Unwrap method returns its contained error
+func (e *CLAManagerError) Unwrap() error {
+	return e.Err
+}
