@@ -372,12 +372,20 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"companyName":    params.CompanyName,
 			}
-			// Anyone can query for a company by name
 
-			log.WithFields(f).Debug("loading company by name")
+			// Anyone can query for a company by name - no permissions checks
+
+			// Weird - sometimes the UI calls us with the company name of "null"
+			if params.CompanyName == "" || params.CompanyName == "null" {
+				return company.NewGetCompanyByNameBadRequest().
+					WithXRequestID(reqID).
+					WithPayload(utils.ErrorResponseBadRequest(reqID, "company name input parameter missing or valid"))
+			}
+
+			log.WithFields(f).Debugf("loading company by name: '%s'", params.CompanyName)
 			companyModel, err := service.GetCompanyByName(ctx, params.CompanyName)
 			if err != nil || companyModel == nil {
-				log.WithFields(f).Warn("unable to lookup company by name in local database. trying organization service...")
+				log.WithFields(f).Warnf("unable to lookup company by name '%s' in local database. trying organization service...", params.CompanyName)
 				osClient := organization_service.GetClient()
 				orgModels, orgLookupErr := osClient.SearchOrganization(ctx, params.CompanyName, "", "")
 				if orgLookupErr != nil || len(orgModels) == 0 {
@@ -387,17 +395,19 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				}
 
 				log.WithFields(f).Debugf("found company: '%s' in the organization service - creating local record...", params.CompanyName)
-				companyModels, companyCreateErr := service.CreateCompanyFromSFModel(ctx, orgModels[0])
-				if companyCreateErr != nil || companyModels == nil {
+				companyModelOutput, companyCreateErr := service.CreateCompanyFromSFModel(ctx, orgModels[0])
+				if companyCreateErr != nil || companyModelOutput == nil {
 					msg := fmt.Sprintf("unable to create company '%s' from salesforce record", params.CompanyName)
 					log.WithFields(f).WithError(err).Warn(msg)
 					return company.NewGetCompanyByNameInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, companyCreateErr))
 				}
 
-				log.WithFields(f).Debugf("loading company: %s by name after creation...", params.CompanyName)
-				companyModel, err = service.GetCompanyByName(ctx, params.CompanyName)
+				// Note: company name may have been swapped with actual value from SF or Clearbit authority - so use it below...
+
+				log.WithFields(f).Debugf("loading company: %s by name after creation...", companyModelOutput.CompanyName)
+				companyModel, err = service.GetCompanyByName(ctx, companyModelOutput.CompanyName)
 				if err != nil {
-					msg := fmt.Sprintf("unable to locate company '%s' after creating...", params.CompanyName)
+					msg := fmt.Sprintf("unable to locate company '%s' after creating...", companyModelOutput.CompanyName)
 					log.WithFields(f).WithError(err).Warn(msg)
 					return company.NewGetCompanyByNameNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
 				}

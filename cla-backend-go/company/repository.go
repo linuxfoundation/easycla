@@ -1217,14 +1217,31 @@ func (repo repository) UpdateCompanyAccessList(ctx context.Context, companyID st
 // CreateCompany creates a new company record
 func (repo repository) CreateCompany(ctx context.Context, in *models.Company) (*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "company.repository.CreateCompany",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"functionName":      "company.repository.CreateCompany",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"companyName":       in.CompanyName,
+		"signingEntityName": in.SigningEntityName,
+		"companySFID":       in.CompanyExternalID,
 	}
+
+	// Don't create duplicates - check to see if any exist
+	existingModel, queryErr := repo.GetCompanyByName(ctx, in.CompanyName)
+	if queryErr != nil {
+		log.WithFields(f).WithError(queryErr).Warn("problem querying for existing company record by name")
+		return nil, queryErr
+	}
+	// Already exists - don't re-create
+	if existingModel != nil {
+		return existingModel, nil
+	}
+
 	companyID, err := uuid.NewV4()
 	if err != nil {
 		log.WithFields(f).Warnf("Unable to generate a UUID for a pending invite, error: %v", err)
 		return nil, err
 	}
+	f["companyID"] = companyID
+
 	_, now := utils.CurrentTime()
 	comp := &DBModel{
 		CompanyID:         companyID.String(),
@@ -1260,6 +1277,7 @@ func (repo repository) CreateCompany(ctx context.Context, in *models.Company) (*
 		TableName: aws.String(repo.companyTableName),
 	})
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem creating new company")
 		return nil, err
 	}
 

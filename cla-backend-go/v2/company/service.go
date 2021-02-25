@@ -465,7 +465,6 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 	}
 
 	_, createErr := s.companyRepo.CreateCompany(ctx, createCompanyModel)
-	//easyCLAErr := s.repo.CreateCompany(companyName, org.ID, userID)
 	if createErr != nil {
 		log.WithFields(f).Warnf("Failed to create EasyCLA company for company: %s, error: %+v",
 			companyName, createErr)
@@ -492,7 +491,7 @@ func (s *service) CreateCompanyFromSFModel(ctx context.Context, orgModel *orgMod
 		"organizationStatus": orgModel.Status,
 	}
 
-	log.WithFields(f).Debug("Creating company...")
+	log.WithFields(f).Debugf("Creating company: %s...", orgModel.Name)
 	return s.CreateCompany(ctx, orgModel.Name, orgModel.Name, orgModel.Link,
 		"", "", fmt.Sprintf("created from platform organization service model: %s", orgModel.ID))
 }
