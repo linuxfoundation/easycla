@@ -139,7 +139,7 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
 			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
 		},
-		ContributorID:    "ContributorIDValue",
+		ContributorEmail: "ContributorIDValue",
 		ContributorName:  "ContributorNameValue",
 		CorporateConsole: "http://CorporateConsole.com",
 	}
@@ -149,7 +149,7 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the project(s): Project1, Project2")
-	assert.Contains(t, result, "<p> ContributorIDValue (ContributorNameValue) </p>")
+	assert.Contains(t, result, "from ContributorNameValue (ContributorIDValue):")
 	assert.Contains(t, result, "Kindly login to this portal http://CorporateConsole.com")
 	assert.Contains(t, result, `CLA for one of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>,<a href="http://CorporateConsole.com/foundation/FoundationSFID2/project/ProjectSFID2/cla" target="_blank">Project2</a>`)
 
@@ -161,37 +161,32 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the project(s): Project1")
-	assert.Contains(t, result, "<p> ContributorIDValue (ContributorNameValue) </p>")
+	assert.Contains(t, result, "from ContributorNameValue (ContributorIDValue):")
 	assert.Contains(t, result, "Kindly login to this portal http://CorporateConsole.com")
 	assert.Contains(t, result, `CLA for one of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>`)
 
 }
 
 func TestV2DesigneeToUserWithNoLFIDTemplate(t *testing.T) {
-	params := emails.V2DesigneeToUserWithNoLFIDTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-			RecipientName: "JohnsClaManager",
-			Project: emails.CLAProjectParams{
-				ExternalProjectName:     "JohnsProjectExternal",
-				CorporateConsole:        "https://corporate.dev.lfcla.com",
-				FoundationSFID:          "FoundationSFIDValue",
-				SignedAtFoundationLevel: true,
-			},
-			CLAGroupName: "JohnsCLAGroupName",
-			CompanyName:  "JohnsCompany",
+	params := emails.V2ToCLAManagerDesigneeTemplateParams{
+		RecipientName: "JohnsClaManager",
+		Projects: []emails.CLAProjectParams{
+			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "https://corporate.dev.lfcla.com"},
+			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "https://corporate.dev.lfcla.com"},
 		},
-		RequesterUserName: "RequesterUserNameValue",
-		RequesterEmail:    "RequesterEmailValue",
-		CorporateConsole:  "https://corporate.dev.lfcla.com",
+		ContributorEmail: "ContributorIDValue",
+		ContributorName:  "ContributorNameValue",
+		CorporateConsole: "https://corporate.dev.lfcla.com",
 	}
 
 	result, err := emails.RenderTemplate(utils.V1, emails.V2DesigneeToUserWithNoLFIDTemplateName, emails.V2DesigneeToUserWithNoLFIDTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager,")
-	assert.Contains(t, result, "The following contributor would like to contribute to JohnsProjectExternal on behalf of your organization: JohnsCompany.")
-	assert.Contains(t, result, "you will be redirected to this portal https://corporate.dev.lfcla.com ")
-	assert.Contains(t, result, `where you can sign the CLA for the project <a href="https://corporate.dev.lfcla.com/foundation/FoundationSFIDValue/cla" target="_blank">JohnsProjectExternal</a>`)
+	assert.Contains(t, result, "We received a request from ContributorNameValue (ContributorIDValue)")
+	assert.Contains(t, result, "After login, you will be redirected to the portal https://corporate.dev.lfcla.com ")
+	assert.Contains(t, result, `where you can either sign the CLA for any of the project(s): <a href="https://corporate.dev.lfcla.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>`)
+	assert.Contains(t, result, "or send it to an authorized signatory for your company.")
 }
 
 func TestV2CLAManagerToUserWithNoLFIDTemplate(t *testing.T) {

@@ -96,7 +96,7 @@ type Service interface {
 	ContributorEmailToOrgAdmin(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, adminEmail string, adminName string, companyName string, projectSFIDs []string, contributor *v1Models.User, corporateConsole string)
 	SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectSFID string, projectName string, designeeEmail string, designeeName string, senderEmail string, senderName string)
 	SendEmailToCLAManagerDesignee(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectNames, projectSFIDs []string, designeeEmail string, designeeName string, contributorID string, contributorName string)
-	SendDesigneeEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID, projectName string, projectID *string, role string, corporateConsoleV2URL string) error
+	SendDesigneeEmailToUserWithNoLFID(ctx context.Context, projectService project.Service, repository projects_cla_groups.Repository, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID string, projectNames, projectIDs []string, foundationSFID, role string, corporateConsoleV2URL string) error
 	SendEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, projectName, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationID string, projectID *string, role string) error
 }
 
@@ -897,16 +897,34 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 
 	var projectSFs []string
 	var projectSFIDs []string
-	for _, pcg := range projectCLAGroups {
-		log.WithFields(f).Debugf("Getting salesforce project by SFID: %s ", pcg.ProjectSFID)
-		projectSF, projectErr := projectService.GetProject(pcg.ProjectSFID)
+	foundationSFID := projectCLAGroups[0].FoundationSFID
+
+	if signedAtFoundation {
+
+		// Get salesforce project by FoundationID
+		log.WithFields(f).Debugf("querying project service for project details...")
+		// GetSFProject
+		foundationSF, projectErr := projectService.GetProject(foundationSFID)
 		if projectErr != nil {
-			msg := fmt.Sprintf("Problem getting salesforce Project ID: %s", pcg.ProjectSFID)
+			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - Project service lookup error for SFID: %s, error : %+v",
+				projectID, projectErr)
 			log.WithFields(f).Warn(msg)
 			return nil, projectErr
 		}
-		projectSFs = append(projectSFs, projectSF.Name)
-		projectSFIDs = append(projectSFIDs, projectSF.ID)
+		projectSFs = append(projectSFs, foundationSF.Name)
+		projectSFIDs = append(projectSFIDs, foundationSFID)
+	} else {
+		for _, pcg := range projectCLAGroups {
+			log.WithFields(f).Debugf("Getting salesforce project by SFID: %s ", pcg.ProjectSFID)
+			projectSF, projectErr := projectService.GetProject(pcg.ProjectSFID)
+			if projectErr != nil {
+				msg := fmt.Sprintf("Problem getting salesforce Project ID: %s", pcg.ProjectSFID)
+				log.WithFields(f).Warn(msg)
+				return nil, projectErr
+			}
+			projectSFs = append(projectSFs, projectSF.Name)
+			projectSFIDs = append(projectSFIDs, projectSF.ID)
+		}
 	}
 
 	var designeeScopes []*models.ClaManagerDesignee
@@ -960,24 +978,8 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 	if userErr != nil || (user != nil && user.Username == "") {
 		msg := fmt.Sprintf("UserEmail: %s has no LF Login and has been sent an invite email to create an account , error: %+v", userEmail, userErr)
 		log.Warn(msg)
-
-		// Use FoundationSFID
-		foundationSFID := projectCLAGroups[0].FoundationSFID
-
-		// Get salesforce project by FoundationID
-		log.WithFields(f).Debugf("querying project service for project details...")
-		// GetSFProject
-		ps := v2ProjectService.GetClient()
-		sfProject, projectErr := ps.GetProject(foundationSFID)
-		if projectErr != nil {
-			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - Project service lookup error for SFID: %s, error : %+v",
-				projectID, projectErr)
-			log.WithFields(f).Warn(msg)
-			return nil, projectErr
-		}
-
 		contibutorEmail := GetNonNoReplyUserEmail(contributor.UserEmails)
-		sendErr := s.SendDesigneeEmailToUserWithNoLFID(ctx, s.projectCGRepo, contributor.UserName, contibutorEmail, name, userEmail, organization.Name, organization.ID, sfProject.Name, &foundationSFID, "cla-manager-designee", LfxPortalURL)
+		sendErr := s.SendDesigneeEmailToUserWithNoLFID(ctx, s.projectService, s.projectCGRepo, contributor.UserName, contibutorEmail, name, userEmail, organization.Name, organization.ID, projectSFs, projectSFIDs, foundationSFID, "cla-manager-designee", LfxPortalURL)
 		if sendErr != nil {
 			msg := fmt.Sprintf("Problem sending email to user: %s , error: %+v", userEmail, sendErr)
 			log.Warn(msg)
