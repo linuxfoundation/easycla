@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -433,7 +434,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 
 	// Send an email to the CLA Managers
 	for _, claManager := range claManagers {
-		claManagerEmail := getBestEmail(claManager)
+		claManagerEmail := getBestEmail(&claManager) // nolint
 		s.sendApprovalListUpdateEmailToCLAManagers(companyModel, claGroupModel, claManager.Username, claManagerEmail, params)
 	}
 
@@ -846,13 +847,13 @@ you can now go back to it and follow the link to verify with your organization.<
 }
 
 // getBestEmail is a helper function to return the best email address for the user model
-func getBestEmail(claManager models.User) string {
-	if claManager.LfEmail != "" {
-		return claManager.LfEmail
+func getBestEmail(userModel *models.User) string {
+	if userModel.LfEmail != "" {
+		return userModel.LfEmail
 	}
 
-	for _, email := range claManager.Emails {
-		if email != "" {
+	for _, email := range userModel.Emails {
+		if email != "" && !strings.Contains(email, "noreply.github.com") {
 			return email
 		}
 	}

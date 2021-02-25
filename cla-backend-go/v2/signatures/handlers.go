@@ -40,7 +40,7 @@ import (
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, projectService project.Service, projectRepo project.ProjectRepository, companyService company.IService, v1SignatureService signatureService.SignatureService, sessionStore *dynastore.Store, eventsService events.Service, v2service Service, projectClaGroupsRepo projects_cla_groups.Repository) { //nolint
+func Configure(api *operations.EasyclaAPI, claGroupService project.Service, projectRepo project.ProjectRepository, companyService company.IService, v1SignatureService signatureService.SignatureService, sessionStore *dynastore.Store, eventsService events.Service, v2service Service, projectClaGroupsRepo projects_cla_groups.Repository) { //nolint
 
 	const problemLoadingCLAGroupByID = "problem loading cla group by ID"
 	const iclaNotSupportedForCLAGroup = "individual contribution is not supported for this project"
@@ -135,7 +135,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		}
 
 		log.WithFields(f).Debug("loading CLA groups by projectSFID")
-		projectModels, projsErr := projectService.GetCLAGroupsByExternalSFID(ctx, params.ProjectSFID)
+		projectModels, projsErr := claGroupService.GetCLAGroupsByExternalSFID(ctx, params.ProjectSFID)
 		if projsErr != nil || projectModels == nil {
 			msg := fmt.Sprintf("unable to locate projects by Project SFID: %s", params.ProjectSFID)
 			log.WithFields(f).Warn(msg)
@@ -143,7 +143,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		}
 
 		// Lookup the internal project ID when provided the external ID via the v1SignatureService call
-		claGroupModel, projErr := projectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, projErr := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if projErr != nil || claGroupModel == nil {
 			msg := fmt.Sprintf("unable to locate project by CLA Group ID: %s", params.ClaGroupID)
 			log.WithFields(f).Warn(msg)
@@ -367,7 +367,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group by ID...")
-		claGroupModel, err := projectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
 			if err == project.ErrProjectDoesNotExist {
@@ -711,7 +711,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		log.WithFields(f).Debug("processing request...")
 
 		log.WithFields(f).Debug("looking up CLA Group by ID...")
-		claGroupModel, err := projectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
 			if err == project.ErrProjectDoesNotExist {
@@ -795,6 +795,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		})
 	})
 
+	// GET https://api-gw.platform.linuxfoundation.org/v4/cla-group/{claGroupID}/icla/signatures
 	api.SignaturesListClaGroupIclaSignatureHandler = signatures.ListClaGroupIclaSignatureHandlerFunc(func(params signatures.ListClaGroupIclaSignatureParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
@@ -802,10 +803,12 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 			"functionName":   "SignaturesListClaGroupIclaSignatureHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
+			"searchTerm":     utils.StringValue(params.SearchTerm),
+			"sortOrder":      utils.StringValue(params.SortOrder),
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group by ID...")
-		claGroupModel, err := projectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
 			if err == project.ErrProjectDoesNotExist {
@@ -837,7 +840,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for ICLA signatures...")
-		result, err := v2service.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm)
+		results, err := v2service.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm)
 		if err != nil {
 			msg := fmt.Sprintf("problem loading ICLA signatures by CLA Group ID search term: %s", aws.StringValue(params.SearchTerm))
 			log.WithFields(f).WithError(err).Warn(msg)
@@ -845,8 +848,8 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
-		log.WithFields(f).Debugf("returning %d ICLA signatures to caller...", len(result.List))
-		return signatures.NewListClaGroupIclaSignatureOK().WithXRequestID(reqID).WithPayload(result)
+		log.WithFields(f).Debugf("returning %d ICLA signatures to caller...", len(results.List))
+		return signatures.NewListClaGroupIclaSignatureOK().WithXRequestID(reqID).WithPayload(results)
 	})
 
 	api.SignaturesListClaGroupCorporateContributorsHandler = signatures.ListClaGroupCorporateContributorsHandlerFunc(func(params signatures.ListClaGroupCorporateContributorsParams, authUser *auth.User) middleware.Responder {
@@ -990,7 +993,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		}
 
 		log.WithFields(f).Debug("loading cla group by id...")
-		claGroupModel, err := projectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
 			if err == project.ErrProjectDoesNotExist {
@@ -1044,7 +1047,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group by ID...")
-		claGroupModel, err := projectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
 			if err == project.ErrProjectDoesNotExist {
@@ -1111,7 +1114,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group by ID...")
-		claGroupModel, err := projectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
 			if err == project.ErrProjectDoesNotExist {
@@ -1164,7 +1167,7 @@ func Configure(api *operations.EasyclaAPI, projectService project.Service, proje
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group by ID...")
-		claGroupModel, err := projectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
 			if err == project.ErrProjectDoesNotExist {

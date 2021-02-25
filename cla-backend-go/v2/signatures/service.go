@@ -168,15 +168,26 @@ func (s service) GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID str
 }
 
 func (s service) GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string) (*models.IclaSignatures, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.signatures.service.GetProjectIclaSignatures",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"searchTerm":     utils.StringValue(searchTerm),
+	}
+
 	var out models.IclaSignatures
 	result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load ICLA signatures using the specified search parameters")
 		return nil, err
 	}
+
 	err = copier.Copy(&out, result)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to convert signature results from v1 to v2")
 		return nil, err
 	}
+
 	return &out, nil
 }
 
