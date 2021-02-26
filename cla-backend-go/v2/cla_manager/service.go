@@ -832,7 +832,7 @@ func (s *service) ValidateInviteCompanyAdminCheck(ctx context.Context, f logrus.
 	return nil
 }
 
-func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, LfxPortalURL, CorporateConsoleV2URL string) ([]*models.ClaManagerDesignee, error) {
+func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, LfxPortalURL, CorporateConsoleV2URL string) ([]*models.ClaManagerDesignee, error) { //nolint
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.InviteCompanyAdmin",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -976,10 +976,19 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 	// Get suggested CLA Manager user details
 	user, userErr := userService.SearchUserByEmail(userEmail)
 	if userErr != nil || (user != nil && user.Username == "") {
+		contributorEmail, contributorUsername := "", ""
 		msg := fmt.Sprintf("UserEmail: %s has no LF Login and has been sent an invite email to create an account , error: %+v", userEmail, userErr)
 		log.Warn(msg)
-		contibutorEmail := GetNonNoReplyUserEmail(contributor.UserEmails)
-		sendErr := s.SendDesigneeEmailToUserWithNoLFID(ctx, s.projectService, s.projectCGRepo, contributor.UserName, contibutorEmail, name, userEmail, organization.Name, organization.ID, projectSFs, projectSFIDs, foundationSFID, "cla-manager-designee", LfxPortalURL)
+
+		// Get username and useremail details for contributor
+		if contributor.LFEmail != "" && contributor.UserName != "" {
+			contributorEmail = contributor.LFEmail
+			contributorUsername = contributor.UserName
+		} else {
+			contributorUsername, contributorEmail = getContributorPublicEmail(contributor)
+		}
+
+		sendErr := s.SendDesigneeEmailToUserWithNoLFID(ctx, s.projectService, s.projectCGRepo, contributorUsername, contributorEmail, name, userEmail, organization.Name, organization.ID, projectSFs, projectSFIDs, foundationSFID, "cla-manager-designee", LfxPortalURL)
 		if sendErr != nil {
 			msg := fmt.Sprintf("Problem sending email to user: %s , error: %+v", userEmail, sendErr)
 			log.Warn(msg)

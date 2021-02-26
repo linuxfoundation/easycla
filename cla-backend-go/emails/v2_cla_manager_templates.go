@@ -186,16 +186,14 @@ const (
 	V2ToCLAManagerDesigneeTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the project(s): {{.GetProjectsOrProject}}.</p>
-<p>We received a request from {{.ContributorName}} ({{.ContributorEmail}}): to contribute to the above projects on behalf of your organization</p>
-<p>Before the user contribution can be accepted, your organization must sign a Corporate CLA (CCLA).The requester has stated that you would be the initial CLA Manager for this CCLA, to coordinate the signing of the CCLA and then manage the list of employees who are authorized to contribute</p>
+<p>We received a request from {{.ContributorName}} ({{.ContributorEmail}}) to contribute to the above projects on behalf of your organization.</p>
+<p>Before the user contribution can be accepted, your organization must sign a Corporate CLA (CCLA).The requester has stated that you would be the initial CLA Manager for this CCLA, to coordinate the signing of the CCLA and then manage the list of employees who are authorized to contribute.</p>
 <p>Please complete the following steps:</p>
 <ol>
 <li>After login, you will be redirected to the portal {{.CorporateConsole}} where you can either sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}, or send it to an authorized signatory for your company.</li>
 <li>After signing the CLA, you will need to add this contributor to the approved list in the CLA Manager console.</li>
 <li>After adding the contributor, please notify them so that they can complete the contribution process.</li>
 </ol>
-<p>Kindly login to this portal {{.CorporateConsole}} and sign the CLA for one of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}. </p>
-<p>After signing the CLA, you will need to add this contributor to the approved list. Please notify the contributor once they are added, so that they can complete the contribution process.</p>
 `
 )
 

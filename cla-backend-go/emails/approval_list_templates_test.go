@@ -31,6 +31,29 @@ func TestApprovalListRejectedTemplate(t *testing.T) {
 	assert.Contains(t, result, "<li>LFUserName LFEmail</li>")
 }
 
+func TestApprovalListApprovedTemplate(t *testing.T) {
+	params := ApprovalListApprovedTemplateParams{
+		ApprovalTemplateParams: ApprovalTemplateParams{
+			RecipientName: "Recipient",
+			CLAGroupName:  "CLAGroupFoo",
+			CompanyName:   "CompanyFoo",
+			Approver:      "LFUsername",
+			Projects: []CLAProjectParams{
+				{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
+				{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
+			},
+		},
+	}
+
+	result, err := RenderTemplate(utils.V2, ApprovalListApprovedTemplateName, ApprovalListApprovedTemplate, params)
+
+	assert.NoError(t, err)
+	assert.Contains(t, result, "Hello Recipient")
+	assert.Contains(t, result, "regarding the CLA Group CLAGroupFoo")
+	assert.Contains(t, result, "You have been added to the Approval list of CompanyFoo for CLAGroupFoo by CLA Manager LFUsername.")
+	assert.Contains(t, result, "This means that you are authorized to contribute to the any of the following project(s) associated with the CLA Group CLAGroupFoo: Project1, Project2")
+}
+
 func TestRequestToAuthorizeTemplate(t *testing.T) {
 	params := RequestToAuthorizeTemplateParams{
 		CLAManagerTemplateParams: CLAManagerTemplateParams{

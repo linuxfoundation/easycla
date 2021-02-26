@@ -149,9 +149,8 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the project(s): Project1, Project2")
-	assert.Contains(t, result, "from ContributorNameValue (ContributorIDValue):")
-	assert.Contains(t, result, "Kindly login to this portal http://CorporateConsole.com")
-	assert.Contains(t, result, `CLA for one of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>,<a href="http://CorporateConsole.com/foundation/FoundationSFID2/project/ProjectSFID2/cla" target="_blank">Project2</a>`)
+	assert.Contains(t, result, "from ContributorNameValue (ContributorIDValue)")
+	assert.Contains(t, result, `CLA for any of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>,<a href="http://CorporateConsole.com/foundation/FoundationSFID2/project/ProjectSFID2/cla" target="_blank">Project2</a>`)
 
 	params.Projects = []emails.CLAProjectParams{
 		{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
@@ -161,9 +160,8 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the project(s): Project1")
-	assert.Contains(t, result, "from ContributorNameValue (ContributorIDValue):")
-	assert.Contains(t, result, "Kindly login to this portal http://CorporateConsole.com")
-	assert.Contains(t, result, `CLA for one of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>`)
+	assert.Contains(t, result, "from ContributorNameValue (ContributorIDValue)")
+	assert.Contains(t, result, `CLA for any of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>`)
 
 }
 

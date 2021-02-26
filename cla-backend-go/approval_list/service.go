@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
@@ -20,6 +22,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/project"
+	"github.com/communitybridge/easycla/cla-backend-go/user"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
@@ -38,7 +41,7 @@ const (
 // IService interface defines the service methods/functions
 type IService interface {
 	AddCclaWhitelistRequest(ctx context.Context, companyID string, claGroupID string, args models.CclaWhitelistRequestInput) (string, error)
-	ApproveCclaWhitelistRequest(ctx context.Context, companyID, claGroupID, requestID string) error
+	ApproveCclaWhitelistRequest(ctx context.Context, claUser *user.CLAUser, ClacompanyID, claGroupID, requestID string) error
 	RejectCclaWhitelistRequest(ctx context.Context, companyID, claGroupID, requestID string) error
 	ListCclaWhitelistRequest(companyID string, claGroupID, status *string) (*models.CclaWhitelistRequestList, error)
 	ListCclaWhitelistRequestByCompanyProjectUser(companyID string, claGroupID, status, userID *string) (*models.CclaWhitelistRequestList, error)
@@ -46,6 +49,7 @@ type IService interface {
 
 type service struct {
 	repo                       IRepository
+	projectService             project.Service
 	userRepo                   users.UserRepository
 	companyRepo                company.IRepository
 	projectRepo                project.ProjectRepository
@@ -56,10 +60,11 @@ type service struct {
 }
 
 // NewService creates a new whitelist service
-func NewService(repo IRepository, projectsCLAGroupRepository projects_cla_groups.Repository, userRepo users.UserRepository, companyRepo company.IRepository, projectRepo project.ProjectRepository, signatureRepo signatures.SignatureRepository, corpConsoleURL string, httpClient *http.Client) IService {
+func NewService(repo IRepository, projectsCLAGroupRepository projects_cla_groups.Repository, projService project.Service, userRepo users.UserRepository, companyRepo company.IRepository, projectRepo project.ProjectRepository, signatureRepo signatures.SignatureRepository, corpConsoleURL string, httpClient *http.Client) IService {
 	return service{
 		repo:                       repo,
 		projectsCLAGroupRepository: projectsCLAGroupRepository,
+		projectService:             projService,
 		userRepo:                   userRepo,
 		companyRepo:                companyRepo,
 		projectRepo:                projectRepo,
@@ -128,10 +133,18 @@ func (s service) AddCclaWhitelistRequest(ctx context.Context, companyID string, 
 }
 
 // ApproveCclaWhitelistRequest is the handler for the approve CLA request
-func (s service) ApproveCclaWhitelistRequest(ctx context.Context, companyID, claGroupID, requestID string) error {
+func (s service) ApproveCclaWhitelistRequest(ctx context.Context, claUser *user.CLAUser, companyID, claGroupID, requestID string) error {
+
+	f := logrus.Fields{
+		"functionName": "ApproveCclaWhitelistRequest",
+		"companyID":    companyID,
+		"claGroupID":   claGroupID,
+		"requestID":    requestID,
+		"Approver":     claUser.Name,
+	}
 	err := s.repo.ApproveCclaWhitelistRequest(requestID)
 	if err != nil {
-		log.Warnf("ApproveCclaWhitelistRequest - problem updating approved list with 'approved' status for request: %s, error: %+v",
+		log.WithFields(f).Warnf("ApproveCclaWhitelistRequest - problem updating approved list with 'approved' status for request: %s, error: %+v",
 			requestID, err)
 		return err
 	}
@@ -160,8 +173,43 @@ func (s service) ApproveCclaWhitelistRequest(ctx context.Context, companyID, cla
 		return errors.New(msg)
 	}
 
+	// Get project cla Group records
+	log.WithFields(f).Debugf("Getting SalesForce Projects for claGroup: %s ", claGroupID)
+	projectCLAGroups, getErr := s.projectsCLAGroupRepository.GetProjectsIdsForClaGroup(claGroupID)
+	if getErr != nil {
+		msg := fmt.Sprintf("Error getting SF projects for claGroup: %s ", claGroupID)
+		log.Debug(msg)
+	}
+
+	if len(projectCLAGroups) == 0 {
+		msg := fmt.Sprintf("Error getting SF projects for claGroup: %s ", claGroupID)
+		return errors.New(msg)
+	}
+
+	signedAtFoundation, signedErr := s.projectService.SignedAtFoundationLevel(ctx, projectCLAGroups[0].FoundationSFID)
+	if signedErr != nil {
+		msg := fmt.Sprintf("Problem checking project: %s , error: %+v", claGroupID, signedErr)
+		log.WithFields(f).Warn(msg)
+		return signedErr
+	}
+
+	var projectSFIDs []string
+	foundationSFID := projectCLAGroups[0].FoundationSFID
+
+	if signedAtFoundation {
+		// Get salesforce project by FoundationID
+		log.WithFields(f).Debugf("querying project service for project details...")
+		projectSFIDs = append(projectSFIDs, foundationSFID)
+	} else {
+		for _, pcg := range projectCLAGroups {
+			log.WithFields(f).Debugf("Getting salesforce project by SFID: %s ", pcg.ProjectSFID)
+			projectSFIDs = append(projectSFIDs, pcg.ProjectSFID)
+		}
+	}
+
 	// Send the email
-	sendRequestApprovedEmailToRecipient(companyModel, claGroupModel, requestModel.UserName, requestModel.UserEmails[0])
+	s.sendRequestApprovedEmailToRecipient(ctx, s.projectService, s.projectsCLAGroupRepository, *claUser, companyModel, claGroupModel,
+		requestModel.UserName, requestModel.UserEmails[0], projectSFIDs)
 
 	return nil
 }
@@ -345,40 +393,50 @@ func (s service) sendRequestRejectedEmailToRecipient(companyModel *models.Compan
 	}
 }
 
-func requestApprovedEmailToRecipientContent(companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress string) (string, string, []string) {
-	companyName := companyModel.CompanyName
+func (s service) sendRequestApprovedEmailToRecipient(ctx context.Context, projectService project.Service, repository projects_cla_groups.Repository, claUser user.CLAUser, companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress string, projectSFIDs []string) {
 
+	f := logrus.Fields{
+		"functionName":     "sendRequestApprovedEmailToRecipient",
+		utils.XREQUESTID:   ctx.Value((utils.XREQUESTID)),
+		"claGroupName":     claGroupModel.ProjectName,
+		"claGroupID":       claGroupModel.ProjectID,
+		"companyName":      companyModel.CompanyName,
+		"recipientName":    recipientName,
+		"recipientAddress": recipientAddress,
+	}
+
+	companyName := companyModel.CompanyName
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Approved List Request Accepted for %s", companyName)
 	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the company %s.</p>
-<p>You have now been added to the approval list for %s. </p>
-<p>To get started, please navigate back to GitHub or Gerrit and start the authorization process. Once you select the
-authorization link, you will be directed to the EasyCLA Contributor Console. GitHub users will need to authorize the
-tool to see your GitHub user name and email. Gerrit users will first need to log in with their LF Account. On the
-console landing page, select the corporate agreement option. To finish, search and select your company to acknowledge
-your association with your company. This will complete the authorization process. For GitHub users, your pull request
-will refresh and confirm that you are authorized. For Gerrit users, please log out of the UI and back in to complete the
-authorization. </p>
-%s
-%s`,
-		recipientName, companyName,
-		companyName,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2),
-		utils.GetEmailSignOffContent())
 
-	return subject, body, recipients
-}
+	approver := ""
+	if claUser.LFUsername != "" {
+		approver = claUser.LFUsername
+	} else if claUser.LFEmail != "" {
+		approver = claUser.LFEmail
+	} else if claUser.Emails != nil {
+		approver = claUser.Emails[0]
+	}
 
-// sendRequestApprovedEmailToRecipient generates and sends an email to the specified recipient
-func sendRequestApprovedEmailToRecipient(companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress string) {
-	subject, body, recipients := requestApprovedEmailToRecipientContent(companyModel, claGroupModel, recipientName, recipientAddress)
-	err := utils.SendEmail(subject, body, recipients)
+	body, err := emails.RenderApprovalListTemplate(
+		repository, projectService, projectSFIDs, emails.ApprovalListApprovedTemplateParams{
+			ApprovalTemplateParams: emails.ApprovalTemplateParams{
+				RecipientName: recipientName,
+				CompanyName:   companyName,
+				CLAGroupName:  claGroupModel.ProjectName,
+				Approver:      approver,
+			},
+		},
+	)
 	if err != nil {
-		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
+		log.WithFields(f).Warnf("rendering email failed for : %s : %v", emails.ApprovalListApprovedTemplateName, err)
+		return
+	}
+	err = utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		log.WithFields(f).Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
-		log.Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
+		log.WithFields(f).Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
 	}
 }

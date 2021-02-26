@@ -2205,7 +2205,7 @@ def document_signed_email_content(icla: bool, project: Project, signature: Signa
         else:
             recipient_name = "CLA Manager"
 
-    subject = f'EasyCLA: CLA Signature Signed for {project.get_project_name()}'
+    subject = f'EasyCLA: CLA Signed for {project.get_project_name()}'
     body =  f'''
                 <p>Hello {recipient_name},</p>
                 <p>This is a notification email from EasyCLA regarding the project {project.get_project_name()}.</p>

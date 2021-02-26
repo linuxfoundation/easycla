@@ -47,7 +47,7 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 		func(params company.ApproveCclaWhitelistRequestParams, claUser *user.CLAUser) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-			err := service.ApproveCclaWhitelistRequest(ctx, params.CompanyID, params.ProjectID, params.RequestID)
+			err := service.ApproveCclaWhitelistRequest(ctx, claUser, params.CompanyID, params.ProjectID, params.RequestID)
 			if err != nil {
 				return company.NewApproveCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}

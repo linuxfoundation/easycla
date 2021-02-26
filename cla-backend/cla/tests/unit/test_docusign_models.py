@@ -822,7 +822,7 @@ def test_document_signed_email_content():
     assert subject is not None
     assert body is not None
 
-    assert "Signature Signed for JohnsProject" in subject
+    assert "Signed for JohnsProject" in subject
     assert "Hello john" in body
     assert "EasyCLA regarding the project JohnsProject" in body
     assert "The CLA has now been signed." in body

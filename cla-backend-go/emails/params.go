@@ -69,6 +69,15 @@ type CLAManagerTemplateParams struct {
 	ChildProjectCount int
 }
 
+// ApprovalTemplateParams details approval fields for contributor
+type ApprovalTemplateParams struct {
+	RecipientName string
+	CompanyName   string
+	CLAGroupName  string
+	Approver      string
+	Projects      []CLAProjectParams
+}
+
 // GetProjectNameOrFoundation returns if the foundationName is set it gets back
 // the foundation Name otherwise the ProjectName is  returned
 func (claParams CLAManagerTemplateParams) GetProjectNameOrFoundation() string {

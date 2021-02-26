@@ -3,7 +3,13 @@
 
 package emails
 
-import "github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+import (
+	"strings"
+
+	"github.com/communitybridge/easycla/cla-backend-go/project"
+	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
+)
 
 // ApprovalListRejectedTemplateParams is email params for ApprovalListRejectedTemplate
 type ApprovalListRejectedTemplateParams struct {
@@ -26,6 +32,24 @@ If you have further questions about this denial, please contact one of the exist
 	{{end}}
 </ul>
 `
+)
+
+// ApprovalListApprovedTemplateParams is email params for Approval
+type ApprovalListApprovedTemplateParams struct {
+	ApprovalTemplateParams
+}
+
+const (
+	// ApprovalListApprovedTemplateName is email template name for ApprovalListRejectedTemplate
+	ApprovalListApprovedTemplateName = "ApprovalListApprovedTemplate"
+	// ApprovalListApprovedTemplate is email template for
+	ApprovalListApprovedTemplate = `
+		<p>Hello {{.RecipientName}},</p>
+		<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
+		<p>You have been added to the Approval list of {{.CompanyName}} for {{.CLAGroupName}} by CLA Manager {{.Approver}}. 
+		<p>This means that you are authorized to contribute to the any of the following project(s) associated with the CLA Group {{.CLAGroupName}}: {{.GetProjects}}</p>
+		<p>If you had previously submitted a pull request to any any the above project(s) that had failed, you can now go back to it and follow the link to verify with your organization.</p>
+		`
 )
 
 // RequestToAuthorizeTemplateParams is email params for RequestToAuthorizeTemplate
@@ -71,4 +95,32 @@ func RenderRequestToAuthorizeTemplate(repository projects_cla_groups.Repository,
 		params,
 	)
 
+}
+
+// GetProjects returns the single Project or comma separated projects if more than one
+func (p ApprovalListApprovedTemplateParams) GetProjects() string {
+	if len(p.Projects) == 1 {
+		return p.Projects[0].ExternalProjectName
+	}
+
+	var projectNames []string
+	for _, p := range p.Projects {
+		projectNames = append(projectNames, p.ExternalProjectName)
+	}
+
+	return strings.Join(projectNames, ", ")
+}
+
+// RenderApprovalListTemplate renders RenderApprovalListTemplate
+func RenderApprovalListTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string, params ApprovalListApprovedTemplateParams) (string, error) {
+	// prefill the projects data
+	projects, err := PrefillCLAProjectParams(repository, projectService, projectSFIDs, "")
+	if err != nil {
+		return "", err
+	}
+
+	params.Projects = projects
+
+	return RenderTemplate(utils.V2, ApprovalListApprovedTemplateName,
+		ApprovalListApprovedTemplate, params)
 }

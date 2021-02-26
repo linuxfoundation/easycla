@@ -234,6 +234,8 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, project
 		"projectNames":          strings.Join(projectNames, ","),
 		"role":                  role,
 		"corporateConsoleV2URL": corporateConsoleV2URL,
+		"requesterUsername":     requesterUsername,
+		"requesterEmail":        requesterEmail,
 	}
 
 	subject := "EasyCLA: Invitation to create LF Login and complete process of becoming CLA Manager"
