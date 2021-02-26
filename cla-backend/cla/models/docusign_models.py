@@ -600,6 +600,7 @@ class DocuSign(signing_service_interface.SigningService):
                 event_project_id=project_id,
                 event_project_name=project.get_project_name(),
                 event_user_id=user.get_user_id(),
+                event_user_name=user.get_user_name() if user else None,
                 event_data=event_data,
                 event_summary=event_summary,
                 contains_pii=True,
@@ -707,6 +708,7 @@ class DocuSign(signing_service_interface.SigningService):
             event_company_id=company_id,
             event_project_id=project_id,
             event_user_id=user_id,
+            event_user_name=user.get_user_name() if user else None,
             event_data=event_data,
             event_summary=event_summary,
             contains_pii=True,
@@ -808,6 +810,7 @@ class DocuSign(signing_service_interface.SigningService):
             event_company_id=company_id,
             event_project_id=project_id,
             event_user_id=user_id,
+            event_user_name=user.get_user_name() if user else None,
             event_data=event_data,
             event_summary=event_summary,
             contains_pii=True,
@@ -1459,6 +1462,7 @@ class DocuSign(signing_service_interface.SigningService):
                     event_project_id=signature.get_signature_project_id(),
                     event_company_id=None,
                     event_user_id=signature.get_signature_reference_id(),
+                    event_user_name=user.get_user_name() if user else None,
                     event_data=event_data,
                     event_summary=event_summary,
                     contains_pii=False,
@@ -1512,6 +1516,7 @@ class DocuSign(signing_service_interface.SigningService):
                     event_project_id=signature.get_signature_project_id(),
                     event_company_id=None,
                     event_user_id=user.get_user_id(),
+                    event_user_name=user.get_user_name(),
                     event_data=event_data,
                     event_summary=event_summary,
                     contains_pii=False,
@@ -1654,33 +1659,36 @@ class DocuSign(signing_service_interface.SigningService):
             # Update our event/activity log
             if signature.get_signature_reference_type() == 'user':
                 event_data = (f'The user {user.get_user_name()} signed an individual CLA for '
-                              f'project {project.get_project_name()}.')
+                              f'the project {project.get_project_name()}.')
                 event_summary = (f'The user {user.get_user_name()} signed an individual CLA for '
-                                 f'project {project.get_project_name()} with project ID: {project.get_project_id()}.')
+                                 f'the project {project.get_project_name()} with '
+                                 f'the project ID: {project.get_project_id()}.')
                 Event.create_event(
                     event_type=EventType.IndividualSignatureSigned,
                     event_project_id=project_id,
                     event_company_id=None,
                     event_user_id=user.get_user_id(),
+                    event_user_name=user.get_user_name(),
                     event_data=event_data,
                     event_summary=event_summary,
                     contains_pii=False,
                 )
             elif signature.get_signature_reference_type() == 'company':
-                event_data = (f'Corporate signature '
-                              f'signed for project {project.get_project_name()} '
+                event_data = (f'A corporate signature '
+                              f'was signed for project {project.get_project_name()} '
                               f'and company {company.get_company_name()} '
                               f'by {signature.get_signatory_name()}, '
                               f'params: {param_str}')
                 event_summary = (f'A corporate signature '
-                                 f'was signed for project {project.get_project_name()} '
-                                 f'and company {company.get_company_name()} '
+                                 f'was signed for the project {project.get_project_name()} '
+                                 f'and the company {company.get_company_name()} '
                                  f'by {signature.get_signatory_name()}.')
                 Event.create_event(
                     event_type=EventType.CompanySignatureSigned,
                     event_project_id=project_id,
                     event_company_id=company.get_company_id(),
                     event_user_id=user.get_user_id(),
+                    event_user_name=signature.get_signatory_name(),
                     event_data=event_data,
                     event_summary=event_summary,
                     contains_pii=False,

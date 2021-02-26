@@ -1,13 +1,14 @@
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
 
-from cla.models.dynamo_models import Event, User, Project, Company
-from cla.models import event_types
-from unittest.mock import patch, Mock
-import pytest
 import datetime
-import cla
 import time
+from unittest.mock import Mock
+
+import pytest
+
+from cla.models import event_types
+from cla.models.dynamo_models import Event, User, Project, Company
 
 
 @pytest.fixture()
@@ -15,6 +16,7 @@ def mock_event():
     event = Event()
     event.model.save = Mock()
     yield event
+
 
 def test_event_user_id(user_instance):
     """ Test event_user_id """
@@ -29,9 +31,10 @@ def test_event_user_id(user_instance):
     )
     assert 'data' in response
 
+
 def test_event_company_id(company):
     """ Test creation of event instance """
-    #Case for creating Company
+    # Case for creating Company
     Event.save = Mock()
     Company.load = Mock()
     event_data = 'test company created'
@@ -42,6 +45,7 @@ def test_event_company_id(company):
         event_company_id=company.get_company_id()
     )
     assert 'data' in response
+
 
 def test_event_project_id(project):
     """ Test event with event_project_id """
@@ -56,11 +60,13 @@ def test_event_project_id(project):
     )
     assert 'data' in response
 
+
 def test_event_user_id_attribute(user_instance, mock_event):
     """ Test event_user_id attribute """
     mock_event.set_event_user_id(user_instance.get_user_id())
     mock_event.save()
     assert mock_event.get_event_user_id() == user_instance.get_user_id()
+
 
 def test_event_company_name_lower_attribute(mock_event):
     """ Test company_name_lower attribute """
@@ -68,11 +74,13 @@ def test_event_company_name_lower_attribute(mock_event):
     mock_event.save()
     assert mock_event.get_event_company_name_lower() == "company_lower"
 
+
 def test_event_username_attribute(mock_event):
     """ Test event_username attribute """
     mock_event.set_event_user_name("foo_username")
     mock_event.save()
     assert mock_event.get_event_user_name() == "foo_username"
+
 
 def test_event_user_name_lower_attribute(mock_event):
     """ Test event_user_name_lower attribute """
@@ -80,21 +88,25 @@ def test_event_user_name_lower_attribute(mock_event):
     mock_event.save()
     assert mock_event.get_event_user_name_lower() == "username"
 
+
 def test_event_project_name_lower_attribute(mock_event):
-    """ Test gettting project """
+    """ Test getting project """
     mock_event.set_event_project_name("Project")
     mock_event.save()
     assert mock_event.get_event_project_name_lower() == "project"
 
+
 def test_event_time(mock_event):
     """ Test event time  """
     mock_event.save()
-    assert mock_event.get_event_time() <= datetime.datetime.now()
+    assert mock_event.get_event_time() <= datetime.datetime.utcnow()
+
 
 def test_event_time_epoch(mock_event):
     """ Test event time epoch """
     mock_event.save()
-    assert mock_event.get_event_time_epoch() <= time.time()
+    assert mock_event.get_event_time_epoch() <= datetime.datetime.utcnow().timestamp()
+
 
 def test_company_id_external_project_id(mock_event):
     mock_event.set_event_project_external_id("external_id")
@@ -102,15 +114,18 @@ def test_company_id_external_project_id(mock_event):
     mock_event.set_company_id_external_project_id()
     assert mock_event.get_company_id_external_project_id() == "company_id#external_id"
 
+
 def test_company_id_external_project_id_empty_test1(mock_event):
     mock_event.set_event_project_external_id("external_id")
     mock_event.set_company_id_external_project_id()
     assert mock_event.get_company_id_external_project_id() == None
 
+
 def test_company_id_external_project_id_empty_test2(mock_event):
     mock_event.set_event_company_id("company_id")
     mock_event.set_company_id_external_project_id()
     assert mock_event.get_company_id_external_project_id() == None
+
 
 def test_company_id_external_project_id_empty_test3(mock_event):
     mock_event.set_company_id_external_project_id()
