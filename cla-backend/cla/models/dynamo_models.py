@@ -30,6 +30,7 @@ from pynamodb.models import Model
 
 import cla
 from cla.models import model_interfaces, key_value_store_interface, DoesNotExist
+from cla.models.event_types import EventType
 from cla.models.model_interfaces import User, Signature, ProjectCLAGroup, Repository, Gerrit
 
 stage = os.environ.get("STAGE", "")
@@ -4394,27 +4395,43 @@ class Event(model_interfaces.Event):
     @classmethod
     def create_event(
             cls,
-            event_type=None,
-            event_project_id=None,
-            event_company_id=None,
-            event_project_name=None,
-            event_company_name=None,
-            event_data=None,
-            event_summary=None,
-            event_user_id=None,
-            contains_pii=False,
-            dry_run=False
+            event_type: Optional[EventType] = None,
+            event_project_id: Optional[str] = None,
+            event_company_id: Optional[str] = None,
+            event_project_name: Optional[str] = None,
+            event_company_name: Optional[str] = None,
+            event_data: Optional[str] = None,
+            event_summary: Optional[str] = None,
+            event_user_id: Optional[str] = None,
+            event_user_name: Optional[str] = None,
+            contains_pii: bool = False,
+            dry_run: bool = False
     ):
         """
         Creates an event returns the newly created event in dict format.
 
         :param event_type: The type of event
         :type event_type: EventType
-        :param event_user_id: The user that is assocaited with the event
-        :type event_user_id: string
         :param event_project_id: The project associated with event
         :type event_project_id: string
-
+        :param event_project_name: The project name associated with event
+        :type event_project_name: string
+        :param event_company_id: The company associated with event
+        :type event_company_id: string
+        :param event_company_name: The company name associated with event
+        :type event_company_name: string
+        :param event_data: The event message/data
+        :type event_data: string
+        :param event_summary: The event summary message/data
+        :type event_summary: string
+        :param event_user_id: The user that is associated with the event
+        :type event_user_id: string
+        :param event_user_name: The user's name that is associated with the event
+        :type event_user_name: string
+        :param contains_pii: flag to indicate if the message contains personal information (deprecated)
+        :type contains_pii: bool
+        :param dry_run: flag to indicate this is for testing and the record should not be stored/created
+        :type dry_run: bool
         """
         try:
             event = cls()
@@ -4440,6 +4457,7 @@ class Event(model_interfaces.Event):
                     event.set_event_company_id(event_company_id)
                 except DoesNotExist as err:
                     return {"errors": {"event_company_id": str(err)}}
+
             if event_user_id:
                 try:
                     user = User()
@@ -4450,6 +4468,10 @@ class Event(model_interfaces.Event):
                         event.set_event_user_name(user_name)
                 except DoesNotExist as err:
                     return {"errors": {"event_": str(err)}}
+
+            if event_user_name:
+                event.set_event_user_name(event_user_name)
+
             event.set_event_id(str(uuid.uuid4()))
             if event_type:
                 event.set_event_type(event_type.name)
