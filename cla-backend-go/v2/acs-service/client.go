@@ -67,19 +67,35 @@ func GetClient() *Client {
 	return acsServiceClient
 }
 
+// SendUserInviteInput input model for sending user invites
+type SendUserInviteInput struct {
+	InviteUserFirstName string
+	InviteUserLastName  string
+	InviteUserEmail     string
+	RoleName            string
+	Scope               string
+	ProjectSFID         string
+	OrganizationSFID    string
+	InviteType          string
+	Subject             string
+	EmailContent        string
+	Automate            bool
+}
+
 // SendUserInvite invites users to the LFX platform
-func (ac *Client) SendUserInvite(ctx context.Context, email *string,
-	roleName string, scope string, projectID *string, organizationID string, inviteType string, subject *string, emailContent *string, automate bool) error {
+//func (ac *Client) SendUserInvite(ctx context.Context, email *string,
+//	roleName string, scope string, projectID *string, organizationID string, inviteType string, subject *string, emailContent *string, automate bool) error {
+func (ac *Client) SendUserInvite(ctx context.Context, input *SendUserInviteInput) error {
 	f := logrus.Fields{
-		"functionName":   "SendUserInvite",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"roleName":       roleName,
-		"scope":          scope,
-		"projectID":      utils.StringValue(projectID),
-		"organizationID": organizationID,
-		"inviteType":     inviteType,
-		"subject":        utils.StringValue(subject),
-		"automate":       automate,
+		"functionName":     "SendUserInvite",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+		"roleName":         input.RoleName,
+		"scope":            input.Scope,
+		"projectSFID":      input.ProjectSFID,
+		"organizationSFID": input.OrganizationSFID,
+		"inviteType":       input.InviteType,
+		"subject":          input.Subject,
+		"automate":         input.Automate,
 	}
 
 	tok, err := token.GetToken()
@@ -91,30 +107,32 @@ func (ac *Client) SendUserInvite(ctx context.Context, email *string,
 	clientAuth := runtimeClient.BearerToken(tok)
 	params := &invite.CreateUserInviteParams{
 		SendInvite: &models.CreateInvite{
-			Automate: automate,
-			Email:    email,
-			Scope:    scope,
-			RoleName: roleName,
-			Type:     inviteType,
+			Automate:  input.Automate,
+			Email:     &input.InviteUserEmail,
+			FirstName: input.InviteUserFirstName,
+			LastName:  input.InviteUserLastName,
+			RoleName:  input.RoleName,
+			Scope:     input.Scope,
+			Type:      input.InviteType,
 		},
 		Context: ctx,
 	}
-	if scope == utils.ProjectOrgScope && projectID == nil {
+	if input.Scope == utils.ProjectOrgScope && input.ProjectSFID == "" {
 		log.WithFields(f).Warnf("Project ID required for project|organization scope, error: %+v", ErrProjectIDMissing)
 		return ErrProjectIDMissing
 	}
-	if scope == utils.ProjectOrgScope {
+	if input.Scope == utils.ProjectOrgScope {
 		// Set project|organization scope
-		params.SendInvite.ScopeID = fmt.Sprintf("%s|%s", *projectID, organizationID)
+		params.SendInvite.ScopeID = fmt.Sprintf("%s|%s", input.ProjectSFID, input.OrganizationSFID)
 	} else {
-		params.SendInvite.ScopeID = organizationID
+		params.SendInvite.ScopeID = input.OrganizationSFID
 	}
-	if subject != nil {
-		params.SendInvite.Subject = *subject
+	if input.Subject != "" {
+		params.SendInvite.Subject = input.Subject
 	}
 	// Pass emailContent if passed in the args
-	if emailContent != nil {
-		params.SendInvite.Body = *emailContent
+	if input.EmailContent != "" {
+		params.SendInvite.Body = input.EmailContent
 	}
 
 	log.WithFields(f).Debugf("Submitting ACS Service CreateUserInvite with payload: %+v", params)

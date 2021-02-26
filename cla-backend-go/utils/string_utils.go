@@ -24,3 +24,19 @@ func TrimSpaceFromItems(arr []string) []string {
 
 	return newArr
 }
+
+// GetFirstAndLastName parses the user's name into first and last strings
+func GetFirstAndLastName(firstAndLastName string) (string, string) {
+	// Parse the provided user's name
+	userNames := strings.Split(firstAndLastName, " ")
+	var userFirstName string
+	var userLastName string
+	if len(userNames) >= 2 {
+		userFirstName = userNames[0]
+		userLastName = userNames[len(userNames)-1]
+	} else if len(userNames) == 1 {
+		userFirstName = userNames[0]
+	}
+
+	return strings.TrimSpace(userFirstName), strings.TrimSpace(userLastName)
+}

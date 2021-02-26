@@ -252,9 +252,24 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, project
 	}
 
 	acsClient := v2AcsService.GetClient()
-	automate := false
 	log.WithFields(f).Debug("sending user invite request...")
-	return acsClient.SendUserInvite(ctx, &userWithNoLFIDEmail, role, utils.ProjectOrgScope, &foundationSFID, organizationID, "userinvite", &subject, &body, automate)
+
+	// Parse the provided user's name
+	userFirstName, userLastName := utils.GetFirstAndLastName(userWithNoLFIDName)
+
+	return acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
+		InviteUserFirstName: userFirstName,
+		InviteUserLastName:  userLastName,
+		InviteUserEmail:     userWithNoLFIDEmail,
+		RoleName:            role,
+		Scope:               utils.ProjectOrgScope,
+		ProjectSFID:         foundationSFID,
+		OrganizationSFID:    organizationID,
+		InviteType:          "userinvite",
+		Subject:             subject,
+		EmailContent:        body,
+		Automate:            false,
+	})
 }
 
 // sendEmailToUserWithNoLFID helper function to send email to a given user with no LFID
@@ -281,8 +296,23 @@ func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, repository proj
 		return err
 	}
 	acsClient := v2AcsService.GetClient()
-	automate := false
+
+	// Parse the provided user's name
+	userFirstName, userLastName := utils.GetFirstAndLastName(userWithNoLFIDName)
 
 	log.WithFields(f).Debug("sending user invite request...")
-	return acsClient.SendUserInvite(ctx, &userWithNoLFIDEmail, role, utils.ProjectOrgScope, projectID, organizationID, "userinvite", &subject, &body, automate)
+	//return acsClient.SendUserInvite(ctx, &userWithNoLFIDEmail, role, utils.ProjectOrgScope, projectID, organizationID, "userinvite", &subject, &body, automate)
+	return acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
+		InviteUserFirstName: userFirstName,
+		InviteUserLastName:  userLastName,
+		InviteUserEmail:     userWithNoLFIDEmail,
+		RoleName:            role,
+		Scope:               utils.ProjectOrgScope,
+		ProjectSFID:         *projectID,
+		OrganizationSFID:    organizationID,
+		InviteType:          "userinvite",
+		Subject:             subject,
+		EmailContent:        body,
+		Automate:            false,
+	})
 }

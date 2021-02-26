@@ -38,3 +38,31 @@ func TestTrimSpaceFromItems(t *testing.T) {
 		assert.ObjectsAreEqualValues(expectedResults[i], utils.TrimSpaceFromItems(testInputs[i]))
 	}
 }
+
+func TestGetFirstAndLastName(t *testing.T) {
+
+	testInputs := []string{
+		"",
+		"John",
+		"John Smith",
+		"John        Smith",
+		"John Harold Smith",
+		"John       Harold         Smith",
+		"John Harold Zeek Smith",
+	}
+	expectedResults := [][]string{
+		{"", ""},
+		{"John", ""},
+		{"John", "Smith"},
+		{"John", "Smith"},
+		{"John", "Smith"},
+		{"John", "Smith"},
+		{"John", "Smith"},
+	}
+
+	for i := range testInputs {
+		firstName, lastName := utils.GetFirstAndLastName(testInputs[i])
+		assert.Equal(t, expectedResults[i][0], firstName)
+		assert.Equal(t, expectedResults[i][1], lastName)
+	}
+}
