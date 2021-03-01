@@ -17,6 +17,8 @@ from typing import List, Optional
 import falcon
 import requests
 from hug.middleware import SessionMiddleware
+from hug.middleware import LogMiddleware
+from cla.middleware import CLALogMiddleware
 from requests_oauthlib import OAuth2Session
 
 import cla
@@ -38,6 +40,9 @@ def get_cla_path():
     cla_root_dir = os.path.dirname(cla_folder_dir)
     return cla_root_dir
 
+def get_log_middleware():
+    """Prepare the hug middleware to manage logging. """
+    return CLALogMiddleware(logger=cla.log)
 
 def get_session_middleware():
     """Prepares the hug middleware to manage key-value session data."""

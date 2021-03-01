@@ -34,6 +34,7 @@ from cla.utils import (
     get_supported_repository_providers,
     get_supported_document_content_types,
     get_session_middleware,
+    get_log_middleware
 )
 
 
@@ -1786,4 +1787,4 @@ def create_event(
 
 # Session Middleware
 __hug__.http.add_middleware(get_session_middleware())
-__hug__.http.add_middleware(LogMiddleware(logger=cla.log))
+__hug__.http.add_middleware(get_log_middleware())
