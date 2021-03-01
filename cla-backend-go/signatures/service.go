@@ -430,7 +430,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 	}
 
 	// Log Events
-	s.createEventLogEntries(companyModel, claGroupModel, userModel, params)
+	s.createEventLogEntries(ctx, companyModel, claGroupModel, userModel, params)
 
 	// Send an email to the CLA Managers
 	for _, claManager := range claManagers {
@@ -638,12 +638,12 @@ func (s service) sendRequestAccessEmailToContributors(authUser *auth.User, compa
 	}
 }
 
-func (s service) createEventLogEntries(companyModel *models.Company, claGroupModel *models.ClaGroup, userModel *models.User, approvalList *models.ApprovalList) {
+func (s service) createEventLogEntries(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, userModel *models.User, approvalList *models.ApprovalList) {
 	for _, value := range approvalList.AddEmailApprovalList {
 		// Send an event
-		s.eventsService.LogEvent(&events.LogEventArgs{
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:         events.ClaApprovalListUpdated,
-			ProjectID:         claGroupModel.ProjectID,
+			ProjectID:         claGroupModel.ProjectExternalID,
 			ClaGroupModel:     claGroupModel,
 			CompanyID:         companyModel.CompanyID,
 			CompanyModel:      companyModel,
@@ -661,9 +661,9 @@ func (s service) createEventLogEntries(companyModel *models.Company, claGroupMod
 	}
 	for _, value := range approvalList.RemoveEmailApprovalList {
 		// Send an event
-		s.eventsService.LogEvent(&events.LogEventArgs{
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:         events.ClaApprovalListUpdated,
-			ProjectID:         claGroupModel.ProjectID,
+			ProjectID:         claGroupModel.ProjectExternalID,
 			ClaGroupModel:     claGroupModel,
 			CompanyID:         companyModel.CompanyID,
 			CompanyModel:      companyModel,
@@ -681,9 +681,9 @@ func (s service) createEventLogEntries(companyModel *models.Company, claGroupMod
 	}
 	for _, value := range approvalList.AddDomainApprovalList {
 		// Send an event
-		s.eventsService.LogEvent(&events.LogEventArgs{
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:         events.ClaApprovalListUpdated,
-			ProjectID:         claGroupModel.ProjectID,
+			ProjectID:         claGroupModel.ProjectExternalID,
 			ClaGroupModel:     claGroupModel,
 			CompanyID:         companyModel.CompanyID,
 			CompanyModel:      companyModel,
@@ -701,9 +701,9 @@ func (s service) createEventLogEntries(companyModel *models.Company, claGroupMod
 	}
 	for _, value := range approvalList.RemoveDomainApprovalList {
 		// Send an event
-		s.eventsService.LogEvent(&events.LogEventArgs{
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:         events.ClaApprovalListUpdated,
-			ProjectID:         claGroupModel.ProjectID,
+			ProjectID:         claGroupModel.ProjectExternalID,
 			ClaGroupModel:     claGroupModel,
 			CompanyID:         companyModel.CompanyID,
 			CompanyModel:      companyModel,
@@ -721,9 +721,9 @@ func (s service) createEventLogEntries(companyModel *models.Company, claGroupMod
 	}
 	for _, value := range approvalList.AddGithubUsernameApprovalList {
 		// Send an event
-		s.eventsService.LogEvent(&events.LogEventArgs{
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:         events.ClaApprovalListUpdated,
-			ProjectID:         claGroupModel.ProjectID,
+			ProjectID:         claGroupModel.ProjectExternalID,
 			ClaGroupModel:     claGroupModel,
 			CompanyID:         companyModel.CompanyID,
 			CompanyModel:      companyModel,
@@ -741,9 +741,9 @@ func (s service) createEventLogEntries(companyModel *models.Company, claGroupMod
 	}
 	for _, value := range approvalList.RemoveGithubUsernameApprovalList {
 		// Send an event
-		s.eventsService.LogEvent(&events.LogEventArgs{
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:         events.ClaApprovalListUpdated,
-			ProjectID:         claGroupModel.ProjectID,
+			ProjectID:         claGroupModel.ProjectExternalID,
 			ClaGroupModel:     claGroupModel,
 			CompanyID:         companyModel.CompanyID,
 			CompanyModel:      companyModel,
@@ -761,9 +761,9 @@ func (s service) createEventLogEntries(companyModel *models.Company, claGroupMod
 	}
 	for _, value := range approvalList.AddGithubOrgApprovalList {
 		// Send an event
-		s.eventsService.LogEvent(&events.LogEventArgs{
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:         events.ClaApprovalListUpdated,
-			ProjectID:         claGroupModel.ProjectID,
+			ProjectID:         claGroupModel.ProjectExternalID,
 			ClaGroupModel:     claGroupModel,
 			CompanyID:         companyModel.CompanyID,
 			CompanyModel:      companyModel,
@@ -781,9 +781,10 @@ func (s service) createEventLogEntries(companyModel *models.Company, claGroupMod
 	}
 	for _, value := range approvalList.RemoveGithubOrgApprovalList {
 		// Send an event
-		s.eventsService.LogEvent(&events.LogEventArgs{
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:         events.ClaApprovalListUpdated,
-			ProjectID:         claGroupModel.ProjectID,
+			CLAGroupID:        claGroupModel.ProjectID,
+			ProjectID:         claGroupModel.ProjectExternalID,
 			ClaGroupModel:     claGroupModel,
 			CompanyID:         companyModel.CompanyID,
 			CompanyModel:      companyModel,

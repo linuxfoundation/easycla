@@ -239,9 +239,11 @@ func (s service) AddClaManager(ctx context.Context, companyID string, claGroupID
 	sendClaManagerAddedEmailToUser(companyModel, claGroupModel, userModel.Username, userModel.LfEmail, projectSFName)
 
 	// Send an event
-	s.eventsService.LogEvent(&events.LogEventArgs{
+	s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 		EventType:         events.ClaManagerCreated,
-		ProjectID:         claGroupID,
+		ProjectID:         claGroupModel.ProjectExternalID,
+		CLAGroupID:        claGroupID,
+		CLAGroupName:      claGroupModel.ProjectName,
 		ClaGroupModel:     claGroupModel,
 		CompanyID:         companyID,
 		CompanyModel:      companyModel,
@@ -341,7 +343,9 @@ func (s service) RemoveClaManager(ctx context.Context, companyID string, claGrou
 	// Send an event
 	s.eventsService.LogEvent(&events.LogEventArgs{
 		EventType:         events.ClaManagerDeleted,
-		ProjectID:         claGroupID,
+		ProjectID:         claGroupModel.ProjectExternalID,
+		CLAGroupID:        claGroupID,
+		CLAGroupName:      claGroupModel.ProjectName,
 		ClaGroupModel:     claGroupModel,
 		CompanyID:         companyID,
 		CompanyModel:      companyModel,

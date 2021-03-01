@@ -297,3 +297,9 @@ func IsUUIDv4(id string) bool {
 
 	return value.Version() == uuid.V4
 }
+
+// IsSalesForceID returns true if the specified ID is a SalesForce formatted ID, otherwise returns false
+func IsSalesForceID(id string) bool {
+	regExp := regexp.MustCompile("^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$")
+	return regExp.MatchString(strings.TrimSpace(id))
+}

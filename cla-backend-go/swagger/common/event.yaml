@@ -4,31 +4,32 @@
 type: object
 properties:
   EventID:
-    type: string
     description: unique id of the event
+    $ref: './common/properties/internal-id.yaml'
   EventType:
     type: string
     description: type of the event
   UserID:
-    type: string
     description: id of the user who created this event
+    $ref: './common/properties/internal-id.yaml'
   UserName:
-    type: string
-    description: name of the user
+    $ref: './common/properties/user-name.yaml'
   LfUsername:
     type: string
     description: name of the user
+  EventCLAGroupID:
+    description: the CLA Group ID
+    $ref: './common/properties/internal-id.yaml'
+  EventCLAGroupName:
+    description: the CLA Group name
+    $ref: './common/properties/cla-group-name.yaml'
   EventProjectID:
     type: string
     description: id of the SFID project
   EventProjectName:
-    type: string
-    description: name of the project
+    $ref: './common/properties/project-name.yaml'
   EventCompanyName:
-    type: string
-    description: name of the company
-    pattern: '^([\w\p{L}][\w\s\p{L}()\[\]+\-/%!@#$]*){2,255}$'
-    example: "Linux Foundation"
+    $ref: './common/properties/company-name.yaml'
   EventCompanyID:
     type: string
     description: id of the organization/company

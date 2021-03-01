@@ -390,3 +390,27 @@ func TestIsUUIDv4LikeSFID(t *testing.T) {
 	sfid := "0014100000TdznWAAR"
 	assert.False(t, utils.IsUUIDv4(sfid), fmt.Sprintf("%s is not v4 UUID", sfid))
 }
+
+func TestIsSalesForceID(t *testing.T) {
+	trueTestData := []string{
+		"00117000015vpjX",
+		"00117000015vpjXAAQ",
+	}
+	falseTestData := []string{
+		"",
+		"00117",
+		"-00117",
+		"00117000015vpj-",
+		"0011700001-vpjXAAQ",
+		"0011700001?vpjXAAQ",
+		"0011700001&vpjXAAQ",
+		"0011700001_vpjXAAQ",
+	}
+
+	for i := range trueTestData {
+		assert.True(t, utils.IsSalesForceID(trueTestData[i]))
+	}
+	for i := range falseTestData {
+		assert.False(t, utils.IsSalesForceID(falseTestData[i]))
+	}
+}

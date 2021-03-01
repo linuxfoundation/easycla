@@ -76,8 +76,9 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 			return project.NewCreateProjectBadRequest().WithPayload(errorResponse(err))
 		}
 
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:     events.CLAGroupCreated,
+			ProjectSFID:   claGroupModel.ProjectExternalID,
 			ClaGroupModel: claGroupModel,
 			UserID:        claUser.UserID,
 			LfUsername:    claUser.LFUsername,
@@ -200,8 +201,9 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		// Log gerrit event
 		if howMany > 0 {
 			log.WithFields(f).Debugf("Deleted %d gerrit groups", howMany)
-			eventsService.LogEvent(&events.LogEventArgs{
+			eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:     events.GerritRepositoryDeleted,
+				ProjectSFID:   claGroupModel.ProjectExternalID,
 				ClaGroupModel: claGroupModel,
 				UserID:        claUser.UserID,
 				LfUsername:    claUser.LFUsername,
@@ -221,8 +223,9 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 			log.WithFields(f).Debugf("Deleted %d github repositories", howMany)
 
 			// Log github delete event
-			eventsService.LogEvent(&events.LogEventArgs{
+			eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:     events.RepositoryDisabled,
+				ProjectSFID:   claGroupModel.ProjectExternalID,
 				ClaGroupModel: claGroupModel,
 				UserID:        claUser.UserID,
 				LfUsername:    claUser.LFUsername,
@@ -241,8 +244,9 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		if howMany > 0 {
 			log.WithFields(f).Debugf("Invalidated %d signatures", howMany)
 			// Log invalidate signatures
-			eventsService.LogEvent(&events.LogEventArgs{
+			eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:     events.InvalidatedSignature,
+				ProjectSFID:   claGroupModel.ProjectExternalID,
 				ClaGroupModel: claGroupModel,
 				UserID:        claUser.UserID,
 				LfUsername:    claUser.LFUsername,
@@ -259,8 +263,9 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 			}
 			return project.NewDeleteProjectByIDBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:     events.CLAGroupDeleted,
+			ProjectSFID:   claGroupModel.ProjectExternalID,
 			ClaGroupModel: claGroupModel,
 			UserID:        claUser.UserID,
 			LfUsername:    claUser.LFUsername,
@@ -304,8 +309,9 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		}
 
 		// Log an event
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:     events.CLAGroupUpdated,
+			ProjectSFID:   claGroupModel.ProjectExternalID,
 			ClaGroupModel: claGroupModel,
 			UserID:        claUser.UserID,
 			LfUsername:    claUser.LFUsername,

@@ -257,7 +257,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 			return company.NewAddUsertoCompanyAccessListBadRequest().WithXRequestID(reqID)
 		}
 
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType: events.CompanyACLUserAdded,
 			CompanyID: params.CompanyID,
 			UserID:    claUser.UserID,
@@ -280,7 +280,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		}
 
 		// Add an event to the log
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType: events.CompanyACLRequestAdded,
 			CompanyID: params.CompanyID,
 			UserID:    claUser.UserID,
@@ -305,7 +305,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		}
 
 		// Add an event to the log
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType: events.CompanyACLRequestApproved,
 			CompanyID: params.CompanyID,
 			UserID:    claUser.UserID,
@@ -330,7 +330,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		}
 
 		// Add an event to the log
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType: events.CompanyACLRequestDenied,
 			CompanyID: params.CompanyID,
 			UserID:    claUser.UserID,

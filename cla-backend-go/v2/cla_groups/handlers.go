@@ -40,7 +40,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":        "cla_groups.handlers.ClaGroupCreateClaGroupHandler",
+			"functionName":        "v2.cla_groups.handlers.ClaGroupCreateClaGroupHandler",
 			utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
 			"claGroupName":        utils.StringValue(params.ClaGroupInput.ClaGroupName),
 			"foundationSFID":      utils.StringValue(params.ClaGroupInput.FoundationSfid),
@@ -60,7 +60,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			return cla_group.NewCreateClaGroupForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		claGroup, err := service.CreateCLAGroup(ctx, params.ClaGroupInput, utils.StringValue(params.XUSERNAME))
+		claGroup, err := service.CreateCLAGroup(ctx, authUser, params.ClaGroupInput, utils.StringValue(params.XUSERNAME))
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("unable to create the CLA Group")
 			return cla_group.NewCreateClaGroupBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -86,7 +86,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "cla_groups.handlers.ClaGroupUpdateClaGroupHandler",
+			"functionName":   "v2.cla_groups.handlers.ClaGroupUpdateClaGroupHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"authUsername":   params.XUSERNAME,
@@ -135,7 +135,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("unable to update the CLA Group Name or Description - values are the same for CLA Group ID: %s", params.ClaGroupID)))
 		}
 
-		claGroup, err := service.UpdateCLAGroup(ctx, claGroupModel, params.Body, utils.StringValue(params.XUSERNAME))
+		claGroup, err := service.UpdateCLAGroup(ctx, authUser, claGroupModel, params.Body, utils.StringValue(params.XUSERNAME))
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("unable to update the CLA Group Name and/or Description - update failed")
 			return cla_group.NewUpdateClaGroupBadRequest().WithXRequestID(reqID).WithPayload(
@@ -161,7 +161,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "cla_groups.handlers.ClaGroupDeleteClaGroupHandler",
+			"functionName":   "v2.cla_groups.handlers.ClaGroupDeleteClaGroupHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"authUsername":   params.XUSERNAME,
@@ -204,12 +204,8 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		err = service.DeleteCLAGroup(ctx, claGroupModel, authUser)
 		if err != nil {
 			log.WithFields(f).Warn(err)
-			return cla_group.NewDeleteClaGroupInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code: "500",
-				Message: fmt.Sprintf("EasyCLA - 500 Internal server error - error deleting CLA Group %s, error: %+v",
-					params.ClaGroupID, err),
-				XRequestID: reqID,
-			})
+			return cla_group.NewDeleteClaGroupInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, fmt.Sprintf("error deleting CLA Group by ID: %s", params.ClaGroupID), err))
 		}
 
 		eventsService.LogEvent(&events.LogEventArgs{
@@ -227,7 +223,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":    "cla_groups.handlers.ClaGroupEnrollProjectsHandler",
+			"functionName":    "v2.cla_groups.handlers.ClaGroupEnrollProjectsHandler",
 			utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 			"ClaGroupID":      params.ClaGroupID,
 			"authUsername":    params.XUSERNAME,
@@ -235,28 +231,18 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			"projectSFIDList": strings.Join(params.ProjectSFIDList, ","),
 		}
 
-		cg, err := v1ProjectService.GetCLAGroupByID(ctx, params.ClaGroupID)
-		if err != nil {
-			if err, ok := err.(*utils.CLAGroupNotFound); ok {
-				return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       "404",
-					Message:    fmt.Sprintf("EasyCLA - 404 Not Found - %s", err.Error()),
-					XRequestID: reqID,
-				})
+		cg, getCLAGroupErr := v1ProjectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		if getCLAGroupErr != nil {
+			if _, ok := getCLAGroupErr.(*utils.CLAGroupNotFound); ok {
+				return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("problem loading CLA Group by ID: %s", params.ClaGroupID), getCLAGroupErr))
 			}
-			if err == v1Project.ErrProjectDoesNotExist {
-				return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code: "404",
-					Message: fmt.Sprintf("EasyCLA - 404 Not Found - cla_group %s not found",
-						params.ClaGroupID),
-					XRequestID: reqID,
-				})
+			if getCLAGroupErr == v1Project.ErrProjectDoesNotExist {
+				return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("problem loading CLA Group by ID: %s", params.ClaGroupID), getCLAGroupErr))
 			}
-			return cla_group.NewEnrollProjectsInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:       "400",
-				Message:    fmt.Sprintf("EasyCLA - 500 Internal server error - error = %s", err.Error()),
-				XRequestID: reqID,
-			})
+			return cla_group.NewEnrollProjectsInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, fmt.Sprintf("problem loading CLA Group by ID: %s", params.ClaGroupID), getCLAGroupErr))
 		}
 
 		// Check permissions
@@ -275,12 +261,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 					msg := fmt.Sprintf("Failed to get salesforce project: %s", projectSFID)
 					log.WithFields(f).Warn(msg)
 					if _, ok := projectErr.(*v2ProjectServiceClient.GetProjectNotFound); ok {
-						return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-							Code:    "404",
-							Message: fmt.Sprintf("project not found with given ID. [%s]", projectSFID),
-						})
+						return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
+							utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("project not found with ID: [%s]", projectSFID), projectErr))
 					}
-					return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFoundWithError(reqID, msg, projectErr))
+					return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(
+						utils.ErrorResponseNotFoundWithError(reqID, msg, projectErr))
 				}
 				var parentProject *v2ProjectServiceModels.ProjectOutputDetailed
 				// Handle the ONAP edge case
@@ -289,10 +274,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 					if parentProject == nil || projectErr != nil {
 						msg := fmt.Sprintf("Failed to get parent: %s", project.Parent)
 						log.WithFields(f).Warnf(msg)
-						return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload((&models.ErrorResponse{
-							Code:    "400",
-							Message: msg,
-						}))
+						return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 					}
 				}
 				if (project.Parent != "" && !utils.IsProjectCategory(project, parentProject)) || (utils.IsProjectHasRootParent(project) && project.ProjectType == utils.ProjectTypeProjectGroup) {
@@ -303,31 +285,21 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 
 		}
 
-		err = service.EnrollProjectsInClaGroup(ctx, params.ClaGroupID, cg.FoundationSFID, params.ProjectSFIDList)
-		if err != nil {
-			if strings.Contains(err.Error(), "bad request") {
-				return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       "400",
-					Message:    fmt.Sprintf("EasyCLA - 400 Bad Request - %s", err.Error()),
-					XRequestID: reqID,
-				})
-			}
-			return cla_group.NewEnrollProjectsInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:       "500",
-				Message:    fmt.Sprintf("EasyCLA - 500 Internal server error - error = %s", err.Error()),
-				XRequestID: reqID,
-			})
-		}
-
-		eventsService.LogEvent(&events.LogEventArgs{
-			EventType:     events.CLAGroupUpdated,
-			ClaGroupModel: cg,
-			LfUsername:    authUser.UserName,
-			EventData: &events.CLAGroupUpdatedEventData{
-				ClaGroupName:        cg.ProjectName,
-				ClaGroupDescription: cg.ProjectDescription,
-			},
+		// Enroll the project(s) into the CLA Group
+		enrollCLAGroupErr := service.EnrollProjectsInClaGroup(ctx, &EnrollProjectsModel{
+			AuthUser:        authUser,
+			CLAGroupID:      params.ClaGroupID,
+			FoundationSFID:  cg.FoundationSFID,
+			ProjectSFIDList: params.ProjectSFIDList,
 		})
+		if enrollCLAGroupErr != nil {
+			if strings.Contains(enrollCLAGroupErr.Error(), "bad request") {
+				return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseBadRequestWithError(reqID, "unable to enroll projects in CLA Group", enrollCLAGroupErr))
+			}
+			return cla_group.NewEnrollProjectsInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, "unable to enroll projects in CLA Group", enrollCLAGroupErr))
+		}
 
 		return cla_group.NewEnrollProjectsOK().WithXRequestID(reqID)
 	})
@@ -337,7 +309,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":    "cla_groups.handlers.ClaGroupUnenrollProjectsHandler",
+			"functionName":    "v2.cla_groups.handlers.ClaGroupUnenrollProjectsHandler",
 			utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 			"ClaGroupID":      params.ClaGroupID,
 			"authUsername":    params.XUSERNAME,
@@ -348,24 +320,15 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		cg, err := v1ProjectService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			if err, ok := err.(*utils.CLAGroupNotFound); ok {
-				return cla_group.NewUnenrollProjectsNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       "404",
-					Message:    fmt.Sprintf("EasyCLA - 404 Not Found - %s", err.Error()),
-					XRequestID: reqID,
-				})
+				return cla_group.NewUnenrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("unable to locate CLA Group by ID: %s", params.ClaGroupID), err))
 			}
 			if err == v1Project.ErrProjectDoesNotExist {
-				return cla_group.NewUnenrollProjectsNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       "404",
-					Message:    fmt.Sprintf("EasyCLA - 404 Not Found - cla_group %s not found", params.ClaGroupID),
-					XRequestID: reqID,
-				})
+				return cla_group.NewUnenrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("unable to locate CLA Group by ID: %s", params.ClaGroupID), err))
 			}
-			return cla_group.NewUnenrollProjectsInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:       "400",
-				Message:    fmt.Sprintf("EasyCLA - 500 Internal server error - error = %s", err.Error()),
-				XRequestID: reqID,
-			})
+			return cla_group.NewUnenrollProjectsInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("problem locating CLA Group by ID: %s", params.ClaGroupID), err))
 		}
 
 		// Check permissions
@@ -375,20 +338,19 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			return cla_group.NewUnenrollProjectsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		err = service.UnenrollProjectsInClaGroup(ctx, params.ClaGroupID, cg.FoundationSFID, params.ProjectSFIDList)
+		err = service.UnenrollProjectsInClaGroup(ctx, &UnenrollProjectsModel{
+			AuthUser:        authUser,
+			CLAGroupID:      params.ClaGroupID,
+			FoundationSFID:  cg.FoundationSFID,
+			ProjectSFIDList: params.ProjectSFIDList,
+		})
 		if err != nil {
 			if strings.Contains(err.Error(), "bad request") {
-				return cla_group.NewUnenrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       "400",
-					Message:    fmt.Sprintf("EasyCLA - 400 Bad Request - %s", err.Error()),
-					XRequestID: reqID,
-				})
+				return cla_group.NewUnenrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseBadRequestWithError(reqID, fmt.Sprintf("unable to unenroll projects for CLA Group ID: %s", params.ClaGroupID), err))
 			}
-			return cla_group.NewUnenrollProjectsInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:       "500",
-				Message:    fmt.Sprintf("EasyCLA - 500 Internal server error - error = %s", err.Error()),
-				XRequestID: reqID,
-			})
+			return cla_group.NewUnenrollProjectsInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, fmt.Sprintf("unable to unenroll projects for CLA Group ID: %s", params.ClaGroupID), err))
 		}
 
 		eventsService.LogEvent(&events.LogEventArgs{
@@ -409,7 +371,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "cla_groups.handlers.ClaGroupListClaGroupsUnderFoundationHandler",
+			"functionName":   "v2.cla_groups.handlers.ClaGroupListClaGroupsUnderFoundationHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSFID,
 			"authUsername":   params.XUSERNAME,
@@ -423,12 +385,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			msg := fmt.Sprintf("Failed to get salesforce project: %s", params.ProjectSFID)
 			log.WithFields(f).Warn(msg)
 			if _, ok := projectErr.(*v2ProjectServiceClient.GetProjectNotFound); ok {
-				return cla_group.NewListClaGroupsUnderFoundationNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:    "404",
-					Message: fmt.Sprintf("project not found with given ID. [%s]", params.ProjectSFID),
-				})
+				return cla_group.NewListClaGroupsUnderFoundationNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("project not found with ID: %s", params.ProjectSFID), projectErr))
 			}
-			return cla_group.NewListClaGroupsUnderFoundationBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFoundWithError(reqID, msg, projectErr))
+			return cla_group.NewListClaGroupsUnderFoundationBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseNotFoundWithError(reqID, msg, projectErr))
 		}
 
 		log.WithFields(f).Debug("found project - evaluating parent...")
@@ -518,7 +479,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 // isUserHaveAccessToCLAProject is a helper function to determine if the user has access to the specified project
 func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, parentProjectSFID string, projectSFIDs []string, projectClaGroupsRepo projects_cla_groups.Repository) bool { // nolint
 	f := logrus.Fields{
-		"functionName":      "cla_groups.handlers.isUserHaveAccessToCLAProject",
+		"functionName":      "v2.cla_groups.handlers.isUserHaveAccessToCLAProject",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"parentProjectSFID": parentProjectSFID,
 		"projectSFIDs":      strings.Join(projectSFIDs, ","),

@@ -89,7 +89,7 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			if params.Body.BranchProtectionEnabled != nil {
 				branchProtectionEnabled = *params.Body.BranchProtectionEnabled
 			}
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				UserID:            claUser.UserID,
 				EventType:         events.GitHubOrganizationAdded,
 				ExternalProjectID: params.ProjectSFID,
@@ -125,7 +125,7 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 				return github_organizations.NewDeleteProjectGithubOrganizationBadRequest().WithPayload(errorResponse(err))
 			}
 
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				UserID:            claUser.UserID,
 				EventType:         events.GitHubOrganizationDeleted,
 				ExternalProjectID: params.ProjectSFID,
@@ -163,7 +163,7 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 				return github_organizations.NewUpdateProjectGithubOrganizationConfigBadRequest().WithPayload(errorResponse(err))
 			}
 
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				UserID:            claUser.UserID,
 				EventType:         events.GitHubOrganizationUpdated,
 				ExternalProjectID: params.ProjectSFID,

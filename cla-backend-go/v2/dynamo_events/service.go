@@ -122,8 +122,9 @@ func NewService(stage string,
 	s.registerCallback(eventsTable, Insert, s.EventAddedEvent)
 
 	// Enable or Disable the CLA Service Enabled/Disabled flag/attribute in the platform Project Service
-	s.registerCallback(projectsCLAGroupsTable, Insert, s.ProjectServiceEnableCLAServiceHandler)
-	s.registerCallback(projectsCLAGroupsTable, Remove, s.ProjectServiceDisableCLAServiceHandler)
+	// These are called by the API via the service layer - includes the user who did it
+	//s.registerCallback(projectsCLAGroupsTable, Insert, s.ProjectServiceEnableCLAServiceHandler)
+	//s.registerCallback(projectsCLAGroupsTable, Remove, s.ProjectServiceDisableCLAServiceHandler)
 	s.registerCallback(projectsCLAGroupsTable, Remove, s.ProjectUnenrolledDisableRepositoryHandler)
 
 	// Add or Remove any CLA Permissions for the specified project

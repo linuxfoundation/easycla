@@ -10,6 +10,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/communitybridge/easycla/cla-backend-go/events"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
@@ -220,14 +223,6 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 
 	}
 
-	// Comment out the below as we want to support stand-alone projects
-	/*
-		if len(foundationProjectDetails.Projects) == 0 {
-			log.WithFields(f).Warn("validation failure - project does not have any subprojects")
-			return fmt.Errorf("bad request: invalid input to enroll projects. project does not have any subprojects")
-		}
-	*/
-
 	// Check to see if all the provided enrolled projects are part of this foundation
 	foundationProjectIDList := utils.NewStringSet()
 	for _, pr := range foundationProjectDetails.Projects {
@@ -389,35 +384,46 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 	return nil
 }
 
-func (s *service) AssociateCLAGroupWithProjects(ctx context.Context, claGroupID string, foundationSFID string, projectSFIDList []string) error {
+func (s *service) AssociateCLAGroupWithProjects(ctx context.Context, request *AssociateCLAGroupWithProjectsModel) error {
 	f := logrus.Fields{
 		"functionName":    "AssociateCLAGroupWithProjects",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
-		"foundationSFID":  foundationSFID,
-		"projectSFIDList": strings.Join(projectSFIDList, ","),
+		"authUserName":    request.AuthUser.UserName,
+		"authUserEmail":   request.AuthUser.Email,
+		"claGroupID":      request.CLAGroupID,
+		"foundationSFID":  request.FoundationSFID,
+		"projectSFIDList": strings.Join(request.ProjectSFIDList, ","),
 	}
 
 	// Associate the CLA Group with the project list in a go routine
 	var errorList []error
 	var wg sync.WaitGroup
-	wg.Add(len(projectSFIDList))
+	wg.Add(len(request.ProjectSFIDList))
 
-	for _, projectSFID := range projectSFIDList {
+	for _, projectSFID := range request.ProjectSFIDList {
 		// Invoke the go routine - any errors will be handled below
 		go func(sfid string) {
 			defer wg.Done()
 			log.WithFields(f).Debugf("associating cla_group with project: %s", sfid)
-			err := s.projectsClaGroupsRepo.AssociateClaGroupWithProject(claGroupID, sfid, foundationSFID)
+			err := s.projectsClaGroupsRepo.AssociateClaGroupWithProject(request.CLAGroupID, sfid, request.FoundationSFID)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warnf("associating cla_group with project: %s failed", sfid)
 				log.WithFields(f).Debug("deleting stale entries from cla_group project association")
-				deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(claGroupID, projectSFIDList, false)
+				deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(request.CLAGroupID, request.ProjectSFIDList, false)
 				if deleteErr != nil {
 					log.WithFields(f).WithError(deleteErr).Warn("deleting stale entries from cla_group project association failed")
 				}
 				// Add the error to the error list
 				errorList = append(errorList, err)
 			}
+			// add event log entry
+			s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+				EventType:   events.CLAGroupEnrolledProject,
+				ProjectSFID: sfid,
+				CLAGroupID:  request.CLAGroupID,
+				LfUsername:  request.AuthUser.UserName,
+				EventData:   &events.CLAGroupEnrolledProjectData{},
+			})
 		}(projectSFID)
 	}
 
@@ -427,36 +433,52 @@ func (s *service) AssociateCLAGroupWithProjects(ctx context.Context, claGroupID 
 
 	// If any errors while associating - return the first one
 	if len(errorList) > 0 {
-		log.WithFields(f).WithError(errorList[0]).Warnf("encountered %d errors when associating %d projects with the CLA Group", len(errorList), len(projectSFIDList))
+		log.WithFields(f).WithError(errorList[0]).Warnf("encountered %d errors when associating %d projects with the CLA Group", len(errorList), len(request.ProjectSFIDList))
 		return errorList[0]
 	}
 
 	return nil
 }
 
-func (s *service) UnassociateCLAGroupWithProjects(ctx context.Context, claGroupID string, foundationSFID string, projectSFIDList []string) error {
+func (s *service) UnassociateCLAGroupWithProjects(ctx context.Context, request *UnassociateCLAGroupWithProjectsModel) error {
 	f := logrus.Fields{
 		"functionName":    "UnassociateCLAGroupWithProjects",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
-		"claGroupID":      claGroupID,
-		"foundationSFID":  foundationSFID,
-		"projectSFIDList": strings.Join(projectSFIDList, ","),
+		"authUserName":    request.AuthUser.UserName,
+		"authUserEmail":   request.AuthUser.Email,
+		"claGroupID":      request.CLAGroupID,
+		"foundationSFID":  request.FoundationSFID,
+		"projectSFIDList": strings.Join(request.ProjectSFIDList, ","),
 	}
 
-	deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(claGroupID, projectSFIDList, false)
+	deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(request.CLAGroupID, request.ProjectSFIDList, false)
 	if deleteErr != nil {
 		log.WithFields(f).Warnf("problem disassociating projects with CLA Group, error: %+v", deleteErr)
 		return deleteErr
+	}
+
+	// If this is slow, we may want to run these in a go routine
+	for _, projectSFID := range request.ProjectSFIDList {
+		// add event log entry
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+			EventType:   events.CLAGroupUnenrolledProject,
+			ProjectSFID: projectSFID,
+			CLAGroupID:  request.CLAGroupID,
+			LfUsername:  request.AuthUser.UserName,
+			EventData:   &events.CLAGroupUnenrolledProjectData{},
+		})
 	}
 
 	return nil
 }
 
 // EnableCLAService enable CLA service attribute in the project service for the specified project list
-func (s *service) EnableCLAService(ctx context.Context, projectSFIDList []string) error {
+func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, projectSFIDList []string) error {
 	f := logrus.Fields{
 		"functionName":    "EnableCLAService",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"authUserName":    authUser.UserName,
+		"authUserEmail":   authUser.Email,
 		"projectSFIDList": strings.Join(projectSFIDList, ","),
 	}
 
@@ -478,6 +500,13 @@ func (s *service) EnableCLAService(ctx context.Context, projectSFIDList []string
 				errorList = append(errorList, enableProjectErr)
 			} else {
 				log.WithFields(f).Debugf("enabled CLA service for project: %s", sfid)
+				// add event log entry
+				s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+					EventType:  events.ProjectServiceCLAEnabled,
+					ProjectID:  sfid,
+					LfUsername: authUser.UserName,
+					EventData:  &events.ProjectServiceCLAEnabledData{},
+				})
 			}
 		}(psc, projectSFID)
 	}
@@ -494,10 +523,12 @@ func (s *service) EnableCLAService(ctx context.Context, projectSFIDList []string
 }
 
 // DisableCLAService disable CLA service attribute in the project service for the specified project list
-func (s *service) DisableCLAService(ctx context.Context, projectSFIDList []string) error {
+func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, projectSFIDList []string) error {
 	f := logrus.Fields{
 		"functionName":    "DisableCLAService",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"authUserName":    authUser.UserName,
+		"authUserEmail":   authUser.Email,
 		"projectSFIDList": strings.Join(projectSFIDList, ","),
 	}
 
@@ -519,6 +550,13 @@ func (s *service) DisableCLAService(ctx context.Context, projectSFIDList []strin
 				errorList = append(errorList, disableProjectErr)
 			} else {
 				log.WithFields(f).Debugf("disabled CLA service for project: %s", sfid)
+				// add event log entry
+				s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+					EventType:  events.ProjectServiceCLADisabled,
+					ProjectID:  sfid,
+					LfUsername: authUser.UserName,
+					EventData:  &events.ProjectServiceCLADisabledData{},
+				})
 			}
 		}(psc, projectSFID)
 	}

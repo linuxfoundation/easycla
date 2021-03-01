@@ -52,7 +52,7 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			if err != nil {
 				return github_repositories.NewAddProjectGithubRepositoryBadRequest().WithPayload(errorResponse(err))
 			}
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:         events.RepositoryAdded,
 				ProjectID:         utils.StringValue(params.GithubRepositoryInput.RepositoryProjectID),
 				ExternalProjectID: params.ProjectSFID,
@@ -90,7 +90,7 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			if err != nil {
 				return github_repositories.NewDeleteProjectGithubRepositoryBadRequest().WithPayload(errorResponse(err))
 			}
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:         events.RepositoryDisabled,
 				ExternalProjectID: params.ProjectSFID,
 				ProjectID:         ghRepo.RepositoryProjectID,

@@ -32,7 +32,7 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 				return company.NewAddCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
 
-			eventsService.LogEvent(&events.LogEventArgs{
+			eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType: events.CCLAApprovalListRequestCreated,
 				ProjectID: params.ProjectID,
 				CompanyID: params.CompanyID,
@@ -52,7 +52,7 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 				return company.NewApproveCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
 
-			eventsService.LogEvent(&events.LogEventArgs{
+			eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType: events.CCLAApprovalListRequestApproved,
 				ProjectID: params.ProjectID,
 				CompanyID: params.CompanyID,
@@ -72,7 +72,7 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 				return company.NewRejectCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
 
-			eventsService.LogEvent(&events.LogEventArgs{
+			eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType: events.CCLAApprovalListRequestRejected,
 				ProjectID: params.ProjectID,
 				CompanyID: params.CompanyID,

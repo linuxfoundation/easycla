@@ -165,7 +165,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		}
 
 		// Send an event
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:         events.ClaManagerAccessRequestCreated,
 			ProjectID:         params.ProjectID,
 			ClaGroupModel:     claGroupModel,
@@ -339,7 +339,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		}
 
 		// Send an event
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType: events.ClaManagerAccessRequestApproved,
 			ProjectID: params.ProjectID,
 			CompanyID: params.CompanyID,
@@ -441,7 +441,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		}
 
 		// Send an event
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType: events.ClaManagerAccessRequestDenied,
 			ProjectID: params.ProjectID,
 			CompanyID: params.CompanyID,
@@ -569,7 +569,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		}
 
 		// Send an event
-		eventsService.LogEvent(&events.LogEventArgs{
+		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType: events.ClaManagerAccessRequestDeleted,
 			ProjectID: params.ProjectID,
 			CompanyID: params.CompanyID,

@@ -52,7 +52,7 @@ func Configure(api *operations.ClaAPI, service Service, projectService ProjectSe
 				return gerrits.NewDeleteGerritBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
 			// record the event
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:     events.GerritRepositoryDeleted,
 				ClaGroupModel: claGroupModel,
 				UserID:        claUser.UserID,
@@ -92,7 +92,7 @@ func Configure(api *operations.ClaAPI, service Service, projectService ProjectSe
 				return gerrits.NewAddGerritBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
 			// record the event
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:     events.GerritRepositoryAdded,
 				ClaGroupModel: claGroupModel,
 				UserID:        claUser.UserID,

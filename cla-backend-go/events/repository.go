@@ -104,6 +104,7 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 		Item:      map[string]*dynamodb.AttributeValue{},
 		TableName: aws.String(fmt.Sprintf("cla-%s-events", repo.stage)),
 	}
+
 	eventDateAndContainsPII := fmt.Sprintf("%s#%t", toDateFormat(currentTime), event.ContainsPII)
 	addAttribute(input.Item, "event_id", eventID.String())
 	addAttribute(input.Item, "event_type", event.EventType)
@@ -111,23 +112,33 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 	addAttribute(input.Item, "event_user_name", event.UserName)
 	addAttribute(input.Item, "event_lf_username", event.LfUsername)
 	addAttribute(input.Item, "event_user_name_lower", strings.ToLower(event.UserName))
+
 	addAttribute(input.Item, "event_time", currentTimeString)
+	addAttribute(input.Item, "event_date", toDateFormat(currentTime))
 	addAttribute(input.Item, "event_data", event.EventData)
 	addAttribute(input.Item, "event_summary", event.EventSummary)
+
 	addAttribute(input.Item, "event_company_id", event.EventCompanyID)
+	addAttribute(input.Item, "event_company_sfid", event.EventCompanySFID)
 	addAttribute(input.Item, "event_company_name", event.EventCompanyName)
 	addAttribute(input.Item, "event_company_name_lower", strings.ToLower(event.EventCompanyName))
+
+	addAttribute(input.Item, "event_cla_group_id", event.EventCLAGroupID)
+	addAttribute(input.Item, "event_cla_group_name", event.EventCLAGroupName)
+	addAttribute(input.Item, "event_cla_group_name_lower", strings.ToLower(event.EventCLAGroupName))
+
 	addAttribute(input.Item, "event_project_id", event.EventProjectID)
+	addAttribute(input.Item, "event_project_external_id", event.EventProjectExternalID)
 	addAttribute(input.Item, "event_project_name", event.EventProjectName)
 	addAttribute(input.Item, "event_project_name_lower", strings.ToLower(event.EventProjectName))
-	addAttribute(input.Item, "event_date", toDateFormat(currentTime))
-	addAttribute(input.Item, "event_project_external_id", event.EventProjectExternalID)
+
 	addAttribute(input.Item, "event_date_and_contains_pii", eventDateAndContainsPII)
+
 	input.Item["contains_pii"] = &dynamodb.AttributeValue{BOOL: &event.ContainsPII}
 	input.Item["event_time_epoch"] = &dynamodb.AttributeValue{N: aws.String(strconv.FormatInt(currentTime.Unix(), 10))}
 	if event.EventCompanyID != "" && event.EventProjectExternalID != "" {
-		companyIDexternalProjectID := fmt.Sprintf("%s#%s", event.EventCompanyID, event.EventProjectExternalID)
-		addAttribute(input.Item, "company_id_external_project_id", companyIDexternalProjectID)
+		companyIDExternalProjectID := fmt.Sprintf("%s#%s", event.EventCompanyID, event.EventProjectExternalID)
+		addAttribute(input.Item, "company_id_external_project_id", companyIDExternalProjectID)
 	}
 
 	_, err = repo.dynamoDBClient.PutItem(input)

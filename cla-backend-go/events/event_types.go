@@ -69,9 +69,11 @@ const (
 	ClaManagerRoleCreated = "cla_manager.added"
 	ClaManagerRoleDeleted = "cla_manager.deleted"
 
-	CLAGroupCreated = "cla_group.created"
-	CLAGroupUpdated = "cla_group.updated"
-	CLAGroupDeleted = "cla_group.deleted"
+	CLAGroupCreated           = "cla_group.created"
+	CLAGroupUpdated           = "cla_group.updated"
+	CLAGroupDeleted           = "cla_group.deleted"
+	CLAGroupEnrolledProject   = "cla_group.enrolled.project"
+	CLAGroupUnenrolledProject = "cla_group.unenrolled.project"
 
 	InvalidatedSignature = "signature.invalidated"
 

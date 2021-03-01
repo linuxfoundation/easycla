@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/signatures"
@@ -34,145 +33,145 @@ type ProjectClaGroup struct {
 	RepositoriesCount int64  `json:"repositories_count"`
 }
 
-// ProjectServiceEnableCLAServiceHandler handles enabling the CLA Service attribute from the project service
-func (s *service) ProjectServiceEnableCLAServiceHandler(event events.DynamoDBEventRecord) error {
-	ctx := utils.NewContext()
-	f := logrus.Fields{
-		"functionName":   "dynamo_events.projects_cla_groups.ProjectServiceEnableCLAServiceHandler",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"eventID":        event.EventID,
-		"eventName":      event.EventName,
-		"eventSource":    event.EventSource,
-	}
-
-	log.WithFields(f).Debug("processing request")
-	var newProject ProjectClaGroup
-	err := unmarshalStreamImage(event.Change.NewImage, &newProject)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("project decoding add event")
-		return err
-	}
-
-	f["projectSFID"] = newProject.ProjectSFID
-	f["claGroupID"] = newProject.ClaGroupID
-	f["foundationSFID"] = newProject.FoundationSFID
-
-	psc := v2ProjectService.GetClient()
-	log.WithFields(f).Debug("looking up project by SFID...")
-	projectDetails, prjerr := psc.GetProject(newProject.ProjectSFID)
-	if prjerr != nil {
-		log.WithError(err).Warnf("unable to get project details from SFID: %s", newProject.ProjectSFID)
-	}
-	projectName := newProject.ProjectSFID
-	if projectDetails != nil {
-		projectName = projectDetails.Name
-		f["projectName"] = projectName
-	}
-
-	start, _ := utils.CurrentTime()
-	log.WithFields(f).Debugf("enabling CLA service for project %s with ID: %s", projectName, newProject.ProjectSFID)
-	err = psc.EnableCLA(newProject.ProjectSFID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("enabling CLA service failed")
-		return err
-	}
-	finish, _ := utils.CurrentTime()
-	log.WithFields(f).Debugf("enabled CLA service for project %s with ID: %s", projectName, newProject.ProjectSFID)
-	log.WithFields(f).Debugf("enabling CLA service completed - took: %s", finish.Sub(start).String())
-
-	// Log the event
-	eventErr := s.eventsRepo.CreateEvent(&models.Event{
-		ContainsPII:            false,
-		EventData:              fmt.Sprintf("enabled CLA service for project: %s with ID: %s", projectName, newProject.ProjectSFID),
-		EventFoundationSFID:    newProject.FoundationSFID,
-		EventProjectExternalID: newProject.ProjectSFID,
-		EventProjectID:         newProject.ClaGroupID,
-		EventProjectName:       projectName,
-		EventProjectSFID:       newProject.ProjectSFID,
-		EventProjectSFName:     projectName,
-		EventSummary:           fmt.Sprintf("enabled CLA service for project: %s", projectName),
-		EventType:              claEvents.ProjectServiceCLAEnabled,
-		LfUsername:             "easycla system",
-		UserID:                 "easycla system",
-		UserName:               "easycla system",
-	})
-	if eventErr != nil {
-		log.WithFields(f).WithError(eventErr).Warn("problem logging event for enabling CLA service")
-		// Ok - don't fail for now
-	}
-
-	return nil
-}
-
-// ProjectServiceDisableCLAServiceHandler handles disabling/removing the CLA Service attribute from the project service
-func (s *service) ProjectServiceDisableCLAServiceHandler(event events.DynamoDBEventRecord) error {
-	ctx := utils.NewContext()
-	f := logrus.Fields{
-		"functionName":   "dynamo_events.projects_cla_groups.ProjectServiceDisableCLAServiceHandler",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"eventID":        event.EventID,
-		"eventName":      event.EventName,
-		"eventSource":    event.EventSource,
-	}
-
-	log.WithFields(f).Debug("processing request")
-	var oldProject ProjectClaGroup
-	err := unmarshalStreamImage(event.Change.OldImage, &oldProject)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem unmarshalling stream image")
-		return err
-	}
-
-	// Add more fields for the logger
-	f["ProjectSFID"] = oldProject.ProjectSFID
-	f["ClaGroupID"] = oldProject.ClaGroupID
-	f["FoundationSFID"] = oldProject.FoundationSFID
-
-	psc := v2ProjectService.GetClient()
-	log.WithFields(f).Debug("looking up project by SFID...")
-	projectDetails, prjerr := psc.GetProject(oldProject.ProjectSFID)
-	if prjerr != nil {
-		log.WithError(err).Warnf("unable to get project details from SFID: %s", oldProject.ProjectSFID)
-	}
-	projectName := oldProject.ProjectSFID
-	if projectDetails != nil {
-		projectName = projectDetails.Name
-		f["projectName"] = projectName
-	}
-
-	// Gathering metrics - grab the time before the API call
-	before, _ := utils.CurrentTime()
-	log.WithFields(f).Debugf("disabling CLA service for project %s with ID: %s", projectName, oldProject.ProjectSFID)
-	err = psc.DisableCLA(oldProject.ProjectSFID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("disabling CLA service failed")
-		return err
-	}
-	log.WithFields(f).Debugf("disabled CLA service for project %s with ID: %s", projectName, oldProject.ProjectSFID)
-	log.WithFields(f).Debugf("disabling CLA service completed - took %s", time.Since(before).String())
-
-	// Log the event
-	eventErr := s.eventsRepo.CreateEvent(&models.Event{
-		ContainsPII:            false,
-		EventData:              fmt.Sprintf("disabled CLA service for project: %s with ID: %s", projectName, oldProject.ProjectSFID),
-		EventFoundationSFID:    oldProject.FoundationSFID,
-		EventProjectExternalID: oldProject.ProjectSFID,
-		EventProjectID:         oldProject.ClaGroupID,
-		EventProjectName:       projectName,
-		EventProjectSFID:       oldProject.ProjectSFID,
-		EventSummary:           fmt.Sprintf("disabled CLA service for project: %s", projectName),
-		EventType:              claEvents.ProjectServiceCLADisabled,
-		LfUsername:             "easycla system",
-		UserID:                 "easycla system",
-		UserName:               "easycla system",
-	})
-	if eventErr != nil {
-		log.WithFields(f).WithError(eventErr).Warn("problem logging event for disabling CLA service")
-		// Ok - don't fail for now
-	}
-
-	return nil
-}
+//// ProjectServiceEnableCLAServiceHandler handles enabling the CLA Service attribute from the project service
+//func (s *service) ProjectServiceEnableCLAServiceHandler(event events.DynamoDBEventRecord) error {
+//	ctx := utils.NewContext()
+//	f := logrus.Fields{
+//		"functionName":   "dynamo_events.projects_cla_groups.ProjectServiceEnableCLAServiceHandler",
+//		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+//		"eventID":        event.EventID,
+//		"eventName":      event.EventName,
+//		"eventSource":    event.EventSource,
+//	}
+//
+//	log.WithFields(f).Debug("processing request")
+//	var newProject ProjectClaGroup
+//	err := unmarshalStreamImage(event.Change.NewImage, &newProject)
+//	if err != nil {
+//		log.WithFields(f).WithError(err).Warn("project decoding add event")
+//		return err
+//	}
+//
+//	f["projectSFID"] = newProject.ProjectSFID
+//	f["claGroupID"] = newProject.ClaGroupID
+//	f["foundationSFID"] = newProject.FoundationSFID
+//
+//	psc := v2ProjectService.GetClient()
+//	log.WithFields(f).Debug("looking up project by SFID...")
+//	projectDetails, prjerr := psc.GetProject(newProject.ProjectSFID)
+//	if prjerr != nil {
+//		log.WithError(err).Warnf("unable to get project details from SFID: %s", newProject.ProjectSFID)
+//	}
+//	projectName := newProject.ProjectSFID
+//	if projectDetails != nil {
+//		projectName = projectDetails.Name
+//		f["projectName"] = projectName
+//	}
+//
+//	start, _ := utils.CurrentTime()
+//	log.WithFields(f).Debugf("enabling CLA service for project %s with ID: %s", projectName, newProject.ProjectSFID)
+//	err = psc.EnableCLA(newProject.ProjectSFID)
+//	if err != nil {
+//		log.WithFields(f).WithError(err).Warn("enabling CLA service failed")
+//		return err
+//	}
+//	finish, _ := utils.CurrentTime()
+//	log.WithFields(f).Debugf("enabled CLA service for project %s with ID: %s", projectName, newProject.ProjectSFID)
+//	log.WithFields(f).Debugf("enabling CLA service completed - took: %s", finish.Sub(start).String())
+//
+//	// Log the event
+//	eventErr := s.eventsRepo.CreateEvent(&models.Event{
+//		ContainsPII:            false,
+//		EventData:              fmt.Sprintf("enabled CLA service for project: %s with ID: %s", projectName, newProject.ProjectSFID),
+//		EventFoundationSFID:    newProject.FoundationSFID,
+//		EventProjectExternalID: newProject.ProjectSFID,
+//		EventProjectID:         newProject.ClaGroupID,
+//		EventProjectName:       projectName,
+//		EventProjectSFID:       newProject.ProjectSFID,
+//		EventProjectSFName:     projectName,
+//		EventSummary:           fmt.Sprintf("enabled CLA service for project: %s", projectName),
+//		EventType:              claEvents.ProjectServiceCLAEnabled,
+//		LfUsername:             "easycla system",
+//		UserID:                 "easycla system",
+//		UserName:               "easycla system",
+//	})
+//	if eventErr != nil {
+//		log.WithFields(f).WithError(eventErr).Warn("problem logging event for enabling CLA service")
+//		// Ok - don't fail for now
+//	}
+//
+//	return nil
+//}
+//
+//// ProjectServiceDisableCLAServiceHandler handles disabling/removing the CLA Service attribute from the project service
+//func (s *service) ProjectServiceDisableCLAServiceHandler(event events.DynamoDBEventRecord) error {
+//	ctx := utils.NewContext()
+//	f := logrus.Fields{
+//		"functionName":   "dynamo_events.projects_cla_groups.ProjectServiceDisableCLAServiceHandler",
+//		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+//		"eventID":        event.EventID,
+//		"eventName":      event.EventName,
+//		"eventSource":    event.EventSource,
+//	}
+//
+//	log.WithFields(f).Debug("processing request")
+//	var oldProject ProjectClaGroup
+//	err := unmarshalStreamImage(event.Change.OldImage, &oldProject)
+//	if err != nil {
+//		log.WithFields(f).WithError(err).Warn("problem unmarshalling stream image")
+//		return err
+//	}
+//
+//	// Add more fields for the logger
+//	f["ProjectSFID"] = oldProject.ProjectSFID
+//	f["ClaGroupID"] = oldProject.ClaGroupID
+//	f["FoundationSFID"] = oldProject.FoundationSFID
+//
+//	psc := v2ProjectService.GetClient()
+//	log.WithFields(f).Debug("looking up project by SFID...")
+//	projectDetails, prjerr := psc.GetProject(oldProject.ProjectSFID)
+//	if prjerr != nil {
+//		log.WithError(err).Warnf("unable to get project details from SFID: %s", oldProject.ProjectSFID)
+//	}
+//	projectName := oldProject.ProjectSFID
+//	if projectDetails != nil {
+//		projectName = projectDetails.Name
+//		f["projectName"] = projectName
+//	}
+//
+//	// Gathering metrics - grab the time before the API call
+//	before, _ := utils.CurrentTime()
+//	log.WithFields(f).Debugf("disabling CLA service for project %s with ID: %s", projectName, oldProject.ProjectSFID)
+//	err = psc.DisableCLA(oldProject.ProjectSFID)
+//	if err != nil {
+//		log.WithFields(f).WithError(err).Warn("disabling CLA service failed")
+//		return err
+//	}
+//	log.WithFields(f).Debugf("disabled CLA service for project %s with ID: %s", projectName, oldProject.ProjectSFID)
+//	log.WithFields(f).Debugf("disabling CLA service completed - took %s", time.Since(before).String())
+//
+//	// Log the event
+//	eventErr := s.eventsRepo.CreateEvent(&models.Event{
+//		ContainsPII:            false,
+//		EventData:              fmt.Sprintf("disabled CLA service for project: %s with ID: %s", projectName, oldProject.ProjectSFID),
+//		EventFoundationSFID:    oldProject.FoundationSFID,
+//		EventProjectExternalID: oldProject.ProjectSFID,
+//		EventProjectID:         oldProject.ClaGroupID,
+//		EventProjectName:       projectName,
+//		EventProjectSFID:       oldProject.ProjectSFID,
+//		EventSummary:           fmt.Sprintf("disabled CLA service for project: %s", projectName),
+//		EventType:              claEvents.ProjectServiceCLADisabled,
+//		LfUsername:             "easycla system",
+//		UserID:                 "easycla system",
+//		UserName:               "easycla system",
+//	})
+//	if eventErr != nil {
+//		log.WithFields(f).WithError(eventErr).Warn("problem logging event for disabling CLA service")
+//		// Ok - don't fail for now
+//	}
+//
+//	return nil
+//}
 
 func (s *service) ProjectUnenrolledDisableRepositoryHandler(event events.DynamoDBEventRecord) error {
 	ctx := utils.NewContext()
