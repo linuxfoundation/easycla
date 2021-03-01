@@ -661,6 +661,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 	}
 
 	orgService := v2OrgService.GetClient()
+	userService := v2UserService.GetClient()
 
 	log.WithFields(f).Debugf("loading company by external ID...")
 	// Search for salesForce Company aka external Company
@@ -720,7 +721,14 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 
 		for _, admin := range scopes.Userroles {
 			log.WithFields(f).Debugf("sending email to organization admin: %+v", admin)
-			s.SendEmailToOrgAdmin(ctx, s.projectCGRepo, s.projectService, admin.Contact.EmailAddress, admin.Contact.Name, v1CompanyModel.CompanyName, projectSF.Name, projectSF.ID, authUser.Email, authUser.UserName, LfxPortalURL)
+
+			adminUser, adminErr := userService.GetUser(admin.Contact.ID)
+			if adminErr != nil {
+				msg := fmt.Sprintf("Failed to get user for ID: %s ", admin.Contact.ID)
+				log.Warn(msg)
+				return nil, adminErr
+			}
+			s.SendEmailToOrgAdmin(ctx, s.projectCGRepo, s.projectService, userService.GetPrimaryEmail(adminUser), admin.Contact.Name, v1CompanyModel.CompanyName, projectSF.Name, projectSF.ID, authUser.Email, authUser.UserName, LfxPortalURL)
 			// Make a note in the event log
 			s.eventService.LogEvent(&events.LogEventArgs{
 				EventType:         events.ContributorNotifyCompanyAdminType,
@@ -738,7 +746,6 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 	}
 	log.WithFields(f).Debug("not sending admin email...")
 
-	userService := v2UserService.GetClient()
 	log.WithFields(f).Debug("searching user in user service...")
 	// This routine is taking 24-29 seconds when running locally -> User service in DEV
 	//lfxUser, userErr := userService.SearchUserByEmail(userEmail)
