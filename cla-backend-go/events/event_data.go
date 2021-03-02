@@ -775,19 +775,19 @@ func (ed *ProjectServiceCLADisabledData) GetEventSummaryString(args *LogEventArg
 
 // GetEventSummaryString . . .
 func (ed *RepositoryAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("GitHub Repository: %s was added to Project: %s by: %s.", ed.RepositoryName, args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The GitHub repository %s was added to the project %s by the user %s.", ed.RepositoryName, args.ProjectName, args.UserName)
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *RepositoryDisabledEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("GitHub Repository: %s was deleted from Project: %s by: %s.", ed.RepositoryName, args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The GitHub repository %s was deleted from the project %s by the user %s.", ed.RepositoryName, args.ProjectName, args.UserName)
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *RepositoryUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("GitHub Repository: %s was updated for the project project: %s by: %s.", ed.RepositoryName, args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The GitHub repository %s was updated for the project project %s by the user %s.", ed.RepositoryName, args.ProjectName, args.UserName)
 	return data, true
 }
 

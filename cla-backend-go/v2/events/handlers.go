@@ -224,6 +224,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 			}
 
 			// Lookup the CLA Group associated with this Project SFID...
+			log.WithFields(f).Debugf("loading CLA Group for projectSFID: %s", params.ProjectSFID)
 			pm, err := projectsClaGroupsRepo.GetClaGroupIDForProject(params.ProjectSFID)
 			if err != nil {
 				msg := fmt.Sprintf("problem loading CLA Group from Project SFID:: %s", params.ProjectSFID)
@@ -241,6 +242,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 			}
 
 			// Lookup any events for this CLA Group....
+			log.WithFields(f).Debugf("loading CLA Group %s events using ID: %s", pm.ClaGroupName, pm.ClaGroupID)
 			result, err := service.GetClaGroupEvents(pm.ClaGroupID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents), params.SearchTerm)
 			if err != nil {
 				msg := fmt.Sprintf("problem loading events for CLA Group: %s with ID: %s error: %v", pm.ClaGroupName, pm.ClaGroupID, err.Error())

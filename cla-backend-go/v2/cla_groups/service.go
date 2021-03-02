@@ -95,7 +95,7 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 	}
 
 	f := logrus.Fields{
-		"functionName":        "CreateCLAGroup",
+		"functionName":        "v2.cla_groups.service.CreateCLAGroup",
 		utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
 		"authUserName":        authUser.UserName,
 		"authUserEmail":       authUser.Email,
@@ -232,7 +232,7 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 func (s *service) UpdateCLAGroup(ctx context.Context, authUser *auth.User, claGroupModel *v1Models.ClaGroup, input *models.UpdateClaGroupInput, projectManagerLFID string) (*models.ClaGroupSummary, error) {
 	// Validate the input
 	f := logrus.Fields{
-		"functionName":        "UpdateCLAGroup",
+		"functionName":        "v2.cla_groups.service.UpdateCLAGroup",
 		utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
 		"authUserName":        authUser.UserName,
 		"authUserEmail":       authUser.Email,
@@ -352,7 +352,7 @@ func (s *service) UpdateCLAGroup(ctx context.Context, authUser *auth.User, claGr
 // ListClaGroupsForFoundationOrProject returns the CLA Group list for the specified foundation ID
 func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, projectOrFoundationSFID string) (*models.ClaGroupListSummary, error) { // nolint
 	f := logrus.Fields{
-		"functionName":            "ListClaGroupsForFoundationOrProject",
+		"functionName":            "v2.cla_groups.service.ListClaGroupsForFoundationOrProject",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
 		"projectOrFoundationSFID": projectOrFoundationSFID,
 	}
@@ -611,7 +611,7 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 
 func (s *service) ListAllFoundationClaGroups(ctx context.Context, foundationID *string) (*models.FoundationMappingList, error) {
 	f := logrus.Fields{
-		"functionName":   "ListAllFoundationClaGroups",
+		"functionName":   "v2.cla_groups.service.ListAllFoundationClaGroups",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"foundationID":   foundationID,
 	}
@@ -632,7 +632,7 @@ func (s *service) ListAllFoundationClaGroups(ctx context.Context, foundationID *
 // DeleteCLAGroup handles deleting and invalidating the CLA group, removing permissions, cleaning up pending requests, etc.
 func (s *service) DeleteCLAGroup(ctx context.Context, claGroupModel *v1Models.ClaGroup, authUser *auth.User) error {
 	f := logrus.Fields{
-		"functionName":             "DeleteCLAGroup",
+		"functionName":             "v2.cla_groups.service.DeleteCLAGroup",
 		utils.XREQUESTID:           ctx.Value(utils.XREQUESTID),
 		"claGroupID":               claGroupModel.ProjectID,
 		"claGroupExternalID":       claGroupModel.ProjectExternalID,
@@ -890,7 +890,7 @@ func (s *service) DeleteCLAGroup(ctx context.Context, claGroupModel *v1Models.Cl
 // EnrollProjectsInClaGroup enrolls the specified project list in the CLA Group
 func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollProjectsModel) error {
 	f := logrus.Fields{
-		"functionName":    "EnrollProjectsInClaGroup",
+		"functionName":    "v2.cla_groups.service.EnrollProjectsInClaGroup",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"authUserName":    request.AuthUser.UserName,
 		"authUserEmail":   request.AuthUser.Email,
@@ -952,7 +952,7 @@ func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollP
 //func (s *service) UnenrollProjectsInClaGroup(ctx context.Context, claGroupID string, foundationSFID string, projectSFIDList []string) error {
 func (s *service) UnenrollProjectsInClaGroup(ctx context.Context, request *UnenrollProjectsModel) error {
 	f := logrus.Fields{
-		"functionName":    "UnenrollProjectsInClaGroup",
+		"functionName":    "v2.cla_groups.service.UnenrollProjectsInClaGroup",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"authUserName":    request.AuthUser.UserName,
 		"authUserEmail":   request.AuthUser.Email,

@@ -44,6 +44,7 @@ const (
 	CompanyIDEventTypeIndex             = "company-id-event-type-index"
 	EventFoundationSFIDEpochIndex       = "event-foundation-sfid-event-time-epoch-index"
 	EventProjectIDEpochIndex            = "event-project-id-event-time-epoch-index"
+	EventCLAGroupIDEpochIndex           = "event-cla-group-id-event-time-epoch-index"
 )
 
 // constants
@@ -516,8 +517,8 @@ func (repo *repository) GetFoundationEvents(foundationSFID string, nextKey *stri
 
 // GetClaGroupEvents returns the list of cla-group events
 func (repo *repository) GetClaGroupEvents(claGroupID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
-	keyCondition := expression.Key("event_project_id").Equal(expression.Value(claGroupID))
-	return repo.queryEventsTable(EventProjectIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
+	keyCondition := expression.Key("event_cla_group_id").Equal(expression.Value(claGroupID))
+	return repo.queryEventsTable(EventCLAGroupIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
 
 // toString encodes the map as a string

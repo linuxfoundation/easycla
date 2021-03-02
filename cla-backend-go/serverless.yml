@@ -181,6 +181,7 @@ provider:
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-events/index/user-id-index"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-events/index/company-id-external-project-id-event-epoch-time-index"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-events/index/event-project-id-event-time-epoch-index"
+        - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-events/index/event-cla-group-id-event-time-epoch-index"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-events/index/event-date-and-contains-pii-event-time-epoch-index"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-events/index/company-sfid-foundation-sfid-event-time-epoch-index"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-events/index/company-sfid-project-id-event-time-epoch-index"

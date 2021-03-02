@@ -4142,20 +4142,31 @@ class EventModel(BaseModel):
     event_id = UnicodeAttribute(hash_key=True)
     event_user_id = UnicodeAttribute(null=True)
     event_type = UnicodeAttribute(null=True)
+
+    event_cla_group_id = UnicodeAttribute(null=True)
+    event_cla_group_name = UnicodeAttribute(null=True)
+    event_cla_group_name_lower = UnicodeAttribute(null=True)
+
     event_project_id = UnicodeAttribute(null=True)
-    event_company_id = UnicodeAttribute(null=True)
-    event_company_name = UnicodeAttribute(null=True)
-    event_company_name_lower = UnicodeAttribute(null=True)
     event_project_name = UnicodeAttribute(null=True)
     event_project_name_lower = UnicodeAttribute(null=True)
+    event_project_external_id = UnicodeAttribute(null=True)
+
+    event_company_id = UnicodeAttribute(null=True)
+    event_company_sfid = UnicodeAttribute(null=True)
+    event_company_name = UnicodeAttribute(null=True)
+    event_company_name_lower = UnicodeAttribute(null=True)
+
     event_user_name = UnicodeAttribute(null=True)
     event_user_name_lower = UnicodeAttribute(null=True)
+
     event_time = UTCDateTimeAttribute(default=datetime.datetime.utcnow())
     event_time_epoch = NumberAttribute(default=int(time.time()))
+    event_date = UnicodeAttribute(null=True)
+
     event_data = UnicodeAttribute(null=True)
     event_summary = UnicodeAttribute(null=True)
-    event_date = UnicodeAttribute(null=True)
-    event_project_external_id = UnicodeAttribute(null=True)
+
     event_date_and_contains_pii = UnicodeAttribute(null=True)
     company_id_external_project_id = UnicodeAttribute(null=True)
     contains_pii = BooleanAttribute(null=True)
@@ -4173,8 +4184,11 @@ class Event(model_interfaces.Event):
             event_id=None,
             event_type=None,
             user_id=None,
+            event_cla_group_id=None,
+            event_cla_group_name=None,
             event_project_id=None,
             event_company_id=None,
+            event_company_sfid=None,
             event_data=None,
             event_summary=None,
             event_company_name=None,
@@ -4187,38 +4201,57 @@ class Event(model_interfaces.Event):
         self.model = EventModel()
         self.model.event_id = event_id
         self.model.event_type = event_type
+
         self.model.event_user_id = user_id
-        self.model.event_project_id = event_project_id
-        self.model.event_company_id = event_company_id
-        self.model.event_data = event_data
-        self.model.event_summary = event_summary
-        self.model.event_company_name = event_company_name
-        self.model.contains_pii = contains_pii
-        if self.model.event_company_name:
-            self.model.event_company_name_lower = self.model.event_company_name.lower()
         self.model.event_user_name = event_user_name
         if self.model.event_user_name:
             self.model.event_user_name_lower = self.model.event_user_name.lower()
+
+        self.model.event_cla_group_id = event_cla_group_id
+        self.model.event_cla_group_name = event_cla_group_name
+        if self.model.event_cla_group_name:
+            self.model.event_cla_group_name_lower = self.model.event_cla_group_name.lower()
+
+        self.model.event_project_id = event_project_id
         self.model.event_project_name = event_project_name
         if self.model.event_project_name:
             self.model.event_project_name_lower = self.model.event_project_name.lower()
+
+        self.model.event_company_id = event_company_id
+        self.model.event_company_sfid = event_company_sfid
+        self.model.event_company_name = event_company_name
+        if self.model.event_company_name:
+            self.model.event_company_name_lower = self.model.event_company_name.lower()
+
+        self.model.event_data = event_data
+        self.model.event_summary = event_summary
+        self.model.contains_pii = contains_pii
 
     def __str__(self):
         return (
             f"id:{self.model.event_id}, "
             f"event type:{self.model.event_type}, "
+
             f"event_user id:{self.model.event_user_id}, "
+            f"event user name: {self.model.event_user_name},"
+
+            f"event cla group id:{self.model.event_cla_group_id}, "
+            f"event cla group name:{self.model.event_cla_group_name}, "
+
             f"event project id:{self.model.event_project_id}, "
+            f"event project name: {self.model.event_project_name}, "
+            f"event project external id: {self.model.event_project_external_id},"
+
             f"event company id: {self.model.event_company_id}, "
+            f"event company sfid: {self.model.event_company_sfid}, "
+            f"event company name: {self.model.event_company_name}, "
+
             f"event time: {self.model.event_time}, "
             f"event time epoch: {self.model.event_time_epoch}, "
+            f"event date: {self.model.event_date},"
+
             f"event data: {self.model.event_data}, "
             f"event summary: {self.model.event_summary}, "
-            f"event company name: {self.model.event_company_name}, "
-            f"event project name: {self.model.event_project_name}, "
-            f"event user name: {self.model.event_user_name},"
-            f"event date: {self.model.event_date},"
-            f"event project external id: {self.model.event_project_external_id},"
             f"contains pii: {self.model.contains_pii}"
         )
 
@@ -4236,12 +4269,6 @@ class Event(model_interfaces.Event):
             raise cla.models.DoesNotExist("Event not found")
         self.model = event
 
-    def get_event_company_id(self):
-        return self.model.event_company_id
-
-    def get_event_company_name(self):
-        return self.model.event_company_name
-
     def get_event_user_id(self):
         return self.model.event_user_id
 
@@ -4257,8 +4284,20 @@ class Event(model_interfaces.Event):
     def get_event_id(self):
         return self.model.event_id
 
+    def get_event_cla_group_id(self):
+        return self.model.event_cla_group_id
+
+    def get_event_cla_group_name(self):
+        return self.model.event_cla_group_name
+
+    def get_event_cla_group_name_lower(self):
+        return self.model.event_cla_group_name_lower
+
     def get_event_project_id(self):
         return self.model.event_project_id
+
+    def get_event_project_external_id(self):
+        return self.model.event_project_external_id
 
     def get_event_project_name(self):
         return self.model.event_project_name
@@ -4275,6 +4314,15 @@ class Event(model_interfaces.Event):
     def get_event_time_epoch(self):
         return self.model.event_time_epoch
 
+    def get_event_company_id(self):
+        return self.model.event_company_id
+
+    def get_event_company_sfid(self):
+        return self.model.event_company_sfid
+
+    def get_event_company_name(self):
+        return self.model.event_company_name
+
     def get_event_company_name_lower(self):
         return self.model.event_company_name_lower
 
@@ -4283,9 +4331,6 @@ class Event(model_interfaces.Event):
 
     def get_event_user_name_lower(self):
         return self.model.event_user_name_lower
-
-    def get_event_project_external_id(self):
-        return self.model.event_project_external_id
 
     def get_company_id_external_project_id(self):
         return self.model.company_id_external_project_id
@@ -4302,13 +4347,14 @@ class Event(model_interfaces.Event):
             ret.append(ev)
         return ret
 
-    def set_event_company_id(self, company_id):
-        self.model.event_company_id = company_id
-
-    def set_event_company_name(self, company_name):
-        self.model.event_company_name = company_name
-        if company_name:
-            self.model.event_company_name_lower = company_name.lower()
+    def all_limit(self, limit: Optional[int] = None, last_evaluated_key: Optional[str] = None):
+        result_iterator = self.model.scan(limit=limit, last_evaluated_key=last_evaluated_key)
+        ret = []
+        for signature in result_iterator:
+            evt = Event()
+            evt.model = signature
+            ret.append(evt)
+        return ret, result_iterator.last_evaluated_key, result_iterator.total_count
 
     def set_event_data(self, event_data):
         self.model.event_data = event_data
@@ -4319,11 +4365,33 @@ class Event(model_interfaces.Event):
     def set_event_id(self, event_id):
         self.model.event_id = event_id
 
+    def set_event_company_id(self, company_id):
+        self.model.event_company_id = company_id
+
+    def set_event_company_sfid(self, company_sfid):
+        self.model.event_company_sfid = company_sfid
+
+    def set_event_company_name(self, company_name):
+        self.model.event_company_name = company_name
+        if company_name:
+            self.model.event_company_name_lower = company_name.lower()
+
     def set_event_user_id(self, user_id):
         self.model.event_user_id = user_id
 
+    def set_event_cla_group_id(self, event_cla_group_id):
+        self.model.event_cla_group_id = event_cla_group_id
+
+    def set_event_cla_group_name(self, event_cla_group_name):
+        self.model.event_cla_group_name = event_cla_group_name
+        if event_cla_group_name:
+            self.model.event_cla_group_name_lower = event_cla_group_name.lower()
+
     def set_event_project_id(self, event_project_id):
         self.model.event_project_id = event_project_id
+
+    def set_event_project_external_id(self, event_project_external_id):
+        self.model.event_project_external_id = event_project_external_id
 
     def set_event_project_name(self, event_project_name):
         self.model.event_project_name = event_project_name
@@ -4336,9 +4404,6 @@ class Event(model_interfaces.Event):
     def set_event_user_name(self, event_user_name):
         self.model.event_user_name = event_user_name
         self.model.event_user_name_lower = event_user_name.lower()
-
-    def set_event_project_external_id(self, event_project_external_id):
-        self.model.event_project_external_id = event_project_external_id
 
     def set_event_date_and_contains_pii(self, contains_pii=False):
         dateDDMMYYYY = datetime.date.today().strftime("%d-%m-%Y")

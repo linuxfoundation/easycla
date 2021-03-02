@@ -54,7 +54,8 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			}
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:         events.RepositoryAdded,
-				ProjectID:         utils.StringValue(params.GithubRepositoryInput.RepositoryProjectID),
+				CLAGroupID:        utils.StringValue(params.GithubRepositoryInput.RepositoryProjectID),
+				ProjectID:         params.ProjectSFID,
 				ExternalProjectID: params.ProjectSFID,
 				UserID:            claUser.UserID,
 				LfUsername:        claUser.LFUsername,
@@ -92,8 +93,8 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			}
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:         events.RepositoryDisabled,
+				ProjectID:         params.ProjectSFID,
 				ExternalProjectID: params.ProjectSFID,
-				ProjectID:         ghRepo.RepositoryProjectID,
 				UserID:            claUser.UserID,
 				LfUsername:        claUser.LFUsername,
 				EventData: &events.RepositoryDisabledEventData{
