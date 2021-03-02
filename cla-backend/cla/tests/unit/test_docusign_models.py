@@ -4,7 +4,7 @@
 import xml.etree.ElementTree as ET
 
 from cla.models.docusign_models import populate_signature_from_ccla_callback, populate_signature_from_icla_callback, \
-    create_default_company_values, document_signed_email_content
+    create_default_company_values, document_signed_email_content, ClaSignatoryEmailParams, cla_signatory_email_content
 from cla.models.dynamo_models import Signature, Company, Project, User
 
 content_icla_agreement_date = """<?xml version="1.0" encoding="utf-8"?>
@@ -860,3 +860,25 @@ def test_document_signed_email_content():
 
     assert "Hello Contributor" in body
 
+
+def test_cla_signatory_email_content():
+    params = ClaSignatoryEmailParams(
+        cla_group_name="cla_group_name_value",
+        signatory_name="signatory_name_value",
+        cla_manager_name="john",
+        cla_manager_email="john@example.com",
+        company_name="IBM",
+        project_version="v1",
+        project_names=["project1", "project2"]
+    )
+
+    email_subject, email_body = cla_signatory_email_content(params)
+    assert "EasyCLA: CLA Signature Request for cla_group_name_value" == email_subject
+    assert "<p>Hello signatory_name_value,<p>" in email_body
+    assert "EasyCLA regarding the project(s) project1, project2 associated" in email_body
+    assert "with the CLA Group cla_group_name_value" in email_body
+    assert "john has designated you as being an authorized signatory" in email_body
+    assert "signatory for the organization IBM" in email_body
+    assert "<p>After you sign, john (as the initial CLA Manager for your company)" in email_body
+    assert "and if you approve john as your initial CLA Manager" in email_body
+    assert "contact the requester at john@example.com" in email_body

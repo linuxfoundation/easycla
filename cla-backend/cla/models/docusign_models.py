@@ -14,10 +14,11 @@ import os
 import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from urllib.parse import urlparse
 
 import pydocusign  # type: ignore
+from attr import dataclass
 from pydocusign.exceptions import DocuSignException  # type: ignore
 
 import cla
@@ -25,11 +26,12 @@ from cla.controllers.lf_group import LFGroup
 from cla.models import signing_service_interface, DoesNotExist
 from cla.models.dynamo_models import Signature, User, \
     Project, Company, Gerrit, \
-    Document, Event
+    Document, Event, ProjectCLAGroupModel
 from cla.models.event_types import EventType
 from cla.models.s3_storage import S3Storage
 from cla.user_service import UserService
-from cla.utils import get_email_help_content, append_email_help_sign_off_content, get_corporate_url
+from cla.utils import get_email_help_content, append_email_help_sign_off_content, get_corporate_url, \
+    get_project_cla_group_instance
 
 api_base_url = os.environ.get('CLA_API_BASE', '')
 root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
@@ -42,8 +44,6 @@ lf_group_client_id = os.environ.get('LF_GROUP_CLIENT_ID', '')
 lf_group_client_secret = os.environ.get('LF_GROUP_CLIENT_SECRET', '')
 lf_group_refresh_token = os.environ.get('LF_GROUP_REFRESH_TOKEN', '')
 lf_group = LFGroup(lf_group_client_url, lf_group_client_id, lf_group_client_secret, lf_group_refresh_token)
-
-
 
 
 class ProjectDoesNotExist(Exception):
@@ -1270,18 +1270,27 @@ class DocuSign(signing_service_interface.SigningService):
 
             # Not assigning a clientUserId sends an email.
             project_name = project.get_project_name()
+            cla_group_name = project_name
             company_name = company.get_company_name()
+            project_cla_group = get_project_cla_group_instance()
+            project_cla_groups = project_cla_group.get_by_cla_group_id(project.get_project_id())
+            project_names = [p.get_project_name() for p in project_cla_groups]
+            if not project_names:
+                project_names = [project_name]
 
             cla.log.debug(f'{fn} - {sig_type} - sending document as email with '
                           f'name: {signatory_name}, email: {signatory_email} '
                           f'project name: {project_name}, company: {company_name}')
 
-            email_subject = f'EasyCLA: CLA Signature Request for {project_name}'
-            email_body = f'<p>Hello {signatory_name},<p>'
-            email_body += f'<p>This is a notification email from EasyCLA regarding the project {project_name}. {cla_manager_name} has designated you as being an authorized signatory for {company_name}. In order for employees of your company to contribute to the open source project {project_name}, they must do so under a Contributor License Agreement signed by someone with authority to sign on behalf of your company.</p>'
-            email_body += f'<p>After you sign, {cla_manager_name} (as the initial CLA Manager for your company) will be able to maintain the list of specific employees authorized to contribute to the project under this signed CLA.</p>'
-            email_body += f'<p>If you are authorized to sign on your company’s behalf, and if you approve {cla_manager_name} as your initial CLA Manager for {project_name}, please review the document and sign the CLA.If you have questions, or if you are not an authorized signatory of this company, please contact the requester at {cla_manager_email}.</p>'
-            email_body = append_email_help_sign_off_content(email_body, project.get_version())
+            email_subject, email_body = cla_signatory_email_content(
+                ClaSignatoryEmailParams(cla_group_name=cla_group_name,
+                                        signatory_name=signatory_name,
+                                        cla_manager_name=cla_manager_name,
+                                        cla_manager_email=cla_manager_email,
+                                        company_name=company_name,
+                                        project_version=project.get_version(),
+                                        project_names=project_names))
+
             cla.log.debug(f'populate_sign_url - {sig_type} - generating a docusign signer object form email with'
                           f'name: {signatory_name}, email: {signatory_email}, subject: {email_subject}')
             signer = pydocusign.Signer(email=signatory_email,
@@ -2194,7 +2203,7 @@ def document_signed_email_content(icla: bool, project: Project, signature: Signa
         pdf_link = (f'{cla.conf["API_BASE_URL"]}/v3/'
                     f'signatures/{project.get_project_id()}/'
                     f'{signature.get_signature_reference_id()}/ccla/pdf')
-    
+
     corporate_url = get_corporate_url(project.get_version())
 
     recipient_name = user.get_user_name() or user.get_lf_username() or None
@@ -2206,7 +2215,7 @@ def document_signed_email_content(icla: bool, project: Project, signature: Signa
             recipient_name = "CLA Manager"
 
     subject = f'EasyCLA: CLA Signed for {project.get_project_name()}'
-    body =  f'''
+    body = f'''
                 <p>Hello {recipient_name},</p>
                 <p>This is a notification email from EasyCLA regarding the project {project.get_project_name()}.</p>
                 <p>The CLA has now been signed. You can download the signed CLA as a PDF 
@@ -2216,3 +2225,31 @@ def document_signed_email_content(icla: bool, project: Project, signature: Signa
                 '''
     body = append_email_help_sign_off_content(body, project.get_version())
     return subject, body
+
+
+@dataclass
+class ClaSignatoryEmailParams:
+    cla_group_name: str
+    signatory_name: str
+    cla_manager_name: str
+    cla_manager_email: str
+    company_name: str
+    project_version: str
+    project_names: List[str]
+
+
+def cla_signatory_email_content(params: ClaSignatoryEmailParams) -> (str, str):
+    """
+    cla_signatory_email_content prepares the content for cla signatory
+    :param params: ClaSignatoryEmailParams
+    :return:
+    """
+    project_names_list = ", ".join(params.project_names)
+
+    email_subject = f'EasyCLA: CLA Signature Request for {params.cla_group_name}'
+    email_body = f'<p>Hello {params.signatory_name},<p>'
+    email_body += f'<p>This is a notification email from EasyCLA regarding the project(s) {project_names_list} associated with the CLA Group {params.cla_group_name}. {params.cla_manager_name} has designated you as being an authorized signatory for the organization {params.company_name}. In order for employees of your company to contribute to any of the above project(s), they must do so under a Contributor License Agreement signed by someone with authority n behalf of your company.</p>'
+    email_body += f'<p>After you sign, {params.cla_manager_name} (as the initial CLA Manager for your company) will be able to maintain the list of specific employees authorized to contribute to the project(s) under this signed CLA.</p>'
+    email_body += f'<p>If you are authorized to sign on your company’s behalf, and if you approve {params.cla_manager_name} as your initial CLA Manager, please review the document and sign the CLA. If you have questions, or if you are not an authorized signatory of this company, please contact the requester at {params.cla_manager_email}.</p>'
+    email_body = append_email_help_sign_off_content(email_body, params.project_version)
+    return email_subject, email_body
