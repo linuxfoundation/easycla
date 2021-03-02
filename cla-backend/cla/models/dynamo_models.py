@@ -4262,6 +4262,9 @@ class Event(model_interfaces.Event):
         self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
+    def delete(self):
+        self.model.delete()
+
     def load(self, event_id):
         try:
             event = self.model.get(str(event_id))
