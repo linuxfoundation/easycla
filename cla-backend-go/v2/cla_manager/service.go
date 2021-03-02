@@ -396,7 +396,7 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 		userEmail, utils.CLADesigneeRole, roleID, projectSFID, v1CompanyModel.CompanyExternalID)
 
 	// Log Event
-	s.eventService.LogEvent(
+	s.eventService.LogEventWithContext(ctx,
 		&events.LogEventArgs{
 			EventType:         events.AssignUserRoleScopeType,
 			LfUsername:        lfxUser.Username,
@@ -730,7 +730,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 			}
 			s.SendEmailToOrgAdmin(ctx, s.projectCGRepo, s.projectService, userService.GetPrimaryEmail(adminUser), admin.Contact.Name, v1CompanyModel.CompanyName, projectSF.Name, projectSF.ID, authUser.Email, authUser.UserName, LfxPortalURL)
 			// Make a note in the event log
-			s.eventService.LogEvent(&events.LogEventArgs{
+			s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:         events.ContributorNotifyCompanyAdminType,
 				LfUsername:        authUser.UserName,
 				ExternalProjectID: projectID,
@@ -781,7 +781,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 
 	log.WithFields(f).Debug("creating a contributor assigned CLA designee log event...")
 	// Make a note in the event log
-	s.eventService.LogEvent(&events.LogEventArgs{
+	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 		EventType:         events.ContributorAssignCLADesigneeType,
 		LfUsername:        authUser.UserName,
 		ExternalProjectID: projectID,
@@ -798,7 +798,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 
 	log.WithFields(f).Debug("creating a contributor notify CLA designee log event...")
 	// Make a note in the event log
-	s.eventService.LogEvent(&events.LogEventArgs{
+	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 		EventType:         events.ContributorNotifyCLADesigneeType,
 		LfUsername:        authUser.UserName,
 		ExternalProjectID: projectID,

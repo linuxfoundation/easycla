@@ -127,7 +127,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 			// Log the events
 			for _, result := range results {
-				eventService.LogEvent(&events.LogEventArgs{
+				eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 					EventType:         events.RepositoryAdded,
 					ProjectID:         utils.StringValue(params.GithubRepositoryInput.ClaGroupID),
 					ExternalProjectID: params.ProjectSFID,
@@ -202,7 +202,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:         events.RepositoryDisabled,
 				ExternalProjectID: params.ProjectSFID,
 				ProjectID:         ghRepo.RepositoryProjectID,
@@ -338,7 +338,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 			// We could extract the parameter values from the branch protection payload to determine if it was added/remove or simply updated
 			// For now, let's just set the updated event log
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:         events.RepositoryBranchProtectionUpdated,
 				ExternalProjectID: params.ProjectSFID,
 				ProjectID:         params.ProjectSFID,

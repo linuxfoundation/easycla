@@ -128,7 +128,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			// Log the event
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				LfUsername:        authUser.UserName,
 				EventType:         events.GitHubOrganizationAdded,
 				ExternalProjectID: params.ProjectSFID,
@@ -173,7 +173,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				return github_organizations.NewDeleteProjectGithubOrganizationBadRequest().WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				LfUsername:        authUser.UserName,
 				EventType:         events.GitHubOrganizationDeleted,
 				ExternalProjectID: params.ProjectSFID,
@@ -227,7 +227,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			// Log the event
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				LfUsername:        authUser.UserName,
 				EventType:         events.GitHubOrganizationUpdated,
 				ExternalProjectID: params.ProjectSFID,

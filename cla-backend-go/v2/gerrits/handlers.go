@@ -65,7 +65,7 @@ func Configure(api *operations.EasyclaAPI, v1Service v1Gerrits.Service, projectS
 			}
 
 			// record the event
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:  events.GerritRepositoryDeleted,
 				ProjectID:  gerrit.ProjectID,
 				LfUsername: authUser.UserName,
@@ -126,7 +126,7 @@ func Configure(api *operations.EasyclaAPI, v1Service v1Gerrits.Service, projectS
 			}
 
 			// record the event
-			eventService.LogEvent(&events.LogEventArgs{
+			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:  events.GerritRepositoryAdded,
 				ProjectID:  params.ClaGroupID,
 				LfUsername: authUser.UserName,

@@ -753,128 +753,292 @@ func (ed *ClaManagerRoleDeletedData) GetEventDetailsString(args *LogEventArgs) (
 
 // GetEventDetailsString . . .
 func (ed *CLAGroupEnrolledProjectData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	return fmt.Sprintf("%s enabled the the project %s from the CLA Group %s.",
+	return fmt.Sprintf("The user %s enabled the the project %s from the CLA Group %s.",
 		args.UserName, args.ProjectName, args.ClaGroupModel.ProjectName), false
 }
 
 // GetEventDetailsString . . .
 func (ed *CLAGroupUnenrolledProjectData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	return fmt.Sprintf("%s unenrolled the the project %s from the CLA Group %s.",
+	return fmt.Sprintf("The user %s unenrolled the the project %s from the CLA Group %s.",
 		args.UserName, args.ProjectName, args.ClaGroupModel.ProjectName), false
 }
 
 // GetEventDetailsString . . .
 func (ed *ProjectServiceCLAEnabledData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	return fmt.Sprintf("%s enabled the CLA Service for the project %s.", args.UserName, args.ProjectName), false
+	data := fmt.Sprintf("The user %s enabled the CLA Service", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, false
 }
 
 // GetEventDetailsString . . .
 func (ed *ProjectServiceCLADisabledData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	return fmt.Sprintf("%s disabled the CLA Service for the project %s.", args.UserName, args.ProjectName), false
+	data := fmt.Sprintf("The user %s disabled the CLA Service", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, false
 }
 
 // GetEventSummaryString . . .
 func (ed *RepositoryAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository %s was added to the project %s by the user %s.", ed.RepositoryName, args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The GitHub repository %s was added", ed.RepositoryName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *RepositoryDisabledEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository %s was deleted from the project %s by the user %s.", ed.RepositoryName, args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The GitHub repository %s was deleted", ed.RepositoryName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *RepositoryUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository %s was updated for the project project %s by the user %s.", ed.RepositoryName, args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The GitHub repository %s was updated", ed.RepositoryName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventDetailsString . . .
 func (ed *RepositoryBranchProtectionAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository branch protection %s was added for the project %s by the user %s.", ed.RepositoryName, args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The GitHub repository branch protection %s was added", ed.RepositoryName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventDetailsString . . .
 func (ed *RepositoryBranchProtectionDisabledEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository branch protection %s was disabled for the project %s by the user %s.", ed.RepositoryName, args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The GitHub repository branch protection %s was disabled", ed.RepositoryName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventDetailsString . . .
 func (ed *RepositoryBranchProtectionUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository branch protection %s was updated for the project %s by the user %s.", ed.RepositoryName, args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The GitHub repository branch protection %s was updated", ed.RepositoryName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *UserCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s was added, User Details: %+v.", args.UserName, args.UserModel)
+	data := fmt.Sprintf("The user %s was added with the user details: %+v.", args.UserName, args.UserModel)
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *UserUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	return fmt.Sprintf("User: %s was updated, User Details: %+v.", args.UserName, *args.UserModel), true
+	return fmt.Sprintf("The user %s was updated with the user details: %+v.", args.UserName, *args.UserModel), true
 }
 
 // GetEventSummaryString . . .
 func (ed *UserDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User ID : %s was deleted by: %s.", ed.DeletedUserID, args.UserName)
+	data := fmt.Sprintf("The user ID %s was deleted by the user %s.", ed.DeletedUserID, args.UserName)
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CompanyACLRequestAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s with ID: %s, Email: %s requested Company Invite for Company: %s.",
-		ed.UserName, ed.UserID, ed.UserEmail, args.CompanyName)
+	data := fmt.Sprintf("The user %s with ID %s and with the email %s requested a company invitation",
+		ed.UserName, ed.UserID, ed.UserEmail)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CompanyACLRequestApprovedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("Company Invite was approved access for User: %s with ID: %s, Email: %s for company: %s.",
-		ed.UserName, ed.UserID, ed.UserEmail, args.CompanyName)
+	data := fmt.Sprintf("A company invite was approved for the user %s with the ID of %s with the email %s",
+		ed.UserName, ed.UserID, ed.UserEmail)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CompanyACLRequestDeniedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("Company Invite was denied access for User: %s with ID: %s, Email %s for Company: %s.",
-		ed.UserName, ed.UserID, ed.UserEmail, args.CompanyName)
+	data := fmt.Sprintf("A company invite was denied for the user %s with the ID of %s with the email %s",
+		ed.UserName, ed.UserID, ed.UserEmail)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CompanyACLUserAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User with LF Username %s was added to the ACL for Company: %s by: %s.",
+	data := fmt.Sprintf("The user with LF username %s was added to the access list for the company %s by the user %s.",
 		ed.UserLFID, args.CompanyName, args.UserName)
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLATemplateCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("PDF templates were created for Project %s by: %s.", args.ProjectName, args.UserName)
+	data := "The PDF templates were created"
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *GitHubOrganizationAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("GitHub Organization: %s was added with auto-enabled: %t, branch protection enabled: %t",
+	data := fmt.Sprintf("The GitHub organization %s was added with auto-enabled set to %t with branch protection enabled set to %t",
 		ed.GitHubOrganizationName, ed.AutoEnabled, ed.BranchProtectionEnabled)
 	if ed.AutoEnabledClaGroupID != "" {
-		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
+		data = data + fmt.Sprintf(" with auto-enabled-cla-group set to %s", ed.AutoEnabledClaGroupID)
 	}
-	data = data + fmt.Sprintf(" by: %s.", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *GitHubOrganizationDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("GitHub Organization: %s was deleted by: %s.",
-		ed.GitHubOrganizationName, args.UserName)
+	data := fmt.Sprintf("The GitHub organization %s was deleted", ed.GitHubOrganizationName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
@@ -885,161 +1049,367 @@ func (ed *GitHubOrganizationUpdatedEventData) GetEventSummaryString(args *LogEve
 	if ed.AutoEnabledClaGroupID != "" {
 		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
 	}
-	data = data + fmt.Sprintf(" by: %s.", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CCLAApprovalListRequestApprovedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s approved a CCLA Approval Request for Project: %s, Company: %s.",
-		args.UserName, args.ProjectName, args.CompanyName)
+	data := fmt.Sprintf("The user %s approved a CCLA approval request", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CCLAApprovalListRequestRejectedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s rejected a CCLA Approval Request for Project: %s, Company: %s.",
-		args.UserName, args.ProjectName, args.CompanyName)
+	data := fmt.Sprintf("The user %s rejected a CCLA approval request", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAManagerRequestCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s added CLA Manager Request: %s for Company: %s, Project: %s.",
-		ed.UserName, ed.RequestID, ed.CompanyName, ed.ProjectName)
+	data := fmt.Sprintf("The user %s added a CLA Manager request", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAManagerCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s was added as CLA Manager for Company: %s, Project: %s.",
-		ed.UserName, ed.CompanyName, ed.ProjectName)
+	data := fmt.Sprintf("The user %s was added as CLA Manager", ed.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAManagerDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s was removed as CLA Manager for Company: %s, Project: %s.",
-		ed.UserLFID, ed.CompanyName, ed.ProjectName)
+	data := fmt.Sprintf("The user %s was removed as CLA Manager", ed.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAManagerRequestApprovedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager Request: %s for User: %s was approved by: %s for Company: %s, Project: %s.",
-		ed.RequestID, ed.UserName, ed.ManagerName, ed.CompanyName, ed.ProjectName)
+	data := fmt.Sprintf("The CLA Manager request for the user %s was approved by the CLA Manager %s",
+		ed.UserName, ed.ManagerName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAManagerRequestDeniedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager Request: %s for User: %s was denied by: %s for Company: %s, Project: %s.",
-		ed.RequestID, ed.UserName, ed.ManagerName, ed.CompanyName, ed.ProjectName)
+	data := fmt.Sprintf("The CLA Manager request for the user %s was denied by the CLA Manager %s",
+		ed.UserName, ed.ManagerName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAManagerRequestDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager Request: %s for User: %s was deleted by: %s for Company: %s, Project: %s.",
-		ed.RequestID, ed.UserName, ed.ManagerName, ed.CompanyName, ed.ProjectName)
+	data := fmt.Sprintf("The CLA Manager request for the user %s was deleted by the CLA Manager %s",
+		ed.UserName, ed.ManagerName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAApprovalListAddEmailData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s added Email: %s to the approval list for Company: %s, Project: %s.",
-		ed.UserName, ed.ApprovalListEmail, args.CompanyName, args.ProjectName)
+	data := fmt.Sprintf("The CLA Manager %s added the email %s to the approval list", ed.UserName, ed.ApprovalListEmail)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAApprovalListRemoveEmailData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s removed Email: %s from the approval list for Company: %s, Project: %s.",
-		ed.UserName, ed.ApprovalListEmail, args.CompanyName, args.ProjectName)
+	data := fmt.Sprintf("The CLA Manager %s removed the email %s from the approval list", ed.UserName, ed.ApprovalListEmail)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAApprovalListAddDomainData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s added Domain: %s to the approval list for Company: %s, Project: %s.",
-		ed.UserName, ed.ApprovalListDomain, args.CompanyName, args.ProjectName)
+	data := fmt.Sprintf("The CLA Manager %s added the domain %s to the approval list", ed.UserName, ed.ApprovalListDomain)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAApprovalListRemoveDomainData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s removed Domain: %s from the approval list for Company: %s, Project: %s.",
-		ed.UserName, ed.ApprovalListDomain, args.CompanyName, args.ProjectName)
+	data := fmt.Sprintf("The CLA Manager %s removed the domain %s from the approval list", ed.UserName, ed.ApprovalListDomain)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAApprovalListAddGitHubUsernameData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s added GitHub Username: %s to the approval list for Company: %s, Project: %s.",
-		ed.UserName, ed.ApprovalListGitHubUsername, args.CompanyName, args.ProjectName)
+	data := fmt.Sprintf("The CLA Manager %s added the GitHub username %s to the approval list", ed.UserName, ed.ApprovalListGitHubUsername)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAApprovalListRemoveGitHubUsernameData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s removed GitHub Username: %s from the approval list for Company: %s, Project: %s.",
-		ed.UserName, ed.ApprovalListGitHubUsername, args.CompanyName, args.ProjectName)
+	data := fmt.Sprintf("The CLA Manager %s removed the GitHub username %s from the approval list", ed.UserName, ed.ApprovalListGitHubUsername)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAApprovalListAddGitHubOrgData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s added GitHub Organization: %s to the approval list for Company: %s, Project: %s.",
-		ed.UserName, ed.ApprovalListGitHubOrg, args.CompanyName, args.ProjectName)
+	data := fmt.Sprintf("The CLA Manager %s added the GitHub organization %s to the approval list", ed.UserName, ed.ApprovalListGitHubOrg)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAApprovalListRemoveGitHubOrgData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s removed GitHub Organization: %s from the approval list for Company: %s, Project: %s.",
-		ed.UserName, ed.ApprovalListGitHubOrg, args.CompanyName, args.ProjectName)
+	data := fmt.Sprintf("The CLA Manager %s removed the GitHub organization %s from the approval list", ed.UserName, ed.ApprovalListGitHubOrg)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CCLAApprovalListRequestCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s created a CCLA Approval Request for Project: %s, Company: %s.",
-		args.UserName, args.ProjectName, args.CompanyName)
+	data := fmt.Sprintf("The user %s created a CCLA Approval Request", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *ApprovalListGitHubOrganizationAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s added GitHub Organization: %s to the whitelist for Project: %s, Company: %s.",
-		args.UserName, ed.GitHubOrganizationName, args.ProjectName, args.CompanyName)
+	data := fmt.Sprintf("The CLA Manager %s added the GitHub organization %s to the approval list", args.UserName, ed.GitHubOrganizationName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *ApprovalListGitHubOrganizationDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Manager: %s removed GitHub Organization: %s from the whitelist for Project: %s, Company: %s.",
-		args.UserName, ed.GitHubOrganizationName, args.ProjectName, args.CompanyName)
+	data := fmt.Sprintf("The CLA Manager %s removed the GitHub organization %s from the approval list", args.UserName, ed.GitHubOrganizationName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *ClaManagerAccessRequestAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s has requested to be CLA Manager for the project %s, the company %s.",
-		args.UserName, ed.ProjectName, ed.CompanyName)
+	data := fmt.Sprintf("The user %s has requested to be CLA Manager", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *ClaManagerAccessRequestDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s has deleted a request to be CLA Manager.",
-		args.UserName)
+	data := fmt.Sprintf("The user %s has deleted a request to be CLA Manager", args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *CLAGroupCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The CLA Group %s was created by the user %s.",
-		args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The CLA Group %s was created by the user %s.", args.ProjectName, args.UserName)
 	return data, true
 }
 
@@ -1051,34 +1421,60 @@ func (ed *CLAGroupUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (s
 
 // GetEventSummaryString . . .
 func (ed *CLAGroupDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The CLA Group %s was deleted by the user %s.",
-		args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The CLA Group %s was deleted by the user %s.", args.ProjectName, args.UserName)
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *GerritProjectDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("%d Gerrit repositories were deleted due to CLA Group/Project %s deletion.",
-		ed.DeletedCount, args.ProjectName)
+	data := fmt.Sprintf("%d Gerrit repositories were deleted due to CLA Group/Project deletion", ed.DeletedCount)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	data = data + "."
 	return data, false
 }
 
 // GetEventSummaryString . . .
 func (ed *GerritAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gerrit repository %s was added by: %s.", ed.GerritRepositoryName, args.UserName)
+	data := fmt.Sprintf("The Gerrit repository %s was added by the user %s", ed.GerritRepositoryName, args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *GerritDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gerrit repository %s was deleted by %s.", ed.GerritRepositoryName, args.UserName)
+	data := fmt.Sprintf("The Gerrit repository %s was deleted by the user %s", ed.GerritRepositoryName, args.UserName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *GitHubProjectDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("%d GitHub repositories were deleted due to CLA Group/project %s deletion.",
-		ed.DeletedCount, args.ProjectName)
+	data := fmt.Sprintf("%d GitHub repositories were deleted due to CLA Group/project deletion",
+		ed.DeletedCount)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	data = data + "."
 	return data, true
 }
 
@@ -1091,48 +1487,122 @@ func (ed *SignatureProjectInvalidatedEventData) GetEventSummaryString(args *LogE
 
 // GetEventSummaryString . . .
 func (ed *ContributorNotifyCompanyAdminData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s notified the company admin %s by the email address %s for the company %s.",
-		args.UserName, ed.AdminName, ed.AdminEmail, args.CompanyName)
+	data := fmt.Sprintf("The user %s notified the company admin %s by the email address %s",
+		args.UserName, ed.AdminName, ed.AdminEmail)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *ContributorNotifyCLADesignee) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s notified the CLA Designee %s by email %s for the project: %s and the company %s.",
-		args.UserName, ed.DesigneeName, ed.DesigneeEmail,
-		args.ProjectName, args.CompanyName)
+	data := fmt.Sprintf("The user %s notified the CLA Designee %s by email %s", args.UserName, ed.DesigneeName, ed.DesigneeEmail)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *ContributorAssignCLADesignee) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was assigned as CLA Manager Designee for the project: %s for the company %s by the user %s.",
-		ed.DesigneeName,
-		args.ProjectName, args.CompanyName, args.UserName)
+	data := fmt.Sprintf("The user %s was assigned as CLA Manager Designee", ed.DesigneeName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *UserConvertToContactData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was converted to a contact for the project %s.",
-		args.LfUsername, args.ProjectName)
+	data := fmt.Sprintf("The user %s was converted to a contact", args.LfUsername)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *AssignRoleScopeData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was added to the role %s for project: %s.", args.LfUsername, ed.Role, args.ProjectName)
+	data := fmt.Sprintf("The user %s was added to the role %s", args.LfUsername, ed.Role)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *ClaManagerRoleCreatedData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was added with to the role %s by user %s.", ed.UserName, ed.Role, args.UserName)
+	data := fmt.Sprintf("The user %s was added to the role %s", ed.UserName, ed.Role)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, false
 }
 
 // GetEventSummaryString . . .
 func (ed *ClaManagerRoleDeletedData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was removed from the role %s by user %s.", ed.UserName, ed.Role, args.UserName)
+	data := fmt.Sprintf("The user %s was removed from the role %s", ed.UserName, ed.Role)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, false
 }

@@ -36,7 +36,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	acs_service "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
+	acsService "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
 	orgModels "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/models"
 
 	orgService "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
@@ -74,10 +74,6 @@ const (
 	HugePageSize = int64(10000)
 	// LoadRepoDetails     = true
 	DontLoadRepoDetails = false
-	// FoundationType the SF foundation type string - previously was "Foundation", now "Project Group"
-	FoundationType = "Project Group"
-	// Lead representing type of user
-	Lead = "lead"
 	//NoAccount
 	NoAccount = "Individual - No Account"
 	//OrgAssociated stating whether user has user association with another org
@@ -402,7 +398,7 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 		f["updatedSigningEntityName"] = org.Name
 	}
 
-	acsClient := acs_service.GetClient()
+	acsClient := acsService.GetClient()
 	userClient := v2UserService.GetClient()
 
 	lfUser, lfErr := userClient.SearchUserByEmail(userEmail)
@@ -622,7 +618,7 @@ func (s *service) AssociateContributor(ctx context.Context, companySFID string, 
 		return nil, userErr
 	}
 
-	acsServiceClient := acs_service.GetClient()
+	acsServiceClient := acsService.GetClient()
 
 	log.WithFields(f).Info("Getting roleID for the contributor role")
 	roleID, roleErr := acsServiceClient.GetRoleID("contributor")
@@ -662,7 +658,7 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 	}
 	// integrate user,acs,org and project services
 	userClient := v2UserService.GetClient()
-	acServiceClient := acs_service.GetClient()
+	acServiceClient := acsService.GetClient()
 	orgClient := orgService.GetClient()
 
 	user, userErr := userClient.SearchUserByEmail(userEmail)
@@ -714,7 +710,7 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 	}
 
 	// Log Event
-	s.eventService.LogEvent(
+	s.eventService.LogEventWithContext(ctx,
 		&events.LogEventArgs{
 			EventType:         events.AssignUserRoleScopeType,
 			LfUsername:        user.Username,
@@ -722,6 +718,8 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 			ExternalProjectID: projectID,
 			CompanyModel:      v1CompanyModel,
 			ClaGroupModel:     projectModel,
+			CLAGroupID:        projectModel.ProjectID,
+			CLAGroupName:      projectModel.ProjectName,
 			UserModel:         &v1Models.User{LfUsername: user.Username, UserID: user.ID},
 			EventData: &events.AssignRoleScopeData{
 				Role:  "contributor",
