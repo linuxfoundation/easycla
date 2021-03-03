@@ -1289,8 +1289,7 @@ class DocuSign(signing_service_interface.SigningService):
                                         cla_manager_email=cla_manager_email,
                                         company_name=company_name,
                                         project_version=project.get_version(),
-                                        project_names=project_names))
-
+                                        project_names=project_names))                           
             cla.log.debug(f'populate_sign_url - {sig_type} - generating a docusign signer object form email with'
                           f'name: {signatory_name}, email: {signatory_email}, subject: {email_subject}')
             signer = pydocusign.Signer(email=signatory_email,
@@ -2248,7 +2247,7 @@ def cla_signatory_email_content(params: ClaSignatoryEmailParams) -> (str, str):
 
     email_subject = f'EasyCLA: CLA Signature Request for {params.cla_group_name}'
     email_body = f'<p>Hello {params.signatory_name},<p>'
-    email_body += f'<p>This is a notification email from EasyCLA regarding the project(s) {project_names_list} associated with the CLA Group {params.cla_group_name}. {params.cla_manager_name} has designated you as being an authorized signatory for the organization {params.company_name}. In order for employees of your company to contribute to any of the above project(s), they must do so under a Contributor License Agreement signed by someone with authority n behalf of your company.</p>'
+    email_body += f'<p>This is a notification email from EasyCLA regarding the project(s) {project_names_list} associated with the CLA Group {params.cla_group_name}. {params.cla_manager_name} has designated you as an authorized signatory for the organization {params.company_name}. In order for employees of your company to contribute to any of the above project(s), they must do so under a Contributor License Agreement signed by someone with authority n behalf of your company.</p>'
     email_body += f'<p>After you sign, {params.cla_manager_name} (as the initial CLA Manager for your company) will be able to maintain the list of specific employees authorized to contribute to the project(s) under this signed CLA.</p>'
     email_body += f'<p>If you are authorized to sign on your company’s behalf, and if you approve {params.cla_manager_name} as your initial CLA Manager, please review the document and sign the CLA. If you have questions, or if you are not an authorized signatory of this company, please contact the requester at {params.cla_manager_email}.</p>'
     email_body = append_email_help_sign_off_content(email_body, params.project_version)

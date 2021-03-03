@@ -877,7 +877,7 @@ def test_cla_signatory_email_content():
     assert "<p>Hello signatory_name_value,<p>" in email_body
     assert "EasyCLA regarding the project(s) project1, project2 associated" in email_body
     assert "with the CLA Group cla_group_name_value" in email_body
-    assert "john has designated you as being an authorized signatory" in email_body
+    assert "john has designated you as an authorized signatory" in email_body
     assert "signatory for the organization IBM" in email_body
     assert "<p>After you sign, john (as the initial CLA Manager for your company)" in email_body
     assert "and if you approve john as your initial CLA Manager" in email_body

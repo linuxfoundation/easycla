@@ -830,13 +830,13 @@ func sendRequestAccessEmailToContributorRecipient(authUser *auth.User, companyMo
 	body := fmt.Sprintf(`
 <p>Hello %s,</p>
 <p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>You have been %s %s the Approval List of %s for %s by CLA Manager %s. This means that %s on behalf of %s.</p>
+<p>You have been %s %s the Approval List of %s for %s by CLA Manager %s. This means that %s.</p>
 <p>If you had previously submitted a pull request to EasyCLA Test Group that had failed, 
 you can now go back to it and follow the link to verify with your organization.</p>
 %s
 %s`,
 		recipientName, projectName, addRemove, toFrom,
-		companyName, projectName, authUser.UserName, authorizedString, projectName,
+		companyName, projectName, authUser.UserName, authorizedString,
 		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
 
 	err := utils.SendEmail(subject, body, recipients)
