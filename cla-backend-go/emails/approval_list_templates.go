@@ -86,8 +86,8 @@ repository. This will permit them to begin contributing to {{.Project.ExternalPr
 )
 
 // RenderRequestToAuthorizeTemplate renders RequestToAuthorizeTemplate
-func RenderRequestToAuthorizeTemplate(repository projects_cla_groups.Repository, claGroupVersion string, projecSFID string, params RequestToAuthorizeTemplateParams) (string, error) {
-	if err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projecSFID, &params.CLAManagerTemplateParams); err != nil {
+func RenderRequestToAuthorizeTemplate(repository projects_cla_groups.Repository, projectService project.Service, claGroupVersion string, projecSFID string, params RequestToAuthorizeTemplateParams) (string, error) {
+	if err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projectService, projecSFID, &params.CLAManagerTemplateParams, nil); err != nil {
 		return "", err
 	}
 

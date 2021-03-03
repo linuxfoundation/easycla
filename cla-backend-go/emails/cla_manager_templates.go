@@ -3,7 +3,10 @@
 
 package emails
 
-import "github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+import (
+	"github.com/communitybridge/easycla/cla-backend-go/project"
+	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+)
 
 // RemovedCLAManagerTemplateParams is email params for RemovedCLAManagerTemplate
 type RemovedCLAManagerTemplateParams struct {
@@ -29,14 +32,14 @@ const (
 )
 
 // RenderRemovedCLAManagerTemplate renders the RemovedCLAManagerTemplate
-func RenderRemovedCLAManagerTemplate(repository projects_cla_groups.Repository, claGroupModelVersion, recipientName, companyName, projectSFID string, claManagers []ClaManagerInfoParams) (string, error) {
+func RenderRemovedCLAManagerTemplate(repository projects_cla_groups.Repository, projectService project.Service, claGroupModelVersion, recipientName, companyName, projectSFID string, claManagers []ClaManagerInfoParams) (string, error) {
 	params := CLAManagerTemplateParams{
 		RecipientName: recipientName,
 		CompanyName:   companyName,
 		CLAManagers:   claManagers,
 	}
 
-	err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projectSFID, &params)
+	err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projectService, projectSFID, &params, nil)
 	if err != nil {
 		return "", err
 	}

@@ -275,7 +275,7 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, project
 }
 
 // sendEmailToUserWithNoLFID helper function to send email to a given user with no LFID
-func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, projectName, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationID string, projectID *string, role string) error {
+func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, projectName, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationID string, projectID *string, role, corporateConsole string) error {
 	f := logrus.Fields{
 		"functionName":        "cla_manager.service.SendEmailToUserWithNoLFID",
 		utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
@@ -291,7 +291,7 @@ func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, repository proj
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Invitation to create LF Login and complete process of becoming CLA Manager with %s role", role)
-	body, err := emails.RenderV2CLAManagerToUserWithNoLFIDTemplate(repository, userWithNoLFIDName, projectName, *projectID, requesterUsername, requesterEmail)
+	body, err := emails.RenderV2CLAManagerToUserWithNoLFIDTemplate(repository, projectService, userWithNoLFIDName, projectName, *projectID, requesterUsername, requesterEmail, corporateConsole)
 
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("rendering email : %s failed : %v", emails.V2CLAManagerToUserWithNoLFIDTemplateName, err)

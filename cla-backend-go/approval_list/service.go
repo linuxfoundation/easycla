@@ -313,7 +313,7 @@ func (s service) sendRequestEmailToRecipient(projectClaGroupRepository projects_
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Request to Authorize %s for %s", contributorName, projectName)
 	recipients := []string{recipientAddress}
-	body, err := emails.RenderRequestToAuthorizeTemplate(projectClaGroupRepository, claGroupModel.Version, claGroupModel.ProjectExternalID,
+	body, err := emails.RenderRequestToAuthorizeTemplate(projectClaGroupRepository, s.projectService, claGroupModel.Version, claGroupModel.ProjectExternalID,
 		emails.RequestToAuthorizeTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 				RecipientName: recipientName,
