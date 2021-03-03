@@ -69,7 +69,7 @@ func buildCLAGroupDocumentModels(dbDocumentModels []DBProjectDocumentModel) []mo
 
 func (s service) fillRepoInfo(ctx context.Context, project *models.ClaGroup) {
 	f := logrus.Fields{
-		"functionName":   "fillRepoInfo",
+		"functionName":   "v1.project.helpers.fillRepoInfo",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
@@ -108,7 +108,7 @@ func (s service) fillRepoInfo(ctx context.Context, project *models.ClaGroup) {
 // GetCurrentDocument returns the current document based on the version and date/time
 func GetCurrentDocument(ctx context.Context, docs []models.ClaGroupDocument) (models.ClaGroupDocument, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCurrentDocument",
+		"functionName":   "v1.project.helpers.GetCurrentDocument",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 	var currentDoc models.ClaGroupDocument
