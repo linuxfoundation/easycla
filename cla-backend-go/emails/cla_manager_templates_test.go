@@ -203,10 +203,10 @@ func TestClaManagerAddedToCLAManagersTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project JohnsProject")
-	assert.Contains(t, result, "CLA Manager from JohnsCompany for the project JohnsProject")
-	assert.Contains(t, result, "contribute to JohnsProject")
-	assert.Contains(t, result, "CLA Managers for JohnsProject")
+	assert.Contains(t, result, "regarding the project JohnsProjectExternal associated with the CLA Group JohnsProject")
+	assert.Contains(t, result, "CLA Manager from JohnsCompany for the project JohnsProjectExternal")
+	assert.Contains(t, result, "contribute to JohnsProjectExternal")
+	assert.Contains(t, result, "CLA Managers for JohnsProjectExternal")
 	assert.Contains(t, result, "<li>John (john@example.com)</li>")
 
 }

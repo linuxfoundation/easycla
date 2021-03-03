@@ -200,7 +200,7 @@ const (
 	// ClaManagerAddedToCLAManagersTemplate is email template for
 	ClaManagerAddedToCLAManagersTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}}.</p>
+<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}} associated with the CLA Group {{.CLAGroupName}}.</p>
 <p>The following user has been added as a CLA Manager from {{.CompanyName}} for the project {{.Project.ExternalProjectName}}. This means that they can now
 maintain the list of employees allowed to contribute to {{.Project.ExternalProjectName}} on behalf of your company, as well as view and manage the
 list of company’s CLA Managers for {{.Project.ExternalProjectName}}.</p>

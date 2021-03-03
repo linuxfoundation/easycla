@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
@@ -408,6 +410,16 @@ func sendClaManagerAddedEmailToCLAManagers(companyModel *models.Company, claGrou
 	companyName := companyModel.CompanyName
 	projectName := claGroupModel.ProjectName
 
+	// we want the Project Name in the email not the cla group name
+	ps := v2ProjectService.GetClient()
+	projectSF, projectErr := ps.GetProject(claGroupModel.ProjectExternalID)
+	if projectErr != nil {
+		msg := fmt.Sprintf("Project service lookup error for SFID: %s, error : %+v",
+			claGroupModel.ProjectExternalID, projectErr)
+		log.Warn(msg)
+		return
+	}
+
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Added Notice for %s", projectName)
 	recipients := []string{recipientAddress}
@@ -415,8 +427,9 @@ func sendClaManagerAddedEmailToCLAManagers(companyModel *models.Company, claGrou
 		emails.ClaManagerAddedToCLAManagersTemplate,
 		emails.ClaManagerAddedToCLAManagersTemplateParams{
 			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+				CLAGroupName:  projectName,
 				RecipientName: recipientName,
-				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
+				Project:       emails.CLAProjectParams{ExternalProjectName: projectSF.Name},
 				CompanyName:   companyName,
 			},
 			Name:  name,
