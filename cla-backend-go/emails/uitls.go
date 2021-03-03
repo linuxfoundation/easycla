@@ -15,13 +15,20 @@ import (
 
 // PrefillCLAManagerTemplateParamsFromClaGroup fetches data from projects_cla_groups.Repository to prefill some of the fields
 // of CLAManagerTemplateParams, like childCount and FoundationName and etc
-func PrefillCLAManagerTemplateParamsFromClaGroup(repository projects_cla_groups.Repository, projectSFID string, params *CLAManagerTemplateParams) error {
+func PrefillCLAManagerTemplateParamsFromClaGroup(repository projects_cla_groups.Repository, projectService project.Service, projectSFID string, params *CLAManagerTemplateParams, corporateConsole *string) error {
 	projectCLAGroup, err := repository.GetClaGroupIDForProject(projectSFID)
 	if err != nil {
 		if errors.Is(err, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup) {
 			log.Warnf("no cla group was found for externalProjectID : %s skipping the prefill", projectSFID)
 			return nil
 		}
+		return err
+	}
+	ctx := context.Background()
+
+	//Check if signed at foundationLevel
+	signedAtFoundationLevel, err := projectService.SignedAtFoundationLevel(ctx, projectCLAGroup.FoundationSFID)
+	if err != nil {
 		return err
 	}
 
@@ -31,8 +38,10 @@ func PrefillCLAManagerTemplateParamsFromClaGroup(repository projects_cla_groups.
 		ProjectSFID:             projectSFID,
 		FoundationName:          projectCLAGroup.FoundationName,
 		FoundationSFID:          projectCLAGroup.FoundationSFID,
-		SignedAtFoundationLevel: false,
-		CorporateConsole:        "",
+		SignedAtFoundationLevel: signedAtFoundationLevel,
+	}
+	if corporateConsole != nil {
+		params.Project.CorporateConsole = *corporateConsole
 	}
 	projects, err := repository.GetProjectsIdsForClaGroup(projectCLAGroup.ClaGroupID)
 	if err != nil {

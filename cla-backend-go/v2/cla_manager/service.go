@@ -97,7 +97,7 @@ type Service interface {
 	SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectSFID string, projectName string, designeeEmail string, designeeName string, senderEmail string, senderName string)
 	SendEmailToCLAManagerDesignee(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectNames, projectSFIDs []string, designeeEmail string, designeeName string, contributorID string, contributorName string)
 	SendDesigneeEmailToUserWithNoLFID(ctx context.Context, projectService project.Service, repository projects_cla_groups.Repository, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID string, projectNames, projectIDs []string, foundationSFID, role string, corporateConsoleV2URL string) error
-	SendEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, projectName, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationID string, projectID *string, role string) error
+	SendEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, projectName, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationID string, projectID *string, role, corporateConsole string) error
 }
 
 // NewService returns instance of CLA Manager service
@@ -755,7 +755,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 		msg := fmt.Sprintf("User: %s does not have an LF Login", userEmail)
 		log.WithFields(f).Warn(msg)
 		// Send email
-		sendEmailErr := s.SendEmailToUserWithNoLFID(ctx, s.projectCGRepo, projectSF.Name, authUser.UserName, authUser.Email, fullName, userEmail, v1CompanyModel.CompanyExternalID, &projectSF.ID, utils.CLADesigneeRole)
+		sendEmailErr := s.SendEmailToUserWithNoLFID(ctx, s.projectCGRepo, s.projectService, projectSF.Name, authUser.UserName, authUser.Email, fullName, userEmail, v1CompanyModel.CompanyExternalID, &projectSF.ID, utils.CLADesigneeRole, corporateConsole)
 		if sendEmailErr != nil {
 			log.WithFields(f).Warnf("Error sending email: %+v", sendEmailErr)
 			return nil, sendEmailErr

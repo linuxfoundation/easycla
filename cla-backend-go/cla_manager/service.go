@@ -338,7 +338,7 @@ func (s service) RemoveClaManager(ctx context.Context, companyID string, claGrou
 	}
 
 	// Notify the removed manager
-	sendRemovedClaManagerEmailToRecipient(s.projectClaRepository, companyModel, claGroupModel, userModel.LfUsername, userModel.LfEmail, claManagers)
+	s.sendRemovedClaManagerEmailToRecipient(s.projectClaRepository, companyModel, claGroupModel, userModel.LfUsername, userModel.LfEmail, claManagers)
 
 	// Send an event
 	s.eventsService.LogEvent(&events.LogEventArgs{
@@ -437,7 +437,7 @@ func sendClaManagerAddedEmailToCLAManagers(companyModel *models.Company, claGrou
 }
 
 // sendRequestRejectedEmailToRecipient generates and sends an email to the specified recipient
-func sendRemovedClaManagerEmailToRecipient(projectsClaGroupRepository projects_cla_groups.Repository, companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress string, claManagers []models.User) {
+func (s *service) sendRemovedClaManagerEmailToRecipient(projectsClaGroupRepository projects_cla_groups.Repository, companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress string, claManagers []models.User) {
 	companyName := companyModel.CompanyName
 	projectName := claGroupModel.ProjectName
 
@@ -488,6 +488,7 @@ func sendRemovedClaManagerEmailToRecipient(projectsClaGroupRepository projects_c
 	recipients := []string{recipientAddress}
 	body, err := emails.RenderRemovedCLAManagerTemplate(
 		projectsClaGroupRepository,
+		s.projectService,
 		claGroupModel.Version,
 		recipientName,
 		companyName,

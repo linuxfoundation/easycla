@@ -191,9 +191,14 @@ func TestV2CLAManagerToUserWithNoLFIDTemplate(t *testing.T) {
 	params := emails.V2CLAManagerToUserWithNoLFIDTemplateParams{
 		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 			RecipientName: "JohnsClaManager",
-			Project:       emails.CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsCLAGroupName",
-			CompanyName:   "JohnsCompany",
+			Project: emails.CLAProjectParams{ExternalProjectName: "JohnsProjectExternal",
+				CorporateConsole:        "http://CorporateConsole.com",
+				SignedAtFoundationLevel: false,
+				ProjectSFID:             "ProjectSFID",
+				FoundationSFID:          "FoundationSFID",
+			},
+			CLAGroupName: "JohnsCLAGroupName",
+			CompanyName:  "JohnsCompany",
 		},
 		RequesterUserName: "RequesterUserNameValue",
 		RequesterEmail:    "RequesterEmailValue",
@@ -203,8 +208,9 @@ func TestV2CLAManagerToUserWithNoLFIDTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the Project JohnsProjectExternal and CLA Group JohnsCLAGroupName")
-	assert.Contains(t, result, "User RequesterUserNameValue (RequesterEmailValue) was trying")
-	assert.Contains(t, result, "CLA Manager for the Project JohnsProject")
-	assert.Contains(t, result, "notify the user RequesterUserNameValue")
+	assert.Contains(t, result, "regarding the CLA setup and signing process for the organization JohnsCompany")
+	assert.Contains(t, result, "The user RequesterUserNameValue (RequesterEmailValue) has identified you as a potential candidate to setup the Corporate CLA for the organization JohnsCompany and the project JohnsProjectExternal")
+	assert.Contains(t, result, "After login, you will be redirected to the portal http://CorporateConsole.com")
+	assert.Contains(t, result, "After adding the contributor, please notify them")
+	assert.Contains(t, result, `where you can either sign the CLA for the project: <a href="http://CorporateConsole.com/foundation/FoundationSFID/project/ProjectSFID/cla" target="_blank">JohnsProjectExternal</a>`)
 }
