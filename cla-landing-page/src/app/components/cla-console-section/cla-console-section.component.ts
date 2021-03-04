@@ -105,15 +105,7 @@ export class ClaConsoleSectionComponent implements OnInit {
   }
 
   onClickVersion(version) {
-    if (version == '1') {
-      this.selectedVersion = version;
-    } else if (version == '2') {
-      if (environment.environment !== 'prod') {
-        this.selectedVersion = version;
-      } else {
-        this.selectedVersion = '';
-      }
-    }
+    this.selectedVersion = version;
   }
 
   onClickVersionProceed() {

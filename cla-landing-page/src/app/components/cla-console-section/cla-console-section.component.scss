@@ -6,7 +6,7 @@
     .section {
         border: 1px solid #8492a6;
         border-radius: 6px;
-        font-family: "Source Sans Pro";
+        font-family: "Source Sans Pro", sans-serif;
         padding-top: 20px;
         .head {
             min-height: 90px;
@@ -39,7 +39,7 @@
 
         .body {
             color: #333333;
-            font-family: "Source Sans Pro";
+            font-family: "Source Sans Pro", sans-serif;
             font-size: 12px;
             text-align: left;
             min-height: 130px;
@@ -58,7 +58,7 @@
 
             .title {
                 color: #000000;
-                font-family: "Open Sans";
+                font-family: "Open Sans", sans-serif;
                 font-size: 14px;
                 text-align: center;
                 padding: 15px 0;
@@ -68,7 +68,7 @@
                 margin-bottom: 15px;
                 .button {
                     color: #ffffff;
-                    font-family: "Source Sans Pro bold";
+                    font-family: "Source Sans Pro bold", sans-serif;
                     font-size: 14px;
                     font-weight: bold;
                     text-align: center;
@@ -94,7 +94,7 @@
 .dialog {
     .dialog-header {
         color: #8492a6;
-        font-family: "Poppins";
+        font-family: "Poppins", sans-serif;
         font-size: 18px;
         font-weight: bold;
         text-align: center;
@@ -111,7 +111,7 @@
 
     .message {
         color: #333333;
-        font-family: "Source Sans Pro";
+        font-family: "Source Sans Pro", sans-serif;
         font-size: 16px;
         text-align: center;
         margin-bottom: 15px;
@@ -122,7 +122,7 @@
         cursor: pointer;
         padding: 5px;
         color: #000000;
-        font-family: "Source Sans Pro";
+        font-family: "Source Sans Pro", sans-serif;
         font-size: 14px;
         font-weight: bold;
         text-align: center;
@@ -153,7 +153,7 @@
         padding: 5px;
         cursor: pointer;
         color: #ffffff;
-        font-family: "Source Sans Pro";
+        font-family: "Source Sans Pro", sans-serif;
         font-size: 14px;
         font-weight: bold;
         text-align: center;
