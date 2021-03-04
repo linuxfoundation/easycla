@@ -374,7 +374,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				"companyName":       params.Body.CompanyName,
 				"signingEntityName": params.Body.SigningEntityName,
 				"userID":            params.Body.UserID,
-				"claGroupName":      params.Body.ClaGroupName,
+				"claGroupName":      params.Body.ClaGroupID,
 			}
 			log.WithFields(f).Debug("notifying CLA managers...")
 			err := service.NotifyCLAManagers(ctx, params.Body, CorporateConsoleV2URL)
@@ -386,7 +386,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 						utils.ErrorResponseNotFound(reqID, msg))
 				}
 
-				msg := fmt.Sprintf("unable to notify cla managers - cla group: %s, company: %s", params.Body.ClaGroupName, params.Body.CompanyName)
+				msg := fmt.Sprintf("unable to notify cla managers - cla group: %s, company: %s", params.Body.ClaGroupID, params.Body.CompanyName)
 				log.WithFields(f).WithError(err).Warn(err)
 				return cla_manager.NewNotifyCLAManagersBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}

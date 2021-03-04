@@ -92,7 +92,7 @@ type Service interface {
 	IsCLAManagerDesignee(ctx context.Context, companySFID, claGroupID, userLFID string) (*models.UserRoleStatus, error)
 
 	// Email Functions
-	SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel)
+	SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel, repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string)
 	SendEmailToOrgAdmin(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, adminEmail string, adminName string, companyName string, projectName, projectSFID string, senderEmail string, senderName string, corporateConsole string)
 	ContributorEmailToOrgAdmin(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, adminEmail string, adminName string, companyName string, projectSFIDs []string, contributor *v1Models.User, corporateConsole string)
 	SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectSFID string, projectName string, designeeEmail string, designeeName string, senderEmail string, senderName string)
@@ -1119,7 +1119,7 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 		"companyName":       notifyCLAManagers.CompanyName,
 		"signingEntityName": notifyCLAManagers.SigningEntityName,
 		"userID":            notifyCLAManagers.UserID,
-		"claGroupName":      notifyCLAManagers.ClaGroupName,
+		"claGroupName":      notifyCLAManagers.ClaGroupID,
 	}
 	// Search for Easy CLA User
 	log.WithFields(f).Debugf("Getting user by ID: %s", notifyCLAManagers.UserID)
@@ -1130,6 +1130,18 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 		return ErrCLAUserNotFound
 	}
 
+	// Get mappings
+	var projectSFIDs []string
+	pcgs, pcgErr := s.projectCGRepo.GetProjectsIdsForClaGroup(notifyCLAManagers.ClaGroupID)
+	if pcgErr != nil {
+		log.WithFields(f).Warnf("problem getting cla_group_mappings by claGroupID: %s ", notifyCLAManagers.ClaGroupID)
+		return pcgErr
+	}
+
+	for _, pcg := range pcgs {
+		projectSFIDs = append(projectSFIDs, pcg.ProjectSFID)
+	}
+
 	log.Debugf("Sending notification emails to CLA Managers: %+v", notifyCLAManagers.List)
 	for _, claManager := range notifyCLAManagers.List {
 		s.SendEmailToCLAManager(ctx, &EmailToCLAManagerModel{
@@ -1137,9 +1149,8 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 			CLAManagerName:      claManager.Name,
 			CLAManagerEmail:     claManager.Email.String(),
 			CompanyName:         notifyCLAManagers.CompanyName,
-			CLAGroupName:        notifyCLAManagers.ClaGroupName,
 			CorporateConsoleURL: CorporateConsoleV2URL,
-		})
+		}, s.projectCGRepo, s.projectService, projectSFIDs)
 	}
 
 	return nil

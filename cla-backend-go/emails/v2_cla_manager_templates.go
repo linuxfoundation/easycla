@@ -26,6 +26,21 @@ type V2ContributorApprovalRequestTemplateParams struct {
 	SigningEntityName     string
 	UserDetails           string
 	CorporateConsoleV2URL string
+	Projects              []CLAProjectParams
+}
+
+// GetProjectsOrProject returns the single Project or comma separated projects if more than one
+func (p V2ContributorApprovalRequestTemplateParams) GetProjectsOrProject() string {
+	if len(p.Projects) == 1 {
+		return p.Projects[0].ExternalProjectName
+	}
+
+	var projectNames []string
+	for _, p := range p.Projects {
+		projectNames = append(projectNames, p.ExternalProjectName)
+	}
+
+	return strings.Join(projectNames, ", ")
 }
 
 const (
@@ -35,12 +50,25 @@ const (
 	V2ContributorApprovalRequestTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the organization {{.CompanyName}}.</p>
-<p>The following contributor would like to submit a contribution to the CLA Group {{.CLAGroupName}} and is requesting to be approved as a contributor for your organization: </p>
+<p>The following contributor would like to submit a contribution to the projects(s): {{.GetProjectsOrProject}} and is requesting to be approved as a contributor for your organization: </p>
 <p>{{.UserDetails}}</p>
-<p> Approval can be done at {{.CorporateConsoleV2URL}} </p>
+<p> Approval can be done at {{.CorporateConsoleV2URL}}. Visit any of the project(s):{{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}} and add the contributor to the approved list.</p>
 <p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their contribution.</p>
 `
 )
+
+// RenderV2ContributorApprovalRequestTemplate renders V2ContributorApprovalRequestTemplate
+func RenderV2ContributorApprovalRequestTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string, params V2ContributorApprovalRequestTemplateParams) (string, error) {
+
+	projectParams, err := PrefillCLAProjectParams(repository, projectService, projectSFIDs, params.CorporateConsoleV2URL)
+	if err != nil {
+		return "", err
+	}
+
+	params.Projects = projectParams
+
+	return RenderTemplate(utils.V2, V2ContributorApprovalRequestTemplateName, V2ContributorApprovalRequestTemplate, params)
+}
 
 // V2OrgAdminTemplateParams is email params for V2OrgAdminTemplate
 type V2OrgAdminTemplateParams struct {

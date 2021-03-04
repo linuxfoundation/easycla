@@ -17,8 +17,11 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
 			RecipientName: "JohnsClaManager",
 			Project:       emails.CLAProjectParams{ExternalProjectName: "JohnsProject"},
-			CLAGroupName:  "JohnsCLAGroupName",
 			CompanyName:   "JohnsCompany",
+		},
+		Projects: []emails.CLAProjectParams{
+			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
+			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
 		},
 		UserDetails:           "UserDetailsValue",
 		CorporateConsoleV2URL: "http://CorporateConsoleV2URL.com",
@@ -29,7 +32,7 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the organization JohnsCompany")
-	assert.Contains(t, result, "contribution to the CLA Group JohnsCLAGroupName")
+	assert.Contains(t, result, "The following contributor would like to submit a contribution to the projects(s): Project1, Project2")
 	assert.Contains(t, result, "UserDetailsValue")
 	assert.Contains(t, result, "Approval can be done at http://CorporateConsoleV2URL.com")
 
@@ -40,7 +43,7 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the organization JohnsCompany")
-	assert.Contains(t, result, "contribution to the CLA Group JohnsCLAGroupName")
+	assert.Contains(t, result, "The following contributor would like to submit a contribution to the projects(s): Project1, Project2")
 	assert.Contains(t, result, "UserDetailsValue")
 	assert.Contains(t, result, "Approval can be done at http://CorporateConsoleV2URL.com")
 }

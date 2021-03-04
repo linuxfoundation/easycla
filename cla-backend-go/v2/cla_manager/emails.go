@@ -29,7 +29,7 @@ type EmailToCLAManagerModel struct {
 }
 
 // SendEmailToCLAManager handles sending an email to the specified CLA Manager
-func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel) {
+func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel, repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string) {
 	f := logrus.Fields{
 		"functionName":              "cla_manager.service.SendEmailToCLAManager",
 		utils.XREQUESTID:            ctx.Value(utils.XREQUESTID),
@@ -47,20 +47,16 @@ func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAMa
 
 	subject := fmt.Sprintf("EasyCLA: Approval Request for contributor: %s", getBestUserName(input.Contributor))
 	recipients := []string{input.CLAManagerEmail}
-	body, err := emails.RenderTemplate(
-		utils.V2, emails.V2ContributorApprovalRequestTemplateName,
-		emails.V2ContributorApprovalRequestTemplate,
-		emails.V2ContributorApprovalRequestTemplateParams{
-			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-				RecipientName: input.CLAGroupName,
-				CompanyName:   input.CompanyName,
-				CLAGroupName:  input.CLAGroupName,
-			},
-			SigningEntityName:     input.CompanyName,
-			UserDetails:           getFormattedUserDetails(input.Contributor),
-			CorporateConsoleV2URL: input.CorporateConsoleURL,
+	body, err := emails.RenderV2ContributorApprovalRequestTemplate(repository, projectService, projectSFIDs, emails.V2ContributorApprovalRequestTemplateParams{
+		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+			RecipientName: input.CLAGroupName,
+			CompanyName:   input.CompanyName,
+			CLAGroupName:  input.CLAGroupName,
 		},
-	)
+		SigningEntityName:     input.CompanyName,
+		UserDetails:           getFormattedUserDetails(input.Contributor),
+		CorporateConsoleV2URL: input.CorporateConsoleURL,
+	})
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("rendering email template: %s", emails.V2ContributorApprovalRequestTemplateName)
 		return
