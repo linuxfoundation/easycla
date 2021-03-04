@@ -139,8 +139,12 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
 			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
 		},
-		ContributorEmail: "ContributorIDValue",
-		ContributorName:  "ContributorNameValue",
+		Contributor: emails.Contributor{
+			Email:         "ContributorEmailValue",
+			Username:      "ContributorNameValue",
+			EmailLabel:    utils.EmailLabel,
+			UsernameLabel: utils.UserLabel,
+		},
 		CorporateConsole: "http://CorporateConsole.com",
 	}
 
@@ -149,18 +153,21 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the project(s): Project1, Project2")
-	assert.Contains(t, result, "from ContributorNameValue (ContributorIDValue)")
+	assert.Contains(t, result, "from Username: ContributorNameValue (Email Address: ContributorEmailValue)")
 	assert.Contains(t, result, `CLA for any of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>,<a href="http://CorporateConsole.com/foundation/FoundationSFID2/project/ProjectSFID2/cla" target="_blank">Project2</a>`)
 
 	params.Projects = []emails.CLAProjectParams{
 		{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
 	}
+	params.Contributor.EmailLabel = utils.GitHubEmailLabel
+	params.Contributor.UsernameLabel = utils.GitHubUserLabel
+
 	result, err = emails.RenderTemplate(utils.V1, emails.V2ToCLAManagerDesigneeTemplateName, emails.V2ToCLAManagerDesigneeTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the project(s): Project1")
-	assert.Contains(t, result, "from ContributorNameValue (ContributorIDValue)")
+	assert.Contains(t, result, "from GitHub Username: ContributorNameValue (GitHub Email Address: ContributorEmailValue)")
 	assert.Contains(t, result, `CLA for any of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>`)
 
 }
@@ -172,8 +179,12 @@ func TestV2DesigneeToUserWithNoLFIDTemplate(t *testing.T) {
 			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "https://corporate.dev.lfcla.com"},
 			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "https://corporate.dev.lfcla.com"},
 		},
-		ContributorEmail: "ContributorIDValue",
-		ContributorName:  "ContributorNameValue",
+		Contributor: emails.Contributor{
+			Email:         "ContributorEmail",
+			Username:      "ContributorUsername",
+			EmailLabel:    utils.EmailLabel,
+			UsernameLabel: utils.UserLabel,
+		},
 		CorporateConsole: "https://corporate.dev.lfcla.com",
 	}
 
@@ -181,10 +192,19 @@ func TestV2DesigneeToUserWithNoLFIDTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager,")
-	assert.Contains(t, result, "We received a request from ContributorNameValue (ContributorIDValue)")
+	assert.Contains(t, result, "We received a request from Username: ContributorUsername (Email Address: ContributorEmail)")
 	assert.Contains(t, result, "After login, you will be redirected to the portal https://corporate.dev.lfcla.com ")
 	assert.Contains(t, result, `where you can either sign the CLA for any of the project(s): <a href="https://corporate.dev.lfcla.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>`)
 	assert.Contains(t, result, "or send it to an authorized signatory for your company.")
+
+	params.Contributor.EmailLabel = utils.GitHubEmailLabel
+	params.Contributor.UsernameLabel = utils.GitHubUserLabel
+
+	result, err = emails.RenderTemplate(utils.V1, emails.V2DesigneeToUserWithNoLFIDTemplateName, emails.V2DesigneeToUserWithNoLFIDTemplate,
+		params)
+
+	assert.NoError(t, err)
+	assert.Contains(t, result, "We received a request from GitHub Username: ContributorUsername (GitHub Email Address: ContributorEmail)")
 }
 
 func TestV2CLAManagerToUserWithNoLFIDTemplate(t *testing.T) {

@@ -16,6 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/communitybridge/easycla/cla-backend-go/emails"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
@@ -95,8 +96,8 @@ type Service interface {
 	SendEmailToOrgAdmin(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, adminEmail string, adminName string, companyName string, projectName, projectSFID string, senderEmail string, senderName string, corporateConsole string)
 	ContributorEmailToOrgAdmin(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, adminEmail string, adminName string, companyName string, projectSFIDs []string, contributor *v1Models.User, corporateConsole string)
 	SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectSFID string, projectName string, designeeEmail string, designeeName string, senderEmail string, senderName string)
-	SendEmailToCLAManagerDesignee(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectNames, projectSFIDs []string, designeeEmail string, designeeName string, contributorID string, contributorName string)
-	SendDesigneeEmailToUserWithNoLFID(ctx context.Context, projectService project.Service, repository projects_cla_groups.Repository, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID string, projectNames, projectIDs []string, foundationSFID, role string, corporateConsoleV2URL string) error
+	SendEmailToCLAManagerDesignee(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectNames, projectSFIDs []string, designeeEmail string, designeeName string, contributorModel emails.Contributor)
+	SendDesigneeEmailToUserWithNoLFID(ctx context.Context, projectService project.Service, repository projects_cla_groups.Repository, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID string, projectNames, projectIDs []string, foundationSFID, role string, corporateConsoleV2URL string, contributorModel emails.Contributor) error
 	SendEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, projectName, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationID string, projectID *string, role, corporateConsole string) error
 }
 
@@ -983,19 +984,21 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 	// Get suggested CLA Manager user details
 	user, userErr := userService.SearchUserByEmail(userEmail)
 	if userErr != nil || (user != nil && user.Username == "") {
-		contributorEmail, contributorUsername := "", ""
+		var contributorModel emails.Contributor
 		msg := fmt.Sprintf("UserEmail: %s has no LF Login and has been sent an invite email to create an account , error: %+v", userEmail, userErr)
 		log.Warn(msg)
 
 		// Get username and useremail details for contributor
 		if contributor.LFEmail != "" && contributor.UserName != "" {
-			contributorEmail = contributor.LFEmail
-			contributorUsername = contributor.UserName
+			contributorModel.Email = contributor.LFEmail
+			contributorModel.Username = contributor.LFUsername
+			contributorModel.EmailLabel = utils.EmailLabel
+			contributorModel.UsernameLabel = utils.UserLabel
 		} else {
-			contributorUsername, contributorEmail = getContributorPublicEmail(contributor)
+			contributorModel = getContributorPublicEmail(contributor)
 		}
 
-		sendErr := s.SendDesigneeEmailToUserWithNoLFID(ctx, s.projectService, s.projectCGRepo, contributorUsername, contributorEmail, name, userEmail, organization.Name, organization.ID, projectSFs, projectSFIDs, foundationSFID, "cla-manager-designee", LfxPortalURL)
+		sendErr := s.SendDesigneeEmailToUserWithNoLFID(ctx, s.projectService, s.projectCGRepo, name, userEmail, organization.Name, organization.ID, projectSFs, projectSFIDs, foundationSFID, "cla-manager-designee", LfxPortalURL, contributorModel)
 		if sendErr != nil {
 			msg := fmt.Sprintf("Problem sending email to user: %s , error: %+v", userEmail, sendErr)
 			log.Warn(msg)
@@ -1030,12 +1033,19 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 
 	log.Debugf("Sending Email to CLA Manager Designee email: %s ", userEmail)
 
+	var contributorModel emails.Contributor
+
 	if contributor.LFUsername != "" && contributor.LFEmail != "" && len(projectSFs) > 0 {
-		s.SendEmailToCLAManagerDesignee(ctx, s.projectCGRepo, s.projectService, CorporateConsoleV2URL, organization.Name, projectSFs, projectSFIDs, userEmail, user.Name, contributor.LFEmail, contributor.LFUsername)
+		contributorModel.Email = contributor.LFEmail
+		contributorModel.Username = contributor.LFUsername
+		contributorModel.EmailLabel = utils.EmailLabel
+		contributorModel.UsernameLabel = utils.UserLabel
+
 	} else {
-		contributorUserName, contributorEmail := getContributorPublicEmail(contributor)
-		s.SendEmailToCLAManagerDesignee(ctx, s.projectCGRepo, s.projectService, CorporateConsoleV2URL, organization.Name, projectSFs, projectSFIDs, userEmail, user.Name, contributorUserName, contributorEmail)
+		contributorModel = getContributorPublicEmail(contributor)
 	}
+
+	s.SendEmailToCLAManagerDesignee(ctx, s.projectCGRepo, s.projectService, CorporateConsoleV2URL, organization.Name, projectSFs, projectSFIDs, userEmail, user.Name, contributorModel)
 
 	log.Debugf("CLA Manager designee created : %+v", designeeScopes)
 
@@ -1152,29 +1162,33 @@ func getBestUserName(model *v1Models.User) string {
 	return "User Name Unknown"
 }
 
-func getContributorPublicEmail(model *v1User.User) (string, string) {
-	var contributorUserName, contributorEmail string
+func getContributorPublicEmail(model *v1User.User) emails.Contributor {
+	var contributorModel emails.Contributor
 	if model.LFUsername != "" {
-		contributorUserName = model.LFUsername
+		contributorModel.Username = model.LFUsername
+		contributorModel.UsernameLabel = utils.UserLabel
 	}
 
 	if model.LFEmail != "" {
-		contributorEmail = model.LFEmail
+		contributorModel.Email = model.LFEmail
+		contributorModel.EmailLabel = utils.EmailLabel
 	}
 
-	if contributorUserName == "" {
-		contributorUserName = model.UserGithubUsername
+	if contributorModel.Username == "" {
+		contributorModel.Username = model.UserGithubUsername
+		contributorModel.UsernameLabel = utils.GitHubUserLabel
 	}
 
-	if contributorEmail == "" && len(model.UserEmails) > 0 {
+	if contributorModel.Email == "" && len(model.UserEmails) > 0 {
 		for _, email := range model.UserEmails {
 			if strings.Contains(email, "users.noreply.github.com") {
 				continue
 			}
-			contributorEmail = email
+			contributorModel.Email = email
+			contributorModel.EmailLabel = utils.GitHubEmailLabel
 		}
 	}
-	return contributorUserName, contributorEmail
+	return contributorModel
 }
 
 // getFormattedUserDetails is a helper function to extract what information we can from the user record for purposes of displaying the user's information

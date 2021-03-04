@@ -12,6 +12,14 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
 
+//Contributor representing GH user details
+type Contributor struct {
+	Email         string
+	Username      string
+	EmailLabel    string
+	UsernameLabel string
+}
+
 // V2ContributorApprovalRequestTemplateParams is email template params for V2ContributorApprovalRequestTemplate
 type V2ContributorApprovalRequestTemplateParams struct {
 	CLAManagerTemplateParams
@@ -159,8 +167,7 @@ func RenderV2CLAManagerDesigneeCorporateTemplate(repository projects_cla_groups.
 type V2ToCLAManagerDesigneeTemplateParams struct {
 	RecipientName    string
 	Projects         []CLAProjectParams
-	ContributorEmail string
-	ContributorName  string
+	Contributor      Contributor
 	CorporateConsole string
 	CompanyName      string
 }
@@ -186,7 +193,7 @@ const (
 	V2ToCLAManagerDesigneeTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the project(s): {{.GetProjectsOrProject}}.</p>
-<p>We received a request from {{.ContributorName}} ({{.ContributorEmail}}) to contribute to the above projects on behalf of your organization.</p>
+<p>We received a request from {{.Contributor.UsernameLabel}}: {{.Contributor.Username}} ({{.Contributor.EmailLabel}}: {{.Contributor.Email}}) to contribute to the above projects on behalf of your organization.</p>
 <p>Before the user contribution can be accepted, your organization must sign a Corporate CLA (CCLA).The requester has stated that you would be the initial CLA Manager for this CCLA, to coordinate the signing of the CCLA and then manage the list of employees who are authorized to contribute.</p>
 <p>Please complete the following steps:</p>
 <ol>
@@ -226,7 +233,7 @@ const (
 	V2DesigneeToUserWithNoLFIDTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the project(s): {{.GetProjectsOrProject}}.</p>
-<p>We received a request from {{.ContributorName}} ({{.ContributorEmail}}) to contribute to any of the above projects on behalf of your
+<p>We received a request from {{.Contributor.UsernameLabel}}: {{.Contributor.Username}} ({{.Contributor.EmailLabel}}: {{.Contributor.Email}}) to contribute to any of the above projects on behalf of your
 organization {{.CompanyName}}. <p>
 <p>Before the user contribution can be accepted, your organization must sign a Corporate CLA(CCLA). 
 The requester has stated that you would be the initial CLA Manager for this CCLA, to coordinate the signing of the CCLA and then manage the list of employees who are authorized to contribute.</p>

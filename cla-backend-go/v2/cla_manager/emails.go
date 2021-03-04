@@ -188,7 +188,7 @@ func (s *service) SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, re
 	}
 }
 
-func (s *service) SendEmailToCLAManagerDesignee(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectNames, projectSFIDs []string, designeeEmail string, designeeName string, contributorEmail string, contributorName string) {
+func (s *service) SendEmailToCLAManagerDesignee(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectNames, projectSFIDs []string, designeeEmail string, designeeName string, contributorModel emails.Contributor) {
 	f := logrus.Fields{
 		"functionName":     "cla_manager.service.SendEmailToCLAManagerDesignee",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
@@ -197,18 +197,17 @@ func (s *service) SendEmailToCLAManagerDesignee(ctx context.Context, repository 
 		"projectNames":     strings.Join(projectNames, ","),
 		"designeeEmail":    designeeEmail,
 		"designeeName":     designeeName,
-		"contributorEmail": contributorEmail,
-		"contributorName":  contributorName,
+		"contributorEmail": contributorModel.Email,
+		"contributorName":  contributorModel.Username,
 	}
 
 	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA and add to approved list %s ",
-		companyName, contributorEmail)
+		companyName, contributorModel.Email)
 	recipients := []string{designeeEmail}
 	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(repository, projectService, projectSFIDs,
 		emails.V2ToCLAManagerDesigneeTemplateParams{
 			RecipientName:    designeeName,
-			ContributorEmail: contributorEmail,
-			ContributorName:  contributorName,
+			Contributor:      contributorModel,
 			CorporateConsole: corporateConsole,
 		}, emails.V2ToCLAManagerDesigneeTemplate, emails.V2ToCLAManagerDesigneeTemplateName)
 
@@ -224,7 +223,7 @@ func (s *service) SendEmailToCLAManagerDesignee(ctx context.Context, repository 
 	}
 }
 
-func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, projectService project.Service, repository projects_cla_groups.Repository, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID string, projectNames, projectSFIDs []string, foundationSFID, role string, corporateConsoleV2URL string) error {
+func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, projectService project.Service, repository projects_cla_groups.Repository, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID string, projectNames, projectSFIDs []string, foundationSFID, role string, corporateConsoleV2URL string, contributorModel emails.Contributor) error {
 	f := logrus.Fields{
 		"functionName":          "cla_manager.service.SendDesigneeEmailToUserWithNoLFID",
 		utils.XREQUESTID:        ctx.Value(utils.XREQUESTID),
@@ -234,8 +233,8 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, project
 		"projectNames":          strings.Join(projectNames, ","),
 		"role":                  role,
 		"corporateConsoleV2URL": corporateConsoleV2URL,
-		"requesterUsername":     requesterUsername,
-		"requesterEmail":        requesterEmail,
+		"requesterUsername":     contributorModel.Username,
+		"requesterEmail":        contributorModel.Email,
 	}
 
 	subject := "EasyCLA: Invitation to create LF Login and complete process of becoming CLA Manager"
@@ -243,8 +242,7 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, project
 	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(repository, projectService, projectSFIDs,
 		emails.V2ToCLAManagerDesigneeTemplateParams{
 			RecipientName:    userWithNoLFIDName,
-			ContributorEmail: requesterEmail,
-			ContributorName:  requesterUsername,
+			Contributor:      contributorModel,
 			CorporateConsole: corporateConsoleV2URL,
 		}, emails.V2DesigneeToUserWithNoLFIDTemplate, emails.V2DesigneeToUserWithNoLFIDTemplateName)
 

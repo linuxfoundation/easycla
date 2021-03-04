@@ -134,3 +134,15 @@ const GithubRepoNotFound = "GitHub repository not found"
 
 //GithubRepoExists  is a string that indicates the GitHub repository already exists
 const GithubRepoExists = "GitHub repository exists"
+
+//GitHubEmailLabel represents the GH Email label used for email
+const GitHubEmailLabel = "GitHub Email Address"
+
+//GitHubUserLabel represents the GH username Label used for email
+const GitHubUserLabel = "GitHub Username"
+
+//EmailLabel represents LF/EasyCLA Email address
+const EmailLabel = "Email Address"
+
+//UserLabel represents the LF/EasyCLA username
+const UserLabel = "Username"
