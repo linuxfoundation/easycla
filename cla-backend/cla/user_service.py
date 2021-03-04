@@ -52,7 +52,7 @@ class UserServiceInstance:
             log.warning(msg)
             return None
 
-    def _get_users_by_key_value(self, key: str, value: str):
+    def _get_users_by_key_value(self, key: str, value: str) -> List[dict]:
         """
         Queries the platform user service for the specified criteria.
         The result will return summary information for the users as a
@@ -65,7 +65,7 @@ class UserServiceInstance:
             'accept': 'application/json'
         }
 
-        users = []
+        users: List[dict] = []
         offset = 0
         pagesize = 1000
 
@@ -91,16 +91,16 @@ class UserServiceInstance:
         log.debug(f'{fn} - total users : {len(users)}')
         return users
 
-    def get_users_by_username(self, user_name: str):
+    def get_users_by_username(self, user_name: str) -> List[dict]:
         return self._get_users_by_key_value("username", user_name)
 
-    def get_users_by_firstname(self, first_name: str):
+    def get_users_by_firstname(self, first_name: str) -> List[dict]:
         return self._get_users_by_key_value("firstname", first_name)
 
-    def get_users_by_lastname(self, last_name: str):
+    def get_users_by_lastname(self, last_name: str) -> List[dict]:
         return self._get_users_by_key_value("lastname", last_name)
 
-    def get_users_by_email(self, email: str):
+    def get_users_by_email(self, email: str) -> List[dict]:
         return self._get_users_by_key_value("email", email)
     
     def has_role(self, username: str, role: str, organization_id: str, cla_group_id: str) -> bool:
