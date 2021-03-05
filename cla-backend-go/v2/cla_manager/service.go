@@ -1213,10 +1213,6 @@ func getFormattedUserDetails(model *v1Models.User) string {
 		details = append(details, fmt.Sprintf("GitHub User Name: %s", model.GithubUsername))
 	}
 
-	if model.GithubID != "" {
-		details = append(details, fmt.Sprintf("GitHub ID: %s", model.GithubID))
-	}
-
 	if model.LfUsername != "" {
 		details = append(details, fmt.Sprintf("LF Login: %s", model.LfUsername))
 	}
@@ -1229,7 +1225,7 @@ func getFormattedUserDetails(model *v1Models.User) string {
 		details = append(details, fmt.Sprintf("Emails: %s", strings.Join(model.Emails, ", ")))
 	}
 
-	return strings.Join(details, ",")
+	return strings.Join(details, ", ")
 }
 
 // isSigned is a helper function to check if project/claGroup is signed
