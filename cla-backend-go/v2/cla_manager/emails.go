@@ -49,9 +49,8 @@ func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAMa
 	recipients := []string{input.CLAManagerEmail}
 	body, err := emails.RenderV2ContributorApprovalRequestTemplate(repository, projectService, projectSFIDs, emails.V2ContributorApprovalRequestTemplateParams{
 		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-			RecipientName: input.CLAGroupName,
+			RecipientName: input.CLAManagerName,
 			CompanyName:   input.CompanyName,
-			CLAGroupName:  input.CLAGroupName,
 		},
 		SigningEntityName:     input.CompanyName,
 		UserDetails:           getFormattedUserDetails(input.Contributor),

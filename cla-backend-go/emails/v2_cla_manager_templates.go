@@ -50,7 +50,7 @@ const (
 	V2ContributorApprovalRequestTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the organization {{.CompanyName}}.</p>
-<p>The following contributor would like to submit a contribution to the projects(s): {{.GetProjectsOrProject}} and is requesting to be approved as a contributor for your organization: </p>
+<p>The following contributor would like to submit a contribution to the projects(s): {{.GetProjectsOrProject}} and is requesting to be added to the approval list as a contributor for your organization: </p>
 <p>{{.UserDetails}}</p>
 <p> Approval can be done at {{.CorporateConsoleV2URL}}. Visit any of the project(s):{{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}} and add the contributor to the approved list.</p>
 <p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their contribution.</p>
