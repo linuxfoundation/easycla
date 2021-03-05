@@ -347,7 +347,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			}
 
 			log.WithFields(f).Debug("creating company...")
-			companyModel, err := service.CreateCompany(ctx, *params.Input.CompanyName, params.Input.SigningEntityName, *params.Input.CompanyWebsite, params.Input.UserEmail.String(), params.UserID, "")
+			companyModel, err := service.CreateCompany(ctx, &params)
 			if err != nil {
 				log.Warnf("error returned from create company api: %+v", err)
 				if strings.Contains(err.Error(), "website already exists") {
@@ -395,7 +395,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				}
 
 				log.WithFields(f).Debugf("found company: '%s' in the organization service - creating local record...", params.CompanyName)
-				companyModelOutput, companyCreateErr := service.CreateCompanyFromSFModel(ctx, orgModels[0])
+				companyModelOutput, companyCreateErr := service.CreateCompanyFromSFModel(ctx, orgModels[0], authUser)
 				if companyCreateErr != nil || companyModelOutput == nil {
 					msg := fmt.Sprintf("unable to create company '%s' from salesforce record", params.CompanyName)
 					log.WithFields(f).WithError(err).Warn(msg)

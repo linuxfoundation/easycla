@@ -39,6 +39,7 @@ import (
 	acsService "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
 	orgModels "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/models"
 
+	v2Ops "github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/company"
 	orgService "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
@@ -86,8 +87,8 @@ type Service interface {
 	GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error)
 	GetCompanyProjectContributors(ctx context.Context, projectSFID string, companySFID string, searchTerm string) (*models.CorporateContributorList, error)
 	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error)
-	CreateCompany(ctx context.Context, companyName, signingEntityName, companyWebsite, userEmail, userID, note string) (*models.CompanyOutput, error)
-	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization) (*models.CompanyOutput, error)
+	CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error)
+	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
 	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error)
 	GetCompanyByID(ctx context.Context, companyID string) (*models.Company, error)
@@ -367,18 +368,25 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID
 	}, nil
 }
 
-func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityName, companyWebsite, userEmail, userID string, note string) (*models.CompanyOutput, error) {
+func (s *service) CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error) {
 	f := logrus.Fields{
 		"functionName":      "service.CreateCompany",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
-		"companyName":       companyName,
-		"signingEntityName": signingEntityName,
-		"companyWebsite":    companyWebsite,
-		"userEmail":         userEmail,
-		"userID":            userID,
-		"note":              note,
+		"companyName":       params.Input.CompanyName,
+		"signingEntityName": params.Input.SigningEntityName,
+		"companyWebsite":    params.Input.CompanyWebsite,
+		"userEmail":         params.Input.UserEmail.String(),
+		"userID":            params.UserID,
+		"note":              params.Input.Note,
 	}
+
 	var lfUser *v2UserServiceModels.User
+	companyName := *params.Input.CompanyName
+	signingEntityName := params.Input.SigningEntityName
+	companyWebsite := *params.Input.CompanyWebsite
+	userEmail := params.Input.UserEmail.String()
+	userID := params.UserID
+	note := params.Input.Note
 
 	// Create SalesForce company
 	orgClient := orgService.GetClient()
@@ -447,17 +455,16 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 	// OrgID used as externalID for the easyCLA Company
 	// Create a new company model for the create function
 	createCompanyModel := &v1Models.Company{
-		CompanyACL:        nil,
 		CompanyExternalID: org.ID,
 		CompanyManagerID:  userID,
 		CompanyName:       companyName,
 		SigningEntityName: signingEntityName,
+		Note:              note,
 	}
 	if lfUser != nil && lfUser.Username != "" {
 		createCompanyModel.CompanyACL = []string{lfUser.Username}
-	}
-	if note != "" {
-		createCompanyModel.Note = note
+	} else {
+		createCompanyModel.CompanyACL = []string{}
 	}
 
 	_, createErr := s.companyRepo.CreateCompany(ctx, createCompanyModel)
@@ -476,7 +483,7 @@ func (s *service) CreateCompany(ctx context.Context, companyName, signingEntityN
 	}, nil
 }
 
-func (s *service) CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization) (*models.CompanyOutput, error) {
+func (s *service) CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error) {
 	f := logrus.Fields{
 		"functionName":       "company.service.CreateCompanyFromSFModel",
 		utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
@@ -488,8 +495,26 @@ func (s *service) CreateCompanyFromSFModel(ctx context.Context, orgModel *orgMod
 	}
 
 	log.WithFields(f).Debugf("Creating company: %s...", orgModel.Name)
-	return s.CreateCompany(ctx, orgModel.Name, orgModel.Name, orgModel.Link,
-		"", "", fmt.Sprintf("created from platform organization service model: %s", orgModel.ID))
+	companyInput := &models.CompanyInput{
+		CompanyName:       &orgModel.Name,
+		CompanyWebsite:    &orgModel.Link,
+		Note:              fmt.Sprintf("created from platform organization service model: %s", orgModel.ID),
+		SigningEntityName: orgModel.Name,
+	}
+	if orgModel.Owner != nil {
+		userServiceClient := v2UserService.GetClient()
+		userModel, userLookupErr := userServiceClient.GetUser(orgModel.ID)
+		if userLookupErr != nil {
+			log.WithFields(f).WithError(userLookupErr).Warnf("unable to lookup user by SFID: %s", orgModel.ID)
+		} else {
+			userEmail := strfmt.Email(*userModel.Email)
+			companyInput.UserEmail = &userEmail
+		}
+	}
+	return s.CreateCompany(ctx, &v2Ops.CreateCompanyParams{
+		Input:  companyInput,
+		UserID: authUser.UserName,
+	})
 }
 
 // GetCompanyByName deletes the company by name

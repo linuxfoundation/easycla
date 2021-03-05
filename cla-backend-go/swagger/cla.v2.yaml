@@ -4063,6 +4063,10 @@ definitions:
         description: the company website
       userEmail:
         $ref: './common/properties/email.yaml'
+      note:
+        description: 'Optional note associated with the new company request. This information will be attached to the company record.'
+        type: string
+        maxLength: 256
 
   company-output:
     type: object
