@@ -4554,7 +4554,7 @@ definitions:
         $ref: './common/properties/company-name.yaml'
       signingEntityName:
         $ref: './common/properties/company-signing-entity-name.yaml'
-      cla_group_id:
+      claGroupID:
         title: CLA Group ID
         description: The CLA Group ID
         $ref: './common/properties/internal-id.yaml'
