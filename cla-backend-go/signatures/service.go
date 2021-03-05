@@ -831,8 +831,15 @@ func sendRequestAccessEmailToContributorRecipient(authUser *auth.User, companyMo
 <p>Hello %s,</p>
 <p>This is a notification email from EasyCLA regarding the project %s.</p>
 <p>You have been %s %s the Approval List of %s for %s by CLA Manager %s. This means that %s.</p>
-<p>If you had previously submitted a pull request to EasyCLA Test Group that had failed, 
-you can now go back to it and follow the link to verify with your organization.</p>
+<b>
+<p>If you had previously submitted a pull request to EasyCLA Test Group that had failed, you can now go back to it, re-click the “Not Covered” button in the EasyCLA message in your pull request, and then follow these steps</p>
+<ol>
+<li>Select “Corporate Contributor”.</li>
+<li>Select your company from the organization drop down list</li>
+<li>Click Proceed</li>
+</ol>
+<p>These steps will confirm your organization association and you will only need to do these once. After completing these steps, the EasyCLA check will be complete and enabled for all future code contributions for this project.</p>
+</b>
 %s
 %s`,
 		recipientName, projectName, addRemove, toFrom,
