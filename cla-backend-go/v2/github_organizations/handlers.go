@@ -129,9 +129,9 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 			// Log the event
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				LfUsername:        authUser.UserName,
-				EventType:         events.GitHubOrganizationAdded,
-				ExternalProjectID: params.ProjectSFID,
+				LfUsername:  authUser.UserName,
+				EventType:   events.GitHubOrganizationAdded,
+				ProjectSFID: params.ProjectSFID,
 				EventData: &events.GitHubOrganizationAddedEventData{
 					GitHubOrganizationName: *params.Body.OrganizationName,
 				},
@@ -174,9 +174,9 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				LfUsername:        authUser.UserName,
-				EventType:         events.GitHubOrganizationDeleted,
-				ExternalProjectID: params.ProjectSFID,
+				LfUsername:  authUser.UserName,
+				EventType:   events.GitHubOrganizationDeleted,
+				ProjectSFID: params.ProjectSFID,
 				EventData: &events.GitHubOrganizationDeletedEventData{
 					GitHubOrganizationName: params.OrgName,
 				},
@@ -228,9 +228,9 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 			// Log the event
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				LfUsername:        authUser.UserName,
-				EventType:         events.GitHubOrganizationUpdated,
-				ExternalProjectID: params.ProjectSFID,
+				LfUsername:  authUser.UserName,
+				EventType:   events.GitHubOrganizationUpdated,
+				ProjectSFID: params.ProjectSFID,
 				EventData: &events.GitHubOrganizationUpdatedEventData{
 					GitHubOrganizationName: params.OrgName,
 					AutoEnabled:            utils.BoolValue(params.Body.AutoEnabled),

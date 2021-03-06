@@ -287,15 +287,12 @@ func (osc *Client) DeleteRolePermissions(ctx context.Context, organizationID, pr
 
 						// Log Event...
 						v1EventService.LogEvent(&events.LogEventArgs{
-							EventType:         events.ClaManagerRoleDeleted,
-							ProjectID:         projectID,
-							ClaGroupModel:     nil,
-							CompanyID:         organizationID,
-							CompanyModel:      nil,
-							LfUsername:        authUser.UserName,
-							UserID:            authUser.UserName,
-							UserModel:         nil,
-							ExternalProjectID: projectID,
+							EventType:   events.ClaManagerRoleDeleted,
+							ProjectID:   projectID,
+							ProjectSFID: projectID,
+							CompanyID:   organizationID,
+							LfUsername:  authUser.UserName,
+							UserID:      authUser.UserName,
 							EventData: &events.ClaManagerRoleDeletedData{
 								Role:      role,                 // cla-manager
 								Scope:     scope.ObjectTypeName, // project|organization

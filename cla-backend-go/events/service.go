@@ -115,24 +115,25 @@ func (s *service) GetCompanyEvents(companyID, eventType string, nextKey *string,
 type LogEventArgs struct {
 	EventType string
 
-	ExternalProjectID string
-	ProjectName       string
-	ProjectSFID       string
+	UserID     string
+	LfUsername string
+	UserName   string
+	UserModel  *models.User
 
-	ProjectID     string // Should just use CLA GroupID
 	CLAGroupID    string
 	CLAGroupName  string
 	ClaGroupModel *models.ClaGroup
 
-	CompanyModel *models.Company
+	ProjectID         string // Should just use CLA GroupID
+	ProjectSFID       string
+	ProjectName       string
+	ParentProjectSFID string
+	ParentProjectName string
+
 	CompanyID    string
 	CompanyName  string
 	CompanySFID  string
-
-	LfUsername string
-	UserName   string
-	UserID     string
-	UserModel  *models.User
+	CompanyModel *models.Company
 
 	EventData EventData
 }
@@ -168,30 +169,31 @@ func (s *service) loadCLAGroup(ctx context.Context, args *LogEventArgs) error {
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
+	// First, attempt to user the CLA Group model that was provided...
 	if args.ClaGroupModel != nil {
 		args.CLAGroupID = args.ClaGroupModel.ProjectID
 		args.ProjectName = args.ClaGroupModel.ProjectName
-		args.ExternalProjectID = args.ClaGroupModel.ProjectExternalID
-		return nil
-	}
-
-	claGroupID := ""
-	if args.CLAGroupID != "" {
-		claGroupID = args.CLAGroupID
-	} else if args.ProjectID != "" && utils.IsUUIDv4(args.ProjectID) { // legacy parameter
-		claGroupID = args.ProjectID
-	}
-
-	if claGroupID != "" {
-		claGroupModel, err := s.combinedRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("failed to load CLA Group by ID: %s", claGroupID)
-			return err
+		args.ProjectSFID = args.ClaGroupModel.ProjectExternalID
+	} else {
+		// Did they set the CLA Group ID?
+		claGroupID := ""
+		if args.CLAGroupID != "" {
+			claGroupID = args.CLAGroupID
+		} else if args.ProjectID != "" && utils.IsUUIDv4(args.ProjectID) { // legacy parameter
+			claGroupID = args.ProjectID
 		}
-		args.ClaGroupModel = claGroupModel
-		args.ProjectName = claGroupModel.ProjectName
-		args.ExternalProjectID = claGroupModel.ProjectExternalID
-		return nil
+
+		// Load the CLA Group ID if set...
+		if claGroupID != "" {
+			claGroupModel, err := s.combinedRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("failed to load CLA Group by ID: %s", claGroupID)
+				return err
+			}
+			args.ClaGroupModel = claGroupModel
+			args.CLAGroupName = claGroupModel.ProjectName
+			args.ProjectSFID = claGroupModel.ProjectExternalID
+		}
 	}
 
 	return nil
@@ -207,14 +209,29 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 		return s.loadCLAGroup(ctx, args)
 	} else if utils.IsSalesForceID(args.ProjectID) { // external SF project ID
 		args.ProjectSFID = args.ProjectID
-		args.ExternalProjectID = args.ProjectID
 		// Check if project exists in platform project service
+		log.WithFields(f).Debugf("loading salesforce project by ID: %s...", args.ProjectSFID)
 		project, projectErr := project_service.GetClient().GetProject(args.ProjectSFID)
 		if projectErr != nil || project == nil {
 			log.WithFields(f).Warnf("failed to load salesforce project by ID: %s", args.ProjectSFID)
 			return nil
 		}
+		log.WithFields(f).Debugf("loaded salesforce project by ID: %s", args.ProjectSFID)
 		args.ProjectName = project.Name
+
+		// Try to load and set the parent information
+		if project.Parent != "" {
+			log.WithFields(f).Debugf("loading salesforce project parent by ID: %s...", project.Parent)
+			parentProject, parentProjectErr := project_service.GetClient().GetProject(project.Parent)
+			if parentProjectErr != nil || parentProject == nil {
+				log.WithFields(f).Warnf("failed to load salesforce project parent by ID: %s", project.Parent)
+				return nil
+			}
+			log.WithFields(f).Debugf("loaded salesforce project by parent ID: %s", project.Parent)
+			args.ParentProjectSFID = parentProject.ID
+			args.ParentProjectName = parentProject.Name
+		}
+
 		return nil
 	}
 
@@ -318,22 +335,29 @@ func (s *service) LogEventWithContext(ctx context.Context, args *LogEventArgs) {
 	eventData, containsPII := args.EventData.GetEventDetailsString(args)
 	eventSummary, _ := args.EventData.GetEventSummaryString(args)
 	event := models.Event{
-		ContainsPII:            containsPII,
-		EventCLAGroupID:        args.CLAGroupID,
-		EventCLAGroupName:      args.ProjectName,
-		EventCompanyID:         args.CompanyID,
-		EventCompanySFID:       args.CompanySFID,
-		EventCompanyName:       args.CompanyName,
-		EventData:              eventData,
-		EventProjectExternalID: args.ExternalProjectID,
+		EventType: args.EventType,
+
+		UserID:     args.UserID,
+		UserName:   args.UserName,
+		LfUsername: args.LfUsername,
+
+		EventCLAGroupID:   args.CLAGroupID,
+		EventCLAGroupName: args.ProjectName,
+
+		EventCompanyID:   args.CompanyID,
+		EventCompanySFID: args.CompanySFID,
+		EventCompanyName: args.CompanyName,
+
 		EventProjectID:         args.ProjectID,
-		EventProjectName:       args.ProjectName,
 		EventProjectSFID:       args.ProjectSFID,
-		EventSummary:           eventSummary,
-		EventType:              args.EventType,
-		LfUsername:             args.LfUsername,
-		UserID:                 args.UserID,
-		UserName:               args.UserName,
+		EventProjectName:       args.ProjectName,
+		EventParentProjectSFID: args.ParentProjectSFID,
+		EventParentProjectName: args.ParentProjectName,
+
+		EventData:    eventData,
+		EventSummary: eventSummary,
+
+		ContainsPII: containsPII,
 	}
 	err = s.repo.CreateEvent(&event)
 	if err != nil {

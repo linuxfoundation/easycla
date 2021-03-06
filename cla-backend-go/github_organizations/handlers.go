@@ -90,10 +90,10 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 				branchProtectionEnabled = *params.Body.BranchProtectionEnabled
 			}
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				UserID:            claUser.UserID,
-				EventType:         events.GitHubOrganizationAdded,
-				ExternalProjectID: params.ProjectSFID,
-				LfUsername:        claUser.LFUsername,
+				UserID:      claUser.UserID,
+				EventType:   events.GitHubOrganizationAdded,
+				ProjectSFID: params.ProjectSFID,
+				LfUsername:  claUser.LFUsername,
 				EventData: &events.GitHubOrganizationAddedEventData{
 					GitHubOrganizationName:  *params.Body.OrganizationName,
 					AutoEnabled:             autoEnabled,
@@ -126,10 +126,10 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			}
 
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				UserID:            claUser.UserID,
-				EventType:         events.GitHubOrganizationDeleted,
-				ExternalProjectID: params.ProjectSFID,
-				LfUsername:        claUser.LFUsername,
+				UserID:      claUser.UserID,
+				EventType:   events.GitHubOrganizationDeleted,
+				ProjectSFID: params.ProjectSFID,
+				LfUsername:  claUser.LFUsername,
 				EventData: &events.GitHubOrganizationDeletedEventData{
 					GitHubOrganizationName: params.OrgName,
 				},
@@ -164,10 +164,10 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			}
 
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				UserID:            claUser.UserID,
-				EventType:         events.GitHubOrganizationUpdated,
-				ExternalProjectID: params.ProjectSFID,
-				LfUsername:        claUser.LFUsername,
+				UserID:      claUser.UserID,
+				EventType:   events.GitHubOrganizationUpdated,
+				ProjectSFID: params.ProjectSFID,
+				LfUsername:  claUser.LFUsername,
 				EventData: &events.GitHubOrganizationUpdatedEventData{
 					GitHubOrganizationName: params.OrgName,
 					AutoEnabled:            *params.Body.AutoEnabled,

@@ -9,6 +9,7 @@ properties:
   EventType:
     type: string
     description: type of the event
+
   UserID:
     description: id of the user who created this event
     $ref: './common/properties/internal-id.yaml'
@@ -17,49 +18,59 @@ properties:
   LfUsername:
     type: string
     description: name of the user
+
   EventCLAGroupID:
     description: the CLA Group ID
     $ref: './common/properties/internal-id.yaml'
   EventCLAGroupName:
     description: the CLA Group name
     $ref: './common/properties/cla-group-name.yaml'
+  EventCLAGroupNameLower:
+    description: the CLA Group name lowercase
+    $ref: './common/properties/cla-group-name.yaml'
+
   EventProjectID:
     type: string
     description: id of the SFID project
+  EventProjectSFID:
+    description: the project ID associated with the project. This would be projectSFID if the CLA group have only one project otherwise it would be foundationSFID
+    $ref: './common/properties/external-id.yaml'
+  EventProjectSFName:
+    $ref: './common/properties/project-name.yaml'
+    description: name of project to display. This would be name of project if cla group have only one project otherwise it would be name of foundation
   EventProjectName:
     $ref: './common/properties/project-name.yaml'
-  EventCompanyName:
-    $ref: './common/properties/company-name.yaml'
+    description: name of project to display. This would be name of project if cla group have only one project otherwise it would be name of foundation
+  EventParentProjectSFID:
+    description: the parent project ID associated with the event
+    $ref: './common/properties/external-id.yaml'
+  EventParentProjectName:
+    description: the parent project name associated with the event
+    $ref: './common/properties/project-name.yaml'
+
   EventCompanyID:
     type: string
     description: id of the organization/company
+  EventCompanySFID:
+    type: string
+    description: the external SFID associated with the company
+  EventCompanyName:
+    $ref: './common/properties/company-name.yaml'
+
   EventTime:
     type: string
     description: time of the event.
   EventTimeEpoch:
     type: integer
     description: time of the event in epoch.
+
   EventData:
     type: string
     description: data related to the event
   EventSummary:
     type: string
     description: data related to the event summary
-  EventProjectExternalID:
-    type: string
-    description: the external Project ID related to this event
+
   ContainsPII:
     type: boolean
     description: flag to indicate if this record contains personal identifiable information
-  EventCompanySFID:
-    type: string
-    description: the external SFID associated with the company
-  EventFoundationSFID:
-    type: string
-    description: the external SFID associated with the foundation
-  EventProjectSFID:
-    type: string
-    description: the external SFID associated with the project. This would be projectSFID if the CLA group have only one project otherwise it would be foundationSFID
-  EventProjectSFName:
-    type: string
-    description: name of project to display. This would be name of project if cla group have only one project otherwise it would be name of foundation

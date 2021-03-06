@@ -708,7 +708,7 @@ func (ed *ContributorNotifyCompanyAdminData) GetEventDetailsString(args *LogEven
 func (ed *ContributorNotifyCLADesignee) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("User: %s notified CLA Designee: %s by Email: %s for Project Name : %s, ID: %s and Company Name: %s, ID: %s.",
 		args.UserName, ed.DesigneeName, ed.DesigneeEmail,
-		args.ProjectName, args.ExternalProjectID,
+		args.ProjectName, args.ProjectSFID,
 		args.CompanyName, args.CompanyID)
 	return data, true
 }
@@ -717,23 +717,23 @@ func (ed *ContributorNotifyCLADesignee) GetEventDetailsString(args *LogEventArgs
 func (ed *ContributorAssignCLADesignee) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("User Name: %s, Email: %s was assigned as CLA Manager Designee for project Name: %s, ID:  %s and Company Name: %s, ID: %s by: %s.",
 		ed.DesigneeName, ed.DesigneeEmail,
-		args.ProjectName, args.ExternalProjectID,
+		args.ProjectName, args.ProjectSFID,
 		args.CompanyName, args.CompanyID, args.UserName)
 	return data, true
 }
 
 // GetEventDetailsString . . .
 func (ed *UserConvertToContactData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s was converted to Contact state for Project: %s.",
-		args.LfUsername, args.ExternalProjectID)
+	data := fmt.Sprintf("User: %s was converted to Contact state for Project: %s with ID: %s.",
+		args.LfUsername, args.ProjectName, args.ProjectSFID)
 	return data, true
 }
 
 // GetEventDetailsString . . .
 func (ed *AssignRoleScopeData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s was assigned Scope: %s with Role: %s for Project: %s.",
+	data := fmt.Sprintf("User: %s was assigned Scope: %s with Role: %s for Project: %s with ID: %s.",
 		args.LfUsername,
-		ed.Scope, ed.Role, args.ExternalProjectID)
+		ed.Scope, ed.Role, args.ProjectName, args.ProjectSFID)
 	return data, true
 }
 

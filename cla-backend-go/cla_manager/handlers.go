@@ -166,15 +166,15 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 
 		// Send an event
 		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:         events.ClaManagerAccessRequestCreated,
-			ProjectID:         params.ProjectID,
-			ClaGroupModel:     claGroupModel,
-			CompanyID:         params.CompanyID,
-			CompanyModel:      companyModel,
-			LfUsername:        params.Body.UserLFID,
-			UserID:            params.Body.UserLFID,
-			UserModel:         userModel,
-			ExternalProjectID: claGroupModel.ProjectExternalID,
+			EventType:     events.ClaManagerAccessRequestCreated,
+			ProjectID:     params.ProjectID,
+			ClaGroupModel: claGroupModel,
+			CompanyID:     params.CompanyID,
+			CompanyModel:  companyModel,
+			LfUsername:    params.Body.UserLFID,
+			UserID:        params.Body.UserLFID,
+			UserModel:     userModel,
+			ProjectSFID:   claGroupModel.ProjectExternalID,
 			EventData: &events.CLAManagerRequestCreatedEventData{
 				RequestID:   request.RequestID,
 				CompanyName: companyModel.CompanyName,

@@ -128,10 +128,10 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			// Log the events
 			for _, result := range results {
 				eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-					EventType:         events.RepositoryAdded,
-					ProjectID:         utils.StringValue(params.GithubRepositoryInput.ClaGroupID),
-					ExternalProjectID: params.ProjectSFID,
-					LfUsername:        authUser.UserName,
+					EventType:   events.RepositoryAdded,
+					ProjectID:   utils.StringValue(params.GithubRepositoryInput.ClaGroupID),
+					ProjectSFID: params.ProjectSFID,
+					LfUsername:  authUser.UserName,
 					ClaGroupModel: &v1Models.ClaGroup{
 						ProjectExternalID: params.ProjectSFID,
 						ProjectID:         utils.StringValue(params.GithubRepositoryInput.ClaGroupID),
@@ -203,10 +203,10 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				EventType:         events.RepositoryDisabled,
-				ExternalProjectID: params.ProjectSFID,
-				ProjectID:         ghRepo.RepositoryProjectID,
-				LfUsername:        authUser.UserName,
+				EventType:   events.RepositoryDisabled,
+				ProjectSFID: params.ProjectSFID,
+				ProjectID:   ghRepo.RepositoryProjectID,
+				LfUsername:  authUser.UserName,
 				EventData: &events.RepositoryDisabledEventData{
 					RepositoryName: ghRepo.RepositoryName,
 				},
@@ -339,10 +339,10 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			// We could extract the parameter values from the branch protection payload to determine if it was added/remove or simply updated
 			// For now, let's just set the updated event log
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				EventType:         events.RepositoryBranchProtectionUpdated,
-				ExternalProjectID: params.ProjectSFID,
-				ProjectID:         params.ProjectSFID,
-				LfUsername:        authUser.UserName,
+				EventType:   events.RepositoryBranchProtectionUpdated,
+				ProjectSFID: params.ProjectSFID,
+				ProjectID:   params.ProjectSFID,
+				LfUsername:  authUser.UserName,
 				EventData: &events.RepositoryBranchProtectionUpdatedEventData{
 					RepositoryName: repoModel.RepositoryName,
 				},

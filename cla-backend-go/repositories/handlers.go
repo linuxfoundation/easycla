@@ -53,12 +53,11 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 				return github_repositories.NewAddProjectGithubRepositoryBadRequest().WithPayload(errorResponse(err))
 			}
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				EventType:         events.RepositoryAdded,
-				CLAGroupID:        utils.StringValue(params.GithubRepositoryInput.RepositoryProjectID),
-				ProjectID:         params.ProjectSFID,
-				ExternalProjectID: params.ProjectSFID,
-				UserID:            claUser.UserID,
-				LfUsername:        claUser.LFUsername,
+				EventType:   events.RepositoryAdded,
+				CLAGroupID:  utils.StringValue(params.GithubRepositoryInput.RepositoryProjectID),
+				ProjectSFID: params.ProjectSFID,
+				UserID:      claUser.UserID,
+				LfUsername:  claUser.LFUsername,
 				UserModel: &models.User{
 					Username: claUser.LFUsername,
 				},
@@ -92,11 +91,10 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 				return github_repositories.NewDeleteProjectGithubRepositoryBadRequest().WithPayload(errorResponse(err))
 			}
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				EventType:         events.RepositoryDisabled,
-				ProjectID:         params.ProjectSFID,
-				ExternalProjectID: params.ProjectSFID,
-				UserID:            claUser.UserID,
-				LfUsername:        claUser.LFUsername,
+				EventType:   events.RepositoryDisabled,
+				ProjectSFID: params.ProjectSFID,
+				UserID:      claUser.UserID,
+				LfUsername:  claUser.LFUsername,
 				EventData: &events.RepositoryDisabledEventData{
 					RepositoryName: ghRepo.RepositoryName,
 				},

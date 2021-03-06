@@ -399,12 +399,12 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 	// Log Event
 	s.eventService.LogEventWithContext(ctx,
 		&events.LogEventArgs{
-			EventType:         events.AssignUserRoleScopeType,
-			LfUsername:        lfxUser.Username,
-			ExternalProjectID: projectSFID,
-			CompanyModel:      v1CompanyModel,
-			CompanyID:         v1CompanyModel.CompanyID,
-			UserModel:         &v1Models.User{LfUsername: lfxUser.Username, UserID: lfxUser.ID},
+			EventType:    events.AssignUserRoleScopeType,
+			LfUsername:   lfxUser.Username,
+			ProjectSFID:  projectSFID,
+			CompanyModel: v1CompanyModel,
+			CompanyID:    v1CompanyModel.CompanyID,
+			UserModel:    &v1Models.User{LfUsername: lfxUser.Username, UserID: lfxUser.ID},
 			EventData: &events.AssignRoleScopeData{
 				Role:  "cla-manager-designee",
 				Scope: fmt.Sprintf("%s|%s", projectSFID, v1CompanyModel.CompanyExternalID),
@@ -732,10 +732,10 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 			s.SendEmailToOrgAdmin(ctx, s.projectCGRepo, s.projectService, userService.GetPrimaryEmail(adminUser), admin.Contact.Name, v1CompanyModel.CompanyName, projectSF.Name, projectSF.ID, authUser.Email, authUser.UserName, LfxPortalURL)
 			// Make a note in the event log
 			s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				EventType:         events.ContributorNotifyCompanyAdminType,
-				LfUsername:        authUser.UserName,
-				ExternalProjectID: projectID,
-				CompanyID:         v1CompanyModel.CompanyID,
+				EventType:   events.ContributorNotifyCompanyAdminType,
+				LfUsername:  authUser.UserName,
+				ProjectSFID: projectID,
+				CompanyID:   v1CompanyModel.CompanyID,
 				EventData: &events.ContributorNotifyCompanyAdminData{
 					AdminName:  admin.Contact.Name,
 					AdminEmail: admin.Contact.EmailAddress,
@@ -783,10 +783,10 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 	log.WithFields(f).Debug("creating a contributor assigned CLA designee log event...")
 	// Make a note in the event log
 	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-		EventType:         events.ContributorAssignCLADesigneeType,
-		LfUsername:        authUser.UserName,
-		ExternalProjectID: projectID,
-		CompanyID:         v1CompanyModel.CompanyID,
+		EventType:   events.ContributorAssignCLADesigneeType,
+		LfUsername:  authUser.UserName,
+		ProjectSFID: projectID,
+		CompanyID:   v1CompanyModel.CompanyID,
 		EventData: &events.ContributorAssignCLADesignee{
 			DesigneeName:  claManagerDesignee.LfUsername,
 			DesigneeEmail: claManagerDesignee.Email.String(),
@@ -800,10 +800,10 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 	log.WithFields(f).Debug("creating a contributor notify CLA designee log event...")
 	// Make a note in the event log
 	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-		EventType:         events.ContributorNotifyCLADesigneeType,
-		LfUsername:        authUser.UserName,
-		ExternalProjectID: projectID,
-		CompanyID:         v1CompanyModel.CompanyID,
+		EventType:   events.ContributorNotifyCLADesigneeType,
+		LfUsername:  authUser.UserName,
+		ProjectSFID: projectID,
+		CompanyID:   v1CompanyModel.CompanyID,
 		EventData: &events.ContributorNotifyCLADesignee{
 			DesigneeName:  claManagerDesignee.LfUsername,
 			DesigneeEmail: claManagerDesignee.Email.String(),

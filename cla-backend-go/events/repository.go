@@ -56,7 +56,7 @@ const (
 // Repository interface defines methods of event repository service
 type Repository interface {
 	CreateEvent(event *models.Event) error
-	AddDataToEvent(eventID, foundationSFID, projectSFID, projectSFName, companySFID, projectID string) error
+	AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID string) error
 	SearchEvents(params *eventOps.SearchEventsParams, pageSize int64) (*models.EventList, error)
 	GetRecentEvents(pageSize int64) (*models.EventList, error)
 
@@ -109,15 +109,11 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 	eventDateAndContainsPII := fmt.Sprintf("%s#%t", toDateFormat(currentTime), event.ContainsPII)
 	addAttribute(input.Item, "event_id", eventID.String())
 	addAttribute(input.Item, "event_type", event.EventType)
+
 	addAttribute(input.Item, "event_user_id", event.UserID)
 	addAttribute(input.Item, "event_user_name", event.UserName)
-	addAttribute(input.Item, "event_lf_username", event.LfUsername)
 	addAttribute(input.Item, "event_user_name_lower", strings.ToLower(event.UserName))
-
-	addAttribute(input.Item, "event_time", currentTimeString)
-	addAttribute(input.Item, "event_date", toDateFormat(currentTime))
-	addAttribute(input.Item, "event_data", event.EventData)
-	addAttribute(input.Item, "event_summary", event.EventSummary)
+	addAttribute(input.Item, "event_lf_username", event.LfUsername)
 
 	addAttribute(input.Item, "event_company_id", event.EventCompanyID)
 	addAttribute(input.Item, "event_company_sfid", event.EventCompanySFID)
@@ -129,16 +125,23 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 	addAttribute(input.Item, "event_cla_group_name_lower", strings.ToLower(event.EventCLAGroupName))
 
 	addAttribute(input.Item, "event_project_id", event.EventProjectID)
-	addAttribute(input.Item, "event_project_external_id", event.EventProjectExternalID)
+	addAttribute(input.Item, "event_project_sfid", event.EventProjectSFID)
 	addAttribute(input.Item, "event_project_name", event.EventProjectName)
 	addAttribute(input.Item, "event_project_name_lower", strings.ToLower(event.EventProjectName))
+	addAttribute(input.Item, "event_parent_project_sfid", strings.ToLower(event.EventParentProjectSFID))
+	addAttribute(input.Item, "event_parent_project_name", strings.ToLower(event.EventParentProjectName))
 
+	addAttribute(input.Item, "event_data", event.EventData)
+	addAttribute(input.Item, "event_summary", event.EventSummary)
+
+	addAttribute(input.Item, "event_time", currentTimeString)
+	addAttribute(input.Item, "event_date", toDateFormat(currentTime))
 	addAttribute(input.Item, "event_date_and_contains_pii", eventDateAndContainsPII)
 
 	input.Item["contains_pii"] = &dynamodb.AttributeValue{BOOL: &event.ContainsPII}
 	input.Item["event_time_epoch"] = &dynamodb.AttributeValue{N: aws.String(strconv.FormatInt(currentTime.Unix(), 10))}
-	if event.EventCompanyID != "" && event.EventProjectExternalID != "" {
-		companyIDExternalProjectID := fmt.Sprintf("%s#%s", event.EventCompanyID, event.EventProjectExternalID)
+	if event.EventCompanyID != "" && event.EventProjectSFID != "" {
+		companyIDExternalProjectID := fmt.Sprintf("%s#%s", event.EventCompanyID, event.EventProjectSFID)
 		addAttribute(input.Item, "company_id_external_project_id", companyIDExternalProjectID)
 	}
 
@@ -458,7 +461,7 @@ func buildNextKey(indexName string, event *models.Event) (string, error) {
 	switch indexName {
 	case CompanySFIDFoundationSFIDEpochIndex:
 		nextKey["company_sfid_foundation_sfid"] = &dynamodb.AttributeValue{
-			S: aws.String(fmt.Sprintf("%s#%s", event.EventCompanySFID, event.EventFoundationSFID)),
+			S: aws.String(fmt.Sprintf("%s#%s", event.EventCompanySFID, event.EventParentProjectSFID)),
 		}
 		nextKey["event_time_epoch"] = &dynamodb.AttributeValue{N: aws.String(strconv.FormatInt(event.EventTimeEpoch, 10))}
 	case CompanySFIDProjectIDEpochIndex:
@@ -467,7 +470,7 @@ func buildNextKey(indexName string, event *models.Event) (string, error) {
 		}
 		nextKey["event_time_epoch"] = &dynamodb.AttributeValue{N: aws.String(strconv.FormatInt(event.EventTimeEpoch, 10))}
 	case EventFoundationSFIDEpochIndex:
-		nextKey["event_foundation_sfid"] = &dynamodb.AttributeValue{S: aws.String(event.EventFoundationSFID)}
+		nextKey["event_parent_project_sfid"] = &dynamodb.AttributeValue{S: aws.String(event.EventParentProjectSFID)}
 		nextKey["event_time_epoch"] = &dynamodb.AttributeValue{N: aws.String(strconv.FormatInt(event.EventTimeEpoch, 10))}
 	case EventProjectIDEpochIndex:
 		nextKey["event_project_id"] = &dynamodb.AttributeValue{S: aws.String(event.EventProjectID)}
@@ -511,7 +514,7 @@ func (repo *repository) GetCompanyEvents(companyID, eventType string, nextKey *s
 
 // GetFoundationEvents returns the list of foundation events
 func (repo *repository) GetFoundationEvents(foundationSFID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
-	keyCondition := expression.Key("event_foundation_sfid").Equal(expression.Value(foundationSFID))
+	keyCondition := expression.Key("event_parent_project_sfid").Equal(expression.Value(foundationSFID))
 	return repo.queryEventsTable(EventFoundationSFIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
 
@@ -668,7 +671,7 @@ func (repo repository) getEventByDay(day string, containsPII bool, pageSize int6
 	return events, nil
 }
 
-func (repo repository) AddDataToEvent(eventID, foundationSFID, projectSFID, projectSFName, companySFID, projectID string) error {
+func (repo repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID string) error {
 	tableName := fmt.Sprintf("cla-%s-events", repo.stage)
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String(tableName),
@@ -678,28 +681,31 @@ func (repo repository) AddDataToEvent(eventID, foundationSFID, projectSFID, proj
 			},
 		},
 	}
-	companySFIDFoundationSFID := fmt.Sprintf("%s#%s", companySFID, foundationSFID)
+	companySFIDFoundationSFID := fmt.Sprintf("%s#%s", companySFID, parentProjectSFID)
 	companySFIDProjectID := fmt.Sprintf("%s#%s", companySFID, projectID)
 	ue := utils.NewDynamoUpdateExpression()
-	ue.AddAttributeName("#foundation_sfid", "event_foundation_sfid", foundationSFID != "")
+	ue.AddAttributeName("#parent_project_sfid", "event_parent_project_sfid", parentProjectSFID != "")
 	ue.AddAttributeName("#project_sfid", "event_project_sfid", projectSFID != "")
 	ue.AddAttributeName("#project_sf_name", "event_sf_project_name", projectSFName != "")
+
 	ue.AddAttributeName("#company_sfid", "event_company_sfid", companySFID != "")
-	ue.AddAttributeName("#company_sfid_foundation_sfid", "company_sfid_foundation_sfid", companySFID != "" && foundationSFID != "")
+	ue.AddAttributeName("#company_sfid_foundation_sfid", "company_sfid_foundation_sfid", companySFID != "" && parentProjectSFID != "")
 	ue.AddAttributeName("#company_sfid_project_id", "company_sfid_project_id", companySFID != "" && projectID != "")
 
-	ue.AddAttributeValue(":foundation_sfid", &dynamodb.AttributeValue{S: aws.String(foundationSFID)}, foundationSFID != "")
+	ue.AddAttributeValue(":foundation_sfid", &dynamodb.AttributeValue{S: aws.String(parentProjectSFID)}, parentProjectSFID != "")
 	ue.AddAttributeValue(":project_sfid", &dynamodb.AttributeValue{S: aws.String(projectSFID)}, projectSFID != "")
 	ue.AddAttributeValue(":project_sf_name", &dynamodb.AttributeValue{S: aws.String(projectSFName)}, projectSFName != "")
+
 	ue.AddAttributeValue(":company_sfid", &dynamodb.AttributeValue{S: aws.String(companySFID)}, companySFID != "")
-	ue.AddAttributeValue(":company_sfid_foundation_sfid", &dynamodb.AttributeValue{S: aws.String(companySFIDFoundationSFID)}, companySFID != "" && foundationSFID != "")
+	ue.AddAttributeValue(":company_sfid_foundation_sfid", &dynamodb.AttributeValue{S: aws.String(companySFIDFoundationSFID)}, companySFID != "" && parentProjectSFID != "")
 	ue.AddAttributeValue(":company_sfid_project_id", &dynamodb.AttributeValue{S: aws.String(companySFIDProjectID)}, companySFID != "" && projectID != "")
 
-	ue.AddUpdateExpression("#foundation_sfid = :foundation_sfid", foundationSFID != "")
+	ue.AddUpdateExpression("#parent_project_sfid = :parent_project_sfid", parentProjectSFID != "")
 	ue.AddUpdateExpression("#project_sfid = :project_sfid", projectSFID != "")
 	ue.AddUpdateExpression("#project_sf_name = :project_sf_name", projectSFName != "")
+
 	ue.AddUpdateExpression("#company_sfid = :company_sfid", companySFID != "")
-	ue.AddUpdateExpression("#company_sfid_foundation_sfid = :company_sfid_foundation_sfid", companySFID != "" && foundationSFID != "")
+	ue.AddUpdateExpression("#company_sfid_foundation_sfid = :company_sfid_foundation_sfid", companySFID != "" && parentProjectSFID != "")
 	ue.AddUpdateExpression("#company_sfid_project_id = :company_sfid_project_id", companySFID != "" && projectID != "")
 	if ue.Expression == "" {
 		// nothing to update

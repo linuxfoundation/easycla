@@ -10,24 +10,32 @@ const IndividualSignedEvent = "IndividualSignatureSigned"
 
 // Event data model
 type Event struct {
-	EventID                string `dynamodbav:"event_id"`
-	EventType              string `dynamodbav:"event_type"`
-	EventUserID            string `dynamodbav:"event_user_id"`
-	EventUserName          string `dynamodbav:"event_user_name"`
-	EventLfUsername        string `dynamodbav:"event_lf_username"`
-	EventProjectID         string `dynamodbav:"event_project_id"`
-	EventProjectExternalID string `dynamodbav:"event_project_external_id"`
-	EventProjectName       string `dynamodbav:"event_project_name"`
-	EventCompanyID         string `dynamodbav:"event_company_id"`
-	EventCompanyName       string `dynamodbav:"event_company_name"`
-	EventTime              string `dynamodbav:"event_time"`
-	EventTimeEpoch         int64  `dynamodbav:"event_time_epoch"`
-	EventData              string `dynamodbav:"event_data"`
-	EventSummary           string `dynamodbav:"event_summary"`
-	EventFoundationSFID    string `dynamodbav:"event_foundation_sfid"`
-	EventSFProjectName     string `dynamodbav:"event_sf_project_name"`
+	EventID   string `dynamodbav:"event_id"`
+	EventType string `dynamodbav:"event_type"`
+
+	EventUserID     string `dynamodbav:"event_user_id"`
+	EventUserName   string `dynamodbav:"event_user_name"`
+	EventLfUsername string `dynamodbav:"event_lf_username"`
+
+	EventCLAGroupID        string `dynamodbav:"event_cla_group_id"`
+	EventCLAGroupName      string `dynamodbav:"event_cla_group_name"`
+	EventCLAGroupNameLower string `dynamodbav:"event_cla_group_name_lower"`
+
+	EventProjectID         string `dynamodbav:"event_project_id"` // legacy, same as the SFID
 	EventProjectSFID       string `dynamodbav:"event_project_sfid"`
-	EventCompanySFID       string `dynamodbav:"event_company_sfid"`
+	EventProjectName       string `dynamodbav:"event_project_name"`
+	EventParentProjectSFID string `dynamodbav:"event_parent_project_sfid"`
+	EventParentProjectName string `dynamodbav:"event_parent_project_name"`
+
+	EventCompanyID   string `dynamodbav:"event_company_id"`
+	EventCompanySFID string `dynamodbav:"event_company_sfid"`
+	EventCompanyName string `dynamodbav:"event_company_name"`
+
+	EventData    string `dynamodbav:"event_data"`
+	EventSummary string `dynamodbav:"event_summary"`
+
+	EventTime      string `dynamodbav:"event_time"`
+	EventTimeEpoch int64  `dynamodbav:"event_time_epoch"`
 }
 
 // DBUser data model
@@ -50,22 +58,32 @@ type DBUser struct {
 
 func (e *Event) toEvent() *models.Event { //nolint
 	event := &models.Event{
-		EventData:              e.EventData,
-		EventSummary:           e.EventSummary,
-		EventID:                e.EventID,
+		EventID:   e.EventID,
+		EventType: e.EventType,
+
+		UserID:     e.EventUserID,
+		UserName:   e.EventUserName,
+		LfUsername: e.EventLfUsername,
+
+		EventCLAGroupID:        e.EventCLAGroupID,
+		EventCLAGroupName:      e.EventCLAGroupName,
+		EventCLAGroupNameLower: e.EventCLAGroupNameLower,
+
 		EventProjectID:         e.EventProjectID,
-		EventProjectExternalID: e.EventProjectExternalID,
-		EventProjectName:       e.EventProjectName,
-		EventTime:              e.EventTime,
-		EventType:              e.EventType,
-		UserID:                 e.EventUserID,
-		UserName:               e.EventUserName,
-		LfUsername:             e.EventLfUsername,
-		EventTimeEpoch:         e.EventTimeEpoch,
-		EventFoundationSFID:    e.EventFoundationSFID,
 		EventProjectSFID:       e.EventProjectSFID,
-		EventProjectSFName:     e.EventSFProjectName,
-		EventCompanySFID:       e.EventCompanySFID,
+		EventProjectName:       e.EventProjectName,
+		EventParentProjectSFID: e.EventParentProjectSFID,
+		EventParentProjectName: e.EventParentProjectName,
+
+		EventCompanyID:   e.EventCompanyID,
+		EventCompanySFID: e.EventCompanySFID,
+		EventCompanyName: e.EventCompanyName,
+
+		EventTime:      e.EventTime,
+		EventTimeEpoch: e.EventTimeEpoch,
+
+		EventData:    e.EventData,
+		EventSummary: e.EventSummary,
 	}
 	// Disregard Company details for ICLA event
 	if event.EventType != IndividualSignedEvent {

@@ -441,19 +441,18 @@ func (s *service) addCLAManagerDesigneePermissions(ctx context.Context, claGroup
 				log.WithFields(f).Debug(msg)
 				// Log the event
 				eventErr := s.eventsRepo.CreateEvent(&models.Event{
-					ContainsPII:            false,
-					EventCompanySFID:       orgID,
-					EventData:              msg,
-					EventProjectExternalID: projectSFID,
-					EventProjectID:         claGroupID,
-					EventProjectName:       projectName,
-					EventProjectSFID:       projectSFID,
-					EventCompanyName:       orgName,
-					EventSummary:           msgSummary,
-					EventType:              claEvents.AssignUserRoleScopeType,
-					LfUsername:             "easycla system",
-					UserID:                 "easycla system",
-					UserName:               "easycla system",
+					ContainsPII:      false,
+					EventCompanySFID: orgID,
+					EventData:        msg,
+					EventProjectSFID: projectSFID,
+					EventProjectID:   claGroupID,
+					EventProjectName: projectName,
+					EventCompanyName: orgName,
+					EventSummary:     msgSummary,
+					EventType:        claEvents.AssignUserRoleScopeType,
+					LfUsername:       "easycla system",
+					UserID:           "easycla system",
+					UserName:         "easycla system",
 				})
 				if eventErr != nil {
 					log.WithFields(f).WithError(eventErr).Warnf("unable to create event log entry for %s with msg: %s", claEvents.AssignUserRoleScopeType, msg)
@@ -599,19 +598,18 @@ func (s *service) addCLAManagerPermissions(ctx context.Context, claGroupID, proj
 				log.WithFields(f).Debug(msg)
 				// Log the event
 				eventErr := s.eventsRepo.CreateEvent(&models.Event{
-					ContainsPII:            false,
-					EventCompanyName:       companyModel.CompanyName,
-					EventCompanySFID:       companySFID,
-					EventData:              msg,
-					EventProjectExternalID: projectSFID,
-					EventProjectID:         claGroupID,
-					EventProjectName:       projectName,
-					EventProjectSFID:       projectSFID,
-					EventSummary:           msgSummary,
-					EventType:              claEvents.AssignUserRoleScopeType,
-					LfUsername:             "easycla system",
-					UserID:                 "easycla system",
-					UserName:               "easycla system",
+					ContainsPII:      false,
+					EventCompanyName: companyModel.CompanyName,
+					EventCompanySFID: companySFID,
+					EventData:        msg,
+					EventProjectID:   claGroupID,
+					EventProjectName: projectName,
+					EventProjectSFID: projectSFID,
+					EventSummary:     msgSummary,
+					EventType:        claEvents.AssignUserRoleScopeType,
+					LfUsername:       "easycla system",
+					UserID:           "easycla system",
+					UserName:         "easycla system",
 				})
 				if eventErr != nil {
 					log.WithFields(f).WithError(eventErr).Warnf("unable to create event log entry for %s with msg: %s", claEvents.AssignUserRoleScopeType, msg)
@@ -662,16 +660,15 @@ func (s *service) removeCLAPermissions(ctx context.Context, projectSFID string) 
 
 	// Log the event
 	eventErr := s.eventsRepo.CreateEvent(&models.Event{
-		ContainsPII:            false,
-		EventData:              msg,
-		EventProjectExternalID: projectSFID,
-		EventProjectName:       projectName,
-		EventProjectSFID:       projectSFID,
-		EventSummary:           msg,
-		EventType:              claEvents.RemoveUserRoleScopeType,
-		LfUsername:             "easycla system",
-		UserID:                 "easycla system",
-		UserName:               "easycla system",
+		ContainsPII:      false,
+		EventData:        msg,
+		EventProjectName: projectName,
+		EventProjectSFID: projectSFID,
+		EventSummary:     msg,
+		EventType:        claEvents.RemoveUserRoleScopeType,
+		LfUsername:       "easycla system",
+		UserID:           "easycla system",
+		UserName:         "easycla system",
 	})
 	if eventErr != nil {
 		log.WithFields(f).WithError(eventErr).Warnf("unable to create event log entry for %s with msg: %s", claEvents.RemoveUserRoleScopeType, msg)
@@ -727,17 +724,16 @@ func (s *service) removeCLAPermissionsByProjectOrganizationRole(ctx context.Cont
 
 	// Log the event
 	eventErr := s.eventsRepo.CreateEvent(&models.Event{
-		ContainsPII:            false,
-		EventCompanySFID:       organizationSFID,
-		EventData:              msg,
-		EventProjectExternalID: projectSFID,
-		EventProjectName:       projectName,
-		EventProjectSFID:       projectSFID,
-		EventSummary:           msg,
-		EventType:              claEvents.RemoveUserRoleScopeType,
-		LfUsername:             "easycla system",
-		UserID:                 "easycla system",
-		UserName:               "easycla system",
+		ContainsPII:      false,
+		EventCompanySFID: organizationSFID,
+		EventData:        msg,
+		EventProjectName: projectName,
+		EventProjectSFID: projectSFID,
+		EventSummary:     msg,
+		EventType:        claEvents.RemoveUserRoleScopeType,
+		LfUsername:       "easycla system",
+		UserID:           "easycla system",
+		UserName:         "easycla system",
 	})
 	if eventErr != nil {
 		log.WithFields(f).WithError(eventErr).Warnf("unable to create event log entry for %s with msg: %s", claEvents.RemoveUserRoleScopeType, msg)
