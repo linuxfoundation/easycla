@@ -8,13 +8,12 @@ import (
 	"fmt"
 	"strings"
 
+	v2AcsService "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
+
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	v2AcsService "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
 	"github.com/sirupsen/logrus"
 )
 
@@ -28,8 +27,79 @@ type EmailToCLAManagerModel struct {
 	CorporateConsoleURL string
 }
 
+// ToCLAManagerDesigneeCorporateModel data model for sending emails
+type ToCLAManagerDesigneeCorporateModel struct {
+	companyName   string
+	projectSFID   string
+	projectName   string
+	designeeEmail string
+	designeeName  string
+	senderEmail   string
+	senderName    string
+}
+
+// ToCLAManagerDesigneeModel data model for sending emails
+type ToCLAManagerDesigneeModel struct {
+	designeeName     string
+	designeeEmail    string
+	companyName      string
+	projectNames     []string
+	projectSFIDs     []string
+	contributorModel emails.Contributor
+	contributorEmail string
+	contributorName  string
+}
+
+// DesigneeEmailToUserWithNoLFIDModel data model for sending emails
+type DesigneeEmailToUserWithNoLFIDModel struct {
+	userWithNoLFIDName  string
+	userWithNoLFIDEmail string
+	requesterUsername   string
+	requesterEmail      string
+	projectNames        []string
+	projectSFIDs        []string
+	foundationSFID      string
+	role                string
+	companyName         string
+	organizationID      string
+}
+
+// EmailToUserWithNoLFIDModel data model for sending emails
+type EmailToUserWithNoLFIDModel struct {
+	projectName         string
+	requesterUsername   string
+	requesterEmail      string
+	userWithNoLFIDName  string
+	userWithNoLFIDEmail string
+	organizationID      string
+	companyName         string
+	projectID           string
+	role                string
+}
+
+// EmailToOrgAdminModel data model for sending emails
+type EmailToOrgAdminModel struct {
+	adminEmail  string
+	adminName   string
+	companyName string
+	projectName string
+	projectSFID string
+	senderName  string
+	senderEmail string
+}
+
+// ContributorEmailToOrgAdminModel data model for sending emails
+type ContributorEmailToOrgAdminModel struct {
+	adminEmail   string
+	adminName    string
+	companyName  string
+	projectSFIDs []string
+	contributor  *v1Models.User
+	userDetails  string
+}
+
 // SendEmailToCLAManager handles sending an email to the specified CLA Manager
-func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel, repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string) {
+func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel, projectSFIDs []string) {
 	f := logrus.Fields{
 		"functionName":              "cla_manager.service.SendEmailToCLAManager",
 		utils.XREQUESTID:            ctx.Value(utils.XREQUESTID),
@@ -47,14 +117,13 @@ func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAMa
 
 	subject := fmt.Sprintf("EasyCLA: Approval Request for contributor: %s", getBestUserName(input.Contributor))
 	recipients := []string{input.CLAManagerEmail}
-	body, err := emails.RenderV2ContributorApprovalRequestTemplate(repository, projectService, projectSFIDs, emails.V2ContributorApprovalRequestTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+	body, err := emails.RenderV2ContributorApprovalRequestTemplate(s.emailSvc, projectSFIDs, emails.V2ContributorApprovalRequestTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.CLAManagerName,
 			CompanyName:   input.CompanyName,
 		},
-		SigningEntityName:     input.CompanyName,
-		UserDetails:           getFormattedUserDetails(input.Contributor),
-		CorporateConsoleV2URL: input.CorporateConsoleURL,
+		SigningEntityName: input.CompanyName,
+		UserDetails:       getFormattedUserDetails(input.Contributor),
 	})
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("rendering email template: %s", emails.V2ContributorApprovalRequestTemplateName)
@@ -71,31 +140,28 @@ func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAMa
 }
 
 // SendEmailToOrgAdmin sends an email to the organization admin
-func (s *service) SendEmailToOrgAdmin(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, adminEmail string, adminName string, companyName string, projectName, projectSFID string, senderEmail string, senderName string, corporateConsole string) {
+func (s *service) SendEmailToOrgAdmin(ctx context.Context, input EmailToOrgAdminModel) {
 	f := logrus.Fields{
-		"functionName":        "cla_manager.service.SendEmailToOrgAdmin",
-		utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
-		"adminEmail":          adminEmail,
-		"adminName":           adminName,
-		"companyName":         companyName,
-		"projectName":         projectName,
-		"projectSFID":         projectSFID,
-		"senderName":          senderName,
-		"senderEmail":         senderEmail,
-		"corporateConsoleURL": corporateConsole,
+		"functionName":   "cla_manager.service.SendEmailToOrgAdmin",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"adminEmail":     input.adminEmail,
+		"adminName":      input.adminName,
+		"companyName":    input.companyName,
+		"projectName":    input.projectName,
+		"projectSFID":    input.projectSFID,
+		"senderName":     input.senderName,
+		"senderEmail":    input.senderEmail,
 	}
 
-	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA ", companyName)
-	recipients := []string{adminEmail}
-	body, err := emails.RenderV2OrgAdminTemplate(repository, projectService, projectSFID, emails.V2OrgAdminTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-			RecipientName: adminName,
-			CompanyName:   companyName,
-			Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
+	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA ", input.companyName)
+	recipients := []string{input.adminEmail}
+	body, err := emails.RenderV2OrgAdminTemplate(s.emailSvc, input.projectSFID, emails.V2OrgAdminTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
+			RecipientName: input.adminName,
+			CompanyName:   input.companyName,
 		},
-		SenderName:       senderName,
-		SenderEmail:      senderEmail,
-		CorporateConsole: corporateConsole,
+		SenderName:  input.senderName,
+		SenderEmail: input.senderEmail,
 	})
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("rendering email template : %s failed : %v", emails.V2OrgAdminTemplateName, err)
@@ -109,31 +175,29 @@ func (s *service) SendEmailToOrgAdmin(ctx context.Context, repository projects_c
 	}
 }
 
-func (s *service) ContributorEmailToOrgAdmin(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, adminEmail string, adminName string, companyName string, projectSFIDs []string, contributor *v1Models.User, corporateConsole string) {
+func (s *service) ContributorEmailToOrgAdmin(ctx context.Context, input ContributorEmailToOrgAdminModel) {
 	f := logrus.Fields{
 		"functionName":              "cla_manager.service.SendEmailToOrgAdmin",
 		utils.XREQUESTID:            ctx.Value(utils.XREQUESTID),
-		"adminEmail":                adminEmail,
-		"adminName":                 adminName,
-		"companyName":               companyName,
-		"contributorName":           contributor.Username,
-		"contributorGitHubID":       contributor.GithubID,
-		"contributorGitHubUsername": contributor.GithubUsername,
-		"contributorLFUsername":     contributor.LfUsername,
-		"contributorLFEmail":        contributor.LfEmail,
-		"contributorEmails":         strings.Join(contributor.Emails, ","),
-		"corporateConsoleURL":       corporateConsole,
+		"adminEmail":                input.adminEmail,
+		"adminName":                 input.adminName,
+		"companyName":               input.companyName,
+		"contributorName":           input.contributor.Username,
+		"contributorGitHubID":       input.contributor.GithubID,
+		"contributorGitHubUsername": input.contributor.GithubUsername,
+		"contributorLFUsername":     input.contributor.LfUsername,
+		"contributorLFEmail":        input.contributor.LfEmail,
+		"contributorEmails":         strings.Join(input.contributor.Emails, ","),
 	}
 
-	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA and add to approved list %s ", companyName, getBestUserName(contributor))
-	recipients := []string{adminEmail}
-	body, err := emails.RenderV2ContributorToOrgAdminTemplate(repository, projectService, projectSFIDs, emails.V2ContributorToOrgAdminTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-			RecipientName: adminName,
-			CompanyName:   companyName,
+	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA and add to approved list %s ", input.companyName, getBestUserName(input.contributor))
+	recipients := []string{input.adminEmail}
+	body, err := emails.RenderV2ContributorToOrgAdminTemplate(s.emailSvc, input.projectSFIDs, emails.V2ContributorToOrgAdminTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
+			RecipientName: input.adminName,
+			CompanyName:   input.companyName,
 		},
-		UserDetails:      getFormattedUserDetails(contributor),
-		CorporateConsole: corporateConsole,
+		UserDetails: input.userDetails,
 	})
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("rendering template : %s failed : %v", emails.V2ContributorToOrgAdminTemplateName, err)
@@ -147,29 +211,27 @@ func (s *service) ContributorEmailToOrgAdmin(ctx context.Context, repository pro
 	}
 }
 
-func (s *service) SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectSFID string, projectName string, designeeEmail string, designeeName string, senderEmail string, senderName string) {
+func (s *service) SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, input ToCLAManagerDesigneeCorporateModel) {
 	f := logrus.Fields{
-		"functionName":     "cla_manager.service.SendEmailToCLAManagerDesigneeCorporate",
-		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
-		"corporateConsole": corporateConsole,
-		"companyName":      companyName,
-		"projectName":      projectName,
-		"designeeEmail":    designeeEmail,
-		"designeeName":     designeeName,
-		"senderEmail":      senderEmail,
-		"senderName":       senderName,
+		"functionName":   "cla_manager.service.SendEmailToCLAManagerDesigneeCorporate",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyName":    input.companyName,
+		"projectName":    input.projectName,
+		"designeeEmail":  input.designeeEmail,
+		"designeeName":   input.designeeName,
+		"senderEmail":    input.senderEmail,
+		"senderName":     input.senderName,
 	}
 
-	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA ", companyName)
-	recipients := []string{designeeEmail}
-	body, err := emails.RenderV2CLAManagerDesigneeCorporateTemplate(repository, projectService, projectSFID, emails.V2CLAManagerDesigneeCorporateTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-			RecipientName: designeeName,
-			CompanyName:   companyName,
+	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA ", input.companyName)
+	recipients := []string{input.designeeEmail}
+	body, err := emails.RenderV2CLAManagerDesigneeCorporateTemplate(s.emailSvc, input.projectSFID, emails.V2CLAManagerDesigneeCorporateTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
+			RecipientName: input.designeeName,
+			CompanyName:   input.companyName,
 		},
-		SenderName:       senderName,
-		SenderEmail:      senderEmail,
-		CorporateConsole: corporateConsole,
+		SenderName:  input.senderName,
+		SenderEmail: input.senderEmail,
 	})
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("rendering template : %s : failed: %v", emails.V2CLAManagerDesigneeCorporateTemplateName, err)
@@ -183,27 +245,33 @@ func (s *service) SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, re
 	}
 }
 
-func (s *service) SendEmailToCLAManagerDesignee(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectNames, projectSFIDs []string, designeeEmail string, designeeName string, contributorModel emails.Contributor) {
+func (s *service) SendEmailToCLAManagerDesignee(ctx context.Context, input ToCLAManagerDesigneeModel) {
 	f := logrus.Fields{
 		"functionName":     "cla_manager.service.SendEmailToCLAManagerDesignee",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
-		"corporateConsole": corporateConsole,
-		"companyName":      companyName,
-		"projectNames":     strings.Join(projectNames, ","),
-		"designeeEmail":    designeeEmail,
-		"designeeName":     designeeName,
-		"contributorEmail": contributorModel.Email,
-		"contributorName":  contributorModel.Username,
+		"companyName":      input.companyName,
+		"projectNames":     strings.Join(input.projectNames, ","),
+		"designeeEmail":    input.designeeEmail,
+		"designeeName":     input.designeeName,
+		"contributorEmail": input.contributorEmail,
+		"contributorName":  input.contributorName,
 	}
 
 	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA and add to approved list %s ",
-		companyName, contributorModel.Email)
-	recipients := []string{designeeEmail}
-	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(repository, projectService, projectSFIDs,
+		input.companyName, input.contributorEmail)
+	recipients := []string{input.designeeEmail}
+	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(s.emailSvc, input.projectSFIDs,
 		emails.V2ToCLAManagerDesigneeTemplateParams{
-			RecipientName:    designeeName,
-			Contributor:      contributorModel,
-			CorporateConsole: corporateConsole,
+			CommonEmailParams: emails.CommonEmailParams{
+				RecipientName: input.designeeName,
+				CompanyName:   input.companyName,
+			},
+			Contributor: emails.Contributor{
+				Email:         input.contributorEmail,
+				Username:      input.contributorName,
+				EmailLabel:    "",
+				UsernameLabel: "",
+			},
 		}, emails.V2ToCLAManagerDesigneeTemplate, emails.V2ToCLAManagerDesigneeTemplateName)
 
 	if err != nil {
@@ -218,27 +286,31 @@ func (s *service) SendEmailToCLAManagerDesignee(ctx context.Context, repository 
 	}
 }
 
-func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, projectService project.Service, repository projects_cla_groups.Repository, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID string, projectNames, projectSFIDs []string, foundationSFID, role string, corporateConsoleV2URL string, contributorModel emails.Contributor) error {
+func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, input DesigneeEmailToUserWithNoLFIDModel) error {
 	f := logrus.Fields{
-		"functionName":          "cla_manager.service.SendDesigneeEmailToUserWithNoLFID",
-		utils.XREQUESTID:        ctx.Value(utils.XREQUESTID),
-		"userWithNoLFIDName":    userWithNoLFIDName,
-		"userWithNoLFIDEmail":   userWithNoLFIDEmail,
-		"organizationID":        organizationID,
-		"projectNames":          strings.Join(projectNames, ","),
-		"role":                  role,
-		"corporateConsoleV2URL": corporateConsoleV2URL,
-		"requesterUsername":     contributorModel.Username,
-		"requesterEmail":        contributorModel.Email,
+		"functionName":        "cla_manager.service.SendDesigneeEmailToUserWithNoLFID",
+		utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
+		"userWithNoLFIDName":  input.userWithNoLFIDName,
+		"userWithNoLFIDEmail": input.userWithNoLFIDEmail,
+		"organizationID":      input.organizationID,
+		"projectNames":        strings.Join(input.projectNames, ","),
+		"role":                input.role,
+		"requesterUsername":   input.requesterUsername,
+		"requesterEmail":      input.requesterEmail,
 	}
 
 	subject := "EasyCLA: Invitation to create LF Login and complete process of becoming CLA Manager"
 
-	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(repository, projectService, projectSFIDs,
+	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(s.emailSvc, input.projectSFIDs,
 		emails.V2ToCLAManagerDesigneeTemplateParams{
-			RecipientName:    userWithNoLFIDName,
-			Contributor:      contributorModel,
-			CorporateConsole: corporateConsoleV2URL,
+			Contributor: emails.Contributor{
+				Email:    input.requesterEmail,
+				Username: input.requesterUsername,
+			},
+			CommonEmailParams: emails.CommonEmailParams{
+				RecipientName: input.userWithNoLFIDName,
+				CompanyName:   input.companyName,
+			},
 		}, emails.V2DesigneeToUserWithNoLFIDTemplate, emails.V2DesigneeToUserWithNoLFIDTemplateName)
 
 	if err != nil {
@@ -250,16 +322,16 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, project
 	log.WithFields(f).Debug("sending user invite request...")
 
 	// Parse the provided user's name
-	userFirstName, userLastName := utils.GetFirstAndLastName(userWithNoLFIDName)
+	userFirstName, userLastName := utils.GetFirstAndLastName(input.userWithNoLFIDName)
 
 	return acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
 		InviteUserFirstName: userFirstName,
 		InviteUserLastName:  userLastName,
-		InviteUserEmail:     userWithNoLFIDEmail,
-		RoleName:            role,
+		InviteUserEmail:     input.userWithNoLFIDEmail,
+		RoleName:            input.role,
 		Scope:               utils.ProjectOrgScope,
-		ProjectSFID:         foundationSFID,
-		OrganizationSFID:    organizationID,
+		ProjectSFID:         input.foundationSFID,
+		OrganizationSFID:    input.organizationID,
 		InviteType:          "userinvite",
 		Subject:             subject,
 		EmailContent:        body,
@@ -268,23 +340,30 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, project
 }
 
 // sendEmailToUserWithNoLFID helper function to send email to a given user with no LFID
-func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, projectName, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationID string, projectID *string, role, corporateConsole string) error {
+func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, input EmailToUserWithNoLFIDModel) error {
 	f := logrus.Fields{
 		"functionName":        "cla_manager.service.SendEmailToUserWithNoLFID",
 		utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
-		"projectName":         projectName,
-		"requesterUsername":   requesterUsername,
-		"requesterEmail":      requesterEmail,
-		"userWithNoLFIDName":  userWithNoLFIDName,
-		"userWithNoLFIDEmail": userWithNoLFIDEmail,
-		"organizationID":      organizationID,
-		"projectID":           utils.StringValue(projectID),
-		"role":                role,
+		"projectName":         input.projectName,
+		"requesterUsername":   input.requesterUsername,
+		"requesterEmail":      input.requesterEmail,
+		"userWithNoLFIDName":  input.userWithNoLFIDName,
+		"userWithNoLFIDEmail": input.userWithNoLFIDEmail,
+		"organizationID":      input.organizationID,
+		"projectID":           input.projectID,
+		"role":                input.role,
 	}
 
 	// subject string, body string, recipients []string
-	subject := fmt.Sprintf("EasyCLA: Invitation to create LF Login and complete process of becoming CLA Manager with %s role", role)
-	body, err := emails.RenderV2CLAManagerToUserWithNoLFIDTemplate(repository, projectService, userWithNoLFIDName, projectName, *projectID, requesterUsername, requesterEmail, corporateConsole)
+	subject := fmt.Sprintf("EasyCLA: Invitation to create LF Login and complete process of becoming CLA Manager with %s role", input.role)
+	body, err := emails.RenderV2CLAManagerToUserWithNoLFIDTemplate(s.emailSvc, input.projectID, emails.V2CLAManagerToUserWithNoLFIDTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
+			RecipientName: input.userWithNoLFIDName,
+			CompanyName:   input.companyName,
+		},
+		RequesterUserName: input.requesterUsername,
+		RequesterEmail:    input.requesterEmail,
+	})
 
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("rendering email : %s failed : %v", emails.V2CLAManagerToUserWithNoLFIDTemplateName, err)
@@ -293,18 +372,18 @@ func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, repository proj
 	acsClient := v2AcsService.GetClient()
 
 	// Parse the provided user's name
-	userFirstName, userLastName := utils.GetFirstAndLastName(userWithNoLFIDName)
+	userFirstName, userLastName := utils.GetFirstAndLastName(input.userWithNoLFIDName)
 
 	log.WithFields(f).Debug("sending user invite request...")
 	//return acsClient.SendUserInvite(ctx, &userWithNoLFIDEmail, role, utils.ProjectOrgScope, projectID, organizationID, "userinvite", &subject, &body, automate)
 	return acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
 		InviteUserFirstName: userFirstName,
 		InviteUserLastName:  userLastName,
-		InviteUserEmail:     userWithNoLFIDEmail,
-		RoleName:            role,
+		InviteUserEmail:     input.userWithNoLFIDEmail,
+		RoleName:            input.role,
 		Scope:               utils.ProjectOrgScope,
-		ProjectSFID:         *projectID,
-		OrganizationSFID:    organizationID,
+		ProjectSFID:         input.projectID,
+		OrganizationSFID:    input.organizationID,
 		InviteType:          "userinvite",
 		Subject:             subject,
 		EmailContent:        body,

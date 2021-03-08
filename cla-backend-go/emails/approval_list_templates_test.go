@@ -12,13 +12,15 @@ import (
 
 func TestApprovalListRejectedTemplate(t *testing.T) {
 	params := ApprovalListRejectedTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProject"},
 			CompanyName:   "JohnsCompany",
-			CLAManagers: []ClaManagerInfoParams{
-				{LfUsername: "LFUserName", Email: "LFEmail"},
-			},
+		},
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects: []CLAProjectParams{{ExternalProjectName: "JohnsProject"}},
+		},
+		CLAManagers: []ClaManagerInfoParams{
+			{LfUsername: "LFUserName", Email: "LFEmail"},
 		},
 	}
 
@@ -33,16 +35,18 @@ func TestApprovalListRejectedTemplate(t *testing.T) {
 
 func TestApprovalListApprovedTemplate(t *testing.T) {
 	params := ApprovalListApprovedTemplateParams{
-		ApprovalTemplateParams: ApprovalTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "Recipient",
-			CLAGroupName:  "CLAGroupFoo",
 			CompanyName:   "CompanyFoo",
-			Approver:      "LFUsername",
+		},
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			CLAGroupName: "CLAGroupFoo",
 			Projects: []CLAProjectParams{
 				{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
 				{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
 			},
 		},
+		Approver: "LFUsername",
 	}
 
 	result, err := RenderTemplate(utils.V2, ApprovalListApprovedTemplateName, ApprovalListApprovedTemplate, params)
@@ -56,19 +60,21 @@ func TestApprovalListApprovedTemplate(t *testing.T) {
 
 func TestRequestToAuthorizeTemplate(t *testing.T) {
 	params := RequestToAuthorizeTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
-			CLAManagers: []ClaManagerInfoParams{
-				{LfUsername: "LFUserName", Email: "LFEmail"},
-			},
 		},
-		ContributorName:     "ContributorNameValue",
-		ContributorEmail:    "ContributorEmailValue",
-		CorporateConsoleURL: "CorporateConsoleURLValue",
-		CompanyID:           "CompanyIDValue",
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects:         []CLAProjectParams{{ExternalProjectName: "JohnsProjectExternal"}},
+			CLAGroupName:     "JohnsProject",
+			CorporateConsole: "CorporateConsoleURLValue",
+		},
+		CLAManagers: []ClaManagerInfoParams{
+			{LfUsername: "LFUserName", Email: "LFEmail"},
+		},
+		ContributorName:  "ContributorNameValue",
+		ContributorEmail: "ContributorEmailValue",
+		CompanyID:        "CompanyIDValue",
 	}
 
 	result, err := RenderTemplate(utils.V1, RequestToAuthorizeTemplateName, RequestToAuthorizeTemplate,

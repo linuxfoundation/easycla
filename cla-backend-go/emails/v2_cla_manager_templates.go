@@ -4,11 +4,6 @@
 package emails
 
 import (
-	"strings"
-
-	"github.com/communitybridge/easycla/cla-backend-go/project"
-
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
 
@@ -22,25 +17,10 @@ type Contributor struct {
 
 // V2ContributorApprovalRequestTemplateParams is email template params for V2ContributorApprovalRequestTemplate
 type V2ContributorApprovalRequestTemplateParams struct {
-	CLAManagerTemplateParams
-	SigningEntityName     string
-	UserDetails           string
-	CorporateConsoleV2URL string
-	Projects              []CLAProjectParams
-}
-
-// GetProjectsOrProject returns the single Project or comma separated projects if more than one
-func (p V2ContributorApprovalRequestTemplateParams) GetProjectsOrProject() string {
-	if len(p.Projects) == 1 {
-		return p.Projects[0].ExternalProjectName
-	}
-
-	var projectNames []string
-	for _, p := range p.Projects {
-		projectNames = append(projectNames, p.ExternalProjectName)
-	}
-
-	return strings.Join(projectNames, ", ")
+	CommonEmailParams
+	CLAGroupTemplateParams
+	SigningEntityName string
+	UserDetails       string
 }
 
 const (
@@ -52,30 +32,29 @@ const (
 <p>This is a notification email from EasyCLA regarding the organization {{.CompanyName}}.</p>
 <p>The following contributor would like to submit a contribution to the projects(s): {{.GetProjectsOrProject}} and is requesting to be added to the approval list as a contributor for your organization: </p>
 <p>{{.UserDetails}}</p>
-<p> Approval can be done at {{.CorporateConsoleV2URL}}. Visit any of the project(s):{{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}} and add the contributor to the approved list.</p>
+<p> Approval can be done at {{.CorporateConsole}}. Visit any of the project(s):{{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}} and add the contributor to the approved list.</p>
 <p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their contribution.</p>
 `
 )
 
 // RenderV2ContributorApprovalRequestTemplate renders V2ContributorApprovalRequestTemplate
-func RenderV2ContributorApprovalRequestTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string, params V2ContributorApprovalRequestTemplateParams) (string, error) {
+func RenderV2ContributorApprovalRequestTemplate(svc EmailTemplateService, projectSFIDs []string, params V2ContributorApprovalRequestTemplateParams) (string, error) {
 
-	projectParams, err := PrefillCLAProjectParams(repository, projectService, projectSFIDs, params.CorporateConsoleV2URL)
+	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFIDs[0])
 	if err != nil {
 		return "", err
 	}
-
-	params.Projects = projectParams
+	params.CLAGroupTemplateParams = claGroupParams
 
 	return RenderTemplate(utils.V2, V2ContributorApprovalRequestTemplateName, V2ContributorApprovalRequestTemplate, params)
 }
 
 // V2OrgAdminTemplateParams is email params for V2OrgAdminTemplate
 type V2OrgAdminTemplateParams struct {
-	CLAManagerTemplateParams
-	SenderName       string
-	SenderEmail      string
-	CorporateConsole string
+	CommonEmailParams
+	CLAGroupTemplateParams
+	SenderName  string
+	SenderEmail string
 }
 
 const (
@@ -97,27 +76,20 @@ Either you or someone whom to designate from your company can login to this port
 )
 
 // RenderV2OrgAdminTemplate renders V2OrgAdminTemplate
-func RenderV2OrgAdminTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFID string, params V2OrgAdminTemplateParams) (string, error) {
-	if err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projectService, projectSFID, &params.CLAManagerTemplateParams, nil); err != nil {
-		return "", err
-	}
-
-	projectParams, err := PrefillCLAProjectParams(repository, projectService, []string{projectSFID}, params.CorporateConsole)
+func RenderV2OrgAdminTemplate(svc EmailTemplateService, projectSFID string, params V2OrgAdminTemplateParams) (string, error) {
+	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFID)
 	if err != nil {
 		return "", err
 	}
-
-	params.Project = projectParams[0]
-
+	params.CLAGroupTemplateParams = claGroupParams
 	return RenderTemplate(utils.V2, V2OrgAdminTemplateName, V2OrgAdminTemplate, params)
 }
 
 // V2ContributorToOrgAdminTemplateParams is email template params for V2ContributorToOrgAdminTemplate
 type V2ContributorToOrgAdminTemplateParams struct {
-	CLAManagerTemplateParams
-	Projects         []CLAProjectParams
-	UserDetails      string
-	CorporateConsole string
+	CommonEmailParams
+	CLAGroupTemplateParams
+	UserDetails string
 }
 
 const (
@@ -135,14 +107,13 @@ const (
 )
 
 // RenderV2ContributorToOrgAdminTemplate renders V2ContributorToOrgAdminTemplate
-func RenderV2ContributorToOrgAdminTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string, params V2ContributorToOrgAdminTemplateParams) (string, error) {
+func RenderV2ContributorToOrgAdminTemplate(svc EmailTemplateService, projectSFIDs []string, params V2ContributorToOrgAdminTemplateParams) (string, error) {
 	// prefill the projects data
-	projects, err := PrefillCLAProjectParams(repository, projectService, projectSFIDs, params.CorporateConsole)
+	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFIDs[0])
 	if err != nil {
 		return "", err
 	}
-
-	params.Projects = projects
+	params.CLAGroupTemplateParams = claGroupParams
 
 	return RenderTemplate(utils.V2, V2ContributorToOrgAdminTemplateName,
 		V2ContributorToOrgAdminTemplate, params)
@@ -150,10 +121,10 @@ func RenderV2ContributorToOrgAdminTemplate(repository projects_cla_groups.Reposi
 
 // V2CLAManagerDesigneeCorporateTemplateParams is email params for V2CLAManagerDesigneeCorporateTemplate
 type V2CLAManagerDesigneeCorporateTemplateParams struct {
-	CLAManagerTemplateParams
-	SenderName       string
-	SenderEmail      string
-	CorporateConsole string
+	CommonEmailParams
+	CLAGroupTemplateParams
+	SenderName  string
+	SenderEmail string
 }
 
 const (
@@ -175,43 +146,21 @@ Either you or someone whom you designate from your company can login to this por
 )
 
 // RenderV2CLAManagerDesigneeCorporateTemplate renders V2CLAManagerDesigneeCorporateTemplate
-func RenderV2CLAManagerDesigneeCorporateTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFID string, params V2CLAManagerDesigneeCorporateTemplateParams) (string, error) {
-	if err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projectService, projectSFID, &params.CLAManagerTemplateParams, nil); err != nil {
-		return "", err
-	}
-
-	projects, err := PrefillCLAProjectParams(repository, projectService, []string{projectSFID}, params.CorporateConsole)
+func RenderV2CLAManagerDesigneeCorporateTemplate(emailSvc EmailTemplateService, projectSFID string, params V2CLAManagerDesigneeCorporateTemplateParams) (string, error) {
+	claGroupParams, err := emailSvc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFID)
 	if err != nil {
 		return "", err
 	}
-
-	// assing the prefilled project
-	params.Project = projects[0]
+	params.CLAGroupTemplateParams = claGroupParams
 
 	return RenderTemplate(utils.V2, V2CLAManagerDesigneeCorporateTemplateName, V2CLAManagerDesigneeCorporateTemplate, params)
 }
 
 // V2ToCLAManagerDesigneeTemplateParams is email params for V2ToCLAManagerDesigneeTemplate
 type V2ToCLAManagerDesigneeTemplateParams struct {
-	RecipientName    string
-	Projects         []CLAProjectParams
-	Contributor      Contributor
-	CorporateConsole string
-	CompanyName      string
-}
-
-// GetProjectsOrProject returns the single Project or comma separated projects if more than one
-func (p V2ToCLAManagerDesigneeTemplateParams) GetProjectsOrProject() string {
-	if len(p.Projects) == 1 {
-		return p.Projects[0].ExternalProjectName
-	}
-
-	var projectNames []string
-	for _, p := range p.Projects {
-		projectNames = append(projectNames, p.ExternalProjectName)
-	}
-
-	return strings.Join(projectNames, ", ")
+	CommonEmailParams
+	CLAGroupTemplateParams
+	Contributor Contributor
 }
 
 const (
@@ -233,25 +182,15 @@ const (
 )
 
 // RenderV2ToCLAManagerDesigneeTemplate renders V2ToCLAManagerDesigneeTemplate
-func RenderV2ToCLAManagerDesigneeTemplate(repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string, params V2ToCLAManagerDesigneeTemplateParams, template string, templateName string) (string, error) {
-	// prefill the projects data
-	projects, err := PrefillCLAProjectParams(repository, projectService, projectSFIDs, params.CorporateConsole)
+func RenderV2ToCLAManagerDesigneeTemplate(svc EmailTemplateService, projectSFIDs []string, params V2ToCLAManagerDesigneeTemplateParams, template string, templateName string) (string, error) {
+	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFIDs[0])
 	if err != nil {
 		return "", err
 	}
-
-	params.Projects = projects
+	params.CLAGroupTemplateParams = claGroupParams
 
 	return RenderTemplate(utils.V2, templateName,
 		template, params)
-}
-
-// V2DesigneeToUserWithNoLFIDTemplateParams is email params for V2DesigneeToUserWithNoLFIDTemplate
-type V2DesigneeToUserWithNoLFIDTemplateParams struct {
-	CLAManagerTemplateParams
-	RequesterUserName string
-	RequesterEmail    string
-	CorporateConsole  string
 }
 
 const (
@@ -277,7 +216,8 @@ The requester has stated that you would be the initial CLA Manager for this CCLA
 
 // V2CLAManagerToUserWithNoLFIDTemplateParams is email params for V2CLAManagerToUserWithNoLFIDTemplate
 type V2CLAManagerToUserWithNoLFIDTemplateParams struct {
-	CLAManagerTemplateParams
+	CommonEmailParams
+	CLAGroupTemplateParams
 	RequesterUserName string
 	RequesterEmail    string
 	Projects          []CLAProjectParams
@@ -303,22 +243,12 @@ const (
 )
 
 // RenderV2CLAManagerToUserWithNoLFIDTemplate renders V2CLAManagerToUserWithNoLFIDTemplate
-func RenderV2CLAManagerToUserWithNoLFIDTemplate(repository projects_cla_groups.Repository, projectService project.Service, recipientName, projectName, projectSFID, requesterName, requesterEmail, corporateConsole string) (string, error) {
-	params := V2CLAManagerToUserWithNoLFIDTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
-			RecipientName: recipientName,
-			Project: CLAProjectParams{
-				ExternalProjectName: projectName,
-			},
-		},
-		RequesterUserName: requesterName,
-		RequesterEmail:    requesterEmail,
-	}
-
-	err := PrefillCLAManagerTemplateParamsFromClaGroup(repository, projectService, projectSFID, &params.CLAManagerTemplateParams, &corporateConsole)
+func RenderV2CLAManagerToUserWithNoLFIDTemplate(svc EmailTemplateService, projectSFID string, params V2CLAManagerToUserWithNoLFIDTemplateParams) (string, error) {
+	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFID)
 	if err != nil {
 		return "", err
 	}
+	params.CLAGroupTemplateParams = claGroupParams
 
 	body, err := RenderTemplate(utils.V2, V2CLAManagerToUserWithNoLFIDTemplateName,
 		V2CLAManagerToUserWithNoLFIDTemplate,

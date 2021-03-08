@@ -69,6 +69,7 @@ const (
 )
 
 type service struct {
+	emailSvc            emails.EmailTemplateService
 	companyService      company.IService
 	projectService      project.Service
 	repositoriesService repositories.Service
@@ -83,29 +84,30 @@ type service struct {
 type Service interface {
 	CreateCLAManager(ctx context.Context, claGroupID string, params cla_manager.CreateCLAManagerParams, authUsername string) (*models.CompanyClaManager, *models.ErrorResponse)
 	DeleteCLAManager(ctx context.Context, claGroupID string, params cla_manager.DeleteCLAManagerParams) *models.ErrorResponse
-	InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, lFxPortalURL, CorporateConsoleV2URL string) ([]*models.ClaManagerDesignee, error)
+	InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User) ([]*models.ClaManagerDesignee, error)
 	CreateCLAManagerDesignee(ctx context.Context, companyID string, projectID string, userEmail string) (*models.ClaManagerDesignee, error)
-	CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User, LfxPortalURL, CorporateConsole string) (*models.ClaManagerDesignee, error)
+	CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User) (*models.ClaManagerDesignee, error)
 	NotifyCLAManagers(ctx context.Context, notifyCLAManagers *models.NotifyClaManagerList, CorporateConsoleV2URL string) error
 	CreateCLAManagerDesigneeByGroup(ctx context.Context, params cla_manager.CreateCLAManagerDesigneeByGroupParams, projectCLAGroups []*projects_cla_groups.ProjectClaGroup) ([]*models.ClaManagerDesignee, string, error)
 	ProjectCompanySignedOrNot(ctx context.Context, signedAtFoundation bool, projectCLAGroups []*projects_cla_groups.ProjectClaGroup, companyModel *v1Models.Company) error
 	IsCLAManagerDesignee(ctx context.Context, companySFID, claGroupID, userLFID string) (*models.UserRoleStatus, error)
 
 	// Email Functions
-	SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel, repository projects_cla_groups.Repository, projectService project.Service, projectSFIDs []string)
-	SendEmailToOrgAdmin(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, adminEmail string, adminName string, companyName string, projectName, projectSFID string, senderEmail string, senderName string, corporateConsole string)
-	ContributorEmailToOrgAdmin(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, adminEmail string, adminName string, companyName string, projectSFIDs []string, contributor *v1Models.User, corporateConsole string)
-	SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectSFID string, projectName string, designeeEmail string, designeeName string, senderEmail string, senderName string)
-	SendEmailToCLAManagerDesignee(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, corporateConsole string, companyName string, projectNames, projectSFIDs []string, designeeEmail string, designeeName string, contributorModel emails.Contributor)
-	SendDesigneeEmailToUserWithNoLFID(ctx context.Context, projectService project.Service, repository projects_cla_groups.Repository, userWithNoLFIDName, userWithNoLFIDEmail, organizationName, organizationID string, projectNames, projectIDs []string, foundationSFID, role string, corporateConsoleV2URL string, contributorModel emails.Contributor) error
-	SendEmailToUserWithNoLFID(ctx context.Context, repository projects_cla_groups.Repository, projectService project.Service, projectName, requesterUsername, requesterEmail, userWithNoLFIDName, userWithNoLFIDEmail, organizationID string, projectID *string, role, corporateConsole string) error
+	SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel, projectSFIDs []string)
+	SendEmailToOrgAdmin(ctx context.Context, input EmailToOrgAdminModel)
+	ContributorEmailToOrgAdmin(ctx context.Context, input ContributorEmailToOrgAdminModel)
+	SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, input ToCLAManagerDesigneeCorporateModel)
+	SendEmailToCLAManagerDesignee(ctx context.Context, input ToCLAManagerDesigneeModel)
+	SendDesigneeEmailToUserWithNoLFID(ctx context.Context, input DesigneeEmailToUserWithNoLFIDModel) error
+	SendEmailToUserWithNoLFID(ctx context.Context, input EmailToUserWithNoLFIDModel) error
 }
 
 // NewService returns instance of CLA Manager service
-func NewService(compService company.IService, projService project.Service, mgrService v1ClaManager.IService, claUserService easyCLAUser.Service,
+func NewService(emailSvc emails.EmailTemplateService, compService company.IService, projService project.Service, mgrService v1ClaManager.IService, claUserService easyCLAUser.Service,
 	repoService repositories.Service, v2CompService v2Company.Service,
 	evService events.Service, projectCGroupRepo projects_cla_groups.Repository) Service {
 	return &service{
+		emailSvc:            emailSvc,
 		companyService:      compService,
 		projectService:      projService,
 		repositoriesService: repoService,
@@ -648,7 +650,7 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 }
 
 // CreateCLAManagerRequest service method
-func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User, LfxPortalURL, corporateConsole string) (*models.ClaManagerDesignee, error) {
+func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User) (*models.ClaManagerDesignee, error) {
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.CreateCLAManagerRequest",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -729,7 +731,16 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 				log.Warn(msg)
 				return nil, adminErr
 			}
-			s.SendEmailToOrgAdmin(ctx, s.projectCGRepo, s.projectService, userService.GetPrimaryEmail(adminUser), admin.Contact.Name, v1CompanyModel.CompanyName, projectSF.Name, projectSF.ID, authUser.Email, authUser.UserName, LfxPortalURL)
+			s.SendEmailToOrgAdmin(ctx,
+				EmailToOrgAdminModel{
+					adminEmail:  userService.GetPrimaryEmail(adminUser),
+					adminName:   admin.Contact.Name,
+					companyName: v1CompanyModel.CompanyName,
+					projectName: projectSF.Name,
+					projectSFID: projectSF.ID,
+					senderName:  authUser.UserName,
+					senderEmail: authUser.Email,
+				})
 			// Make a note in the event log
 			s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:   events.ContributorNotifyCompanyAdminType,
@@ -756,7 +767,17 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 		msg := fmt.Sprintf("User: %s does not have an LF Login", userEmail)
 		log.WithFields(f).Warn(msg)
 		// Send email
-		sendEmailErr := s.SendEmailToUserWithNoLFID(ctx, s.projectCGRepo, s.projectService, projectSF.Name, authUser.UserName, authUser.Email, fullName, userEmail, v1CompanyModel.CompanyExternalID, &projectSF.ID, utils.CLADesigneeRole, corporateConsole)
+		sendEmailErr := s.SendEmailToUserWithNoLFID(ctx, EmailToUserWithNoLFIDModel{
+			projectName:         projectSF.Name,
+			requesterUsername:   authUser.UserName,
+			requesterEmail:      authUser.Email,
+			userWithNoLFIDName:  fullName,
+			userWithNoLFIDEmail: userEmail,
+			organizationID:      v1CompanyModel.CompanyExternalID,
+			companyName:         v1CompanyModel.CompanyName,
+			projectID:           projectSF.ID,
+			role:                utils.CLADesigneeRole,
+		})
 		if sendEmailErr != nil {
 			log.WithFields(f).Warnf("Error sending email: %+v", sendEmailErr)
 			return nil, sendEmailErr
@@ -795,7 +816,15 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 
 	log.WithFields(f).Debugf("sending Email to CLA Manager Designee email: %s ", userEmail)
 	designeeName := fmt.Sprintf("%s %s", lfxUser.FirstName, lfxUser.LastName)
-	s.SendEmailToCLAManagerDesigneeCorporate(ctx, s.projectCGRepo, s.projectService, corporateConsole, v1CompanyModel.CompanyName, projectSF.ID, projectSF.Name, userEmail, designeeName, authUser.Email, authUser.UserName)
+	s.SendEmailToCLAManagerDesigneeCorporate(ctx, ToCLAManagerDesigneeCorporateModel{
+		companyName:   v1CompanyModel.CompanyName,
+		projectSFID:   projectSF.ID,
+		projectName:   projectSF.Name,
+		designeeEmail: userEmail,
+		designeeName:  designeeName,
+		senderEmail:   authUser.Email,
+		senderName:    authUser.UserName,
+	})
 
 	log.WithFields(f).Debug("creating a contributor notify CLA designee log event...")
 	// Make a note in the event log
@@ -840,7 +869,7 @@ func (s *service) ValidateInviteCompanyAdminCheck(ctx context.Context, f logrus.
 	return nil
 }
 
-func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, LfxPortalURL, CorporateConsoleV2URL string) ([]*models.ClaManagerDesignee, error) { //nolint
+func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User) ([]*models.ClaManagerDesignee, error) { //nolint
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.InviteCompanyAdmin",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -966,7 +995,14 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 				return nil, adminErr
 			}
 
-			s.ContributorEmailToOrgAdmin(ctx, s.projectCGRepo, s.projectService, userService.GetPrimaryEmail(adminUser), admin.Contact.Name, organization.Name, projectSFIDs, userModel, LfxPortalURL)
+			s.ContributorEmailToOrgAdmin(ctx, ContributorEmailToOrgAdminModel{
+				adminEmail:   userService.GetPrimaryEmail(adminUser),
+				adminName:    admin.Contact.Name,
+				companyName:  organization.Name,
+				projectSFIDs: projectSFIDs,
+				contributor:  userModel,
+				userDetails:  getFormattedUserDetails(userModel),
+			})
 			designeeScope := models.ClaManagerDesignee{
 				Email: strfmt.Email(admin.Contact.EmailAddress),
 				Name:  admin.Contact.Name,
@@ -998,7 +1034,18 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 			contributorModel = getContributorPublicEmail(contributor)
 		}
 
-		sendErr := s.SendDesigneeEmailToUserWithNoLFID(ctx, s.projectService, s.projectCGRepo, name, userEmail, organization.Name, organization.ID, projectSFs, projectSFIDs, foundationSFID, "cla-manager-designee", LfxPortalURL, contributorModel)
+		sendErr := s.SendDesigneeEmailToUserWithNoLFID(ctx, DesigneeEmailToUserWithNoLFIDModel{
+			userWithNoLFIDName:  name,
+			userWithNoLFIDEmail: userEmail,
+			requesterUsername:   contributorModel.Email,
+			requesterEmail:      contributorModel.Email,
+			projectNames:        projectSFs,
+			projectSFIDs:        projectSFIDs,
+			foundationSFID:      foundationSFID,
+			role:                "cla-manager-designee",
+			companyName:         organization.Name,
+			organizationID:      organization.ID,
+		})
 		if sendErr != nil {
 			msg := fmt.Sprintf("Problem sending email to user: %s , error: %+v", userEmail, sendErr)
 			log.Warn(msg)
@@ -1040,12 +1087,27 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		contributorModel.Username = contributor.LFUsername
 		contributorModel.EmailLabel = utils.EmailLabel
 		contributorModel.UsernameLabel = utils.UserLabel
-
+		s.SendEmailToCLAManagerDesignee(ctx, ToCLAManagerDesigneeModel{
+			designeeName:     user.Name,
+			designeeEmail:    userEmail,
+			companyName:      organization.Name,
+			projectNames:     projectSFs,
+			projectSFIDs:     projectSFIDs,
+			contributorEmail: contributor.LFEmail,
+			contributorName:  contributor.LFUsername,
+			contributorModel: contributorModel,
+		})
 	} else {
 		contributorModel = getContributorPublicEmail(contributor)
+		s.SendEmailToCLAManagerDesignee(ctx, ToCLAManagerDesigneeModel{
+			designeeName:     user.Name,
+			designeeEmail:    userEmail,
+			companyName:      organization.Name,
+			projectNames:     projectSFs,
+			projectSFIDs:     projectSFIDs,
+			contributorModel: contributorModel,
+		})
 	}
-
-	s.SendEmailToCLAManagerDesignee(ctx, s.projectCGRepo, s.projectService, CorporateConsoleV2URL, organization.Name, projectSFs, projectSFIDs, userEmail, user.Name, contributorModel)
 
 	log.Debugf("CLA Manager designee created : %+v", designeeScopes)
 
@@ -1150,7 +1212,7 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 			CLAManagerEmail:     claManager.Email.String(),
 			CompanyName:         notifyCLAManagers.CompanyName,
 			CorporateConsoleURL: CorporateConsoleV2URL,
-		}, s.projectCGRepo, s.projectService, projectSFIDs)
+		}, projectSFIDs)
 	}
 
 	return nil

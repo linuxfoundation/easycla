@@ -8,9 +8,17 @@ import (
 	"html/template"
 	"net/url"
 	"path"
+	"strings"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 )
+
+// CommonEmailParams are part of almost every email it's sent from the system
+type CommonEmailParams struct {
+	RecipientName    string
+	RecipientAddress string
+	CompanyName      string
+}
 
 // ClaManagerInfoParams represents the CLAManagerInfo used inside of the Email Templates
 type ClaManagerInfoParams struct {
@@ -56,39 +64,49 @@ func (p CLAProjectParams) GetProjectFullURL() template.HTML {
 	return template.HTML(fmt.Sprintf(fullURLHtml, projectConsolePathURL, p.ExternalProjectName))
 }
 
-// CLAManagerTemplateParams includes the params for the CLAManagerTemplateParams
-type CLAManagerTemplateParams struct {
-	RecipientName string
-	CompanyName   string
-	CLAGroupName  string
-	Project       CLAProjectParams
-	CLAManagers   []ClaManagerInfoParams
+// CLAGroupTemplateParams includes the params for the CLAGroupTemplateParams
+type CLAGroupTemplateParams struct {
+	CorporateConsole string
+	CLAGroupName     string
 	// ChildProjectCount indicates how many childProjects are under this CLAGroup
 	// this is important for some of the email rendering knowing if claGroup has
 	// multiple children
 	ChildProjectCount int
-}
-
-// ApprovalTemplateParams details approval fields for contributor
-type ApprovalTemplateParams struct {
-	RecipientName string
-	CompanyName   string
-	CLAGroupName  string
-	Approver      string
-	Projects      []CLAProjectParams
+	Projects          []CLAProjectParams
 }
 
 // GetProjectNameOrFoundation returns if the foundationName is set it gets back
 // the foundation Name otherwise the ProjectName is  returned
-func (claParams CLAManagerTemplateParams) GetProjectNameOrFoundation() string {
-	if claParams.ChildProjectCount == 0 {
-		return claParams.Project.ExternalProjectName
+func (claParams CLAGroupTemplateParams) GetProjectNameOrFoundation() string {
+	project := claParams.Projects[0]
+	if claParams.ChildProjectCount == 1 {
+		return claParams.Projects[0].ExternalProjectName
 	}
 
 	// if multiple return the foundation if present
-	if claParams.Project.FoundationName != "" {
-		return claParams.Project.FoundationName
+	if project.FoundationName != "" {
+		return project.FoundationName
 	}
 	//default to project name if nothing works
-	return claParams.Project.ExternalProjectName
+	return project.ExternalProjectName
+}
+
+// Project is used generally in v1 templates because the matching there was 1:1
+// it will returns the first element from the projects list
+func (claParams CLAGroupTemplateParams) Project() CLAProjectParams {
+	return claParams.Projects[0]
+}
+
+// GetProjectsOrProject gets the first if single or all of them comma separated
+func (claParams CLAGroupTemplateParams) GetProjectsOrProject() string {
+	if len(claParams.Projects) == 1 {
+		return claParams.Projects[0].ExternalProjectName
+	}
+
+	var projectNames []string
+	for _, p := range claParams.Projects {
+		projectNames = append(projectNames, p.ExternalProjectName)
+	}
+
+	return strings.Join(projectNames, ", ")
 }

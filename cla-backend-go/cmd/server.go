@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/emails"
+
 	"github.com/communitybridge/easycla/cla-backend-go/v2/dynamo_events"
 	v2GithubActivity "github.com/communitybridge/easycla/cla-backend-go/v2/github_activity"
 
@@ -260,6 +262,7 @@ func server(localMode bool) http.Handler {
 	healthService := health.New(Version, Commit, Branch, BuildDate)
 	templateService := template.NewService(stage, templateRepo, docraptorClient, awsSession)
 	v1ProjectService := project.NewService(projectRepo, repositoriesRepo, gerritRepo, projectClaGroupRepo, usersRepo)
+	emailTemplateService := emails.NewEmailTemplateService(projectClaGroupRepo, v1ProjectService, configFile.CorporateConsoleURL, configFile.CorporateConsoleV2URL)
 	v2ProjectService := v2Project.NewService(v1ProjectService, projectRepo, projectClaGroupRepo)
 	v1CompanyService := v1Company.NewService(v1CompanyRepo, configFile.CorporateConsoleURL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(v1CompanyService, signaturesRepo, projectRepo, usersRepo, v1CompanyRepo, projectClaGroupRepo, eventsService)
@@ -269,7 +272,7 @@ func server(localMode bool) http.Handler {
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, projectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, configFile.CorporateConsoleURL)
 	v1RepositoriesService := repositories.NewService(repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo)
 	v2RepositoriesService := v2Repositories.NewService(repositoriesRepo, projectClaGroupRepo, githubOrganizationsRepo)
-	v2ClaManagerService := v2ClaManager.NewService(v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, projectClaGroupRepo)
+	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, projectClaGroupRepo)
 	v1ApprovalListService := approval_list.NewService(approvalListRepo, projectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, projectRepo, signaturesRepo, configFile.CorporateConsoleV2URL, http.DefaultClient)
 	authorizer := auth.NewAuthorizer(authValidator, userRepo)
 	v2MetricsService := metrics.NewService(metricsRepo, projectClaGroupRepo)
@@ -323,7 +326,7 @@ func server(localMode bool) http.Handler {
 	gerrits.Configure(api, gerritService, v1ProjectService, eventsService)
 	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, projectClaGroupRepo)
 	v2Company.Configure(v2API, v2CompanyService, projectClaGroupRepo, configFile.LFXPortalURL, configFile.CorporateConsoleURL)
-	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, configFile.CorporateConsoleURL)
+	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)
 	v2ClaManager.Configure(v2API, v2ClaManagerService, v1CompanyService, configFile.LFXPortalURL, configFile.CorporateConsoleV2URL, projectClaGroupRepo, userRepo)
 	sign.Configure(v2API, v2SignService)
 	cla_groups.Configure(v2API, v2ClaGroupService, v1ProjectService, projectClaGroupRepo, eventsService)

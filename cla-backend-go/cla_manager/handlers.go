@@ -37,7 +37,7 @@ func isValidUser(claUser *user.CLAUser) bool {
 }
 
 // Configure is the API handler routine for the CLA manager routes
-func Configure(api *operations.ClaAPI, service IService, companyService company.IService, projectService project.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, corporateConsoleURL string) { // nolint
+func Configure(api *operations.ClaAPI, service IService, companyService company.IService, projectService project.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, emailSvc emails.EmailTemplateService) { // nolint
 	api.ClaManagerCreateCLAManagerRequestHandler = cla_manager.CreateCLAManagerRequestHandlerFunc(func(params cla_manager.CreateCLAManagerRequestParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
@@ -187,9 +187,15 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 
 		// Send email to each manager
 		for _, manager := range claManagers {
-			sendRequestAccessEmailToCLAManagers(companyModel, claGroupModel,
-				params.Body.UserName, params.Body.UserEmail,
-				manager.Username, manager.LfEmail)
+			sendRequestAccessEmailToCLAManagers(emailSvc, emails.RequestAccessToCLAManagersTemplateParams{
+				CommonEmailParams: emails.CommonEmailParams{
+					RecipientName:    manager.Username,
+					RecipientAddress: manager.LfEmail,
+					CompanyName:      companyModel.CompanyName,
+				},
+				RequesterName:  params.Body.UserName,
+				RequesterEmail: params.Body.UserEmail,
+			}, claGroupModel)
 		}
 
 		return cla_manager.NewCreateCLAManagerRequestOK().WithXRequestID(reqID).WithPayload(request)
@@ -357,12 +363,25 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 
 		// Notify CLA Managers - send email to each manager
 		for _, manager := range claManagers {
-			sendRequestApprovedEmailToCLAManagers(companyModel, claGroupModel, request.UserName, request.UserEmail,
-				manager.Username, manager.LfEmail)
+			sendRequestApprovedEmailToCLAManagers(emailSvc, emails.RequestApprovedToCLAManagersTemplateParams{
+				CommonEmailParams: emails.CommonEmailParams{
+					RecipientName:    manager.Username,
+					RecipientAddress: manager.LfEmail,
+					CompanyName:      companyModel.CompanyName,
+				},
+				RequesterName:  request.UserName,
+				RequesterEmail: request.UserEmail,
+			}, claGroupModel)
 		}
 
 		// Notify the requester
-		sendRequestApprovedEmailToRequester(companyModel, claGroupModel, request.UserName, request.UserEmail)
+		sendRequestApprovedEmailToRequester(emailSvc, emails.RequestApprovedToRequesterTemplateParams{
+			CommonEmailParams: emails.CommonEmailParams{
+				RecipientName:    request.UserName,
+				RecipientAddress: request.UserEmail,
+				CompanyName:      companyModel.CompanyName,
+			},
+		}, claGroupModel)
 
 		return cla_manager.NewCreateCLAManagerRequestOK().WithXRequestID(reqID).WithPayload(request)
 	})
@@ -459,12 +478,23 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 
 		// Notify CLA Managers - send email to each manager
 		for _, manager := range claManagers {
-			sendRequestDeniedEmailToCLAManagers(companyModel, claGroupModel, request.UserName, request.UserEmail,
-				manager.Username, manager.LfEmail)
+			sendRequestDeniedEmailToCLAManagers(emailSvc, emails.RequestDeniedToCLAManagersTemplateParams{
+				CommonEmailParams: emails.CommonEmailParams{
+					RecipientName:    manager.Username,
+					RecipientAddress: manager.LfEmail,
+					CompanyName:      companyModel.CompanyName,
+				},
+				RequesterName:  request.UserName,
+				RequesterEmail: request.UserEmail,
+			}, claGroupModel)
 		}
 
 		// Notify the requester
-		sendRequestDeniedEmailToRequester(companyModel, claGroupModel, request.UserName, request.UserEmail)
+		sendRequestDeniedEmailToRequester(emailSvc, emails.CommonEmailParams{
+			RecipientName:    request.UserName,
+			RecipientAddress: request.UserEmail,
+			CompanyName:      companyModel.CompanyName,
+		}, claGroupModel)
 
 		return cla_manager.NewCreateCLAManagerRequestOK().WithPayload(request)
 	})
@@ -882,24 +912,15 @@ func buildErrorMessageDeleteManager(errPrefix string, params cla_manager.DeleteC
 }
 
 // sendRequestAccessEmailToCLAManagers sends the request access email to the specified CLA Managers
-func sendRequestAccessEmailToCLAManagers(companyModel *models.Company, claGroupModel *models.ClaGroup, requesterName, requesterEmail, recipientName, recipientAddress string) {
-	companyName := companyModel.CompanyName
+func sendRequestAccessEmailToCLAManagers(emailSvc emails.EmailTemplateService, emailParams emails.RequestAccessToCLAManagersTemplateParams, claGroupModel *models.ClaGroup) {
+	companyName := emailParams.CompanyName
 	projectName := claGroupModel.ProjectName
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: New CLA Manager Access Request for %s on %s", companyName, projectName)
-	recipients := []string{recipientAddress}
-	body, err := emails.RenderTemplate(claGroupModel.Version, emails.RequestAccessToCLAManagersTemplateName,
-		emails.RequestAccessToCLAManagersTemplate, emails.RequestAccessToCLAManagersTemplateParams{
-			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-				RecipientName: recipientName,
-				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
-				CompanyName:   companyName,
-			},
-			RequesterName:  requesterName,
-			RequesterEmail: requesterEmail,
-			CorporateURL:   utils.GetCorporateURL(claGroupModel.Version == utils.V2),
-		})
+	recipients := []string{emailParams.RecipientAddress}
+	body, err := emails.RenderRequestAccessToCLAManagersTemplate(
+		emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
 	if err != nil {
 		log.Warnf("rendering email template : %s failed : %v", emails.RequestAccessToCLAManagersTemplateName, err)
 		return
@@ -913,27 +934,13 @@ func sendRequestAccessEmailToCLAManagers(companyModel *models.Company, claGroupM
 	}
 }
 
-func sendRequestApprovedEmailToCLAManagers(companyModel *models.Company, claGroupModel *models.ClaGroup, requesterName, requesterEmail, recipientName, recipientAddress string) {
-	companyName := companyModel.CompanyName
+func sendRequestApprovedEmailToCLAManagers(emailSvc emails.EmailTemplateService, emailParams emails.RequestApprovedToCLAManagersTemplateParams, claGroupModel *models.ClaGroup) {
 	projectName := claGroupModel.ProjectName
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Access Approval Notice for %s", projectName)
-	recipients := []string{recipientAddress}
-	body, err := emails.RenderTemplate(
-		claGroupModel.Version,
-		emails.RequestApprovedToCLAManagersTemplateName,
-		emails.RequestApprovedToCLAManagersTemplate,
-		emails.RequestApprovedToCLAManagersTemplateParams{
-			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-				RecipientName: recipientName,
-				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
-				CompanyName:   companyName,
-			},
-			RequesterName:  requesterName,
-			RequesterEmail: requesterEmail,
-		})
-
+	recipients := []string{emailParams.RecipientAddress}
+	body, err := emails.RenderRequestApprovedToCLAManagersTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
 	if err != nil {
 		log.Warnf("rendering email template : %s failed : %v", emails.RequestApprovedToCLAManagersTemplateName, err)
 		return
@@ -946,22 +953,13 @@ func sendRequestApprovedEmailToCLAManagers(companyModel *models.Company, claGrou
 	}
 }
 
-func sendRequestApprovedEmailToRequester(companyModel *models.Company, claGroupModel *models.ClaGroup, requesterName, requesterEmail string) {
-	companyName := companyModel.CompanyName
+func sendRequestApprovedEmailToRequester(emailSvc emails.EmailTemplateService, emailParams emails.RequestApprovedToRequesterTemplateParams, claGroupModel *models.ClaGroup) {
 	projectName := claGroupModel.ProjectName
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: New CLA Manager Access Approved for %s", projectName)
-	recipients := []string{requesterEmail}
-	body, err := emails.RenderTemplate(claGroupModel.Version, emails.RequestApprovedToRequesterTemplateName,
-		emails.RequestApprovedToRequesterTemplate, emails.RequestApprovedToRequesterTemplateParams{
-			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-				RecipientName: requesterName,
-				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
-				CompanyName:   companyName,
-			},
-			CorporateURL: utils.GetCorporateURL(claGroupModel.Version == utils.V2),
-		})
+	recipients := []string{emailParams.RecipientAddress}
+	body, err := emails.RenderRequestApprovedToRequesterTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
 	if err != nil {
 		log.Warnf("email template : %s failed rendering : %s", emails.RequestApprovedToRequesterTemplateName, err)
 		return
@@ -974,27 +972,13 @@ func sendRequestApprovedEmailToRequester(companyModel *models.Company, claGroupM
 	}
 }
 
-func sendRequestDeniedEmailToCLAManagers(companyModel *models.Company, claGroupModel *models.ClaGroup, requesterName, requesterEmail, recipientName, recipientAddress string) {
-	companyName := companyModel.CompanyName
+func sendRequestDeniedEmailToCLAManagers(emailSvc emails.EmailTemplateService, emailParams emails.RequestDeniedToCLAManagersTemplateParams, claGroupModel *models.ClaGroup) {
 	projectName := claGroupModel.ProjectName
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Access Denied Notice for %s", projectName)
-	recipients := []string{recipientAddress}
-	body, err := emails.RenderTemplate(
-		claGroupModel.Version,
-		emails.RequestDeniedToCLAManagersTemplateName,
-		emails.RequestDeniedToCLAManagersTemplate,
-		emails.RequestDeniedToCLAManagersTemplateParams{
-			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-				RecipientName: recipientName,
-				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
-				CompanyName:   companyName,
-			},
-			RequesterName:  requesterName,
-			RequesterEmail: requesterEmail,
-		},
-	)
+	recipients := []string{emailParams.RecipientAddress}
+	body, err := emails.RenderRequestDeniedToCLAManagersTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
 
 	if err != nil {
 		log.Warnf("email template render : %s failed : %v", emails.RequestDeniedToCLAManagersTemplateName, err)
@@ -1009,23 +993,15 @@ func sendRequestDeniedEmailToCLAManagers(companyModel *models.Company, claGroupM
 	}
 }
 
-func sendRequestDeniedEmailToRequester(companyModel *models.Company, claGroupModel *models.ClaGroup, requesterName, requesterEmail string) {
-	companyName := companyModel.CompanyName
+func sendRequestDeniedEmailToRequester(emailSvc emails.EmailTemplateService, emailParams emails.CommonEmailParams, claGroupModel *models.ClaGroup) {
 	projectName := claGroupModel.ProjectName
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: New CLA Manager Access Denied for %s", projectName)
-	recipients := []string{requesterEmail}
-	body, err := emails.RenderTemplate(claGroupModel.Version, emails.RequestDeniedToRequesterTemplateName,
-		emails.RequestDeniedToRequesterTemplate,
-		emails.RequestDeniedToRequesterTemplateParams{
-			CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
-				RecipientName: requesterName,
-				Project:       emails.CLAProjectParams{ExternalProjectName: projectName},
-				CompanyName:   companyName,
-			},
-		})
-
+	recipients := []string{emailParams.RecipientAddress}
+	body, err := emails.RenderRequestDeniedToRequesterTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emails.RequestDeniedToRequesterTemplateParams{
+		CommonEmailParams: emailParams,
+	})
 	if err != nil {
 		log.Warnf("email template rendering %s failed : %v", emails.RequestDeniedToRequesterTemplateName, err)
 		return

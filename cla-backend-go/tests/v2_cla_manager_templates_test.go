@@ -14,17 +14,18 @@ import (
 
 func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 	params := emails.V2ContributorApprovalRequestTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       emails.CLAProjectParams{ExternalProjectName: "JohnsProject"},
 			CompanyName:   "JohnsCompany",
 		},
-		Projects: []emails.CLAProjectParams{
-			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
-			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{
+			Projects: []emails.CLAProjectParams{
+				{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
+				{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
+			},
+			CorporateConsole: "http://CorporateConsoleV2URL.com",
 		},
-		UserDetails:           "UserDetailsValue",
-		CorporateConsoleV2URL: "http://CorporateConsoleV2URL.com",
+		UserDetails: "UserDetailsValue",
 	}
 
 	result, err := emails.RenderTemplate(utils.V1, emails.V2ContributorApprovalRequestTemplateName, emails.V2ContributorApprovalRequestTemplate,
@@ -50,20 +51,22 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 
 func TestV2OrgAdminTemplate(t *testing.T) {
 	params := emails.V2OrgAdminTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
+			CompanyName:   "JohnsCompany",
 			RecipientName: "JohnsClaManager",
-			Project: emails.CLAProjectParams{
+		},
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{
+			Projects: []emails.CLAProjectParams{{
 				ExternalProjectName: "JohnsProject",
 				ProjectSFID:         "ProjectSFIDValue",
 				FoundationSFID:      "FoundationSFIDValue",
 				CorporateConsole:    "http://CorporateConsole.com",
-			},
-			CLAGroupName: "JohnsCLAGroupName",
-			CompanyName:  "JohnsCompany",
+			}},
+			CLAGroupName:     "JohnsCLAGroupName",
+			CorporateConsole: "http://CorporateConsole.com",
 		},
-		SenderName:       "SenderNameValue",
-		SenderEmail:      "SenderEmailValue",
-		CorporateConsole: "http://CorporateConsole.com",
+		SenderName:  "SenderNameValue",
+		SenderEmail: "SenderEmailValue",
 	}
 
 	result, err := emails.RenderTemplate(utils.V1, emails.V2OrgAdminTemplateName, emails.V2OrgAdminTemplate,
@@ -80,18 +83,20 @@ func TestV2OrgAdminTemplate(t *testing.T) {
 
 func TestV2ContributorToOrgAdminTemplate(t *testing.T) {
 	params := emails.V2ContributorToOrgAdminTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       emails.CLAProjectParams{ExternalProjectName: "JohnsProject"},
-			CLAGroupName:  "JohnsCLAGroupName",
 			CompanyName:   "JohnsCompany",
 		},
-		Projects: []emails.CLAProjectParams{
-			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
-			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{
+			Projects: []emails.CLAProjectParams{
+				{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
+				{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
+			},
+			CLAGroupName:     "JohnsCLAGroupName",
+			CorporateConsole: "http://CorporateConsole.com",
 		},
-		UserDetails:      "UserDetailsValue",
-		CorporateConsole: "http://CorporateConsole.com",
+
+		UserDetails: "UserDetailsValue",
 	}
 
 	result, err := emails.RenderTemplate(utils.V1, emails.V2ContributorToOrgAdminTemplateName, emails.V2ContributorToOrgAdminTemplate,
@@ -107,20 +112,22 @@ func TestV2ContributorToOrgAdminTemplate(t *testing.T) {
 
 func TestV2CLAManagerDesigneeCorporateTemplate(t *testing.T) {
 	params := emails.V2CLAManagerDesigneeCorporateTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project: emails.CLAProjectParams{
+			CompanyName:   "JohnsCompany",
+		},
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{
+			CLAGroupName: "JohnsCLAGroupName",
+			Projects: []emails.CLAProjectParams{{
 				ExternalProjectName: "JohnsProject",
 				FoundationSFID:      "FoundationSFIDValue",
 				ProjectSFID:         "ProjectSFIDValue",
 				CorporateConsole:    "http://CorporateConsole.com",
-			},
-			CLAGroupName: "JohnsCLAGroupName",
-			CompanyName:  "JohnsCompany",
+			}},
+			CorporateConsole: "http://CorporateConsole.com",
 		},
-		SenderName:       "SenderNameValue",
-		SenderEmail:      "SenderEmailValue",
-		CorporateConsole: "http://CorporateConsole.com",
+		SenderName:  "SenderNameValue",
+		SenderEmail: "SenderEmailValue",
 	}
 
 	result, err := emails.RenderTemplate(utils.V1, emails.V2CLAManagerDesigneeCorporateTemplateName, emails.V2CLAManagerDesigneeCorporateTemplate,
@@ -137,10 +144,15 @@ func TestV2CLAManagerDesigneeCorporateTemplate(t *testing.T) {
 
 func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 	params := emails.V2ToCLAManagerDesigneeTemplateParams{
-		RecipientName: "JohnsClaManager",
-		Projects: []emails.CLAProjectParams{
-			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
-			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
+		CommonEmailParams: emails.CommonEmailParams{
+			RecipientName: "JohnsClaManager",
+		},
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{
+			Projects: []emails.CLAProjectParams{
+				{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
+				{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
+			},
+			CorporateConsole: "http://CorporateConsole.com",
 		},
 		Contributor: emails.Contributor{
 			Email:         "ContributorEmailValue",
@@ -148,7 +160,6 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 			EmailLabel:    utils.EmailLabel,
 			UsernameLabel: utils.UserLabel,
 		},
-		CorporateConsole: "http://CorporateConsole.com",
 	}
 
 	result, err := emails.RenderTemplate(utils.V1, emails.V2ToCLAManagerDesigneeTemplateName, emails.V2ToCLAManagerDesigneeTemplate,
@@ -177,18 +188,23 @@ func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
 
 func TestV2DesigneeToUserWithNoLFIDTemplate(t *testing.T) {
 	params := emails.V2ToCLAManagerDesigneeTemplateParams{
-		RecipientName: "JohnsClaManager",
-		Projects: []emails.CLAProjectParams{
-			{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "https://corporate.dev.lfcla.com"},
-			{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "https://corporate.dev.lfcla.com"},
+		CommonEmailParams: emails.CommonEmailParams{
+			RecipientName: "JohnsClaManager",
 		},
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{
+			Projects: []emails.CLAProjectParams{
+				{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "https://corporate.dev.lfcla.com"},
+				{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "https://corporate.dev.lfcla.com"},
+			},
+			CorporateConsole: "https://corporate.dev.lfcla.com",
+		},
+
 		Contributor: emails.Contributor{
 			Email:         "ContributorEmail",
 			Username:      "ContributorUsername",
 			EmailLabel:    utils.EmailLabel,
 			UsernameLabel: utils.UserLabel,
 		},
-		CorporateConsole: "https://corporate.dev.lfcla.com",
 	}
 
 	result, err := emails.RenderTemplate(utils.V1, emails.V2DesigneeToUserWithNoLFIDTemplateName, emails.V2DesigneeToUserWithNoLFIDTemplate,
@@ -212,16 +228,18 @@ func TestV2DesigneeToUserWithNoLFIDTemplate(t *testing.T) {
 
 func TestV2CLAManagerToUserWithNoLFIDTemplate(t *testing.T) {
 	params := emails.V2CLAManagerToUserWithNoLFIDTemplateParams{
-		CLAManagerTemplateParams: emails.CLAManagerTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project: emails.CLAProjectParams{ExternalProjectName: "JohnsProjectExternal",
+			CompanyName:   "JohnsCompany",
+		},
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{
+			Projects: []emails.CLAProjectParams{{ExternalProjectName: "JohnsProjectExternal",
 				CorporateConsole:        "http://CorporateConsole.com",
 				SignedAtFoundationLevel: false,
 				ProjectSFID:             "ProjectSFID",
 				FoundationSFID:          "FoundationSFID",
-			},
+			}},
 			CLAGroupName: "JohnsCLAGroupName",
-			CompanyName:  "JohnsCompany",
 		},
 		RequesterUserName: "RequesterUserNameValue",
 		RequesterEmail:    "RequesterEmailValue",

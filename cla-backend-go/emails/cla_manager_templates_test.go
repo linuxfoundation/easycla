@@ -12,14 +12,17 @@ import (
 
 func TestRemovedCLAManagerTemplate(t *testing.T) {
 	params := RemovedCLAManagerTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
-			CLAManagers: []ClaManagerInfoParams{
-				{LfUsername: "LFUserName", Email: "LFEmail"},
-			},
+		},
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects: []CLAProjectParams{
+				{ExternalProjectName: "JohnsProjectExternal"}},
+			CLAGroupName: "JohnsProject",
+		},
+		CLAManagers: []ClaManagerInfoParams{
+			{LfUsername: "LFUserName", Email: "LFEmail"},
 		},
 	}
 
@@ -33,12 +36,12 @@ func TestRemovedCLAManagerTemplate(t *testing.T) {
 
 	// even if the foundation is set we should show the project name
 	// because 0 child projects under the claGroup
-	params.CLAManagerTemplateParams.Project.FoundationName = "CNCF"
+	params.CLAGroupTemplateParams.Projects[0].FoundationName = "CNCF"
 	result, err = RenderTemplate(utils.V1, RemovedCLAManagerTemplateName, RemovedCLAManagerTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project JohnsProject")
+	assert.Contains(t, result, "for the project JohnsProject")
 
 	// then we increase the child project count so we should get the FoundationName instead of project name
 	params.ChildProjectCount = 2
@@ -51,15 +54,19 @@ func TestRemovedCLAManagerTemplate(t *testing.T) {
 
 func TestRequestAccessToCLAManagersTemplate(t *testing.T) {
 	params := RequestAccessToCLAManagersTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
+		},
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects: []CLAProjectParams{
+				{ExternalProjectName: "JohnsProjectExternal"},
+			},
+			CLAGroupName:     "JohnsProject",
+			CorporateConsole: "http://CorporateURL.com",
 		},
 		RequesterName:  "RequesterName",
 		RequesterEmail: "RequesterEmail",
-		CorporateURL:   "http://CorporateURL.com",
 	}
 
 	result, err := RenderTemplate(utils.V1, RequestAccessToCLAManagersTemplateName, RequestAccessToCLAManagersTemplate,
@@ -79,11 +86,15 @@ func TestRequestAccessToCLAManagersTemplate(t *testing.T) {
 
 func TestRequestApprovedToCLAManagersTemplate(t *testing.T) {
 	params := RequestApprovedToCLAManagersTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
+		},
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects: []CLAProjectParams{
+				{ExternalProjectName: "JohnsProjectExternal"},
+			},
+			CLAGroupName: "JohnsProject",
 		},
 		RequesterName:  "RequesterName",
 		RequesterEmail: "RequesterEmail",
@@ -102,13 +113,15 @@ func TestRequestApprovedToCLAManagersTemplate(t *testing.T) {
 
 func TestRequestApprovedToRequesterTemplateParams(t *testing.T) {
 	params := RequestApprovedToRequesterTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
 		},
-		CorporateURL: "http://CorporateURL.com",
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects:         []CLAProjectParams{{ExternalProjectName: "JohnsProjectExternal"}},
+			CLAGroupName:     "JohnsProject",
+			CorporateConsole: "http://CorporateURL.com",
+		},
 	}
 
 	result, err := RenderTemplate(utils.V1, RequestApprovedToRequesterTemplateName, RequestApprovedToRequesterTemplate,
@@ -125,11 +138,13 @@ func TestRequestApprovedToRequesterTemplateParams(t *testing.T) {
 
 func TestRequestDeniedToCLAManagersTemplate(t *testing.T) {
 	params := RequestDeniedToCLAManagersTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
+		},
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects:     []CLAProjectParams{{ExternalProjectName: "JohnsProjectExternal"}},
+			CLAGroupName: "JohnsProject",
 		},
 		RequesterName:  "RequesterName",
 		RequesterEmail: "RequesterEmail",
@@ -147,11 +162,13 @@ func TestRequestDeniedToCLAManagersTemplate(t *testing.T) {
 
 func TestRequestDeniedToRequesterTemplate(t *testing.T) {
 	params := RequestDeniedToRequesterTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
+		},
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects:     []CLAProjectParams{{ExternalProjectName: "JohnsProjectExternal"}},
+			CLAGroupName: "JohnsProject",
 		},
 	}
 
@@ -166,34 +183,38 @@ func TestRequestDeniedToRequesterTemplate(t *testing.T) {
 
 func TestClaManagerAddedEToUserTemplate(t *testing.T) {
 	params := ClaManagerAddedEToUserTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
 		},
-		CorporateURL: "http://CorporateURL.com",
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects:         []CLAProjectParams{{ExternalProjectName: "JohnsProjectExternal"}},
+			CLAGroupName:     "JohnsProject",
+			CorporateConsole: "http://CorporateURL.com",
+		},
 	}
 
 	result, err := RenderTemplate(utils.V1, ClaManagerAddedEToUserTemplateName, ClaManagerAddedEToUserTemplate,
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project JohnsProject")
-	assert.Contains(t, result, "CLA Manager from JohnsCompany for the project JohnsProject")
-	assert.Contains(t, result, "allowed to contribute to JohnsProject")
-	assert.Contains(t, result, "CLA Managers for JohnsProject")
+	assert.Contains(t, result, "regarding the project JohnsProjectExternal")
+	assert.Contains(t, result, "CLA Manager for the organization JohnsCompany and the project JohnsProjectExternal")
+	assert.Contains(t, result, "allowed to contribute to the project JohnsProjectExternal")
+	assert.Contains(t, result, "CLA Managers for the CLA Group JohnsProject")
 	assert.Contains(t, result, "<a href=\"http://CorporateURL.com\" target=\"_blank\">")
 	assert.Contains(t, result, "and then the project JohnsProject")
 }
 
 func TestClaManagerAddedToCLAManagersTemplate(t *testing.T) {
 	params := ClaManagerAddedToCLAManagersTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
+		},
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects:     []CLAProjectParams{{ExternalProjectName: "JohnsProjectExternal"}},
+			CLAGroupName: "JohnsProject",
 		},
 		Name:  "John",
 		Email: "john@example.com",
@@ -213,11 +234,13 @@ func TestClaManagerAddedToCLAManagersTemplate(t *testing.T) {
 
 func TestClaManagerDeletedToCLAManagersTemplate(t *testing.T) {
 	params := ClaManagerDeletedToCLAManagersTemplateParams{
-		CLAManagerTemplateParams: CLAManagerTemplateParams{
+		CommonEmailParams: CommonEmailParams{
 			RecipientName: "JohnsClaManager",
-			Project:       CLAProjectParams{ExternalProjectName: "JohnsProjectExternal"},
-			CLAGroupName:  "JohnsProject",
 			CompanyName:   "JohnsCompany",
+		},
+		CLAGroupTemplateParams: CLAGroupTemplateParams{
+			Projects:     []CLAProjectParams{{ExternalProjectName: "JohnsProjectExternal"}},
+			CLAGroupName: "JohnsProject",
 		},
 		Name:  "John",
 		Email: "john@example.com",
