@@ -47,12 +47,12 @@ type service struct {
 	usersService         users.Service
 	sigService           signatures.SignatureService
 	eventsService        events.Service
-	emailServie          emails.EmailTemplateService
+	emailTemplateService emails.EmailTemplateService
 	corporateConsoleURL  string
 }
 
 // NewService creates a new service object
-func NewService(repo IRepository, projectClaRepository projects_cla_groups.Repository, companyService company.IService, projectService project.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, corporateConsoleURL string) IService {
+func NewService(repo IRepository, projectClaRepository projects_cla_groups.Repository, companyService company.IService, projectService project.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, emailTemplateService emails.EmailTemplateService, corporateConsoleURL string) IService {
 	return service{
 		repo:                 repo,
 		projectClaRepository: projectClaRepository,
@@ -61,6 +61,7 @@ func NewService(repo IRepository, projectClaRepository projects_cla_groups.Repos
 		usersService:         usersService,
 		sigService:           sigService,
 		eventsService:        eventsService,
+		emailTemplateService: emailTemplateService,
 		corporateConsoleURL:  corporateConsoleURL,
 	}
 }
@@ -233,7 +234,7 @@ func (s service) AddClaManager(ctx context.Context, companyID string, claGroupID
 
 	// Notify CLA Managers - send email to each manager
 	for _, manager := range claManagers {
-		sendClaManagerAddedEmailToCLAManagers(s.emailServie, emails.ClaManagerAddedToCLAManagersTemplateParams{
+		sendClaManagerAddedEmailToCLAManagers(s.emailTemplateService, emails.ClaManagerAddedToCLAManagersTemplateParams{
 			CommonEmailParams: emails.CommonEmailParams{
 				RecipientName:    manager.Username,
 				RecipientAddress: manager.LfEmail,
@@ -244,7 +245,7 @@ func (s service) AddClaManager(ctx context.Context, companyID string, claGroupID
 		}, claGroupModel)
 	}
 	// Notify the added user
-	sendClaManagerAddedEmailToUser(s.emailServie, emails.CommonEmailParams{
+	sendClaManagerAddedEmailToUser(s.emailTemplateService, emails.CommonEmailParams{
 		RecipientName:    userModel.Username,
 		RecipientAddress: userModel.LfEmail,
 		CompanyName:      companyModel.CompanyName,
@@ -345,7 +346,7 @@ func (s service) RemoveClaManager(ctx context.Context, companyID string, claGrou
 	claManagers := sigModel.SignatureACL
 	// Notify CLA Managers - send email to each manager
 	for _, manager := range claManagers {
-		sendClaManagerDeleteEmailToCLAManagers(s.emailServie, emails.ClaManagerDeletedToCLAManagersTemplateParams{
+		sendClaManagerDeleteEmailToCLAManagers(s.emailTemplateService, emails.ClaManagerDeletedToCLAManagersTemplateParams{
 			CommonEmailParams: emails.CommonEmailParams{
 				RecipientName:    manager.Username,
 				RecipientAddress: manager.LfEmail,
@@ -357,7 +358,7 @@ func (s service) RemoveClaManager(ctx context.Context, companyID string, claGrou
 	}
 
 	// Notify the removed manager
-	sendRemovedClaManagerEmailToRecipient(s.emailServie, emails.CommonEmailParams{
+	sendRemovedClaManagerEmailToRecipient(s.emailTemplateService, emails.CommonEmailParams{
 		RecipientName:    userModel.LfUsername,
 		RecipientAddress: userModel.LfEmail,
 		CompanyName:      companyModel.CompanyName,

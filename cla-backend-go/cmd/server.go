@@ -269,7 +269,7 @@ func server(localMode bool) http.Handler {
 	v2SignService := sign.NewService(configFile.ClaV1ApiURL, v1CompanyRepo, projectRepo, projectClaGroupRepo, v1CompanyService)
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation)
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, projectClaGroupRepo)
-	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, projectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, configFile.CorporateConsoleURL)
+	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, projectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleURL)
 	v1RepositoriesService := repositories.NewService(repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo)
 	v2RepositoriesService := v2Repositories.NewService(repositoriesRepo, projectClaGroupRepo, githubOrganizationsRepo)
 	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, projectClaGroupRepo)

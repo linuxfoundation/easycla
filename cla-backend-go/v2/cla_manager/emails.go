@@ -46,16 +46,13 @@ type ToCLAManagerDesigneeModel struct {
 	projectNames     []string
 	projectSFIDs     []string
 	contributorModel emails.Contributor
-	contributorEmail string
-	contributorName  string
 }
 
 // DesigneeEmailToUserWithNoLFIDModel data model for sending emails
 type DesigneeEmailToUserWithNoLFIDModel struct {
 	userWithNoLFIDName  string
 	userWithNoLFIDEmail string
-	requesterUsername   string
-	requesterEmail      string
+	contributorModel    emails.Contributor
 	projectNames        []string
 	projectSFIDs        []string
 	foundationSFID      string
@@ -117,7 +114,7 @@ func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAMa
 
 	subject := fmt.Sprintf("EasyCLA: Approval Request for contributor: %s", getBestUserName(input.Contributor))
 	recipients := []string{input.CLAManagerEmail}
-	body, err := emails.RenderV2ContributorApprovalRequestTemplate(s.emailSvc, projectSFIDs, emails.V2ContributorApprovalRequestTemplateParams{
+	body, err := emails.RenderV2ContributorApprovalRequestTemplate(s.emailTemplateService, projectSFIDs, emails.V2ContributorApprovalRequestTemplateParams{
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.CLAManagerName,
 			CompanyName:   input.CompanyName,
@@ -155,7 +152,7 @@ func (s *service) SendEmailToOrgAdmin(ctx context.Context, input EmailToOrgAdmin
 
 	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA ", input.companyName)
 	recipients := []string{input.adminEmail}
-	body, err := emails.RenderV2OrgAdminTemplate(s.emailSvc, input.projectSFID, emails.V2OrgAdminTemplateParams{
+	body, err := emails.RenderV2OrgAdminTemplate(s.emailTemplateService, input.projectSFID, emails.V2OrgAdminTemplateParams{
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.adminName,
 			CompanyName:   input.companyName,
@@ -192,7 +189,7 @@ func (s *service) ContributorEmailToOrgAdmin(ctx context.Context, input Contribu
 
 	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA and add to approved list %s ", input.companyName, getBestUserName(input.contributor))
 	recipients := []string{input.adminEmail}
-	body, err := emails.RenderV2ContributorToOrgAdminTemplate(s.emailSvc, input.projectSFIDs, emails.V2ContributorToOrgAdminTemplateParams{
+	body, err := emails.RenderV2ContributorToOrgAdminTemplate(s.emailTemplateService, input.projectSFIDs, emails.V2ContributorToOrgAdminTemplateParams{
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.adminName,
 			CompanyName:   input.companyName,
@@ -225,7 +222,7 @@ func (s *service) SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, in
 
 	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA ", input.companyName)
 	recipients := []string{input.designeeEmail}
-	body, err := emails.RenderV2CLAManagerDesigneeCorporateTemplate(s.emailSvc, input.projectSFID, emails.V2CLAManagerDesigneeCorporateTemplateParams{
+	body, err := emails.RenderV2CLAManagerDesigneeCorporateTemplate(s.emailTemplateService, input.projectSFID, emails.V2CLAManagerDesigneeCorporateTemplateParams{
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.designeeName,
 			CompanyName:   input.companyName,
@@ -253,25 +250,20 @@ func (s *service) SendEmailToCLAManagerDesignee(ctx context.Context, input ToCLA
 		"projectNames":     strings.Join(input.projectNames, ","),
 		"designeeEmail":    input.designeeEmail,
 		"designeeName":     input.designeeName,
-		"contributorEmail": input.contributorEmail,
-		"contributorName":  input.contributorName,
+		"contributorEmail": input.contributorModel.Email,
+		"contributorName":  input.contributorModel.Username,
 	}
 
 	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA and add to approved list %s ",
-		input.companyName, input.contributorEmail)
+		input.companyName, input.contributorModel.Email)
 	recipients := []string{input.designeeEmail}
-	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(s.emailSvc, input.projectSFIDs,
+	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(s.emailTemplateService, input.projectSFIDs,
 		emails.V2ToCLAManagerDesigneeTemplateParams{
 			CommonEmailParams: emails.CommonEmailParams{
 				RecipientName: input.designeeName,
 				CompanyName:   input.companyName,
 			},
-			Contributor: emails.Contributor{
-				Email:         input.contributorEmail,
-				Username:      input.contributorName,
-				EmailLabel:    "",
-				UsernameLabel: "",
-			},
+			Contributor: input.contributorModel,
 		}, emails.V2ToCLAManagerDesigneeTemplate, emails.V2ToCLAManagerDesigneeTemplateName)
 
 	if err != nil {
@@ -295,22 +287,19 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, input D
 		"organizationID":      input.organizationID,
 		"projectNames":        strings.Join(input.projectNames, ","),
 		"role":                input.role,
-		"requesterUsername":   input.requesterUsername,
-		"requesterEmail":      input.requesterEmail,
+		"requesterUsername":   input.contributorModel.Username,
+		"requesterEmail":      input.contributorModel.Email,
 	}
 
 	subject := "EasyCLA: Invitation to create LF Login and complete process of becoming CLA Manager"
 
-	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(s.emailSvc, input.projectSFIDs,
+	body, err := emails.RenderV2ToCLAManagerDesigneeTemplate(s.emailTemplateService, input.projectSFIDs,
 		emails.V2ToCLAManagerDesigneeTemplateParams{
-			Contributor: emails.Contributor{
-				Email:    input.requesterEmail,
-				Username: input.requesterUsername,
-			},
 			CommonEmailParams: emails.CommonEmailParams{
 				RecipientName: input.userWithNoLFIDName,
 				CompanyName:   input.companyName,
 			},
+			Contributor: input.contributorModel,
 		}, emails.V2DesigneeToUserWithNoLFIDTemplate, emails.V2DesigneeToUserWithNoLFIDTemplateName)
 
 	if err != nil {
@@ -356,7 +345,7 @@ func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, input EmailToUs
 
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Invitation to create LF Login and complete process of becoming CLA Manager with %s role", input.role)
-	body, err := emails.RenderV2CLAManagerToUserWithNoLFIDTemplate(s.emailSvc, input.projectID, emails.V2CLAManagerToUserWithNoLFIDTemplateParams{
+	body, err := emails.RenderV2CLAManagerToUserWithNoLFIDTemplate(s.emailTemplateService, input.projectID, emails.V2CLAManagerToUserWithNoLFIDTemplateParams{
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.userWithNoLFIDName,
 			CompanyName:   input.companyName,
