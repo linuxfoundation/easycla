@@ -262,7 +262,7 @@ list of company’s CLA Managers for {{.Project.ExternalProjectName}}.</p>
 `
 )
 
-// RenderClaManagerAddedToCLAManagersTemplate renders the RemovedCLAManagerTemplate
+// RenderClaManagerAddedToCLAManagersTemplate renders the ClaManagerAddedToCLAManagersTemplate
 func RenderClaManagerAddedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params ClaManagerAddedToCLAManagersTemplateParams) (string, error) {
 	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
 	if err != nil {

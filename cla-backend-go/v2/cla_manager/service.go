@@ -69,15 +69,15 @@ const (
 )
 
 type service struct {
-	emailSvc            emails.EmailTemplateService
-	companyService      company.IService
-	projectService      project.Service
-	repositoriesService repositories.Service
-	managerService      v1ClaManager.IService
-	easyCLAUserService  easyCLAUser.Service
-	v2CompanyService    v2Company.Service
-	eventService        events.Service
-	projectCGRepo       projects_cla_groups.Repository
+	emailTemplateService emails.EmailTemplateService
+	companyService       company.IService
+	projectService       project.Service
+	repositoriesService  repositories.Service
+	managerService       v1ClaManager.IService
+	easyCLAUserService   easyCLAUser.Service
+	v2CompanyService     v2Company.Service
+	eventService         events.Service
+	projectCGRepo        projects_cla_groups.Repository
 }
 
 // Service interface
@@ -103,19 +103,19 @@ type Service interface {
 }
 
 // NewService returns instance of CLA Manager service
-func NewService(emailSvc emails.EmailTemplateService, compService company.IService, projService project.Service, mgrService v1ClaManager.IService, claUserService easyCLAUser.Service,
+func NewService(emailTemplateService emails.EmailTemplateService, compService company.IService, projService project.Service, mgrService v1ClaManager.IService, claUserService easyCLAUser.Service,
 	repoService repositories.Service, v2CompService v2Company.Service,
 	evService events.Service, projectCGroupRepo projects_cla_groups.Repository) Service {
 	return &service{
-		emailSvc:            emailSvc,
-		companyService:      compService,
-		projectService:      projService,
-		repositoriesService: repoService,
-		managerService:      mgrService,
-		easyCLAUserService:  claUserService,
-		v2CompanyService:    v2CompService,
-		eventService:        evService,
-		projectCGRepo:       projectCGroupRepo,
+		emailTemplateService: emailTemplateService,
+		companyService:       compService,
+		projectService:       projService,
+		repositoriesService:  repoService,
+		managerService:       mgrService,
+		easyCLAUserService:   claUserService,
+		v2CompanyService:     v2CompService,
+		eventService:         evService,
+		projectCGRepo:        projectCGroupRepo,
 	}
 }
 
@@ -1037,8 +1037,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		sendErr := s.SendDesigneeEmailToUserWithNoLFID(ctx, DesigneeEmailToUserWithNoLFIDModel{
 			userWithNoLFIDName:  name,
 			userWithNoLFIDEmail: userEmail,
-			requesterUsername:   contributorModel.Email,
-			requesterEmail:      contributorModel.Email,
+			contributorModel:    contributorModel,
 			projectNames:        projectSFs,
 			projectSFIDs:        projectSFIDs,
 			foundationSFID:      foundationSFID,
@@ -1093,8 +1092,6 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 			companyName:      organization.Name,
 			projectNames:     projectSFs,
 			projectSFIDs:     projectSFIDs,
-			contributorEmail: contributor.LFEmail,
-			contributorName:  contributor.LFUsername,
 			contributorModel: contributorModel,
 		})
 	} else {
