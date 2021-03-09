@@ -126,6 +126,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 				return events.NewGetRecentEventsForbidden().WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
+			log.WithFields(f).Debug("querying foundation events...")
 			result, err := service.GetFoundationEvents(params.FoundationSFID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents), params.SearchTerm)
 			if err != nil {
 				msg := "problem fetching foundation events"

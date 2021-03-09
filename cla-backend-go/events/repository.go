@@ -484,10 +484,21 @@ func buildNextKey(indexName string, event *models.Event) (string, error) {
 
 // GetCompanyFoundationEvents returns the list of events for foundation and company
 func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
+	f := logrus.Fields{
+		"functionName":   "events.repository.GetCompanyFoundationEvents",
+		"companySFID":    companySFID,
+		"companyID":      companyID,
+		"foundationSFID": foundationSFID,
+		"nextKey":        utils.StringValue(nextKey),
+		"paramPageSize":  utils.Int64Value(paramPageSize),
+		"loadAll":        all,
+	}
 	key := fmt.Sprintf("%s#%s", companySFID, foundationSFID)
+	log.WithFields(f).Debugf("adding key condition of 'company_sfid_foundation_sfid = %s'", key)
 	keyCondition := expression.Key("company_sfid_foundation_sfid").Equal(expression.Value(key))
 	var filter expression.ConditionBuilder
 	if companyID != "" {
+		log.WithFields(f).Debugf("adding filter condition of 'event_company_id = %s'", companyID)
 		filter = expression.Name("event_company_id").Equal(expression.Value(companyID))
 	}
 	return repo.queryEventsTable(CompanySFIDFoundationSFIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
@@ -495,10 +506,21 @@ func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, found
 
 // GetCompanyClaGroupEvents returns the list of events for cla group and the company
 func (repo *repository) GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
+	f := logrus.Fields{
+		"functionName":  "events.repository.GetCompanyClaGroupEvents",
+		"companySFID":   companySFID,
+		"companyID":     companyID,
+		"claGroupID":    claGroupID,
+		"nextKey":       utils.StringValue(nextKey),
+		"paramPageSize": utils.Int64Value(paramPageSize),
+		"loadAll":       all,
+	}
 	key := fmt.Sprintf("%s#%s", companySFID, claGroupID)
+	log.WithFields(f).Debugf("adding key condition of 'company_sfid_project_id = %s'", key)
 	keyCondition := expression.Key("company_sfid_project_id").Equal(expression.Value(key))
 	var filter expression.ConditionBuilder
 	if companyID != "" {
+		log.WithFields(f).Debugf("adding filter condition of 'event_company_id = %s'", companyID)
 		filter = expression.Name("event_company_id").Equal(expression.Value(companyID))
 	}
 	return repo.queryEventsTable(CompanySFIDProjectIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
@@ -506,6 +528,14 @@ func (repo *repository) GetCompanyClaGroupEvents(companySFID, companyID, claGrou
 
 // GetCompanyEvents returns the list of events for given company id and event types
 func (repo *repository) GetCompanyEvents(companyID, eventType string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
+	f := logrus.Fields{
+		"functionName":  "events.repository.GetCompanyEvents",
+		"companyID":     companyID,
+		"nextKey":       utils.StringValue(nextKey),
+		"paramPageSize": utils.Int64Value(paramPageSize),
+		"loadAll":       all,
+	}
+	log.WithFields(f).Debugf("adding key condition of 'company_id = %s'", companyID)
 	keyCondition := expression.Key("company_id").Equal(expression.Value(companyID)).And(
 		expression.Key("event_type").Equal(expression.Value(eventType)))
 
@@ -514,12 +544,30 @@ func (repo *repository) GetCompanyEvents(companyID, eventType string, nextKey *s
 
 // GetFoundationEvents returns the list of foundation events
 func (repo *repository) GetFoundationEvents(foundationSFID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
+	f := logrus.Fields{
+		"functionName":   "events.repository.GetFoundationEvents",
+		"foundationSFID": foundationSFID,
+		"nextKey":        utils.StringValue(nextKey),
+		"paramPageSize":  utils.Int64Value(paramPageSize),
+		"loadAll":        all,
+		"searchTerm":     utils.StringValue(searchTerm),
+	}
+	log.WithFields(f).Debugf("adding key condition of 'event_parent_project_sfid = %s'", foundationSFID)
 	keyCondition := expression.Key("event_parent_project_sfid").Equal(expression.Value(foundationSFID))
 	return repo.queryEventsTable(EventFoundationSFIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
 
 // GetClaGroupEvents returns the list of cla-group events
 func (repo *repository) GetClaGroupEvents(claGroupID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
+	f := logrus.Fields{
+		"functionName":  "events.repository.GetClaGroupEvents",
+		"claGroupID":    claGroupID,
+		"nextKey":       utils.StringValue(nextKey),
+		"paramPageSize": utils.Int64Value(paramPageSize),
+		"loadAll":       all,
+		"searchTerm":    utils.StringValue(searchTerm),
+	}
+	log.WithFields(f).Debugf("adding key condition of 'event_cla_group_id = %s'", claGroupID)
 	keyCondition := expression.Key("event_cla_group_id").Equal(expression.Value(claGroupID))
 	return repo.queryEventsTable(EventCLAGroupIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
