@@ -32,6 +32,8 @@ import cla
 from cla.models import model_interfaces, key_value_store_interface, DoesNotExist
 from cla.models.event_types import EventType
 from cla.models.model_interfaces import User, Signature, ProjectCLAGroup, Repository, Gerrit
+from cla.project_service import ProjectService
+from cla.models.model_utils import is_uuidv4
 
 stage = os.environ.get("STAGE", "")
 cla_logo_url = os.environ.get("CLA_BUCKET_LOGO_URL", "")
@@ -4148,9 +4150,11 @@ class EventModel(BaseModel):
     event_cla_group_name_lower = UnicodeAttribute(null=True)
 
     event_project_id = UnicodeAttribute(null=True)
+    event_project_sfid = UnicodeAttribute(null=True)
     event_project_name = UnicodeAttribute(null=True)
     event_project_name_lower = UnicodeAttribute(null=True)
-    event_project_external_id = UnicodeAttribute(null=True)
+    event_parent_project_sfid = UnicodeAttribute(null=True)
+    event_parent_project_name = UnicodeAttribute(null=True)
 
     event_company_id = UnicodeAttribute(null=True)
     event_company_sfid = UnicodeAttribute(null=True)
@@ -4239,8 +4243,10 @@ class Event(model_interfaces.Event):
             f"event cla group name:{self.model.event_cla_group_name}, "
 
             f"event project id:{self.model.event_project_id}, "
+            f"event project sfid: {self.model.event_project_sfid},"
             f"event project name: {self.model.event_project_name}, "
-            f"event project external id: {self.model.event_project_external_id},"
+            f"event parent project sfid:{self.model.event_parent_project_sfid}, "
+            f"event parent project name: {self.model.event_parent_project_name}, "
 
             f"event company id: {self.model.event_company_id}, "
             f"event company sfid: {self.model.event_company_sfid}, "
@@ -4299,14 +4305,20 @@ class Event(model_interfaces.Event):
     def get_event_project_id(self):
         return self.model.event_project_id
 
-    def get_event_project_external_id(self):
-        return self.model.event_project_external_id
+    def get_event_project_sfid(self):
+        return self.model.event_project_sfid
 
     def get_event_project_name(self):
         return self.model.event_project_name
 
     def get_event_project_name_lower(self):
         return self.model.event_project_name_lower
+
+    def get_event_parent_project_sfid(self):
+        return self.model.event_parent_project_sfid
+
+    def get_event_parent_project_name(self):
+        return self.model.event_parent_project_name
 
     def get_event_type(self):
         return self.model.event_type
@@ -4359,65 +4371,103 @@ class Event(model_interfaces.Event):
             ret.append(evt)
         return ret, result_iterator.last_evaluated_key, result_iterator.total_count
 
-    def set_event_data(self, event_data):
+    def set_event_data(self, event_data: str):
         self.model.event_data = event_data
 
-    def set_event_summary(self, event_summary):
+    def set_event_summary(self, event_summary: str):
         self.model.event_summary = event_summary
 
-    def set_event_id(self, event_id):
+    def set_event_id(self, event_id: str):
         self.model.event_id = event_id
 
-    def set_event_company_id(self, company_id):
+    def set_event_company_id(self, company_id: str):
         self.model.event_company_id = company_id
 
-    def set_event_company_sfid(self, company_sfid):
+    def set_event_company_sfid(self, company_sfid: str):
         self.model.event_company_sfid = company_sfid
 
-    def set_event_company_name(self, company_name):
+    def set_event_company_name(self, company_name: str):
         self.model.event_company_name = company_name
         if company_name:
             self.model.event_company_name_lower = company_name.lower()
 
-    def set_event_user_id(self, user_id):
+    def set_event_user_id(self, user_id: str):
         self.model.event_user_id = user_id
 
-    def set_event_cla_group_id(self, event_cla_group_id):
+    def set_event_cla_group_id(self, event_cla_group_id: str):
         self.model.event_cla_group_id = event_cla_group_id
 
-    def set_event_cla_group_name(self, event_cla_group_name):
+    def set_event_cla_group_name(self, event_cla_group_name: str):
         self.model.event_cla_group_name = event_cla_group_name
         if event_cla_group_name:
             self.model.event_cla_group_name_lower = event_cla_group_name.lower()
 
-    def set_event_project_id(self, event_project_id):
+    def set_event_project_id(self, event_project_id: str):
         self.model.event_project_id = event_project_id
 
-    def set_event_project_external_id(self, event_project_external_id):
-        self.model.event_project_external_id = event_project_external_id
+    def set_event_project_sfid(self, event_project_sfid: str):
+        self.model.event_project_sfid = event_project_sfid
 
-    def set_event_project_name(self, event_project_name):
+    def set_event_project_name(self, event_project_name: str):
         self.model.event_project_name = event_project_name
         if event_project_name:
             self.model.event_project_name_lower = event_project_name.lower()
 
-    def set_event_type(self, event_type):
+    def set_event_parent_project_sfid(self, event_parent_project_sfid: str):
+        self.model.event_parent_project_sfid = event_parent_project_sfid
+
+    def set_event_parent_project_name(self, event_parent_project_name: str):
+        self.model.event_parent_project_name = event_parent_project_name
+
+    def set_event_type(self, event_type: str):
         self.model.event_type = event_type
 
-    def set_event_user_name(self, event_user_name):
+    def set_event_user_name(self, event_user_name: str):
         self.model.event_user_name = event_user_name
         self.model.event_user_name_lower = event_user_name.lower()
 
-    def set_event_date_and_contains_pii(self, contains_pii=False):
+    def set_event_date_and_contains_pii(self, contains_pii: bool = False):
         dateDDMMYYYY = datetime.date.today().strftime("%d-%m-%Y")
         self.model.contains_pii = contains_pii
         self.model.event_date = dateDDMMYYYY
         self.model.event_date_and_contains_pii = '{}#{}'.format(dateDDMMYYYY, str(contains_pii).lower())
 
     def set_company_id_external_project_id(self):
-        if self.model.event_project_external_id is not None and self.model.event_company_id is not None:
+        if self.model.event_project_sfid is not None and self.model.event_company_id is not None:
             self.model.company_id_external_project_id = (f'{self.model.event_company_id}'
-                                                         f'#{self.model.event_project_external_id}')
+                                                         f'#{self.model.event_project_sfid}')
+
+    @staticmethod
+    def set_cla_group_details(event, cla_group_id: str):
+        try:
+            project = Project()
+            project.load(str(cla_group_id))
+            event.set_event_cla_group_name(project.get_project_name())
+            event.set_event_project_sfid(project.get_project_external_id())
+            Event.set_project_details(event, project.get_project_external_id())
+        except Exception as err:
+            cla.log.warning(f'unable to set CLA Group name due to the following error: {err}')
+
+    @staticmethod
+    def set_project_details(event, event_project_id: str):
+        try:
+            sf_project = ProjectService.get_project_by_id(event_project_id)
+            if sf_project is not None:
+                event.set_event_project_name(sf_project.get("Name"))
+                # Does this project have a parent?
+                if sf_project.get("Parent") is not None:
+                    # Load the parent to get the name
+                    Event.set_project_parent_details(event, sf_project.get("Parent"))
+        except Exception as err:
+            cla.log.warning(f'unable to set project name and parent ID/name '
+                            f'due to the following error: {err}')
+
+    @staticmethod
+    def set_project_parent_details(event, event_parent_project_id: str):
+        sf_project = ProjectService.get_project_by_id(event_parent_project_id)
+        if sf_project is not None:
+            event.set_event_parent_project_sfid(sf_project.get("ID"))
+            event.set_event_parent_project_name(sf_project.get("Name"))
 
     def search_events(self, **kwargs):
         """
@@ -4464,6 +4514,7 @@ class Event(model_interfaces.Event):
     def create_event(
             cls,
             event_type: Optional[EventType] = None,
+            event_cla_group_id: Optional[str] = None,
             event_project_id: Optional[str] = None,
             event_company_id: Optional[str] = None,
             event_project_name: Optional[str] = None,
@@ -4482,6 +4533,8 @@ class Event(model_interfaces.Event):
         :type event_type: EventType
         :param event_project_id: The project associated with event
         :type event_project_id: string
+        :param event_cla_group_id: The CLA Group ID associated with event
+        :type event_cla_group_id: string
         :param event_project_name: The project name associated with event
         :type event_project_name: string
         :param event_company_id: The company associated with event
@@ -4507,16 +4560,17 @@ class Event(model_interfaces.Event):
                 event_project_name = "undefined"
             if event_company_name is None:
                 event_company_name = "undefined"
-            if event_project_id:
-                try:
-                    project = Project()
-                    project.load(str(event_project_id))
-                    event_project_name = project.get_project_name()
-                    event_project_external_id = project.get_project_external_id()
-                    event.set_event_project_id(event_project_id)
-                    event.set_event_project_external_id(event_project_external_id)
-                except DoesNotExist as err:
-                    return {"errors": {"event_project_id": str(err)}}
+
+            # Handle case where teh event_project_id == CLA Group ID or SalesForce ID
+            if event_project_id and is_uuidv4(event_project_id):  # cla group id in the project_id field
+                Event.set_cla_group_details(event, event_project_id)
+            elif event_project_id and not is_uuidv4(event_project_id):  # external SFID
+                Event.set_project_details(event, event_project_id)
+
+            # if the caller has given us a CLA Group ID
+            if event_cla_group_id is not None:  # cla_group_id
+                Event.set_cla_group_details(event, event_cla_group_id)
+
             if event_company_id:
                 try:
                     company = Company()
@@ -4543,12 +4597,11 @@ class Event(model_interfaces.Event):
             event.set_event_id(str(uuid.uuid4()))
             if event_type:
                 event.set_event_type(event_type.name)
-            event.set_event_project_name(event_project_name)
+            event.set_event_project_name(event_project_name)  # potentially overrides the SF Name
             event.set_event_summary(event_summary)
             event.set_event_company_name(event_company_name)
             event.set_event_data(event_data)
             event.set_event_date_and_contains_pii(contains_pii)
-            event.set_company_id_external_project_id()
             if not dry_run:
                 event.save()
             return {"data": event.to_dict()}

@@ -56,7 +56,7 @@ def test_event_project_id(project):
         event_data=event_data,
         event_summary=event_data,
         event_type=event_types.EventType.DeleteProject,
-        event_project_id=project.get_project_id()
+        event_cla_group_id=project.get_project_id()
     )
     assert 'data' in response
 
@@ -109,14 +109,14 @@ def test_event_time_epoch(mock_event):
 
 
 def test_company_id_external_project_id(mock_event):
-    mock_event.set_event_project_external_id("external_id")
+    mock_event.set_event_project_sfid("external_id")
     mock_event.set_event_company_id("company_id")
     mock_event.set_company_id_external_project_id()
     assert mock_event.get_company_id_external_project_id() == "company_id#external_id"
 
 
 def test_company_id_external_project_id_empty_test1(mock_event):
-    mock_event.set_event_project_external_id("external_id")
+    mock_event.set_event_project_sfid("external_id")
     mock_event.set_company_id_external_project_id()
     assert mock_event.get_company_id_external_project_id() == None
 

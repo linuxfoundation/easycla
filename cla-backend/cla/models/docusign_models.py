@@ -597,7 +597,7 @@ class DocuSign(signing_service_interface.SigningService):
                 event_type=EventType.UserAssociatedWithCompany,
                 event_company_id=actual_company_id,
                 event_company_name=company.get_company_name(),
-                event_project_id=project_id,
+                event_cla_group_id=project_id,
                 event_project_name=project.get_project_name(),
                 event_user_id=user.get_user_id(),
                 event_user_name=user.get_user_name() if user else None,
@@ -706,7 +706,7 @@ class DocuSign(signing_service_interface.SigningService):
         Event.create_event(
             event_type=EventType.EmployeeSignatureCreated,
             event_company_id=company_id,
-            event_project_id=project_id,
+            event_cla_group_id=project_id,
             event_user_id=user_id,
             event_user_name=user.get_user_name() if user else None,
             event_data=event_data,
@@ -808,7 +808,7 @@ class DocuSign(signing_service_interface.SigningService):
         Event.create_event(
             event_type=EventType.EmployeeSignatureCreated,
             event_company_id=company_id,
-            event_project_id=project_id,
+            event_cla_group_id=project_id,
             event_user_id=user_id,
             event_user_name=user.get_user_name() if user else None,
             event_data=event_data,
@@ -1473,7 +1473,7 @@ class DocuSign(signing_service_interface.SigningService):
                                  f'project {project.get_project_name()} with project ID: {project.get_project_id()}.')
                 Event.create_event(
                     event_type=EventType.IndividualSignatureSigned,
-                    event_project_id=signature.get_signature_project_id(),
+                    event_cla_group_id=signature.get_signature_project_id(),
                     event_company_id=None,
                     event_user_id=signature.get_signature_reference_id(),
                     event_user_name=user.get_user_name() if user else None,
@@ -1527,7 +1527,7 @@ class DocuSign(signing_service_interface.SigningService):
                                  f'project {project.get_project_name()} with project ID: {project.get_project_id()}.')
                 Event.create_event(
                     event_type=EventType.IndividualSignatureSigned,
-                    event_project_id=signature.get_signature_project_id(),
+                    event_cla_group_id=signature.get_signature_project_id(),
                     event_company_id=None,
                     event_user_id=user.get_user_id(),
                     event_user_name=user.get_user_name(),
@@ -1679,7 +1679,7 @@ class DocuSign(signing_service_interface.SigningService):
                                  f'the project ID: {project.get_project_id()}.')
                 Event.create_event(
                     event_type=EventType.IndividualSignatureSigned,
-                    event_project_id=project_id,
+                    event_cla_group_id=project_id,
                     event_company_id=None,
                     event_user_id=user.get_user_id(),
                     event_user_name=user.get_user_name(),
@@ -1699,7 +1699,7 @@ class DocuSign(signing_service_interface.SigningService):
                                  f'by {signature.get_signatory_name()}.')
                 Event.create_event(
                     event_type=EventType.CompanySignatureSigned,
-                    event_project_id=project_id,
+                    event_cla_group_id=project_id,
                     event_company_id=company.get_company_id(),
                     event_user_id=user.get_user_id(),
                     event_user_name=signature.get_signatory_name(),

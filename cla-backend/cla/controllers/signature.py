@@ -136,7 +136,7 @@ def create_signature(signature_project_id,  # pylint: disable=too-many-arguments
         event_data=event_data,
         event_summary=event_data,
         event_type=EventType.CreateSignature,
-        event_project_id=signature_project_id,
+        event_cla_group_id=str(signature_project_id),
         contains_pii=False,
     )
 
@@ -303,6 +303,7 @@ def update_signature(signature_id,  # pylint: disable=too-many-arguments,too-man
         event_data=event_data,
         event_summary=event_data,
         event_type=EventType.UpdateSignature,
+        event_cla_group_id=signature.get_signature_project_id(),
         contains_pii=True,
     )
 
@@ -390,6 +391,7 @@ def notify_whitelist_change(auth_user, old_signature: Signature, new_signature: 
         event_type=EventType.NotifyWLChange,
         event_company_name=company_name,
         event_project_name=project_name,
+        event_cla_group_id=new_signature.get_signature_project_id(),
         contains_pii=True,
     )
 
@@ -688,8 +690,10 @@ def delete_signature(signature_id):
     :type signature_id: UUID
     """
     signature = Signature()
+    cla_group_id = ''
     try:  # Try to load the signature to delete.
         signature.load(str(signature_id))
+        cla_group_id = signature.get_signature_project_id()
     except DoesNotExist as err:
         # Should we bother sending back an error?
         return {'errors': {'signature_id': str(err)}}
@@ -698,6 +702,7 @@ def delete_signature(signature_id):
     Event.create_event(
         event_data=event_data,
         event_summary=event_data,
+        event_cla_group_id=cla_group_id,
         event_type=EventType.DeleteSignature,
         contains_pii=False,
     )
@@ -976,6 +981,7 @@ def add_cla_manager(auth_user: AuthUser, signature_id: str, lfid: str):
     event_data = f'{lfid} added as cla manager to Signature ACL for {signature.get_signature_id()}'
     Event.create_event(
         event_data=event_data,
+        event_cla_group_id=signature.get_signature_project_id(),
         event_summary=event_data,
         event_type=EventType.AddCLAManager,
         contains_pii=True,
@@ -1041,6 +1047,7 @@ def remove_cla_manager(username, signature_id, lfid):
         event_data=event_data,
         event_summary=event_data,
         event_type=EventType.RemoveCLAManager,
+        event_cla_group_id=project.get_project_id(),
         contains_pii=True,
     )
 

@@ -193,7 +193,7 @@ repository. This will permit them to begin contributing to {project_name} on beh
                   f'as {user_name} <{user_email}>')
     Event.create_event(
         event_user_id=user_id,
-        event_project_id=project_id,
+        event_cla_group_id=project_id,
         event_company_id=company_id,
         event_type=EventType.RequestCompanyWL,
         event_data=event_data,
@@ -288,6 +288,7 @@ def invite_cla_manager(contributor_id, contributor_name, contributor_email, cla_
         event_data=log_msg,
         event_summary=log_msg,
         event_type=EventType.InviteAdmin,
+        event_cla_group_id=project.get_project_id(),
         contains_pii=True,
     )
 
@@ -331,6 +332,7 @@ def request_company_ccla(user_id, user_email, company_id, project_id):
         event_type=EventType.RequestCCLA,
         event_user_id=user_id,
         event_company_id=company_id,
+        event_cla_group_id=project.get_project_id(),
         contains_pii=False,
     )
 

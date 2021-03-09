@@ -224,7 +224,8 @@ def create_project(project_external_id, project_name, project_icla_enabled, proj
     event_data = 'Project-{} created'.format(project_name)
     Event.create_event(
         event_type=EventType.CreateProject,
-        event_project_id=project.get_project_id(),
+        event_cla_group_id=project.get_project_id(),
+        event_project_id=project_external_id,
         event_data=event_data,
         event_summary=event_data,
         contains_pii=False,
@@ -277,7 +278,7 @@ def update_project(project_id, project_name=None, project_icla_enabled=None,
     event_data = f'Project- {project_id} Updates: ' + updated_string
     Event.create_event(
         event_type=EventType.UpdateProject,
-        event_project_id=project.get_project_id(),
+        event_cla_group_id=project.get_project_id(),
         event_data=event_data,
         event_summary=event_data,
         contains_pii=False,
@@ -304,7 +305,7 @@ def delete_project(project_id, username=None):
     event_data = 'Project-{} deleted'.format(project.get_project_name())
     Event.create_event(
         event_type=EventType.DeleteProject,
-        event_project_id=project_id,
+        event_cla_group_id=project_id,
         event_data=event_data,
         event_summary=event_data,
         contains_pii=False,
@@ -476,7 +477,7 @@ def post_project_document(project_id,
     event_data = 'Created new document for Project-{} '.format(project.get_project_name())
     Event.create_event(
         event_type=EventType.CreateProjectDocument,
-        event_project_id=project.get_project_id(),
+        event_cla_group_id=project.get_project_id(),
         event_data=event_data,
         event_summary=event_data,
         contains_pii=False,
@@ -554,7 +555,7 @@ def post_project_document_template(project_id,
         project.get_project_name(), template_name)
     Event.create_event(
         event_type=EventType.CreateProjectDocumentTemplate,
-        event_project_id=project.get_project_id(),
+        event_cla_group_id=project.get_project_id(),
         event_data=event_data,
         event_summary=event_data,
         contains_pii=False,
@@ -598,7 +599,7 @@ def delete_project_document(project_id, document_type, major_version, minor_vers
     Event.create_event(
         event_data=event_data,
         event_summary=event_data,
-        event_project_id=project_id,
+        event_cla_group_id=project_id,
         event_type=EventType.DeleteProjectDocument,
         contains_pii=False,
     )
@@ -876,7 +877,7 @@ def add_project_manager(username, project_id, lfid):
         event_type=EventType.AddProjectManager,
         event_data=event_data,
         event_summary=event_data,
-        event_project_id=project_id,
+        event_cla_group_id=project_id,
         contains_pii=True,
     )
 
@@ -928,7 +929,7 @@ def remove_project_manager(username, project_id, lfid):
         event_type=EventType.RemoveProjectManager,
         event_data=event_data,
         event_summary=event_data,
-        event_project_id=project_id,
+        event_cla_group_id=project_id,
         contains_pii=True,
     )
 

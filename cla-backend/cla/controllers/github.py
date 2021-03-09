@@ -480,8 +480,7 @@ def handle_installation_repositories_added_event(action: str, body: dict):
                        'to the CLA configuration. GitHub organization was set to auto-enable.')
                 Event.create_event(
                     event_type=EventType.RepositoryAdded,
-                    event_project_id=cla_group_id,
-                    event_project_name=project_model.get_project_name(),
+                    event_cla_group_id=cla_group_id,
                     event_company_id=None,
                     event_data=msg,
                     event_summary=msg,
@@ -544,8 +543,7 @@ def handle_installation_repositories_removed_event(action: str, body: dict):
         # Log the event
         Event.create_event(
             event_type=EventType.RepositoryDisable,
-            event_project_id=repo.get_repository_project_id(),
-            event_project_name=project_model.get_project_name(),
+            event_cla_group_id=repo.get_repository_project_id(),
             event_company_id=None,
             event_data=msg,
             event_summary=msg,

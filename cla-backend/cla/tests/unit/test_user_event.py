@@ -17,7 +17,7 @@ def create_event_user():
     user_controller.create_event = Mock()
 
 
-class TestRequestCompanyWhitelist:
+class TestRequestCompanyApprovalList:
 
     def setup(self) -> None:
         self.old_load = User.load
@@ -43,7 +43,7 @@ class TestRequestCompanyWhitelist:
         Project.load = self.project_load
         Project.get_project_name = self.get_project_name
 
-    def test_request_company_whitelist(self, create_event_user, project, company, user):
+    def test_request_company_approval_list(self, create_event_user, project, company, user):
         """ Test user requesting to be added to the Approved List event """
         with patch('cla.controllers.user.Event.create_event') as mock_event:
             event_type = EventType.RequestCompanyWL
@@ -55,6 +55,7 @@ class TestRequestCompanyWhitelist:
             Company.get_company_name = Mock(return_value=company.get_company_name())
             Project.load = Mock()
             Project.get_project_name = Mock(return_value=project.get_project_name())
+            Project.get_project_id = Mock(return_value=project.get_project_id())
             user_controller.get_email_service = Mock()
             user_controller.send = Mock()
             user_controller.request_company_whitelist(
@@ -75,7 +76,7 @@ class TestRequestCompanyWhitelist:
 
             mock_event.assert_called_once_with(
                 event_user_id=user.get_user_id(),
-                event_project_id=project.get_project_id(),
+                event_cla_group_id=project.get_project_id(),
                 event_company_id=company.get_company_id(),
                 event_type=event_type,
                 event_data=event_data,
@@ -113,6 +114,7 @@ class TestInviteClaManager:
         cla_manager_name = "admin"
         cla_manager_email = "foo@admin.com"
         project_name = "foo_project"
+        project_id = "foo_project_id"
         company_name = "Test Company"
         event_data = (f'sent email to CLA Manager: {cla_manager_name} with email {cla_manager_email} '
                       f'for project {project_name} and company {company_name} '
@@ -125,8 +127,9 @@ class TestInviteClaManager:
             event_user_id=contributor_id,
             event_project_name=project_name,
             event_data=event_data,
-            event_type=EventType.InviteAdmin,
             event_summary=event_data,
+            event_type=EventType.InviteAdmin,
+            event_cla_group_id=project_id,
             contains_pii=True,
         )
 
@@ -158,6 +161,7 @@ class TestRequestCompanyCCLA:
         Company.load = Mock()
         Project.load = Mock()
         Project.get_project_name = Mock(return_value=project.get_project_name())
+        Project.get_project_id = Mock(return_value=project.get_project_id())
         manager = User(lf_username="harold", user_email="foo@gmail.com")
         Company.get_managers = Mock(return_value=[manager, ])
         event_data = f"Sent email to sign ccla for {project.get_project_name()}"
@@ -171,5 +175,6 @@ class TestRequestCompanyCCLA:
             event_type=EventType.RequestCCLA,
             event_user_id=user.get_user_id(),
             event_company_id=company.get_company_id(),
+            event_cla_group_id=project.get_project_id(),
             contains_pii=False,
         )

@@ -1,20 +1,16 @@
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
 
-import os
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
-from falcon import HTTP_200
-from pynamodb.tests.deep_eq import deep_eq
+from unittest.mock import Mock, patch
 
 import cla
 from cla.auth import AuthUser
 from cla.controllers import project as project_controller
-from cla.models.dynamo_models import Project, User, Document, UserPermissions, Event
+from cla.models.dynamo_models import Project, User, Document, UserPermissions
 from cla.models.event_types import EventType
 
 PATCH_METHOD = "pynamodb.connection.Connection._make_api_call"
+
 
 @patch('cla.controllers.project.Event.create_event')
 def test_event_delete_project(mock_event, project):
@@ -33,11 +29,12 @@ def test_event_delete_project(mock_event, project):
     # Check whether audit event service is invoked
     mock_event.assert_called_with(
         event_type=expected_event_type,
-        event_project_id=project_id,
+        event_cla_group_id=project_id,
         event_data=expected_event_data,
         event_summary=expected_event_data,
         contains_pii=False,
     )
+
 
 @patch('cla.controllers.project.Event.create_event')
 def test_event_create_project(mock_event):
@@ -70,11 +67,13 @@ def test_event_create_project(mock_event):
     # Test for audit event
     mock_event.assert_called_with(
         event_type=event_type,
-        event_project_id=project_id,
+        event_cla_group_id=project_id,
+        event_project_id=project_external_id,
         event_data=expected_event_data,
         event_summary=expected_event_data,
         contains_pii=False,
     )
+
 
 @patch('cla.controllers.project.Event.create_event')
 def test_event_update_project(mock_event, project):
@@ -101,9 +100,10 @@ def test_event_update_project(mock_event, project):
         event_type=event_type,
         event_data=expected_event_data,
         event_summary=expected_event_data,
-        event_project_id=project_id,
+        event_cla_group_id=project_id,
         contains_pii=False,
     )
+
 
 @patch('cla.controllers.project.Event.create_event')
 def test_create_project_document(mock_event, project):
@@ -139,8 +139,13 @@ def test_create_project_document(mock_event, project):
         new_major_version=False,
     )
     mock_event.assert_called_with(
-        event_type=event_type, event_project_id=project_id, event_data=event_data, event_summary=event_data, contains_pii=False,
+        event_type=event_type,
+        event_cla_group_id=project_id,
+        event_data=event_data,
+        event_summary=event_data,
+        contains_pii=False,
     )
+
 
 @patch('cla.controllers.project.Event.create_event')
 def test_create_project_document_template(mock_event, project):
@@ -178,8 +183,13 @@ def test_create_project_document_template(mock_event, project):
     )
 
     mock_event.assert_called_with(
-        event_type=event_type, event_project_id=project_id, event_data=event_data, event_summary=event_data, contains_pii=False,
+        event_type=event_type,
+        event_cla_group_id=project_id,
+        event_data=event_data,
+        event_summary=event_data,
+        contains_pii=False,
     )
+
 
 @patch('cla.controllers.project.Event.create_event')
 def test_delete_project_document(mock_event):
@@ -193,8 +203,8 @@ def test_delete_project_document(mock_event):
     major_version = "v1"
     minor_version = "v1"
     event_data = (
-                f'Project {project.get_project_name()} with {document_type} :'
-                +f'document type , minor version : {minor_version}, major version : {major_version}  deleted'
+            f'Project {project.get_project_name()} with {document_type} :'
+            + f'document type , minor version : {minor_version}, major version : {major_version}  deleted'
     )
 
     Project.load = Mock()
@@ -208,8 +218,13 @@ def test_delete_project_document(mock_event):
     )
 
     mock_event.assert_called_with(
-        event_type=event_type, event_project_id=project_id, event_data=event_data, event_summary=event_data, contains_pii = False,
+        event_type=event_type,
+        event_cla_group_id=project_id,
+        event_data=event_data,
+        event_summary=event_data,
+        contains_pii=False,
     )
+
 
 @patch('cla.controllers.project.Event.create_event')
 def test_project_add_permission_existing_user(mock_event, project):
@@ -217,12 +232,12 @@ def test_project_add_permission_existing_user(mock_event, project):
     auth_claims = {
         'auth0_username_claim': 'http:/localhost/foo',
         'email': 'foo@gmail.com',
-        'sub' : 'bar',
-        'name' : 'name'
+        'sub': 'bar',
+        'name': 'name'
     }
     username = 'harry'
     auth_user = AuthUser(auth_claims)
-    auth_user.username='ddeal'
+    auth_user.username = 'ddeal'
     event_type = EventType.AddPermission
     project_sfdc_id = 'project_sfdc_id'
 
@@ -253,12 +268,12 @@ def test_project_remove_permission(mock_event):
     auth_claims = {
         'auth0_username_claim': 'http:/localhost/foo',
         'email': 'foo@gmail.com',
-        'sub' : 'bar',
-        'name' : 'name'
+        'sub': 'bar',
+        'name': 'name'
     }
     username = 'harry'
     auth_user = AuthUser(auth_claims)
-    auth_user.username='ddeal'
+    auth_user.username = 'ddeal'
     event_type = EventType.RemovePermission
     project_sfdc_id = 'project_sfdc_id'
 
@@ -282,6 +297,7 @@ def test_project_remove_permission(mock_event):
         contains_pii=True,
     )
 
+
 @patch('cla.controllers.project.Event.create_event')
 def test_add_project_manager(mock_event, project):
     """ Tests event logging where LFID is added to the project ACL """
@@ -302,22 +318,23 @@ def test_add_project_manager(mock_event, project):
         project.get_project_id(),
         lfid
     )
-    event_data = '{} added {} to project {}'.format(username,lfid,project.get_project_name())
+    event_data = '{} added {} to project {}'.format(username, lfid, project.get_project_name())
 
     mock_event.assert_called_with(
         event_type=event_type,
         event_data=event_data,
         event_summary=event_data,
-        event_project_id=project.get_project_id(),
+        event_cla_group_id=project.get_project_id(),
         contains_pii=True,
     )
+
 
 @patch('cla.controllers.project.Event.create_event')
 def test_remove_project_manager(mock_event, project):
     """ Test event logging where lfid is removed from the project acl """
     event_type = EventType.RemoveProjectManager
     Project.load = Mock()
-    Project.get_project_acl = Mock(return_value=('foo','bar'))
+    Project.get_project_acl = Mock(return_value=('foo', 'bar'))
     Project.remove_project_acl = Mock()
     Project.save = Mock()
 
@@ -331,6 +348,6 @@ def test_remove_project_manager(mock_event, project):
         event_type=event_type,
         event_data=event_data,
         event_summary=event_data,
-        event_project_id=project.get_project_id(),
+        event_cla_group_id=project.get_project_id(),
         contains_pii=True,
     )

@@ -10,18 +10,17 @@ import json
 import os
 import urllib.parse
 import urllib.parse as urlparse
-from urllib.parse import urlencode
 from datetime import datetime
 from typing import List, Optional
+from urllib.parse import urlencode
 
 import falcon
 import requests
 from hug.middleware import SessionMiddleware
-from hug.middleware import LogMiddleware
-from cla.middleware import CLALogMiddleware
 from requests_oauthlib import OAuth2Session
 
 import cla
+from cla.middleware import CLALogMiddleware
 from cla.models import DoesNotExist
 from cla.models.dynamo_models import User, Signature, Repository, \
     Company, Project, Document, \
@@ -40,9 +39,11 @@ def get_cla_path():
     cla_root_dir = os.path.dirname(cla_folder_dir)
     return cla_root_dir
 
+
 def get_log_middleware():
     """Prepare the hug middleware to manage logging. """
     return CLALogMiddleware(logger=cla.log)
+
 
 def get_session_middleware():
     """Prepares the hug middleware to manage key-value session data."""
@@ -710,7 +711,7 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
                                       f'and company {company.get_company_name()}')
                         Event.create_event(
                             event_type=EventType.EmployeeSignatureDisapproved,
-                            event_project_id=project.get_project_id(),
+                            event_cla_group_id=project.get_project_id(),
                             event_company_id=company.get_company_id(),
                             event_user_id=user.get_user_id(),
                             event_data=event_data,
@@ -1550,6 +1551,7 @@ def get_email_help_content(show_v2_help_link: bool) -> str:
 def get_email_sign_off_content() -> str:
     return '<p>Thanks,</p><p>EasyCLA Support Team</p>'
 
+
 def get_corporate_url(project_version: str) -> str:
     """
     helper method that returns appropriate corporate link based on EasyCLA version
@@ -1557,6 +1559,7 @@ def get_corporate_url(project_version: str) -> str:
     :return: default is v1 corporate console
     """
     return CORPORATE_V2_BASE if project_version == 'v2' else CORPORATE_BASE
+
 
 def append_email_help_sign_off_content(body: str, project_version: str) -> str:
     """

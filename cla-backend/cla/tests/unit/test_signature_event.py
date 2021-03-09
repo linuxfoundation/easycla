@@ -1,27 +1,37 @@
- # Copyright The Linux Foundation and each contributor to CommunityBridge.
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
 
 from unittest.mock import patch, Mock
 
 import pytest
 
-from cla.models.dynamo_models import Signature,Project,Company, Document
+from cla.models.dynamo_models import Signature, Project, Company
 from cla.controllers import signature as signature_controller
 from cla.controllers import company
 from cla.models.event_types import EventType
 from cla.auth import AuthUser
+from unittest.mock import patch, Mock
 
+import pytest
+
+from cla.auth import AuthUser
+from cla.controllers import company
+from cla.controllers import signature as signature_controller
+from cla.models.dynamo_models import Signature, Project, Company
+from cla.models.event_types import EventType
 
 
 @pytest.fixture()
 def create_event_signature():
     signature_controller.create_event = Mock()
 
+
 @pytest.fixture()
 def auth_user():
     with patch.object(AuthUser, "__init__", lambda self: None):
         user = AuthUser()
         yield user
+
 
 @patch('cla.controllers.signature.Event.create_event')
 def test_create_signature(mock_event, create_event_signature, project):
@@ -36,19 +46,21 @@ def test_create_signature(mock_event, create_event_signature, project):
     event_type = EventType.CreateSignature
     signature_id = 'new_signature_id'
     Signature.get_signature_id = Mock(return_value=signature_id)
+    Signature.get_signature_project_id = Mock(return_value=project.get_project_id())
     project_id = project.get_project_id()
     project = project.get_project_name()
     event_data = f'Signature added. Signature_id - {signature_id} for Project - {project}'
     signature_controller.create_signature(
-        project_id,'signature_reference_id','signature_reference_type'
+        project_id, 'signature_reference_id', 'signature_reference_type'
     )
     mock_event.assert_called_once_with(
         event_data=event_data,
         event_summary=event_data,
         event_type=event_type,
-        event_project_id=project_id,
+        event_cla_group_id=project_id,
         contains_pii=False,
     )
+
 
 @patch('cla.controllers.signature.Event.create_event')
 def test_update_signature(mock_event, auth_user, create_event_signature, signature_instance):
@@ -68,9 +80,11 @@ def test_update_signature(mock_event, auth_user, create_event_signature, signatu
     mock_event.assert_called_once_with(
         event_data=event_data,
         event_summary=event_data,
+        event_cla_group_id=signature_instance.get_signature_project_id(),
         event_type=event_type,
         contains_pii=True,
     )
+
 
 @patch('cla.controllers.signature.Event.create_event')
 def test_delete_signature(mock_event, create_event_signature, signature_instance):
@@ -83,9 +97,11 @@ def test_delete_signature(mock_event, create_event_signature, signature_instance
     mock_event.assert_called_once_with(
         event_data=event_data,
         event_summary=event_data,
+        event_cla_group_id=signature_instance.get_signature_project_id(),
         event_type=event_type,
         contains_pii=False,
     )
+
 
 @patch('cla.controllers.signature.Event.create_event')
 def test_add_cla_manager(mock_event, auth_user, signature_instance, create_event_signature):
@@ -113,9 +129,11 @@ def test_add_cla_manager(mock_event, auth_user, signature_instance, create_event
     mock_event.assert_called_once_with(
         event_data=event_data,
         event_summary=event_data,
+        event_cla_group_id=signature_instance.get_signature_project_id(),
         event_type=EventType.AddCLAManager,
         contains_pii=True,
     )
+
 
 @patch('cla.controllers.signature.Event.create_event')
 def test_remove_cla_manager(mock_event, signature_instance, create_event_signature):
@@ -128,7 +146,7 @@ def test_remove_cla_manager(mock_event, signature_instance, create_event_signatu
     event_type = EventType.RemoveCLAManager
     lfid = 'nachwera'
     subject = 'Removed CLA Manager'
-    body = 'Removed %s' %lfid
+    body = 'Removed %s' % lfid
     recipients = ['foo@gmail.com']
     signature_controller.remove_cla_manager_email_content = Mock(return_value=(subject, body, recipients))
     signature_controller.get_email_service = Mock()
@@ -140,7 +158,6 @@ def test_remove_cla_manager(mock_event, signature_instance, create_event_signatu
         event_data=event_data,
         event_summary=event_data,
         event_type=event_type,
+        event_cla_group_id=signature_instance.get_signature_project_id(),
         contains_pii=True,
     )
-
-
