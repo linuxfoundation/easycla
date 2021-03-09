@@ -359,13 +359,13 @@ type ClaManagerRoleDeletedData struct {
 // GetEventDetailsString . . .
 func (ed *CLAGroupEnrolledProjectData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	return fmt.Sprintf("%s (%s/%s) enabled the the project %s (%s) from the CLA Group %s (%s).",
-		args.UserName, args.UserModel.LfUsername, args.UserModel.LfEmail, args.ProjectName, args.ProjectID, args.ClaGroupModel.ProjectName, args.ClaGroupModel.ProjectID), false
+		args.UserName, args.UserModel.LfUsername, args.UserModel.LfEmail, args.ProjectName, args.ProjectID, args.CLAGroupName, args.CLAGroupID), false
 }
 
 // GetEventDetailsString . . .
 func (ed *CLAGroupUnenrolledProjectData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	return fmt.Sprintf("%s (%s/%s) unenrolled the the project %s (%s) from the CLA Group %s (%s).",
-		args.UserName, args.UserModel.LfUsername, args.UserModel.LfEmail, args.ProjectName, args.ProjectID, args.ClaGroupModel.ProjectName, args.ClaGroupModel.ProjectID), false
+		args.UserName, args.UserModel.LfUsername, args.UserModel.LfEmail, args.ProjectName, args.ProjectID, args.CLAGroupName, args.CLAGroupID), false
 }
 
 // GetEventDetailsString . . .
@@ -754,13 +754,13 @@ func (ed *ClaManagerRoleDeletedData) GetEventDetailsString(args *LogEventArgs) (
 // GetEventDetailsString . . .
 func (ed *CLAGroupEnrolledProjectData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	return fmt.Sprintf("The user %s enabled the the project %s from the CLA Group %s.",
-		args.UserName, args.ProjectName, args.ClaGroupModel.ProjectName), false
+		args.UserName, args.ProjectName, args.CLAGroupName), false
 }
 
 // GetEventDetailsString . . .
 func (ed *CLAGroupUnenrolledProjectData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	return fmt.Sprintf("The user %s unenrolled the the project %s from the CLA Group %s.",
-		args.UserName, args.ProjectName, args.ClaGroupModel.ProjectName), false
+		args.UserName, args.ProjectName, args.CLAGroupName), false
 }
 
 // GetEventDetailsString . . .
@@ -774,9 +774,6 @@ func (ed *ProjectServiceCLAEnabledData) GetEventSummaryString(args *LogEventArgs
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
-	}
-	if args.UserName != "" {
-		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
 	data = data + "."
 	return data, false
@@ -793,9 +790,6 @@ func (ed *ProjectServiceCLADisabledData) GetEventSummaryString(args *LogEventArg
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
-	}
-	if args.UserName != "" {
-		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
 	data = data + "."
 	return data, false

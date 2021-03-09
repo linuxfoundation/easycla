@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
 	"github.com/sirupsen/logrus"
@@ -46,6 +48,7 @@ type CombinedRepo interface {
 	GetCompany(ctx context.Context, companyID string) (*models.Company, error)
 	GetUserByUserName(userName string, fullMatch bool) (*models.User, error)
 	GetUser(userID string) (*models.User, error)
+	GetClaGroupIDForProject(projectSFID string) (*projects_cla_groups.ProjectClaGroup, error)
 }
 
 type service struct {
@@ -165,15 +168,14 @@ func (s *service) loadCompany(ctx context.Context, args *LogEventArgs) error {
 
 func (s *service) loadCLAGroup(ctx context.Context, args *LogEventArgs) error {
 	f := logrus.Fields{
-		"functionName":   "loadCLAGroup",
+		"functionName":   "events.service.loadCLAGroup",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
 	// First, attempt to user the CLA Group model that was provided...
 	if args.ClaGroupModel != nil {
 		args.CLAGroupID = args.ClaGroupModel.ProjectID
-		args.ProjectName = args.ClaGroupModel.ProjectName
-		args.ProjectSFID = args.ClaGroupModel.ProjectExternalID
+		args.CLAGroupName = args.ClaGroupModel.ProjectName
 	} else {
 		// Did they set the CLA Group ID?
 		claGroupID := ""
@@ -192,7 +194,15 @@ func (s *service) loadCLAGroup(ctx context.Context, args *LogEventArgs) error {
 			}
 			args.ClaGroupModel = claGroupModel
 			args.CLAGroupName = claGroupModel.ProjectName
-			args.ProjectSFID = claGroupModel.ProjectExternalID
+		} else if args.ProjectSFID != "" {
+			projectCLAGroupModel, projectCLAGroupErr := s.combinedRepo.GetClaGroupIDForProject(args.ProjectSFID)
+			if projectCLAGroupErr != nil || projectCLAGroupModel == nil {
+				log.WithFields(f).WithError(projectCLAGroupErr).Warnf("failed to load project CLA Group mapping by SFID: %s", args.ProjectSFID)
+				return nil
+			}
+
+			args.CLAGroupID = projectCLAGroupModel.ClaGroupID
+			args.CLAGroupName = projectCLAGroupModel.ClaGroupName
 		}
 	}
 
@@ -205,10 +215,15 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
-	if utils.IsUUIDv4(args.ProjectID) { // internal CLA Group ID
-		return s.loadCLAGroup(ctx, args)
-	} else if utils.IsSalesForceID(args.ProjectID) { // external SF project ID
+	// Should be the same value for now...cleanup: need to remove one or the other
+	if args.ProjectID == "" && args.ProjectSFID != "" {
+		args.ProjectID = args.ProjectSFID
+	}
+	if args.ProjectSFID == "" && args.ProjectID != "" {
 		args.ProjectSFID = args.ProjectID
+	}
+
+	if utils.IsSalesForceID(args.ProjectID) {
 		// Check if project exists in platform project service
 		log.WithFields(f).Debugf("loading salesforce project by ID: %s...", args.ProjectSFID)
 		project, projectErr := project_service.GetClient().GetProject(args.ProjectSFID)
@@ -227,12 +242,11 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 				log.WithFields(f).Warnf("failed to load salesforce project parent by ID: %s", project.Parent)
 				return nil
 			}
-			log.WithFields(f).Debugf("loaded salesforce project by parent ID: %s", project.Parent)
+			log.WithFields(f).Debugf("loaded salesforce project by parent ID: %s - resulting in ID: %s with name: %s",
+				project.Parent, parentProject.ID, parentProject.Name)
 			args.ParentProjectSFID = parentProject.ID
 			args.ParentProjectName = parentProject.Name
 		}
-
-		return nil
 	}
 
 	return nil
@@ -290,12 +304,12 @@ func (s *service) loadDetails(ctx context.Context, args *LogEventArgs) error {
 		return err
 	}
 
-	err = s.loadCLAGroup(ctx, args)
+	err = s.loadSFProject(ctx, args)
 	if err != nil {
 		return err
 	}
 
-	err = s.loadSFProject(ctx, args)
+	err = s.loadCLAGroup(ctx, args)
 	if err != nil {
 		return err
 	}
@@ -342,7 +356,7 @@ func (s *service) LogEventWithContext(ctx context.Context, args *LogEventArgs) {
 		LfUsername: args.LfUsername,
 
 		EventCLAGroupID:   args.CLAGroupID,
-		EventCLAGroupName: args.ProjectName,
+		EventCLAGroupName: args.CLAGroupName,
 
 		EventCompanyID:   args.CompanyID,
 		EventCompanySFID: args.CompanySFID,

@@ -128,8 +128,8 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 	addAttribute(input.Item, "event_project_sfid", event.EventProjectSFID)
 	addAttribute(input.Item, "event_project_name", event.EventProjectName)
 	addAttribute(input.Item, "event_project_name_lower", strings.ToLower(event.EventProjectName))
-	addAttribute(input.Item, "event_parent_project_sfid", strings.ToLower(event.EventParentProjectSFID))
-	addAttribute(input.Item, "event_parent_project_name", strings.ToLower(event.EventParentProjectName))
+	addAttribute(input.Item, "event_parent_project_sfid", event.EventParentProjectSFID)
+	addAttribute(input.Item, "event_parent_project_name", event.EventParentProjectName)
 
 	addAttribute(input.Item, "event_data", event.EventData)
 	addAttribute(input.Item, "event_summary", event.EventSummary)

@@ -124,6 +124,7 @@ type combinedRepo struct {
 	users.UserRepository
 	v1Company.IRepository
 	project.ProjectRepository
+	projects_cla_groups.Repository
 }
 
 // server function called by environment specific server functions
@@ -248,6 +249,7 @@ func server(localMode bool) http.Handler {
 		usersRepo,
 		v1CompanyRepo,
 		projectRepo,
+		projectClaGroupRepo,
 	})
 
 	// Initialize the external platform services - these are external APIs that

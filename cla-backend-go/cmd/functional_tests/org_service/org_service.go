@@ -57,7 +57,9 @@ func (t *TestBehaviour) RunIsUserHaveRoleScope() {
 		users.UserRepository
 		company.IRepository
 		project.ProjectRepository
+		projects_cla_groups.Repository
 	}
+
 	eventsRepo := events.NewRepository(awsSession, stage)
 	usersRepo := users.NewRepository(awsSession, stage)
 	companyRepo := company.NewRepository(awsSession, stage)
@@ -70,7 +72,9 @@ func (t *TestBehaviour) RunIsUserHaveRoleScope() {
 		usersRepo,
 		companyRepo,
 		projectRepo,
+		projectClaGroupRepo,
 	})
+
 	organization_service.InitClient(configFile.APIGatewayURL, eventsService)
 	acs_service.InitClient(configFile.APIGatewayURL, configFile.AcsAPIKey)
 	acsClient := acs_service.GetClient()

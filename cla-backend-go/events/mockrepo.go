@@ -7,6 +7,11 @@ import (
 	"context"
 	"time"
 
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
+
+	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
 	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/events"
 	"github.com/go-openapi/strfmt"
@@ -37,6 +42,47 @@ func (repo *mockRepository) GetFoundationEvents(foundationSFID string, nextKey *
 
 func (repo *mockRepository) GetClaGroupEvents(claGroupID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
 	panic("implement me")
+}
+
+func (repo *mockRepository) GetClaGroupIDForProject(projectSFID string) (*projects_cla_groups.ProjectClaGroup, error) {
+	return nil, nil
+}
+
+func (repo *mockRepository) LogEvent(args *LogEventArgs) {
+	repo.LogEventWithContext(utils.NewContext(), args)
+}
+
+func (repo *mockRepository) LogEventWithContext(ctx context.Context, args *LogEventArgs) {
+	event := models.Event{
+		EventType: args.EventType,
+
+		UserID:     args.UserID,
+		UserName:   args.UserName,
+		LfUsername: args.LfUsername,
+
+		EventCLAGroupID:   args.CLAGroupID,
+		EventCLAGroupName: args.CLAGroupName,
+
+		EventCompanyID:   args.CompanyID,
+		EventCompanySFID: args.CompanySFID,
+		EventCompanyName: args.CompanyName,
+
+		EventProjectID:         args.ProjectID,
+		EventProjectSFID:       args.ProjectSFID,
+		EventProjectName:       args.ProjectName,
+		EventParentProjectSFID: args.ParentProjectSFID,
+		EventParentProjectName: args.ParentProjectName,
+
+		//EventData:    eventData,
+		//EventSummary: eventSummary,
+
+		//ContainsPII: containsPII,
+	}
+
+	err := repo.CreateEvent(&event)
+	if err != nil {
+		log.WithError(err).Warn("unable to create event")
+	}
 }
 
 var events []*models.Event

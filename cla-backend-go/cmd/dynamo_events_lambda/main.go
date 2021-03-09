@@ -110,12 +110,16 @@ func init() {
 		users.UserRepository
 		company.IRepository
 		project.ProjectRepository
+		projects_cla_groups.Repository
 	}
+
 	eventsService := claevents.NewService(eventsRepo, combinedRepo{
 		usersRepo,
 		companyRepo,
 		projectRepo,
+		projectClaGroupRepo,
 	})
+
 	usersService := users.NewService(usersRepo, eventsService)
 	companyService := company.NewService(companyRepo, configFile.CorporateConsoleURL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(companyService, signaturesRepo, projectRepo, usersRepo, companyRepo, projectClaGroupRepo, eventsService)

@@ -32,5 +32,5 @@ func TestEventsService(t *testing.T) {
 		CompanyID: aws.String("company-1234"),
 	})
 	assert.Nil(t, err, "Error is nil")
-	assert.Equal(t, len(eventsSearch.Events), 1)
+	assert.Equal(t, 1, len(eventsSearch.Events))
 }

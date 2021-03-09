@@ -402,14 +402,14 @@ func (s *service) AssociateCLAGroupWithProjects(ctx context.Context, request *As
 
 	for _, projectSFID := range request.ProjectSFIDList {
 		// Invoke the go routine - any errors will be handled below
-		go func(sfid string) {
+		go func(projectSFID, parentProjectSFID, claGroupID string) {
 			defer wg.Done()
-			log.WithFields(f).Debugf("associating cla_group with project: %s", sfid)
-			err := s.projectsClaGroupsRepo.AssociateClaGroupWithProject(request.CLAGroupID, sfid, request.FoundationSFID)
+			log.WithFields(f).Debugf("associating cla_group with project: %s", projectSFID)
+			err := s.projectsClaGroupsRepo.AssociateClaGroupWithProject(claGroupID, projectSFID, parentProjectSFID)
 			if err != nil {
-				log.WithFields(f).WithError(err).Warnf("associating cla_group with project: %s failed", sfid)
+				log.WithFields(f).WithError(err).Warnf("associating cla_group with project: %s failed", projectSFID)
 				log.WithFields(f).Debug("deleting stale entries from cla_group project association")
-				deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(request.CLAGroupID, request.ProjectSFIDList, false)
+				deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(claGroupID, request.ProjectSFIDList, false)
 				if deleteErr != nil {
 					log.WithFields(f).WithError(deleteErr).Warn("deleting stale entries from cla_group project association failed")
 				}
@@ -418,13 +418,14 @@ func (s *service) AssociateCLAGroupWithProjects(ctx context.Context, request *As
 			}
 			// add event log entry
 			s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-				EventType:   events.CLAGroupEnrolledProject,
-				ProjectSFID: sfid,
-				CLAGroupID:  request.CLAGroupID,
-				LfUsername:  request.AuthUser.UserName,
-				EventData:   &events.CLAGroupEnrolledProjectData{},
+				EventType:         events.CLAGroupEnrolledProject,
+				ProjectSFID:       projectSFID,
+				ParentProjectSFID: parentProjectSFID,
+				CLAGroupID:        claGroupID,
+				LfUsername:        request.AuthUser.UserName,
+				EventData:         &events.CLAGroupEnrolledProjectData{},
 			})
-		}(projectSFID)
+		}(projectSFID, request.FoundationSFID, request.CLAGroupID)
 	}
 
 	// Wait for the go routines to finish
@@ -491,19 +492,19 @@ func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, pro
 
 	for _, projectSFID := range projectSFIDList {
 		// Execute as a go routine
-		go func(psClient *v2ProjectService.Client, sfid string) {
+		go func(psClient *v2ProjectService.Client, projectSFID string) {
 			defer wg.Done()
-			enableProjectErr := psClient.EnableCLA(sfid)
+			enableProjectErr := psClient.EnableCLA(projectSFID)
 			if enableProjectErr != nil {
 				log.WithFields(f).WithError(enableProjectErr).
-					Warnf("unable to enable CLA service for project: %s, error: %+v", sfid, enableProjectErr)
+					Warnf("unable to enable CLA service for project: %s, error: %+v", projectSFID, enableProjectErr)
 				errorList = append(errorList, enableProjectErr)
 			} else {
-				log.WithFields(f).Debugf("enabled CLA service for project: %s", sfid)
+				log.WithFields(f).Debugf("enabled CLA service for project: %s", projectSFID)
 				// add event log entry
 				s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 					EventType:  events.ProjectServiceCLAEnabled,
-					ProjectID:  sfid,
+					ProjectID:  projectSFID,
 					LfUsername: authUser.UserName,
 					EventData:  &events.ProjectServiceCLAEnabledData{},
 				})
@@ -541,19 +542,19 @@ func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, pr
 
 	for _, projectSFID := range projectSFIDList {
 		// Execute as a go routine
-		go func(psClient *v2ProjectService.Client, sfid string) {
+		go func(psClient *v2ProjectService.Client, projectSFID string) {
 			defer wg.Done()
-			disableProjectErr := psClient.DisableCLA(sfid)
+			disableProjectErr := psClient.DisableCLA(projectSFID)
 			if disableProjectErr != nil {
 				log.WithFields(f).WithError(disableProjectErr).
-					Warnf("unable to disable CLA service for project: %s, error: %+v", sfid, disableProjectErr)
+					Warnf("unable to disable CLA service for project: %s, error: %+v", projectSFID, disableProjectErr)
 				errorList = append(errorList, disableProjectErr)
 			} else {
-				log.WithFields(f).Debugf("disabled CLA service for project: %s", sfid)
+				log.WithFields(f).Debugf("disabled CLA service for project: %s", projectSFID)
 				// add event log entry
 				s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 					EventType:  events.ProjectServiceCLADisabled,
-					ProjectID:  sfid,
+					ProjectID:  projectSFID,
 					LfUsername: authUser.UserName,
 					EventData:  &events.ProjectServiceCLADisabledData{},
 				})
