@@ -5,6 +5,8 @@ package github_organizations
 
 import (
 	"context"
+	"fmt"
+	netURL "net/url"
 	"sync"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
@@ -38,10 +40,17 @@ func buildGithubOrganizationListModels(ctx context.Context, githubOrganizations 
 					ghorg.GithubInfo.Error = err.Error()
 				} else {
 					url := strfmt.URI(*user.HTMLURL)
+					installURL := netURL.URL{
+						Scheme: "https",
+						Host:   "github.com",
+						Path:   fmt.Sprintf("/%s/settings/installations/%d", ghorg.OrganizationName, ghorg.OrganizationInstallationID),
+					}
+					installationURL := strfmt.URI(installURL.String())
 					ghorg.GithubInfo.Details = &models.GithubOrganizationGithubInfoDetails{
-						Bio:     user.Bio,
-						HTMLURL: &url,
-						ID:      user.ID,
+						Bio:             user.Bio,
+						HTMLURL:         &url,
+						ID:              user.ID,
+						InstallationURL: &installationURL,
 					}
 				}
 

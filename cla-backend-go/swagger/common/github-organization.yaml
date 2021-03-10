@@ -60,6 +60,12 @@ properties:
             x-nullable: true
             example: "https://github.com/communitybridge"
             format: uri
+          installationURL:
+            type: string
+            x-nullable: true
+            example: "https://github.com/organizations/deal-test-org-2/settings/installations/1235464"
+            format: uri
+
   repositories:
     type: object
     properties:
