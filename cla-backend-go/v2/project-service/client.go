@@ -34,6 +34,8 @@ type Client struct {
 
 var (
 	projectServiceClient *Client
+	// Short term cache - only for the lifetime of this lambda
+	projectServiceModes = make(map[string]*models.ProjectOutputDetailed)
 )
 
 // InitClient initializes the user_service client
@@ -65,36 +67,76 @@ func (pmm *Client) getProject(projectSFID string, auth runtime.ClientAuthInfoWri
 
 // GetProject returns project details
 func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed, error) {
+	f := logrus.Fields{
+		"functionName": "v2.project-service.client.GetProject",
+		"projectSFID":  projectSFID,
+	}
+
+	// Lookup in cache first
+	existingModel, exists := projectServiceModes[projectSFID]
+	if exists {
+		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModes))
+		return existingModel, nil
+	}
+	log.WithFields(f).Debugf("cache miss - cache size: %d", len(projectServiceModes))
+
 	tok, err := token.GetToken()
 	if err != nil {
 		return nil, err
 	}
 	clientAuth := runtimeClient.BearerToken(tok)
-	return pmm.getProject(projectSFID, clientAuth)
+
+	// Lookup the project
+	projectModel, err := pmm.getProject(projectSFID, clientAuth)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update our cache for next time
+	projectServiceModes[projectSFID] = projectModel
+	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModes))
+
+	return projectModel, nil
 }
 
 // GetProjectByName returns project details for the associated project name
 func (pmm *Client) GetProjectByName(projectName string) (*models.ProjectListSearch, error) {
+	f := logrus.Fields{
+		"functionName": "v2.project-service.client.GetProjectByName",
+		"projectName":  projectName,
+	}
 	tok, err := token.GetToken()
 	if err != nil {
+		log.WithFields(f).WithError(err).Warning("problem retrieving token")
 		return nil, err
 	}
+
 	clientAuth := runtimeClient.BearerToken(tok)
 	result, err := pmm.cl.Project.SearchProjects(&project.SearchProjectsParams{
 		Name: []string{projectName},
 	}, clientAuth)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warning("problem searching projects by name")
 		return nil, err
 	}
+
 	return result.Payload, nil
 }
 
 // GetParentProject returns the parent project SFID if there is a parent, otherwise returns the provided projectSFID
 func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 	f := logrus.Fields{
-		"functionName": "getParentProject",
+		"functionName": "v2.project-service.client.GetParentProject",
 		"projectSFID":  projectSFID,
 	}
+
+	// Lookup in cache first
+	existingModel, exists := projectServiceModes[projectSFID]
+	if exists {
+		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModes))
+		return existingModel.Parent, nil
+	}
+	log.WithFields(f).Debugf("cache miss - cache size: %d", len(projectServiceModes))
 
 	log.WithFields(f).Debug("looking up projectModel in SF by projectSFID")
 	projectModel, err := pmm.GetProject(projectSFID)
@@ -102,6 +144,10 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 		log.WithFields(f).Warnf("unable to lookup projectModel in projectModel service by projectSFID, error: %+v", err)
 		return "", err
 	}
+
+	// Update our cache for next time
+	projectServiceModes[projectSFID] = projectModel
+	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModes))
 
 	// Do they have a parent?
 	if projectModel.Parent == "" || (projectModel.Foundation != nil &&
@@ -117,7 +163,8 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 // IsTheLinuxFoundation returns true if the specified project SFID is the The Linux Foundation project
 func (pmm *Client) IsTheLinuxFoundation(projectSFID string) (bool, error) {
 	f := logrus.Fields{
-		"functionName": "project-service.IsTheLinuxFoundation",
+		"functionName": "v2.project-service.client.IsTheLinuxFoundation",
+		"projectSFID":  projectSFID,
 	}
 
 	log.WithFields(f).Debug("querying project...")
@@ -139,7 +186,8 @@ func (pmm *Client) IsTheLinuxFoundation(projectSFID string) (bool, error) {
 // IsParentTheLinuxFoundation returns true if the parent is the The Linux Foundation project
 func (pmm *Client) IsParentTheLinuxFoundation(projectSFID string) (bool, error) {
 	f := logrus.Fields{
-		"functionName": "IsParentTheLinuxFoundation",
+		"functionName": "v2.project-service.client.IsParentTheLinuxFoundation",
+		"projectSFID":  projectSFID,
 	}
 
 	log.WithFields(f).Debug("querying project...")
@@ -170,21 +218,31 @@ func (pmm *Client) IsParentTheLinuxFoundation(projectSFID string) (bool, error) 
 
 // EnableCLA enables CLA service in project-service
 func (pmm *Client) EnableCLA(projectSFID string) error {
+	f := logrus.Fields{
+		"functionName": "v2.project-service.client.EnableCLA",
+		"projectSFID":  projectSFID,
+	}
+
 	tok, err := token.GetToken()
 	if err != nil {
+		log.WithFields(f).WithError(err).Warning("problem retrieving token")
 		return err
 	}
 	clientAuth := runtimeClient.BearerToken(tok)
+
 	projectDetails, err := pmm.getProject(projectSFID, clientAuth)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warning("problem retrieving project by SFID")
 		return err
 	}
+
 	for _, serviceName := range projectDetails.EnabledServices {
 		if serviceName == CLA {
 			// CLA already enabled
 			return nil
 		}
 	}
+
 	enabledServices := projectDetails.EnabledServices
 	enabledServices = append(enabledServices, CLA)
 	return pmm.updateEnabledServices(projectSFID, enabledServices, clientAuth)
@@ -210,15 +268,24 @@ func (pmm *Client) updateEnabledServices(projectSFID string, enabledServices []s
 
 // DisableCLA enables CLA service in project-service
 func (pmm *Client) DisableCLA(projectSFID string) error {
+	f := logrus.Fields{
+		"functionName": "v2.project-service.client.DisableCLA",
+		"projectSFID":  projectSFID,
+	}
+
 	tok, err := token.GetToken()
 	if err != nil {
+		log.WithFields(f).WithError(err).Warning("problem retrieving token")
 		return err
 	}
 	clientAuth := runtimeClient.BearerToken(tok)
+
 	projectDetails, err := pmm.getProject(projectSFID, clientAuth)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warning("problem retrieving project by SFID")
 		return err
 	}
+
 	newEnabledServices := make([]string, 0)
 	var claFound bool
 	for _, serviceName := range projectDetails.EnabledServices {

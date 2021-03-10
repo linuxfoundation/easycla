@@ -63,8 +63,8 @@ type Service interface {
 	UnenrollProjectsInClaGroup(ctx context.Context, request *UnenrollProjectsModel) error
 	AssociateCLAGroupWithProjects(ctx context.Context, request *AssociateCLAGroupWithProjectsModel) error
 	UnassociateCLAGroupWithProjects(ctx context.Context, request *UnassociateCLAGroupWithProjectsModel) error
-	EnableCLAService(ctx context.Context, authUser *auth.User, projectSFIDList []string) error
-	DisableCLAService(ctx context.Context, authUser *auth.User, projectSFIDList []string) error
+	EnableCLAService(ctx context.Context, authUser *auth.User, claGroupID string, projectSFIDList []string) error
+	DisableCLAService(ctx context.Context, authUser *auth.User, claGroupID string, projectSFIDList []string) error
 	ValidateCLAGroup(ctx context.Context, input *models.ClaGroupValidationRequest) (bool, []string)
 }
 
@@ -928,16 +928,16 @@ func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollP
 	}(ctx, request.AuthUser, request.CLAGroupID, request.FoundationSFID, request.ProjectSFIDList)
 
 	// Separate go routine for enabling the CLA Service in the project service
-	go func(c context.Context, projSFIDList []string) {
+	go func(c context.Context, claGroupID string, projSFIDList []string) {
 		defer wg.Done()
 		log.WithFields(f).Debug("enabling CLA service in platform project service")
 		// Note: log entry will be created by enable CLA Service call
-		errEnableCLA := s.EnableCLAService(c, request.AuthUser, projSFIDList)
+		errEnableCLA := s.EnableCLAService(c, request.AuthUser, claGroupID, projSFIDList)
 		if errEnableCLA != nil {
 			log.WithFields(f).WithError(errEnableCLA).Warn("enabling CLA service in platform project service failed")
 			errorList = append(errorList, errEnableCLA)
 		}
-	}(ctx, request.ProjectSFIDList)
+	}(ctx, request.CLAGroupID, request.ProjectSFIDList)
 
 	// Wait until all go routines are done
 	wg.Wait()
@@ -990,16 +990,16 @@ func (s *service) UnenrollProjectsInClaGroup(ctx context.Context, request *Unenr
 	}(ctx, request.AuthUser, request.CLAGroupID, request.FoundationSFID, request.ProjectSFIDList)
 
 	// Separate go routine for disabling the CLA Service in the project service
-	go func(c context.Context, projSFIDList []string) {
+	go func(c context.Context, claGroupID string, projSFIDList []string) {
 		defer wg.Done()
 		log.WithFields(f).Debug("disabling CLA service in platform project service")
 		// Note: log entry will be created by disable CLA Service call
-		errDisableCLA := s.DisableCLAService(c, request.AuthUser, projSFIDList)
+		errDisableCLA := s.DisableCLAService(c, request.AuthUser, claGroupID, projSFIDList)
 		if errDisableCLA != nil {
 			log.WithFields(f).WithError(errDisableCLA).Warn("disabling CLA service in platform project service failed")
 			errorList = append(errorList, errDisableCLA)
 		}
-	}(ctx, request.ProjectSFIDList)
+	}(ctx, request.CLAGroupID, request.ProjectSFIDList)
 
 	// Wait until all go routines are done
 	wg.Wait()

@@ -474,13 +474,14 @@ func (s *service) UnassociateCLAGroupWithProjects(ctx context.Context, request *
 }
 
 // EnableCLAService enable CLA service attribute in the project service for the specified project list
-func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, projectSFIDList []string) error {
+func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, claGroupID string, projectSFIDList []string) error {
 	f := logrus.Fields{
 		"functionName":    "EnableCLAService",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"authUserName":    authUser.UserName,
 		"authUserEmail":   authUser.Email,
 		"projectSFIDList": strings.Join(projectSFIDList, ","),
+		"claGroupID":      claGroupID,
 	}
 
 	log.WithFields(f).Debug("enabling CLA service in platform project service")
@@ -492,7 +493,7 @@ func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, pro
 
 	for _, projectSFID := range projectSFIDList {
 		// Execute as a go routine
-		go func(psClient *v2ProjectService.Client, projectSFID string) {
+		go func(psClient *v2ProjectService.Client, claGroupID, projectSFID string) {
 			defer wg.Done()
 			enableProjectErr := psClient.EnableCLA(projectSFID)
 			if enableProjectErr != nil {
@@ -505,11 +506,12 @@ func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, pro
 				s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 					EventType:  events.ProjectServiceCLAEnabled,
 					ProjectID:  projectSFID,
+					CLAGroupID: claGroupID,
 					LfUsername: authUser.UserName,
 					EventData:  &events.ProjectServiceCLAEnabledData{},
 				})
 			}
-		}(psc, projectSFID)
+		}(psc, claGroupID, projectSFID)
 	}
 	// Wait until all go routines are done
 	wg.Wait()
@@ -524,13 +526,14 @@ func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, pro
 }
 
 // DisableCLAService disable CLA service attribute in the project service for the specified project list
-func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, projectSFIDList []string) error {
+func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, claGroupID string, projectSFIDList []string) error {
 	f := logrus.Fields{
 		"functionName":    "DisableCLAService",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"authUserName":    authUser.UserName,
 		"authUserEmail":   authUser.Email,
 		"projectSFIDList": strings.Join(projectSFIDList, ","),
+		"claGroupID":      claGroupID,
 	}
 
 	log.WithFields(f).Debug("disabling CLA service in platform project service")
@@ -542,7 +545,7 @@ func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, pr
 
 	for _, projectSFID := range projectSFIDList {
 		// Execute as a go routine
-		go func(psClient *v2ProjectService.Client, projectSFID string) {
+		go func(psClient *v2ProjectService.Client, claGroupID, projectSFID string) {
 			defer wg.Done()
 			disableProjectErr := psClient.DisableCLA(projectSFID)
 			if disableProjectErr != nil {
@@ -555,11 +558,12 @@ func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, pr
 				s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 					EventType:  events.ProjectServiceCLADisabled,
 					ProjectID:  projectSFID,
+					CLAGroupID: claGroupID,
 					LfUsername: authUser.UserName,
 					EventData:  &events.ProjectServiceCLADisabledData{},
 				})
 			}
-		}(psc, projectSFID)
+		}(psc, claGroupID, projectSFID)
 	}
 	// Wait until all go routines are done
 	wg.Wait()

@@ -88,6 +88,10 @@ func toDateFormat(t time.Time) string {
 
 // Create event will create event in database.
 func (repo *repository) CreateEvent(event *models.Event) error {
+	f := logrus.Fields{
+		"functionName": "events.repository.CreateEvent",
+	}
+
 	if event.UserID == "" {
 		return ErrUserIDRequired
 	}
@@ -96,7 +100,7 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 	}
 	eventID, err := uuid.NewV4()
 	if err != nil {
-		log.Warnf("Unable to generate a UUID for a whitelist request, error: %v", err)
+		log.WithFields(f).WithError(err).Warnf("Unable to generate a UUID for a whitelist request, error: %v", err)
 		return err
 	}
 
@@ -147,10 +151,10 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 
 	_, err = repo.dynamoDBClient.PutItem(input)
 	if err != nil {
-		log.Warnf("Unable to create a new event, error: %v", err)
+		log.WithFields(f).WithError(err).Warnf("Unable to create a new event, error: %v", err)
 		return err
 	}
-	log.Printf("added event : %s", eventID.String())
+	log.WithFields(f).Infof("added event ID: %s of type: %s", eventID.String(), event.EventType)
 
 	return nil
 }
