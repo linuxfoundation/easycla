@@ -91,7 +91,7 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 				"functionName":   "CompanyListCclaWhitelistRequestsHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			}
-			log.WithFields(f).Debugf("Invoking ListCclaWhitelistRequest with Company ID: %+v, Project ID: %+v, Status: %+v",
+			log.WithFields(f).Debugf("Invoking ListCclaApprovalListRequests with Company ID: %+v, Project ID: %+v, Status: %+v",
 				params.CompanyID, params.ProjectID, params.Status)
 			result, err := service.ListCclaWhitelistRequest(params.CompanyID, params.ProjectID, params.Status)
 			if err != nil {

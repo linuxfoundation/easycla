@@ -33,13 +33,13 @@ const (
 	ProjectIDIndex = "ccla-approval-list-request-project-id-index"
 )
 
-// IRepository interface defines the functions for the whitelist service
+// IRepository interface defines the functions for the approval list service
 type IRepository interface {
-	AddCclaWhitelistRequest(company *models.Company, project *models.ClaGroup, user *models.User, requesterName, requesterEmail string) (string, error)
-	GetCclaWhitelistRequest(requestID string) (*CLARequestModel, error)
-	ApproveCclaWhitelistRequest(requestID string) error
-	RejectCclaWhitelistRequest(requestID string) error
-	ListCclaWhitelistRequest(companyID string, projectID, status, userID *string) (*models.CclaWhitelistRequestList, error)
+	AddCclaApprovalRequest(company *models.Company, project *models.ClaGroup, user *models.User, requesterName, requesterEmail string) (string, error)
+	GetCclaApprovalListRequest(requestID string) (*CLARequestModel, error)
+	ApproveCclaApprovalListRequest(requestID string) error
+	RejectCclaApprovalListRequest(requestID string) error
+	ListCclaApprovalListRequests(companyID string, projectID, status, userID *string) (*models.CclaWhitelistRequestList, error)
 	GetRequestsByCLAGroup(claGroupID string) ([]CLARequestModel, error)
 	UpdateRequestsByCLAGroup(model *project.DBProjectModel) error
 }
@@ -50,19 +50,19 @@ type repository struct {
 	tableName      string
 }
 
-// NewRepository creates a new instance of the whitelist service
+// NewRepository creates a new instance of the approval list service
 func NewRepository(awsSession *session.Session, stage string) IRepository {
 	return repository{
 		stage:          stage,
 		dynamoDBClient: dynamodb.New(awsSession),
-		tableName:      fmt.Sprintf("cla-%s-ccla-whitelist-requests", stage),
+		tableName:      fmt.Sprintf("cla-%s-ccla-whitelist-requests", stage), // TODO: rename table
 	}
 }
 
-// AddCclaWhitelistRequest adds the specified request
-func (repo repository) AddCclaWhitelistRequest(company *models.Company, project *models.ClaGroup, user *models.User, requesterName, requesterEmail string) (string, error) {
+// AddCclaApprovalRequest adds the specified request
+func (repo repository) AddCclaApprovalRequest(company *models.Company, project *models.ClaGroup, user *models.User, requesterName, requesterEmail string) (string, error) {
 	f := logrus.Fields{
-		"functionName":   "AddCclaWhitelistRequest",
+		"functionName":   "v1.approval_list.repository.AddCclaApprovalRequest",
 		"requesterName":  requesterName,
 		"requesterEmail": requesterEmail,
 	}
@@ -96,24 +96,17 @@ func (repo repository) AddCclaWhitelistRequest(company *models.Company, project 
 
 	_, err = repo.dynamoDBClient.PutItem(input)
 	if err != nil {
-		log.WithFields(f).Warnf("AddCclaWhitelistRequest - unable to create a new ccla approval request, error: %v", err)
+		log.WithFields(f).Warnf("AddCclaApprovalRequest - unable to create a new ccla approval request, error: %v", err)
 		return status, err
 	}
 
-	// Load the new record - should be able to find it quickly
-	record, readErr := repo.ListCclaWhitelistRequest(company.CompanyID, &project.ProjectID, nil, &user.UserID)
-	if readErr != nil || record == nil || record.List == nil {
-		log.WithFields(f).Warnf("AddCclaWhitelistRequest - unable to read newly created invite record, error: %v", readErr)
-		return status, err
-	}
-
-	return record.List[0].RequestID, nil
+	return requestID.String(), nil
 }
 
-// GetCclaWhitelistRequest fetches the specified request by ID
-func (repo repository) GetCclaWhitelistRequest(requestID string) (*CLARequestModel, error) {
+// GetCclaApprovalListRequest fetches the specified request by ID
+func (repo repository) GetCclaApprovalListRequest(requestID string) (*CLARequestModel, error) {
 	f := logrus.Fields{
-		"functionName": "GetCclaWhitelistRequest",
+		"functionName": "v1.approval_list.repository.GetCclaApprovalListRequest",
 		"requestID":    requestID,
 	}
 
@@ -141,10 +134,10 @@ func (repo repository) GetCclaWhitelistRequest(requestID string) (*CLARequestMod
 	return &requestModel, nil
 }
 
-// ApproveCclaWhitelistRequest approves the specified request
-func (repo repository) ApproveCclaWhitelistRequest(requestID string) error {
+// ApproveCclaApprovalListRequest approves the specified request
+func (repo repository) ApproveCclaApprovalListRequest(requestID string) error {
 	f := logrus.Fields{
-		"functionName": "ApproveCclaWhitelistRequest",
+		"functionName": "v1.approval_list.repository.ApproveCclaApprovalListRequest",
 		"requestID":    requestID,
 	}
 
@@ -180,10 +173,10 @@ func (repo repository) ApproveCclaWhitelistRequest(requestID string) error {
 	return nil
 }
 
-// RejectCclaWhitelistRequest rejects the specified request
-func (repo repository) RejectCclaWhitelistRequest(requestID string) error {
+// RejectCclaApprovalListRequest rejects the specified request
+func (repo repository) RejectCclaApprovalListRequest(requestID string) error {
 	f := logrus.Fields{
-		"functionName": "RejectCclaWhitelistRequest",
+		"functionName": "v1.approval_list.repository.RejectCclaApprovalListRequest",
 		"requestID":    requestID,
 	}
 
@@ -220,13 +213,21 @@ func (repo repository) RejectCclaWhitelistRequest(requestID string) error {
 	return nil
 }
 
-// ListCclaWhitelistRequest list the requests for the specified query parameters
-func (repo repository) ListCclaWhitelistRequest(companyID string, projectID, status, userID *string) (*models.CclaWhitelistRequestList, error) {
-	if projectID == nil {
-		return nil, errors.New("project ID can not be nil for ListCclaWhitelistRequest")
+// ListCclaApprovalListRequests list the requests for the specified query parameters
+func (repo repository) ListCclaApprovalListRequests(companyID string, projectID, status, userID *string) (*models.CclaWhitelistRequestList, error) {
+	f := logrus.Fields{
+		"functionName": "v1.approval_list.repository.ListCclaApprovalListRequests",
+		"companyID":    companyID,
+		"projectID":    projectID,
+		"status":       status,
+		"userID":       utils.StringValue(userID),
 	}
 
-	log.Debugf("ListCclaWhitelistRequest with Company ID: %s, Project ID: %+v, Status: %+v, User ID: %+v",
+	if projectID == nil {
+		return nil, errors.New("project ID can not be nil for ListCclaApprovalListRequests")
+	}
+
+	log.WithFields(f).Debugf("ListCclaApprovalListRequests with Company ID: %s, Project ID: %+v, Status: %+v, User ID: %+v",
 		companyID, projectID, status, userID)
 
 	// hashkey is company_id, range key is project_id
@@ -243,7 +244,7 @@ func (repo repository) ListCclaWhitelistRequest(companyID string, projectID, sta
 
 	// Add the status filter if provided
 	if status != nil {
-		log.Debugf("ListCclaWhitelistRequest - Adding status: %s", *status)
+		log.WithFields(f).Debugf("ListCclaApprovalListRequests - Adding status: %s", *status)
 		statusFilterExpression := expression.Name("request_status").Equal(expression.Value(*status))
 		filter = addConditionToFilter(filter, statusFilterExpression, &filterAdded)
 	}
@@ -260,6 +261,7 @@ func (repo repository) ListCclaWhitelistRequest(companyID string, projectID, sta
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building query")
 		return nil, err
 	}
 
@@ -276,13 +278,13 @@ func (repo repository) ListCclaWhitelistRequest(companyID string, projectID, sta
 
 	queryOutput, queryErr := repo.dynamoDBClient.Query(input)
 	if queryErr != nil {
-		log.Warnf("list requests error while querying, error: %+v", queryErr)
+		log.WithFields(f).WithError(queryErr).Warnf("list requests error while querying, error: %+v", queryErr)
 		return nil, queryErr
 	}
 
 	list, err := buildCclaWhitelistRequestsModels(queryOutput)
 	if err != nil {
-		log.Warnf("unmarshall requests error while decoding the response, error: %+v", err)
+		log.WithFields(f).WithError(err).Warnf("unmarshall requests error while decoding the response, error: %+v", err)
 		return nil, err
 	}
 
@@ -292,7 +294,7 @@ func (repo repository) ListCclaWhitelistRequest(companyID string, projectID, sta
 // GetRequestsByCLAGroup retrieves a list of requests for the specified CLA Group
 func (repo repository) GetRequestsByCLAGroup(claGroupID string) ([]CLARequestModel, error) {
 	f := logrus.Fields{
-		"functionName": "GetRequestsByCLAGroup",
+		"functionName": "v1.approval_list.repository.GetRequestsByCLAGroup",
 		"claGroupID":   claGroupID,
 		"tableName":    repo.tableName,
 		"indexName":    ProjectIDIndex,
@@ -361,10 +363,10 @@ func (repo repository) GetRequestsByCLAGroup(claGroupID string) ([]CLARequestMod
 	return projectRequests, nil
 }
 
-// GetRequestsByCLAGroup retrieves a list of requests for the specified CLA Group
+// UpdateRequestsByCLAGroup updates a list of requests for the specified CLA Group
 func (repo repository) UpdateRequestsByCLAGroup(model *project.DBProjectModel) error {
 	f := logrus.Fields{
-		"functionName": "UpdateRequestsByCLAGroup",
+		"functionName": "v1.approval_list.repository.UpdateRequestsByCLAGroup",
 		"claGroupID":   model.ProjectID,
 		"tableName":    repo.tableName,
 	}
