@@ -6,12 +6,14 @@ package github_organizations
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/sirupsen/logrus"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -137,6 +139,13 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 			}
 		}
 
+		installURL := url.URL{
+			Scheme: "https",
+			Host:   "github.com",
+			Path:   fmt.Sprintf("/%s/settings/installations/%d", org.OrganizationName, org.OrganizationInstallationID),
+		}
+		installationURL := strfmt.URI(installURL.String())
+
 		rorg := &models.ProjectGithubOrganization{
 			AutoEnabled:             org.AutoEnabled,
 			AutoEnableCLAGroupID:    org.AutoEnabledClaGroupID,
@@ -145,6 +154,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 			ConnectionStatus:        "", // updated below
 			GithubOrganizationName:  org.OrganizationName,
 			Repositories:            make([]*models.ProjectGithubRepository, 0),
+			InstallationURL:         &installationURL,
 		}
 
 		orgmap[org.OrganizationName] = rorg

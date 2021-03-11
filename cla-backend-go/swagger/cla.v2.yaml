@@ -5039,6 +5039,11 @@ definitions:
         type: boolean
         description: Flag to indicate if this GitHub Organization is configured to automatically setup branch protection on CLA enabled repositories.
         x-omitempty: false
+      installationURL:
+        type: string
+        x-nullable: true
+        example: "https://github.com/organizations/deal-test-org-2/settings/installations/1235464"
+        format: uri
       github_organization_name:
         type: string
         description: The GitHub Organization name
