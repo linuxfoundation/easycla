@@ -5,6 +5,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -50,7 +51,7 @@ func NewAuthorizer(authValidator Validator, userPermissioner UserPermissioner) A
 // SecurityAuth creates a new CLA user based on the token and scopes
 func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, error) {
 	f := logrus.Fields{
-		"functionName": "auth.SecurityAuth",
+		"functionName": "auth.authorizer.SecurityAuth",
 		"scopes":       strings.Join(scopes, ","),
 	}
 	// This handler is called by the runtime whenever a route needs authentication
@@ -68,6 +69,7 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 		}
 		return nil, err
 	}
+	f["claims"] = fmt.Sprintf("%+v", claims)
 
 	// Get the username from the token claims
 	usernameClaim, ok := claims[a.authValidator.usernameClaim]

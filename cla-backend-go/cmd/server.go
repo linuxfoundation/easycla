@@ -238,7 +238,7 @@ func server(localMode bool) http.Handler {
 	v1CompanyRepo := v1Company.NewRepository(awsSession, stage)
 	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo)
 	projectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
-	projectRepo := project.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, projectClaGroupRepo)
+	v1CLAGroupRepo := project.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, projectClaGroupRepo)
 	eventsRepo := events.NewRepository(awsSession, stage)
 	metricsRepo := metrics.NewRepository(awsSession, stage, configFile.APIGatewayURL, projectClaGroupRepo)
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
@@ -248,7 +248,7 @@ func server(localMode bool) http.Handler {
 	eventsService := events.NewService(eventsRepo, combinedRepo{
 		usersRepo,
 		v1CompanyRepo,
-		projectRepo,
+		v1CLAGroupRepo,
 		projectClaGroupRepo,
 	})
 
@@ -263,19 +263,19 @@ func server(localMode bool) http.Handler {
 	usersService := users.NewService(usersRepo, eventsService)
 	healthService := health.New(Version, Commit, Branch, BuildDate)
 	templateService := template.NewService(stage, templateRepo, docraptorClient, awsSession)
-	v1ProjectService := project.NewService(projectRepo, repositoriesRepo, gerritRepo, projectClaGroupRepo, usersRepo)
-	emailTemplateService := emails.NewEmailTemplateService(projectClaGroupRepo, v1ProjectService, configFile.CorporateConsoleV1URL, configFile.CorporateConsoleV2URL)
-	v2ProjectService := v2Project.NewService(v1ProjectService, projectRepo, projectClaGroupRepo)
+	v1ProjectService := project.NewService(v1CLAGroupRepo, repositoriesRepo, gerritRepo, projectClaGroupRepo, usersRepo)
+	emailTemplateService := emails.NewEmailTemplateService(v1CLAGroupRepo, projectClaGroupRepo, v1ProjectService, configFile.CorporateConsoleV1URL, configFile.CorporateConsoleV2URL)
+	v2ProjectService := v2Project.NewService(v1ProjectService, v1CLAGroupRepo, projectClaGroupRepo)
 	v1CompanyService := v1Company.NewService(v1CompanyRepo, configFile.CorporateConsoleV1URL, userRepo, usersService)
-	v2CompanyService := v2Company.NewService(v1CompanyService, signaturesRepo, projectRepo, usersRepo, v1CompanyRepo, projectClaGroupRepo, eventsService)
-	v2SignService := sign.NewService(configFile.ClaV1ApiURL, v1CompanyRepo, projectRepo, projectClaGroupRepo, v1CompanyService)
+	v2CompanyService := v2Company.NewService(v1CompanyService, signaturesRepo, v1CLAGroupRepo, usersRepo, v1CompanyRepo, projectClaGroupRepo, eventsService)
+	v2SignService := sign.NewService(configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, projectClaGroupRepo, v1CompanyService)
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation)
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, projectClaGroupRepo)
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, projectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV1URL)
 	v1RepositoriesService := repositories.NewService(repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo)
 	v2RepositoriesService := v2Repositories.NewService(repositoriesRepo, projectClaGroupRepo, githubOrganizationsRepo)
 	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, projectClaGroupRepo)
-	v1ApprovalListService := approval_list.NewService(approvalListRepo, projectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, projectRepo, signaturesRepo, configFile.CorporateConsoleV2URL, http.DefaultClient)
+	v1ApprovalListService := approval_list.NewService(approvalListRepo, projectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
 	authorizer := auth.NewAuthorizer(authValidator, userRepo)
 	v2MetricsService := metrics.NewService(metricsRepo, projectClaGroupRepo)
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, repositoriesRepo, projectClaGroupRepo)
@@ -311,7 +311,7 @@ func server(localMode bool) http.Handler {
 	v2Template.Configure(v2API, templateService, eventsService)
 	github.Configure(api, configFile.GitHub.ClientID, configFile.GitHub.ClientSecret, configFile.GitHub.AccessToken, sessionStore)
 	signatures.Configure(api, v1SignaturesService, sessionStore, eventsService)
-	v2Signatures.Configure(v2API, v1ProjectService, projectRepo, v1CompanyService, v1SignaturesService, sessionStore, eventsService, v2SignatureService, projectClaGroupRepo)
+	v2Signatures.Configure(v2API, v1ProjectService, v1CLAGroupRepo, v1CompanyService, v1SignaturesService, sessionStore, eventsService, v2SignatureService, projectClaGroupRepo)
 	approval_list.Configure(api, v1ApprovalListService, sessionStore, v1SignaturesService, eventsService)
 	v1Company.Configure(api, v1CompanyService, usersService, companyUserValidation, eventsService)
 	docs.Configure(api)
