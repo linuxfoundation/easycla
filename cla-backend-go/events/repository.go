@@ -359,10 +359,13 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
 		ProjectionExpression:      expr.Projection(),
-		FilterExpression:          expr.Filter(),
 		TableName:                 aws.String(tableName),
 		IndexName:                 aws.String(indexName),
 		ScanIndexForward:          aws.Bool(false),
+	}
+
+	if filter != nil {
+		queryInput.FilterExpression = expr.Filter()
 	}
 
 	if all {
@@ -497,15 +500,12 @@ func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, found
 		"paramPageSize":  utils.Int64Value(paramPageSize),
 		"loadAll":        all,
 	}
-	key := fmt.Sprintf("%s#%s", companySFID, foundationSFID)
-	log.WithFields(f).Debugf("adding key condition of 'company_sfid_foundation_sfid = %s'", key)
-	keyCondition := expression.Key("company_sfid_foundation_sfid").Equal(expression.Value(key))
+	log.WithFields(f).Debugf("adding key condition of 'event_parent_project_sfid = %s'", foundationSFID)
+	keyCondition := expression.Key("event_parent_project_sfid").Equal(expression.Value(foundationSFID))
 	var filter expression.ConditionBuilder
-	if companyID != "" {
-		log.WithFields(f).Debugf("adding filter condition of 'event_company_id = %s'", companyID)
-		filter = expression.Name("event_company_id").Equal(expression.Value(companyID))
-	}
-	return repo.queryEventsTable(CompanySFIDFoundationSFIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
+	log.WithFields(f).Debugf("adding filter condition of 'event_company_sfid = %s ", companySFID)
+	filter = expression.Name("event_company_sfid").Equal(expression.Value(companySFID))
+	return repo.queryEventsTable(EventFoundationSFIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
 }
 
 // GetCompanyClaGroupEvents returns the list of events for cla group and the company
