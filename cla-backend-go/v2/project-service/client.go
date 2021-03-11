@@ -44,7 +44,7 @@ func InitClient(APIGwURL string) {
 	projectServiceClient = &Client{
 		cl: client.NewHTTPClientWithConfig(strfmt.Default, &client.TransportConfig{
 			Host:     APIGwURL,
-			BasePath: "project-service/v1",
+			BasePath: "project-service",
 			Schemes:  []string{"https"},
 		}),
 	}
