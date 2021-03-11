@@ -307,11 +307,12 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 				log.WithFields(f).Warnf("problem loading project by SFID: %s", params.ProjectSFID)
 				return events.NewGetCompanyProjectEventsBadRequest().WithPayload(errorResponse(reqID, err))
 			}
-
 			var result *v1Models.EventList
-			if projectDetails.ProjectType == utils.ProjectTypeProjectGroup {
-				result, err = service.GetCompanyFoundationEvents(v1Company.CompanyExternalID, params.CompanyID, params.ProjectSFID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents))
+			if utils.IsProjectHasRootParent(projectDetails) {
+				log.WithFields(f).Debugf("loading foundation level events for projectSFID: %s...", params.ProjectSFID)
+				result, err = service.GetCompanyFoundationEvents(v1Company.CompanyExternalID, "", params.ProjectSFID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents))
 			} else {
+				log.WithFields(f).Debugf("loading project level events for projectSFID :%s...", params.ProjectSFID)
 				pm, perr := projectsClaGroupsRepo.GetClaGroupIDForProject(params.ProjectSFID)
 				if perr != nil {
 					if perr == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {

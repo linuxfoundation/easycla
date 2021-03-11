@@ -242,10 +242,18 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 				log.WithFields(f).Warnf("failed to load salesforce project parent by ID: %s", project.Parent)
 				return nil
 			}
+			var parentProjectName, parentProjectID string
+			if utils.IsProjectCategory(project, parentProject) {
+				parentProjectName = parentProject.Name
+				parentProjectID = parentProject.ID
+			} else {
+				parentProjectName = project.Name
+				parentProjectID = project.ID
+			}
 			log.WithFields(f).Debugf("loaded salesforce project by parent ID: %s - resulting in ID: %s with name: %s",
-				project.Parent, parentProject.ID, parentProject.Name)
-			args.ParentProjectSFID = parentProject.ID
-			args.ParentProjectName = parentProject.Name
+				project.Parent, parentProjectID, parentProjectName)
+			args.ParentProjectSFID = parentProjectID
+			args.ParentProjectName = parentProjectName
 		}
 	}
 
