@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
@@ -126,9 +128,12 @@ func (s *emailTemplateServiceProvider) getV1CLAGroupTemplateParamsFromProjectSFI
 		return CLAGroupTemplateParams{}, fmt.Errorf("project service lookup error for SFID: %s, error : %+v", projectSFID, projectErr)
 	}
 
-	signedResult, err := s.projectService.SignedAtFoundationLevel(context.Background(), claGroup.FoundationSFID)
-	if err != nil {
-		return CLAGroupTemplateParams{}, fmt.Errorf("fetching the SignedAtFoundationLevel for foundation : %s failed : %v", claGroup.FoundationSFID, err)
+	var signedResult bool
+	if claGroup.FoundationSFID != "" {
+		signedResult, err = s.projectService.SignedAtFoundationLevel(context.Background(), claGroup.FoundationSFID)
+		if err != nil {
+			log.Warnf("fetching the SignedAtFoundationLevel for foundation : %s failed : %v skipping assigning in email params", claGroup.FoundationSFID, err)
+		}
 	}
 
 	return CLAGroupTemplateParams{
