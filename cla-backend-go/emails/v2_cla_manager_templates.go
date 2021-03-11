@@ -32,7 +32,7 @@ const (
 <p>This is a notification email from EasyCLA regarding the organization {{.CompanyName}}.</p>
 <p>The following contributor would like to submit a contribution to the projects(s): {{.GetProjectsOrProject}} and is requesting to be added to the approval list as a contributor for your organization: </p>
 <p>{{.UserDetails}}</p>
-<p> Approval can be done at {{.CorporateConsole}}. Visit any of the project(s):{{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}} and add the contributor to the approved list.</p>
+<p>Approval can be done at {{.CorporateConsole}}. Visit any of the project(s):{{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}} and add the contributor to the approved list.</p>
 <p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their contribution.</p>
 `
 )
@@ -64,7 +64,7 @@ const (
 	V2OrgAdminTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the CLA setup and signing process for the organization {{.CompanyName}}.</p>
-<p> {{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA in support of the following project(s): </p>
+<p>{{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA in support of the following project(s): </p>
 <ul>
 	<li>{{.Project.ExternalProjectName}}</li>
 </ul>
@@ -134,7 +134,7 @@ const (
 	V2CLAManagerDesigneeCorporateTemplate = `
 <p>Hello {{.RecipientName}},</p>
 <p>This is a notification email from EasyCLA regarding the CLA setup and signing process for the organization {{.CompanyName}}.</p>
-<p> {{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA for the organization {{.CompanyName}} in support of the following project(s): </p>
+<p>{{.SenderName}} {{.SenderEmail}} has identified you as a potential candidate to setup the Corporate CLA for the organization {{.CompanyName}} in support of the following project(s): </p>
 <ul>
 	<li>{{.Project.ExternalProjectName}}</li>
 </ul>

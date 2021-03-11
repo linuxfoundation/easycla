@@ -5,7 +5,6 @@ package utils
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -103,7 +102,7 @@ func GetCorporateURL(isV2Project bool) string {
 	if isV2Project {
 		return config.GetConfig().CorporateConsoleV2URL
 	}
-	return fmt.Sprintf("https://%s", config.GetConfig().CorporateConsoleURL)
+	return config.GetConfig().CorporateConsoleV1URL
 }
 
 // GetEmailHelpContent returns the standard email help paragraph details.

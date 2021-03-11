@@ -92,6 +92,7 @@ func (s *emailTemplateServiceProvider) getV2CLAGroupTemplateParamsFromProjectSFI
 	params := &CLAGroupTemplateParams{}
 	params.CLAGroupName = projectCLAGroup.ClaGroupName
 	params.CorporateConsole = s.corporateConsoleV2
+	params.Version = projectCLAGroup.Version
 
 	projects, err := s.repository.GetProjectsIdsForClaGroup(projectCLAGroup.ClaGroupID)
 	if err != nil {
@@ -132,6 +133,7 @@ func (s *emailTemplateServiceProvider) getV1CLAGroupTemplateParamsFromProjectSFI
 	return CLAGroupTemplateParams{
 		CorporateConsole:  s.corporateConsoleV1,
 		CLAGroupName:      claGroup.ProjectName,
+		Version:           claGroup.Version,
 		ChildProjectCount: 1,
 		Projects: []CLAProjectParams{
 			{

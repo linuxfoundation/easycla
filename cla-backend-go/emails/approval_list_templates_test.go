@@ -67,7 +67,7 @@ func TestRequestToAuthorizeTemplate(t *testing.T) {
 		CLAGroupTemplateParams: CLAGroupTemplateParams{
 			Projects:         []CLAProjectParams{{ExternalProjectName: "JohnsProjectExternal"}},
 			CLAGroupName:     "JohnsProject",
-			CorporateConsole: "CorporateConsoleURLValue",
+			CorporateConsole: "https://CorporateConsoleURLValue",
 		},
 		CLAManagers: []ClaManagerInfoParams{
 			{LfUsername: "LFUserName", Email: "LFEmail"},

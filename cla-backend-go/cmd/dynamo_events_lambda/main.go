@@ -121,7 +121,7 @@ func init() {
 	})
 
 	usersService := users.NewService(usersRepo, eventsService)
-	companyService := company.NewService(companyRepo, configFile.CorporateConsoleURL, userRepo, usersService)
+	companyService := company.NewService(companyRepo, configFile.CorporateConsoleV1URL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(companyService, signaturesRepo, projectRepo, usersRepo, companyRepo, projectClaGroupRepo, eventsService)
 	organization_service.InitClient(configFile.APIGatewayURL, eventsService)
 	acs_service.InitClient(configFile.APIGatewayURL, configFile.AcsAPIKey)

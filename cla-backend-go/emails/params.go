@@ -73,6 +73,7 @@ type CLAGroupTemplateParams struct {
 	// multiple children
 	ChildProjectCount int
 	Projects          []CLAProjectParams
+	Version           string
 }
 
 // GetProjectNameOrFoundation returns if the foundationName is set it gets back

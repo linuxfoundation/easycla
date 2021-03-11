@@ -4,6 +4,8 @@
 package emails
 
 import (
+	"errors"
+
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
 
@@ -69,6 +71,10 @@ const (
 
 // RenderApprovalListTemplate renders RenderApprovalListTemplate
 func RenderApprovalListTemplate(svc EmailTemplateService, projectSFIDs []string, params ApprovalListApprovedTemplateParams) (string, error) {
+	if len(projectSFIDs) == 0 {
+		return "", errors.New("projectSFIDs list is empty")
+	}
+
 	// prefill the projects data
 	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFIDs[0])
 	if err != nil {
@@ -76,8 +82,7 @@ func RenderApprovalListTemplate(svc EmailTemplateService, projectSFIDs []string,
 	}
 	params.CLAGroupTemplateParams = claGroupParams
 
-	return RenderTemplate(utils.V2, ApprovalListApprovedTemplateName,
-		ApprovalListApprovedTemplate, params)
+	return RenderTemplate(utils.V2, ApprovalListApprovedTemplateName, ApprovalListApprovedTemplate, params)
 }
 
 // RequestToAuthorizeTemplateParams is email params for RequestToAuthorizeTemplate
@@ -107,7 +112,7 @@ const (
 <br/><p>{{.OptionalMessage}}</p><br/>
 {{end}}
 <p>If you want to add them to the Approved List, please
-<a href="https://{{.CorporateConsole}}#/company/{{.CompanyID}}" target="_blank">log into the EasyCLA Corporate
+<a href="{{.CorporateConsole}}#/company/{{.CompanyID}}" target="_blank">log into the EasyCLA Corporate
 Console</a>, where you can approve this user's request by selecting the 'Manage Approved List' and adding the
 contributor's email, the contributor's entire email domain, their GitHub ID or the entire GitHub Organization for the
 repository. This will permit them to begin contributing to {{.Project.ExternalProjectName}} on behalf of {{.CompanyName}}.</p>
@@ -124,8 +129,5 @@ func RenderRequestToAuthorizeTemplate(svc EmailTemplateService, claGroupVersion 
 
 	// assign the prefilled struct
 	params.CLAGroupTemplateParams = claGroupParams
-	return RenderTemplate(claGroupVersion, RequestToAuthorizeTemplateName, RequestToAuthorizeTemplate,
-		params,
-	)
-
+	return RenderTemplate(claGroupVersion, RequestToAuthorizeTemplateName, RequestToAuthorizeTemplate, params)
 }

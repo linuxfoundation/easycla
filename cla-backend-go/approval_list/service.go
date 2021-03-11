@@ -404,7 +404,7 @@ func (s service) sendRequestApprovedEmailToRecipient(ctx context.Context, emailP
 
 	f := logrus.Fields{
 		"functionName":     "sendRequestApprovedEmailToRecipient",
-		utils.XREQUESTID:   ctx.Value((utils.XREQUESTID)),
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
 		"companyName":      emailParams.CompanyName,
 		"recipientName":    emailParams.RecipientName,
 		"recipientAddress": emailParams.RecipientAddress,

@@ -70,6 +70,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-gh-test-repository-%s", stage),
 		fmt.Sprintf("cla-gh-test-repository-id-%s", stage),
 		fmt.Sprintf("cla-corporate-base-%s", stage),
+		fmt.Sprintf("cla-corporate-v1-base-%s", stage),
 		fmt.Sprintf("cla-corporate-v2-base-%s", stage),
 		fmt.Sprintf("cla-doc-raptor-api-key-%s", stage),
 		fmt.Sprintf("cla-session-store-table-%s", stage),
@@ -146,11 +147,9 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 			config.GitHub.TestRepositoryID = resp.value
 
 		case fmt.Sprintf("cla-corporate-base-%s", stage):
-			corporateConsoleURLValue := resp.value
-			if corporateConsoleURLValue == "corporate.prod.lfcla.com" {
-				corporateConsoleURLValue = "corporate.lfcla.com"
-			}
-			config.CorporateConsoleURL = corporateConsoleURLValue
+			config.CorporateConsoleURL = resp.value
+		case fmt.Sprintf("cla-corporate-v1-base-%s", stage):
+			config.CorporateConsoleV1URL = resp.value
 		case fmt.Sprintf("cla-corporate-v2-base-%s", stage):
 			config.CorporateConsoleV2URL = resp.value
 		case fmt.Sprintf("cla-doc-raptor-api-key-%s", stage):
