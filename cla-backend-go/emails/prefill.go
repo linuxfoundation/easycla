@@ -29,8 +29,9 @@ type emailTemplateServiceProvider struct {
 }
 
 // NewEmailTemplateService creates a new instance of email template service
-func NewEmailTemplateService(repository projects_cla_groups.Repository, projectService project.Service, corporateConsoleV1, corporateConsoleV2 string) EmailTemplateService {
+func NewEmailTemplateService(claGroupRepository project.ProjectRepository, repository projects_cla_groups.Repository, projectService project.Service, corporateConsoleV1, corporateConsoleV2 string) EmailTemplateService {
 	return &emailTemplateServiceProvider{
+		claGroupRepository: claGroupRepository,
 		repository:         repository,
 		projectService:     projectService,
 		corporateConsoleV1: corporateConsoleV1,

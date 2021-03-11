@@ -40,11 +40,11 @@ const (
 
 // IService interface defines the service methods/functions
 type IService interface {
-	AddCclaWhitelistRequest(ctx context.Context, companyID string, claGroupID string, args models.CclaWhitelistRequestInput) (string, error)
-	ApproveCclaWhitelistRequest(ctx context.Context, claUser *user.CLAUser, ClacompanyID, claGroupID, requestID string) error
-	RejectCclaWhitelistRequest(ctx context.Context, companyID, claGroupID, requestID string) error
-	ListCclaWhitelistRequest(companyID string, claGroupID, status *string) (*models.CclaWhitelistRequestList, error)
-	ListCclaWhitelistRequestByCompanyProjectUser(companyID string, claGroupID, status, userID *string) (*models.CclaWhitelistRequestList, error)
+	AddCclaApprovalListRequest(ctx context.Context, companyID string, claGroupID string, args models.CclaWhitelistRequestInput) (string, error)
+	ApproveCclaApprovalListRequest(ctx context.Context, claUser *user.CLAUser, ClacompanyID, claGroupID, requestID string) error
+	RejectCclaApprovalListRequest(ctx context.Context, companyID, claGroupID, requestID string) error
+	ListCclaApprovalListRequest(companyID string, claGroupID, status *string) (*models.CclaWhitelistRequestList, error)
+	ListCclaApprovalListRequestByCompanyProjectUser(companyID string, claGroupID, status, userID *string) (*models.CclaWhitelistRequestList, error)
 }
 
 type service struct {
@@ -61,54 +61,75 @@ type service struct {
 }
 
 // NewService creates a new approval list service
-func NewService(repo IRepository, projectsCLAGroupRepository projects_cla_groups.Repository, projService project.Service, userRepo users.UserRepository, companyRepo company.IRepository, projectRepo project.ProjectRepository, signatureRepo signatures.SignatureRepository, corpConsoleURL string, httpClient *http.Client) IService {
+func NewService(repo IRepository, projectsCLAGroupRepository projects_cla_groups.Repository, projService project.Service, userRepo users.UserRepository, companyRepo company.IRepository, projectRepo project.ProjectRepository, signatureRepo signatures.SignatureRepository, emailTemplateService emails.EmailTemplateService, corpConsoleURL string, httpClient *http.Client) IService {
 	return service{
 		repo:                       repo,
-		projectsCLAGroupRepository: projectsCLAGroupRepository,
 		projectService:             projService,
 		userRepo:                   userRepo,
 		companyRepo:                companyRepo,
 		projectRepo:                projectRepo,
 		signatureRepo:              signatureRepo,
+		projectsCLAGroupRepository: projectsCLAGroupRepository,
+		emailTemplateService:       emailTemplateService,
 		corpConsoleURL:             corpConsoleURL,
 		httpClient:                 httpClient,
 	}
 }
 
-func (s service) AddCclaWhitelistRequest(ctx context.Context, companyID string, claGroupID string, args models.CclaWhitelistRequestInput) (string, error) {
-	list, err := s.ListCclaWhitelistRequestByCompanyProjectUser(companyID, &claGroupID, nil, &args.ContributorID)
+func (s service) AddCclaApprovalListRequest(ctx context.Context, companyID string, claGroupID string, args models.CclaWhitelistRequestInput) (string, error) {
+	f := logrus.Fields{
+		"functionName":     "v1.approval_list.service.AddCclaApprovalListRequest",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+		"companyID":        companyID,
+		"claGroupID":       claGroupID,
+		"RecipientName":    args.RecipientName,
+		"RecipientEmail":   args.RecipientEmail,
+		"ContributorID":    args.ContributorID,
+		"ContributorName":  args.ContributorName,
+		"ContributorEmail": args.ContributorEmail,
+		"Message":          args.Message,
+	}
+
+	list, err := s.ListCclaApprovalListRequestByCompanyProjectUser(companyID, &claGroupID, nil, &args.ContributorID)
 	if err != nil {
-		log.Warnf("AddCclaApprovalRequest - error looking up existing contributor invite requests for company: %s, project: %s, user by id: %s with name: %s, email: %s, error: %+v",
+		log.WithFields(f).WithError(err).Warnf("error looking up existing contributor invite requests for company: %s, project: %s, user by id: %s with name: %s, email: %s, error: %+v",
 			companyID, claGroupID, args.ContributorID, args.ContributorName, args.ContributorEmail, err)
 		return "", err
 	}
 	for _, item := range list.List {
 		if item.RequestStatus == "pending" || item.RequestStatus == "approved" {
-			log.Warnf("AddCclaApprovalRequest - found existing contributor invite - id: %s, request for company: %s, project: %s, user by id: %s with name: %s, email: %s",
+			log.WithFields(f).Warnf("found existing contributor invite - id: %s, request for company: %s, project: %s, user by id: %s with name: %s, email: %s",
 				list.List[0].RequestID, companyID, claGroupID, args.ContributorID, args.ContributorName, args.ContributorEmail)
 			return "", ErrCclaApprovalRequestAlreadyExists
 		}
 	}
 	companyModel, err := s.companyRepo.GetCompany(ctx, companyID)
 	if err != nil {
-		log.Warnf("AddCclaApprovalRequest - unable to lookup company by id: %s, error: %+v", companyID, err)
+		log.WithFields(f).Warnf("unable to lookup company by id: %s, error: %+v", companyID, err)
 		return "", err
 	}
 	claGroupModel, err := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
 	if err != nil {
-		log.Warnf("AddCclaApprovalRequest - unable to lookup project by id: %s, error: %+v", claGroupID, err)
+		log.WithFields(f).Warnf("unable to lookup project by id: %s, error: %+v", claGroupID, err)
 		return "", err
 	}
+
+	log.WithFields(f).Debugf("looking up user by user ID: %s", args.ContributorID)
 	userModel, err := s.userRepo.GetUser(args.ContributorID)
-	if err != nil {
-		log.Warnf("AddCclaApprovalRequest - unable to lookup user by id: %s with name: %s, email: %s, error: %+v",
+	if err != nil || userModel == nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup user by id: %s with name: %s, email: %s, error: %+v",
 			args.ContributorID, args.ContributorName, args.ContributorEmail, err)
-		return "", err
-	}
-	if userModel == nil {
-		log.Warnf("AddCclaApprovalRequest - unable to lookup user by id: %s with name: %s, email: %s, error: user object not found",
-			args.ContributorID, args.ContributorName, args.ContributorEmail)
-		return "", errors.New("invalid user")
+
+		log.WithFields(f).Debugf("looking up user by user email: %s", args.ContributorEmail)
+		userModel, err = s.userRepo.GetUserByEmail(args.ContributorEmail)
+		if err != nil || userModel == nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup user by email: %s with name: %s, error: %+v",
+				args.ContributorName, args.ContributorEmail, err)
+			if err != nil {
+				return "", err
+			}
+			return "", errors.New("invalid user")
+		}
 	}
 
 	signed, approved := true, true
@@ -116,14 +137,14 @@ func (s service) AddCclaWhitelistRequest(ctx context.Context, companyID string, 
 	pageSize := int64(5)
 	sig, sigErr := s.signatureRepo.GetProjectCompanySignatures(ctx, companyID, claGroupID, &signed, &approved, nil, &sortOrder, &pageSize)
 	if sigErr != nil || sig == nil || sig.Signatures == nil {
-		log.Warnf("AddCclaApprovalRequest - unable to lookup signature by company id: %s project id: %s - (or no managers), sig: %+v, error: %+v",
+		log.WithFields(f).Warnf("unable to lookup signature by company id: %s project id: %s - (or no managers), sig: %+v, error: %+v",
 			companyID, claGroupID, sig, err)
 		return "", err
 	}
 
 	requestID, addErr := s.repo.AddCclaApprovalRequest(companyModel, claGroupModel, userModel, args.ContributorName, args.ContributorEmail)
 	if addErr != nil {
-		log.Warnf("AddCclaApprovalRequest - unable to add Approval Request for id: %s with name: %s, email: %s, error: %+v",
+		log.WithFields(f).Warnf("unable to add Approval Request for id: %s with name: %s, email: %s, error: %+v",
 			args.ContributorID, args.ContributorName, args.ContributorEmail, addErr)
 	}
 
@@ -133,16 +154,16 @@ func (s service) AddCclaWhitelistRequest(ctx context.Context, companyID string, 
 	return requestID, nil
 }
 
-// ApproveCclaWhitelistRequest is the handler for the approve CLA request
-func (s service) ApproveCclaWhitelistRequest(ctx context.Context, claUser *user.CLAUser, companyID, claGroupID, requestID string) error {
-
+// ApproveCclaApprovalListRequest is the handler for the approve CLA request
+func (s service) ApproveCclaApprovalListRequest(ctx context.Context, claUser *user.CLAUser, companyID, claGroupID, requestID string) error {
 	f := logrus.Fields{
-		"functionName": "ApproveCclaApprovalListRequest",
+		"functionName": "v1.approval_list.service.ApproveCclaApprovalListRequest",
 		"companyID":    companyID,
 		"claGroupID":   claGroupID,
 		"requestID":    requestID,
 		"Approver":     claUser.Name,
 	}
+
 	err := s.repo.ApproveCclaApprovalListRequest(requestID)
 	if err != nil {
 		log.WithFields(f).Warnf("ApproveCclaApprovalListRequest - problem updating approved list with 'approved' status for request: %s, error: %+v",
@@ -219,28 +240,35 @@ func (s service) ApproveCclaWhitelistRequest(ctx context.Context, claUser *user.
 	return nil
 }
 
-// RejectCclaWhitelistRequest is the handler for the decline CLA request
-func (s service) RejectCclaWhitelistRequest(ctx context.Context, companyID, claGroupID, requestID string) error {
+// RejectCclaApprovalListRequest is the handler for the decline CLA request
+func (s service) RejectCclaApprovalListRequest(ctx context.Context, companyID, claGroupID, requestID string) error {
+	f := logrus.Fields{
+		"functionName": "v1.approval_list.service.RejectCclaApprovalListRequest",
+		"companyID":    companyID,
+		"claGroupID":   claGroupID,
+		"requestID":    requestID,
+	}
+
 	err := s.repo.RejectCclaApprovalListRequest(requestID)
 	if err != nil {
-		log.Warnf("RejectCclaApprovalListRequest - problem updating approved list with 'rejected' status for request: %s, error: %+v", requestID, err)
+		log.WithFields(f).WithError(err).Warnf("problem updating approved list with 'rejected' status for request: %s, error: %+v", requestID, err)
 		return err
 	}
 
 	requestModel, err := s.repo.GetCclaApprovalListRequest(requestID)
 	if err != nil {
-		log.Warnf("RejectCclaApprovalListRequest - unable to lookup request by id: %s, error: %+v", requestID, err)
+		log.WithFields(f).WithError(err).Warnf("unable to lookup request by id: %s, error: %+v", requestID, err)
 		return err
 	}
 
 	companyModel, err := s.companyRepo.GetCompany(ctx, companyID)
 	if err != nil {
-		log.Warnf("RejectCclaApprovalListRequest - unable to lookup company by id: %s, error: %+v", companyID, err)
+		log.WithFields(f).WithError(err).Warnf("unable to lookup company by id: %s, error: %+v", companyID, err)
 		return err
 	}
 	claGroupModel, err := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
 	if err != nil {
-		log.Warnf("RejectCclaApprovalListRequest - unable to lookup project by id: %s, error: %+v", claGroupID, err)
+		log.WithFields(f).WithError(err).Warnf("unable to lookup project by id: %s, error: %+v", claGroupID, err)
 		return err
 	}
 
@@ -249,15 +277,15 @@ func (s service) RejectCclaWhitelistRequest(ctx context.Context, companyID, claG
 	pageSize := int64(5)
 	sig, sigErr := s.signatureRepo.GetProjectCompanySignatures(ctx, companyID, claGroupID, &signed, &approved, nil, &sortOrder, &pageSize)
 	if sigErr != nil || sig == nil || sig.Signatures == nil {
-		log.Warnf("RejectCclaApprovalListRequest - unable to lookup signature by company id: %s project id: %s - (or no managers), sig: %+v, error: %+v",
+		log.WithFields(f).WithError(sigErr).Warnf("unable to lookup signature by company id: %s project id: %s - (or no managers), sig: %+v, error: %+v",
 			companyID, claGroupID, sig, err)
 		return err
 	}
 
 	if requestModel.UserEmails == nil {
-		msg := fmt.Sprintf("RejectCclaApprovalListRequest - unable to send approval email - email missing for request: %+v, error: %+v",
+		msg := fmt.Sprintf("unable to send approval email - email missing for request: %+v, error: %+v",
 			requestModel, err)
-		log.Warnf(msg)
+		log.WithFields(f).Warnf(msg)
 		return errors.New(msg)
 	}
 
@@ -271,13 +299,13 @@ func (s service) RejectCclaWhitelistRequest(ctx context.Context, companyID, claG
 	return nil
 }
 
-// ListCclaWhitelistRequest is the handler for the list CLA request
-func (s service) ListCclaWhitelistRequest(companyID string, claGroupID, status *string) (*models.CclaWhitelistRequestList, error) {
+// ListCclaApprovalListRequest is the handler for the list CLA request
+func (s service) ListCclaApprovalListRequest(companyID string, claGroupID, status *string) (*models.CclaWhitelistRequestList, error) {
 	return s.repo.ListCclaApprovalListRequests(companyID, claGroupID, status, nil)
 }
 
-// ListCclaWhitelistRequestByCompanyProjectUser is the handler for the list CLA request
-func (s service) ListCclaWhitelistRequestByCompanyProjectUser(companyID string, claGroupID, status, userID *string) (*models.CclaWhitelistRequestList, error) {
+// ListCclaApprovalListRequestByCompanyProjectUser is the handler for the list CLA request
+func (s service) ListCclaApprovalListRequestByCompanyProjectUser(companyID string, claGroupID, status, userID *string) (*models.CclaWhitelistRequestList, error) {
 	return s.repo.ListCclaApprovalListRequests(companyID, claGroupID, status, userID)
 }
 
@@ -401,9 +429,8 @@ func (s service) sendRequestRejectedEmailToRecipient(emailParams emails.CommonEm
 }
 
 func (s service) sendRequestApprovedEmailToRecipient(ctx context.Context, emailParams emails.CommonEmailParams, claUser user.CLAUser, projectSFIDs []string) {
-
 	f := logrus.Fields{
-		"functionName":     "sendRequestApprovedEmailToRecipient",
+		"functionName":     "v1.approval_list.service.sendRequestApprovedEmailToRecipient",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
 		"companyName":      emailParams.CompanyName,
 		"recipientName":    emailParams.RecipientName,

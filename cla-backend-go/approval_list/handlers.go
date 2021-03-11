@@ -27,7 +27,7 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 		func(params company.AddCclaWhitelistRequestParams) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-			requestID, err := service.AddCclaWhitelistRequest(ctx, params.CompanyID, params.ProjectID, params.Body)
+			requestID, err := service.AddCclaApprovalListRequest(ctx, params.CompanyID, params.ProjectID, params.Body)
 			if err != nil {
 				return company.NewAddCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
@@ -47,7 +47,7 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 		func(params company.ApproveCclaWhitelistRequestParams, claUser *user.CLAUser) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-			err := service.ApproveCclaWhitelistRequest(ctx, claUser, params.CompanyID, params.ProjectID, params.RequestID)
+			err := service.ApproveCclaApprovalListRequest(ctx, claUser, params.CompanyID, params.ProjectID, params.RequestID)
 			if err != nil {
 				return company.NewApproveCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
@@ -67,7 +67,7 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 		func(params company.RejectCclaWhitelistRequestParams, claUser *user.CLAUser) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-			err := service.RejectCclaWhitelistRequest(ctx, params.CompanyID, params.ProjectID, params.RequestID)
+			err := service.RejectCclaApprovalListRequest(ctx, params.CompanyID, params.ProjectID, params.RequestID)
 			if err != nil {
 				return company.NewRejectCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
@@ -93,7 +93,7 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 			}
 			log.WithFields(f).Debugf("Invoking ListCclaApprovalListRequests with Company ID: %+v, Project ID: %+v, Status: %+v",
 				params.CompanyID, params.ProjectID, params.Status)
-			result, err := service.ListCclaWhitelistRequest(params.CompanyID, params.ProjectID, params.Status)
+			result, err := service.ListCclaApprovalListRequest(params.CompanyID, params.ProjectID, params.Status)
 			if err != nil {
 				return company.NewListCclaWhitelistRequestsBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
@@ -103,9 +103,22 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 
 	api.CompanyListCclaWhitelistRequestsByCompanyAndProjectHandler = company.ListCclaWhitelistRequestsByCompanyAndProjectHandlerFunc(
 		func(params company.ListCclaWhitelistRequestsByCompanyAndProjectParams, claUser *user.CLAUser) middleware.Responder {
-			log.Debugf("Invoking ListCclaWhitelistRequestByCompanyProjectUser with Company ID: %+v, Project ID: %+v, Status: %+v",
+			reqID := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			f := logrus.Fields{
+				"functionName":      "v1.approval_list.handlers.CompanyListCclaWhitelistRequestsByCompanyAndProjectHandler",
+				utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+				"companyID":         params.CompanyID,
+				"projectID":         params.ProjectID,
+				"status":            utils.StringValue(params.Status),
+				"claUserName":       claUser.Name,
+				"claUserUserID":     claUser.UserID,
+				"claUserLFEmail":    claUser.LFEmail,
+				"claUserLFUsername": claUser.LFUsername,
+			}
+			log.WithFields(f).Debugf("Invoking ListCclaApprovalListRequestByCompanyProjectUser with Company ID: %+v, Project ID: %+v, Status: %+v",
 				params.CompanyID, params.ProjectID, params.Status)
-			result, err := service.ListCclaWhitelistRequestByCompanyProjectUser(params.CompanyID, &params.ProjectID, params.Status, nil)
+			result, err := service.ListCclaApprovalListRequestByCompanyProjectUser(params.CompanyID, &params.ProjectID, params.Status, nil)
 			if err != nil {
 				return company.NewListCclaWhitelistRequestsByCompanyAndProjectBadRequest().WithPayload(errorResponse(err))
 			}
@@ -115,9 +128,9 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 
 	api.CompanyListCclaWhitelistRequestsByCompanyAndProjectAndUserHandler = company.ListCclaWhitelistRequestsByCompanyAndProjectAndUserHandlerFunc(
 		func(params company.ListCclaWhitelistRequestsByCompanyAndProjectAndUserParams, claUser *user.CLAUser) middleware.Responder {
-			log.Debugf("Invoking ListCclaWhitelistRequestByCompanyProjectUser with Company ID: %+v, Project ID: %+v, Status: %+v, User: %+v",
+			log.Debugf("Invoking ListCclaApprovalListRequestByCompanyProjectUser with Company ID: %+v, Project ID: %+v, Status: %+v, User: %+v",
 				params.CompanyID, params.ProjectID, params.Status, claUser.LFUsername)
-			result, err := service.ListCclaWhitelistRequestByCompanyProjectUser(params.CompanyID, &params.ProjectID, params.Status, &claUser.LFUsername)
+			result, err := service.ListCclaApprovalListRequestByCompanyProjectUser(params.CompanyID, &params.ProjectID, params.Status, &claUser.LFUsername)
 			if err != nil {
 				return company.NewListCclaWhitelistRequestsByCompanyAndProjectAndUserBadRequest().WithPayload(errorResponse(err))
 			}
