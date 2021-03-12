@@ -35,7 +35,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyGetCompanyByInternalIDHandler",
+				"functionName":   "v2.company.handlers.CompanyGetCompanyByInternalIDHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"companyID":      params.CompanyID,
 				"authUserName":   utils.StringValue(params.XUSERNAME),
@@ -77,7 +77,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyGetCompanyByExternalIDHandler",
+				"functionName":   "v2.company.handlers.CompanyGetCompanyByExternalIDHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"companySFID":    params.CompanySFID,
 				"authUserName":   utils.StringValue(params.XUSERNAME),
@@ -123,7 +123,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyGetCompanyProjectClaManagersHandler",
+				"functionName":   "v2.company.handlers.CompanyGetCompanyProjectClaManagersHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"projectSFID":    params.ProjectSFID,
 				"companyID":      params.CompanyID,
@@ -165,7 +165,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyGetCompanyCLAGroupManagersHandler",
+				"functionName":   "v2.company.handlers.CompanyGetCompanyCLAGroupManagersHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"claGroupID":     params.ClaGroupID,
 				"companyID":      params.CompanyID,
@@ -192,7 +192,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyGetCompanyProjectActiveClaHandler",
+				"functionName":   "v2.company.handlers.CompanyGetCompanyProjectActiveClaHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"projectSFID":    params.ProjectSFID,
 				"companyID":      params.CompanyID,
@@ -240,10 +240,11 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyGetCompanyProjectContributorsHandler",
+				"functionName":   "v2.company.handlers.CompanyGetCompanyProjectContributorsHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"projectSFID":    params.ProjectSFID,
 				"companyID":      params.CompanyID,
+				"searchTerm":     utils.StringValue(params.SearchTerm),
 				"authUserName":   utils.StringValue(params.XUSERNAME),
 				"authUserEmail":  utils.StringValue(params.XEMAIL),
 			}
@@ -259,6 +260,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				}
 				return company.NewGetCompanyProjectActiveClaBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
+			log.WithFields(f).Debugf("looked company by internal ID")
 
 			// PM - check if authorized by project scope - allow if PM has project ID scope that matches
 			// Contact,Community Program Manager,CLA Manager,CLA Manager Designee,Company Admin - check if authorized by organization scope - allow if {Contact,Community Program Manager,CLA Manager,CLA Manager Designee,Company Admin} has organization ID scope that matches
@@ -272,10 +274,26 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 					utils.ErrorResponseForbidden(reqID, msg))
 			}
 
+			log.WithFields(f).Debugf("querying for employee contributors...")
 			result, err := service.GetCompanyProjectContributors(ctx, params.ProjectSFID, params.CompanyID, utils.StringValue(params.SearchTerm))
 			if err != nil {
-				if _, ok := err.(*utils.CompanyNotFound); ok {
-					return company.NewGetCompanyProjectContributorsNotFound().WithXRequestID(reqID)
+				if companyErr, ok := err.(*utils.CompanyNotFound); ok {
+					msg := fmt.Sprintf("Company not found with ID: %s", companyErr.CompanyID)
+					log.WithFields(f).Warn(msg)
+					return company.NewGetCompanyProjectContributorsNotFound().WithXRequestID(reqID).WithPayload(
+						utils.ErrorResponseNotFoundWithError(reqID, msg, err))
+				}
+				if claGroupErr, ok := err.(*utils.CLAGroupNotFound); ok {
+					msg := fmt.Sprintf("CLA Group not found with ID: %s", claGroupErr.CLAGroupID)
+					log.WithFields(f).Warn(msg)
+					return company.NewGetCompanyProjectContributorsNotFound().WithXRequestID(reqID).WithPayload(
+						utils.ErrorResponseNotFoundWithError(reqID, msg, err))
+				}
+				if _, ok := err.(*utils.ProjectCLAGroupMappingNotFound); ok {
+					msg := fmt.Sprintf("CLA Group not found with project SFID: %s", params.ProjectSFID)
+					log.WithFields(f).Warn(msg)
+					return company.NewGetCompanyProjectContributorsNotFound().WithXRequestID(reqID).WithPayload(
+						utils.ErrorResponseNotFoundWithError(reqID, msg, err))
 				}
 				return company.NewGetCompanyProjectContributorsBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
@@ -288,7 +306,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyGetCompanyProjectClaHandler",
+				"functionName":   "v2.company.handlers.CompanyGetCompanyProjectClaHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"projectSFID":    params.ProjectSFID,
 				"companySFID":    params.CompanySFID,
@@ -328,7 +346,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			f := logrus.Fields{
-				"functionName":      "company.handlers.CompanyCreateCompanyHandler",
+				"functionName":      "v2.company.handlers.CompanyCreateCompanyHandler",
 				utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 				"userID":            params.UserID,
 				"companyName":       aws.StringValue(params.Input.CompanyName),
@@ -368,7 +386,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyGetCompanyByNameHandler",
+				"functionName":   "v2.company.handlers.CompanyGetCompanyByNameHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"companyName":    params.CompanyName,
 			}
@@ -428,7 +446,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":      "company.handlers.CompanyGetCompanyByNameHandler",
+				"functionName":      "v2.company.handlers.CompanyGetCompanyByNameHandler",
 				utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 				"signingEntityName": params.SigningEntityName,
 			}
@@ -458,7 +476,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyDeleteCompanyByIDHandler",
+				"functionName":   "v2.company.handlers.CompanyDeleteCompanyByIDHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"companyID":      params.CompanyID,
 				"authUserName":   utils.StringValue(params.XUSERNAME),
@@ -512,7 +530,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyDeleteCompanyBySFIDHandler",
+				"functionName":   "v2.company.handlers.CompanyDeleteCompanyBySFIDHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"companySFID":    params.CompanySFID,
 				"authUserName":   utils.StringValue(params.XUSERNAME),
@@ -569,7 +587,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyContributorAssociationHandler",
+				"functionName":   "v2.company.handlers.CompanyContributorAssociationHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"companySFID":    params.CompanySFID,
 				"userEmail":      params.Body.UserEmail.String(),
@@ -595,7 +613,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			f := logrus.Fields{
-				"functionName":   "company.handlers.CompanyContributorAssociationHandler",
+				"functionName":   "v2.company.handlers.CompanyContributorAssociationHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"companySFID":    params.CompanySFID,
 			}
@@ -652,7 +670,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		f := logrus.Fields{
-			"functionName":   "company.handlers.CompanyGetCompanyByInternalIDHandler",
+			"functionName":   "v2.company.handlers.CompanyGetCompanyByInternalIDHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"companyName":    params.CompanyName,
 			"websiteName":    params.WebsiteName,
@@ -701,7 +719,7 @@ func errorResponse(reqID string, err error) *models.ErrorResponse {
 // isUserHaveAccessToCLAProjectOrganization is a helper function to determine if the user has access to the specified project and organization
 func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *auth.User, projectSFID, organizationSFID string, projectClaGroupsRepo projects_cla_groups.Repository) bool {
 	f := logrus.Fields{
-		"functionName":     "company.handlers.isUserHaveAccessToCLAProjectOrganization",
+		"functionName":     "v2.company.handlers.isUserHaveAccessToCLAProjectOrganization",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
 		"projectSFID":      projectSFID,
 		"organizationSFID": organizationSFID,

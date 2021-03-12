@@ -18,11 +18,11 @@ import (
 )
 
 // buildProjectSignatureModels converts the response model into a response data model
-func (repo repository) buildProjectSignatureModels(ctx context.Context, results *dynamodb.QueryOutput, projectID string, loadACLDetails bool) ([]*models.Signature, error) {
+func (repo repository) buildProjectSignatureModels(ctx context.Context, results *dynamodb.QueryOutput, claGroupID string, loadACLDetails bool) ([]*models.Signature, error) {
 	f := logrus.Fields{
-		"functionName":   "signatures.converters.buildProjectSignatureModels",
+		"functionName":   "v1.signatures.converters.buildProjectSignatureModels",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"projectID":      projectID,
+		"claGroupID":     claGroupID,
 	}
 	var sigs []*models.Signature
 
@@ -31,8 +31,8 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 
 	err := dynamodbattribute.UnmarshalListOfMaps(results.Items, &dbSignatures)
 	if err != nil {
-		log.WithFields(f).Warnf("error unmarshalling signatures from database for project: %s, error: %v",
-			projectID, err)
+		log.WithFields(f).Warnf("error unmarshalling signatures from database for cla group ID: %s, error: %v",
+			claGroupID, err)
 		return nil, err
 	}
 
@@ -103,7 +103,8 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 				if sigModel.SignatureReferenceType == utils.SignatureReferenceTypeUser {
 					userModel, userErr := repo.usersRepo.GetUser(sigModel.SignatureReferenceID)
 					if userErr != nil || userModel == nil {
-						log.WithFields(f).Warnf("unable to lookup user using id: %s, error: %v", sigModel.SignatureReferenceID, userErr)
+						log.WithFields(f).WithError(userErr).Warnf("unable to lookup user for signature: %s with reference type: %s using signature reference id: %s",
+							sigModel.SignatureID, sigModel.SignatureReferenceType, sigModel.SignatureReferenceID)
 					} else {
 						userName = userModel.Username
 						userLFID = userModel.LfUsername
@@ -114,7 +115,8 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 					if signatureUserCompanyID != "" {
 						dbCompanyModel, companyErr := repo.companyRepo.GetCompany(ctx, signatureUserCompanyID)
 						if companyErr != nil {
-							log.WithFields(f).Warnf("unable to lookup company using id: %s, error: %v", signatureUserCompanyID, companyErr)
+							log.WithFields(f).WithError(companyErr).Warnf("unable to lookup company record for signature: %s with reference type: %s using signature user company id: %s",
+								sigModel.SignatureID, sigModel.SignatureReferenceType, signatureUserCompanyID)
 						} else {
 							companyName = dbCompanyModel.CompanyName
 							companySigningEntityName = dbCompanyModel.SigningEntityName
@@ -123,7 +125,8 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 				} else if sigModel.SignatureReferenceType == utils.SignatureReferenceTypeCompany {
 					dbCompanyModel, companyErr := repo.companyRepo.GetCompany(ctx, sigModel.SignatureReferenceID)
 					if companyErr != nil {
-						log.WithFields(f).Warnf("unable to lookup company using id: %s, error: %v", sigModel.SignatureReferenceID, companyErr)
+						log.WithFields(f).WithError(companyErr).Warnf("unable to lookup company record for signature: %s with reference type: %s using signature reference id: %s",
+							sigModel.SignatureID, sigModel.SignatureReferenceType, sigModel.SignatureReferenceID)
 					} else {
 						companyName = dbCompanyModel.CompanyName
 						companySigningEntityName = dbCompanyModel.SigningEntityName
@@ -138,10 +141,10 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 					if loadACLDetails {
 						userModel, userErr := repo.usersRepo.GetUserByUserName(userName, true)
 						if userErr != nil {
-							log.WithFields(f).Warnf("unable to lookup user using username: %s, error: %v", userName, userErr)
+							log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by userNmae: %s in ACL for signature: %s", userName, sigModel.SignatureID)
 						} else {
 							if userModel == nil {
-								log.WithFields(f).Warnf("User looking for username is null: %s for signature: %s", userName, sigModel.SignatureID)
+								log.WithFields(f).Warnf("unable to lookup user by userNmae: %s in ACL for signature: %s", userName, sigModel.SignatureID)
 							} else {
 								signatureACL = append(signatureACL, *userModel)
 							}
@@ -168,7 +171,7 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 // buildProjectSignatureSummaryModels converts the response model into a signature summary model
 func (repo repository) buildProjectSignatureSummaryModels(ctx context.Context, results *dynamodb.QueryOutput, projectID string) ([]*models.SignatureSummary, error) {
 	f := logrus.Fields{
-		"functionName":   "signatures.converters.buildProjectSignatureSummaryModels",
+		"functionName":   "v1.signatures.converters.buildProjectSignatureSummaryModels",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectID":      projectID,
 	}
@@ -235,7 +238,8 @@ func (repo repository) buildProjectSignatureSummaryModels(ctx context.Context, r
 					if signatureUserCompanyID != "" {
 						dbCompanyModel, companyErr := repo.companyRepo.GetCompany(ctx, signatureUserCompanyID)
 						if companyErr != nil {
-							log.WithFields(f).Warnf("unable to lookup company using id: %s, error: %v", signatureUserCompanyID, companyErr)
+							log.WithFields(f).WithError(companyErr).Warnf("unable to lookup company record for signature: %s with reference type: %s using signature user company id: %s",
+								sigModel.SignatureID, sigModel.SignatureReferenceType, signatureUserCompanyID)
 						} else {
 							companyName = dbCompanyModel.CompanyName
 							companySigningEntityName = dbCompanyModel.SigningEntityName
@@ -244,7 +248,8 @@ func (repo repository) buildProjectSignatureSummaryModels(ctx context.Context, r
 				} else if sigModel.SignatureReferenceType == "company" {
 					dbCompanyModel, companyErr := repo.companyRepo.GetCompany(ctx, sigModel.SignatureReferenceID)
 					if companyErr != nil {
-						log.WithFields(f).Warnf("unable to lookup company using id: %s, error: %v", sigModel.SignatureReferenceID, companyErr)
+						log.WithFields(f).WithError(companyErr).Warnf("unable to lookup company record for signature: %s with reference type: %s using signature reference id: %s",
+							sigModel.SignatureID, sigModel.SignatureReferenceType, sigModel.SignatureReferenceID)
 					} else {
 						companyName = dbCompanyModel.CompanyName
 						companySigningEntityName = dbCompanyModel.SigningEntityName

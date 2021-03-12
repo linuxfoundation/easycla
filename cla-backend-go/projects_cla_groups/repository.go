@@ -79,7 +79,6 @@ func (repo *repo) queryClaGroupsProjects(keyCondition expression.KeyConditionBui
 		"keyCondition": fmt.Sprintf("%+v", keyCondition),
 	}
 
-	log.WithFields(f).Debug("building query...")
 	expr, err := expression.NewBuilder().WithKeyCondition(keyCondition).Build()
 	if err != nil {
 		log.WithFields(f).Warnf("error building expression for project cla groups, error: %v", err)

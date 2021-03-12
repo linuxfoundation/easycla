@@ -127,7 +127,7 @@ func NewService(v1CompanyService v1Company.IService, sigRepo signatures.Signatur
 
 func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyModel *models.Company, projectSFID string) (*models.CompanyClaManagers, error) {
 	f := logrus.Fields{
-		"functionName":      "GetCompanyProjectCLAManagers",
+		"functionName":      "v2.company.service.GetCompanyProjectCLAManagers",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"projectSFID":       projectSFID,
 		"companyID":         v1CompanyModel.CompanyID,
@@ -254,7 +254,7 @@ func fillEventsInfo(claManagers []*v2Models.CompanyClaManager, addedEvents *v1Mo
 
 func (s *service) GetCompanyAdmins(ctx context.Context, companySFID string) (*models.CompanyAdminList, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCompanyAdmins",
+		"functionName":   "v2.company.service.GetCompanyAdmins",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 	}
@@ -289,7 +289,7 @@ func (s *service) GetCompanyAdmins(ctx context.Context, companySFID string) (*mo
 
 func (s *service) GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCompanyProjectActiveCLAs",
+		"functionName":   "v2.company.service.GetCompanyProjectActiveCLAs",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 		"companyID":      companyID,
@@ -330,23 +330,28 @@ func (s *service) GetCompanyProjectActiveCLAs(ctx context.Context, companyID str
 
 func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID string, companyID string, searchTerm string) (*models.CorporateContributorList, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCompanyProjectContributors",
+		"functionName":   "v2.company.service.GetCompanyProjectContributors",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 		"companyID":      companyID,
 		"searchTerm":     searchTerm,
 	}
+
 	list := make([]*models.CorporateContributor, 0)
+	log.WithFields(f).Debugf("querying for employee contributors...")
 	sigs, err := s.getAllCompanyProjectEmployeeSignatures(ctx, companyID, projectSFID)
 	if err != nil {
-		log.WithFields(f).Warnf("problem fetching all company project employee signatures, error: %+v", err)
+		log.WithFields(f).WithError(err).Warn("problem fetching all company project employee signatures")
 		return nil, err
 	}
 	if len(sigs) == 0 {
+		log.WithFields(f).Debug("not signatures found - returning emtpy list")
 		return &models.CorporateContributorList{
 			List: list,
 		}, nil
 	}
+	log.WithFields(f).Debugf("found %d signatures", len(sigs))
+
 	var wg sync.WaitGroup
 	result := make(chan *models.CorporateContributor)
 	wg.Add(len(sigs))
@@ -355,6 +360,7 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID
 		close(result)
 	}()
 
+	log.WithFields(f).Debugf("adding additional corporate contributor details for %d signatures...", len(sigs))
 	for _, sig := range sigs {
 		go fillCorporateContributorModel(&wg, s.userRepo, sig, result, searchTerm)
 	}
@@ -370,7 +376,7 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID
 
 func (s *service) CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error) {
 	f := logrus.Fields{
-		"functionName":      "service.CreateCompany",
+		"functionName":      "v2.company.service.CreateCompany",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"companyName":       params.Input.CompanyName,
 		"signingEntityName": params.Input.SigningEntityName,
@@ -485,7 +491,7 @@ func (s *service) CreateCompany(ctx context.Context, params *v2Ops.CreateCompany
 
 func (s *service) CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error) {
 	f := logrus.Fields{
-		"functionName":       "company.service.CreateCompanyFromSFModel",
+		"functionName":       "v2.company.service.CreateCompanyFromSFModel",
 		utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
 		"organizationID":     orgModel.Name,
 		"organizationName":   orgModel.Name,
@@ -520,7 +526,7 @@ func (s *service) CreateCompanyFromSFModel(ctx context.Context, orgModel *orgMod
 // GetCompanyByName deletes the company by name
 func (s *service) GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCompanyByName",
+		"functionName":   "v2.company.service.GetCompanyByName",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyName":    companyName,
 	}
@@ -548,7 +554,7 @@ func (s *service) GetCompanyByName(ctx context.Context, companyName string) (*mo
 // GetCompanyBySigningEntityName retrieves the company by signing entity name
 func (s *service) GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":      "company.service.GetCompanyBySigningEntityName",
+		"functionName":      "v2.company.service.GetCompanyBySigningEntityName",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"signingEntityName": signingEntityName,
 	}
@@ -600,7 +606,7 @@ func (s *service) GetCompanyBySigningEntityName(ctx context.Context, signingEnti
 // GetCompanyByID retrieves the company by internal ID
 func (s *service) GetCompanyByID(ctx context.Context, companyID string) (*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.GetCompanyByID",
+		"functionName":   "v2.company.service.GetCompanyByID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 	}
@@ -627,7 +633,7 @@ func (s *service) GetCompanyByID(ctx context.Context, companyID string) (*models
 
 func (s *service) AssociateContributor(ctx context.Context, companySFID string, userEmail string) (*models.Contributor, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.AssociateContributor",
+		"functionName":   "v2.company.service.AssociateContributor",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 		"userEmail":      userEmail,
@@ -674,7 +680,7 @@ func (s *service) AssociateContributor(ctx context.Context, companySFID string, 
 //CreateContributor creates contributor for contributor prospect
 func (s *service) CreateContributor(ctx context.Context, companyID string, projectID string, userEmail string, ClaGroupID string) (*models.Contributor, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.CreateContributor",
+		"functionName":   "v2.company.service.CreateContributor",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 		"projectID":      projectID,
@@ -766,7 +772,7 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 //AssociateContributorByGroup creates contributor by group for contributor prospect
 func (s *service) AssociateContributorByGroup(ctx context.Context, companySFID, userEmail string, projectCLAGroups []*projects_cla_groups.ProjectClaGroup, ClaGroupID string) ([]*models.Contributor, string, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.AssociateContributorByGroup",
+		"functionName":   "v2.company.service.AssociateContributorByGroup",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 		"ClaGroupID":     ClaGroupID,
@@ -809,7 +815,7 @@ func (s *service) AssociateContributorByGroup(ctx context.Context, companySFID, 
 // GetCompanyBySFID retrieves the company by external SFID
 func (s *service) GetCompanyBySFID(ctx context.Context, companySFID string) (*models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.GetCompanyBySFID",
+		"functionName":   "v2.company.service.GetCompanyBySFID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 	}
@@ -866,7 +872,7 @@ func (s *service) DeleteCompanyBySFID(ctx context.Context, companyID string) err
 
 func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error) {
 	f := logrus.Fields{
-		"functionName":   "companyModel.service.GetCompanyProjectCLA",
+		"functionName":   "v2.company.service.GetCompanyProjectCLA",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"authUserName":   authUser.UserName,
 		"authUserEmail":  authUser.Email,
@@ -1075,7 +1081,7 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 // corresponding CLA managers
 func (s *service) GetCompanyCLAGroupManagers(ctx context.Context, companyID, claGroupID string) (*models.CompanyClaManagers, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.GetCompanyCLAGroupManagers",
+		"functionName":   "v2.company.service.GetCompanyCLAGroupManagers",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 		"claGroupID":     claGroupID,
@@ -1153,7 +1159,7 @@ func v2ProjectToMap(projectDetails *v2ProjectServiceModels.ProjectOutputDetailed
 
 func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, projectSFID string) (map[string]*claGroupModel, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.getCLAGroupsUnderProjectOrFoundation",
+		"functionName":   "v2.company.service.getCLAGroupsUnderProjectOrFoundation",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 	}
@@ -1292,7 +1298,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 
 func (s *service) getAllCCLASignatures(ctx context.Context, companyID string) ([]*v1Models.Signature, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.getAllCCLASignatures",
+		"functionName":   "v2.company.service.getAllCCLASignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 	}
@@ -1335,7 +1341,7 @@ func getUsersInfo(lfUsernames []string) (map[string]*v2UserServiceModels.User, e
 
 func fillUsersInfo(claManagers []*models.CompanyClaManager, usermap map[string]*v2UserServiceModels.User) {
 	f := logrus.Fields{
-		"functionName": "company.service.fillUsersInfo",
+		"functionName": "v2.company.service.fillUsersInfo",
 	}
 	log.WithFields(f).Debug("filling users info...")
 
@@ -1359,7 +1365,7 @@ func fillUsersInfo(claManagers []*models.CompanyClaManager, usermap map[string]*
 
 func fillProjectInfo(claManagers []*models.CompanyClaManager, claGroups map[string]*claGroupModel) {
 	f := logrus.Fields{
-		"functionName": "company.service.fillProjectInfo",
+		"functionName": "v2.company.service.fillProjectInfo",
 	}
 	log.WithFields(f).Debug("filling project info...")
 	for _, claManager := range claManagers {
@@ -1375,7 +1381,7 @@ func fillProjectInfo(claManagers []*models.CompanyClaManager, claGroups map[stri
 
 func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1Models.Signature, activeCla *models.ActiveCla, claGroups map[string]*claGroupModel, companyID string) {
 	f := logrus.Fields{
-		"functionName":   "v1CompanyModel.service.fillActiveCLA",
+		"functionName":   "v2.company.service.fillActiveCLA",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 	}
@@ -1509,18 +1515,23 @@ func (s *service) filterClaProjects(ctx context.Context, projects []*v2ProjectSe
 }
 
 func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepository, sig *v1Models.Signature, result chan *models.CorporateContributor, searchTerm string) {
+	f := logrus.Fields{
+		"functionName": "v2.company.service.fillCorporateContributorModel",
+	}
 	defer wg.Done()
 	user, err := usersRepo.GetUser(sig.SignatureReferenceID)
 	if err != nil {
-		log.Error("fillCorporateContributorModel: unable to get user info", err)
+		log.WithFields(f).Warnf("unable to load user information using signature ID: %s", sig.SignatureReferenceID)
 		return
 	}
+
 	if searchTerm != "" {
 		ls := strings.ToLower(searchTerm)
 		if !(strings.Contains(strings.ToLower(user.Username), ls) || strings.Contains(strings.ToLower(user.LfUsername), ls)) {
 			return
 		}
 	}
+
 	var contributor models.CorporateContributor
 	var sigSignedTime = sig.SignatureCreated
 	contributor.GithubID = user.GithubUsername
@@ -1528,7 +1539,7 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 	contributor.Name = user.Username
 	t, err := utils.ParseDateTime(sig.SignatureCreated)
 	if err != nil {
-		log.Error("fillCorporateContributorModel: unable to parse time", err)
+		log.WithFields(f).WithError(err).Warn("unable to parse time")
 	} else {
 		sigSignedTime = utils.TimeToString(t)
 	}
@@ -1541,12 +1552,12 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 
 func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, companyID string, projectSFID string) ([]*v1Models.Signature, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.getAllCompanyProjectEmployeeSignatures",
+		"functionName":   "v2.company.service.getAllCompanyProjectEmployeeSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 		"projectSFID":    projectSFID,
 	}
-	log.WithFields(f).Debug("getAllCompanyProjectEmployeeSignatures")
+	log.WithFields(f).Debug("querying company and project...")
 	_, claGroup, err := s.getCompanyAndClaGroup(ctx, companyID, projectSFID)
 	if err != nil {
 		return nil, err
@@ -1566,50 +1577,109 @@ func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, co
 // get company and project in parallel
 func (s *service) getCompanyAndClaGroup(ctx context.Context, companyID, projectSFID string) (*v1Models.Company, *v1Models.ClaGroup, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.getCompanyAndClaGroup",
+		"functionName":   "v2.company.service.getCompanyAndClaGroup",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 		"projectSFID":    projectSFID,
 	}
-	var comp *v1Models.Company
-	var claGroup *v1Models.ClaGroup
-	var companyErr, projectErr error
-	// query projects and company
-	var cp sync.WaitGroup
-	cp.Add(2)
-	go func() {
-		defer cp.Done()
-		comp, companyErr = s.companyRepo.GetCompany(ctx, companyID)
-	}()
-	go func() {
-		defer cp.Done()
+
+	type CompanyResult struct {
+		companyModel *v1Models.Company
+		Error        error
+	}
+	companyResultChannel := make(chan *CompanyResult, 1)
+	type CLAGroupResult struct {
+		claGroupModel *v1Models.ClaGroup
+		Error         error
+	}
+	claGroupResultChannel := make(chan *CLAGroupResult, 1)
+
+	// Load the company
+	go func(companyID string) {
+		log.WithFields(f).Debugf("loading company by ID: %s", companyID)
+		comp, companyErr := s.companyRepo.GetCompany(ctx, companyID)
+		// Return the result through the channel
+		companyResultChannel <- &CompanyResult{
+			companyModel: comp,
+			Error:        companyErr,
+		}
+	}(companyID)
+
+	// Load the CLA group associated with the project
+	go func(projectSFID string) {
 		t := time.Now()
 		var pm *projects_cla_groups.ProjectClaGroup
-		pm, projectErr = s.projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+		log.WithFields(f).Debugf("loading CLA Group by project SFID: %s", projectSFID)
+		pm, projectErr := s.projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
 		if projectErr != nil {
 			log.WithFields(f).Debugf("cla group mapping not found for projectSFID %s", projectSFID)
+			// Return the result through the channel
+			claGroupResultChannel <- &CLAGroupResult{
+				claGroupModel: nil,
+				Error:         projectErr,
+			}
+			return
+		} else if pm == nil || pm.ClaGroupID == "" {
+			// Return the result through the channel
+			claGroupResultChannel <- &CLAGroupResult{
+				claGroupModel: nil,
+				Error: &utils.ProjectCLAGroupMappingNotFound{
+					ProjectSFID: projectSFID,
+				},
+			}
 			return
 		}
-		claGroup, projectErr = s.projectRepo.GetCLAGroupByID(ctx, pm.ClaGroupID, DontLoadRepoDetails)
-		if claGroup == nil {
-			projectErr = ErrProjectNotFound
+
+		log.WithFields(f).Debugf("loading CLA Group by ID: %s", pm.ClaGroupID)
+		claGroup, projectErr := s.projectRepo.GetCLAGroupByID(ctx, pm.ClaGroupID, DontLoadRepoDetails)
+		if projectErr != nil {
+			// Return the result through the channel
+			claGroupResultChannel <- &CLAGroupResult{
+				claGroupModel: claGroup,
+				Error: &utils.CLAGroupNotFound{
+					CLAGroupID: pm.ClaGroupID,
+					Err:        projectErr,
+				},
+			}
+		} else if claGroup == nil {
+			// Return the result through the channel
+			claGroupResultChannel <- &CLAGroupResult{
+				claGroupModel: claGroup,
+				Error: &utils.CLAGroupNotFound{
+					CLAGroupID: pm.ClaGroupID,
+				},
+			}
+		} else {
+			claGroupResultChannel <- &CLAGroupResult{
+				claGroupModel: claGroup,
+				Error:         nil,
+			}
+			log.WithField("time_taken", time.Since(t).String()).Debugf("getting project by external id : %s completed", projectSFID)
 		}
-		log.WithField("time_taken", time.Since(t).String()).Debugf("getting project by external id : %s completed", projectSFID)
-	}()
-	cp.Wait()
-	if companyErr != nil {
-		return nil, nil, companyErr
+	}(projectSFID)
+
+	// Grab the results
+	log.WithFields(f).Debug("waiting for companies query to finish...")
+	companyResponse := <-companyResultChannel
+	if companyResponse.Error != nil {
+		return nil, nil, companyResponse.Error
 	}
-	if projectErr != nil {
-		return nil, nil, projectErr
+	log.WithFields(f).Debug("company query finished")
+
+	log.WithFields(f).Debug("waiting for CLA Groups query to finish...")
+	claGroupResponse := <-claGroupResultChannel
+	if claGroupResponse.Error != nil {
+		return nil, nil, claGroupResponse.Error
 	}
-	return comp, claGroup, nil
+	log.WithFields(f).Debug("cla groups query finished")
+
+	return companyResponse.companyModel, claGroupResponse.claGroupModel, nil
 }
 
 // autoCreateCompany helper function to create a new company record based on the SF ID and underlying record in SF
 func (s service) autoCreateCompany(ctx context.Context, companySFID string) (*v1Models.Company, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.autoCreateCompany",
+		"functionName":   "v2.company.service.autoCreateCompany",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 	}
@@ -1655,7 +1725,7 @@ func (s service) autoCreateCompany(ctx context.Context, companySFID string) (*v1
 
 func (s *service) GetCompanyLookup(ctx context.Context, orgName string, websiteName string) (*models.Lookup, error) {
 	f := logrus.Fields{
-		"functionName":   "company.service.GetCompanyLookup",
+		"functionName":   "v2.company.service.GetCompanyLookup",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"orgName":        orgName,
 		"websiteName":    websiteName,
@@ -1707,7 +1777,7 @@ func (s *service) GetCompanyLookup(ctx context.Context, orgName string, websiteN
 func (s *service) RequestCompanyAdmin(ctx context.Context, userID string, claManagerEmail string, claManagerName string, contributorName string, contributorEmail string, projectName string, companyName string, corporateLink string) error {
 	orgServices := orgService.GetClient()
 	f := logrus.Fields{
-		"functionName":     "RequestCompanyAdmin",
+		"functionName":     "v2.company.service.RequestCompanyAdmin",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
 		"companyName":      companyName,
 		"claGroupName":     projectName,

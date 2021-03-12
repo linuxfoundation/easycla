@@ -466,7 +466,6 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 	// Loop until we have all the records
 	for ok := true; ok; ok = lastEvaluatedKey != "" {
 		// Make the DynamoDB Query API call
-		//log.WithFields(f).Debugf("Running signature project query using queryInput: %+v", queryInput)
 		results, errQuery := repo.dynamoDBClient.Query(queryInput)
 		//log.WithFields(f).Debugf("Ran signature project query, results: %+v, error: %+v", results, errQuery)
 		if errQuery != nil {
@@ -807,7 +806,6 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 	// Loop until we have all the records
 	for ok := true; ok; ok = lastEvaluatedKey != "" {
 		// Make the DynamoDB Query API call
-		log.WithFields(f).Debugf("Running signature project query using queryInput: %+v", queryInput)
 		results, errQuery := repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
 			log.WithFields(f).Warnf("error retrieving project signature ID for project: %s, error: %v",
@@ -1026,7 +1024,6 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 	// Loop until we have all the records
 	for ok := true; ok; ok = lastEvaluatedKey != "" {
 		// Make the DynamoDB Query API call
-		log.WithFields(f).Debugf("Running signature project query using queryInput: %+v", queryInput)
 		results, errQuery := repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
 			log.WithFields(f).Warnf("error retrieving project signature ID for project: %s, error: %v",
