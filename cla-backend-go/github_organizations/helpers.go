@@ -43,7 +43,7 @@ func buildGithubOrganizationListModels(ctx context.Context, githubOrganizations 
 					installURL := netURL.URL{
 						Scheme: "https",
 						Host:   "github.com",
-						Path:   fmt.Sprintf("/%s/settings/installations/%d", ghorg.OrganizationName, ghorg.OrganizationInstallationID),
+						Path:   fmt.Sprintf("/organizations/%s/settings/installations/%d", ghorg.OrganizationName, ghorg.OrganizationInstallationID),
 					}
 					installationURL := strfmt.URI(installURL.String())
 					ghorg.GithubInfo.Details = &models.GithubOrganizationGithubInfoDetails{

@@ -142,7 +142,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		installURL := url.URL{
 			Scheme: "https",
 			Host:   "github.com",
-			Path:   fmt.Sprintf("/%s/settings/installations/%d", org.OrganizationName, org.OrganizationInstallationID),
+			Path:   fmt.Sprintf("/organizations/%s/settings/installations/%d", org.OrganizationName, org.OrganizationInstallationID),
 		}
 		installationURL := strfmt.URI(installURL.String())
 
