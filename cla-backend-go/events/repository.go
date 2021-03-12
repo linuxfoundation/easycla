@@ -503,7 +503,7 @@ func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, found
 	log.WithFields(f).Debugf("adding key condition of 'event_parent_project_sfid = %s'", foundationSFID)
 	keyCondition := expression.Key("event_parent_project_sfid").Equal(expression.Value(foundationSFID))
 	var filter expression.ConditionBuilder
-	log.WithFields(f).Debugf("adding filter condition of 'event_company_sfid = %s ", companySFID)
+	log.WithFields(f).Debugf("adding filter condition of 'event_company_sfid = %s'", companySFID)
 	filter = expression.Name("event_company_sfid").Equal(expression.Value(companySFID))
 	return repo.queryEventsTable(EventFoundationSFIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
 }
@@ -519,15 +519,12 @@ func (repo *repository) GetCompanyClaGroupEvents(companySFID, companyID, claGrou
 		"paramPageSize": utils.Int64Value(paramPageSize),
 		"loadAll":       all,
 	}
-	key := fmt.Sprintf("%s#%s", companySFID, claGroupID)
-	log.WithFields(f).Debugf("adding key condition of 'company_sfid_project_id = %s'", key)
-	keyCondition := expression.Key("company_sfid_project_id").Equal(expression.Value(key))
+	log.WithFields(f).Debugf("adding key condition of 'event_cla_group_id = %s'", claGroupID)
+	keyCondition := expression.Key("event_cla_group_id").Equal(expression.Value(claGroupID))
 	var filter expression.ConditionBuilder
-	if companyID != "" {
-		log.WithFields(f).Debugf("adding filter condition of 'event_company_id = %s'", companyID)
-		filter = expression.Name("event_company_id").Equal(expression.Value(companyID))
-	}
-	return repo.queryEventsTable(CompanySFIDProjectIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
+	log.WithFields(f).Debugf("adding filter condition of 'event_company_sfid = %s'", companySFID)
+	filter = expression.Name("event_company_sfid").Equal(expression.Value(companySFID))
+	return repo.queryEventsTable(EventCLAGroupIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, nil)
 }
 
 // GetCompanyEvents returns the list of events for given company id and event types
