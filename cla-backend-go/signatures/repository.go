@@ -2494,21 +2494,42 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 			return nil, err
 		}
 
+		log.WithFields(f).Debugf("located %d signatures...", len(dbSignatures))
 		for _, sig := range dbSignatures {
 			if searchTerm != nil {
 				if !strings.Contains(sig.SignatureReferenceNameLower, *searchTerm) {
 					continue
 				}
 			}
+
 			var sigCreatedTime = sig.DateCreated
 			t, err := utils.ParseDateTime(sig.DateCreated)
 			if err != nil {
-				log.Error("fillCorporateContributorModel: unable to parse time", err)
+				log.WithFields(f).WithError(err).Warn("unable to parse signature date created time")
 			} else {
 				sigCreatedTime = utils.TimeToString(t)
 			}
+
+			var sigSignedTime = sig.DateModified
+			t, err = utils.ParseDateTime(sig.DateModified)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("unable to parse signature date modified time")
+			} else {
+				sigSignedTime = utils.TimeToString(t)
+			}
+			// Use the user docusign date signed value if it is present - older signatures do not have this
+			if sig.UserDocusignDateSigned != "" {
+				t, err = utils.ParseDateTime(sig.UserDocusignDateSigned)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warn("unable to parse signature docusign date signed time")
+				} else {
+					sigSignedTime = utils.TimeToString(t)
+				}
+			}
+
 			signatureVersion := fmt.Sprintf("v%s.%s", sig.SignatureDocumentMajorVersion, sig.SignatureDocumentMinorVersion)
 			out.List = append(out.List, &models.CorporateContributor{
+				SignatureID:            sig.SignatureID,
 				GithubID:               sig.UserGithubUsername,
 				LinuxFoundationID:      sig.UserLFUsername,
 				Name:                   sig.UserName,
@@ -2516,7 +2537,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 				Email:                  sig.UserEmail,
 				Timestamp:              sigCreatedTime,
 				UserDocusignName:       sig.UserDocusignName,
-				UserDocusignDateSigned: sig.UserDocusignDateSigned,
+				UserDocusignDateSigned: sigSignedTime,
 				SignatureModified:      sig.DateModified,
 			})
 		}

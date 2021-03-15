@@ -3,6 +3,10 @@
 
 type: object
 properties:
+  signatureID:
+    description: internal signature ID
+    $ref: './common/properties/internal-id.yaml'
+    x-omitempty: false
   name:
     type: string
     example: "john doe"
@@ -36,5 +40,3 @@ properties:
     type: string
     description: the signature modified created time
     example: '2019-05-03T18:59:13.082304+0000'
-
-
