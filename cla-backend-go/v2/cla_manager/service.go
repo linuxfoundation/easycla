@@ -749,7 +749,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 				CompanyID:   v1CompanyModel.CompanyID,
 				EventData: &events.ContributorNotifyCompanyAdminData{
 					AdminName:  admin.Contact.Name,
-					AdminEmail: admin.Contact.EmailAddress,
+					AdminEmail: userService.GetPrimaryEmail(adminUser),
 				},
 			})
 		}
