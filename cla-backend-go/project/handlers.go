@@ -237,7 +237,8 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 
 		// Invalidate project signatures
 		log.WithFields(f).Debug("Invalidating signatures")
-		note := fmt.Sprintf("Signature invalidated (approved set to false) due to CLA Group/Project: %s deletion", params.ProjectID)
+		note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to CLA Group/Project: %s deletion", claUser.LFUsername, params.ProjectID)
+
 		howMany, err = signatureService.InvalidateProjectRecords(ctx, params.ProjectID, note)
 		if err != nil {
 			return project.NewDeleteProjectByIDBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))

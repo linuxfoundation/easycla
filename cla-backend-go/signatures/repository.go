@@ -68,7 +68,7 @@ type SignatureRepository interface {
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64) (*models.Signatures, error)
 	ProjectSignatures(ctx context.Context, projectID string) (*models.Signatures, error)
-	UpdateApprovalList(ctx context.Context, projectID, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error)
+	UpdateApprovalList(ctx context.Context, claManager *models.User, projectID, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error)
 
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
 	RemoveCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
@@ -1944,7 +1944,8 @@ func (repo repository) RemoveCLAManager(ctx context.Context, signatureID, claMan
 }
 
 // UpdateApprovalList updates the specified project/company signature with the updated approval list information
-func (repo repository) UpdateApprovalList(ctx context.Context, projectID, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error) { // nolint
+func (repo repository) UpdateApprovalList(ctx context.Context, claManager *models.User, projectID, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error) { // nolint
+
 	f := logrus.Fields{
 		"functionName": "UpdateApprovalList",
 		"projectID":    projectID,
@@ -2024,17 +2025,22 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 						return
 					}
 					log.WithFields(f).Debugf("Updating signature : %s ", signs.Signatures[0].SignatureID)
-					note := fmt.Sprintf("Signature invalidated (approved set to false) due to email approval list removal : %+v", params.RemoveEmailApprovalList)
+					note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to email approval list removal : %+v", utils.GetBestUsername(claManager), params.RemoveEmailApprovalList)
+
 					signErr := repo.InvalidateProjectRecord(ctx, signs.Signatures[0].SignatureID, note)
 					if signErr != nil {
 						log.WithFields(f).Debugf("error invalidating signature ID: %s error: %+v ", sigs.Signatures[0].SignatureID, signErr)
 						return
 					}
+
 					//Log Event
 					eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
 						SignatureID: signs.Signatures[0].SignatureID,
 						Email:       email,
+						CLAManager:  claManager,
+						CLAGroupID:  signs.Signatures[0].ProjectID,
 					}
+
 					repo.eventsService.LogEventWithContext(ctx, eventArgs)
 				}(email)
 			}
@@ -2100,16 +2106,19 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 							return
 						}
 						log.WithFields(f).Debugf("Updating signature : %s ", signs.Signatures[0].SignatureID)
-						note := fmt.Sprintf("Signature invalidated (approved set to false) due to ghUsernames approval list removal : %+v", params.RemoveGithubUsernameApprovalList)
+						note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to ghUsernames approval list removal : %+v", utils.GetBestUsername(claManager), params.RemoveGithubUsernameApprovalList)
 						signErr := repo.InvalidateProjectRecord(ctx, signs.Signatures[0].SignatureID, note)
 						if signErr != nil {
 							log.WithFields(f).Debugf("error invalidating signature ID: %s error: %+v ", sigs.Signatures[0].SignatureID, signErr)
 							return
 						}
+
 						// Log Event
 						eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
 							SignatureID: signs.Signatures[0].SignatureID,
 							GHUsername:  ghUsername,
+							CLAManager:  claManager,
+							CLAGroupID:  signs.Signatures[0].ProjectID,
 						}
 						repo.eventsService.LogEventWithContext(ctx, eventArgs)
 					}(ghUsername)

@@ -5,6 +5,9 @@ package events
 
 import (
 	"fmt"
+
+	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
 
 // EventData returns event data string which is used for event logging and containsPII field
@@ -85,6 +88,8 @@ type SignatureInvalidatedApprovalRejectionEventData struct {
 	GHUsername  string
 	Email       string
 	SignatureID string
+	CLAManager  *models.User
+	CLAGroupID  string
 }
 
 // UserCreatedEventData . . .
@@ -712,7 +717,7 @@ func (ed *SignatureInvalidatedApprovalRejectionEventData) GetEventDetailsString(
 	} else if ed.GHUsername != "" {
 		reason = fmt.Sprintf("GH Username: %s approval removal ", ed.GHUsername)
 	}
-	data := fmt.Sprintf("Signature ID: %s invalidated (approved set to false) due to %s ", ed.SignatureID, reason)
+	data := fmt.Sprintf("Signature ID: %s invalidated by %s (approved set to false) due to %s ", utils.GetBestUsername(ed.CLAManager), ed.SignatureID, reason)
 	return data, true
 }
 

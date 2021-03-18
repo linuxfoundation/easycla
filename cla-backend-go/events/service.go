@@ -355,27 +355,6 @@ func (s *service) loadUser(ctx context.Context, args *LogEventArgs) error {
 	return nil
 }
 
-func (s *service) loadLFUser(ctx context.Context, args *LogEventArgs) error {
-	f := logrus.Fields{
-		"functionName":   "v1.events.service.loadLFUser",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	}
-
-	if args.LFUser != nil {
-		return nil
-	}
-
-	if args.LfUsername != "" {
-		lfUser, lfUserErr := user_service.GetClient().GetUserByUsername(args.LfUsername)
-		if lfUserErr != nil || lfUser == nil {
-			log.WithFields(f).Warnf("unable to fetch LF User by username: %s", args.LfUsername)
-			return nil
-		}
-		args.LFUser = lfUser
-	}
-	return nil
-}
-
 // loadDetails fetches and sets additional information into the data model required to fill out the event log entry
 func (s *service) loadDetails(ctx context.Context, args *LogEventArgs) error {
 	f := logrus.Fields{
