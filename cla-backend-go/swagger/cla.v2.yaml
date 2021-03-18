@@ -3556,8 +3556,7 @@ parameters:
     in: query
     type: string
     required: false
-    pattern: '^([\w\d\s\-\,\./]+){2,255}$'
-    #$ref: './common/properties/company-name.yaml'
+    pattern: '[^<>]*' # allow everything except greater than and less than symbols
   userName:
     name: userName
     description: The optional user name filter
@@ -3593,12 +3592,14 @@ parameters:
     description: the Salesforce ID of the Foundation
     in: query
     type: string
+    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
   signingEntityName:
     name: signingEntityName
     description: The signing entity name of a Company (Salesforce and EasyCLA)
     in: query
     type: string
     required: true
+    pattern: '[^<>]*' # allow everything except greater than and less than symbols
   companyID:
     name: companyID
     description: The internal company ID representing signing entity name instance (EasyCLA)
@@ -3610,8 +3611,7 @@ parameters:
     in: path
     type: string
     required: true
-    # \w - Any word character (alphanumeric & underscore), dashes, periods
-    pattern: '^(\w)([\w\-.])+$'
+    pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
     minLength: 5
     maxLength: 255
   path-foundationSFID:
@@ -3620,8 +3620,7 @@ parameters:
     in: path
     type: string
     required: true
-    # \w - Any word character (alphanumeric & underscore), dashes, periods
-    pattern: '^(\w)([\w\-.])+$'
+    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
     minLength: 5
     maxLength: 255
   path-projectSFID:
@@ -3630,8 +3629,7 @@ parameters:
     in: path
     type: string
     required: true
-    # \w - Any word character (alphanumeric & underscore), dashes, periods
-    pattern: '^(\w)([\w\-.])+$'
+    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
     minLength: 5
     maxLength: 255
   path-userID:
@@ -3656,27 +3654,23 @@ parameters:
     in: path
     type: string
     required: true
-    # \w - Any word character (alphanumeric & underscore), dashes, periods
-    pattern: '^(\w)([\w\-.])+$'
-    minLength: 5
-    maxLength: 255
+    pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
   path-companySFID:
     name: companySFID
     description: salesforce id of the company
     in: path
     type: string
     required: true
-    # \w - Any word character (alphanumeric & underscore), dashes, periods
-    pattern: '^(\w)([\w\-.])+$'
-    minLength: 5
-    maxLength: 255
+    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
   path-companyName:
     name: companyName
     description: the company name
     in: path
     type: string
     required: true
-    pattern: '^([\w\d\s\-\,\./]+){2,255}$'
+    pattern: '[^<>]*' # allow everything except greater than and less than symbols
+    minLength: 2
+    maxLength: 100
   path-signingEntityName:
     name: signingEntityName
     type: string
@@ -3693,8 +3687,7 @@ parameters:
     in: path
     type: string
     required: true
-    # \w - Any word character (alphanumeric & underscore), dashes, periods
-    pattern: '^(\w)([\w\-.])+$'
+    pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
     minLength: 5
     maxLength: 255
   companySFID:
@@ -3702,6 +3695,7 @@ parameters:
     description: salesforce id of the company
     in: query
     type: string
+    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
   gerritHost:
     name: gerritHost
     description: host of the gerrit server
