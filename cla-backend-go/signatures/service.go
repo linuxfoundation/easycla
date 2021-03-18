@@ -844,7 +844,13 @@ func sendRequestAccessEmailToContributorRecipient(authUser *auth.User, companyMo
 <p>This is a notification email from EasyCLA regarding the project %s.</p>
 <p>You have been %s %s the Approval List of %s for %s by CLA Manager %s. This means that %s.</p>
 <b>
-<p>If you had previously submitted a pull request to EasyCLA Test Group that had failed, you can now go back to it, re-click the “Not Covered” button in the EasyCLA message in your pull request, and then follow these steps</p>
+<p>If you are a GitHub user and If you had previously submitted a pull request to EasyCLA Test Group that had failed, you can now go back to it, re-click the “Not Covered” button in the EasyCLA message in your pull request, and then follow these steps</p>
+<ol>
+<li>Select “Corporate Contributor”.</li>
+<li>Select your company from the organization drop down list</li>
+<li>Click Proceed</li>
+</ol>
+<p>If you are a Gerrit user and if you had previously submitted a pull request to EasyCLA Test Group that had failed, then navigate to Agreements Settings page on Gerrit, click on "New Contributor Agreement" link under Agreements section, select the radio button corresponding to Corporate CLA, click on "Please review the agreement" link, and then follow these steps</p>
 <ol>
 <li>Select “Corporate Contributor”.</li>
 <li>Select your company from the organization drop down list</li>
