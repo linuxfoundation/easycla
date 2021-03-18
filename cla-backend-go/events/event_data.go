@@ -80,6 +80,13 @@ type SignatureProjectInvalidatedEventData struct {
 	InvalidatedCount int
 }
 
+//SignatureInvalidatedApprovalRejectionEventData . . .
+type SignatureInvalidatedApprovalRejectionEventData struct {
+	GHUsername  string
+	Email       string
+	SignatureID string
+}
+
 // UserCreatedEventData . . .
 type UserCreatedEventData struct{}
 
@@ -359,25 +366,25 @@ type ClaManagerRoleDeletedData struct {
 // GetEventDetailsString . . .
 func (ed *CLAGroupEnrolledProjectData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	return fmt.Sprintf("%s (%s/%s) enabled the the project %s (%s) from the CLA Group %s (%s).",
-		args.UserName, args.UserModel.LfUsername, args.UserModel.LfEmail, args.ProjectName, args.ProjectID, args.CLAGroupName, args.CLAGroupID), false
+		args.UserName, args.LFUser.Name, args.UserModel.LfEmail, args.ProjectName, args.ProjectID, args.CLAGroupName, args.CLAGroupID), false
 }
 
 // GetEventDetailsString . . .
 func (ed *CLAGroupUnenrolledProjectData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	return fmt.Sprintf("%s (%s/%s) unenrolled the the project %s (%s) from the CLA Group %s (%s).",
-		args.UserName, args.UserModel.LfUsername, args.UserModel.LfEmail, args.ProjectName, args.ProjectID, args.CLAGroupName, args.CLAGroupID), false
+		args.UserName, args.LFUser.Name, args.UserModel.LfEmail, args.ProjectName, args.ProjectID, args.CLAGroupName, args.CLAGroupID), false
 }
 
 // GetEventDetailsString . . .
 func (ed *ProjectServiceCLAEnabledData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	return fmt.Sprintf("%s (%s/%s) enabled the CLA Service for the project %s (%s)",
-		args.UserName, args.UserModel.LfUsername, args.UserModel.LfEmail, args.ProjectName, args.ProjectID), false
+		args.UserName, args.LFUser.Name, args.UserModel.LfEmail, args.ProjectName, args.ProjectID), false
 }
 
 // GetEventDetailsString . . .
 func (ed *ProjectServiceCLADisabledData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	return fmt.Sprintf("%s (%s/%s) disabled the CLA Service for the project %s (%s)",
-		args.UserName, args.UserModel.LfUsername, args.UserModel.LfEmail, args.ProjectName, args.ProjectID), false
+		args.UserName, args.LFUser.Name, args.UserModel.LfEmail, args.ProjectName, args.ProjectID), false
 }
 
 // GetEventDetailsString . . .
@@ -694,6 +701,18 @@ func (ed *GitHubProjectDeletedEventData) GetEventDetailsString(args *LogEventArg
 func (ed *SignatureProjectInvalidatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("%d Signatures were invalidated (approved set to false) due to CLA Group/Project: %s deletion.",
 		ed.InvalidatedCount, args.ProjectName)
+	return data, true
+}
+
+// GetEventDetailsString . . .
+func (ed *SignatureInvalidatedApprovalRejectionEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	reason := "No reason"
+	if ed.Email != "" {
+		reason = fmt.Sprintf("GH Username: %s approval removal ", ed.GHUsername)
+	} else if ed.GHUsername != "" {
+		reason = fmt.Sprintf("GH Username: %s approval removal ", ed.GHUsername)
+	}
+	data := fmt.Sprintf("Signature ID: %s invalidated (approved set to false) due to %s ", ed.SignatureID, reason)
 	return data, true
 }
 
@@ -1476,6 +1495,18 @@ func (ed *GitHubProjectDeletedEventData) GetEventSummaryString(args *LogEventArg
 func (ed *SignatureProjectInvalidatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("%d signatures were invalidated (approved set to false) due to CLA Group/Project %s deletion.",
 		ed.InvalidatedCount, args.ProjectName)
+	return data, true
+}
+
+// GetEventSummaryString . . .
+func (ed *SignatureInvalidatedApprovalRejectionEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	reason := "No reason"
+	if ed.Email != "" {
+		reason = fmt.Sprintf("Email: %s approval removal ", ed.Email)
+	} else if ed.GHUsername != "" {
+		reason = fmt.Sprintf("GH Username: %s approval removal ", ed.GHUsername)
+	}
+	data := fmt.Sprintf("Signature ID: %s invalidated (approved set to false) due to %s ", ed.SignatureID, reason)
 	return data, true
 }
 

@@ -80,7 +80,6 @@ func init() {
 	usersRepo := users.NewRepository(awsSession, stage)
 	userRepo := user.NewDynamoRepository(awsSession, stage)
 	companyRepo := company.NewRepository(awsSession, stage)
-	signaturesRepo := signatures.NewRepository(awsSession, stage, companyRepo, usersRepo)
 	projectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
 	repositoriesRepo := repositories.NewRepository(awsSession, stage)
 	gerritRepo := gerrits.NewRepository(awsSession, stage)
@@ -119,6 +118,8 @@ func init() {
 		projectRepo,
 		projectClaGroupRepo,
 	})
+
+	signaturesRepo := signatures.NewRepository(awsSession, stage, companyRepo, usersRepo, eventsService)
 
 	usersService := users.NewService(usersRepo, eventsService)
 	companyService := company.NewService(companyRepo, configFile.CorporateConsoleV1URL, userRepo, usersService)

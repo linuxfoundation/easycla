@@ -10,3 +10,9 @@ type SignatureCompanyID struct {
 	CompanySFID string
 	CompanyName string
 }
+
+//ApprovalCriteria struct representing approval criteria values
+type ApprovalCriteria struct {
+	UserEmail      string
+	GitHubUsername string
+}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/signatures"
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
+	"github.com/communitybridge/easycla/cla-backend-go/events"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 
@@ -51,7 +53,7 @@ type SignatureRepository interface {
 	GetGithubOrganizationsFromWhitelist(ctx context.Context, signatureID string) ([]models.GithubOrg, error)
 	AddGithubOrganizationToWhitelist(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
 	DeleteGithubOrganizationFromWhitelist(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
-	InvalidateProjectRecord(ctx context.Context, signatureID string, projectName string) error
+	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string) (*models.Signature, error)
@@ -61,12 +63,12 @@ type SignatureRepository interface {
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error)
-	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, pageSize int64) (*models.Signatures, error)
+	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, pageSize int64) (*models.Signatures, error)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams, pageSize int64, loadACL bool) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64) (*models.Signatures, error)
 	ProjectSignatures(ctx context.Context, projectID string) (*models.Signatures, error)
-	UpdateApprovalList(ctx context.Context, projectID, companyID string, params *models.ApprovalList) (*models.Signature, error)
+	UpdateApprovalList(ctx context.Context, projectID, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error)
 
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
 	RemoveCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
@@ -87,16 +89,18 @@ type repository struct {
 	dynamoDBClient     *dynamodb.DynamoDB
 	companyRepo        company.IRepository
 	usersRepo          users.UserRepository
+	eventsService      events.Service
 	signatureTableName string
 }
 
 // NewRepository creates a new instance of the whitelist service
-func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository) SignatureRepository {
+func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service) SignatureRepository {
 	return repository{
 		stage:              stage,
 		dynamoDBClient:     dynamodb.New(awsSession),
 		companyRepo:        companyRepo,
 		usersRepo:          usersRepo,
+		eventsService:      eventsService,
 		signatureTableName: fmt.Sprintf("cla-%s-signatures", stage),
 	}
 }
@@ -1320,7 +1324,7 @@ func (repo repository) ProjectSignatures(ctx context.Context, projectID string) 
 }
 
 // InvalidateProjectRecord invalidates the specified project record by setting the signature_approved flag to false
-func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID string, projectName string) error {
+func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID, note string) error {
 	f := logrus.Fields{
 		"functionName":   "InvalidateProjectRecord",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -1339,7 +1343,6 @@ func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID 
 	updateExpression = updateExpression + " #A = :a,"
 
 	expressionAttributeNames["#S"] = aws.String("note")
-	note := fmt.Sprintf("Signature invalidated (approved set to false) due to CLA Group/Project: %s deletion", projectName)
 	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
 	updateExpression = updateExpression + " #S = :s"
 
@@ -1365,7 +1368,7 @@ func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID 
 }
 
 // GetProjectCompanyEmployeeSignatures returns a list of employee signatures for the specified project and specified company
-func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, pageSize int64) (*models.Signatures, error) {
+func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, pageSize int64) (*models.Signatures, error) {
 	f := logrus.Fields{
 		"functionName":   "GetProjectCompanyEmployeeSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -1382,6 +1385,16 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	// Check for approved signatures
 	filter := expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true))).
 		And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true))))
+
+	if criteria.GitHubUsername != "" {
+		log.WithFields(f).Debugf("adding Githubusername criteria filter for :%s ", criteria.GitHubUsername)
+		filter = filter.And(expression.Name("user_github_username").Equal(expression.Value(criteria.GitHubUsername)))
+	}
+
+	if criteria.UserEmail != "" {
+		log.WithFields(f).Debugf("adding useremail criteria filter for : %s ", criteria.UserEmail)
+		filter = filter.And(expression.Name("user_email").Equal(expression.Value(criteria.UserEmail)))
+	}
 
 	// Use the nice builder to create the expression
 	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildProjection()).Build()
@@ -1931,7 +1944,7 @@ func (repo repository) RemoveCLAManager(ctx context.Context, signatureID, claMan
 }
 
 // UpdateApprovalList updates the specified project/company signature with the updated approval list information
-func (repo repository) UpdateApprovalList(ctx context.Context, projectID, companyID string, params *models.ApprovalList) (*models.Signature, error) { // nolint
+func (repo repository) UpdateApprovalList(ctx context.Context, projectID, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error) { // nolint
 	f := logrus.Fields{
 		"functionName": "UpdateApprovalList",
 		"projectID":    projectID,
@@ -1968,6 +1981,11 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 	haveAdditions := false
 	updateExpression := ""
 
+	employeeSignatureParams := signatures.GetProjectCompanyEmployeeSignaturesParams{
+		ProjectID: projectID,
+		CompanyID: companyID,
+	}
+
 	// If we have an add or remove email list...we need to run an update for this column
 	if params.AddEmailApprovalList != nil || params.RemoveEmailApprovalList != nil {
 		columnName := "email_whitelist"
@@ -1987,6 +2005,40 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 			expressionAttributeNames["#E"] = aws.String("email_whitelist")
 			expressionAttributeValues[":e"] = attrList
 			updateExpression = updateExpression + " #E = :e, "
+		}
+
+		// if email removal update signature approvals
+		if params.RemoveEmailApprovalList != nil {
+			var wg sync.WaitGroup
+			wg.Add(len(params.RemoveEmailApprovalList))
+			for _, email := range params.RemoveEmailApprovalList {
+				go func(email string) {
+					defer wg.Done()
+					criteria := &ApprovalCriteria{
+						UserEmail: email,
+					}
+					log.WithFields(f).Debugf("Updating signature records for emailApprovalList: %+v ", params.RemoveEmailApprovalList)
+					signs, appErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria, pageSize)
+					if appErr != nil {
+						log.WithFields(f).Debugf("unable to get Company Employee signatures : %+v ", appErr)
+						return
+					}
+					log.WithFields(f).Debugf("Updating signature : %s ", signs.Signatures[0].SignatureID)
+					note := fmt.Sprintf("Signature invalidated (approved set to false) due to email approval list removal : %+v", params.RemoveEmailApprovalList)
+					signErr := repo.InvalidateProjectRecord(ctx, signs.Signatures[0].SignatureID, note)
+					if signErr != nil {
+						log.WithFields(f).Debugf("error invalidating signature ID: %s error: %+v ", sigs.Signatures[0].SignatureID, signErr)
+						return
+					}
+					//Log Event
+					eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
+						SignatureID: signs.Signatures[0].SignatureID,
+						Email:       email,
+					}
+					repo.eventsService.LogEventWithContext(ctx, eventArgs)
+				}(email)
+			}
+			wg.Wait()
 		}
 	}
 
@@ -2029,6 +2081,41 @@ func (repo repository) UpdateApprovalList(ctx context.Context, projectID, compan
 			expressionAttributeNames["#G"] = aws.String(columnName)
 			expressionAttributeValues[":g"] = attrList
 			updateExpression = updateExpression + " #G = :g, "
+		}
+		if params.RemoveGithubUsernameApprovalList != nil {
+			// if email removal update signature approvals
+			if params.RemoveGithubUsernameApprovalList != nil {
+				var wg sync.WaitGroup
+				wg.Add(len(params.RemoveGithubUsernameApprovalList))
+				for _, ghUsername := range params.RemoveGithubUsernameApprovalList {
+					go func(ghUsername string) {
+						defer wg.Done()
+						criteria := &ApprovalCriteria{
+							GitHubUsername: ghUsername,
+						}
+						log.WithFields(f).Debugf("Updating signature records for ghUsernameApporvalList: %+v ", params.RemoveGithubUsernameApprovalList)
+						signs, ghUserErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria, pageSize)
+						if sigErr != nil {
+							log.WithFields(f).Debugf("unable to get Company Employee signatures : %+v ", ghUserErr)
+							return
+						}
+						log.WithFields(f).Debugf("Updating signature : %s ", signs.Signatures[0].SignatureID)
+						note := fmt.Sprintf("Signature invalidated (approved set to false) due to ghUsernames approval list removal : %+v", params.RemoveGithubUsernameApprovalList)
+						signErr := repo.InvalidateProjectRecord(ctx, signs.Signatures[0].SignatureID, note)
+						if signErr != nil {
+							log.WithFields(f).Debugf("error invalidating signature ID: %s error: %+v ", sigs.Signatures[0].SignatureID, signErr)
+							return
+						}
+						// Log Event
+						eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
+							SignatureID: signs.Signatures[0].SignatureID,
+							GHUsername:  ghUsername,
+						}
+						repo.eventsService.LogEventWithContext(ctx, eventArgs)
+					}(ghUsername)
+				}
+				wg.Wait()
+			}
 		}
 	}
 

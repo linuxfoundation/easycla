@@ -346,7 +346,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 	api.SignaturesGetProjectCompanyEmployeeSignaturesHandler = signatures.GetProjectCompanyEmployeeSignaturesHandlerFunc(func(params signatures.GetProjectCompanyEmployeeSignaturesParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-		projectSignatures, err := service.GetProjectCompanyEmployeeSignatures(ctx, params)
+		projectSignatures, err := service.GetProjectCompanyEmployeeSignatures(ctx, params, nil)
 		if err != nil {
 			log.Warnf("error retrieving employee project signatures for project: %s, company: %s, error: %+v",
 				params.ProjectID, params.CompanyID, err)

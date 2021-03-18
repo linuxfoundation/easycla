@@ -15,7 +15,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
-
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
@@ -40,11 +39,11 @@ type SignatureService interface {
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, params signatures.GetProjectCompanySignaturesParams) (*models.Signatures, error)
-	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams) (*models.Signatures, error)
+	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams) (*models.Signatures, error)
-	InvalidateProjectRecords(ctx context.Context, projectID string, projectName string) (int, error)
+	InvalidateProjectRecords(ctx context.Context, projectID, note string) (int, error)
 
 	GetGithubOrganizationsFromWhitelist(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error)
 	AddGithubOrganizationToWhitelist(ctx context.Context, signatureID string, whiteListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
@@ -142,7 +141,7 @@ func (s service) GetProjectCompanySignatures(ctx context.Context, params signatu
 }
 
 // GetProjectCompanyEmployeeSignatures returns the list of employee signatures associated with the specified project
-func (s service) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams) (*models.Signatures, error) {
+func (s service) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error) {
 
 	const defaultPageSize int64 = 10
 	var pageSize = defaultPageSize
@@ -150,7 +149,7 @@ func (s service) GetProjectCompanyEmployeeSignatures(ctx context.Context, params
 		pageSize = *params.PageSize
 	}
 
-	projectSignatures, err := s.repo.GetProjectCompanyEmployeeSignatures(ctx, params, pageSize)
+	projectSignatures, err := s.repo.GetProjectCompanyEmployeeSignatures(ctx, params, criteria, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -424,7 +423,18 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		return nil, userErr
 	}
 
-	updatedSig, err := s.repo.UpdateApprovalList(ctx, claGroupModel.ProjectID, companyModel.CompanyID, params)
+	eventArgs := &events.LogEventArgs{
+		EventType:     events.InvalidatedSignature,
+		ProjectID:     claGroupModel.ProjectExternalID,
+		ClaGroupModel: claGroupModel,
+		CompanyID:     companyModel.CompanyID,
+		CompanyModel:  companyModel,
+		LfUsername:    userModel.LfUsername,
+		UserID:        userModel.UserID,
+		UserModel:     userModel,
+		ProjectSFID:   claGroupModel.ProjectExternalID,
+	}
+	updatedSig, err := s.repo.UpdateApprovalList(ctx, claGroupModel.ProjectID, companyModel.CompanyID, params, eventArgs)
 	if err != nil {
 		return updatedSig, err
 	}
@@ -445,11 +455,11 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 }
 
 // Disassociate project signatures
-func (s service) InvalidateProjectRecords(ctx context.Context, projectID string, projectName string) (int, error) {
+func (s service) InvalidateProjectRecords(ctx context.Context, projectID, note string) (int, error) {
 	f := logrus.Fields{
 		"functionName": "InvalidateProjectRecords",
 		"projectID":    projectID,
-		"projectName":  projectName}
+	}
 
 	result, err := s.repo.ProjectSignatures(ctx, projectID)
 	if err != nil {
@@ -464,14 +474,14 @@ func (s service) InvalidateProjectRecords(ctx context.Context, projectID string,
 			len(result.Signatures), projectID))
 		for _, signature := range result.Signatures {
 			// Do this in parallel, as we could have a lot to invalidate
-			go func(sigID, projName string) {
+			go func(sigID, projectID string) {
 				defer wg.Done()
-				updateErr := s.repo.InvalidateProjectRecord(ctx, sigID, projName)
+				updateErr := s.repo.InvalidateProjectRecord(ctx, sigID, note)
 				if updateErr != nil {
-					log.WithFields(f).Warnf("Unable to update signature: %s with project name: %s, error: %v",
-						sigID, projName, updateErr)
+					log.WithFields(f).Warnf("Unable to update signature: %s with project ID: %s, error: %v",
+						sigID, projectID, updateErr)
 				}
-			}(signature.SignatureID, projectName)
+			}(signature.SignatureID, projectID)
 		}
 
 		// Wait until all the workers are done

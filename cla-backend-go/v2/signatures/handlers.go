@@ -550,7 +550,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			CompanyID:   companyModel.CompanyID,          // internal company id
 			NextKey:     params.NextKey,
 			PageSize:    params.PageSize,
-		})
+		}, nil)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("error retrieving employee project signatures for project: %s, company: %s, error: %+v",
 				params.ProjectSFID, params.CompanyID, err)

@@ -275,6 +275,27 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 	return nil
 }
 
+func (s *service) loadLFUser(ctx context.Context, args *LogEventArgs) error {
+	f := logrus.Fields{
+		"functionName":   "v1.events.service.LFUser",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	if args == nil {
+		return errors.New(("unable to load lf user data - args is nil"))
+	}
+
+	if args.LfUsername != "" {
+		lfUser, lfErr := user_service.GetClient().GetUserByUsername(args.LfUsername)
+		if lfErr != nil || lfUser == nil {
+			log.WithFields(f).Warnf("unable to fetch user by username: %s ", args.LfUsername)
+			return nil
+		}
+		args.LFUser = lfUser
+	}
+	return nil
+}
+
 func (s *service) loadUser(ctx context.Context, args *LogEventArgs) error {
 	f := logrus.Fields{
 		"functionName":   "v1.events.service.loadUser",
@@ -395,6 +416,13 @@ func (s *service) loadDetails(ctx context.Context, args *LogEventArgs) error {
 	err = s.loadUser(ctx, args)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load user details...")
+		return err
+	}
+
+	log.WithFields(f).Debug("loading LF user details...")
+	err = s.loadLFUser(ctx, args)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load LF user details...")
 		return err
 	}
 

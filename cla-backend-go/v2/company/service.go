@@ -1567,7 +1567,7 @@ func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, co
 		CompanyID:   companyID,
 		ProjectID:   claGroup.ProjectID,
 	}
-	sigs, err := s.signatureRepo.GetProjectCompanyEmployeeSignatures(ctx, params, HugePageSize)
+	sigs, err := s.signatureRepo.GetProjectCompanyEmployeeSignatures(ctx, params, nil, HugePageSize)
 	if err != nil {
 		return nil, err
 	}

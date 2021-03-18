@@ -236,10 +236,9 @@ func server(localMode bool) http.Handler {
 	templateRepo := template.NewRepository(awsSession, stage)
 	approvalListRepo := approval_list.NewRepository(awsSession, stage)
 	v1CompanyRepo := v1Company.NewRepository(awsSession, stage)
-	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo)
+	eventsRepo := events.NewRepository(awsSession, stage)
 	projectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
 	v1CLAGroupRepo := project.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, projectClaGroupRepo)
-	eventsRepo := events.NewRepository(awsSession, stage)
 	metricsRepo := metrics.NewRepository(awsSession, stage, configFile.APIGatewayURL, projectClaGroupRepo)
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
 	claManagerReqRepo := cla_manager.NewRepository(awsSession, stage)
@@ -251,6 +250,9 @@ func server(localMode bool) http.Handler {
 		v1CLAGroupRepo,
 		projectClaGroupRepo,
 	})
+
+	// Signature repository handler
+	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService)
 
 	// Initialize the external platform services - these are external APIs that
 	// we download the swagger specification, generate the models, and have
