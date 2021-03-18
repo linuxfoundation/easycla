@@ -143,8 +143,12 @@ type LogEventArgs struct {
 
 func (s *service) loadCompany(ctx context.Context, args *LogEventArgs) error {
 	f := logrus.Fields{
-		"functionName":   "loadCompany",
+		"functionName":   "v1.events.service.loadCompany",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	if args == nil {
+		return errors.New("unable to load company data - args is nil")
 	}
 
 	if args.CompanyModel != nil {
@@ -168,8 +172,12 @@ func (s *service) loadCompany(ctx context.Context, args *LogEventArgs) error {
 
 func (s *service) loadCLAGroup(ctx context.Context, args *LogEventArgs) error {
 	f := logrus.Fields{
-		"functionName":   "events.service.loadCLAGroup",
+		"functionName":   "v1.events.service.loadCLAGroup",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	if args == nil {
+		return errors.New("unable to load CLA Group data - args is nil")
 	}
 
 	// First, attempt to user the CLA Group model that was provided...
@@ -211,8 +219,12 @@ func (s *service) loadCLAGroup(ctx context.Context, args *LogEventArgs) error {
 
 func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 	f := logrus.Fields{
-		"functionName":   "loadSFProject",
+		"functionName":   "v1.events.service.loadSFProject",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	if args == nil {
+		return errors.New("unable to load SF project data - args is nil")
 	}
 
 	// Should be the same value for now...cleanup: need to remove one or the other
@@ -262,37 +274,46 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 
 func (s *service) loadUser(ctx context.Context, args *LogEventArgs) error {
 	f := logrus.Fields{
-		"functionName":   "loadUser",
+		"functionName":   "v1.events.service.loadUser",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	if args == nil {
+		return errors.New("unable to load user data - args is nil")
 	}
 
 	if args.UserModel != nil {
 		args.UserName = args.UserModel.Username
 		args.UserID = args.UserModel.UserID
 		args.LfUsername = args.UserModel.LfUsername
+		log.WithFields(f).Debug("loaded user for event log by caller provided user model")
 		return nil
-	}
-	if args.UserID == "" && args.LfUsername == "" {
+	} else if args.UserID == "" && args.LfUsername == "" {
 		log.WithFields(f).Warn("failed to load user for event log - user ID and username were not set")
 		return errors.New("require userID or LfUsername")
 	}
+
 	var userModel *models.User
 	var err error
+	// Try loading by LF username
 	if args.LfUsername != "" {
+		log.WithFields(f).Debugf("loading user by LF username: %s...", args.LfUsername)
 		userModel, err = s.combinedRepo.GetUserByUserName(args.LfUsername, true)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("failed to load user by username: %s", args.LfUsername)
-			return err
-		}
-	}
-	if args.UserID != "" {
-		userModel, err = s.combinedRepo.GetUser(args.UserID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("failed to load user by ID: %s", args.UserID)
-			return err
 		}
 	}
 
+	// Try loading by user ID
+	if args.UserID != "" {
+		log.WithFields(f).Debugf("loading user by user ID: %s...", args.UserID)
+		userModel, err = s.combinedRepo.GetUser(args.UserID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("failed to load user by ID: %s", args.UserID)
+		}
+	}
+
+	// Did we finally load the user model?
 	if userModel != nil {
 		args.UserModel = userModel
 		args.UserName = userModel.Username
@@ -307,23 +328,37 @@ func (s *service) loadUser(ctx context.Context, args *LogEventArgs) error {
 
 // loadDetails fetches and sets additional information into the data model required to fill out the event log entry
 func (s *service) loadDetails(ctx context.Context, args *LogEventArgs) error {
+	f := logrus.Fields{
+		"functionName":   "v1.events.service.loadDetails",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"args":           fmt.Sprintf("%+v", args),
+	}
+
+	log.WithFields(f).Debug("loading company details...")
 	err := s.loadCompany(ctx, args)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load company details...")
 		return err
 	}
 
+	log.WithFields(f).Debug("loading SF project details...")
 	err = s.loadSFProject(ctx, args)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load SF project details...")
 		return err
 	}
 
+	log.WithFields(f).Debug("loading CLA Group details...")
 	err = s.loadCLAGroup(ctx, args)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load CLA Group details...")
 		return err
 	}
 
+	log.WithFields(f).Debug("loading user details...")
 	err = s.loadUser(ctx, args)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load user details...")
 		return err
 	}
 
@@ -333,13 +368,13 @@ func (s *service) loadDetails(ctx context.Context, args *LogEventArgs) error {
 // LogEventWithContext logs the event in database
 func (s *service) LogEventWithContext(ctx context.Context, args *LogEventArgs) {
 	f := logrus.Fields{
-		"functionName":   "events.service.LogEvent",
+		"functionName":   "events.service.LogEventWithContext",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.WithFields(f).Error("panic occurred in CreateEvent", fmt.Errorf("%v", r))
+			log.WithFields(f).Errorf("panic occurred - %+v", r)
 		}
 	}()
 
