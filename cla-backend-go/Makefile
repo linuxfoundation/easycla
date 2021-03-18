@@ -179,6 +179,9 @@ mock:
 	@cd $(MAKEFILE_DIR) && mkdir -p repositories/mock
 	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -source=repositories/service.go -package=mock -destination=repositories/mock/mock_service.go
 	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -source=repositories/repository.go -package=mock -destination=repositories/mock/mock_repository.go
+	# mocks for github
+	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -package=branch_protection -destination=github/branch_protection/mock.go -self_package=github.com/communitybridge/easycla/cla-backend-go/github/branch_protection github.com/communitybridge/easycla/cla-backend-go/github/branch_protection CombinedRepository
+
 
 run:
 	go run main.go

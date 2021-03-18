@@ -6,7 +6,8 @@ package dynamo_events
 import (
 	"context"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github"
+	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
+
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/sirupsen/logrus"
 
@@ -110,25 +111,17 @@ func (s *service) EnableBranchProtectionServiceHandler(event events.DynamoDBEven
 			log.WithFields(f).Debug("branch protection is enabled for this organization")
 
 			ctx := context.Background()
-			log.WithFields(f).Debug("creating a new GitHub client object...")
-			gitHubClient, clientErr := github.NewGithubAppClient(gitHubOrg.OrganizationInstallationID)
-			if clientErr != nil {
-				return clientErr
-			}
-
-			branchProtectionRepository := github.NewBranchProtectionRepository(gitHubClient.Repositories, github.EnableBlockingLimiter())
-
-			log.WithFields(f).Debug("looking up the default branch for the GitHub repository...")
-			defaultBranch, branchErr := branchProtectionRepository.GetDefaultBranchForRepo(ctx, gitHubOrg.OrganizationName, newRepoModel.RepositoryName)
-			if branchErr != nil {
-				return branchErr
+			branchProtectionRepository, err := branch_protection.NewBranchProtectionRepository(gitHubOrg.OrganizationInstallationID, branch_protection.EnableBlockingLimiter())
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("initializing branch protection repository failed")
+				return err
 			}
 
 			log.WithFields(f).Debugf("enabling branch protection on th default branch %s for the GitHub repository: %s...",
-				defaultBranch, newRepoModel.RepositoryName)
+				utils.GithubBranchProtectionPatternAll, newRepoModel.RepositoryName)
 			return branchProtectionRepository.EnableBranchProtection(ctx,
 				parentOrgName, newRepoModel.RepositoryName,
-				defaultBranch, true, []string{utils.GitHubBotName}, []string{})
+				utils.GithubBranchProtectionPatternAll, true, []string{utils.GitHubBotName}, []string{})
 		}
 
 		log.WithFields(f).Debug("github organization branch protection is not enabled - no action required")

@@ -6,8 +6,9 @@ package dynamo_events
 import (
 	"context"
 
+	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
+
 	"github.com/aws/aws-lambda-go/events"
-	githubutils "github.com/communitybridge/easycla/cla-backend-go/github"
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -153,13 +154,11 @@ func (s *service) enableBranchProtectionForGithubOrg(ctx context.Context, newGit
 	}
 
 	log.WithFields(f).Debugf("creating a new GitHub client object for org: %s...", newGitHubOrg.OrganizationName)
-	gitHubClient, clientErr := githubutils.NewGithubAppClient(newGitHubOrg.OrganizationInstallationID)
-	if clientErr != nil {
-		log.WithFields(f).WithError(clientErr).Warnf("unable to create a new GitHub app client using the installation ID: %d", newGitHubOrg.OrganizationInstallationID)
-		return clientErr
+	branchProtectionRepo, err := branch_protection.NewBranchProtectionRepository(newGitHubOrg.OrganizationInstallationID, branch_protection.EnableBlockingLimiter())
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("initializing branch protection repository failed")
+		return err
 	}
-
-	branchProtectionRepo := githubutils.NewBranchProtectionRepository(gitHubClient.Repositories, githubutils.EnableBlockingLimiter())
 
 	var eg errgroup.Group
 	// a pool of 5 concurrent workers
@@ -176,16 +175,10 @@ func (s *service) enableBranchProtectionForGithubOrg(ctx context.Context, newGit
 			}()
 			log.WithFields(f).Debugf("enabling branch protection for repository: %s", repo.RepositoryName)
 
-			log.WithFields(f).Debugf("looking up the default branch for the GitHub repository: %s...", repo.RepositoryName)
-			defaultBranch, branchErr := branchProtectionRepo.GetDefaultBranchForRepo(ctx, newGitHubOrg.OrganizationName, repo.RepositoryName)
-			if branchErr != nil {
-				return branchErr
-			}
-
 			log.WithFields(f).Debugf("enabling branch protection on the default branch %s for the GitHub repository: %s...",
-				defaultBranch, repo.RepositoryName)
+				utils.GithubBranchProtectionPatternAll, repo.RepositoryName)
 			return branchProtectionRepo.EnableBranchProtection(ctx, newGitHubOrg.OrganizationName, repo.RepositoryName,
-				defaultBranch, true, []string{utils.GitHubBotName}, []string{})
+				utils.GithubBranchProtectionPatternAll, true, []string{utils.GitHubBotName}, []string{})
 		})
 	}
 

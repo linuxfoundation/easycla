@@ -56,7 +56,8 @@ func isGithubRateLimit(err error) (bool, error) {
 	return false, nil
 }
 
-func checkAndWrapForKnownErrors(resp *github.Response, err error) (bool, error) {
+// CheckAndWrapForKnownErrors checks for some of the known error types
+func CheckAndWrapForKnownErrors(resp *github.Response, err error) (bool, error) {
 	if err == nil {
 		return false, err
 	}

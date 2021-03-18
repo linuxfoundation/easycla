@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
+
 	"github.com/sirupsen/logrus"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -42,7 +44,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Get GitHub Repositories with Project scope of %s",
+				msg := fmt.Sprintf("user %s does not have access to Get GitHub V3Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewGetProjectGithubRepositoriesForbidden().WithPayload(
@@ -94,7 +96,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Add GitHub Repositories with Project scope of %s",
+				msg := fmt.Sprintf("user %s does not have access to Add GitHub V3Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewAddProjectGithubRepositoryForbidden().WithPayload(
@@ -172,7 +174,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Delete GitHub Repositories with Project scope of %s",
+				msg := fmt.Sprintf("user %s does not have access to Delete GitHub V3Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewDeleteProjectGithubRepositoryForbidden().WithPayload(
@@ -230,14 +232,21 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Query Protected Branch GitHub Repositories with Project scope of %s",
+				msg := fmt.Sprintf("user %s does not have access to Query Protected Branch GitHub V3Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewGetProjectGithubRepositoryBranchProtectionForbidden().WithPayload(
 					utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			protectedBranch, err := service.GetProtectedBranch(ctx, params.ProjectSFID, params.RepositoryID)
+			var branchName string
+			if params.BranchName == nil || *params.BranchName == "" {
+				branchName = branch_protection.DefaultBranchName
+			} else {
+				branchName = *params.BranchName
+			}
+
+			protectedBranch, err := service.GetProtectedBranch(ctx, params.ProjectSFID, params.RepositoryID, branchName)
 			if err != nil {
 				if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
 					msg := fmt.Sprintf("unable to locatate branch protection projectSFID: %s, repository: %s", params.ProjectSFID, params.RepositoryID)
@@ -284,14 +293,14 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Update Protected Branch GitHub Repositories with Project scope of %s",
+				msg := fmt.Sprintf("user %s does not have access to Update Protected Branch GitHub V3Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewUpdateProjectGithubRepositoryBranchProtectionForbidden().WithPayload(
 					utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			protectedBranch, err := service.UpdateProtectedBranch(ctx, params.RepositoryID, params.ProjectSFID, params.GithubRepositoryBranchProtectionInput)
+			protectedBranch, err := service.UpdateProtectedBranch(ctx, params.ProjectSFID, params.RepositoryID, params.GithubRepositoryBranchProtectionInput)
 			if err != nil {
 				log.Warnf("update protected branch failed for repo %s : %v", params.RepositoryID, err)
 				if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {

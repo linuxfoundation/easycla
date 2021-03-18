@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
+
 	ini "github.com/communitybridge/easycla/cla-backend-go/init"
 	"github.com/spf13/viper"
 
@@ -46,10 +48,14 @@ func TestGetRepositoryIDFromName(t *testing.T) {
 		assert.Fail(t, fmt.Sprintf("unable to convert installation ID to string: %s", config.GitHub.TestOrganizationInstallationID), int64Err)
 	}
 
+	branchProtectionRepoV4, err := branch_protection.NewBranchProtectionRepositoryV4(installationID)
+	if err != nil {
+		assert.Fail(t, fmt.Sprintf("initializing branch protection v4 repo failed : %v", err))
+	}
 	expectedValue := config.GitHub.TestRepositoryID
-	actualValue, err := github.GetRepositoryIDFromName(ctx, installationID, config.GitHub.TestOrganization, config.GitHub.TestRepository)
+	actualValue, err := branchProtectionRepoV4.GetRepositoryIDFromName(ctx, config.GitHub.TestOrganization, config.GitHub.TestRepository)
 	if err != nil {
 		assert.Fail(t, fmt.Sprintf("unable to create GitHub v4 client from installation ID: %d", installationID), err)
 	}
-	assert.Equal(t, expectedValue, actualValue, "Repository ID Lookup")
+	assert.Equal(t, expectedValue, actualValue, "CombinedRepository ID Lookup")
 }

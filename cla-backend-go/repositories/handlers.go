@@ -25,7 +25,7 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			if !claUser.IsAuthorizedForProject(params.ProjectSFID) {
 				return github_repositories.NewGetProjectGithubRepositoriesForbidden().WithPayload(&models.ErrorResponse{
 					Code: "403",
-					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Add GitHub Repository with Project scope of %s",
+					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Add GitHub CombinedRepository with Project scope of %s",
 						claUser.LFUsername, params.ProjectSFID),
 				})
 			}
@@ -44,7 +44,7 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			if !claUser.IsAuthorizedForProject(params.ProjectSFID) {
 				return github_repositories.NewAddProjectGithubRepositoryForbidden().WithPayload(&models.ErrorResponse{
 					Code: "403",
-					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Add GitHub Repository with Project scope of %s",
+					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Add GitHub CombinedRepository with Project scope of %s",
 						claUser.LFUsername, params.ProjectSFID),
 				})
 			}
@@ -75,7 +75,7 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 			if !claUser.IsAuthorizedForProject(params.ProjectSFID) {
 				return github_repositories.NewDeleteProjectGithubRepositoryForbidden().WithPayload(&models.ErrorResponse{
 					Code: "403",
-					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Delete GitHub Repository with Project scope of %s",
+					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Delete GitHub CombinedRepository with Project scope of %s",
 						claUser.LFUsername, params.ProjectSFID),
 				})
 			}

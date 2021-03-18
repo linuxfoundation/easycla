@@ -32,7 +32,7 @@ var (
 	ErrGerritNotFound = errors.New("gerrit not found")
 )
 
-// Repository defines functions of Repositories
+// Repository defines functions of V3Repositories
 type Repository interface {
 	AddGerrit(ctx context.Context, input *models.Gerrit) (*models.Gerrit, error)
 	GetGerrit(ctx context.Context, gerritID string) (*models.Gerrit, error)

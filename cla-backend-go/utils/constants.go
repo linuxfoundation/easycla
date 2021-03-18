@@ -42,6 +42,9 @@ const EasyCLA500InternalServerError = "EasyCLA - 500 Internal Server Error"
 // GitHubBotName is the name of the GitHub bot
 const GitHubBotName = "EasyCLA"
 
+// GithubBranchProtectionPatternAll is Github Branch Protection Pattern that matches all branches
+const GithubBranchProtectionPatternAll = "**/**"
+
 // TheLinuxFoundation is the name of the super parent for many Salesforce Foundations/Project Groups
 const TheLinuxFoundation = "The Linux Foundation"
 

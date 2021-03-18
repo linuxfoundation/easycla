@@ -223,13 +223,13 @@ func (a *autoEnableServiceProvider) NotifyCLAManagerForRepos(claGroupID string, 
 // autoEnabledRepositoryEmailContent prepares the email for autoEnabled repositories
 func autoEnabledRepositoryEmailContent(claGroupModel *models.ClaGroup, orgName string, managers []*models.ClaManagerUser, repos []*models.GithubRepository) (string, string, []string) {
 	claGroupName := claGroupModel.ProjectName
-	subject := fmt.Sprintf("EasyCLA: Auto-Enable Repository for CLA Group: %s", claGroupName)
-	repoPronounUpper := "Repository"
+	subject := fmt.Sprintf("EasyCLA: Auto-Enable CombinedRepository for CLA Group: %s", claGroupName)
+	repoPronounUpper := "CombinedRepository"
 	repoPronoun := "repository"
 	pronoun := "this " + repoPronoun
 	repoWasHere := repoPronoun + " was"
 	if len(repos) > 1 {
-		repoPronounUpper = "Repositories"
+		repoPronounUpper = "V3Repositories"
 		repoPronoun = "repositories"
 		pronoun = "these " + repoPronoun
 		repoWasHere = repoPronoun + " were"
@@ -248,7 +248,7 @@ func autoEnabledRepositoryEmailContent(claGroupModel *models.ClaGroup, orgName s
 	Since auto-enable was configured within EasyCLA for GitHub Organization, the %s will now start enforcing
 	CLA checks.</p>
 	<p>Please verify the repository settings to ensure EasyCLA is a required check for merging Pull Requests.
-See: GitHub Repository -> Settings -> Branches -> Branch Protection Rules -> Add/Edit the default branch,
+See: GitHub CombinedRepository -> Settings -> Branches -> Branch Protection Rules -> Add/Edit the default branch,
 	and confirm that 'Require status checks to pass before merging' is enabled and that EasyCLA is a required check.
 	Additionally, consider selecting the 'Include administrators' option to enforce all configured restrictions for 
 	contributors, maintainers, and administrators.</p>

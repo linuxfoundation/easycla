@@ -756,7 +756,7 @@ func (repo *repo) calculateMetrics() (*Metrics, error) {
 		return nil, err
 	}
 
-	log.Debug("Calculating Repository metrics...")
+	log.Debug("Calculating CombinedRepository metrics...")
 	// calculate github repositories count
 	// increment project repositories count
 	err = repo.processRepositoriesTable(metrics)

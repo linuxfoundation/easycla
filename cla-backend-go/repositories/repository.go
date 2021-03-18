@@ -48,7 +48,7 @@ const (
 // ErrRepositoryDoesNotExist ...
 var ErrRepositoryDoesNotExist = errors.New("repository does not exist")
 
-// Repository defines functions of Repositories
+// Repository defines functions of V3Repositories
 type Repository interface {
 	AddGithubRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
 	UpdateGithubRepository(ctx context.Context, repositoryID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
@@ -168,7 +168,7 @@ func (r *repo) UpdateGithubRepository(ctx context.Context, repositoryID string, 
 		"repositoryURL":              repositoryURL,
 	}
 
-	log.WithFields(f).Debugf("updating Repository : %s... ", repositoryID)
+	log.WithFields(f).Debugf("updating CombinedRepository : %s... ", repositoryID)
 
 	repoModel, repoErr := r.GetRepository(ctx, repositoryID)
 	if repoErr != nil {
@@ -177,7 +177,7 @@ func (r *repo) UpdateGithubRepository(ctx context.Context, repositoryID string, 
 	}
 
 	if repoModel == nil {
-		log.WithFields(f).Warnf("Repository does not exist for repo: %s ", repositoryID)
+		log.WithFields(f).Warnf("CombinedRepository does not exist for repo: %s ", repositoryID)
 		return nil, ErrRepositoryDoesNotExist
 	}
 

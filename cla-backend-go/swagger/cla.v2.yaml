@@ -1579,6 +1579,9 @@ paths:
           in: path
           type: string
           required: true
+        - name: branchName
+          in: query
+          type: string
       responses:
         '200':
           description: 'Success'
@@ -3836,6 +3839,8 @@ definitions:
   github-repository-branch-protection-input:
     type: object
     properties:
+      branch_name:
+        type: string
       enforce_admin:
         type: boolean
         default: false
