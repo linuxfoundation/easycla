@@ -457,7 +457,7 @@ func (ed *CompanyACLRequestDeniedEventData) GetEventDetailsString(args *LogEvent
 // GetEventDetailsString . . .
 func (ed *CompanyACLUserAddedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("User with LF Username: %s added to the ACL for Company: %s by: %s.",
-		ed.UserLFID, args.CompanyName, args.UserName)
+		args.LFUser.Name, args.CompanyName, args.UserName)
 	return data, true
 }
 
@@ -725,14 +725,14 @@ func (ed *ContributorAssignCLADesignee) GetEventDetailsString(args *LogEventArgs
 // GetEventDetailsString . . .
 func (ed *UserConvertToContactData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("User: %s was converted to Contact state for Project: %s with ID: %s.",
-		args.LfUsername, args.ProjectName, args.ProjectSFID)
+		args.LFUser.Name, args.ProjectName, args.ProjectSFID)
 	return data, true
 }
 
 // GetEventDetailsString . . .
 func (ed *AssignRoleScopeData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("User: %s was assigned Scope: %s with Role: %s for Project: %s with ID: %s.",
-		args.LfUsername,
+		args.LFUser.Name,
 		ed.Scope, ed.Role, args.ProjectName, args.ProjectSFID)
 	return data, true
 }
@@ -980,7 +980,7 @@ func (ed *CompanyACLRequestDeniedEventData) GetEventSummaryString(args *LogEvent
 // GetEventSummaryString . . .
 func (ed *CompanyACLUserAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The user with LF username %s was added to the access list for the company %s by the user %s.",
-		ed.UserLFID, args.CompanyName, args.UserName)
+		args.LFUser.Name, args.CompanyName, args.UserName)
 	return data, true
 }
 
@@ -1533,7 +1533,7 @@ func (ed *ContributorAssignCLADesignee) GetEventSummaryString(args *LogEventArgs
 
 // GetEventSummaryString . . .
 func (ed *UserConvertToContactData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was converted to a contact", args.LfUsername)
+	data := fmt.Sprintf("The user %s was converted to a contact", args.LFUser.Name)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -1549,7 +1549,7 @@ func (ed *UserConvertToContactData) GetEventSummaryString(args *LogEventArgs) (s
 
 // GetEventSummaryString . . .
 func (ed *AssignRoleScopeData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was added to the role %s", args.LfUsername, ed.Role)
+	data := fmt.Sprintf("The user %s was added to the role %s", args.LFUser.Name, ed.Role)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}

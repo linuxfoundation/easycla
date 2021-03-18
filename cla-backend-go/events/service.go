@@ -11,6 +11,8 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	user_service "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
+	userServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/user-service/models"
 
 	"github.com/sirupsen/logrus"
 
@@ -122,6 +124,7 @@ type LogEventArgs struct {
 	LfUsername string
 	UserName   string
 	UserModel  *models.User
+	LFUser     *userServiceModels.User
 
 	CLAGroupID    string
 	CLAGroupName  string
@@ -316,13 +319,39 @@ func (s *service) loadUser(ctx context.Context, args *LogEventArgs) error {
 	// Did we finally load the user model?
 	if userModel != nil {
 		args.UserModel = userModel
-		args.UserName = userModel.Username
+		// Update username with LF Name value if exists ...
+		if args.LFUser != nil {
+			args.UserName = args.LFUser.Name
+		} else {
+			args.UserName = userModel.Username
+		}
 		args.UserID = userModel.UserID
 		args.LfUsername = userModel.LfUsername
 	} else {
 		log.WithFields(f).Warnf("unable to set user information for event log entry")
 	}
 
+	return nil
+}
+
+func (s *service) loadLFUser(ctx context.Context, args *LogEventArgs) error {
+	f := logrus.Fields{
+		"functionName":   "v1.events.service.loadLFUser",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	if args.LFUser != nil {
+		return nil
+	}
+
+	if args.LfUsername != "" {
+		lfUser, lfUserErr := user_service.GetClient().GetUserByUsername(args.LfUsername)
+		if lfUserErr != nil || lfUser == nil {
+			log.WithFields(f).Warnf("unable to fetch LF User by username: %s", args.LfUsername)
+			return nil
+		}
+		args.LFUser = lfUser
+	}
 	return nil
 }
 
@@ -352,6 +381,13 @@ func (s *service) loadDetails(ctx context.Context, args *LogEventArgs) error {
 	err = s.loadCLAGroup(ctx, args)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load CLA Group details...")
+		return err
+	}
+
+	log.WithFields(f).Debug("loading LF user details ...")
+	err = s.loadLFUser(ctx, args)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load LF User details...")
 		return err
 	}
 
