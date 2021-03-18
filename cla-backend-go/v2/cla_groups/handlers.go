@@ -259,7 +259,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				project, projectErr := psc.GetProject(projectSFID)
 				if projectErr != nil || project == nil {
 					msg := fmt.Sprintf("Failed to get salesforce project: %s", projectSFID)
-					log.WithFields(f).Warn(msg)
+					log.WithFields(f).WithError(projectErr).Warn(msg)
 					if _, ok := projectErr.(*v2ProjectServiceClient.GetProjectNotFound); ok {
 						return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
 							utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("project not found with ID: [%s]", projectSFID), projectErr))

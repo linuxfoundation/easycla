@@ -87,8 +87,10 @@ func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed
 	clientAuth := runtimeClient.BearerToken(tok)
 
 	// Lookup the project
+	log.WithFields(f).Debugf("cache miss - looking up project in the service for: %s...", projectSFID)
 	projectModel, err := pmm.getProject(projectSFID, clientAuth)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup project in the project service for: %s", projectSFID)
 		return nil, err
 	}
 

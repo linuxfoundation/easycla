@@ -2365,10 +2365,27 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 				}
 			}
 
-			signedOn := sig.DateCreated
-			if sig.SignedOn != "" {
-				signedOn = sig.SignedOn
+			// Set the signed date/time
+			var sigSignedTime string
+			// Use the user docusign date signed value if it is present - older signatures do not have this
+			if sig.UserDocusignDateSigned != "" {
+				// Put the date into a standard format
+				t, err := utils.ParseDateTime(sig.UserDocusignDateSigned)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warn("unable to parse signature docusign date signed time")
+				} else {
+					sigSignedTime = utils.TimeToString(t)
+				}
+			} else {
+				// Put the date into a standard format
+				t, err := utils.ParseDateTime(sig.DateCreated)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warn("unable to parse signature date created time")
+				} else {
+					sigSignedTime = utils.TimeToString(t)
+				}
 			}
+
 			intermediateResponse = append(intermediateResponse, &IclaSignatureWithDetails{
 				IclaSignature: &models.IclaSignature{
 					GithubUsername:         sig.UserGithubUsername,
@@ -2376,9 +2393,9 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 					SignatureID:            sig.SignatureID,
 					UserEmail:              sig.UserEmail,
 					UserName:               sig.UserName,
-					SignedOn:               signedOn,
+					SignedOn:               sigSignedTime,
 					UserDocusignName:       sig.UserDocusignName,
-					UserDocusignDateSigned: sig.UserDocusignDateSigned,
+					UserDocusignDateSigned: sigSignedTime,
 					SignatureModified:      sig.DateModified,
 				},
 				SignatureReferenceID: sig.SignatureReferenceID,
@@ -2510,18 +2527,22 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 				sigCreatedTime = utils.TimeToString(t)
 			}
 
-			var sigSignedTime = sig.DateModified
-			t, err = utils.ParseDateTime(sig.DateModified)
-			if err != nil {
-				log.WithFields(f).WithError(err).Warn("unable to parse signature date modified time")
-			} else {
-				sigSignedTime = utils.TimeToString(t)
-			}
+			// Set the signed date/time
+			var sigSignedTime string
 			// Use the user docusign date signed value if it is present - older signatures do not have this
 			if sig.UserDocusignDateSigned != "" {
+				// Put the date into a standard format
 				t, err = utils.ParseDateTime(sig.UserDocusignDateSigned)
 				if err != nil {
 					log.WithFields(f).WithError(err).Warn("unable to parse signature docusign date signed time")
+				} else {
+					sigSignedTime = utils.TimeToString(t)
+				}
+			} else {
+				// Put the date into a standard format
+				t, err = utils.ParseDateTime(sig.DateCreated)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warn("unable to parse signature date created time")
 				} else {
 					sigSignedTime = utils.TimeToString(t)
 				}
