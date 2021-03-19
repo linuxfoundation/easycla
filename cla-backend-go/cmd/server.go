@@ -257,10 +257,10 @@ func server(localMode bool) http.Handler {
 	// Initialize the external platform services - these are external APIs that
 	// we download the swagger specification, generate the models, and have
 	//client helper functions
-	user_service.InitClient(configFile.APIGatewayURL, configFile.AcsAPIKey)
-	project_service.InitClient(configFile.APIGatewayURL)
-	organization_service.InitClient(configFile.APIGatewayURL, eventsService)
-	acs_service.InitClient(configFile.APIGatewayURL, configFile.AcsAPIKey)
+	user_service.InitClient(configFile.PlatformAPIGatewayURL, configFile.AcsAPIKey)
+	project_service.InitClient(configFile.PlatformAPIGatewayURL)
+	organization_service.InitClient(configFile.PlatformAPIGatewayURL, eventsService)
+	acs_service.InitClient(configFile.PlatformAPIGatewayURL, configFile.AcsAPIKey)
 
 	usersService := users.NewService(usersRepo, eventsService)
 	healthService := health.New(Version, Commit, Branch, BuildDate)

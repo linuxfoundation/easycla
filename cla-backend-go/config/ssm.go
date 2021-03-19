@@ -94,6 +94,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-lfx-metrics-report-sqs-url-%s", stage),
 		fmt.Sprintf("cla-lfx-metrics-report-enabled-%s", stage),
 		fmt.Sprintf("cla-enable-services-for-parent-%s", stage),
+		fmt.Sprintf("cla-platform-api-gw-%s", stage),
 	}
 
 	// For each key to lookup
@@ -182,6 +183,8 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 			config.Auth0Platform.URL = resp.value
 		case fmt.Sprintf("cla-auth0-platform-api-gw-%s", stage):
 			config.APIGatewayURL = resp.value
+		case fmt.Sprintf("cla-platform-api-gw-%s", stage):
+			config.PlatformAPIGatewayURL = resp.value
 		case fmt.Sprintf("cla-lf-group-client-id-%s", stage):
 			config.LFGroup.ClientID = resp.value
 		case fmt.Sprintf("cla-lf-group-client-secret-%s", stage):

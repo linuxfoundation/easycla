@@ -21,8 +21,10 @@ type Config struct {
 	// Auth0Platform config
 	Auth0Platform Auth0Platform `json:"auth0_platform"`
 
-	// API GW
+	// APIGatewayURL is the API gateway URL - old variable which is set by the old cla-auth0-gateway SSM key
 	APIGatewayURL string `json:"api_gateway_url"`
+	// PlatformAPIGatewayURL is the platform API gateway URL
+	PlatformAPIGatewayURL string `json:"platform_api_gateway_url"`
 
 	// EnableCLAServiceForParent is a configuration flag to indicate if we should set the enable_services=[CLA] attribute on the parent project object in the project service when a child project is associated with a CLA group. This determines the v2 project console experience/behavior."
 	EnableCLAServiceForParent bool `json:"enable_cla_service_for_parent"`
