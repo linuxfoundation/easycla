@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/communitybridge/easycla/cla-backend-go/config"
+
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 
@@ -495,10 +497,10 @@ func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, cla
 		// Execute as a go routine
 		go func(psClient *v2ProjectService.Client, claGroupID, projectSFID string) {
 			defer wg.Done()
+			log.WithFields(f).Debugf("enabling project CLA service for project: %s...", projectSFID)
 			enableProjectErr := psClient.EnableCLA(projectSFID)
 			if enableProjectErr != nil {
-				log.WithFields(f).WithError(enableProjectErr).
-					Warnf("unable to enable CLA service for project: %s, error: %+v", projectSFID, enableProjectErr)
+				log.WithFields(f).WithError(enableProjectErr).Warnf("unable to enable CLA service for project: %s, error: %+v", projectSFID, enableProjectErr)
 				errorList = append(errorList, enableProjectErr)
 			} else {
 				log.WithFields(f).Debugf("enabled CLA service for project: %s", projectSFID)
@@ -510,6 +512,32 @@ func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, cla
 					LfUsername: authUser.UserName,
 					EventData:  &events.ProjectServiceCLAEnabledData{},
 				})
+
+				// If we should enable the CLA Service for the parent
+				if config.GetConfig().EnableCLAServiceForParent {
+					log.WithFields(f).Debugf("enable parent project CLA service when child is enrolled flag is enabled")
+					parentProjectSFID, parentLookupErr := psc.GetParentProject(projectSFID)
+					if parentLookupErr != nil || parentProjectSFID == "" {
+						log.WithFields(f).WithError(parentLookupErr).Warnf("unable to lookup parent project SFID for project: %s", projectSFID)
+					} else {
+						log.WithFields(f).Debugf("enabling parent project CLA service for project SFID: %s...", parentProjectSFID)
+						enableProjectErr := psClient.EnableCLA(parentProjectSFID)
+						if enableProjectErr != nil {
+							log.WithFields(f).WithError(enableProjectErr).Warnf("unable to enable CLA service for project: %s, error: %+v", parentProjectSFID, enableProjectErr)
+							errorList = append(errorList, enableProjectErr)
+						} else {
+							log.WithFields(f).Debugf("enabled CLA service for parent project: %s", parentProjectSFID)
+							// add event log entry
+							s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+								EventType:  events.ProjectServiceCLAEnabled,
+								ProjectID:  parentProjectSFID,
+								CLAGroupID: claGroupID,
+								LfUsername: authUser.UserName,
+								EventData:  &events.ProjectServiceCLAEnabledData{},
+							})
+						}
+					}
+				}
 			}
 		}(psc, claGroupID, projectSFID)
 	}

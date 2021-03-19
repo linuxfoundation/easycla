@@ -24,6 +24,9 @@ type Config struct {
 	// API GW
 	APIGatewayURL string `json:"api_gateway_url"`
 
+	// EnableCLAServiceForParent is a configuration flag to indicate if we should set the enable_services=[CLA] attribute on the parent project object in the project service when a child project is associated with a CLA group. This determines the v2 project console experience/behavior."
+	EnableCLAServiceForParent bool `json:"enable_cla_service_for_parent"`
+
 	// SFDC
 
 	// GitHub

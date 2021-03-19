@@ -93,6 +93,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-lfx-metrics-report-sqs-region-%s", stage),
 		fmt.Sprintf("cla-lfx-metrics-report-sqs-url-%s", stage),
 		fmt.Sprintf("cla-lfx-metrics-report-enabled-%s", stage),
+		fmt.Sprintf("cla-enable-services-for-parent-%s", stage),
 	}
 
 	// For each key to lookup
@@ -207,6 +208,15 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 				config.MetricsReport.Enabled = false
 			} else {
 				config.MetricsReport.Enabled = boolVal
+			}
+		case fmt.Sprintf("cla-enable-services-for-parent-%s", stage):
+			boolVal, err := strconv.ParseBool(resp.value)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to convert %s value to a boolean - setting value to false in the configuration",
+					fmt.Sprintf("cla-enable-services-for-parent-%s", stage))
+				config.EnableCLAServiceForParent = false
+			} else {
+				config.EnableCLAServiceForParent = boolVal
 			}
 		}
 	}
