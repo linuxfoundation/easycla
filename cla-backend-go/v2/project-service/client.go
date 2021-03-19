@@ -36,14 +36,15 @@ var (
 	projectServiceClient *Client
 	// Short term cache - only for the lifetime of this lambda
 	projectServiceModes = make(map[string]*models.ProjectOutputDetailed)
+	apiGWHost           string
 )
 
 // InitClient initializes the user_service client
 func InitClient(APIGwURL string) {
-	APIGwURL = strings.ReplaceAll(APIGwURL, "https://", "")
+	apiGWHost = strings.ReplaceAll(APIGwURL, "https://", "")
 	projectServiceClient = &Client{
 		cl: client.NewHTTPClientWithConfig(strfmt.Default, &client.TransportConfig{
-			Host:     APIGwURL,
+			Host:     apiGWHost,
 			BasePath: "project-service",
 			Schemes:  []string{"https"},
 		}),
@@ -70,6 +71,7 @@ func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed
 	f := logrus.Fields{
 		"functionName": "v2.project-service.client.GetProject",
 		"projectSFID":  projectSFID,
+		"apiGWHost":    apiGWHost,
 	}
 
 	// Lookup in cache first
@@ -106,6 +108,7 @@ func (pmm *Client) GetProjectByName(projectName string) (*models.ProjectListSear
 	f := logrus.Fields{
 		"functionName": "v2.project-service.client.GetProjectByName",
 		"projectName":  projectName,
+		"apiGWHost":    apiGWHost,
 	}
 	tok, err := token.GetToken()
 	if err != nil {
@@ -130,6 +133,7 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 	f := logrus.Fields{
 		"functionName": "v2.project-service.client.GetParentProject",
 		"projectSFID":  projectSFID,
+		"apiGWHost":    apiGWHost,
 	}
 
 	// Lookup in cache first
@@ -167,6 +171,7 @@ func (pmm *Client) IsTheLinuxFoundation(projectSFID string) (bool, error) {
 	f := logrus.Fields{
 		"functionName": "v2.project-service.client.IsTheLinuxFoundation",
 		"projectSFID":  projectSFID,
+		"apiGWHost":    apiGWHost,
 	}
 
 	log.WithFields(f).Debug("querying project...")
@@ -190,6 +195,7 @@ func (pmm *Client) IsParentTheLinuxFoundation(projectSFID string) (bool, error) 
 	f := logrus.Fields{
 		"functionName": "v2.project-service.client.IsParentTheLinuxFoundation",
 		"projectSFID":  projectSFID,
+		"apiGWHost":    apiGWHost,
 	}
 
 	log.WithFields(f).Debug("querying project...")
@@ -223,6 +229,7 @@ func (pmm *Client) EnableCLA(projectSFID string) error {
 	f := logrus.Fields{
 		"functionName": "v2.project-service.client.EnableCLA",
 		"projectSFID":  projectSFID,
+		"apiGWHost":    apiGWHost,
 	}
 
 	tok, err := token.GetToken()
@@ -273,6 +280,7 @@ func (pmm *Client) DisableCLA(projectSFID string) error {
 	f := logrus.Fields{
 		"functionName": "v2.project-service.client.DisableCLA",
 		"projectSFID":  projectSFID,
+		"apiGWHost":    apiGWHost,
 	}
 
 	tok, err := token.GetToken()
