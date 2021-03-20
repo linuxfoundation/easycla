@@ -49,7 +49,7 @@ func NewService(repo Repository, lfg *LFGroup) Service {
 
 func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID string, params *models.AddGerritInput, claGroupModel *models.ClaGroup) (*models.Gerrit, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.AddGerrit",
+		"functionName":   "v1.gerrits.AddGerrit",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"projectSFID":    projectSFID,
@@ -164,7 +164,7 @@ func (s service) GetGerritsByProjectSFID(ctx context.Context, projectSFID string
 
 func (s service) GetClaGroupGerrits(ctx context.Context, claGroupID string, projectSFID *string) (*models.GerritList, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.GetClaGroupGerrits",
+		"functionName":   "v1.gerrits.GetClaGroupGerrits",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"projectSFID":    *projectSFID,
@@ -175,6 +175,7 @@ func (s service) GetClaGroupGerrits(ctx context.Context, claGroupID string, proj
 		return nil, err
 	}
 
+	log.WithFields(f).Debugf("discovered %d gerrits", len(responseModel.List))
 	// Add the repo list to the response model
 	for _, gerrit := range responseModel.List {
 		log.WithFields(f).Debugf("Processing gerrit URL: %s", gerrit.GerritURL)
@@ -221,7 +222,7 @@ func extractGerritHost(gerritHost string, f logrus.Fields) (string, error) {
 
 func (s service) GetGerritRepos(ctx context.Context, gerritHost string) (*models.GerritRepoList, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.GetGerritRepos",
+		"functionName":   "v1.gerrits.GetGerritRepos",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritName":     gerritHost,
 	}
@@ -314,7 +315,7 @@ func buildContributorAgreementDetails(serverInfo *ServerInfo) []*models.GerritRe
 // listGerritRepos returns a list of gerrit repositories for the given gerrit host
 func listGerritRepos(ctx context.Context, gerritHost string) (map[string]GerritRepoInfo, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.listGerritRepos",
+		"functionName":   "v1.gerrits.listGerritRepos",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritHost":     gerritHost,
 	}
@@ -354,7 +355,7 @@ func listGerritRepos(ctx context.Context, gerritHost string) (map[string]GerritR
 // getGerritConfig returns the gerrit configuration for the specified host
 func getGerritConfig(ctx context.Context, gerritHost string) (*ServerInfo, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.getGerritConfig",
+		"functionName":   "v1.gerrits.getGerritConfig",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritHost":     gerritHost,
 	}
@@ -394,7 +395,7 @@ func getGerritConfig(ctx context.Context, gerritHost string) (*ServerInfo, error
 // getGerritAPIPath returns the path to the API based on the gerrit host
 func getGerritAPIPath(ctx context.Context, gerritHost string) (string, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.getGerritAPIPath",
+		"functionName":   "v1.gerrits.getGerritAPIPath",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritHost":     gerritHost,
 	}

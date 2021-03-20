@@ -8,7 +8,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
@@ -22,6 +26,8 @@ import (
 	"github.com/jinzhu/copier"
 )
 
+const decodeErrorMsg = "unable to decode response as a v2 model"
+
 type ProjectService interface { //nolint
 	GetCLAGroupByID(ctx context.Context, claGroupID string) (*v1Models.ClaGroup, error)
 }
@@ -33,35 +39,47 @@ func Configure(api *operations.EasyclaAPI, v1Service v1Gerrits.Service, projectS
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+			f := logrus.Fields{
+				"functionName":   "v2.gerrits.handlers.GerritsDeleteGerritHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"projectSFID":    params.ProjectSFID,
+				"claGroupID":     params.ClaGroupID,
+				"gerritID":       params.GerritID,
+				"authUserName":   authUser.UserName,
+				"authUserEmail":  authUser.Email,
+			}
 
+			log.WithFields(f).Debugf("querying for gerrits using gerrit ID: %s", params.GerritID)
 			gerrit, err := v1Service.GetGerrit(ctx, params.GerritID)
 			if err != nil {
+				msg := fmt.Sprintf("unable to locate gerrit by ID: %s", params.GerritID)
+				log.WithFields(f).Warn(msg)
 				if err == v1Gerrits.ErrGerritNotFound {
-					return gerrits.NewDeleteGerritNotFound().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+					return gerrits.NewDeleteGerritNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFoundWithError(reqID, msg, err))
 				}
-				return gerrits.NewDeleteGerritInternalServerError().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+				return gerrits.NewDeleteGerritInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
 			}
+
 			if gerrit.ProjectSFID != params.ProjectSFID || gerrit.ProjectID != params.ClaGroupID {
-				return gerrits.NewDeleteGerritBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       "400",
-					Message:    "EasyCLA - 403 Bad Request - projectSFID or claGroupID does not match with provided gerrit record",
-					XRequestID: reqID,
-				})
+				msg := fmt.Sprintf("projectSFID %s or claGroupID %s does not match with provided gerrit record", params.ProjectSFID, params.ClaGroupID)
+				log.WithFields(f).Warn(msg)
+				return gerrits.NewDeleteGerritBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
+
 			// verify user have access to the project
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				return gerrits.NewDeleteGerritForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code: "403",
-					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to DeleteGerrit with Project scope of %s",
-						authUser.UserName, gerrit.ProjectSFID),
-					XRequestID: reqID,
-				})
+				msg := fmt.Sprintf("user %s does not have access to DeleteGerrit with Project scope of %s",
+					authUser.UserName, gerrit.ProjectSFID)
+				log.WithFields(f).Warn(msg)
+				return gerrits.NewDeleteGerritForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
 			// delete the gerrit
 			err = v1Service.DeleteGerrit(ctx, params.GerritID)
 			if err != nil {
-				return gerrits.NewDeleteGerritBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+				msg := "unable to delete gerrit instance"
+				log.WithFields(f).WithError(err).Warn(msg)
+				return gerrits.NewDeleteGerritForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
 			// record the event
@@ -148,39 +166,52 @@ func Configure(api *operations.EasyclaAPI, v1Service v1Gerrits.Service, projectS
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+			f := logrus.Fields{
+				"functionName":   "v2.gerrits.handlers.GerritsListGerritsHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"projectSFID":    params.ProjectSFID,
+				"claGroupID":     params.ClaGroupID,
+				"authUserName":   authUser.UserName,
+				"authUserEmail":  authUser.Email,
+			}
 
 			// verify user have access to the project
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				return gerrits.NewListGerritsForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code: "403",
-					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to ListGerrits with Project scope of %s",
-						authUser.UserName, params.ProjectSFID),
-					XRequestID: reqID,
-				})
+				msg := fmt.Sprintf("user %s does not have access to list gerrits with Project scope of %s", authUser.UserName, params.ProjectSFID)
+				log.WithFields(f).Warn(msg)
+				return gerrits.NewListGerritsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
+			log.WithFields(f).Debug("checking if project CLA Group mapping...")
 			ok, err := projectsClaGroupsRepo.IsAssociated(params.ProjectSFID, params.ClaGroupID)
 			if err != nil {
-				return gerrits.NewListGerritsBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
-			}
-			if !ok {
-				return gerrits.NewListGerritsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       "400",
-					Message:    "provided cla-group and project are not associated with each other",
-					XRequestID: reqID,
-				})
+				msg := fmt.Sprintf("unable to determine project CLA group association for project: %s and CLA Group: %s", params.ProjectSFID, params.ClaGroupID)
+				log.WithFields(f).WithError(err).Warn(msg)
+				return gerrits.NewListGerritsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
+			if !ok {
+				msg := fmt.Sprintf("provided CLA Group %s and project %s are not associated with each other", params.ProjectSFID, params.ClaGroupID)
+				log.WithFields(f).WithError(err).Warn(msg)
+				return gerrits.NewListGerritsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
+			}
+
+			log.WithFields(f).Debug("querying for gerrits...")
 			result, err := v1Service.GetClaGroupGerrits(ctx, params.ClaGroupID, &params.ProjectSFID)
 			if err != nil {
+				msg := fmt.Sprintf("problem fetching gerrit repositories using CLA Group: %s with project SFID: %s", params.ClaGroupID, params.ProjectSFID)
+				log.WithFields(f).Warn(msg)
 				return gerrits.NewListGerritsBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
+			log.WithFields(f).Debugf("discovered %d gerrits", len(result.List))
 
 			var response models.GerritList
 			err = copier.Copy(&response, result)
 			if err != nil {
-				return gerrits.NewListGerritsInternalServerError().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+				log.WithFields(f).WithError(err).Warn(decodeErrorMsg)
+				return gerrits.NewListGerritsInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, decodeErrorMsg, err))
 			}
+
 			return gerrits.NewListGerritsOK().WithXRequestID(reqID).WithPayload(&response)
 		})
 
@@ -189,35 +220,42 @@ func Configure(api *operations.EasyclaAPI, v1Service v1Gerrits.Service, projectS
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+			f := logrus.Fields{
+				"functionName":   "v2.gerrits.handlers.GerritsGetGerritReposHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"authUserName":   authUser.UserName,
+				"authUserEmail":  authUser.Email,
+				"gerritHost":     params.GerritHost.String(),
+			}
 
 			// No specific permissions required
 
 			// Validate input
 			if params.GerritHost == nil {
-				return gerrits.NewGetGerritReposBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       "400",
-					Message:    "missing gerritHost query parameter - expecting gerrit hostname",
-					XRequestID: reqID,
-				})
+				msg := "missing gerrit host query parameter - expecting gerrit hostname"
+				log.WithFields(f).Warn(msg)
+				return gerrits.NewGetGerritReposBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
 			if len(strings.TrimSpace(params.GerritHost.String())) == 0 {
-				return gerrits.NewGetGerritReposBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Code:       "400",
-					Message:    "invalid gerritHost query parameter - expecting gerrit hostname",
-					XRequestID: reqID,
-				})
+				msg := "invalid gerritHost query parameter - expecting gerrit hostname"
+				log.WithFields(f).Warn(msg)
+				return gerrits.NewGetGerritReposBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
+			log.WithFields(f).Debugf("querying for gerrits using hostname: %s...", params.GerritHost.String())
 			result, err := v1Service.GetGerritRepos(ctx, params.GerritHost.String())
 			if err != nil {
-				return gerrits.NewGetGerritReposBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+				msg := fmt.Sprintf("problem fetching gerrit repositories using gerrit host: %s", params.GerritHost.String())
+				log.WithFields(f).Warn(msg)
+				return gerrits.NewGetGerritReposBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
 			var response models.GerritRepoList
 			err = copier.Copy(&response, result)
 			if err != nil {
-				return gerrits.NewAddGerritInternalServerError().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+				log.WithFields(f).WithError(err).Warn(decodeErrorMsg)
+				return gerrits.NewAddGerritInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, decodeErrorMsg, err))
 			}
 
 			return gerrits.NewGetGerritReposOK().WithXRequestID(reqID).WithPayload(&response)

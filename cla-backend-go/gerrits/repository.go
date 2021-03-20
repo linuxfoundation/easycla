@@ -30,6 +30,7 @@ import (
 // errors
 var (
 	ErrGerritNotFound = errors.New("gerrit not found")
+	HugePageSize      = int64(10000)
 )
 
 // Repository defines functions of V3Repositories
@@ -61,7 +62,7 @@ type repo struct {
 // AddGerrit creates a new gerrit instance
 func (repo *repo) AddGerrit(ctx context.Context, input *models.Gerrit) (*models.Gerrit, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.AddGerrit",
+		"functionName":   "v1.gerrits.repository.AddGerrit",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 	gerritID, err := uuid.NewV4()
@@ -103,7 +104,7 @@ func (repo *repo) AddGerrit(ctx context.Context, input *models.Gerrit) (*models.
 // GetGerrit returns the gerrit instances based on the ID
 func (repo *repo) GetGerrit(ctx context.Context, gerritID string) (*models.Gerrit, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.AddGerrit",
+		"functionName":   "v1.gerrits.repository.GetGerrit",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritID":       gerritID,
 	}
@@ -137,7 +138,7 @@ func (repo *repo) GetGerrit(ctx context.Context, gerritID string) (*models.Gerri
 
 func (repo repo) GetGerritsByID(ctx context.Context, ID string, IDType string) (*models.GerritList, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.AddGerrit",
+		"functionName":   "v1.gerrits.repository.GetGerritsByID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"ID":             ID,
 		"IDType":         IDType,
@@ -200,7 +201,7 @@ func (repo repo) GetGerritsByID(ctx context.Context, ID string, IDType string) (
 
 func (repo repo) GetGerritsByProjectSFID(ctx context.Context, projectSFID string) (*models.GerritList, error) {
 	f := logrus.Fields{
-		"functionName":   "GetGerritsByProjectSFID",
+		"functionName":   "v1.gerrits.repository.GetGerritsByProjectSFID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 	}
@@ -259,34 +260,41 @@ func (repo repo) GetGerritsByProjectSFID(ctx context.Context, projectSFID string
 }
 
 // GetClaGroupGerrits returns the CLA Group gerrit instances based on the CLA Group ID and the project SFID
-func (repo repo) GetClaGroupGerrits(ctx context.Context, projectID string, projectSFID *string) (*models.GerritList, error) {
+func (repo repo) GetClaGroupGerrits(ctx context.Context, claGroupID string, projectSFID *string) (*models.GerritList, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.AddGerrit",
+		"functionName":   "v1.gerrits.repository.GetClaGroupGerrits",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"projectID":      projectID,
+		"claGroupID":     claGroupID,
 		"projectSFID":    projectSFID,
 	}
 
 	resultList := make([]*models.Gerrit, 0)
-	filter := expression.Name("project_id").Equal(expression.Value(projectID))
-	if projectSFID != nil {
-		filter = filter.And(expression.Name("project_sfid").Equal(expression.Value(*projectSFID)))
-	}
-	expr, err := expression.NewBuilder().WithFilter(filter).Build()
+	condition := expression.Key("project_id").Equal(expression.Value(claGroupID))
+	// No reason to add this additional filter for the v2 API
+	//if projectSFID != nil {
+	//	filter = filter.And(expression.Name("project_sfid").Equal(expression.Value(*projectSFID)))
+	//}
+
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).Build()
 	if err != nil {
-		log.WithFields(f).Warnf("error building expression for gerrit instances scan, error: %v", err)
+		log.WithFields(f).Warnf("error building expression for gerrit instances query, error: %v", err)
 		return nil, err
 	}
+
 	// Assemble the query input parameters
-	scanInput := &dynamodb.ScanInput{
+	queryInput := &dynamodb.QueryInput{
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
 		FilterExpression:          expr.Filter(),
+		ProjectionExpression:      expr.Projection(),
 		TableName:                 aws.String(repo.tableName),
+		IndexName:                 aws.String("gerrit-project-id-index"),
+		Limit:                     aws.Int64(HugePageSize),
 	}
 
 	for {
-		results, err := repo.dynamoDBClient.Scan(scanInput)
+		results, err := repo.dynamoDBClient.Query(queryInput)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("error retrieving gerrit instances, error: %v", err)
 			return nil, err
@@ -305,7 +313,7 @@ func (repo repo) GetClaGroupGerrits(ctx context.Context, projectID string, proje
 		}
 
 		if len(results.LastEvaluatedKey) != 0 {
-			scanInput.ExclusiveStartKey = results.LastEvaluatedKey
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
 		} else {
 			break
 		}
@@ -322,7 +330,7 @@ func (repo repo) GetClaGroupGerrits(ctx context.Context, projectID string, proje
 // DeleteGerrit removes the gerrit instance based on the gerrit ID
 func (repo *repo) DeleteGerrit(ctx context.Context, gerritID string) error {
 	f := logrus.Fields{
-		"functionName":   "gerrits.AddGerrit",
+		"functionName":   "v1.gerrits.repository.DeleteGerrit",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritID":       gerritID,
 	}
@@ -347,7 +355,7 @@ func (repo *repo) DeleteGerrit(ctx context.Context, gerritID string) error {
 
 func (repo *repo) ExistsByName(ctx context.Context, gerritName string) ([]*models.Gerrit, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.AddGerrit",
+		"functionName":   "v1.gerrits.repository.ExistsByName",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritName":     gerritName,
 	}
@@ -419,7 +427,7 @@ func (repo *repo) ExistsByName(ctx context.Context, gerritName string) ([]*model
 
 func (repo *repo) ExistsByID(ctx context.Context, gerritID string) ([]*models.Gerrit, error) {
 	f := logrus.Fields{
-		"functionName":   "gerrits.AddGerrit",
+		"functionName":   "v1.gerrits.repository.ExistsByID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritID":       gerritID,
 	}
