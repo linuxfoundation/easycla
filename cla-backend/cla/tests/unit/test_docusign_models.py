@@ -826,6 +826,7 @@ def test_document_signed_email_content():
     assert "Hello john" in body
     assert "EasyCLA regarding the project JohnsProject" in body
     assert "The CLA has now been signed." in body
+    assert "alt=\"CCLA Document Link\"" in body
 
     # try with different recipient names
     user.set_user_name(None)
@@ -858,7 +859,12 @@ def test_document_signed_email_content():
         user=user
     )
 
+    assert "Signed for JohnsProject" in subject
     assert "Hello Contributor" in body
+    assert "EasyCLA regarding the project JohnsProject" in body
+    assert "The CLA has now been signed." in body
+    assert "alt=\"ICLA Document Link\"" in body
+    assert "EasyCLA CLA Manager console" not in body
 
 
 def test_cla_signatory_email_content():

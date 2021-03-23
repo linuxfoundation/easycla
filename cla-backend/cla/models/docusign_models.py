@@ -2220,14 +2220,25 @@ def document_signed_email_content(icla: bool, project: Project, signature: Signa
             recipient_name = "CLA Manager"
 
     subject = f'EasyCLA: CLA Signed for {project.get_project_name()}'
-    body = f'''
-                <p>Hello {recipient_name},</p>
-                <p>This is a notification email from EasyCLA regarding the project {project.get_project_name()}.</p>
-                <p>The CLA has now been signed. You can download the signed CLA as a PDF 
-                   <a href="{pdf_link}" target="_blank" alt="{'ICLA' if icla else 'CCLA'} Document Link">
-                   here</a>, or from within the <a href="{corporate_url}" target="_blank"> EasyCLA CLA Manager console </a>.
-                </p>
-                '''
+
+    if icla:
+        body = f'''
+        <p>Hello {recipient_name},</p>
+        <p>This is a notification email from EasyCLA regarding the project {project.get_project_name()}.</p>
+        <p>The CLA has now been signed. You can download the signed CLA as a PDF 
+           <a href="{pdf_link}" target="_blank" alt="ICLA Document Link">
+           here</a>.
+        </p>
+        '''
+    else:
+        body = f'''
+        <p>Hello {recipient_name},</p>
+        <p>This is a notification email from EasyCLA regarding the project {project.get_project_name()}.</p>
+        <p>The CLA has now been signed. You can download the signed CLA as a PDF 
+           <a href="{pdf_link}" target="_blank" alt="CCLA Document Link">
+           here</a>, or from within the <a href="{corporate_url}" target="_blank"> EasyCLA CLA Manager console </a>.
+        </p>
+        '''
     body = append_email_help_sign_off_content(body, project.get_version())
     return subject, body
 
