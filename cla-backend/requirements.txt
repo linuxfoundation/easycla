@@ -25,7 +25,7 @@ Jinja2==2.11.3
 jmespath==0.9.4
 lazy-object-proxy==1.4.3
 Logbook==1.5.3
-lxml==4.6.2
+lxml==4.6.3
 more-itertools==8.0.2
 nose2==0.9.1
 oauthlib==3.1.0
