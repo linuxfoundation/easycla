@@ -1,0 +1,10 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: array
+items:
+  type: string
+  description: the user's user name
+  example: 'elonmusk'
+  minLength: 1
+  maxLength: 50

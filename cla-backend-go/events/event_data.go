@@ -73,6 +73,18 @@ type GerritDeletedEventData struct {
 	GerritRepositoryName string
 }
 
+// GerritUserAddedEventData . . .
+type GerritUserAddedEventData struct {
+	Username  string
+	GroupName string
+}
+
+// GerritUserRemovedEventData . . .
+type GerritUserRemovedEventData struct {
+	Username  string
+	GroupName string
+}
+
 // GitHubProjectDeletedEventData . . .
 type GitHubProjectDeletedEventData struct {
 	DeletedCount int
@@ -692,6 +704,18 @@ func (ed *GerritAddedEventData) GetEventDetailsString(args *LogEventArgs) (strin
 // GetEventDetailsString . . .
 func (ed *GerritDeletedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("Gerrit Repository: %s was deleted by: %s.", ed.GerritRepositoryName, args.UserName)
+	return data, true
+}
+
+// GetEventDetailsString . . .
+func (ed *GerritUserAddedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The username %s was add to the gerrit group %s by the user %s.", ed.Username, ed.GroupName, args.UserName)
+	return data, true
+}
+
+// GetEventDetailsString . . .
+func (ed *GerritUserRemovedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The username %s was removed from the gerrit group %s by the user %s.", ed.Username, ed.GroupName, args.UserName)
 	return data, true
 }
 
@@ -1477,6 +1501,38 @@ func (ed *GerritDeletedEventData) GetEventSummaryString(args *LogEventArgs) (str
 	}
 	if args.ProjectName != "" {
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString . . .
+func (ed *GerritUserAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The username %s was add to the gerrit group %s", ed.Username, ed.GroupName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString . . .
+func (ed *GerritUserRemovedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The username %s was removed from the gerrit group %s", ed.Username, ed.GroupName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
 	data = data + "."
 	return data, true

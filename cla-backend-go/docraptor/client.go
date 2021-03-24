@@ -49,7 +49,7 @@ func NewDocraptorClient(key string, testMode bool) (Client, error) {
 // CreatePDF accepts an HTML document and returns a PDF
 func (dc Client) CreatePDF(html string, claType string) (io.ReadCloser, error) {
 	f := logrus.Fields{
-		"functionName": "CreatePDF",
+		"functionName": "v1.docraptor.client.CreatePDF",
 		"claType":      claType,
 	}
 
@@ -69,9 +69,15 @@ func (dc Client) CreatePDF(html string, claType string) (io.ReadCloser, error) {
 	log.WithFields(f).Debug("Generating PDF using docraptor...")
 	resp, err := http.Post(dc.url, "application/json", bytes.NewBuffer(documentBytes))
 	if err != nil {
-		log.WithFields(f).Warnf("problem with API call to docraptor, error: %+v", err)
+		log.WithFields(f).WithError(err).Warn("problem with API call to docraptor")
 		return nil, err
 	}
+	defer func() {
+		closeErr := resp.Body.Close()
+		if closeErr != nil {
+			log.WithFields(f).WithError(closeErr).Warn("error closing response body")
+		}
+	}()
 
 	return resp.Body, nil
 }

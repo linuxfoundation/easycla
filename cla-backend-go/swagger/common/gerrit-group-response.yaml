@@ -1,0 +1,38 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+properties:
+  title:
+    type: string
+    title:  gerrit group title
+    description: the gerrit group title
+  nid:
+    type: string
+  'type':
+    type: string
+    title:  gerrit type
+    description: the gerrit type
+  members:
+    type: array
+    items:
+      type: object
+      properties:
+        mail:
+          type: string
+          description: the name member mail address
+          example: 'apache+servicesreleng@mail.linuxfoundation.org'
+          minLength: 2
+          maxLength: 255
+        uid:
+          type: string
+          description: the member id
+          example: '255863'
+          minLength: 2
+          maxLength: 255
+        username:
+          type: string
+          description: the member username
+          example: 'lfservices_releng'
+          minLength: 2
+          maxLength: 255

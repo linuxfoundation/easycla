@@ -285,10 +285,11 @@ func server(localMode bool) http.Handler {
 	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo, v1ProjectService)
 	v2GithubActivityService := v2GithubActivity.NewService(repositoriesRepo, eventsService, autoEnableService)
 	gerritService := gerrits.NewService(gerritRepo, &gerrits.LFGroup{
-		LfBaseURL:    configFile.LFGroup.ClientURL,
-		ClientID:     configFile.LFGroup.ClientID,
-		ClientSecret: configFile.LFGroup.ClientSecret,
-		RefreshToken: configFile.LFGroup.RefreshToken,
+		LfBaseURL:     configFile.LFGroup.ClientURL,
+		ClientID:      configFile.LFGroup.ClientID,
+		ClientSecret:  configFile.LFGroup.ClientSecret,
+		RefreshToken:  configFile.LFGroup.RefreshToken,
+		EventsService: eventsService,
 	})
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, projectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 

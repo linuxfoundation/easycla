@@ -39,7 +39,7 @@ type Repository interface {
 	GetGerrit(ctx context.Context, gerritID string) (*models.Gerrit, error)
 	GetGerritsByID(ctx context.Context, ID string, IDType string) (*models.GerritList, error)
 	GetGerritsByProjectSFID(ctx context.Context, projectSFID string) (*models.GerritList, error)
-	GetClaGroupGerrits(ctx context.Context, projectID string, projectSFID *string) (*models.GerritList, error)
+	GetClaGroupGerrits(ctx context.Context, claGroupID string) (*models.GerritList, error)
 	ExistsByName(ctx context.Context, gerritName string) ([]*models.Gerrit, error)
 	DeleteGerrit(ctx context.Context, gerritID string) error
 }
@@ -259,21 +259,16 @@ func (repo repo) GetGerritsByProjectSFID(ctx context.Context, projectSFID string
 	return &models.GerritList{List: resultList}, nil
 }
 
-// GetClaGroupGerrits returns the CLA Group gerrit instances based on the CLA Group ID and the project SFID
-func (repo repo) GetClaGroupGerrits(ctx context.Context, claGroupID string, projectSFID *string) (*models.GerritList, error) {
+// GetClaGroupGerrits returns the CLA Group gerrit instances based on the CLA Group ID
+func (repo repo) GetClaGroupGerrits(ctx context.Context, claGroupID string) (*models.GerritList, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.gerrits.repository.GetClaGroupGerrits",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
-		"projectSFID":    projectSFID,
 	}
 
 	resultList := make([]*models.Gerrit, 0)
 	condition := expression.Key("project_id").Equal(expression.Value(claGroupID))
-	// No reason to add this additional filter for the v2 API
-	//if projectSFID != nil {
-	//	filter = filter.And(expression.Name("project_sfid").Equal(expression.Value(*projectSFID)))
-	//}
 
 	expr, err := expression.NewBuilder().WithKeyCondition(condition).Build()
 	if err != nil {

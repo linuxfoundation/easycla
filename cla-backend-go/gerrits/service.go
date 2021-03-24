@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/LF-Engineering/lfx-kit/auth"
+
 	"github.com/go-openapi/strfmt"
 
 	"github.com/go-resty/resty/v2"
@@ -19,6 +21,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 )
@@ -28,10 +31,15 @@ type Service interface {
 	AddGerrit(ctx context.Context, claGroupID string, projectSFID string, input *models.AddGerritInput, claGroupModel *models.ClaGroup) (*models.Gerrit, error)
 	GetGerrit(ctx context.Context, gerritID string) (*models.Gerrit, error)
 	GetGerritsByProjectSFID(ctx context.Context, projectSFID string) (*models.GerritList, error)
-	GetClaGroupGerrits(ctx context.Context, claGroupID string, projectSFID *string) (*models.GerritList, error)
+	GetClaGroupGerrits(ctx context.Context, claGroupID string) (*models.GerritList, error)
 	GetGerritRepos(ctx context.Context, gerritName string) (*models.GerritRepoList, error)
 	DeleteClaGroupGerrits(ctx context.Context, claGroupID string) (int, error)
 	DeleteGerrit(ctx context.Context, gerritID string) error
+	GetUsersOfGroup(ctx context.Context, authUser *auth.User, claGroupID, claType string) (*v2Models.GerritGroupResponse, error)
+	AddUserToGroup(ctx context.Context, authUser *auth.User, claGroupID, userName, claType string) error
+	AddUsersToGroup(ctx context.Context, authUser *auth.User, claGroupID string, userNameList []string, claType string) error
+	RemoveUserFromGroup(ctx context.Context, authUser *auth.User, claGroupID, userName, claType string) error
+	RemoveUsersFromGroup(ctx context.Context, authUser *auth.User, claGroupID string, userNameList []string, claType string) error
 }
 
 type service struct {
@@ -49,7 +57,7 @@ func NewService(repo Repository, lfg *LFGroup) Service {
 
 func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID string, params *models.AddGerritInput, claGroupModel *models.ClaGroup) (*models.Gerrit, error) {
 	f := logrus.Fields{
-		"functionName":   "v1.gerrits.AddGerrit",
+		"functionName":   "v1.gerrits.service.AddGerrit",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"projectSFID":    projectSFID,
@@ -122,7 +130,7 @@ func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID s
 
 	var groupNameCcla, groupNameIcla string
 	if params.GroupIDIcla != "" {
-		group, err := s.lfGroup.GetGroup(params.GroupIDIcla)
+		group, err := s.lfGroup.GetGroup(ctx, params.GroupIDIcla)
 		if err != nil {
 			message := fmt.Sprintf("unable to get LDAP ICLA Group: %s", params.GroupIDIcla)
 			log.WithFields(f).WithError(err).Warnf(message)
@@ -131,7 +139,7 @@ func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID s
 		groupNameIcla = group.Title
 	}
 	if params.GroupIDCcla != "" {
-		group, err := s.lfGroup.GetGroup(params.GroupIDCcla)
+		group, err := s.lfGroup.GetGroup(ctx, params.GroupIDCcla)
 		if err != nil {
 			message := fmt.Sprintf("unable to get LDAP CCLA Group: %s", params.GroupIDCcla)
 			log.WithFields(f).WithError(err).Warnf(message)
@@ -162,14 +170,13 @@ func (s service) GetGerritsByProjectSFID(ctx context.Context, projectSFID string
 	return s.repo.GetGerritsByProjectSFID(ctx, projectSFID)
 }
 
-func (s service) GetClaGroupGerrits(ctx context.Context, claGroupID string, projectSFID *string) (*models.GerritList, error) {
+func (s service) GetClaGroupGerrits(ctx context.Context, claGroupID string) (*models.GerritList, error) {
 	f := logrus.Fields{
-		"functionName":   "v1.gerrits.GetClaGroupGerrits",
+		"functionName":   "v1.gerrits.service.GetClaGroupGerrits",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
-		"projectSFID":    *projectSFID,
 	}
-	responseModel, err := s.repo.GetClaGroupGerrits(ctx, claGroupID, projectSFID)
+	responseModel, err := s.repo.GetClaGroupGerrits(ctx, claGroupID)
 	if err != nil {
 		log.WithFields(f).Warnf("problem getting CLA Group gerrits, error: %+v", err)
 		return nil, err
@@ -222,7 +229,7 @@ func extractGerritHost(gerritHost string, f logrus.Fields) (string, error) {
 
 func (s service) GetGerritRepos(ctx context.Context, gerritHost string) (*models.GerritRepoList, error) {
 	f := logrus.Fields{
-		"functionName":   "v1.gerrits.GetGerritRepos",
+		"functionName":   "v1.gerrits.service.GetGerritRepos",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritName":     gerritHost,
 	}
@@ -243,12 +250,19 @@ func (s service) GetGerritRepos(ctx context.Context, gerritHost string) (*models
 }
 
 func (s service) DeleteClaGroupGerrits(ctx context.Context, claGroupID string) (int, error) {
-	gerrits, err := s.repo.GetClaGroupGerrits(ctx, claGroupID, nil)
+	f := logrus.Fields{
+		"functionName":   "v1.gerrits.service.DeleteClaGroupGerrits",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+	}
+
+	gerrits, err := s.repo.GetClaGroupGerrits(ctx, claGroupID)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem fetching gerrits for CLA Group: %s", claGroupID)
 		return 0, err
 	}
 	if len(gerrits.List) > 0 {
-		log.Debugf(fmt.Sprintf("Deleting gerrits for cla-group :%s ", claGroupID))
+		log.WithFields(f).Debugf(fmt.Sprintf("Deleting gerrits for cla-group :%s ", claGroupID))
 		for _, gerrit := range gerrits.List {
 			err = s.repo.DeleteGerrit(ctx, gerrit.GerritID.String())
 			if err != nil {
@@ -256,11 +270,200 @@ func (s service) DeleteClaGroupGerrits(ctx context.Context, claGroupID string) (
 			}
 		}
 	}
+
 	return len(gerrits.List), nil
 }
 
 func (s service) DeleteGerrit(ctx context.Context, gerritID string) error {
 	return s.repo.DeleteGerrit(ctx, gerritID)
+}
+
+// GetUsersOfGroup
+func (s service) GetUsersOfGroup(ctx context.Context, authUser *auth.User, claGroupID, claType string) (*v2Models.GerritGroupResponse, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.gerrits.service.GetUsersOfGroup",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"authUserName":   authUser.UserName,
+		"authUserEmail":  authUser.Email,
+	}
+
+	log.WithFields(f).Debug("querying for CLA Group gerrits...")
+	g, gerritErr := s.GetClaGroupGerrits(ctx, claGroupID)
+	if gerritErr != nil {
+		log.WithFields(f).WithError(gerritErr).Warnf("unable to locate gerrits associated with CLA Group ID: %s", claGroupID)
+		return nil, gerritErr
+	}
+
+	// Just load the first one...
+	if len(g.List) > 0 {
+		gerritModel := g.List[0]
+		var ldapGroupName string
+		switch claType {
+		case utils.ClaTypeICLA:
+			ldapGroupName = gerritModel.GroupNameIcla
+		case utils.ClaTypeECLA:
+			ldapGroupName = gerritModel.GroupNameCcla
+		default:
+			return nil, &utils.InvalidCLAType{
+				CLAType: claType,
+			}
+		}
+
+		log.WithFields(f).Debugf("querying for members of gerrit group: %s...", ldapGroupName)
+		g, gerritErr := s.lfGroup.GetUsersOfGroup(ctx, authUser, claGroupID, ldapGroupName)
+		if gerritErr != nil {
+			log.WithFields(f).WithError(gerritErr).Warnf("unable to locate gerrits associated with CLA Group ID: %s", claGroupID)
+			return nil, gerritErr
+		}
+		return g, nil
+	}
+
+	return nil, nil
+}
+
+// AddUserToGroup adds the specified user to the group
+func (s service) AddUserToGroup(ctx context.Context, authUser *auth.User, claGroupID, userName, claType string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.gerrits.service.AddUserToGroup",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"userName":       userName,
+		"authUserName":   authUser.UserName,
+		"authUserEmail":  authUser.Email,
+	}
+
+	log.WithFields(f).Debug("querying for CLA Group gerrits...")
+	g, gerritErr := s.GetClaGroupGerrits(ctx, claGroupID)
+	if gerritErr != nil {
+		log.WithFields(f).WithError(gerritErr).Warnf("unable to locate gerrits associated with CLA Group ID: %s", claGroupID)
+		return gerritErr
+	}
+
+	for _, gerritModel := range g.List {
+		var ldapGroupName string
+		switch claType {
+		case utils.ClaTypeICLA:
+			ldapGroupName = gerritModel.GroupNameIcla
+		case utils.ClaTypeECLA:
+			ldapGroupName = gerritModel.GroupNameCcla
+		default:
+			return &utils.InvalidCLAType{
+				CLAType: claType,
+			}
+		}
+		log.WithFields(f).Debugf("LDAP group name: %s", ldapGroupName)
+		addErr := s.lfGroup.AddUserToGroup(ctx, authUser, claGroupID, ldapGroupName, userName)
+		if addErr != nil {
+			log.WithFields(f).WithError(addErr).Warnf("unable to add user %s to group: %s for CLA Group: %s", userName, ldapGroupName, claGroupID)
+			return gerritErr
+		}
+		log.WithFields(f).Debugf("added user %s to group: %s for CLA Group: %s", userName, ldapGroupName, claGroupID)
+
+		// Log Event
+	}
+
+	return nil
+}
+
+// AddUsersToGroup adds the specified users to the group
+func (s service) AddUsersToGroup(ctx context.Context, authUser *auth.User, claGroupID string, userNameList []string, claType string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.gerrits.service.AddUsersToGroup",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"userNameList":   strings.Join(userNameList, ","),
+		"authUserName":   authUser.UserName,
+		"authUserEmail":  authUser.Email,
+	}
+
+	var errorList []error
+	for _, userName := range userNameList {
+		err := s.AddUserToGroup(ctx, authUser, claGroupID, userName, claType)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("encountered an error when adding username: %s to the CLA Group: %s", userName, claGroupID)
+			errorList = append(errorList, err)
+		}
+	}
+
+	if len(errorList) > 0 {
+		log.WithFields(f).Warnf("encountered %d errors when adding %d users to the CLA Group: %s", len(errorList), len(userNameList), claGroupID)
+		return errorList[0]
+	}
+
+	return nil
+}
+
+// RemoveUserFromGroup removes the specified user from the group
+func (s service) RemoveUserFromGroup(ctx context.Context, authUser *auth.User, claGroupID, userName, claType string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.gerrits.service.RemoveUserFromGroup",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"userName":       userName,
+		"authUserName":   authUser.UserName,
+		"authUserEmail":  authUser.Email,
+	}
+
+	log.WithFields(f).Debug("querying for CLA Group gerrits...")
+	g, gerritErr := s.GetClaGroupGerrits(ctx, claGroupID)
+	if gerritErr != nil {
+		log.WithFields(f).WithError(gerritErr).Warnf("unable to locate gerrits associated with CLA Group ID: %s", claGroupID)
+		return gerritErr
+	}
+
+	for _, gerritModel := range g.List {
+		var ldapGroupName string
+		switch claType {
+		case utils.ClaTypeICLA:
+			ldapGroupName = gerritModel.GroupNameIcla
+		case utils.ClaTypeECLA:
+			ldapGroupName = gerritModel.GroupNameCcla
+		default:
+			return &utils.InvalidCLAType{
+				CLAType: claType,
+			}
+		}
+		log.WithFields(f).Debugf("LDAP group name: %s", ldapGroupName)
+		addErr := s.lfGroup.RemoveUserFromGroup(ctx, authUser, claGroupID, ldapGroupName, userName)
+		if addErr != nil {
+			log.WithFields(f).WithError(addErr).Warnf("unable to remove user %s from group: %s for CLA Group: %s", userName, ldapGroupName, claGroupID)
+			return gerritErr
+		}
+		log.WithFields(f).Debugf("removed user %s from group: %s for CLA Group: %s", userName, ldapGroupName, claGroupID)
+
+		// Log Event
+	}
+
+	return nil
+}
+
+// RemoveUsersFromGroup removes the specified users from the group
+func (s service) RemoveUsersFromGroup(ctx context.Context, authUser *auth.User, claGroupID string, userNameList []string, claType string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.gerrits.service.RemoveUsersFromGroup",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"userNameList":   strings.Join(userNameList, ","),
+		"authUserName":   authUser.UserName,
+		"authUserEmail":  authUser.Email,
+	}
+
+	var errorList []error
+	for _, userName := range userNameList {
+		err := s.RemoveUserFromGroup(ctx, authUser, claGroupID, userName, claType)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("encountered an error when removing username: %s from the CLA Group: %s", userName, claGroupID)
+			errorList = append(errorList, err)
+		}
+	}
+
+	if len(errorList) > 0 {
+		log.WithFields(f).Warnf("encountered %d errors when removing %d users from the CLA Group: %s", len(errorList), len(userNameList), claGroupID)
+		return errorList[0]
+	}
+
+	return nil
 }
 
 // convertModel is a helper function to create a GerritRepoList response model

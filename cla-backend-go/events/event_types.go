@@ -40,6 +40,8 @@ const (
 
 	GerritRepositoryAdded   = "gerrit_repository.added"
 	GerritRepositoryDeleted = "gerrit_repository.deleted"
+	GerritUserAdded         = "gerrit_user.added"
+	GerritUserRemoved       = "gerrit_user.deleted"
 
 	GitHubOrganizationAdded   = "github_organization.added"
 	GitHubOrganizationDeleted = "github_organization.deleted"

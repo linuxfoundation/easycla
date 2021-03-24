@@ -92,7 +92,7 @@ func (s service) fillRepoInfo(ctx context.Context, project *models.ClaGroup) {
 		defer wg.Done()
 		var err error
 		var gerritsList *models.GerritList
-		gerritsList, err = s.gerritRepo.GetClaGroupGerrits(ctx, project.ProjectID, nil)
+		gerritsList, err = s.gerritRepo.GetClaGroupGerrits(ctx, project.ProjectID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get gerrit instances for cla group ID: %s.", project.ProjectID)
 			return

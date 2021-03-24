@@ -347,3 +347,22 @@ func (e *CLAManagerError) Error() string {
 func (e *CLAManagerError) Unwrap() error {
 	return e.Err
 }
+
+// InvalidCLAType is an error model for invalid CLA types, usually the CLA type is one of: utils.{ClaTypeICLA,ClaTypeECLA,ClaTypeCCLA}
+type InvalidCLAType struct {
+	CLAType string
+	Err     error
+}
+
+// Error is an error string function for CLA Group not found errors
+func (e *InvalidCLAType) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("invalid CLA type: %s", e.CLAType)
+	}
+	return fmt.Sprintf("invalid CLA type: %s, %+v", e.CLAType, e.Err)
+}
+
+// Unwrap method returns its contained error
+func (e *InvalidCLAType) Unwrap() error {
+	return e.Err
+}

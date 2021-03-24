@@ -29,25 +29,30 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 	api.SignaturesGetSignedICLADocumentHandler = signatures.GetSignedICLADocumentHandlerFunc(func(params signatures.GetSignedICLADocumentParams) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+
+		f := logrus.Fields{
+			"functionName":   "v1.signatures.handler.SignaturesGetSignedICLADocumentHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     params.ClaGroupID,
+			"userID":         params.UserID,
+		}
+
+		log.WithFields(f).Debug("querying for individual signature...")
 		signatureModel, sigErr := service.GetIndividualSignature(ctx, params.ClaGroupID, params.UserID)
 		if sigErr != nil {
-			msg := fmt.Sprintf("EasyCLA - 500 Internal Server Error -  error retrieving signature using ClaGroupID: %s, userID: %s, error: %+v",
+			msg := fmt.Sprintf("error retrieving signature using ClaGroupID: %s, userID: %s, error: %+v",
 				params.ClaGroupID, params.UserID, sigErr)
-			log.Warn(msg)
-			return signatures.NewGetSignedICLADocumentInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:    "500",
-				Message: msg,
-			})
+			log.WithFields(f).WithError(sigErr).Warn(msg)
+			return signatures.NewGetSignedICLADocumentInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ToV1ErrorResponse(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, sigErr)))
 		}
 
 		if signatureModel == nil {
-			msg := fmt.Sprintf("EasyCLA - 404 Not Found - -  error retrieving signature using claGroupID: %s, userID: %s",
+			msg := fmt.Sprintf("error retrieving signature using claGroupID: %s, userID: %s",
 				params.ClaGroupID, params.UserID)
-			log.Warn(msg)
-			return signatures.NewGetSignedICLADocumentNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:    "404",
-				Message: msg,
-			})
+			log.WithFields(f).Warn(msg)
+			return signatures.NewGetSignedICLADocumentNotFound().WithXRequestID(reqID).WithPayload(
+				utils.ToV1ErrorResponse(utils.ErrorResponseNotFound(reqID, msg)))
 		}
 
 		downloadURL := fmt.Sprintf("contract-group/%s/icla/%s/%s.pdf",
@@ -55,13 +60,11 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		log.Debugf("Retrieving PDF from path: %s", downloadURL)
 		downloadLink, s3Err := utils.GetDownloadLink(downloadURL)
 		if s3Err != nil {
-			msg := fmt.Sprintf("EasyCLA - 500 Internal Server Error -  unable to locate PDF from source using ClaGroupID: %s, userID: %s, s3 error: %+v",
+			msg := fmt.Sprintf("unable to locate PDF from source using ClaGroupID: %s, userID: %s, s3 error: %+v",
 				params.ClaGroupID, params.UserID, s3Err)
 			log.Warn(msg)
-			return signatures.NewGetSignedICLADocumentInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:    "500",
-				Message: msg,
-			})
+			return signatures.NewGetSignedICLADocumentInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ToV1ErrorResponse(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, sigErr)))
 		}
 
 		return middleware.ResponderFunc(func(rw http.ResponseWriter, p runtime.Producer) {
