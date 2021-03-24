@@ -44,3 +44,33 @@ func GetOrganization(ctx context.Context, organizationName string) (*github.Orga
 	}
 	return org, nil
 }
+
+//GetOrganizationMembers gets members in organization
+func GetOrganizationMembers(ctx context.Context, orgName string, installationID int64) ([]string, error) {
+	f := logrus.Fields{
+		"functionName":   "GetOrganizationMembers",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	client, err := NewGithubAppClient(installationID)
+	if err != nil {
+		msg := fmt.Sprintf("unable to create a github client, error: %+v", err)
+		log.WithFields(f).WithError(err).Warn(msg)
+		return nil, errors.New(msg)
+	}
+
+	users, resp, err := client.Organizations.ListMembers(ctx, orgName, nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 || err != nil {
+		msg := fmt.Sprintf("List Org Members failed for Organization: %s with no success response code %d. error = %s", orgName, resp.StatusCode, err.Error())
+		log.WithFields(f).Warnf(msg)
+		return nil, errors.New(msg)
+	}
+
+	var ghUsernames []string
+	for _, user := range users {
+		log.WithFields(f).Debugf("user :%s found for organization: %s", *user.Login, orgName)
+		ghUsernames = append(ghUsernames, *user.Login)
+	}
+	return ghUsernames, nil
+}

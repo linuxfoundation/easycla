@@ -119,7 +119,7 @@ func init() {
 		projectClaGroupRepo,
 	})
 
-	signaturesRepo := signatures.NewRepository(awsSession, stage, companyRepo, usersRepo, eventsService)
+	signaturesRepo := signatures.NewRepository(awsSession, stage, companyRepo, usersRepo, eventsService, repositoriesRepo, githubOrganizationsRepo)
 
 	usersService := users.NewService(usersRepo, eventsService)
 	companyService := company.NewService(companyRepo, configFile.CorporateConsoleV1URL, userRepo, usersService)

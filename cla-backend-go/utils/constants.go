@@ -149,3 +149,18 @@ const EmailLabel = "Email Address"
 
 //UserLabel represents the LF/EasyCLA username
 const UserLabel = "Username"
+
+//EmailDomainCriteria represents approval based on email domain
+const EmailDomainCriteria = "Email Domain Criteria"
+
+//EmailCriteria represents approvals based on email addresses
+const EmailCriteria = "Email Criteria"
+
+//GitHubOrgCriteria represents approvals based on GH org membership
+const GitHubOrgCriteria = "GitHub Org Criteria"
+
+//AddApprovals is an action for adding approvals
+const AddApprovals = "AddApprovals"
+
+//RemoveApprovals is an action for removing approvals
+const RemoveApprovals = "RemoveApprovals"

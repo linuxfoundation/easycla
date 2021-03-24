@@ -252,7 +252,7 @@ func server(localMode bool) http.Handler {
 	})
 
 	// Signature repository handler
-	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService)
+	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService, repositoriesRepo, githubOrganizationsRepo)
 
 	// Initialize the external platform services - these are external APIs that
 	// we download the swagger specification, generate the models, and have

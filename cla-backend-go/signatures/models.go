@@ -16,3 +16,17 @@ type ApprovalCriteria struct {
 	UserEmail      string
 	GitHubUsername string
 }
+
+//ApprovalList ...
+type ApprovalList struct {
+	Criteria                string
+	ApprovalList            []string
+	Action                  string
+	ClaGroupID              string
+	CompanyID               string
+	DomainApprovals         []string
+	GHOrgApprovals          []string
+	GitHubUsernameApprovals []string
+	EmailApprovals          []string
+	GHUsernames             []string
+}
