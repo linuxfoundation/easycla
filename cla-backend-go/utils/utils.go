@@ -12,6 +12,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/sirupsen/logrus"
+
 	"github.com/gofrs/uuid"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -37,6 +40,22 @@ func FmtDuration(d time.Duration) string {
 
 // TimeToString returns time in the RFC3339 format
 func TimeToString(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
+}
+
+// FormatTimeString converts the time string into the "standard" RFC3339 format
+func FormatTimeString(timeStr string) string {
+	f := logrus.Fields{
+		"functionName": "utils.utils.FormatTimeString",
+		"timeStr":      timeStr,
+	}
+
+	t, err := ParseDateTime(timeStr)
+	if err != nil {
+		log.WithFields(f).Warnf("unable to convert the time string: %s into a standard form.", timeStr)
+		return timeStr
+	}
+
 	return t.UTC().Format(time.RFC3339)
 }
 

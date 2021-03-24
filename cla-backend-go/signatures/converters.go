@@ -56,6 +56,13 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 			claType = utils.ClaTypeICLA
 		}
 
+		// Use the signedOn field if possible, for older signatures that are missing it, use the date created value as the default/fallback
+		signedOn := dbSignature.DateCreated
+		if dbSignature.SignedOn != "" {
+			signedOn = dbSignature.SignedOn
+		}
+		signedOn = utils.FormatTimeString(signedOn)
+
 		sig := &models.Signature{
 			SignatureID:                 dbSignature.SignatureID,
 			ClaType:                     claType,
@@ -81,7 +88,7 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 			UserName:                    dbSignature.UserName,
 			UserLFID:                    dbSignature.UserLFUsername,
 			UserGHID:                    dbSignature.UserGithubUsername,
-			SignedOn:                    dbSignature.SignedOn,
+			SignedOn:                    signedOn,
 			SignatoryName:               dbSignature.SignatoryName,
 			UserDocusignName:            dbSignature.UserDocusignName,
 			UserDocusignDateSigned:      dbSignature.UserDocusignDateSigned,

@@ -32,12 +32,20 @@ If applicable, add screenshots to help explain your problem.
 Please complete the following information:
 
 * Environment:
+  - [ ] ALL
   - [ ] DEV
   - [ ] STAGING
   - [ ] PROD 
 * Browser:
   - [ ] Chrome/Brave
   - [ ] Firefox
+  - [ ] Opera
+  - [ ] Vivaldi
+  - [ ] LibreWolf
+  - [ ] SRware Iron
+  - [ ] Dissenter
+  - [ ] Slimjet
+  - [ ] Midori
   - [ ] Edge
   - [ ] Lynx
 * Version: v1.0.XX
