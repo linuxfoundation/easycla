@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/users"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
+	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
 	"github.com/communitybridge/easycla/cla-backend-go/github"
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
@@ -95,11 +97,12 @@ type repository struct {
 	eventsService      events.Service
 	repositoriesRepo   repositories.Repository
 	ghOrgRepo          github_organizations.Repository
+	gerritService      gerrits.Service
 	signatureTableName string
 }
 
 // NewRepository creates a new instance of the whitelist service
-func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service, repositoriesRepo repositories.Repository, ghOrgRepo github_organizations.Repository) SignatureRepository {
+func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service, repositoriesRepo repositories.Repository, ghOrgRepo github_organizations.Repository, gerritService gerrits.Service) SignatureRepository {
 	return repository{
 		stage:              stage,
 		dynamoDBClient:     dynamodb.New(awsSession),
@@ -108,6 +111,7 @@ func NewRepository(awsSession *session.Session, stage string, companyRepo compan
 		eventsService:      eventsService,
 		repositoriesRepo:   repositoriesRepo,
 		ghOrgRepo:          ghOrgRepo,
+		gerritService:      gerritService,
 		signatureTableName: fmt.Sprintf("cla-%s-signatures", stage),
 	}
 }
@@ -2010,6 +2014,35 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		CompanyID: companyID,
 	}
 
+	authUser := auth.User{
+		Email:    claManager.LfEmail,
+		UserName: claManager.LfUsername,
+	}
+
+	log.WithFields(f).Debug("aggregating ICLA and ECLA gerrit users...")
+	gerritIclaUsers, err := repo.gerritService.GetUsersOfGroup(ctx, &authUser, projectID, utils.ClaTypeICLA)
+
+	if err != nil {
+		msg := fmt.Sprintf("unable to fetch gerrit users for claGroup: %s , claType: %s ", projectID, utils.ClaTypeICLA)
+		log.WithFields(f).Warn(msg)
+		return nil, errors.New(msg)
+	}
+
+	gerritEclaUsers, err := repo.gerritService.GetUsersOfGroup(ctx, &authUser, projectID, utils.ClaTypeECLA)
+
+	if err != nil {
+		msg := fmt.Sprintf("unable to fetch gerrit users for claGroup: %s , claType: %s ", projectID, utils.ClaTypeECLA)
+		log.WithFields(f).Warn(msg)
+		return nil, errors.New(msg)
+	}
+
+	// Keep track of gerrit users under a give CLA Group
+	var gerritICLAECLAs []string
+
+	for _, member := range append(gerritEclaUsers.Members, gerritIclaUsers.Members...) {
+		gerritICLAECLAs = append(gerritICLAECLAs, member.Username)
+	}
+
 	// If we have an add or remove email list...we need to run an update for this column
 	if params.AddEmailApprovalList != nil || params.RemoveEmailApprovalList != nil {
 		columnName := "email_whitelist"
@@ -2065,6 +2098,26 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 					}
 
 					repo.eventsService.LogEventWithContext(ctx, eventArgs)
+
+					//update gerrit permissions
+					gerritUser, err := repo.getGerritUserByEmail(ctx, email, gerritICLAECLAs)
+					if err != nil || gerritUser == nil {
+						msg := fmt.Sprintf("unable to get gerrit user by email : %s ", email)
+						log.WithFields(f).Warn(msg)
+						return
+					}
+					iclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, gerritUser.LfUsername, utils.ClaTypeICLA)
+					if iclaErr != nil {
+						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", gerritUser.LfUsername, approvalList.ClaGroupID)
+						log.WithFields(f).Warn(msg)
+						return
+					}
+					eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, gerritUser.LfUsername, utils.ClaTypeECLA)
+					if eclaErr != nil {
+						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", gerritUser.LfUsername, approvalList.ClaGroupID)
+						log.WithFields(f).Warn(msg)
+						return
+					}
 				}(email)
 			}
 			wg.Wait()
@@ -2096,6 +2149,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			approvalList.Criteria = utils.EmailDomainCriteria
 			approvalList.ApprovalList = params.RemoveDomainApprovalList
 			approvalList.Action = utils.RemoveApprovals
+			approvalList.GerritICLAECLAs = gerritICLAECLAs
 			invalidateErr = repo.invalidateSignatures(ctx, &approvalList, claManager)
 			if invalidateErr != nil {
 				msg := fmt.Sprintf("unable to invalidate signatures based on Approval List : %+v ", approvalList)
@@ -2370,6 +2424,30 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 	return nil
 }
 
+// getGerritUsersByEmail searches gerrit instances for users with given email
+func (repo repository) getGerritUserByEmail(ctx context.Context, email string, gerritICLAECLAs []string) (*models.User, error) {
+	f := logrus.Fields{
+		"functionName":   "getGerritUserByEmailDomain",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"emai":           email,
+	}
+
+	log.WithFields(f).Debugf("checking gerrit user for email: %s ", email)
+	if email != "" {
+		claUser, err := repo.usersRepo.GetUserByEmail(email)
+		if err != nil {
+			msg := fmt.Sprintf("unable to get easyclauser by email: %s ", email)
+			log.WithFields(f).Warn(msg)
+			return nil, err
+		}
+		if utils.StringInSlice(claUser.LfUsername, gerritICLAECLAs) {
+			return claUser, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // verify UserApprovals checks user
 func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatureID string, claManager *models.User, approvalList *ApprovalList) error {
 	f := logrus.Fields{
@@ -2384,6 +2462,11 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 		return err
 	}
 
+	authUser := auth.User{
+		Email:    claManager.LfEmail,
+		UserName: claManager.LfUsername,
+	}
+
 	if approvalList.Criteria == utils.EmailDomainCriteria {
 		// Handle Domains
 		if utils.StringInSlice(getBestEmail(user), approvalList.DomainApprovals) {
@@ -2394,6 +2477,20 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 				if err != nil {
 					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
 					return err
+				}
+
+				log.WithFields(f).Debugf("removing gerrit user:%s  from claGroup: %s ...", user.LfUsername, approvalList.ClaGroupID)
+				iclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
+				if iclaErr != nil {
+					msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+					log.WithFields(f).Warn(msg)
+					return iclaErr
+				}
+				eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
+				if eclaErr != nil {
+					msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+					log.WithFields(f).Warn(msg)
+					return eclaErr
 				}
 			}
 		}

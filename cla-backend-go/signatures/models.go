@@ -29,4 +29,5 @@ type ApprovalList struct {
 	GitHubUsernameApprovals []string
 	EmailApprovals          []string
 	GHUsernames             []string
+	GerritICLAECLAs         []string
 }
