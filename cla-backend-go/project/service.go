@@ -341,7 +341,7 @@ func (s service) SignedAtFoundationLevel(ctx context.Context, foundationSFID str
 	if pcgErr != nil {
 		return false, pcgErr
 	}
-	log.WithFields(f).Debugf("loaded %d CLA Group entries", len(entries))
+	log.WithFields(f).Debugf("loaded %d CLA Group entries signed at foundation level...", len(entries))
 
 	// Check for number of claGroups for foundation
 	foundationLevelCLAGroup := false
@@ -352,6 +352,7 @@ func (s service) SignedAtFoundationLevel(ctx context.Context, foundationSFID str
 		}
 	}
 
+	log.WithFields(f).Debugf("returning %t for signed at foundation level for: %s", foundationLevelCLAGroup, foundationSFID)
 	return foundationLevelCLAGroup, nil
 }
 

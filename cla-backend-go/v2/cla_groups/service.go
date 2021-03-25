@@ -13,8 +13,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/LF-Engineering/lfx-kit/auth"
 	v1ClaManager "github.com/communitybridge/easycla/cla-backend-go/cla_manager"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
@@ -444,17 +442,22 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 
 	} else if sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup {
 		log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
-		projectCLAGroups, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(projectOrFoundationSFID)
+		projectCLAGroupMappings, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(projectOrFoundationSFID)
 		if lookupErr != nil {
 			log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
 			return nil, &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
 		}
-		log.WithFields(f).Debugf("discovered %d projects based on foundation SFID...", len(projectCLAGroups))
+		log.WithFields(f).Debugf("discovered %d projects based on foundation SFID...", len(projectCLAGroupMappings))
 
 		claGroupsMap := map[string]bool{}
+		type CLAGroupResult struct {
+			claGroupModel *v1Models.ClaGroup
+			Error         error
+		}
+		claGroupResultChannel := make(chan *CLAGroupResult, len(projectCLAGroupMappings))
+
 		// Load these CLA Group records in parallel
-		var eg errgroup.Group
-		for _, projectCLAGroup := range projectCLAGroups {
+		for _, projectCLAGroup := range projectCLAGroupMappings {
 			// ensure that following goroutine gets a copy of projectSFID
 			projectCLAGroupClaGroupID := projectCLAGroup.ClaGroupID
 			// No need to re-process the same CLA group
@@ -465,34 +468,35 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 			// Add entry into our map - so we know not to re-process this CLA Group
 			claGroupsMap[projectCLAGroupClaGroupID] = true
 
-			// Invoke the go routine - any errors will be handled below
-			eg.Go(func() error {
+			// Load each CLA Group - save results to our channel
+			go func(ctx context.Context, projectCLAGroupClaGroupID string) {
 				log.WithFields(f).Debugf("loading CLA Group by ID: %s", projectCLAGroupClaGroupID)
 				claGroupModel, claGroupLookupErr := s.v1ProjectService.GetCLAGroupByID(ctx, projectCLAGroupClaGroupID)
 				if claGroupLookupErr != nil {
 					log.WithFields(f).Warnf("problem locating project by id: %s, error: %+v", projectCLAGroupClaGroupID, claGroupLookupErr)
-					return &utils.SFProjectNotFound{ProjectSFID: projectCLAGroupClaGroupID, Err: claGroupLookupErr}
+					claGroupResultChannel <- &CLAGroupResult{
+						claGroupModel: nil,
+						Error:         &utils.SFProjectNotFound{ProjectSFID: projectCLAGroupClaGroupID, Err: claGroupLookupErr},
+					}
 				}
 
-				v1ClaGroups.Projects = append(v1ClaGroups.Projects, *claGroupModel)
-				return nil
-			})
+				claGroupResultChannel <- &CLAGroupResult{
+					claGroupModel: claGroupModel,
+					Error:         nil,
+				}
+			}(ctx, projectCLAGroupClaGroupID)
 		}
 
-		// Wait for the go routines to finish
+		// Wait for the go routines to finish and load up the results
 		log.WithFields(f).Debug("waiting for CLA Groups to load...")
-		if loadErr := eg.Wait(); loadErr != nil {
-			return nil, loadErr
+		for range projectCLAGroupMappings {
+			response := <-claGroupResultChannel
+			if response.Error != nil {
+				log.WithFields(f).WithError(response.Error).Warnf("unable to load CLA Group")
+				return nil, response.Error
+			}
+			v1ClaGroups.Projects = append(v1ClaGroups.Projects, *response.claGroupModel)
 		}
-
-		v1CLAGroupsData, v1ClaGroupErr := s.v1ProjectService.GetClaGroupsByFoundationSFID(ctx, projectOrFoundationSFID, false)
-		if v1ClaGroupErr != nil {
-			log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", v1ClaGroupErr)
-			return nil, &utils.CLAGroupNotFound{CLAGroupID: projectOrFoundationSFID, Err: v1ClaGroupErr}
-		}
-
-		v1ClaGroups = v1CLAGroupsData
-
 	} else {
 		msg := fmt.Sprintf("unsupported foundation/project SFID type: %s", sfProjectModelDetails.ProjectType)
 		log.WithFields(f).Warn(msg)

@@ -306,8 +306,9 @@ func (repo *repo) GetClaGroupsByFoundationSFID(ctx context.Context, foundationSF
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"foundationSFID":  foundationSFID,
 		"loadRepoDetails": loadRepoDetails,
-		"tableName":       repo.claGroupTable}
-	log.WithFields(f).Debugf("loading project by foundation SFID")
+		"tableName":       repo.claGroupTable,
+	}
+	log.WithFields(f).Debugf("loading CLA Group by foundation SFID - using foundation_sfid field...")
 
 	// This is the key we want to match
 	condition := expression.Key("foundation_sfid").Equal(expression.Value(foundationSFID))
