@@ -4169,6 +4169,7 @@ class EventModel(BaseModel):
     event_date = UnicodeAttribute(null=True)
 
     event_data = UnicodeAttribute(null=True)
+    event_data_lower = UnicodeAttribute(null=True)
     event_summary = UnicodeAttribute(null=True)
 
     event_date_and_contains_pii = UnicodeAttribute(null=True)
@@ -4228,6 +4229,8 @@ class Event(model_interfaces.Event):
             self.model.event_company_name_lower = self.model.event_company_name.lower()
 
         self.model.event_data = event_data
+        if self.model.event_data:
+            self.model.event_data_lower = self.model.event_data.lower()
         self.model.event_summary = event_summary
         self.model.contains_pii = contains_pii
 
@@ -4283,6 +4286,9 @@ class Event(model_interfaces.Event):
 
     def get_event_data(self):
         return self.model.event_data
+
+    def get_event_data_lower(self):
+        return self.model.event_data_lower
 
     def get_event_summary(self):
         return self.model.event_summary
@@ -4373,6 +4379,11 @@ class Event(model_interfaces.Event):
 
     def set_event_data(self, event_data: str):
         self.model.event_data = event_data
+        self.model.event_data_lower = event_data.lower()
+
+    def set_event_data_lower(self, event_data: str):
+        if event_data:
+            self.model.event_data_lower = event_data.lower()
 
     def set_event_summary(self, event_summary: str):
         self.model.event_summary = event_summary

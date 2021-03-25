@@ -959,8 +959,8 @@ paths:
 
   /events/foundation/{foundationSFID}:
     get:
-      summary: Get the events for the foundation
-      description: get all the events for the foundation
+      summary: Get foundation events
+      description: Returns events for the specified foundation
       operationId: getFoundationEvents
       parameters:
         - $ref: "#/parameters/path-foundationSFID"
@@ -996,8 +996,8 @@ paths:
 
   /events/project/{projectSFID}:
     get:
-      summary: Get the events for the project
-      description: get all the events for the project
+      summary: Get project events
+      description: Returns events for the specified project
       operationId: getProjectEvents
       parameters:
         - $ref: "#/parameters/path-projectSFID"

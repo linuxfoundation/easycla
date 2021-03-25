@@ -71,6 +71,7 @@ type Repository interface {
 type repository struct {
 	stage          string
 	dynamoDBClient *dynamodb.DynamoDB
+	eventsTable    string
 }
 
 // NewRepository creates a new instance of the event repository
@@ -78,6 +79,7 @@ func NewRepository(awsSession *session.Session, stage string) Repository {
 	return &repository{
 		stage:          stage,
 		dynamoDBClient: dynamodb.New(awsSession),
+		eventsTable:    fmt.Sprintf("cla-%s-events", stage),
 	}
 }
 
@@ -89,7 +91,7 @@ func toDateFormat(t time.Time) string {
 // Create event will create event in database.
 func (repo *repository) CreateEvent(event *models.Event) error {
 	f := logrus.Fields{
-		"functionName": "events.repository.CreateEvent",
+		"functionName": "v1.events.repository.CreateEvent",
 	}
 
 	if event.UserID == "" {
@@ -107,7 +109,7 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 	currentTime, currentTimeString := utils.CurrentTime()
 	input := &dynamodb.PutItemInput{
 		Item:      map[string]*dynamodb.AttributeValue{},
-		TableName: aws.String(fmt.Sprintf("cla-%s-events", repo.stage)),
+		TableName: aws.String(repo.eventsTable),
 	}
 
 	eventDateAndContainsPII := fmt.Sprintf("%s#%t", toDateFormat(currentTime), event.ContainsPII)
@@ -136,6 +138,8 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 	addAttribute(input.Item, "event_parent_project_name", event.EventParentProjectName)
 
 	addAttribute(input.Item, "event_data", event.EventData)
+	// For filtering/searching
+	addAttribute(input.Item, "event_data_lower", strings.ToLower(event.EventData))
 	addAttribute(input.Item, "event_summary", event.EventSummary)
 
 	addAttribute(input.Item, "event_time", currentTimeString)
@@ -212,7 +216,7 @@ func createSearchEventFilter(pk string, sk string, params *eventOps.SearchEvents
 		filter = addConditionToFilter(filter, filterExpression, &filterAdded)
 	}
 	if params.SearchTerm != nil {
-		filterExpression := expression.Name("event_data").Contains(*params.SearchTerm)
+		filterExpression := expression.Name("event_data_lower").Contains(strings.ToLower(*params.SearchTerm))
 		filter = addConditionToFilter(filter, filterExpression, &filterAdded)
 	}
 	if filterAdded {
@@ -240,14 +244,17 @@ func addTimeExpression(keyCond expression.KeyConditionBuilder, params *eventOps.
 
 // SearchEvents returns list of events matching with filter criteria.
 func (repo *repository) SearchEvents(params *eventOps.SearchEventsParams, pageSize int64) (*models.EventList, error) {
+	f := logrus.Fields{
+		"functionName": "v1.events.repository.SearchEvents",
+		"pageSize":     pageSize,
+	}
+
 	if params.ProjectID == nil {
 		return nil, errors.New("invalid request. projectID is compulsory")
 	}
 	var condition expression.KeyConditionBuilder
 	var indexName, pk, sk string
 	builder := expression.NewBuilder().WithProjection(buildProjection())
-	// The table we're interested in
-	tableName := fmt.Sprintf("cla-%s-events", repo.stage)
 
 	switch {
 	case params.ProjectID != nil:
@@ -276,7 +283,7 @@ func (repo *repository) SearchEvents(params *eventOps.SearchEventsParams, pageSi
 		KeyConditionExpression:    expr.KeyCondition(),
 		ProjectionExpression:      expr.Projection(),
 		FilterExpression:          expr.Filter(),
-		TableName:                 aws.String(tableName),
+		TableName:                 aws.String(repo.eventsTable),
 		IndexName:                 aws.String(indexName),
 		Limit:                     aws.Int64(pageSize), // The maximum number of items to evaluate (not necessarily the number of matching items)
 	}
@@ -285,71 +292,107 @@ func (repo *repository) SearchEvents(params *eventOps.SearchEventsParams, pageSi
 	}
 
 	if params.NextKey != nil {
-		log.Debugf("Received a nextKey, value: %s", *params.NextKey)
-		queryInput.ExclusiveStartKey, err = fromString(*params.NextKey)
+		queryInput.ExclusiveStartKey, err = decodeNextKey(*params.NextKey)
 		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem decoding next key value")
 			return nil, err
 		}
+		log.WithFields(f).Debugf("received a nextKey, value: %s - decoded: %+v", *params.NextKey, queryInput.ExclusiveStartKey)
 	}
 
-	var lastEvaluatedKey string
 	events := make([]*models.Event, 0)
+	var results *dynamodb.QueryOutput
 
-	for ok := true; ok; ok = lastEvaluatedKey != "" {
-		results, errQuery := repo.dynamoDBClient.Query(queryInput)
+	for {
+		// Perform the query...
+		var errQuery error
+		results, errQuery = repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
-			log.Warnf("error retrieving events. error = %s", errQuery.Error())
+			log.WithFields(f).WithError(errQuery).Warnf("error retrieving events")
 			return nil, errQuery
 		}
 
+		// Build the result models
 		eventsList, modelErr := buildEventListModels(results)
 		if modelErr != nil {
+			log.WithFields(f).WithError(modelErr).Warn("error convert event list models")
 			return nil, modelErr
 		}
 
+		// Trim to how many the caller asked for - just in case we go over
 		events = append(events, eventsList...)
-		if len(results.LastEvaluatedKey) != 0 {
+		if int64(len(events)) > pageSize {
+			events = events[:pageSize]
+		}
+		log.WithFields(f).Debugf("loaded %d events", len(events))
+
+		// We have more records if last evaluated key has a value
+		log.WithFields(f).Debugf("last evaluated key %+v", results.LastEvaluatedKey)
+		if len(results.LastEvaluatedKey) > 0 {
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			break
 		}
-		lastEvaluatedKey, err = toString(results.LastEvaluatedKey)
-		if err != nil {
-			return nil, err
-		}
+
 		if int64(len(events)) >= pageSize {
 			break
 		}
 	}
 
-	return &models.EventList{
-		Events:  events,
-		NextKey: lastEvaluatedKey,
-	}, nil
+	response := &models.EventList{
+		Events: events,
+	}
+
+	log.WithFields(f).Debugf("returning %d events - last key: %+v", len(events), results.LastEvaluatedKey)
+	if len(results.LastEvaluatedKey) > 0 {
+		log.WithFields(f).Debug("building next key...")
+		encodedString, err := buildNextKey(indexName, events[len(events)-1])
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to build nextKey")
+		}
+		response.NextKey = encodedString
+		log.WithFields(f).Debugf("lastEvaluatedKey encoded is: %s", encodedString)
+	}
+
+	return response, nil
 }
 
 // queryEventsTable queries events table on index
 func (repo *repository) queryEventsTable(indexName string, condition expression.KeyConditionBuilder, filter *expression.ConditionBuilder, nextKey *string, pageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
 	f := logrus.Fields{
-		"functionName": "events.queryEventsTable",
+		"functionName": "v1.events.repository.queryEventsTable",
 		"indexName":    indexName,
-		"nextKey":      aws.StringValue(nextKey),
-		"pageSize":     aws.Int64Value(pageSize),
-		"all":          all,
-		"searchTerm":   aws.StringValue(searchTerm),
+		//"nextKey":      aws.StringValue(nextKey),
+		"pageSize":   aws.Int64Value(pageSize),
+		"all":        all,
+		"searchTerm": aws.StringValue(searchTerm),
 	}
 
-	log.WithFields(f).Debug("querying events table")
-	builder := expression.NewBuilder() // .WithProjection(buildProjection())
+	log.WithFields(f).Debug("querying events table...")
+	builder := expression.NewBuilder().WithKeyCondition(condition)
 
-	// The table we're interested in
-	tableName := fmt.Sprintf("cla-%s-events", repo.stage)
+	// If we have a search term...
+	if searchTerm != nil {
+		log.WithFields(f).Debugf("adding searchTerm: %s", *searchTerm)
+		eventLowerFilter := expression.Name("event_data_lower").Contains(strings.ToLower(*searchTerm))
+		if filter == nil {
+			// Create a new filter
+			filter = &eventLowerFilter
+		} else {
+			// Add to existing filter
+			filter.And(eventLowerFilter)
+		}
+	}
 
-	builder = builder.WithKeyCondition(condition)
+	// Add the filter to the builder
 	if filter != nil {
 		builder = builder.WithFilter(*filter)
 	}
+
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem building events query")
 		return nil, err
 	}
 
@@ -359,9 +402,9 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
 		ProjectionExpression:      expr.Projection(),
-		TableName:                 aws.String(tableName),
+		TableName:                 aws.String(repo.eventsTable),
 		IndexName:                 aws.String(indexName),
-		ScanIndexForward:          aws.Bool(false),
+		ScanIndexForward:          aws.Bool(false), // Specifies the order for index traversal: If true (default), the traversal is performed in ascending order; if false, the traversal is performed in descending order.
 	}
 
 	if filter != nil {
@@ -369,91 +412,85 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 	}
 
 	if all {
-		pageSize = aws.Int64(HugePageSize)
-	} else {
-		if pageSize == nil {
-			pageSize = aws.Int64(DefaultPageSize)
-		}
-	}
-
-	if searchTerm != nil {
-		// since we are filtering data in client side, we should use large pageSize to avoid recursive query
 		queryInput.Limit = aws.Int64(HugePageSize)
 	} else {
-		queryInput.Limit = aws.Int64(*pageSize + 1)
-	}
-
-	if nextKey != nil && !all {
-		// log.Debugf("Received a nextKey, value: %s", *nextKey)
-		queryInput.ExclusiveStartKey, err = fromString(*nextKey)
-		if err != nil {
-			return nil, err
+		if pageSize == nil {
+			queryInput.Limit = aws.Int64(DefaultPageSize)
+		} else {
+			if *pageSize > HugePageSize {
+				queryInput.Limit = aws.Int64(HugePageSize)
+			}
+			queryInput.Limit = pageSize
 		}
 	}
+	maxResults := *queryInput.Limit
 
-	// log.WithField("queryInput", *queryInput).Debug("query")
-	var lastEvaluatedKey string
-	events := make([]*models.Event, 0)
-
-	if searchTerm != nil {
-		searchTerm = aws.String(strings.ToLower(*searchTerm))
+	// If we have the next key, set the exclusive start key value
+	if nextKey != nil {
+		queryInput.ExclusiveStartKey, err = decodeNextKey(*nextKey)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem decoding next key value")
+			return nil, err
+		}
+		log.WithFields(f).Debugf("received a nextKey, value: %s - decoded: %+v", *nextKey, queryInput.ExclusiveStartKey)
 	}
 
-	for ok := true; ok; ok = lastEvaluatedKey != "" {
-		results, errQuery := repo.dynamoDBClient.Query(queryInput)
+	events := make([]*models.Event, 0)
+	var results *dynamodb.QueryOutput
+
+	for {
+		// Perform the query...
+		var errQuery error
+		results, errQuery = repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
-			log.WithFields(f).WithError(errQuery).Warnf("error retrieving events. error = %s", errQuery.Error())
+			log.WithFields(f).WithError(errQuery).Warn("error retrieving events")
 			return nil, errQuery
 		}
 
+		// Build the result models
 		eventsList, modelErr := buildEventListModels(results)
 		if modelErr != nil {
+			log.WithFields(f).WithError(modelErr).Warn("error convert event list models")
 			return nil, modelErr
 		}
-		if searchTerm != nil {
-			for _, event := range eventsList {
-				if !all {
-					if int64(len(events)) >= (*pageSize + 1) {
-						break
-					}
-				}
-				if strings.Contains(strings.ToLower(event.EventData), *searchTerm) {
-					events = append(events, event)
-				}
-			}
-		} else {
-			events = append(events, eventsList...)
-		}
 
-		if len(results.LastEvaluatedKey) != 0 {
+		// Trim to how many the caller asked for - just in case we go over
+		events = append(events, eventsList...)
+		if int64(len(events)) > maxResults {
+			events = events[:maxResults]
+		}
+		log.WithFields(f).Debugf("loaded %d events", len(events))
+
+		// We have more records if last evaluated key has a value
+		log.WithFields(f).Debugf("last evaluated key %+v", results.LastEvaluatedKey)
+		if len(results.LastEvaluatedKey) > 0 {
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
 		} else {
 			break
 		}
 
-		if !all {
-			if int64(len(events)) >= (*pageSize + 1) {
-				break
-			}
-		}
-	}
-	if !all {
-		if int64(len(events)) > *pageSize {
-			events = events[0:*pageSize]
-			lastEvaluatedKey, err = buildNextKey(indexName, events[*pageSize-1])
-			if err != nil {
-				log.WithFields(f).WithError(err).Warnf("unable to build nextKey. index = %s, event = %#v error = %s", indexName, events[*pageSize-1], err.Error())
-			}
-		} else {
-			events = events[0:int64(len(events))]
+		if int64(len(events)) >= maxResults {
+			break
 		}
 	}
 
 	if len(events) > 0 {
-		return &models.EventList{
-			Events:  events,
-			NextKey: lastEvaluatedKey,
-		}, nil
+		response := &models.EventList{
+			Events: events,
+		}
+
+		log.WithFields(f).Debugf("returning %d events - last key: %+v", len(events), results.LastEvaluatedKey)
+		if len(results.LastEvaluatedKey) > 0 {
+			log.WithFields(f).Debug("building next key...")
+			encodedString, err := buildNextKey(indexName, events[len(events)-1])
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("unable to build nextKey")
+			}
+			response.NextKey = encodedString
+			log.WithFields(f).Debugf("lastEvaluatedKey encoded is: %s", encodedString)
+		}
+
+		return response, nil
 	}
 
 	// Just return an empty response - no events - just an empty list, and no nextKey
@@ -485,14 +522,18 @@ func buildNextKey(indexName string, event *models.Event) (string, error) {
 	case CompanyIDEventTypeIndex:
 		nextKey["company_id"] = &dynamodb.AttributeValue{S: aws.String(event.EventCompanyID)}
 		nextKey["event_type"] = &dynamodb.AttributeValue{S: aws.String(event.EventType)}
+	case EventCLAGroupIDEpochIndex:
+		nextKey["event_cla_group_id"] = &dynamodb.AttributeValue{S: aws.String(event.EventCLAGroupID)}
+		nextKey["event_time_epoch"] = &dynamodb.AttributeValue{N: aws.String(strconv.FormatInt(event.EventTimeEpoch, 10))}
 	}
-	return toString(nextKey)
+
+	return encodeNextKey(nextKey)
 }
 
 // GetCompanyFoundationEvents returns the list of events for foundation and company
 func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
 	f := logrus.Fields{
-		"functionName":   "events.repository.GetCompanyFoundationEvents",
+		"functionName":   "v1.events.repository.GetCompanyFoundationEvents",
 		"companySFID":    companySFID,
 		"companyID":      companyID,
 		"foundationSFID": foundationSFID,
@@ -511,7 +552,7 @@ func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, found
 // GetCompanyClaGroupEvents returns the list of events for cla group and the company
 func (repo *repository) GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
 	f := logrus.Fields{
-		"functionName":  "events.repository.GetCompanyClaGroupEvents",
+		"functionName":  "v1.events.repository.GetCompanyClaGroupEvents",
 		"companySFID":   companySFID,
 		"companyID":     companyID,
 		"claGroupID":    claGroupID,
@@ -530,7 +571,7 @@ func (repo *repository) GetCompanyClaGroupEvents(companySFID, companyID, claGrou
 // GetCompanyEvents returns the list of events for given company id and event types
 func (repo *repository) GetCompanyEvents(companyID, eventType string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
 	f := logrus.Fields{
-		"functionName":  "events.repository.GetCompanyEvents",
+		"functionName":  "v1.events.repository.GetCompanyEvents",
 		"companyID":     companyID,
 		"nextKey":       utils.StringValue(nextKey),
 		"paramPageSize": utils.Int64Value(paramPageSize),
@@ -546,7 +587,7 @@ func (repo *repository) GetCompanyEvents(companyID, eventType string, nextKey *s
 // GetFoundationEvents returns the list of foundation events
 func (repo *repository) GetFoundationEvents(foundationSFID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
 	f := logrus.Fields{
-		"functionName":   "events.repository.GetFoundationEvents",
+		"functionName":   "v1.events.repository.GetFoundationEvents",
 		"foundationSFID": foundationSFID,
 		"nextKey":        utils.StringValue(nextKey),
 		"paramPageSize":  utils.Int64Value(paramPageSize),
@@ -561,7 +602,7 @@ func (repo *repository) GetFoundationEvents(foundationSFID string, nextKey *stri
 // GetClaGroupEvents returns the list of cla-group events
 func (repo *repository) GetClaGroupEvents(claGroupID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error) {
 	f := logrus.Fields{
-		"functionName":  "events.repository.GetClaGroupEvents",
+		"functionName":  "v1.events.repository.GetClaGroupEvents",
 		"claGroupID":    claGroupID,
 		"nextKey":       utils.StringValue(nextKey),
 		"paramPageSize": utils.Int64Value(paramPageSize),
@@ -573,8 +614,8 @@ func (repo *repository) GetClaGroupEvents(claGroupID string, nextKey *string, pa
 	return repo.queryEventsTable(EventCLAGroupIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
 
-// toString encodes the map as a string
-func toString(in map[string]*dynamodb.AttributeValue) (string, error) {
+// encodeNextKey encodes the map as a string
+func encodeNextKey(in map[string]*dynamodb.AttributeValue) (string, error) {
 	if len(in) == 0 {
 		return "", nil
 	}
@@ -585,35 +626,47 @@ func toString(in map[string]*dynamodb.AttributeValue) (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-// fromString converts the string to a map
-func fromString(str string) (map[string]*dynamodb.AttributeValue, error) {
+// decodeNextKey decodes the next key value into a dynamodb attribute value
+func decodeNextKey(str string) (map[string]*dynamodb.AttributeValue, error) {
+	f := logrus.Fields{
+		"functionName": "v1.events.repository.decodeNextKey",
+	}
+
 	sDec, err := base64.StdEncoding.DecodeString(str)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error decoding string %s", str)
 		return nil, err
 	}
+
 	var m map[string]*dynamodb.AttributeValue
 	err = json.Unmarshal(sDec, &m)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error unmarshalling string after decoding: %s", sDec)
 		return nil, err
 	}
+
 	return m, nil
 }
 
 // buildEventListModel converts the query results to a list event models
 func buildEventListModels(results *dynamodb.QueryOutput) ([]*models.Event, error) {
+	f := logrus.Fields{
+		"functionName": "v1.events.repository.buildEventListModels",
+	}
 	events := make([]*models.Event, 0)
 
 	var items []Event
 
 	err := dynamodbattribute.UnmarshalListOfMaps(results.Items, &items)
 	if err != nil {
-		log.Warnf("error unmarshalling events from database, error: %v",
-			err)
+		log.WithFields(f).WithError(err).Warn("error unmarshalling events from database")
 		return nil, err
 	}
+
 	for _, e := range items {
 		events = append(events, e.toEvent())
 	}
+
 	return events, nil
 }
 
@@ -639,6 +692,11 @@ func buildProjection() expression.ProjectionBuilder {
 }
 
 func (repo repository) GetRecentEvents(pageSize int64) (*models.EventList, error) {
+	f := logrus.Fields{
+		"functionName": "v1.events.repository.GetRecentEvents",
+		"pageSize":     pageSize,
+	}
+
 	ctime := time.Now()
 	maxQueryDays := 30
 	events := make([]*models.Event, 0)
@@ -646,6 +704,7 @@ func (repo repository) GetRecentEvents(pageSize int64) (*models.EventList, error
 		day := toDateFormat(ctime)
 		eventList, err := repo.getEventByDay(day, false, pageSize)
 		if err != nil {
+			log.WithFields(f).WithError(err).Warn("error fetching events by day")
 			return nil, err
 		}
 		events = append(events, eventList...)
@@ -659,11 +718,16 @@ func (repo repository) GetRecentEvents(pageSize int64) (*models.EventList, error
 	return &models.EventList{
 		Events: events,
 	}, nil
-
 }
 
 func (repo repository) getEventByDay(day string, containsPII bool, pageSize int64) ([]*models.Event, error) {
-	tableName := fmt.Sprintf("cla-%s-events", repo.stage)
+	f := logrus.Fields{
+		"functionName": "v1.events.repository.getEventByDay",
+		"day":          day,
+		"containsPII":  containsPII,
+		"pageSize":     pageSize,
+	}
+
 	var condition expression.KeyConditionBuilder
 	builder := expression.NewBuilder().WithProjection(buildProjection())
 
@@ -676,8 +740,10 @@ func (repo repository) getEventByDay(day string, containsPII bool, pageSize int6
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building events query")
 		return nil, err
 	}
+
 	// Assemble the query input parameters
 	queryInput := &dynamodb.QueryInput{
 		ExpressionAttributeNames:  expr.Names(),
@@ -685,7 +751,7 @@ func (repo repository) getEventByDay(day string, containsPII bool, pageSize int6
 		KeyConditionExpression:    expr.KeyCondition(),
 		ProjectionExpression:      expr.Projection(),
 		FilterExpression:          expr.Filter(),
-		TableName:                 aws.String(tableName),
+		TableName:                 aws.String(repo.eventsTable),
 		IndexName:                 aws.String(indexName),
 		Limit:                     aws.Int64(pageSize), // The maximum number of items to evaluate (not necessarily the number of matching items)
 		ScanIndexForward:          aws.Bool(false),
@@ -696,12 +762,13 @@ func (repo repository) getEventByDay(day string, containsPII bool, pageSize int6
 	for {
 		results, errQuery := repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
-			log.Warnf("error retrieving events. error = %s", errQuery.Error())
+			log.WithFields(f).Warnf("error retrieving events. error = %s", errQuery.Error())
 			return nil, errQuery
 		}
 
 		eventsList, modelErr := buildEventListModels(results)
 		if modelErr != nil {
+			log.WithFields(f).Warn("error building event models")
 			return nil, modelErr
 		}
 
@@ -721,9 +788,18 @@ func (repo repository) getEventByDay(day string, containsPII bool, pageSize int6
 }
 
 func (repo repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID string) error {
-	tableName := fmt.Sprintf("cla-%s-events", repo.stage)
+	f := logrus.Fields{
+		"functionName":      "v1.events.repository.AddDataToEvent",
+		"eventID":           eventID,
+		"parentProjectSFID": parentProjectSFID,
+		"projectSFID":       projectSFID,
+		"projectSFName":     projectSFName,
+		"companySFID":       companySFID,
+		"projectID":         projectID,
+	}
+
 	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(repo.eventsTable),
 		Key: map[string]*dynamodb.AttributeValue{
 			"event_id": {
 				S: aws.String(eventID),
@@ -758,6 +834,7 @@ func (repo repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, p
 	ue.AddUpdateExpression("#company_sfid_project_id = :company_sfid_project_id", companySFID != "" && projectID != "")
 	if ue.Expression == "" {
 		// nothing to update
+		log.WithFields(f).Warn("not expression - nothing to update")
 		return nil
 	}
 	input.UpdateExpression = aws.String(ue.Expression)
@@ -765,9 +842,9 @@ func (repo repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, p
 	input.ExpressionAttributeValues = ue.ExpressionAttributeValues
 	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
 	if updateErr != nil {
-		log.Debugf("update input: %v", input)
-		log.Warnf("unable to add extra details to event : %s . error = %s", eventID, updateErr.Error())
+		log.WithFields(f).WithError(updateErr).Warnf("unable to add extra details to event : %s . error = %s", eventID, updateErr.Error())
 		return updateErr
 	}
+
 	return nil
 }
