@@ -449,24 +449,17 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 		}
 		log.WithFields(f).Debugf("discovered %d projects based on foundation SFID...", len(projectCLAGroupMappings))
 
-		claGroupsMap := map[string]bool{}
+		// Determine how many CLA Groups we have - we could have many and possibly return duplicates, we use this loop
+		uniqueCLAGroupList := getUniqueCLAGroupIDs(projectCLAGroupMappings)
+
 		type CLAGroupResult struct {
 			claGroupModel *v1Models.ClaGroup
 			Error         error
 		}
-		claGroupResultChannel := make(chan *CLAGroupResult, len(projectCLAGroupMappings))
+		claGroupResultChannel := make(chan *CLAGroupResult, len(uniqueCLAGroupList))
 
 		// Load these CLA Group records in parallel
-		for _, projectCLAGroup := range projectCLAGroupMappings {
-			// ensure that following goroutine gets a copy of projectSFID
-			projectCLAGroupClaGroupID := projectCLAGroup.ClaGroupID
-			// No need to re-process the same CLA group
-			if _, ok := claGroupsMap[projectCLAGroupClaGroupID]; ok {
-				continue
-			}
-
-			// Add entry into our map - so we know not to re-process this CLA Group
-			claGroupsMap[projectCLAGroupClaGroupID] = true
+		for _, projectCLAGroupClaGroupID := range uniqueCLAGroupList {
 
 			// Load each CLA Group - save results to our channel
 			go func(ctx context.Context, projectCLAGroupClaGroupID string) {
@@ -489,7 +482,7 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 
 		// Wait for the go routines to finish and load up the results
 		log.WithFields(f).Debug("waiting for CLA Groups to load...")
-		for range projectCLAGroupMappings {
+		for range uniqueCLAGroupList {
 			response := <-claGroupResultChannel
 			if response.Error != nil {
 				log.WithFields(f).WithError(response.Error).Warnf("unable to load CLA Group")
