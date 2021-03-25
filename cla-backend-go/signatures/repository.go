@@ -2019,6 +2019,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		UserName: claManager.LfUsername,
 	}
 
+	// Keep track of gerrit users under a give CLA Group
+	var gerritICLAECLAs []string
+
 	log.WithFields(f).Debug("aggregating ICLA and ECLA gerrit users...")
 	gerritIclaUsers, err := repo.gerritService.GetUsersOfGroup(ctx, &authUser, projectID, utils.ClaTypeICLA)
 
@@ -2026,6 +2029,12 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		msg := fmt.Sprintf("unable to fetch gerrit users for claGroup: %s , claType: %s ", projectID, utils.ClaTypeICLA)
 		log.WithFields(f).Warn(msg)
 		return nil, errors.New(msg)
+	}
+
+	if gerritIclaUsers != nil {
+		for _, member := range gerritIclaUsers.Members {
+			gerritICLAECLAs = append(gerritICLAECLAs, member.Username)
+		}
 	}
 
 	gerritEclaUsers, err := repo.gerritService.GetUsersOfGroup(ctx, &authUser, projectID, utils.ClaTypeECLA)
@@ -2036,11 +2045,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		return nil, errors.New(msg)
 	}
 
-	// Keep track of gerrit users under a give CLA Group
-	var gerritICLAECLAs []string
-
-	for _, member := range append(gerritEclaUsers.Members, gerritIclaUsers.Members...) {
-		gerritICLAECLAs = append(gerritICLAECLAs, member.Username)
+	if gerritEclaUsers != nil {
+		for _, member := range gerritEclaUsers.Members {
+			gerritICLAECLAs = append(gerritICLAECLAs, member.Username)
+		}
 	}
 
 	// If we have an add or remove email list...we need to run an update for this column
