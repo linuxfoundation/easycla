@@ -2088,21 +2088,27 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						log.WithFields(f).Debugf("unable to get Company Employee signatures : %+v ", appErr)
 						return
 					}
-					log.WithFields(f).Debugf("Updating signature : %s ", signs.Signatures[0].SignatureID)
-					note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to email approval list removal : %+v", utils.GetBestUsername(claManager), params.RemoveEmailApprovalList)
 
-					signErr := repo.InvalidateProjectRecord(ctx, signs.Signatures[0].SignatureID, note)
-					if signErr != nil {
-						log.WithFields(f).Debugf("error invalidating signature ID: %s error: %+v ", sigs.Signatures[0].SignatureID, signErr)
-						return
+					if len(signs.Signatures) == 0 {
+						log.WithFields(f).Debugf("company employee signatures do not exist for company:%s and project: %s ", companyID, projectID)
 					}
 
-					//Log Event
-					eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
-						SignatureID: signs.Signatures[0].SignatureID,
-						Email:       email,
-						CLAManager:  claManager,
-						CLAGroupID:  signs.Signatures[0].ProjectID,
+					if len(signs.Signatures) > 0 {
+						log.WithFields(f).Debugf("Updating signature : %s ", signs.Signatures[0].SignatureID)
+						note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to email approval list removal : %+v", utils.GetBestUsername(claManager), params.RemoveEmailApprovalList)
+
+						signErr := repo.InvalidateProjectRecord(ctx, signs.Signatures[0].SignatureID, note)
+						if signErr != nil {
+							log.WithFields(f).Debugf("error invalidating signature ID: %s error: %+v ", sigs.Signatures[0].SignatureID, signErr)
+							return
+						}
+						//Log Event
+						eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
+							SignatureID: signs.Signatures[0].SignatureID,
+							Email:       email,
+							CLAManager:  claManager,
+							CLAGroupID:  signs.Signatures[0].ProjectID,
+						}
 					}
 
 					repo.eventsService.LogEventWithContext(ctx, eventArgs)
