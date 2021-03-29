@@ -32,8 +32,8 @@ import cla
 from cla.models import model_interfaces, key_value_store_interface, DoesNotExist
 from cla.models.event_types import EventType
 from cla.models.model_interfaces import User, Signature, ProjectCLAGroup, Repository, Gerrit
-from cla.project_service import ProjectService
 from cla.models.model_utils import is_uuidv4
+from cla.project_service import ProjectService
 
 stage = os.environ.get("STAGE", "")
 cla_logo_url = os.environ.get("CLA_BUCKET_LOGO_URL", "")
@@ -4281,79 +4281,85 @@ class Event(model_interfaces.Event):
             raise cla.models.DoesNotExist("Event not found")
         self.model = event
 
-    def get_event_user_id(self):
-        return self.model.event_user_id
-
-    def get_event_data(self):
-        return self.model.event_data
-
-    def get_event_data_lower(self):
-        return self.model.event_data_lower
-
-    def get_event_summary(self):
-        return self.model.event_summary
-
-    def get_event_date(self):
-        return self.model.event_date
-
-    def get_event_id(self):
-        return self.model.event_id
-
-    def get_event_cla_group_id(self):
-        return self.model.event_cla_group_id
-
-    def get_event_cla_group_name(self):
-        return self.model.event_cla_group_name
-
-    def get_event_cla_group_name_lower(self):
-        return self.model.event_cla_group_name_lower
-
-    def get_event_project_id(self):
-        return self.model.event_project_id
-
-    def get_event_project_sfid(self):
-        return self.model.event_project_sfid
-
-    def get_event_project_name(self):
-        return self.model.event_project_name
-
-    def get_event_project_name_lower(self):
-        return self.model.event_project_name_lower
-
-    def get_event_parent_project_sfid(self):
-        return self.model.event_parent_project_sfid
-
-    def get_event_parent_project_name(self):
-        return self.model.event_parent_project_name
-
-    def get_event_type(self):
-        return self.model.event_type
-
-    def get_event_time(self):
+    def get_event_date_created(self) -> str:
         return self.model.date_created
 
-    def get_event_time_epoch(self):
+    def get_event_date_modified(self) -> str:
+        return self.model.date_modified
+
+    def get_event_user_id(self) -> str:
+        return self.model.event_user_id
+
+    def get_event_data(self) -> str:
+        return self.model.event_data
+
+    def get_event_data_lower(self) -> str:
+        return self.model.event_data_lower
+
+    def get_event_summary(self) -> str:
+        return self.model.event_summary
+
+    def get_event_date(self) -> str:
+        return self.model.event_date
+
+    def get_event_id(self) -> str:
+        return self.model.event_id
+
+    def get_event_cla_group_id(self) -> str:
+        return self.model.event_cla_group_id
+
+    def get_event_cla_group_name(self) -> str:
+        return self.model.event_cla_group_name
+
+    def get_event_cla_group_name_lower(self) -> str:
+        return self.model.event_cla_group_name_lower
+
+    def get_event_project_id(self) -> str:
+        return self.model.event_project_id
+
+    def get_event_project_sfid(self) -> str:
+        return self.model.event_project_sfid
+
+    def get_event_project_name(self) -> str:
+        return self.model.event_project_name
+
+    def get_event_project_name_lower(self) -> str:
+        return self.model.event_project_name_lower
+
+    def get_event_parent_project_sfid(self) -> str:
+        return self.model.event_parent_project_sfid
+
+    def get_event_parent_project_name(self) -> str:
+        return self.model.event_parent_project_name
+
+    def get_event_type(self) -> str:
+        return self.model.event_type
+
+    def get_event_time(self) -> str:
+        return self.model.date_created
+
+    def get_event_time_epoch(self) -> int:
         return self.model.event_time_epoch
 
-    def get_event_company_id(self):
+    def get_event_company_id(self) -> str:
         return self.model.event_company_id
 
-    def get_event_company_sfid(self):
+    def get_event_company_sfid(self) -> str:
         return self.model.event_company_sfid
 
-    def get_event_company_name(self):
+    def get_event_company_name(self) -> str:
         return self.model.event_company_name
 
-    def get_event_company_name_lower(self):
+    def get_event_company_name_lower(self) -> str:
         return self.model.event_company_name_lower
 
-    def get_event_user_name(self):
+    def get_event_user_name(self) -> str:
         return self.model.event_user_name
 
-    def get_event_user_name_lower(self):
+    def get_event_user_name_lower(self) -> str:
         return self.model.event_user_name_lower
 
-    def get_company_id_external_project_id(self):
+    def get_company_id_external_project_id(self) -> str:
         return self.model.company_id_external_project_id
 
     def all(self, ids=None):
@@ -4376,6 +4382,34 @@ class Event(model_interfaces.Event):
             evt.model = signature
             ret.append(evt)
         return ret, result_iterator.last_evaluated_key, result_iterator.total_count
+
+    def search_missing_event_data_lower(self, limit: Optional[int] = None, last_evaluated_key: Optional[str] = None):
+        filter_condition = (EventModel.event_data_lower.does_not_exist())
+        projection = ["event_id", "event_data", "event_data_lower"]
+        result_iterator = self.model.scan(limit=limit,
+                                          last_evaluated_key=last_evaluated_key,
+                                          filter_condition=filter_condition,
+                                          attributes_to_get=projection)
+        ret = []
+        for signature in result_iterator:
+            evt = Event()
+            evt.model = signature
+            ret.append(evt)
+        return ret, result_iterator.last_evaluated_key, result_iterator.total_count
+
+    # def search_by_year(self, year: str, limit: Optional[int] = None, last_evaluated_key: Optional[str] = None):
+    #     filter_condition = (EventModel.event_date.contains(year))
+    #     projection = ["event_id", "event_date"]
+    #     result_iterator = self.model.scan(limit=limit,
+    #                                       last_evaluated_key=last_evaluated_key,
+    #                                       filter_condition=filter_condition,
+    #                                       attributes_to_get=projection)
+    #     ret = []
+    #     for signature in result_iterator:
+    #         evt = Event()
+    #         evt.model = signature
+    #         ret.append(evt)
+    #     return ret, result_iterator.last_evaluated_key, result_iterator.total_count
 
     def set_event_data(self, event_data: str):
         self.model.event_data = event_data
