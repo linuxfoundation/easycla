@@ -72,12 +72,5 @@ func (dc Client) CreatePDF(html string, claType string) (io.ReadCloser, error) {
 		log.WithFields(f).WithError(err).Warn("problem with API call to docraptor")
 		return nil, err
 	}
-	defer func() {
-		closeErr := resp.Body.Close()
-		if closeErr != nil {
-			log.WithFields(f).WithError(closeErr).Warn("error closing response body")
-		}
-	}()
-
 	return resp.Body, nil
 }
