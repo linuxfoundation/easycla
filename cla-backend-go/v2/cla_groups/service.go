@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 
@@ -355,6 +356,11 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 		"projectOrFoundationSFID": projectOrFoundationSFID,
 	}
 
+	// setup some timeout for the whole operation
+	var cancelFunc context.CancelFunc
+	ctx, cancelFunc = context.WithTimeout(ctx, time.Second*20)
+	defer cancelFunc()
+
 	// Our list of CLA Groups associated with this foundation (could be > 1) or project (only 1)
 	var v1ClaGroups = new(v1Models.ClaGroups)
 	// Our response model for this function
@@ -398,97 +404,14 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 
 	// If it's a project...
 	if utils.IsProjectCategory(sfProjectModelDetails, parentDetails) {
-		// Since this is a project and not a foundation, we'll want to set he parent foundation ID and name (which is
-		// our parent in this case)
-		log.WithFields(f).Debug("found 'project' in platform project service.")
-		if sfProjectModelDetails.ProjectOutput.Foundation != nil {
-			foundationID = sfProjectModelDetails.ProjectOutput.Foundation.ID
-			foundationName = sfProjectModelDetails.ProjectOutput.Foundation.Name
-			log.WithFields(f).Debugf("using parent foundation ID: %s and name: %s", foundationID, foundationName)
-		} else {
-			// Project with no parent - must be a standalone - use our ID and Name as the foundation
-			foundationID = sfProjectModelDetails.ID
-			foundationName = sfProjectModelDetails.Name
-			log.WithFields(f).Debugf("no parent - using project as foundation ID: %s and name: %s", foundationID, foundationName)
+		var appendErr error
+		foundationID, foundationName, appendErr = s.appendCLAGroupsForProject(ctx, f, projectOrFoundationSFID, sfProjectModelDetails, v1ClaGroups)
+		if appendErr != nil {
+			return nil, appendErr
 		}
-
-		log.WithFields(f).Debug("locating CLA Group mapping...")
-		projectCLAGroup, lookupErr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(projectOrFoundationSFID)
-		if lookupErr != nil {
-			log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
-			return nil, &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
-		}
-
-		log.WithFields(f).Debugf("loading CLA Group by ID: %s", projectCLAGroup.ClaGroupID)
-		v1ClaGroupsByProject, claGroupLoadErr := s.v1ProjectService.GetCLAGroupByID(ctx, projectCLAGroup.ClaGroupID)
-		//v1ClaGroupsByProject, prjerr := s.v1ProjectService.GetClaGroupByProjectSFID(projectOrFoundationSFID, DontLoadDetails)
-		if claGroupLoadErr != nil {
-			log.WithFields(f).Warnf("problem loading CLA group by id, error: %+v", claGroupLoadErr)
-			return nil, &utils.CLAGroupNotFound{CLAGroupID: projectCLAGroup.ClaGroupID, Err: claGroupLoadErr}
-		}
-
-		v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1ClaGroupsByProject)
-
-		v1CLAGroupData, v1ClaGroupErr := s.v1ProjectService.GetClaGroupByProjectSFID(ctx, projectOrFoundationSFID, false)
-		if v1ClaGroupErr != nil {
-			log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", v1ClaGroupErr)
-			return nil, &utils.CLAGroupNotFound{CLAGroupID: projectOrFoundationSFID, Err: v1ClaGroupErr}
-		}
-
-		_, found := Find(v1ClaGroups.Projects, v1CLAGroupData.ProjectID)
-		if !found {
-			v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1CLAGroupData)
-		}
-
 	} else if sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup {
-		log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
-		projectCLAGroupMappings, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(projectOrFoundationSFID)
-		if lookupErr != nil {
-			log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
-			return nil, &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
-		}
-		log.WithFields(f).Debugf("discovered %d projects based on foundation SFID...", len(projectCLAGroupMappings))
-
-		// Determine how many CLA Groups we have - we could have many and possibly return duplicates, we use this loop
-		uniqueCLAGroupList := getUniqueCLAGroupIDs(projectCLAGroupMappings)
-
-		type CLAGroupResult struct {
-			claGroupModel *v1Models.ClaGroup
-			Error         error
-		}
-		claGroupResultChannel := make(chan *CLAGroupResult, len(uniqueCLAGroupList))
-
-		// Load these CLA Group records in parallel
-		for _, projectCLAGroupClaGroupID := range uniqueCLAGroupList {
-
-			// Load each CLA Group - save results to our channel
-			go func(ctx context.Context, projectCLAGroupClaGroupID string) {
-				log.WithFields(f).Debugf("loading CLA Group by ID: %s", projectCLAGroupClaGroupID)
-				claGroupModel, claGroupLookupErr := s.v1ProjectService.GetCLAGroupByID(ctx, projectCLAGroupClaGroupID)
-				if claGroupLookupErr != nil {
-					log.WithFields(f).Warnf("problem locating project by id: %s, error: %+v", projectCLAGroupClaGroupID, claGroupLookupErr)
-					claGroupResultChannel <- &CLAGroupResult{
-						claGroupModel: nil,
-						Error:         &utils.SFProjectNotFound{ProjectSFID: projectCLAGroupClaGroupID, Err: claGroupLookupErr},
-					}
-				}
-
-				claGroupResultChannel <- &CLAGroupResult{
-					claGroupModel: claGroupModel,
-					Error:         nil,
-				}
-			}(ctx, projectCLAGroupClaGroupID)
-		}
-
-		// Wait for the go routines to finish and load up the results
-		log.WithFields(f).Debug("waiting for CLA Groups to load...")
-		for range uniqueCLAGroupList {
-			response := <-claGroupResultChannel
-			if response.Error != nil {
-				log.WithFields(f).WithError(response.Error).Warnf("unable to load CLA Group")
-				return nil, response.Error
-			}
-			v1ClaGroups.Projects = append(v1ClaGroups.Projects, *response.claGroupModel)
+		if err := s.appendCLAGroupsForFoundation(ctx, f, projectOrFoundationSFID, v1ClaGroups); err != nil {
+			return nil, err
 		}
 	} else {
 		msg := fmt.Sprintf("unsupported foundation/project SFID type: %s", sfProjectModelDetails.ProjectType)
@@ -498,6 +421,73 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 
 	log.WithFields(f).Debugf("Building response model for %d CLA Groups", len(v1ClaGroups.Projects))
 
+	claGroupIDList, err := s.buildClaGroupSummaryResponseModel(ctx, f, v1ClaGroups, foundationName, foundationID, responseModel)
+	if err != nil {
+		return nil, err
+	}
+
+	// One more pass to update the metrics - bulk lookup the metrics and update the response model
+	log.WithFields(f).Debugf("Loading metrics for %d CLA Groups...", len(claGroupIDList.List()))
+	s.loadMetrics(ctx, f, responseModel, claGroupIDList)
+
+	// Sort the response based on the Foundation and CLA group name
+	sort.Slice(responseModel.List, func(i, j int) bool {
+		switch strings.Compare(responseModel.List[i].FoundationName, responseModel.List[j].FoundationName) {
+		case -1:
+			return true
+		case 1:
+			return false
+		}
+		return responseModel.List[i].ClaGroupName < responseModel.List[j].ClaGroupName
+	})
+
+	return responseModel, nil
+}
+
+func (s *service) loadMetrics(ctx context.Context, f logrus.Fields, responseModel *models.ClaGroupListSummary, claGroupIDList *utils.StringSet) {
+	type MetricsResult struct {
+		index              int
+		iclaSignatureCount int64
+		cclaSignatureCount int64
+		Error              error
+	}
+	metricsResultChannel := make(chan *MetricsResult, len(responseModel.List))
+
+	for idx, responseEntry := range responseModel.List {
+		go func(index int, responseEntry *models.ClaGroupSummary) {
+			log.WithFields(f).Debugf("fetching project signature metrics for CLA Group (%d): %s - %s", index, responseEntry.ClaGroupID, responseEntry.ClaGroupName)
+			iclaSignatureDetails, err := s.signatureService.GetProjectSignatures(ctx, signatures.GetProjectSignaturesParams{ProjectID: responseEntry.ClaGroupID, ClaType: aws.String(utils.ClaTypeICLA), SignatureType: aws.String(utils.SignatureTypeCLA)})
+			if err != nil {
+				log.WithFields(f).Warnf("error while getting ICLA Signature using cla group ID %s Error: %v", responseEntry.ClaGroupID, err)
+			}
+
+			cclaSignatureDetails, err := s.signatureService.GetProjectSignatures(ctx, signatures.GetProjectSignaturesParams{ProjectID: responseEntry.ClaGroupID, ClaType: aws.String(utils.ClaTypeCCLA), SignatureType: aws.String(utils.SignatureTypeCCLA)})
+			if err != nil {
+				log.WithFields(f).Warnf("error while getting ICLA Signature using cla group ID %s Error: %v", responseEntry.ClaGroupID, err)
+			}
+
+			metricsResultChannel <- &MetricsResult{
+				index:              index,
+				iclaSignatureCount: iclaSignatureDetails.ResultCount,
+				cclaSignatureCount: cclaSignatureDetails.ResultCount,
+				Error:              err,
+			}
+		}(idx, responseEntry)
+	}
+
+	log.WithFields(f).Debugf("Waiting for metrics responses for %d CLA Groups...", len(claGroupIDList.List()))
+	for range responseModel.List {
+		select {
+		case response := <-metricsResultChannel:
+			responseModel.List[response.index].TotalSignatures = response.cclaSignatureCount + response.iclaSignatureCount
+		case <-ctx.Done():
+			log.WithError(ctx.Err()).Warnf("waiting for metrics failed with timeout")
+			return
+		}
+	}
+}
+
+func (s *service) buildClaGroupSummaryResponseModel(ctx context.Context, f logrus.Fields, v1ClaGroups *v1Models.ClaGroups, foundationName string, foundationID string, responseModel *models.ClaGroupListSummary) (*utils.StringSet, error) {
 	claGroupIDList := utils.NewStringSet()
 
 	// Build the response model for each CLA Group...
@@ -506,11 +496,11 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 		// Keep a list of the CLA Group IDs - we'll use it later to do a batch look in the metrics
 		claGroupIDList.Add(v1ClaGroup.ProjectID)
 
-		currentICLADoc, docErr := v1Project.GetCurrentDocument(context.Background(), v1ClaGroup.ProjectIndividualDocuments)
+		currentICLADoc, docErr := v1Project.GetCurrentDocument(ctx, v1ClaGroup.ProjectIndividualDocuments)
 		if docErr != nil {
 			log.WithFields(f).WithError(docErr).Warn("problem determining current ICLA for this CLA Group")
 		}
-		currentCCLADoc, docErr := v1Project.GetCurrentDocument(context.Background(), v1ClaGroup.ProjectCorporateDocuments)
+		currentCCLADoc, docErr := v1Project.GetCurrentDocument(ctx, v1ClaGroup.ProjectCorporateDocuments)
 		if docErr != nil {
 			log.WithFields(f).WithError(docErr).Warn("problem determining current CCLA for this CLA Group")
 		}
@@ -571,57 +561,112 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 		// Add this CLA Group to our response model
 		responseModel.List = append(responseModel.List, cg)
 	}
+	return claGroupIDList, nil
+}
 
-	// One more pass to update the metrics - bulk lookup the metrics and update the response model
-	log.WithFields(f).Debugf("Loading metrics for %d CLA Groups...", len(claGroupIDList.List()))
-	type MetricsResult struct {
-		index              int
-		iclaSignatureCount int64
-		cclaSignatureCount int64
-		Error              error
+func (s *service) appendCLAGroupsForFoundation(ctx context.Context, f logrus.Fields, projectOrFoundationSFID string, v1ClaGroups *v1Models.ClaGroups) error {
+	log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
+	projectCLAGroupMappings, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(projectOrFoundationSFID)
+	if lookupErr != nil {
+		log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
+		return &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
 	}
-	metricsResultChannel := make(chan *MetricsResult, len(responseModel.List))
+	log.WithFields(f).Debugf("discovered %d projects based on foundation SFID...", len(projectCLAGroupMappings))
 
-	for idx, responseEntry := range responseModel.List {
-		go func(index int, responseEntry *models.ClaGroupSummary) {
-			log.WithFields(f).Debugf("fetching project signature metrics for CLA Group (%d): %s - %s", index, responseEntry.ClaGroupID, responseEntry.ClaGroupName)
-			iclaSignatureDetails, err := s.signatureService.GetProjectSignatures(ctx, signatures.GetProjectSignaturesParams{ProjectID: responseEntry.ClaGroupID, ClaType: aws.String(utils.ClaTypeICLA), SignatureType: aws.String(utils.SignatureTypeCLA)})
-			if err != nil {
-				log.WithFields(f).Warnf("error while getting ICLA Signature using cla group ID %s Error: %v", responseEntry.ClaGroupID, err)
-			}
+	// Determine how many CLA Groups we have - we could have many and possibly return duplicates, we use this loop
+	uniqueCLAGroupList := getUniqueCLAGroupIDs(projectCLAGroupMappings)
 
-			cclaSignatureDetails, err := s.signatureService.GetProjectSignatures(ctx, signatures.GetProjectSignaturesParams{ProjectID: responseEntry.ClaGroupID, ClaType: aws.String(utils.ClaTypeCCLA), SignatureType: aws.String(utils.SignatureTypeCCLA)})
-			if err != nil {
-				log.WithFields(f).Warnf("error while getting ICLA Signature using cla group ID %s Error: %v", responseEntry.ClaGroupID, err)
-			}
-
-			metricsResultChannel <- &MetricsResult{
-				index:              index,
-				iclaSignatureCount: iclaSignatureDetails.ResultCount,
-				cclaSignatureCount: cclaSignatureDetails.ResultCount,
-				Error:              err,
-			}
-		}(idx, responseEntry)
+	type CLAGroupResult struct {
+		claGroupModel *v1Models.ClaGroup
+		Error         error
 	}
 
-	log.WithFields(f).Debugf("Waiting for metrics responses for %d CLA Groups...", len(claGroupIDList.List()))
-	for range responseModel.List {
-		response := <-metricsResultChannel
-		responseModel.List[response.index].TotalSignatures = response.cclaSignatureCount + response.iclaSignatureCount
+	claGroupResultChannel := make(chan *CLAGroupResult, len(uniqueCLAGroupList))
+
+	// Load these CLA Group records in parallel
+	for _, projectCLAGroupClaGroupID := range uniqueCLAGroupList {
+
+		// Load each CLA Group - save results to our channel
+		go func(ctx context.Context, projectCLAGroupClaGroupID string) {
+			log.WithFields(f).Debugf("loading CLA Group by ID: %s", projectCLAGroupClaGroupID)
+			claGroupModel, claGroupLookupErr := s.v1ProjectService.GetCLAGroupByID(ctx, projectCLAGroupClaGroupID)
+			if claGroupLookupErr != nil {
+				log.WithFields(f).Warnf("problem locating project by id: %s, error: %+v", projectCLAGroupClaGroupID, claGroupLookupErr)
+				claGroupResultChannel <- &CLAGroupResult{
+					claGroupModel: nil,
+					Error:         &utils.SFProjectNotFound{ProjectSFID: projectCLAGroupClaGroupID, Err: claGroupLookupErr},
+				}
+			}
+
+			claGroupResultChannel <- &CLAGroupResult{
+				claGroupModel: claGroupModel,
+				Error:         nil,
+			}
+		}(ctx, projectCLAGroupClaGroupID)
 	}
 
-	// Sort the response based on the Foundation and CLA group name
-	sort.Slice(responseModel.List, func(i, j int) bool {
-		switch strings.Compare(responseModel.List[i].FoundationName, responseModel.List[j].FoundationName) {
-		case -1:
-			return true
-		case 1:
-			return false
+	// Wait for the go routines to finish and load up the results
+	log.WithFields(f).Debug("waiting for CLA Groups to load...")
+	for range uniqueCLAGroupList {
+		select {
+		case response := <-claGroupResultChannel:
+			if response.Error != nil {
+				log.WithFields(f).WithError(response.Error).Warnf("unable to load CLA Group")
+				return response.Error
+			}
+			v1ClaGroups.Projects = append(v1ClaGroups.Projects, *response.claGroupModel)
+		case <-ctx.Done():
+			log.WithFields(f).WithError(ctx.Err()).Warnf("waiting for CLA Groups to load timeouted")
+			return fmt.Errorf("cla group laoding failed : %v", ctx.Err())
 		}
-		return responseModel.List[i].ClaGroupName < responseModel.List[j].ClaGroupName
-	})
+	}
+	return nil
+}
 
-	return responseModel, nil
+func (s *service) appendCLAGroupsForProject(ctx context.Context, f logrus.Fields, projectOrFoundationSFID string, sfProjectModelDetails *v2ProjectServiceModels.ProjectOutputDetailed, v1ClaGroups *v1Models.ClaGroups) (string, string, error) {
+	// Since this is a project and not a foundation, we'll want to set he parent foundation ID and name (which is
+	// our parent in this case)
+	var foundationID, foundationName string
+	log.WithFields(f).Debug("found 'project' in platform project service.")
+	if sfProjectModelDetails.ProjectOutput.Foundation != nil {
+		foundationID = sfProjectModelDetails.ProjectOutput.Foundation.ID
+		foundationName = sfProjectModelDetails.ProjectOutput.Foundation.Name
+		log.WithFields(f).Debugf("using parent foundation ID: %s and name: %s", foundationID, foundationName)
+	} else {
+		// Project with no parent - must be a standalone - use our ID and Name as the foundation
+		foundationID = sfProjectModelDetails.ID
+		foundationName = sfProjectModelDetails.Name
+		log.WithFields(f).Debugf("no parent - using project as foundation ID: %s and name: %s", foundationID, foundationName)
+	}
+
+	log.WithFields(f).Debug("locating CLA Group mapping...")
+	projectCLAGroup, lookupErr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(projectOrFoundationSFID)
+	if lookupErr != nil {
+		log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
+		return "", "", &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
+	}
+
+	log.WithFields(f).Debugf("loading CLA Group by ID: %s", projectCLAGroup.ClaGroupID)
+	v1ClaGroupsByProject, claGroupLoadErr := s.v1ProjectService.GetCLAGroupByID(ctx, projectCLAGroup.ClaGroupID)
+	//v1ClaGroupsByProject, prjerr := s.v1ProjectService.GetClaGroupByProjectSFID(projectOrFoundationSFID, DontLoadDetails)
+	if claGroupLoadErr != nil {
+		log.WithFields(f).Warnf("problem loading CLA group by id, error: %+v", claGroupLoadErr)
+		return "", "", &utils.CLAGroupNotFound{CLAGroupID: projectCLAGroup.ClaGroupID, Err: claGroupLoadErr}
+	}
+
+	v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1ClaGroupsByProject)
+
+	v1CLAGroupData, v1ClaGroupErr := s.v1ProjectService.GetClaGroupByProjectSFID(ctx, projectOrFoundationSFID, false)
+	if v1ClaGroupErr != nil {
+		log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", v1ClaGroupErr)
+		return "", "", &utils.CLAGroupNotFound{CLAGroupID: projectOrFoundationSFID, Err: v1ClaGroupErr}
+	}
+
+	_, found := Find(v1ClaGroups.Projects, v1CLAGroupData.ProjectID)
+	if !found {
+		v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1CLAGroupData)
+	}
+	return foundationID, foundationName, nil
 }
 
 func (s *service) ListAllFoundationClaGroups(ctx context.Context, foundationID *string) (*models.FoundationMappingList, error) {
