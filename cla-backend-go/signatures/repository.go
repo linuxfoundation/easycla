@@ -2168,7 +2168,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			if invalidateErr != nil {
 				msg := fmt.Sprintf("unable to invalidate signatures based on Approval List : %+v ", approvalList)
 				log.WithFields(f).Warn(msg)
-				return nil, errors.New(msg)
 			}
 		}
 	}
@@ -2373,7 +2372,34 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 	iclas, err := repo.GetClaGroupICLASignatures(ctx, approvalList.ClaGroupID, nil)
 	if err != nil {
 		log.WithFields(f).Warn("unable to get iclas")
-		return err
+	}
+
+	if iclas != nil {
+		var iclaWg sync.WaitGroup
+		//Iterate iclas
+		iclaWg.Add(len(iclas.List))
+		log.WithFields(f).Debug("invalidating signature icla records... ")
+		for _, icla := range iclas.List {
+			go func(icla *models.IclaSignature) {
+				defer iclaWg.Done()
+				signature, sigErr := repo.GetSignature(ctx, icla.SignatureID)
+				if sigErr != nil {
+					log.WithFields(f).Warnf("unable to fetch signature for ID: %s ", icla.SignatureID)
+					return
+				}
+				// Grab user record
+				if signature.SignatureReferenceID == "" {
+					log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", signature)
+					return
+				}
+				verifyErr := repo.verifyUserApprovals(ctx, signature.SignatureReferenceID, signature.SignatureID, claManager, approvalList)
+				if verifyErr != nil {
+					log.WithFields(f).Warnf("unable to verify user: %s ", signature.SignatureReferenceID)
+					return
+				}
+			}(icla)
+		}
+		iclaWg.Wait()
 	}
 
 	// Get ECLAs
@@ -2387,54 +2413,28 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 		return err
 	}
 
-	var iclaWg, eclaWg sync.WaitGroup
-
-	//Iterate iclas
-	iclaWg.Add(len(iclas.List))
-	log.WithFields(f).Debug("invalidating signature icla records... ")
-
-	for _, icla := range iclas.List {
-		go func(icla *models.IclaSignature) {
-			defer iclaWg.Done()
-			signature, err := repo.GetSignature(ctx, icla.SignatureID)
-			if err != nil {
-				log.WithFields(f).Warnf("unable to fetch signature for ID: %s ", icla.SignatureID)
-				return
-			}
-			// Grab user record
-			if signature.SignatureReferenceID == "" {
-				log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", signature)
-				return
-			}
-			verifyErr := repo.verifyUserApprovals(ctx, signature.SignatureReferenceID, signature.SignatureID, claManager, approvalList)
-			if verifyErr != nil {
-				log.WithFields(f).Warnf("unable to verify user: %s ", signature.SignatureReferenceID)
-				return
-			}
-		}(icla)
+	if eclas != nil {
+		var eclaWg sync.WaitGroup
+		log.WithFields(f).Debug("invalidating signature ecla records... ")
+		// Iterate eclas
+		eclaWg.Add(len(eclas.Signatures))
+		for _, ecla := range eclas.Signatures {
+			go func(ecla *models.Signature) {
+				defer eclaWg.Done()
+				// Grab user record
+				if ecla.SignatureReferenceID == "" {
+					log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", ecla)
+					return
+				}
+				verifyErr := repo.verifyUserApprovals(ctx, ecla.SignatureReferenceID, ecla.SignatureID, claManager, approvalList)
+				if verifyErr != nil {
+					log.WithFields(f).Warnf("unable to verify user: %s ", ecla.SignatureReferenceID)
+					return
+				}
+			}(ecla)
+		}
+		eclaWg.Wait()
 	}
-	iclaWg.Wait()
-
-	log.WithFields(f).Debug("invalidating signature ecla records... ")
-	// Iterate eclas
-	eclaWg.Add(len(eclas.Signatures))
-	for _, ecla := range eclas.Signatures {
-		go func(ecla *models.Signature) {
-			defer eclaWg.Done()
-			// Grab user record
-			if ecla.SignatureReferenceID == "" {
-				log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", ecla)
-				return
-			}
-			verifyErr := repo.verifyUserApprovals(ctx, ecla.SignatureReferenceID, ecla.SignatureID, claManager, approvalList)
-			if verifyErr != nil {
-				log.WithFields(f).Warnf("unable to verify user: %s ", ecla.SignatureReferenceID)
-				return
-			}
-		}(ecla)
-	}
-	eclaWg.Wait()
-
 	return nil
 }
 
