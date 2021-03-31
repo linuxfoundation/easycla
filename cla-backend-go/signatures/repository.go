@@ -2164,6 +2164,8 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			approvalList.ApprovalList = params.RemoveDomainApprovalList
 			approvalList.Action = utils.RemoveApprovals
 			approvalList.GerritICLAECLAs = gerritICLAECLAs
+			approvalList.ClaGroupID = projectID
+			approvalList.CompanyID = companyID
 			invalidateErr = repo.invalidateSignatures(ctx, &approvalList, claManager)
 			if invalidateErr != nil {
 				msg := fmt.Sprintf("unable to invalidate signatures based on Approval List : %+v ", approvalList)
@@ -2369,6 +2371,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 	}
 
 	// Get ICLAs
+	log.WithFields(f).Debug("getting icla records... ")
 	iclas, err := repo.GetClaGroupICLASignatures(ctx, approvalList.ClaGroupID, nil)
 	if err != nil {
 		log.WithFields(f).Warn("unable to get iclas")
@@ -2403,11 +2406,14 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 	}
 
 	// Get ECLAs
+	log.WithFields(f).Debug("getting ecla records... ")
 	companyProjectParams := signatures.GetProjectCompanyEmployeeSignaturesParams{
 		CompanyID: approvalList.CompanyID,
 		ProjectID: approvalList.ClaGroupID,
 	}
-	eclas, err := repo.GetProjectCompanyEmployeeSignatures(ctx, companyProjectParams, nil, int64(10))
+
+	criteria := ApprovalCriteria{}
+	eclas, err := repo.GetProjectCompanyEmployeeSignatures(ctx, companyProjectParams, &criteria, int64(10))
 	if err != nil {
 		log.WithFields(f).Warnf("unable to get cclas for company: %s and project: %s ", approvalList.CompanyID, approvalList.ClaGroupID)
 		return err
