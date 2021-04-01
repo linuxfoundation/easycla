@@ -98,6 +98,7 @@ github.com/communitybridge/easycla v1.0.135 h1:Dvn8jX+7BAnpmA+jvdK0n5ajWP8SoH5vv
 github.com/communitybridge/easycla v1.0.145 h1:ikhBSsOeEL2u3/EoyDsufh/j3HkjfFTiXAk1d61GoS8=
 github.com/communitybridge/easycla v2.0.10+incompatible h1:6eRJ5fxrMxRZHBkg8piYo+zHTcSowMrP85nZXzp5mpA=
 github.com/communitybridge/easycla v2.0.16+incompatible h1:I0hEApDh4IvlwRPyHV1LOsSYlSPbqBsGszjSTHwkdak=
+github.com/communitybridge/easycla v2.0.19+incompatible h1:HLaNt3jGDXPh3Au+rW/HKbJNkQf3daboVIrP9G6WYQ4=
 github.com/coreos/bbolt v1.3.2 h1:wZwiHHUieZCquLkDL0B8UhzreNWsPHooDAG3q34zk0s=
 github.com/coreos/bbolt v1.3.2/go.mod h1:iRUV2dpdMOn7Bo10OQBFzIJO9kkE559Wcmn+qkEiiKk=
 github.com/coreos/etcd v3.3.13+incompatible h1:8F3hqu9fGYLBifCmRCJsicFqDx/D68Rt3q1JMazcgBQ=

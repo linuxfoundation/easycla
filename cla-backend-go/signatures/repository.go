@@ -2113,6 +2113,27 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 					repo.eventsService.LogEventWithContext(ctx, eventArgs)
 
+					// invalidate icla
+					log.WithFields(f).Debugf("invalidating icla for user: %s...", email)
+					claUser, userErr := repo.usersRepo.GetUserByEmail(email)
+					if userErr != nil {
+						log.WithFields(f).Debugf("error getting user by email: %s ", email)
+					}
+
+					if claUser != nil {
+						icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, claUser.UserID)
+						if iclaErr != nil {
+							log.WithFields(f).Debugf("unable to get icla signature for user: %s ", email)
+						}
+						if icla != nil {
+							note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s removal ", utils.GetBestUsername(claManager), email)
+							err := repo.InvalidateProjectRecord(ctx, icla.SignatureID, note)
+							if err != nil {
+								log.WithFields(f).Warnf("unable to invalidate record for user:%s ", email)
+							}
+						}
+					}
+
 					//update gerrit permissions
 					gerritUser, err := repo.getGerritUserByEmail(ctx, email, gerritICLAECLAs)
 					if err != nil || gerritUser == nil {
