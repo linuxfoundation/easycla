@@ -77,17 +77,21 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		"projectSFID":    projectSFID,
 	}
 
-	gitHubOrgModels, err := s.repo.GetGithubOrganizations(ctx, projectSFID)
+	// track githubOrgs based on parent/child anchor
+	var gitHubOrgModels = models.GithubOrganizations{}
+	var githubOrgs = make([]*models.GithubOrganization, 0)
+
+	projectGithubModels, err := s.repo.GetGithubOrganizations(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).Warnf("problem fetching github organizations by projectSFID, error: %+v", err)
 		return nil, err
 	}
 
-	if len(gitHubOrgModels.List) >= 0 {
-		return gitHubOrgModels, err
+	if len(projectGithubModels.List) >= 0 {
+		githubOrgs = append(githubOrgs, projectGithubModels.List...)
 	}
 
-	log.WithFields(f).Debug("unable to find github organizations by projectSFID - searching by parent...")
+	log.WithFields(f).Debug("factoring github orgs for parent...")
 	// Lookup the parent
 	parentProjectSFID, projErr := v2ProjectService.GetClient().GetParentProject(projectSFID)
 	if projErr != nil {
@@ -97,12 +101,25 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 
 	if parentProjectSFID != projectSFID {
 		log.WithFields(f).Debugf("searching github organization by parent SFID: %s", parentProjectSFID)
-		return s.repo.GetGithubOrganizationsByParent(ctx, parentProjectSFID)
+		parentGithubModels, parentErr := s.repo.GetGithubOrganizationsByParent(ctx, parentProjectSFID)
+		if parentErr != nil {
+			log.WithFields(f).Warnf("problem fetching github organizations by paarent projectSFID: %s , error: %+v", parentProjectSFID, err)
+			return nil, parentErr
+		}
+
+		if len(parentGithubModels.List) >= 0 {
+			githubOrgs = append(githubOrgs, parentGithubModels.List...)
+		}
 	}
 
 	log.WithFields(f).Debugf("no parent or parent is %s or %s - search criteria exhausted",
 		utils.TheLinuxFoundation, utils.TheLinuxFoundation)
-	return gitHubOrgModels, err
+
+	gitHubOrgModels.List = githubOrgs
+	// Remove potential duplicates
+	s.removeDuplicateGHOrgs(gitHubOrgModels.List)
+
+	return &gitHubOrgModels, err
 }
 
 func (s service) GetGithubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error) {
@@ -165,4 +182,22 @@ func (s service) DeleteGithubOrganization(ctx context.Context, projectSFID strin
 	}
 
 	return s.repo.DeleteGithubOrganization(ctx, projectSFID, githubOrgName)
+}
+
+// filter ghOrgs duplicates
+func (s service) removeDuplicateGHOrgs(input []*models.GithubOrganization) []*models.GithubOrganization {
+	if input == nil {
+		return nil
+	}
+	keys := make(map[string]bool)
+
+	output := []*models.GithubOrganization{}
+	for _, ghOrg := range input {
+		if _, value := keys[ghOrg.OrganizationName]; !value {
+			keys[ghOrg.OrganizationName] = true
+			output = append(output, ghOrg)
+		}
+	}
+
+	return output
 }
