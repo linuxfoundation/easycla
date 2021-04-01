@@ -1990,14 +1990,14 @@ class RepositoryModel(BaseModel):
     repository_url = UnicodeAttribute()
     repository_organization_name = UnicodeAttribute()
     repository_external_id = UnicodeAttribute(null=True)
-    repository_project_index = ProjectRepositoryIndex()
-    project_sfid_repository_index = ProjectSFIDRepositoryIndex()
     repository_sfdc_id = UnicodeAttribute(null=True)
     project_sfid = UnicodeAttribute(null=True)
-    repository_external_index = ExternalRepositoryIndex()
-    repository_sfdc_index = SFDCRepositoryIndex()
     enabled = BooleanAttribute(default=False)
     note = UnicodeAttribute(null=True)
+    repository_external_index = ExternalRepositoryIndex()
+    repository_project_index = ProjectRepositoryIndex()
+    project_sfid_repository_index = ProjectSFIDRepositoryIndex()
+    repository_sfdc_index = SFDCRepositoryIndex()
 
 
 class Repository(model_interfaces.Repository):
@@ -2060,6 +2060,15 @@ class Repository(model_interfaces.Repository):
             repository = Repository()
             repository.model = repository_model
             repositories.append(repository.to_dict())
+        return repositories
+
+    def get_repository_models_by_repository_sfdc_id(self, project_sfid) -> List[Repository]:
+        repository_generator = self.model.repository_sfdc_index.query(project_sfid)
+        repositories = []
+        for repository_model in repository_generator:
+            repository = Repository()
+            repository.model = repository_model
+            repositories.append(repository)
         return repositories
 
     def delete(self):
