@@ -2810,7 +2810,6 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 	// Loop until we have all the records
 	for ok := true; ok; ok = lastEvaluatedKey != "" {
 		// Make the DynamoDB Query API call
-		log.WithFields(f).Debugf("Running list icla signatures query using queryInput: %+v", queryInput)
 		results, errQuery := repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
 			log.WithFields(f).Warnf("error retrieving icla signatures for project: %s , error: %v",
@@ -2842,18 +2841,6 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		}
 	}
 
-	// How many total records do we have - may not be up-to-date as this value is updated only periodically
-	describeTableInput := &dynamodb.DescribeTableInput{
-		TableName: &repo.signatureTableName,
-	}
-	describeTableResult, err := repo.dynamoDBClient.DescribeTable(describeTableInput)
-	if err != nil {
-		log.WithFields(f).Warnf("error retrieving total record count for project: %s, error: %v", claGroupID, err)
-		return nil, err
-	}
-	// Meta-data for the response
-	totalCount := *describeTableResult.Table.ItemCount
-
 	if int64(len(intermediateResponse)) > pageSize {
 		intermediateResponse = intermediateResponse[0:pageSize]
 		lastEvaluatedKey = intermediateResponse[pageSize-1].IclaSignature.SignatureID
@@ -2864,7 +2851,6 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		LastKeyScanned: lastEvaluatedKey,
 		PageSize:       pageSize,
 		ResultCount:    int64(len(intermediateResponse)),
-		TotalCount:     totalCount,
 	}
 
 	iclaSignatures, err := repo.addAdditionalICLAMetaData(f, intermediateResponse)

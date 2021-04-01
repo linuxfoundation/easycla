@@ -840,7 +840,19 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for ICLA signatures...")
-		results, err := v2service.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm, *params.PageSize, *params.NextKey)
+
+		var pageSize int64
+		var nextKey string
+
+		if params.PageSize != nil {
+			pageSize = *params.PageSize
+		}
+
+		if params.NextKey != nil {
+			nextKey = *params.NextKey
+		}
+
+		results, err := v2service.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm, pageSize, nextKey)
 		if err != nil {
 			msg := fmt.Sprintf("problem loading ICLA signatures by CLA Group ID search term: %s", aws.StringValue(params.SearchTerm))
 			log.WithFields(f).WithError(err).Warn(msg)
