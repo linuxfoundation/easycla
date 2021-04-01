@@ -189,7 +189,7 @@ func (s *service) loadCLAGroup(ctx context.Context, args *LogEventArgs) error {
 		args.CLAGroupName = args.ClaGroupModel.ProjectName
 	} else {
 		// Did they set the CLA Group ID?
-		claGroupID := ""
+		var claGroupID string
 		if args.CLAGroupID != "" {
 			claGroupID = args.CLAGroupID
 		} else if args.ProjectID != "" && utils.IsUUIDv4(args.ProjectID) { // legacy parameter
@@ -205,6 +205,7 @@ func (s *service) loadCLAGroup(ctx context.Context, args *LogEventArgs) error {
 			}
 			args.ClaGroupModel = claGroupModel
 			args.CLAGroupName = claGroupModel.ProjectName
+			args.CLAGroupID = claGroupID
 		} else if args.ProjectSFID != "" {
 			projectCLAGroupModel, projectCLAGroupErr := s.combinedRepo.GetClaGroupIDForProject(args.ProjectSFID)
 			if projectCLAGroupErr != nil || projectCLAGroupModel == nil {
@@ -269,6 +270,10 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 				project.Parent, parentProjectID, parentProjectName)
 			args.ParentProjectSFID = parentProjectID
 			args.ParentProjectName = parentProjectName
+		} else if project.Foundation != nil {
+			// if there's no parent set the foundation as parent project
+			args.ParentProjectSFID = project.Foundation.ID
+			args.ParentProjectName = project.Foundation.Name
 		}
 	}
 
