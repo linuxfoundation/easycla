@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/sirupsen/logrus"
@@ -50,7 +51,9 @@ const (
 	SignatureReferenceIndex                        = "reference-signature-index"
 	SignatureReferenceSearchIndex                  = "reference-signature-search-index"
 
-	HugePageSize = 10000
+	HugePageSize    = 10000
+	DefaultPageSize = 10
+	BigPageSize     = 100
 )
 
 // SignatureRepository interface defines the functions for the github whitelist service
@@ -84,8 +87,13 @@ type SignatureRepository interface {
 	AddUsersDetails(ctx context.Context, signatureID string, userID string) error
 	AddSignedOn(ctx context.Context, signatureID string) error
 
-	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string) (*models.IclaSignatures, error)
+	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error)
+}
+
+type iclaSignatureWithDetails struct {
+	IclaSignature        *models.IclaSignature
+	SignatureReferenceID string
 }
 
 // repository data model
@@ -2393,7 +2401,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 
 	// Get ICLAs
 	log.WithFields(f).Debug("getting icla records... ")
-	iclas, err := repo.GetClaGroupICLASignatures(ctx, approvalList.ClaGroupID, nil)
+	iclas, err := repo.GetClaGroupICLASignatures(ctx, approvalList.ClaGroupID, nil, 0, "")
 	if err != nil {
 		log.WithFields(f).Warn("unable to get iclas")
 	}
@@ -2730,7 +2738,7 @@ func (repo repository) AddSignedOn(ctx context.Context, signatureID string) erro
 	return nil
 }
 
-func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string) (*models.IclaSignatures, error) {
+func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
 	f := logrus.Fields{
 		"functionName":   "GetClaGroupICLASignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -2738,12 +2746,7 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		"searchTerm":     utils.StringValue(searchTerm),
 	}
 
-	//sortKeyPrefix := fmt.Sprintf("%s#%v#%v", utils.ClaTypeICLA, true, true)
-	// This is the key we want to match
-	//condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID)).
-	//	And(expression.Key("sigtype_signed_approved_id").BeginsWith(sortKeyPrefix))
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
-
 	filter := expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
 		And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
 		And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
@@ -2770,93 +2773,168 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		FilterExpression:          expr.Filter(),
 		ProjectionExpression:      expr.Projection(),
 		TableName:                 aws.String(repo.signatureTableName),
-		//IndexName:                 aws.String(SignatureProjectIDSigTypeSignedApprovedIDIndex),
-		IndexName: aws.String(SignatureProjectIDIndex),
-		Limit:     aws.Int64(HugePageSize),
+		IndexName:                 aws.String(SignatureProjectIDIndex),
 	}
+
+	if pageSize == 0 {
+		pageSize = DefaultPageSize
+	}
+
+	if pageSize > BigPageSize {
+		pageSize = BigPageSize
+	}
+
+	queryInput.Limit = &pageSize
+
 	if searchTerm != nil {
 		searchTerm = aws.String(strings.ToLower(*searchTerm))
 	}
 
-	type IclaSignatureWithDetails struct {
-		IclaSignature        *models.IclaSignature
-		SignatureReferenceID string
+	// If we have the next key, set the exclusive start key value
+	if nextKey != "" {
+		log.WithFields(f).Debugf("Received a nextKey, value: %s", nextKey)
+		// The primary key of the first item that this operation will evaluate.
+		// and the query key (if not the same)
+		queryInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: aws.String(nextKey),
+			},
+			"signature_project_id": {
+				S: aws.String(claGroupID),
+			},
+		}
 	}
-	var intermediateResponse []*IclaSignatureWithDetails
 
-	for {
+	var intermediateResponse []*iclaSignatureWithDetails
+	var lastEvaluatedKey string
+	// Loop until we have all the records
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
 		// Make the DynamoDB Query API call
-		results, queryErr := repo.dynamoDBClient.Query(queryInput)
-		if queryErr != nil {
-			log.WithFields(f).Warnf("error retrieving icla signatures for project: %s, error: %v", claGroupID, queryErr)
-			return nil, queryErr
+		log.WithFields(f).Debugf("Running list icla signatures query using queryInput: %+v", queryInput)
+		results, errQuery := repo.dynamoDBClient.Query(queryInput)
+		if errQuery != nil {
+			log.WithFields(f).Warnf("error retrieving icla signatures for project: %s , error: %v",
+				claGroupID, errQuery)
+			return nil, errQuery
 		}
 
 		var dbSignatures []ItemSignature
 
-		err := dynamodbattribute.UnmarshalListOfMaps(results.Items, &dbSignatures)
-		if err != nil {
+		unmarshallError := dynamodbattribute.UnmarshalListOfMaps(results.Items, &dbSignatures)
+		if unmarshallError != nil {
 			log.WithFields(f).Warnf("error unmarshalling icla signatures from database for cla group: %s, error: %v",
-				claGroupID, err)
-			return nil, err
+				claGroupID, unmarshallError)
+			return nil, unmarshallError
 		}
 
-		for _, sig := range dbSignatures {
-			if searchTerm != nil {
-				if !strings.Contains(sig.SignatureReferenceNameLower, *searchTerm) {
-					continue
-				}
-			}
+		intermediateResponse = append(intermediateResponse, repo.getIntermediateICLAResponse(f, dbSignatures, searchTerm)...)
 
-			// Set the signed date/time
-			var sigSignedTime string
-			// Use the user docusign date signed value if it is present - older signatures do not have this
-			if sig.UserDocusignDateSigned != "" {
-				// Put the date into a standard format
-				t, err := utils.ParseDateTime(sig.UserDocusignDateSigned)
-				if err != nil {
-					log.WithFields(f).WithError(err).Warn("unable to parse signature docusign date signed time")
-				} else {
-					sigSignedTime = utils.TimeToString(t)
-				}
-			} else {
-				// Put the date into a standard format
-				t, err := utils.ParseDateTime(sig.DateCreated)
-				if err != nil {
-					log.WithFields(f).WithError(err).Warn("unable to parse signature date created time")
-				} else {
-					sigSignedTime = utils.TimeToString(t)
-				}
-			}
-
-			intermediateResponse = append(intermediateResponse, &IclaSignatureWithDetails{
-				IclaSignature: &models.IclaSignature{
-					GithubUsername:         sig.UserGithubUsername,
-					LfUsername:             sig.UserLFUsername,
-					SignatureID:            sig.SignatureID,
-					UserEmail:              sig.UserEmail,
-					UserName:               sig.UserName,
-					SignedOn:               sigSignedTime,
-					UserDocusignName:       sig.UserDocusignName,
-					UserDocusignDateSigned: sigSignedTime,
-					SignatureModified:      sig.DateModified,
-				},
-				SignatureReferenceID: sig.SignatureReferenceID,
-			})
+		log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey["signature_id"])
+		if results.LastEvaluatedKey["signature_id"] != nil {
+			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			lastEvaluatedKey = ""
 		}
 
-		if len(results.LastEvaluatedKey) == 0 {
+		if int64(len(intermediateResponse)) >= pageSize {
 			break
 		}
-		queryInput.ExclusiveStartKey = results.LastEvaluatedKey
-		log.WithFields(f).Debug("querying next page")
 	}
 
+	// How many total records do we have - may not be up-to-date as this value is updated only periodically
+	describeTableInput := &dynamodb.DescribeTableInput{
+		TableName: &repo.signatureTableName,
+	}
+	describeTableResult, err := repo.dynamoDBClient.DescribeTable(describeTableInput)
+	if err != nil {
+		log.WithFields(f).Warnf("error retrieving total record count for project: %s, error: %v", claGroupID, err)
+		return nil, err
+	}
+	// Meta-data for the response
+	totalCount := *describeTableResult.Table.ItemCount
+
+	if int64(len(intermediateResponse)) > pageSize {
+		intermediateResponse = intermediateResponse[0:pageSize]
+		lastEvaluatedKey = intermediateResponse[pageSize-1].IclaSignature.SignatureID
+	}
+
+	// Append all the responses to our list
+	out := &models.IclaSignatures{
+		LastKeyScanned: lastEvaluatedKey,
+		PageSize:       pageSize,
+		ResultCount:    int64(len(intermediateResponse)),
+		TotalCount:     totalCount,
+	}
+
+	iclaSignatures, err := repo.addAdditionalICLAMetaData(f, intermediateResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	out.List = iclaSignatures
+	return out, nil
+}
+
+func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures []ItemSignature, searchTerm *string) []*iclaSignatureWithDetails {
+	var intermediateResponse []*iclaSignatureWithDetails
+
+	for _, sig := range dbSignatures {
+		if searchTerm != nil {
+			if !strings.Contains(sig.SignatureReferenceNameLower, *searchTerm) {
+				continue
+			}
+		}
+
+		// Set the signed date/time
+		var sigSignedTime string
+		// Use the user docusign date signed value if it is present - older signatures do not have this
+		if sig.UserDocusignDateSigned != "" {
+			// Put the date into a standard format
+			t, err := utils.ParseDateTime(sig.UserDocusignDateSigned)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("unable to parse signature docusign date signed time")
+			} else {
+				sigSignedTime = utils.TimeToString(t)
+			}
+		} else {
+			// Put the date into a standard format
+			t, err := utils.ParseDateTime(sig.DateCreated)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("unable to parse signature date created time")
+			} else {
+				sigSignedTime = utils.TimeToString(t)
+			}
+		}
+
+		intermediateResponse = append(intermediateResponse, &iclaSignatureWithDetails{
+			IclaSignature: &models.IclaSignature{
+				GithubUsername:         sig.UserGithubUsername,
+				LfUsername:             sig.UserLFUsername,
+				SignatureID:            sig.SignatureID,
+				UserEmail:              sig.UserEmail,
+				UserName:               sig.UserName,
+				SignedOn:               sigSignedTime,
+				UserDocusignName:       sig.UserDocusignName,
+				UserDocusignDateSigned: sigSignedTime,
+				SignatureModified:      sig.DateModified,
+			},
+			SignatureReferenceID: sig.SignatureReferenceID,
+		})
+	}
+
+	return intermediateResponse
+}
+
+func (repo repository) addAdditionalICLAMetaData(f logrus.Fields, intermediateResponse []*iclaSignatureWithDetails) ([]*models.IclaSignature, error) {
 	log.WithFields(f).Debugf("Adding additional meta-data for %d records...", len(intermediateResponse))
 	// For some older ICLA signatures, we are missing the user's info, but we have their internal ID - let's look up those values before returning
 	responseChannel := make(chan *models.IclaSignature)
-	for _, iclaSignatureWithDetails := range intermediateResponse {
-		go func(iclaSignatureWithDetails *IclaSignatureWithDetails) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	for _, iclaDetails := range intermediateResponse {
+		go func(iclaSignatureWithDetails *iclaSignatureWithDetails) {
 			userModel, userLookupErr := repo.usersRepo.GetUser(iclaSignatureWithDetails.SignatureReferenceID)
 			if userLookupErr != nil || userModel == nil {
 				log.WithFields(f).WithError(userLookupErr).Warnf("unable to lookup user with id: %s", iclaSignatureWithDetails.SignatureReferenceID)
@@ -2883,16 +2961,21 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 			}
 
 			responseChannel <- iclaSignatureWithDetails.IclaSignature
-		}(iclaSignatureWithDetails)
+		}(iclaDetails)
 	}
 
-	// Append all the responses to our list
-	out := &models.IclaSignatures{List: make([]*models.IclaSignature, 0)}
+	var finalResults []*models.IclaSignature
 	for i := 0; i < len(intermediateResponse); i++ {
-		out.List = append(out.List, <-responseChannel)
+		select {
+		case result := <-responseChannel:
+			finalResults = append(finalResults, result)
+		case <-ctx.Done():
+			log.WithError(ctx.Err()).Warnf("timeout during adding additional meta to icla signatures")
+			return nil, ctx.Err()
+		}
 	}
 
-	return out, nil
+	return finalResults, nil
 }
 
 func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error) {

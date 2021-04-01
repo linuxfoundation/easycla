@@ -53,7 +53,7 @@ type SignatureService interface {
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
 	RemoveCLAManager(ctx context.Context, ignatureID, claManagerID string) (*models.Signature, error)
 
-	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string) (*models.IclaSignatures, error)
+	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error)
 	GetClaGroupCCLASignatures(ctx context.Context, claGroupID string) (*models.Signatures, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error)
 }
@@ -814,8 +814,8 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 	}
 }
 
-func (s service) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string) (*models.IclaSignatures, error) {
-	return s.repo.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm)
+func (s service) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
+	return s.repo.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm, pageSize, nextKey)
 }
 
 func (s service) GetClaGroupCCLASignatures(ctx context.Context, claGroupID string) (*models.Signatures, error) {

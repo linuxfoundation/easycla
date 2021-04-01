@@ -3,6 +3,18 @@
 
 type: object
 properties:
+  lastKeyScanned:
+    type: string
+  pageSize:
+    type: integer
+  resultCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+  totalCount:
+    type: integer
+    format: int64
+    x-omitempty: false
   list:
     type: array
     items:

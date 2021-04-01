@@ -1617,6 +1617,8 @@ paths:
         - $ref: "#/parameters/path-claGroupID"
         - $ref: '#/parameters/searchTerm'
         - $ref: '#/parameters/sortOrder'
+        - $ref: '#/parameters/pageSize'
+        - $ref: '#/parameters/nextKey'
       responses:
         '200':
           description: 'Success'
