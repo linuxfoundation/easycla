@@ -2518,7 +2518,9 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 
 	if approvalList.Criteria == utils.EmailDomainCriteria {
 		// Handle Domains
-		if utils.StringInSlice(getBestEmail(user), approvalList.DomainApprovals) {
+		email := getBestEmail(user)
+		domain := strings.Split(email, "@")[1]
+		if utils.StringInSlice(domain, approvalList.DomainApprovals) {
 			if !utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) && !utils.StringInSlice(getBestEmail(user), approvalList.EmailApprovals) {
 				//Invalidate record
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.EmailDomainCriteria)
