@@ -48,15 +48,17 @@ type Service interface {
 type service struct {
 	repo                    v1GithubOrg.Repository
 	ghRepository            v1Repositories.Repository
+	ghService               v1GithubOrg.Service
 	projectsCLAGroupService projects_cla_groups.Repository
 }
 
 // NewService creates a new githubOrganizations service
-func NewService(repo v1GithubOrg.Repository, ghRepository v1Repositories.Repository, projectsCLAGroupService projects_cla_groups.Repository) Service {
+func NewService(repo v1GithubOrg.Repository, ghRepository v1Repositories.Repository, projectsCLAGroupService projects_cla_groups.Repository, ghService v1GithubOrg.Service) Service {
 	return service{
 		repo:                    repo,
 		ghRepository:            ghRepository,
 		projectsCLAGroupService: projectsCLAGroupService,
+		ghService:               ghService,
 	}
 }
 
@@ -78,6 +80,14 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		"projectSFID":    projectSFID,
 	}
 
+	orgs, err := s.ghService.GetGithubOrganizations(ctx, projectSFID)
+	// log.WithFields(f).Debug("loading github organization details by projectSFID...")
+	//orgs, err := s.repo.GetGithubOrganizations(ctx, projectSFID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem loading github organizations from the project service")
+		return nil, err
+	}
+
 	psc := v2ProjectService.GetClient()
 	log.WithFields(f).Debug("loading project details from the project service...")
 	projectServiceRecord, err := psc.GetProject(projectSFID)
@@ -89,24 +99,13 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	log.Debugf("project record: %+v ", projectServiceRecord)
 
 	var parentProjectSFID string
-	if (projectServiceRecord.Foundation != nil &&
-		(projectServiceRecord.Foundation.Name == utils.TheLinuxFoundation || projectServiceRecord.Foundation.Name == utils.LFProjectsLLC)) ||
-		projectServiceRecord.Parent == "" {
+	if utils.IsProjectHasRootParent(projectServiceRecord) {
 		parentProjectSFID = projectSFID
 	} else {
 		parentProjectSFID = projectServiceRecord.Parent
 	}
 	f["parentProjectSFID"] = parentProjectSFID
 	log.WithFields(f).Debug("located parentProjectID...")
-
-	log.WithFields(f).Debug("loading github organization details by parentProjectSFID...")
-	orgs, err := s.repo.GetGithubOrganizationsByParent(ctx, parentProjectSFID)
-	// log.WithFields(f).Debug("loading github organization details by projectSFID...")
-	//orgs, err := s.repo.GetGithubOrganizations(ctx, projectSFID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem loading github organizations from the project service")
-		return nil, err
-	}
 
 	out := &models.ProjectGithubOrganizations{
 		List: make([]*models.ProjectGithubOrganization, 0),
