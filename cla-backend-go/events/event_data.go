@@ -681,15 +681,15 @@ func (ed *CLAGroupUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (s
 	var nameUpdated bool
 
 	data := fmt.Sprintf("CLA Group ID: %s was updated by: %s", args.ProjectID, args.UserName)
-	if ed.NewClaGroupName != ""{
+	if ed.NewClaGroupName != "" {
 		data = fmt.Sprintf("%s with Name from : %s to : %s", data, ed.OldClaGroupName, ed.NewClaGroupName)
 		nameUpdated = true
 	}
 
-	if ed.NewClaGroupDescription != ""{
-		if nameUpdated{
+	if ed.NewClaGroupDescription != "" {
+		if nameUpdated {
 			data = data + ","
-		}else{
+		} else {
 			data = data + " with"
 		}
 		data = fmt.Sprintf("%s Description from : %s to : %s", data, ed.OldClaGroupDescription, ed.NewClaGroupDescription)
@@ -1477,22 +1477,22 @@ func (ed *CLAGroupUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (s
 	var nameUpdated, descriptionUpdated bool
 
 	message := "The CLA Group"
-	if ed.NewClaGroupName != ""{
+	if ed.NewClaGroupName != "" {
 		message = message + " name was updated to : " + ed.NewClaGroupName
 		nameUpdated = true
 	}
 
-	if ed.NewClaGroupDescription != ""{
+	if ed.NewClaGroupDescription != "" {
 		descriptionUpdated = true
-		if nameUpdated{
+		if nameUpdated {
 			message = message + " and the description was updated to : " + ed.NewClaGroupDescription
-		}else{
+		} else {
 			message = message + " description was updated to : " + ed.NewClaGroupDescription
 		}
 	}
 
 	//shouldn't happen
-	if !nameUpdated && !descriptionUpdated{
+	if !nameUpdated && !descriptionUpdated {
 		message = message + " was updated"
 	}
 

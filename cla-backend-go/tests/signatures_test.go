@@ -23,7 +23,5 @@ func TestInvalidateSignatureTemplate(t *testing.T) {
 	result, err := utils.RenderTemplate(utils.V1, signatures.InvalidateSignatureTemplateName, signatures.InvalidateSignatureTemplate, params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello TestUser")
-	assert.Contains(t, result, "regarding approval list removal for email removal")
-	assert.Contains(t, result, "your signature record has been invalidated")
-
+	assert.Contains(t, result, "Due to this change your individual contribution authorization has been removed and you will be blocked from making subsequent code contributions on behalf of this project.")
 }

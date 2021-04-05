@@ -64,7 +64,7 @@ type Repository interface {
 	GetRepositoriesByCLAGroup(ctx context.Context, claGroup string, enabled bool) ([]*models.GithubRepository, error)
 	GetRepositoriesByOrganizationName(ctx context.Context, gitHubOrgName string) ([]*models.GithubRepository, error)
 	GetCLAGroupRepositoriesGroupByOrgs(ctx context.Context, projectID string, enabled bool) ([]*models.GithubRepositoriesGroupByOrgs, error)
-	ListProjectRepositories(ctx context.Context, externalProjectID string, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error)
+	ListProjectRepositories(ctx context.Context, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error)
 }
 
 // NewRepository create new Repository
@@ -545,31 +545,22 @@ func (r repo) GetCLAGroupRepositoriesGroupByOrgs(ctx context.Context, projectID 
 }
 
 // List github repositories of project by external/salesforce project id
-func (r repo) ListProjectRepositories(ctx context.Context, externalProjectID string, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error) {
+func (r repo) ListProjectRepositories(ctx context.Context, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error) {
 	f := logrus.Fields{
-		"functionName":      "repositories.repository.ListProjectRepositories",
-		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
-		"externalProjectID": externalProjectID,
-		"projectSFID":       projectSFID,
-		"enabled":           utils.BoolValue(enabled),
+		"functionName":   "repositories.repository.ListProjectRepositories",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+		"enabled":        utils.BoolValue(enabled),
 	}
 
-	var indexName string
 	out := &models.ListGithubRepositories{
 		List: make([]*models.GithubRepository, 0),
 	}
-	var condition expression.KeyConditionBuilder
-	var filter expression.ConditionBuilder
 
-	if externalProjectID != "" {
-		condition = expression.Key("repository_sfdc_id").Equal(expression.Value(externalProjectID))
-		indexName = SFDCRepositoryIndex
-	} else {
-		condition = expression.Key("project_sfid").Equal(expression.Value(projectSFID))
-		indexName = ProjectSFIDRepositoryOrganizationNameIndex
-	}
+	condition := expression.Key("project_sfid").Equal(expression.Value(projectSFID))
 
 	// Add the enabled filter, if set
+	var filter expression.ConditionBuilder
 	if enabled != nil {
 		filter = expression.Name(repositoryEnabledColumn).Equal(expression.Value(enabled))
 	}
@@ -585,7 +576,7 @@ func (r repo) ListProjectRepositories(ctx context.Context, externalProjectID str
 		ProjectionExpression:      expr.Projection(),
 		FilterExpression:          expr.Filter(),
 		TableName:                 aws.String(r.repositoryTableName),
-		IndexName:                 aws.String(indexName),
+		IndexName:                 aws.String(ProjectSFIDRepositoryOrganizationNameIndex),
 	}
 
 	results, err := r.dynamoDBClient.Query(queryInput)

@@ -251,7 +251,7 @@ func (s *service) ListProjectRepositories(ctx context.Context, projectSFID strin
 	}
 	log.WithFields(f).Debug("loaded project from the project service")
 	enabled := true
-	return s.repo.ListProjectRepositories(ctx, "", projectSFID, &enabled)
+	return s.repo.ListProjectRepositories(ctx, projectSFID, &enabled)
 
 	//// Lookup orgs via projectSFID
 	//log.WithFields(f).Debug("querying EasyCLA for organizations by project id...")

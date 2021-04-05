@@ -80,6 +80,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		"projectSFID":    projectSFID,
 	}
 
+	// Load the GitHub Organization and Repository details - result will be missing CLA Group info and ProjectSFID details
 	orgs, err := s.ghService.GetGithubOrganizations(ctx, projectSFID)
 	// log.WithFields(f).Debug("loading github organization details by projectSFID...")
 	//orgs, err := s.repo.GetGithubOrganizations(ctx, projectSFID)
@@ -96,7 +97,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		return nil, err
 	}
 
-	log.Debugf("project record: %+v ", projectServiceRecord)
+	// log.Debugf("project record: %+v ", projectServiceRecord)
 
 	var parentProjectSFID string
 	if utils.IsProjectHasRootParent(projectServiceRecord) {
@@ -169,9 +170,9 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		}
 	}
 
-	log.WithFields(f).Debug("listing github repositories...")
+	log.WithFields(f).Debugf("loading github repositories by projectSFID: %s...", projectSFID)
 	enabled := true
-	repos, err := s.ghRepository.ListProjectRepositories(ctx, parentProjectSFID, projectSFID, &enabled)
+	repos, err := s.ghRepository.ListProjectRepositories(ctx, projectSFID, &enabled)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem loading github repositories")
 		return nil, err

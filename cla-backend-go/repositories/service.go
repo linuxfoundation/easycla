@@ -152,7 +152,7 @@ func (s *service) DisableRepository(ctx context.Context, repositoryID string) er
 }
 
 func (s *service) ListProjectRepositories(ctx context.Context, externalProjectID string, enabled *bool) (*models.ListGithubRepositories, error) {
-	return s.repo.ListProjectRepositories(ctx, externalProjectID, "", enabled)
+	return s.repo.ListProjectRepositories(ctx, externalProjectID, enabled)
 }
 
 func (s *service) GetRepository(ctx context.Context, repositoryID string) (*models.GithubRepository, error) {
@@ -160,7 +160,7 @@ func (s *service) GetRepository(ctx context.Context, repositoryID string) (*mode
 }
 
 func (s *service) GetRepositoryByProjectSFID(ctx context.Context, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error) {
-	return s.repo.ListProjectRepositories(ctx, "", projectSFID, enabled)
+	return s.repo.ListProjectRepositories(ctx, projectSFID, enabled)
 }
 
 // GetRepositoryByName returns the repository by name: project-level/cla-project
