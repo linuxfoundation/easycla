@@ -24,6 +24,7 @@ type ApprovalList struct {
 	Action                  string
 	ClaGroupID              string
 	CompanyID               string
+	Version                 string
 	DomainApprovals         []string
 	GHOrgApprovals          []string
 	GitHubUsernameApprovals []string
