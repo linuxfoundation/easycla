@@ -135,6 +135,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("unable to update the CLA Group Name or Description - values are the same for CLA Group ID: %s", params.ClaGroupID)))
 		}
 
+		var oldCLAGroupName, oldCLAGroupDescription string
+		oldCLAGroupName = claGroupModel.ProjectName
+		oldCLAGroupDescription = claGroupModel.ProjectDescription
+
 		claGroup, err := service.UpdateCLAGroup(ctx, authUser, claGroupModel, params.Body, utils.StringValue(params.XUSERNAME))
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("unable to update the CLA Group Name and/or Description - update failed")
@@ -148,8 +152,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			ProjectID:  claGroup.ClaGroupID,
 			LfUsername: authUser.UserName,
 			EventData: &events.CLAGroupUpdatedEventData{
-				ClaGroupName:        params.Body.ClaGroupName,
-				ClaGroupDescription: params.Body.ClaGroupDescription,
+				NewClaGroupName:        params.Body.ClaGroupName,
+				NewClaGroupDescription: params.Body.ClaGroupDescription,
+
+				OldClaGroupName:        oldCLAGroupName,
+				OldClaGroupDescription: oldCLAGroupDescription,
 			},
 		})
 
@@ -358,8 +365,8 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			ClaGroupModel: cg,
 			LfUsername:    authUser.UserName,
 			EventData: &events.CLAGroupUpdatedEventData{
-				ClaGroupName:        cg.ProjectName,
-				ClaGroupDescription: cg.ProjectDescription,
+				OldClaGroupName:        cg.ProjectName,
+				OldClaGroupDescription: cg.ProjectDescription,
 			},
 		})
 

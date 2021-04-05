@@ -239,14 +239,24 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 			return project.NewUpdateProjectBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
+		eventData := &events.CLAGroupUpdatedEventData{
+			OldClaGroupName:        claGroupModel.ProjectName,
+			OldClaGroupDescription: claGroupModel.ProjectDescription,
+		}
+
+		if in.ProjectName != "" {
+			eventData.NewClaGroupName = in.ProjectName
+		}
+
+		if in.ProjectDescription != "" {
+			eventData.NewClaGroupDescription = in.ProjectDescription
+		}
+
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:     events.CLAGroupUpdated,
 			ClaGroupModel: claGroupModel,
 			LfUsername:    user.UserName,
-			EventData: &events.CLAGroupUpdatedEventData{
-				ClaGroupName:        claGroupModel.ProjectName,
-				ClaGroupDescription: claGroupModel.ProjectDescription,
-			},
+			EventData:     eventData,
 		})
 
 		result, err := v2ProjectModel(claGroupModel)

@@ -330,8 +330,10 @@ type CLAGroupCreatedEventData struct{}
 
 // CLAGroupUpdatedEventData . . .
 type CLAGroupUpdatedEventData struct {
-	ClaGroupName        string
-	ClaGroupDescription string
+	NewClaGroupName        string
+	NewClaGroupDescription string
+	OldClaGroupName        string
+	OldClaGroupDescription string
 }
 
 // CLAGroupDeletedEventData . . .
@@ -676,8 +678,23 @@ func (ed *CLAGroupCreatedEventData) GetEventDetailsString(args *LogEventArgs) (s
 
 // GetEventDetailsString . . .
 func (ed *CLAGroupUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Group ID: %s was updated by: %s with Name: %s, Description: %s.",
-		args.ProjectID, args.UserName, ed.ClaGroupName, ed.ClaGroupDescription)
+	var nameUpdated bool
+
+	data := fmt.Sprintf("CLA Group ID: %s was updated by: %s", args.ProjectID, args.UserName)
+	if ed.NewClaGroupName != ""{
+		data = fmt.Sprintf("%s with Name from : %s to : %s", data, ed.OldClaGroupName, ed.NewClaGroupName)
+		nameUpdated = true
+	}
+
+	if ed.NewClaGroupDescription != ""{
+		if nameUpdated{
+			data = data + ","
+		}else{
+			data = data + " with"
+		}
+		data = fmt.Sprintf("%s Description from : %s to : %s", data, ed.OldClaGroupDescription, ed.NewClaGroupDescription)
+	}
+	data = data + "."
 	return data, true
 }
 
@@ -1457,7 +1474,29 @@ func (ed *CLAGroupCreatedEventData) GetEventSummaryString(args *LogEventArgs) (s
 
 // GetEventSummaryString . . .
 func (ed *CLAGroupUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The CLA Group %s was updated by the user %s.", args.ProjectName, args.UserName)
+	var nameUpdated, descriptionUpdated bool
+
+	message := "The CLA Group"
+	if ed.NewClaGroupName != ""{
+		message = message + " name was updated to : " + ed.NewClaGroupName
+		nameUpdated = true
+	}
+
+	if ed.NewClaGroupDescription != ""{
+		descriptionUpdated = true
+		if nameUpdated{
+			message = message + " and the description was updated to : " + ed.NewClaGroupDescription
+		}else{
+			message = message + " description was updated to : " + ed.NewClaGroupDescription
+		}
+	}
+
+	//shouldn't happen
+	if !nameUpdated && !descriptionUpdated{
+		message = message + " was updated"
+	}
+
+	data := fmt.Sprintf("%s by the user %s.", message, args.UserName)
 	return data, true
 }
 

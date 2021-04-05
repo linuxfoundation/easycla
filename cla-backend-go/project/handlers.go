@@ -282,7 +282,7 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		reqID := utils.GetRequestID(projectParams.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
-		exitingModel, getErr := service.GetCLAGroupByID(ctx, projectParams.Body.ProjectID)
+		existingModel, getErr := service.GetCLAGroupByID(ctx, projectParams.Body.ProjectID)
 		if getErr != nil {
 			msg := fmt.Sprintf("Error querying the project by ID, error: %+v", getErr)
 			log.Warnf("Update Project Failed - %s", msg)
@@ -293,7 +293,7 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		}
 
 		// If the project with the same name exists...
-		if exitingModel == nil {
+		if existingModel == nil {
 			msg := fmt.Sprintf("unable to locate project with ID: %s", projectParams.Body.ProjectID)
 			log.Warn(msg)
 			return project.NewUpdateProjectNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -301,6 +301,10 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 				Message: msg,
 			})
 		}
+
+		var oldCLAGroupName, oldCLAGroupDescription string
+		oldCLAGroupName = existingModel.ProjectName
+		oldCLAGroupDescription = existingModel.ProjectDescription
 
 		claGroupModel, err := service.UpdateCLAGroup(ctx, &projectParams.Body)
 		if err != nil {
@@ -318,8 +322,11 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 			UserID:        claUser.UserID,
 			LfUsername:    claUser.LFUsername,
 			EventData: &events.CLAGroupUpdatedEventData{
-				ClaGroupName:        projectParams.Body.ProjectName,
-				ClaGroupDescription: projectParams.Body.ProjectDescription,
+				NewClaGroupName:        projectParams.Body.ProjectName,
+				NewClaGroupDescription: projectParams.Body.ProjectDescription,
+
+				OldClaGroupName:        oldCLAGroupName,
+				OldClaGroupDescription: oldCLAGroupDescription,
 			},
 		})
 
