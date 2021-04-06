@@ -100,7 +100,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		return nil, projErr
 	}
 
-	if parentProjectSFID != projectSFID {
+	if parentProjectSFID != projectSFID && parentProjectSFID != "" {
 		log.WithFields(f).Debugf("found parent of projectSFID: %s to be %s. Searching github organization by parent SFID: %s...", projectSFID, parentProjectSFID, parentProjectSFID)
 		parentGithubModels, parentErr := s.repo.GetGithubOrganizationsByParent(ctx, parentProjectSFID)
 		if parentErr != nil {
