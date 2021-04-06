@@ -90,9 +90,10 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	if len(projectGithubModels.List) >= 0 {
 		githubOrgs = append(githubOrgs, projectGithubModels.List...)
 	}
+	log.WithFields(f).Debugf("loaded %d GitHub organizations using projectSFID: %s", len(projectGithubModels.List), projectSFID)
 
-	log.WithFields(f).Debug("factoring github orgs for parent...")
 	// Lookup the parent
+	log.WithFields(f).Debugf("looking up parent for projectSFID: %s...", projectSFID)
 	parentProjectSFID, projErr := v2ProjectService.GetClient().GetParentProject(projectSFID)
 	if projErr != nil {
 		log.WithFields(f).Warnf("problem fetching project parent SFID, error: %+v", projErr)
@@ -100,7 +101,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	}
 
 	if parentProjectSFID != projectSFID {
-		log.WithFields(f).Debugf("searching github organization by parent SFID: %s", parentProjectSFID)
+		log.WithFields(f).Debugf("found parent of projectSFID: %s to be %s. Searching github organization by parent SFID: %s...", projectSFID, parentProjectSFID, parentProjectSFID)
 		parentGithubModels, parentErr := s.repo.GetGithubOrganizationsByParent(ctx, parentProjectSFID)
 		if parentErr != nil {
 			log.WithFields(f).Warnf("problem fetching github organizations by paarent projectSFID: %s , error: %+v", parentProjectSFID, err)
@@ -110,12 +111,11 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		if len(parentGithubModels.List) >= 0 {
 			githubOrgs = append(githubOrgs, parentGithubModels.List...)
 		}
+		log.WithFields(f).Debugf("loaded %d GitHub organizations using projectSFID: %s", len(parentGithubModels.List), parentProjectSFID)
 	}
 
-	log.WithFields(f).Debugf("no parent or parent is %s or %s - search criteria exhausted",
-		utils.TheLinuxFoundation, utils.TheLinuxFoundation)
-
 	gitHubOrgModels.List = githubOrgs
+
 	// Remove potential duplicates
 	s.removeDuplicateGHOrgs(gitHubOrgModels.List)
 

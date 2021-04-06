@@ -170,16 +170,31 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		}
 	}
 
+	// We need to search the repository list based on two criteria
+	// Need to search by projectSFID and/or Organization ID????
 	log.WithFields(f).Debugf("loading github repositories by projectSFID: %s...", projectSFID)
-	enabled := true
-	repos, err := s.ghRepository.ListProjectRepositories(ctx, projectSFID, &enabled)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem loading github repositories")
-		return nil, err
+	//enabled := true
+	//repos, err := s.ghRepository.ListProjectRepositories(ctx, projectSFID, &enabled)
+	//if err != nil {
+	//	log.WithFields(f).WithError(err).Warn("problem loading github repositories")
+	//	return nil, err
+	//}
+	var repoList []*v1Models.GithubRepository
+	for _, org := range orgs.List {
+		orgRepos, orgReposErr := s.ghRepository.GetRepositoriesByOrganizationName(ctx, org.OrganizationName)
+		if orgReposErr != nil {
+			log.WithFields(f).WithError(orgReposErr).Warn("problem loading github repositories by org name")
+			return nil, orgReposErr
+		}
+		repoList = append(repoList, orgRepos...)
 	}
 
-	log.WithFields(f).Debugf("processing %d github repositories...", len(repos.List))
-	for _, repo := range repos.List {
+	// Remove any duplicates
+
+	//jlog.WithFields(f).Debugf("processing %d github repositories...", len(repos.List))
+	log.WithFields(f).Debugf("processing %d github repositories...", len(repoList))
+	//for _, repo := range repos.List {
+	for _, repo := range repoList {
 		rorg, ok := orgmap[repo.RepositoryOrganizationName]
 		if !ok {
 			log.WithFields(f).Warnf("repositories table contain stale data for organization %s", repo.RepositoryOrganizationName)

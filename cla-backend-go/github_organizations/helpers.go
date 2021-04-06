@@ -59,15 +59,15 @@ func buildGithubOrganizationListModels(ctx context.Context, githubOrganizations 
 				}
 
 				if ghorg.OrganizationInstallationID != 0 {
-					log.WithFields(f).Debugf("Loading GitHub repository list based on installation id: %d...", ghorg.OrganizationInstallationID)
+					log.WithFields(f).Debugf("Loading GitHub repository list directly from GitHub based on the installation id: %d...", ghorg.OrganizationInstallationID)
 					list, err := github.GetInstallationRepositories(ctx, ghorg.OrganizationInstallationID)
 					if err != nil {
-						log.WithFields(f).Warnf("unable to get repositories for installation id : %d", ghorg.OrganizationInstallationID)
+						log.WithFields(f).Warnf("unable to get repositories from GitHub for the installation id: %d", ghorg.OrganizationInstallationID)
 						ghorg.Repositories.Error = err.Error()
 						return
 					}
 
-					log.WithFields(f).Debugf("Found %d GitHub repositories using installation id: %d...",
+					log.WithFields(f).Debugf("Found %d repositories from GitHUb using the installation id: %d...",
 						len(list), ghorg.OrganizationInstallationID)
 					for _, repoInfo := range list {
 						ghorg.Repositories.List = append(ghorg.Repositories.List, &models.GithubRepositoryInfo{
