@@ -316,8 +316,9 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 
 		// Log an event
 		eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+			ProjectID:     projectParams.Body.ProjectID,
+			ProjectSFID:   projectParams.Body.ProjectExternalID,
 			EventType:     events.CLAGroupUpdated,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
 			ClaGroupModel: claGroupModel,
 			UserID:        claUser.UserID,
 			LfUsername:    claUser.LFUsername,

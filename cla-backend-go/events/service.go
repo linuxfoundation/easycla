@@ -222,24 +222,28 @@ func (s *service) loadCLAGroup(ctx context.Context, args *LogEventArgs) error {
 }
 
 func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
-	f := logrus.Fields{
-		"functionName":   "v1.events.service.loadSFProject",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	}
-
 	if args == nil {
 		return errors.New("unable to load SF project data - args is nil")
 	}
 
-	// Should be the same value for now...cleanup: need to remove one or the other
-	if args.ProjectID == "" && args.ProjectSFID != "" {
-		args.ProjectID = args.ProjectSFID
+	f := logrus.Fields{
+		"functionName":   "v1.events.service.loadSFProject",
+		"projectID":      args.ProjectID,
+		"projectSFID":    args.ProjectSFID,
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
-	if args.ProjectSFID == "" && args.ProjectID != "" {
+
+	// if it's a legacy model (v1) we need ot set the project sfid from project id
+	if args.ProjectSFID == "" && args.ProjectID != "" && utils.IsSalesForceID(args.ProjectID) {
 		args.ProjectSFID = args.ProjectID
 	}
 
-	if utils.IsSalesForceID(args.ProjectID) {
+	// if project sfid not there try to set it from claGroupModel (v2)
+	if args.ProjectSFID == "" && args.ClaGroupModel != nil && args.ClaGroupModel.ProjectExternalID != "" {
+		args.ProjectSFID = args.ClaGroupModel.ProjectExternalID
+	}
+
+	if args.ProjectSFID != "" && utils.IsSalesForceID(args.ProjectSFID) {
 		// Check if project exists in platform project service
 		log.WithFields(f).Debugf("loading salesforce project by ID: %s...", args.ProjectSFID)
 		project, projectErr := project_service.GetClient().GetProject(args.ProjectSFID)
@@ -275,6 +279,8 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 			args.ParentProjectSFID = project.Foundation.ID
 			args.ParentProjectName = project.Foundation.Name
 		}
+	} else {
+		log.WithFields(f).Warnf("project sfid %s was not set properly can't set parent project fields in event", args.ProjectSFID)
 	}
 
 	return nil

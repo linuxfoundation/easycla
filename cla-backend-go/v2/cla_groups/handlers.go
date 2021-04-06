@@ -148,9 +148,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 
 		// Log the event
 		eventsService.LogEvent(&events.LogEventArgs{
-			EventType:  events.CLAGroupUpdated,
-			ProjectID:  claGroup.ClaGroupID,
-			LfUsername: authUser.UserName,
+			EventType:     events.CLAGroupUpdated,
+			ClaGroupModel: claGroupModel,
+			ProjectID:     claGroup.ClaGroupID,
+			LfUsername:    authUser.UserName,
 			EventData: &events.CLAGroupUpdatedEventData{
 				NewClaGroupName:        params.Body.ClaGroupName,
 				NewClaGroupDescription: params.Body.ClaGroupDescription,
