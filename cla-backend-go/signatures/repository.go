@@ -76,7 +76,7 @@ type SignatureRepository interface {
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64) (*models.Signatures, error)
 	ProjectSignatures(ctx context.Context, projectID string) (*models.Signatures, error)
-	UpdateApprovalList(ctx context.Context, claManager *models.User, projectID, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error)
+	UpdateApprovalList(ctx context.Context, claManager *models.User, claGroupModel *models.ClaGroup, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error)
 
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
 	RemoveCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
@@ -449,6 +449,8 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 		"signatureApproved":      "true",
 		"signatureSigned":        "true",
 	}
+
+	log.WithFields(f).Debug("querying signature for icla records ...")
 
 	// These are the keys we want to match for an ICLA Signature with a given CLA Group and User ID
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID)).
@@ -1963,8 +1965,10 @@ func (repo repository) RemoveCLAManager(ctx context.Context, signatureID, claMan
 }
 
 // UpdateApprovalList updates the specified project/company signature with the updated approval list information
-func (repo repository) UpdateApprovalList(ctx context.Context, claManager *models.User, projectID, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error) { // nolint
+func (repo repository) UpdateApprovalList(ctx context.Context, claManager *models.User, claGroupModel *models.ClaGroup, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error) { // nolint
 
+	projectID := claGroupModel.ProjectID
+	projectName := claGroupModel.ProjectName
 	f := logrus.Fields{
 		"functionName": "UpdateApprovalList",
 		"projectID":    projectID,
@@ -2082,14 +2086,17 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 		// if email removal update signature approvals
 		if params.RemoveEmailApprovalList != nil {
+			log.WithFields(f).Debugf("removing email: %+v the approval list", params.RemoveDomainApprovalList)
 			var wg sync.WaitGroup
 			wg.Add(len(params.RemoveEmailApprovalList))
 			for _, email := range params.RemoveEmailApprovalList {
 				go func(email string) {
 					defer wg.Done()
+					log.WithFields(f).Debugf("getting cla user record for email: %s ", email)
 					claUser, userErr := repo.usersRepo.GetUserByEmail(email)
-					if userErr != nil {
+					if userErr != nil || claUser == nil {
 						log.WithFields(f).Debugf("error getting user by email: %s ", email)
+						return
 					}
 					criteria := &ApprovalCriteria{
 						UserEmail: email,
@@ -2115,21 +2122,26 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							return
 						}
 
-						// update user by emai
+						// update user by email
 						// send email
-						if claUser != nil {
-							log.WithFields(f).Debugf("sending invalidation email to user: %s ", email)
-							_, err := utils.RenderTemplate(utils.V2, InvalidateSignatureTemplateName,
-								InvalidateSignatureTemplate, InvalidateSignatureTemplateParams{
-									RecipientName:   utils.GetBestUsername(claUser),
-									ClaType:         utils.ClaTypeCCLA,
-									ClaManager:      utils.GetBestUsername(claManager),
-									RemovalCriteria: approvalList.Criteria,
-								})
-							if err != nil {
-								log.WithFields(f).Debugf("unable to send invalidation signature email to : %s ", email)
-								return
-							}
+						eclaEmailSubject := fmt.Sprintf("EasyCLA: ICLA invalidated for %s on %s", email, projectName)
+						log.WithFields(f).Debugf("sending invalidation email to user: %s ", email)
+						body, err := utils.RenderTemplate(claGroupModel.Version, InvalidateSignatureTemplateName,
+							InvalidateSignatureTemplate, InvalidateSignatureTemplateParams{
+								RecipientName:   utils.GetBestUsername(claUser),
+								ClaType:         utils.ClaTypeCCLA,
+								ClaManager:      utils.GetBestUsername(claManager),
+								RemovalCriteria: approvalList.Criteria,
+								ProjectName:     projectName,
+							})
+						if err != nil {
+							log.WithFields(f).Debugf("unable to render invalidation notice for user : %s ", email)
+							return
+						}
+						err = utils.SendEmail(eclaEmailSubject, body, []string{email})
+						if err != nil {
+							log.WithFields(f).Debugf("unable to send email invalidation notice to user: %s", email)
+							return
 						}
 
 						//Log Event
@@ -2139,15 +2151,15 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							CLAManager:  claManager,
 							CLAGroupID:  signs.Signatures[0].ProjectID,
 						}
+						repo.eventsService.LogEventWithContext(ctx, eventArgs)
 					}
 
-					repo.eventsService.LogEventWithContext(ctx, eventArgs)
-
 					// invalidate icla
+					log.WithFields(f).Debugf("invalidating icla...:user: %+v", claUser)
 
 					if claUser != nil {
 						icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, claUser.UserID)
-						if iclaErr != nil {
+						if iclaErr != nil || icla == nil {
 							log.WithFields(f).Debugf("unable to get icla signature for user: %s ", email)
 						}
 						if icla != nil {
@@ -2155,6 +2167,26 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							err := repo.InvalidateProjectRecord(ctx, icla.SignatureID, note)
 							if err != nil {
 								log.WithFields(f).Warnf("unable to invalidate record for user:%s ", email)
+							}
+							// send email
+							log.WithFields(f).Debugf("sending invalidation email to user: %s ", email)
+							body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateSignatureTemplateName,
+								InvalidateSignatureTemplate, InvalidateSignatureTemplateParams{
+									RecipientName:   utils.GetBestUsername(claUser),
+									ClaType:         utils.ClaTypeICLA,
+									ClaManager:      utils.GetBestUsername(claManager),
+									RemovalCriteria: approvalList.Criteria,
+									ProjectName:     projectName,
+								})
+							if renderErr != nil {
+								log.WithFields(f).Debugf("unable to render invalidation notice for user : %s ", email)
+								return
+							}
+							iclaEmailSubject := fmt.Sprintf("EasyCLA: ICLA invalidated for %s on %s", email, projectName)
+							err = utils.SendEmail(iclaEmailSubject, body, []string{email})
+							if err != nil {
+								log.WithFields(f).Debugf("unable to send email invalidation notice to user: %s", email)
+								return
 							}
 						}
 					}
@@ -2211,8 +2243,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			approvalList.Action = utils.RemoveApprovals
 			approvalList.GerritICLAECLAs = gerritICLAECLAs
 			approvalList.ClaGroupID = projectID
+			approvalList.ClaGroupName = claGroupModel.ProjectName
 			approvalList.CompanyID = companyID
-			approvalList.Version = utils.V2
+			approvalList.Version = claGroupModel.Version
 			invalidateErr = repo.invalidateSignatures(ctx, &approvalList, claManager)
 			if invalidateErr != nil {
 				msg := fmt.Sprintf("unable to invalidate signatures based on Approval List : %+v ", approvalList)
@@ -2305,7 +2338,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			approvalList.Criteria = utils.GitHubOrgCriteria
 			approvalList.ApprovalList = params.RemoveGithubOrgApprovalList
 			approvalList.Action = utils.RemoveApprovals
-			approvalList.Version = utils.V2
+			approvalList.Version = claGroupModel.Version
 			// Get repositories by CLAGroup
 			repositories, err := repo.repositoriesRepo.GetRepositoriesByCLAGroup(ctx, projectID, true)
 			if err != nil {
@@ -2450,16 +2483,22 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 				}
 				email := getBestEmail(user)
 				// send email
+				domainSubject := fmt.Sprintf("EasyCLA: ICLA invalidated for %s on %s", email, approvalList.ClaGroupName)
 				log.WithFields(f).Debugf("sending invalidation email to user: %s ", email)
-				_, emailErr := utils.RenderTemplate(approvalList.Version, InvalidateSignatureTemplateName,
+				body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateSignatureTemplateName,
 					InvalidateSignatureTemplate, InvalidateSignatureTemplateParams{
 						RecipientName:   utils.GetBestUsername(user),
 						ClaType:         utils.ClaTypeICLA,
 						ClaManager:      utils.GetBestUsername(claManager),
 						RemovalCriteria: approvalList.Criteria,
 					})
-				if emailErr != nil {
-					log.WithFields(f).Debugf("unable to send invalidation signature email to : %s ", email)
+				if renderErr != nil {
+					log.WithFields(f).Debugf("unable to render invalidation notice for user : %s ", email)
+					return
+				}
+				err = utils.SendEmail(domainSubject, body, []string{email})
+				if err != nil {
+					log.WithFields(f).Debugf("unable to send email invalidation notice to user: %s", email)
 					return
 				}
 			}(icla)
@@ -2525,7 +2564,7 @@ func (repo repository) getGerritUserByEmail(ctx context.Context, email string, g
 	f := logrus.Fields{
 		"functionName":   "getGerritUserByEmailDomain",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"emai":           email,
+		"email":          email,
 	}
 
 	log.WithFields(f).Debugf("checking gerrit user for email: %s ", email)

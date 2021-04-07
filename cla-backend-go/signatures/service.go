@@ -435,7 +435,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		ProjectSFID:   claGroupModel.ProjectExternalID,
 	}
 
-	updatedSig, err := s.repo.UpdateApprovalList(ctx, userModel, claGroupModel.ProjectID, companyModel.CompanyID, params, eventArgs)
+	updatedSig, err := s.repo.UpdateApprovalList(ctx, userModel, claGroupModel, companyModel.CompanyID, params, eventArgs)
 
 	if err != nil {
 		return updatedSig, err

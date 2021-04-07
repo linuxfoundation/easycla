@@ -9,6 +9,7 @@ type InvalidateSignatureTemplateParams struct {
 	ClaType         string
 	ClaManager      string
 	RemovalCriteria string
+	ProjectName     string
 }
 
 const (
@@ -17,7 +18,8 @@ const (
 	//InvalidateSignatureTemplate ...
 	InvalidateSignatureTemplate = `
 	<p>Hello {{.RecipientName}}</p>
-    <p>This is a notification email from EasyCLA regarding approval list removal for {{.RemovalCriteria}}</p>
-	<p>Due to this change your individual contribution authorization has been removed and you will be blocked from making subsequent code contributions on behalf of this project.</p>
+    <p>This is a notification email from EasyCLA regarding the claGroup {{.ProjectName}}</p>
+	<p>The ICLA signature for {{.RecipientName}} has been invalidated.</p>
+	<p>Please contact Project Manager for the claGroup {{.ProjectName}} and/or CLA Manager from your company if you have more questions.</p>
 	`
 )

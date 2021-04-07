@@ -23,6 +23,7 @@ type ApprovalList struct {
 	ApprovalList            []string
 	Action                  string
 	ClaGroupID              string
+	ClaGroupName            string
 	CompanyID               string
 	Version                 string
 	DomainApprovals         []string

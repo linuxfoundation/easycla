@@ -18,10 +18,12 @@ func TestInvalidateSignatureTemplate(t *testing.T) {
 		ClaType:         utils.ClaTypeICLA,
 		ClaManager:      "claManager",
 		RemovalCriteria: "email removal",
+		ProjectName:     "testProject",
 	}
 
 	result, err := utils.RenderTemplate(utils.V1, signatures.InvalidateSignatureTemplateName, signatures.InvalidateSignatureTemplate, params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello TestUser")
-	assert.Contains(t, result, "Due to this change your individual contribution authorization has been removed and you will be blocked from making subsequent code contributions on behalf of this project.")
+	assert.Contains(t, result, "The ICLA signature for TestUser has been invalidated.")
+	assert.Contains(t, result, "Please contact Project Manager for the claGroup testProject and/or CLA Manager from your company if you have more questions.")
 }
