@@ -1407,12 +1407,12 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	filter := expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true))).
 		And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true))))
 
-	if criteria.GitHubUsername != "" {
+	if criteria != nil && criteria.GitHubUsername != "" {
 		log.WithFields(f).Debugf("adding Githubusername criteria filter for :%s ", criteria.GitHubUsername)
 		filter = filter.And(expression.Name("user_github_username").Equal(expression.Value(criteria.GitHubUsername)))
 	}
 
-	if criteria.UserEmail != "" {
+	if criteria != nil && criteria.UserEmail != "" {
 		log.WithFields(f).Debugf("adding useremail criteria filter for : %s ", criteria.UserEmail)
 		filter = filter.And(expression.Name("user_email").Equal(expression.Value(criteria.UserEmail)))
 	}
