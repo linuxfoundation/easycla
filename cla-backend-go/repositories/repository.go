@@ -506,7 +506,7 @@ func (r *repo) GetRepositoriesByOrganizationName(ctx context.Context, gitHubOrgN
 
 	if len(results.Items) == 0 {
 		msg := fmt.Sprintf("no repositories found associated GitHub Organization: %s", gitHubOrgName)
-		log.WithFields(f).Warn(msg)
+		log.WithFields(f).Debug(msg)
 		return nil, &utils.GitHubRepositoryNotFound{
 			Message: msg,
 		}

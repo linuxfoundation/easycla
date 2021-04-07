@@ -27,6 +27,7 @@ type Service interface {
 	GetGithubOrganizationByName(ctx context.Context, githubOrgName string) (*models.GithubOrganization, error)
 	UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
 	DeleteGithubOrganization(ctx context.Context, projectSFID string, githubOrgName string) error
+	RemoveDuplicates(input []*models.GithubOrganization) []*models.GithubOrganization
 }
 
 type service struct {
@@ -117,7 +118,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	gitHubOrgModels.List = githubOrgs
 
 	// Remove potential duplicates
-	s.removeDuplicateGHOrgs(gitHubOrgModels.List)
+	gitHubOrgModels.List = s.RemoveDuplicates(gitHubOrgModels.List)
 
 	return &gitHubOrgModels, err
 }
@@ -184,8 +185,8 @@ func (s service) DeleteGithubOrganization(ctx context.Context, projectSFID strin
 	return s.repo.DeleteGithubOrganization(ctx, projectSFID, githubOrgName)
 }
 
-// filter ghOrgs duplicates
-func (s service) removeDuplicateGHOrgs(input []*models.GithubOrganization) []*models.GithubOrganization {
+// RemoveDuplicates removes any duplicates from the specified list
+func (s service) RemoveDuplicates(input []*models.GithubOrganization) []*models.GithubOrganization {
 	if input == nil {
 		return nil
 	}

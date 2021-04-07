@@ -81,13 +81,14 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	}
 
 	// Load the GitHub Organization and Repository details - result will be missing CLA Group info and ProjectSFID details
+	log.WithFields(f).Debugf("loading GitHub organizations for projectSFID: %s", projectSFID)
 	orgs, err := s.ghService.GetGithubOrganizations(ctx, projectSFID)
-	// log.WithFields(f).Debug("loading github organization details by projectSFID...")
-	//orgs, err := s.repo.GetGithubOrganizations(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem loading github organizations from the project service")
 		return nil, err
 	}
+	log.WithFields(f).Debugf("discovered %d GitHub organizations for projectSFID: %s", len(orgs.List), projectSFID)
+	orgs.List = s.ghService.RemoveDuplicates(orgs.List)
 
 	psc := v2ProjectService.GetClient()
 	log.WithFields(f).Debug("loading project details from the project service...")
@@ -96,8 +97,6 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		log.WithFields(f).WithError(err).Warn("problem loading project details from the project service")
 		return nil, err
 	}
-
-	// log.Debugf("project record: %+v ", projectServiceRecord)
 
 	var parentProjectSFID string
 	if utils.IsProjectHasRootParent(projectServiceRecord) {
@@ -108,14 +107,20 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	f["parentProjectSFID"] = parentProjectSFID
 	log.WithFields(f).Debug("located parentProjectID...")
 
+	// Our response model
 	out := &models.ProjectGithubOrganizations{
 		List: make([]*models.ProjectGithubOrganization, 0),
 	}
+
+	// Next, we need to load a bunch of additional data for the response including the github status (if it's still connected/live, not renamed/moved), the CLA Group details, etc.
+
+	// A temp data model for holding the intermediate results
 	type githubRepoInfo struct {
 		orgName  string
 		repoInfo *v1Models.GithubRepositoryInfo
 	}
-	// connectedRepo contains list of repositories for which github app have permission
+
+	// connectedRepo contains list of repositories for which github app have permission to see
 	connectedRepo := make(map[string]*githubRepoInfo)
 	orgmap := make(map[string]*models.ProjectGithubOrganization)
 	for _, org := range orgs.List {
@@ -172,28 +177,23 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 
 	// We need to search the repository list based on two criteria
 	// Need to search by projectSFID and/or Organization ID????
-	log.WithFields(f).Debugf("loading github repositories by projectSFID: %s...", projectSFID)
-	//enabled := true
-	//repos, err := s.ghRepository.ListProjectRepositories(ctx, projectSFID, &enabled)
-	//if err != nil {
-	//	log.WithFields(f).WithError(err).Warn("problem loading github repositories")
-	//	return nil, err
-	//}
+	log.WithFields(f).Debugf("loading github repositories from %d organizations for projectSFID: %s...", len(orgs.List), projectSFID)
 	var repoList []*v1Models.GithubRepository
 	for _, org := range orgs.List {
 		orgRepos, orgReposErr := s.ghRepository.GetRepositoriesByOrganizationName(ctx, org.OrganizationName)
-		if orgReposErr != nil {
-			log.WithFields(f).WithError(orgReposErr).Warn("problem loading github repositories by org name")
-			return nil, orgReposErr
+		if orgReposErr != nil || orgRepos == nil {
+			if _, ok := orgReposErr.(*utils.GitHubRepositoryNotFound); ok {
+				log.WithFields(f).Debug(orgReposErr)
+			} else {
+				log.WithFields(f).WithError(orgReposErr).Warn("problem loading github repositories by org name")
+			}
+		} else {
+			repoList = append(repoList, orgRepos...)
 		}
-		repoList = append(repoList, orgRepos...)
 	}
 
 	// Remove any duplicates
-
-	//jlog.WithFields(f).Debugf("processing %d github repositories...", len(repos.List))
 	log.WithFields(f).Debugf("processing %d github repositories...", len(repoList))
-	//for _, repo := range repos.List {
 	for _, repo := range repoList {
 		rorg, ok := orgmap[repo.RepositoryOrganizationName]
 		if !ok {
