@@ -164,3 +164,6 @@ const AddApprovals = "AddApprovals"
 
 //RemoveApprovals is an action for removing approvals
 const RemoveApprovals = "RemoveApprovals"
+
+//GitHubUsernameCriteria represents criteria based on GH username
+const GitHubUsernameCriteria = "GitHubUsername"
