@@ -121,9 +121,25 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				utils.ErrorResponseBadRequestWithError(reqID, fmt.Sprintf("unable to lookup CLA Group by ID: %s", params.ClaGroupID), err))
 		}
 
+		projectCLAGroupModels, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(params.ClaGroupID)
+		if projectCLAGroupErr != nil {
+			msg := fmt.Sprintf("unable to load the Project to CLA Group mappings for CLA Group: %s - is this CLA Group configured?", params.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return cla_group.NewUpdateClaGroupInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, projectCLAGroupErr))
+		}
+		if len(projectCLAGroupModels) == 0 {
+			msg := fmt.Sprintf("unable to load the Project to CLA Group mappings for CLA Group: %s - is this CLA Group configured?", params.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return cla_group.NewUpdateClaGroupInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, msg))
+		}
+		var projectSFIDList []string
+		for _, model := range projectCLAGroupModels {
+			projectSFIDList = append(projectSFIDList, model.ProjectSFID)
+		}
+
 		// Check permissions
-		if !isUserHaveAccessToCLAProject(ctx, authUser, claGroupModel.FoundationSFID, []string{claGroupModel.ProjectExternalID}, projectClaGroupsRepo) {
-			msg := fmt.Sprintf("user %s does not have access to update an existing CLA Group with project scope of: %s", authUser.UserName, claGroupModel.FoundationSFID)
+		if !isUserHaveAccessToCLAProject(ctx, authUser, projectCLAGroupModels[0].FoundationSFID, projectSFIDList, projectClaGroupsRepo) {
+			msg := fmt.Sprintf("user %s does not have access to update an existing CLA Group with project scope of: %s or any of these: %s", authUser.UserName, projectCLAGroupModels[0].FoundationSFID, strings.Join(projectSFIDList, ","))
 			log.WithFields(f).Warn(msg)
 			return cla_group.NewUpdateClaGroupForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
@@ -148,14 +164,15 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 
 		// Log the event
 		eventsService.LogEvent(&events.LogEventArgs{
-			EventType:     events.CLAGroupUpdated,
-			ClaGroupModel: claGroupModel,
-			ProjectID:     claGroup.ClaGroupID,
-			LfUsername:    authUser.UserName,
+			EventType:         events.CLAGroupUpdated,
+			ClaGroupModel:     claGroupModel,
+			ProjectID:         claGroup.ClaGroupID,
+			ProjectSFID:       projectCLAGroupModels[0].ProjectSFID,
+			ParentProjectSFID: projectCLAGroupModels[0].FoundationSFID,
+			LfUsername:        authUser.UserName,
 			EventData: &events.CLAGroupUpdatedEventData{
 				NewClaGroupName:        params.Body.ClaGroupName,
 				NewClaGroupDescription: params.Body.ClaGroupDescription,
-
 				OldClaGroupName:        oldCLAGroupName,
 				OldClaGroupDescription: oldCLAGroupDescription,
 			},
