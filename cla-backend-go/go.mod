@@ -8,8 +8,8 @@ replace github.com/awslabs/aws-lambda-go-api-proxy => github.com/LF-Engineering/
 
 require (
 	github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
-	github.com/LF-Engineering/lfx-kit v0.1.22
-	github.com/LF-Engineering/lfx-models v0.6.34
+	github.com/LF-Engineering/lfx-kit v0.1.24
+	github.com/LF-Engineering/lfx-models v0.6.42
 	github.com/aws/aws-lambda-go v1.22.0
 	github.com/aws/aws-sdk-go v1.36.27
 	github.com/aymerick/raymond v2.0.2+incompatible
@@ -28,7 +28,7 @@ require (
 	github.com/go-openapi/swag v0.19.9
 	github.com/go-openapi/validate v0.19.10
 	github.com/go-resty/resty/v2 v2.3.0
-	github.com/gofrs/uuid v3.2.0+incompatible
+	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/golang/mock v1.4.4
 	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/google/go-github/v33 v33.0.0

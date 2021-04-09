@@ -25,6 +25,7 @@ import (
 // constants
 const (
 	DefaultHTTPTimeout = 10 * time.Second
+	LongHTTPTimeout    = 45 * time.Second
 )
 
 // LFGroup contains access information of lf LDAP group
@@ -186,7 +187,7 @@ func (lfg *LFGroup) GetUsersOfGroup(ctx context.Context, authUser *auth.User, cl
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Authorization", "Bearer "+accessToken)
 	client := http.Client{
-		Timeout: DefaultHTTPTimeout,
+		Timeout: LongHTTPTimeout,
 	}
 
 	// Invoke the request
@@ -209,8 +210,6 @@ func (lfg *LFGroup) GetUsersOfGroup(ctx context.Context, authUser *auth.User, cl
 		log.WithFields(f).Debugf("successfully fetched members from group: %s", groupName)
 
 		var result v2Models.GerritGroupResponse
-		//err = json.NewDecoder(resp.Body).Decode(&result)
-
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("problem reading response for url: %s", url)
@@ -223,7 +222,6 @@ func (lfg *LFGroup) GetUsersOfGroup(ctx context.Context, authUser *auth.User, cl
 			log.WithFields(f).WithError(err).Warnf("problem unmarshalling response for url: %s", url)
 			return nil, err
 		}
-		log.WithFields(f).Debugf("response body: %+v", result)
 
 		return &result, nil
 	}

@@ -15,7 +15,7 @@ func CurrentUserInACL(authUser *auth.User, managers []v1Models.User) bool {
 	f := logrus.Fields{
 		"functionName": "utils.CurrentUserInACL",
 	}
-	log.WithFields(f).Debugf("checking if user: %+v is in the Signature ACL: %+v", authUser, managers)
+	log.WithFields(f).Debugf("checking if user: %s is in the Signature ACL: %+v", authUser.UserName, managers)
 	var inACL = false
 	for _, manager := range managers {
 		if manager.LfUsername == authUser.UserName {

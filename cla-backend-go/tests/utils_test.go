@@ -381,13 +381,6 @@ func TestIsUUIDv4True(t *testing.T) {
 	assert.True(t, utils.IsUUIDv4(v4.String()), fmt.Sprintf("%s is a v4 UUID", v4.String()))
 }
 
-func TestIsUUIDv4LikeV2(t *testing.T) {
-	var b byte = 'b'
-	v2, err := uuid.NewV2(b)
-	assert.Nil(t, err, "NewV4 UUID is nil")
-	assert.False(t, utils.IsUUIDv4(v2.String()), fmt.Sprintf("%s is not a v4 UUID", v2.String()))
-}
-
 func TestIsUUIDv4LikeSFID(t *testing.T) {
 	sfid := "0014100000TdznWAAR"
 	assert.False(t, utils.IsUUIDv4(sfid), fmt.Sprintf("%s is not v4 UUID", sfid))

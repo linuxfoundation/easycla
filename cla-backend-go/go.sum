@@ -28,8 +28,12 @@ github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2 h1:ZLAgTj9+H3RTmjbRpUam
 github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2/go.mod h1:LQj48zwkRwdjVmDCqtPlviW/7IFaSKzz2gDhxRwVrA4=
 github.com/LF-Engineering/lfx-kit v0.1.22 h1:4tE1xTvu5CRWIokOo1waOfuB6vgaCpov5glhkdVzbAs=
 github.com/LF-Engineering/lfx-kit v0.1.22/go.mod h1:B+pko2SqvGNSG9hWDC35JNZ38nTPt+r5KB6k75xM5vY=
+github.com/LF-Engineering/lfx-kit v0.1.24 h1:2lfmBMWWfOwU2XEOSP7keS/CqR5mj30YmJPv6fUiOvM=
+github.com/LF-Engineering/lfx-kit v0.1.24/go.mod h1:B+pko2SqvGNSG9hWDC35JNZ38nTPt+r5KB6k75xM5vY=
 github.com/LF-Engineering/lfx-models v0.6.34 h1:K8al2aTq8nDm3qNmsTNAhZ1uDzfew/UymwbcW9gbDDs=
 github.com/LF-Engineering/lfx-models v0.6.34/go.mod h1:AaV7psgE2IPXhaLXYXoFviobYoh09XJ2P/ALOU11OuE=
+github.com/LF-Engineering/lfx-models v0.6.42 h1:PfvP/hmcV+OHftNrzclzvwGUv864xyNcp0Kz2HUA5C0=
+github.com/LF-Engineering/lfx-models v0.6.42/go.mod h1:AaV7psgE2IPXhaLXYXoFviobYoh09XJ2P/ALOU11OuE=
 github.com/Masterminds/semver v1.5.0 h1:H65muMkzWKEuNDnfl9d70GUjFniHKHRbFPGBuZ3QEww=
 github.com/Masterminds/semver v1.5.0/go.mod h1:MB6lktGJrhw8PrUyiEoblNEGEQ+RzHPF078ddwwvV3Y=
 github.com/Masterminds/vcs v1.13.1 h1:NL3G1X7/7xduQtA2sJLpVpfHTNBALVNSjob6KEjPXNQ=
@@ -265,6 +269,8 @@ github.com/gobuffalo/syncx v0.0.0-20190224160051-33c29581e754 h1:tpom+2CJmpzAWj5
 github.com/gobuffalo/syncx v0.0.0-20190224160051-33c29581e754/go.mod h1:HhnNqWY95UYwwW3uSASeV7vtgYkT2t16hJgV3AEPUpw=
 github.com/gofrs/uuid v3.2.0+incompatible h1:y12jRkkFxsd7GpqdSZ+/KCs/fJbqpEXSGd4+jfEaewE=
 github.com/gofrs/uuid v3.2.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
+github.com/gofrs/uuid v4.0.0+incompatible h1:1SD/1F5pU8p29ybwgQSwpQk+mwdRrXCYuPhW6m+TnJw=
+github.com/gofrs/uuid v4.0.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/gogo/protobuf v1.2.1 h1:/s5zKNz0uPFCZ5hddgPdo2TK2TVrUNMn0OOX8/aZMTE=
 github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=
