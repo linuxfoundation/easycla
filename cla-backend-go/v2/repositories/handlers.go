@@ -113,6 +113,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 					utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
+			log.WithFields(f).Debugf("Adding GitHub repositories for project: %s", params.ProjectSFID)
 			results, err := service.AddGithubRepositories(ctx, params.ProjectSFID, params.GithubRepositoryInput)
 			if err != nil {
 				if _, ok := err.(*utils.GitHubRepositoryExists); ok {

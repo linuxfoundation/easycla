@@ -54,7 +54,7 @@ func IsUserAuthorizedForProjectTree(ctx context.Context, user *auth.User, projec
 
 	log.WithFields(f).Debug("checking scope...")
 	val := user.IsUserAuthorized(auth.Project, projectSFID, true)
-	log.WithFields(f).Debugf("user allowed: %T", val)
+	log.WithFields(f).Debugf("user allowed: %t", val)
 	return val
 }
 
