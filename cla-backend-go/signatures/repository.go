@@ -2042,12 +2042,12 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			log.WithFields(f).Debugf("received gerrit user query results response for %s - took: %+v", results.queryType, time.Since(gerritQueryStartTime))
 			if results.Error != nil {
 				log.WithFields(f).WithError(results.Error).Warnf("problem retrieving gerrit users for %s, error: %+v", results.queryType, results.Error)
-				return nil, results.Error
+			} else {
+				for _, member := range results.gerritGroupResponse.Members {
+					gerritICLAECLAs = append(gerritICLAECLAs, member.Username)
+				}
+				log.WithFields(f).Debugf("updated gerrit user query results response for %s - list size is %d...", results.queryType, len(gerritICLAECLAs))
 			}
-			for _, member := range results.gerritGroupResponse.Members {
-				gerritICLAECLAs = append(gerritICLAECLAs, member.Username)
-			}
-			log.WithFields(f).Debugf("updated gerrit user query results response for %s - list size is %d...", results.queryType, len(gerritICLAECLAs))
 		}
 		log.WithFields(f).Debugf("received the gerrit user query results from %d go routines...", goRoutines)
 	}
@@ -2086,8 +2086,8 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				go func(email string) {
 					defer wg.Done()
 					log.WithFields(f).Debugf("getting cla user record for email: %s ", email)
-					claUser, userErr := repo.usersRepo.GetUserByEmail(email)
-					if userErr != nil || claUser == nil {
+					userSearch, userErr := repo.usersRepo.SearchUsers("user_emails", email, false)
+					if userErr != nil || userSearch == nil {
 						log.WithFields(f).Debugf("error getting user by email: %s ", email)
 						return
 					}
@@ -2109,20 +2109,40 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						approvalList.ECLAs = signs.Signatures
 					}
 
-					if claUser != nil {
-						icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, claUser.UserID)
-						if iclaErr != nil || icla == nil {
-							log.WithFields(f).Debugf("unable to get icla signature for user: '%s'", email)
+					if len(userSearch.Users) > 0 {
+						// Try and grab iclaSignature records for users
+						results := make(chan *ICLAUserResponse, len(userSearch.Users))
+						go func() {
+							defer close(results)
+							for _, user := range userSearch.Users {
+								icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, user.UserID)
+								if iclaErr != nil || icla == nil {
+									results <- &ICLAUserResponse{
+										Error: fmt.Errorf("unable to get icla for user: %s ", user.UserID),
+									}
+								} else {
+									results <- &ICLAUserResponse{
+										ICLASignature: &models.IclaSignature{
+											GithubUsername: icla.UserGHUsername,
+											LfUsername:     icla.UserLFID,
+											SignatureID:    icla.SignatureID,
+										},
+									}
+								}
+							}
+						}()
+
+						for result := range results {
+							if result.Error == nil {
+								log.WithFields(f).Debug("processing icla...")
+								approvalList.ICLAs = append(approvalList.ICLAs, result.ICLASignature)
+							}
 						}
-						if icla != nil {
-							// Convert to IclSignature instance to leverage invalidateSignatures helper function
-							approvalList.ICLAs = []*models.IclaSignature{{
-								GithubUsername: icla.UserGHUsername,
-								LfUsername:     icla.UserLFID,
-								SignatureID:    icla.SignatureID,
-							}}
-						}
+
 					}
+
+					// Invalidate signatures
+					repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
 
 					//update gerrit permissions
 					gerritUser, getGerritUserErr := repo.getGerritUserByEmail(ctx, email, gerritICLAECLAs)
@@ -3146,7 +3166,7 @@ func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, 
 	}
 	log.WithFields(f).Debugf("querying gerrit for %s gerrit users...", claType)
 	gerritIclaUsers, getGerritQueryErr := repo.gerritService.GetUsersOfGroup(ctx, authUser, projectSFID, claType)
-	if getGerritQueryErr != nil {
+	if getGerritQueryErr != nil || gerritIclaUsers == nil {
 		msg := fmt.Sprintf("unable to fetch gerrit users for claGroup: %s , claType: %s ", projectSFID, claType)
 		log.WithFields(f).WithError(getGerritQueryErr).Warn(msg)
 		gerritResultChannel <- &GerritUserResponse{

@@ -47,3 +47,9 @@ type GerritUserResponse struct {
 	queryType           string
 	Error               error
 }
+
+// ICLAUserResponse is struct that supports ICLAUsers
+type ICLAUserResponse struct {
+	ICLASignature *models.IclaSignature
+	Error         error
+}
