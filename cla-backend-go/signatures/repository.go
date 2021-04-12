@@ -52,8 +52,8 @@ const (
 	SignatureReferenceSearchIndex                  = "reference-signature-search-index"
 
 	HugePageSize    = 10000
-	DefaultPageSize = 10
-	BigPageSize     = 100
+	DefaultPageSize = 100
+	BigPageSize     = 200
 )
 
 // SignatureRepository interface defines the functions for the github whitelist service
