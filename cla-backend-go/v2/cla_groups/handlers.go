@@ -121,6 +121,13 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				utils.ErrorResponseBadRequestWithError(reqID, fmt.Sprintf("unable to lookup CLA Group by ID: %s", params.ClaGroupID), err))
 		}
 
+		// check if there's any change at all
+		if params.Body.ClaGroupName == claGroupModel.ProjectName && params.Body.ClaGroupDescription == claGroupModel.ProjectDescription {
+			log.WithFields(f).Warn("no new values passed, nothing to change, aborting.")
+			return cla_group.NewUpdateClaGroupBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequest(reqID, "no new values passed, nothing to change, aborting."))
+		}
+
 		projectCLAGroupModels, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(params.ClaGroupID)
 		if projectCLAGroupErr != nil {
 			msg := fmt.Sprintf("unable to load the Project to CLA Group mappings for CLA Group: %s - is this CLA Group configured?", params.ClaGroupID)
