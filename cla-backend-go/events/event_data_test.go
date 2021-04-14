@@ -33,9 +33,27 @@ func TestCLAGroupUpdatedEventData_GetEventSummaryString(t *testing.T) {
 			summaryStr: "The CLA Group name was updated to : updatedNameValue by the user john.",
 		},
 		{
+			name: "only name updated but old description still passed",
+			eventData: &CLAGroupUpdatedEventData{
+				NewClaGroupName:        "updatedNameValue",
+				NewClaGroupDescription: "oldDescriptionValue",
+				OldClaGroupDescription: "oldDescriptionValue",
+			},
+			summaryStr: "The CLA Group name was updated to : updatedNameValue by the user john.",
+		},
+		{
 			name: "only description updated",
 			eventData: &CLAGroupUpdatedEventData{
 				NewClaGroupDescription: "updatedDescriptionValue",
+			},
+			summaryStr: "The CLA Group description was updated to : updatedDescriptionValue by the user john.",
+		},
+		{
+			name: "only description updated but old name still passed",
+			eventData: &CLAGroupUpdatedEventData{
+				NewClaGroupDescription: "updatedDescriptionValue",
+				NewClaGroupName:        "oldNameValue",
+				OldClaGroupName:        "oldNameValue",
 			},
 			summaryStr: "The CLA Group description was updated to : updatedDescriptionValue by the user john.",
 		},
@@ -79,10 +97,30 @@ func TestCLAGroupUpdatedEventData_GetEventDetailsString(t *testing.T) {
 			detailStr: "CLA Group ID: projectIDValue was updated by: john with Name from : oldNameValue to : updatedNameValue.",
 		},
 		{
+			name: "only name updated but old description still passed",
+			eventData: &CLAGroupUpdatedEventData{
+				NewClaGroupName:        "updatedNameValue",
+				OldClaGroupName:        "oldNameValue",
+				NewClaGroupDescription: "oldDescriptionValue",
+				OldClaGroupDescription: "oldDescriptionValue",
+			},
+			detailStr: "CLA Group ID: projectIDValue was updated by: john with Name from : oldNameValue to : updatedNameValue.",
+		},
+		{
 			name: "only description updated",
 			eventData: &CLAGroupUpdatedEventData{
 				NewClaGroupDescription: "updatedDescriptionValue",
 				OldClaGroupDescription: "oldDescriptionValue",
+			},
+			detailStr: "CLA Group ID: projectIDValue was updated by: john with Description from : oldDescriptionValue to : updatedDescriptionValue.",
+		},
+		{
+			name: "only description updated but old name still passed",
+			eventData: &CLAGroupUpdatedEventData{
+				NewClaGroupDescription: "updatedDescriptionValue",
+				OldClaGroupDescription: "oldDescriptionValue",
+				NewClaGroupName:        "oldNameValue",
+				OldClaGroupName:        "oldNameValue",
 			},
 			detailStr: "CLA Group ID: projectIDValue was updated by: john with Description from : oldDescriptionValue to : updatedDescriptionValue.",
 		},
