@@ -50,8 +50,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesGetSignatureHandler = signatures.GetSignatureHandlerFunc(func(params signatures.GetSignatureParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesGetGitHubOrgWhitelistHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetGitHubOrgWhitelistHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"signatureID":    params.SignatureID,
 		}
@@ -95,7 +96,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesUpdateApprovalListHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesUpdateApprovalListHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"projectSFID":    params.ProjectSFID,
@@ -120,7 +121,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 
 		// Must be in the Project|Organization Scope to see this - signature ACL is double-checked in the service level when the signature is loaded
 		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, companyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
-			msg := fmt.Sprintf("user %s does not have access to update Project Company Approval List with Project|Organization scope of %s | %s",
+			msg := fmt.Sprintf("user '%s' does not have access to update Project Company Approval List with Project|Organization scope of %s | %s",
 				authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
 			return signatures.NewUpdateApprovalListForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -189,8 +190,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesGetGitHubOrgWhitelistHandler = signatures.GetGitHubOrgWhitelistHandlerFunc(func(params signatures.GetGitHubOrgWhitelistParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesGetGitHubOrgWhitelistHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetGitHubOrgWhitelistHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"signatureID":    params.SignatureID,
 		}
@@ -226,8 +228,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesAddGitHubOrgWhitelistHandler = signatures.AddGitHubOrgWhitelistHandlerFunc(func(params signatures.AddGitHubOrgWhitelistParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesAddGitHubOrgWhitelistHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesAddGitHubOrgWhitelistHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"signatureID":    params.SignatureID,
 		}
@@ -294,8 +297,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesDeleteGitHubOrgWhitelistHandler = signatures.DeleteGitHubOrgWhitelistHandlerFunc(func(params signatures.DeleteGitHubOrgWhitelistParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesDeleteGitHubOrgWhitelistHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesDeleteGitHubOrgWhitelistHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"signatureID":    params.SignatureID,
 		}
@@ -359,8 +363,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesGetProjectSignaturesHandler = signatures.GetProjectSignaturesHandlerFunc(func(params signatures.GetProjectSignaturesParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesGetProjectSignaturesHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetProjectSignaturesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"signatureType":  params.SignatureType,
@@ -396,7 +401,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		if false {
 			log.WithFields(f).Debug("checking access control permissions for user...")
 			if !isUserHaveAccessToCLAGroupProjects(ctx, authUser, params.ClaGroupID, projectClaGroupsRepo, projectRepo) {
-				msg := fmt.Sprintf("user %s is not authorized to view project ICLA signatures any scope of project", authUser.UserName)
+				msg := fmt.Sprintf("user '%s' is not authorized to view project ICLA signatures any scope of project", authUser.UserName)
 				log.Warn(msg)
 				return signatures.NewGetProjectSignaturesForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
@@ -438,8 +443,10 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesGetProjectCompanySignaturesHandler = signatures.GetProjectCompanySignaturesHandlerFunc(func(params signatures.GetProjectCompanySignaturesParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesGetProjectCompanySignaturesHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetProjectCompanySignaturesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSFID,
 			"companyID":      params.CompanyID,
@@ -461,16 +468,11 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			})
 		}
 
-		// Must be in the one of the above scopes to see this
-		// - if project scope (like a PM)
-		// - if project|organization scope (like CLA Manager, CLA Signatory)
-		// - if organization scope (like company admin)
 		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, params.ProjectSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user %s is not authorized to view project company signatures any scope of project: %s, organization %s",
 				authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
-			return signatures.NewGetProjectCompanySignaturesForbidden().WithXRequestID(reqID).WithPayload(
-				utils.ErrorResponseForbidden(reqID, msg))
+			return signatures.NewGetProjectCompanySignaturesForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
 		log.WithFields(f).Debug("loading project company signatures...")
@@ -489,8 +491,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesGetProjectCompanyEmployeeSignaturesHandler = signatures.GetProjectCompanyEmployeeSignaturesHandlerFunc(func(params signatures.GetProjectCompanyEmployeeSignaturesParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesGetProjectCompanyEmployeeSignaturesHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetProjectCompanyEmployeeSignaturesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSFID,
 			"companyID":      params.CompanyID,
@@ -500,33 +503,25 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 
 		companyModel, err := companyService.GetCompany(ctx, params.CompanyID)
 		if err != nil {
-			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
+			msg := fmt.Sprintf("user lookup for company by ID: '%s' failed : %v", params.CompanyID, err)
 			log.Warn(msg)
 			if _, ok := err.(*utils.CompanyNotFound); ok {
-				return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
-					Code:    "404",
-				})
+				return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
-			return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: "EasyCLA - 400 Bad Request - error getting company - " + msg,
-				Code:    "400",
-			})
+			return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 		if companyModel == nil {
 			msg := fmt.Sprintf("problem loading company by ID: %s", params.CompanyID)
 			log.WithFields(f).WithError(err).Warn(msg)
-			return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(
-				utils.ErrorResponseNotFound(reqID, msg))
+			return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
 		}
 
 		log.WithFields(f).Debug("checking access control permissions...")
 		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, params.ProjectSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
-			msg := fmt.Sprintf("user %s is not authorized to view project company signatures any scope of project: %s, organization %s",
+			msg := fmt.Sprintf("user '%s' is not authorized to view project company signatures any scope of project or project|organization for project: '%s', organization '%s'",
 				authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.Warn(msg)
-			return signatures.NewGetProjectCompanyEmployeeSignaturesForbidden().WithXRequestID(reqID).WithPayload(
-				utils.ErrorResponseForbidden(reqID, msg))
+			return signatures.NewGetProjectCompanyEmployeeSignaturesForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
 		// Locate the CLA Group for the provided project SFID
@@ -576,7 +571,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesGetCompanySignaturesHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetCompanySignaturesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"companyID":      params.CompanyID,
 			"companyName":    aws.StringValue(params.CompanyName),
@@ -663,8 +658,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesGetUserSignaturesHandler = signatures.GetUserSignaturesHandlerFunc(func(params signatures.GetUserSignaturesParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesGetUserSignaturesHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetUserSignaturesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"userID":         params.UserID,
 			"userName":       aws.StringValue(params.UserName),
@@ -702,8 +698,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesDownloadProjectSignatureEmployeeAsCSVHandler = signatures.DownloadProjectSignatureEmployeeAsCSVHandlerFunc(func(params signatures.DownloadProjectSignatureEmployeeAsCSVParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesDownloadProjectSignatureEmployeeAsCSVHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesDownloadProjectSignatureEmployeeAsCSVHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"companyID":      params.CompanyID,
@@ -757,10 +754,20 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			})
 		}
 
+		// Lookup the Project to CLA Group mapping table entries - this will have the correct details
+		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(params.ClaGroupID)
+		// Should have at least one entry if we're setup correctly - it will have the foundation (parent project/project group) and project details set
+		if projectCLAGroupErr != nil || len(projectCLAGroupEntries) == 0 {
+			msg := fmt.Sprintf("unable to load project CLA Group mappings for CLA Group: %s - has this project been migrated to v2?", params.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
+		}
+		// All the records will point to the same parent SFID
+		f["foundationSFID"] = projectCLAGroupEntries[0].FoundationSFID
+
 		log.WithFields(f).Debug("checking access control permissions for user...")
-		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, claGroupModel.FoundationSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
-			msg := fmt.Sprintf(" user %s is not authorized to view project employee signatures any scope of project",
-				authUser.UserName)
+		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, projectCLAGroupEntries[0].FoundationSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
+			msg := fmt.Sprintf(" user %s is not authorized to view project employee signatures any scope of project", authUser.UserName)
 			log.Warn(msg)
 			return signatures.NewDownloadProjectSignatureEmployeeAsCSVForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
@@ -799,8 +806,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesListClaGroupIclaSignatureHandler = signatures.ListClaGroupIclaSignatureHandlerFunc(func(params signatures.ListClaGroupIclaSignatureParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesListClaGroupIclaSignatureHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesListClaGroupIclaSignatureHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"searchTerm":     utils.StringValue(params.SearchTerm),
@@ -867,8 +875,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesListClaGroupCorporateContributorsHandler = signatures.ListClaGroupCorporateContributorsHandlerFunc(func(params signatures.ListClaGroupCorporateContributorsParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesListClaGroupCorporateContributorsHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesListClaGroupCorporateContributorsHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"companyID":      params.CompanyID,
@@ -919,14 +928,22 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			return signatures.NewListClaGroupCorporateContributorsOK().WithXRequestID(reqID).WithPayload(&models.CorporateContributorList{
 				List: []*models.CorporateContributor{}, // empty list
 			})
-			//return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(
-			//	utils.ErrorResponseBadRequest(reqID, msg))
 		}
-		f["foundationSFID"] = claGroupModel.FoundationSFID
+
+		// Lookup the Project to CLA Group mapping table entries - this will have the correct details
+		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(params.ClaGroupID)
+		// Should have at least one entry if we're setup correctly - it will have the foundation (parent project/project group) and project details set
+		if projectCLAGroupErr != nil || len(projectCLAGroupEntries) == 0 {
+			msg := fmt.Sprintf("unable to load project CLA Group mappings for CLA Group: %s - has this project been migrated to v2?", params.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
+		}
+		// All the records will point to the same parent SFID
+		f["foundationSFID"] = projectCLAGroupEntries[0].FoundationSFID
 
 		log.WithFields(f).Debug("checking access control permissions for user...")
-		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, claGroupModel.FoundationSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
-			msg := fmt.Sprintf("user %s is not authorized to view project CCLA signatures any scope of project or project|organization scope with company ID: %s",
+		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, projectCLAGroupEntries[0].FoundationSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
+			msg := fmt.Sprintf("user '%s' is not authorized to view project CCLA signatures project scope or project|organization scope for company ID: %s",
 				authUser.UserName, companyModel.CompanyID)
 			log.Warn(msg)
 			return signatures.NewListClaGroupCorporateContributorsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -955,7 +972,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesGetSignatureSignedDocumentHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetSignatureSignedDocumentHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"signatureID":    params.SignatureID,
 		}
@@ -998,8 +1015,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesDownloadProjectSignatureICLAsHandler = signatures.DownloadProjectSignatureICLAsHandlerFunc(func(params signatures.DownloadProjectSignatureICLAsParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesDownloadProjectSignatureICLAsHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesDownloadProjectSignatureICLAsHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 		}
@@ -1052,8 +1070,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesDownloadProjectSignatureICLAAsCSVHandler = signatures.DownloadProjectSignatureICLAAsCSVHandlerFunc(func(params signatures.DownloadProjectSignatureICLAAsCSVParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesDownloadProjectSignatureICLAAsCSVHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesDownloadProjectSignatureICLAAsCSVHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 		}
@@ -1089,7 +1108,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 
 		log.WithFields(f).Debug("checking access control permissions for user...")
 		if !isUserHaveAccessToCLAGroupProjects(ctx, authUser, params.ClaGroupID, projectClaGroupsRepo, projectRepo) {
-			msg := fmt.Sprintf("user %s is not authorized to view project ICLA signatures any scope of project", authUser.UserName)
+			msg := fmt.Sprintf("user '%s' is not authorized to view project ICLA signatures any scope of project", authUser.UserName)
 			log.Warn(msg)
 			return signatures.NewDownloadProjectSignatureICLAAsCSVForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
@@ -1119,8 +1138,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesDownloadProjectSignatureCCLAsHandler = signatures.DownloadProjectSignatureCCLAsHandlerFunc(func(params signatures.DownloadProjectSignatureCCLAsParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesDownloadProjectSignatureCCLAsHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesDownloadProjectSignatureCCLAsHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 		}
@@ -1172,8 +1192,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 	api.SignaturesDownloadProjectSignatureCCLAAsCSVHandler = signatures.DownloadProjectSignatureCCLAAsCSVHandlerFunc(func(params signatures.DownloadProjectSignatureCCLAAsCSVParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "SignaturesDownloadProjectSignatureCCLAAsCSVHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesDownloadProjectSignatureCCLAAsCSVHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 		}
@@ -1209,7 +1230,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 
 		log.WithFields(f).Debug("checking access control permissions for user...")
 		if !isUserHaveAccessToCLAGroupProjects(ctx, authUser, params.ClaGroupID, projectClaGroupsRepo, projectRepo) {
-			msg := fmt.Sprintf("user %s is not authorized to view project CCLA signatures any scope of project", authUser.UserName)
+			msg := fmt.Sprintf("user '%s' is not authorized to view project CCLA signatures any scope of project", authUser.UserName)
 			log.Warn(msg)
 			return signatures.NewDownloadProjectSignatureCCLAAsCSVForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
@@ -1253,7 +1274,7 @@ func getProjectIDsFromModels(f logrus.Fields, foundationSFID string, projectCLAG
 // isUserHaveAccessOfSignedSignaturePDF returns true if the specified user has access to the provided signature, false otherwise
 func isUserHaveAccessOfSignedSignaturePDF(ctx context.Context, authUser *auth.User, signature *v1Models.Signature, companyService company.IService, projectClaGroupRepo projects_cla_groups.Repository, projectRepo project.ProjectRepository) (bool, error) {
 	f := logrus.Fields{
-		"functionName":           "isUserHaveAccessOfSignedSignaturePDF",
+		"functionName":           "v2.signatures.handlers.isUserHaveAccessOfSignedSignaturePDF",
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
 		"authUserName":           authUser.UserName,
 		"authUserEmail":          authUser.Email,
@@ -1364,7 +1385,7 @@ func errorResponse(reqID string, err error) *models.ErrorResponse {
 // isUserHaveAccessToCLAGroupProjects is a helper function to determine if the user has access to the specified CLA Group projects
 func isUserHaveAccessToCLAGroupProjects(ctx context.Context, authUser *auth.User, claGroupID string, projectClaGroupsRepo projects_cla_groups.Repository, projectRepo project.ProjectRepository) bool {
 	f := logrus.Fields{
-		"functionName":   "isUserHaveAccessToCLAGroupProjects",
+		"functionName":   "v2.signatures.handlers.isUserHaveAccessToCLAGroupProjects",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"userName":       authUser.UserName,
@@ -1431,7 +1452,7 @@ func isUserHaveAccessToCLAGroupProjects(ctx context.Context, authUser *auth.User
 // isUserHaveAccessToCLAProject is a helper function to determine if the user has access to the specified project
 func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, projectSFID string, projectClaGroupsRepo projects_cla_groups.Repository) bool { // nolint
 	f := logrus.Fields{
-		"functionName":   "isUserHaveAccessToCLAProject",
+		"functionName":   "v2.signatures.handlers.isUserHaveAccessToCLAProject",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 		"userName":       authUser.UserName,
@@ -1489,7 +1510,7 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, proj
 // isUserHaveAccessToCLAProjectOrganization is a helper function to determine if the user has access to the specified project and organization
 func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *auth.User, projectSFID, organizationSFID string, projectClaGroupsRepo projects_cla_groups.Repository) bool {
 	f := logrus.Fields{
-		"functionName":     "isUserHaveAccessToCLAProjectOrganization",
+		"functionName":     "v2.signatures.handlers.isUserHaveAccessToCLAProjectOrganization",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
 		"projectSFID":      projectSFID,
 		"organizationSFID": organizationSFID,
@@ -1497,40 +1518,40 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 		"userEmail":        authUser.Email,
 	}
 
-	log.WithFields(f).Debug("testing if user has access to project SFID...")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to project SFID: %s...", authUser.UserName, authUser.Email, projectSFID)
 	if utils.IsUserAuthorizedForProject(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to project SFID...")
+		log.WithFields(f).Debugf("user %s/%s has access to project SFID: %s...", authUser.UserName, authUser.Email, projectSFID)
 		return true
 	}
 
-	log.WithFields(f).Debug("testing if user has access to project SFID tree...")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to project SFID tree...", authUser.UserName, authUser.Email)
 	if utils.IsUserAuthorizedForProjectTree(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to project SFID tree...")
+		log.WithFields(f).Debugf("user %s/%s has access to project SFID tree...", authUser.UserName, authUser.Email)
 		return true
 	}
 
-	log.WithFields(f).Debug("testing if user has access to project SFID and organization SFID...")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to project SFID and organization SFID...", authUser.UserName, authUser.Email)
 	if utils.IsUserAuthorizedForProjectOrganization(authUser, projectSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to project SFID and organization SFID...")
+		log.WithFields(f).Debugf("user %s/%s has access to project SFID and organization SFID...", authUser.UserName, authUser.Email)
 		return true
 	}
 
-	log.WithFields(f).Debug("testing if user has access to project SFID and organization SFID tree...")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to project SFID and organization SFID tree...", authUser.UserName, authUser.Email)
 	if utils.IsUserAuthorizedForProjectOrganizationTree(authUser, projectSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to project SFID and organization SFID tree...")
+		log.WithFields(f).Debugf("user %s/%s has access to project SFID and organization SFID tree...", authUser.UserName, authUser.Email)
 		return true
 	}
 
-	log.WithFields(f).Debug("testing if user has access to organization SFID...")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to organization SFID...", authUser.UserName, authUser.Email)
 	if utils.IsUserAuthorizedForOrganization(authUser, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to organization SFID...")
+		log.WithFields(f).Debugf("user %s/%s has access to organization SFID...", authUser.UserName, authUser.Email)
 		return true
 	}
 
 	// No luck so far...let's load up the Project => CLA Group mapping and check to see if the user has access to the
 	// other projects or the parent project group/foundation
 
-	log.WithFields(f).Debug("user doesn't have direct access to the project only, project + organization, or organization only - loading CLA Group from project id...")
+	log.WithFields(f).Debugf("user %s/%s doesn't have direct access to the project only, project + organization, or organization only - loading CLA Group from project id...", authUser.UserName, authUser.Email)
 	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project -> cla group mapping - returning false")
@@ -1543,26 +1564,26 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 
 	// Check the foundation permissions
 	f["foundationSFID"] = projectCLAGroupModel.FoundationSFID
-	log.WithFields(f).Debug("testing if user has access to parent foundation...")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to parent foundation...", authUser.UserName, authUser.Email)
 	if utils.IsUserAuthorizedForProject(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to parent foundation...")
+		log.WithFields(f).Debugf("user %s/%s has access to parent foundation...", authUser.UserName, authUser.Email)
 		return true
 	}
-	log.WithFields(f).Debug("testing if user has access to parent foundation tree...")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to parent foundation tree...", authUser.UserName, authUser.Email)
 	if utils.IsUserAuthorizedForProjectTree(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to parent foundation tree...")
+		log.WithFields(f).Debugf("user %s/%s has access to parent foundation tree...", authUser.UserName, authUser.Email)
 		return true
 	}
 
-	log.WithFields(f).Debug("testing if user has access to foundation SFID and organization SFID...")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to foundation SFID and organization SFID...", authUser.UserName, authUser.Email)
 	if utils.IsUserAuthorizedForProjectOrganization(authUser, projectCLAGroupModel.FoundationSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to foundation SFID and organization SFID...")
+		log.WithFields(f).Debugf("user %s/%s has access to foundation SFID and organization SFID...", authUser.UserName, authUser.Email)
 		return true
 	}
 
-	log.WithFields(f).Debug("testing if user has access to foundation SFID and organization SFID tree...")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to foundation SFID and organization SFID tree...", authUser.UserName, authUser.Email)
 	if utils.IsUserAuthorizedForProjectOrganizationTree(authUser, projectCLAGroupModel.FoundationSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to foundation SFID and organization SFID tree...")
+		log.WithFields(f).Debugf("user %s/%s has access to foundation SFID and organization SFID tree...", authUser.UserName, authUser.Email)
 		return true
 	}
 
@@ -1576,12 +1597,12 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 
 	projectSFIDs := getProjectIDsFromModels(f, projectCLAGroupModel.FoundationSFID, projectCLAGroupModels)
 	f["projectIDs"] = strings.Join(projectSFIDs, ",")
-	log.WithFields(f).Debug("testing if user has access to any cla group project + organization")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to any cla group project + organization", authUser.UserName, authUser.Email)
 	if utils.IsUserAuthorizedForAnyProjectOrganization(authUser, projectSFIDs, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to at least of of the projects...")
+		log.WithFields(f).Debugf("user %s/%s has access to at least of of the projects...", authUser.UserName, authUser.Email)
 		return true
 	}
 
-	log.WithFields(f).Debug("exhausted project checks - user does not have access to project")
+	log.WithFields(f).Debugf("exhausted project checks - user %s/%s does not have access to project", authUser.UserName, authUser.Email)
 	return false
 }

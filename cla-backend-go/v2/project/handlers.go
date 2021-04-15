@@ -31,9 +31,11 @@ import (
 // Configure establishes the middleware handlers for the project service
 func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service Service, eventsService events.Service) { //nolint
 	// Get Projects
-	api.ProjectGetProjectsHandler = project.GetProjectsHandlerFunc(func(params project.GetProjectsParams, user *auth.User) middleware.Responder {
+	api.ProjectGetProjectsHandler = project.GetProjectsHandlerFunc(func(params project.GetProjectsParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+
 		// No auth checks - anyone can request the list of projects
 		projects, err := service.GetCLAGroups(ctx, &v1ProjectOps.GetProjectsParams{
 			HTTPRequest: params.HTTPRequest,
@@ -56,10 +58,18 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 	})
 
 	// Get Project By ID
-	api.ProjectGetProjectByIDHandler = project.GetProjectByIDHandlerFunc(func(params project.GetProjectByIDParams, user *auth.User) middleware.Responder {
+	api.ProjectGetProjectByIDHandler = project.GetProjectByIDHandlerFunc(func(params project.GetProjectByIDParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-		utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.project.handlers.ProjectGetProjectByIDHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"projectSFID":    params.ProjectSfdcID,
+			"userEmail":      authUser.Email,
+			"userName":       authUser.UserName,
+		}
+
 		claGroupModel, err := service.GetCLAGroupByID(ctx, params.ProjectSfdcID)
 		if err != nil {
 
@@ -73,34 +83,39 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 			return project.NewGetProjectByIDNotFound().WithXRequestID(reqID)
 		}
 
-		if !utils.IsUserAuthorizedForProjectTree(ctx, user, claGroupModel.ProjectExternalID, utils.ALLOW_ADMIN_SCOPE) {
-			return project.NewGetProjectByIDForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code: "403",
-				Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Get Project By ID with Project scope of %s",
-					user.UserName, claGroupModel.ProjectExternalID),
-				XRequestID: reqID,
-			})
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, claGroupModel.ProjectExternalID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user '%s' does not have access to Get Project By ID with Project scope of %s",
+				authUser.UserName, claGroupModel.ProjectExternalID)
+			return project.NewGetProjectByIDForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
 		result, err := v2ProjectModel(claGroupModel)
 		if err != nil {
-			return project.NewGetProjectByIDInternalServerError().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			msg := fmt.Sprintf("unable to convert CLA Group '%s' with ID: '%s' to a response model", claGroupModel.ProjectName, claGroupModel.ProjectID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return project.NewGetProjectByIDInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
 		}
 
 		return project.NewGetProjectByIDOK().WithXRequestID(reqID).WithPayload(result)
 	})
 
-	api.ProjectGetProjectsByExternalIDHandler = project.GetProjectsByExternalIDHandlerFunc(func(params project.GetProjectsByExternalIDParams, user *auth.User) middleware.Responder {
+	api.ProjectGetProjectsByExternalIDHandler = project.GetProjectsByExternalIDHandlerFunc(func(params project.GetProjectsByExternalIDParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-		utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
-		if !utils.IsUserAuthorizedForProjectTree(ctx, user, params.ExternalID, utils.ALLOW_ADMIN_SCOPE) {
-			return project.NewGetProjectsByExternalIDForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code: "403",
-				Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Get Projects By External ID with Project scope of %s",
-					user.UserName, params.ExternalID),
-				XRequestID: reqID,
-			})
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.project.handlers.ProjectGetProjectsByExternalIDHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"externalID":     params.ExternalID,
+			"userEmail":      authUser.Email,
+			"userName":       authUser.UserName,
+		}
+
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ExternalID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user '%s' does not have access to Get Projects By External ID with Project scope of '%s'",
+				authUser.UserName, params.ExternalID)
+			log.WithFields(f).Debug(msg)
+			return project.NewGetProjectsByExternalIDForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
 		claGroupModel, err := service.GetCLAGroupsByExternalID(ctx, &v1ProjectOps.GetProjectsByExternalIDParams{
@@ -119,20 +134,25 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 			return project.NewGetProjectsByExternalIDInternalServerError().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 		if results.Projects == nil {
-			return project.NewGetProjectsByExternalIDNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:       "404",
-				Message:    fmt.Sprintf("project not found with id. [%s]", params.ExternalID),
-				XRequestID: reqID,
-			})
+			msg := fmt.Sprintf("project not found with id: '%s]", params.ExternalID)
+			log.WithFields(f).Debug(msg)
+			return project.NewGetProjectsByExternalIDNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
 		}
 		return project.NewGetProjectsByExternalIDOK().WithXRequestID(reqID).WithPayload(results)
 	})
 
 	// Get Project By Name
-	api.ProjectGetProjectByNameHandler = project.GetProjectByNameHandlerFunc(func(params project.GetProjectByNameParams, user *auth.User) middleware.Responder {
+	api.ProjectGetProjectByNameHandler = project.GetProjectByNameHandlerFunc(func(params project.GetProjectByNameParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-		utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.project.handlers.ProjectGetProjectByNameHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"projectName":    params.ProjectName,
+			"userEmail":      authUser.Email,
+			"userName":       authUser.UserName,
+		}
 
 		claGroupModel, err := service.GetCLAGroupByName(ctx, params.ProjectName)
 		if err != nil {
@@ -142,13 +162,11 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 			return project.NewGetProjectByNameNotFound().WithXRequestID(reqID)
 		}
 
-		if !utils.IsUserAuthorizedForProjectTree(ctx, user, claGroupModel.ProjectExternalID, utils.ALLOW_ADMIN_SCOPE) {
-			return project.NewGetProjectByNameForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code: "403",
-				Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Get Project By Name with Project scope of %s",
-					user.UserName, claGroupModel.ProjectExternalID),
-				XRequestID: reqID,
-			})
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, claGroupModel.ProjectExternalID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user '%s' does not have access to Get Projects By Name with Project scope of '%s'",
+				authUser.UserName, claGroupModel.ProjectExternalID)
+			log.WithFields(f).Debug(msg)
+			return project.NewGetProjectByNameForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
 		result, err := v2ProjectModel(claGroupModel)
@@ -159,18 +177,18 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 	})
 
 	// Delete Project By ID
-	api.ProjectDeleteProjectByIDHandler = project.DeleteProjectByIDHandlerFunc(func(params project.DeleteProjectByIDParams, user *auth.User) middleware.Responder {
+	api.ProjectDeleteProjectByIDHandler = project.DeleteProjectByIDHandlerFunc(func(params project.DeleteProjectByIDParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		f := logrus.Fields{
-			"functionName":   "ProjectDeleteProjectByIDHandler",
+			"functionName":   "v2.project.handlers.ProjectDeleteProjectByIDHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSfdcID,
-			"userEmail":      user.Email,
-			"userName":       user.UserName,
+			"userEmail":      authUser.Email,
+			"userName":       authUser.UserName,
 		}
 		log.WithFields(f).Debug("Processing delete request")
-		utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		claGroupModel, err := service.GetCLAGroupByID(ctx, params.ProjectSfdcID)
 		if err != nil {
 			if err == ErrCLAGroupDoesNotExist {
@@ -179,13 +197,11 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 			return project.NewDeleteProjectByIDBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
-		if !utils.IsUserAuthorizedForProjectTree(ctx, user, claGroupModel.ProjectExternalID, utils.ALLOW_ADMIN_SCOPE) {
-			return project.NewDeleteProjectByIDForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code: "403",
-				Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Delete Project By ID with Project scope of %s",
-					user.UserName, claGroupModel.ProjectExternalID),
-				XRequestID: reqID,
-			})
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, claGroupModel.ProjectExternalID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user '%s' does not have access to Delete Project By ID with Project scope of %s",
+				authUser.UserName, claGroupModel.ProjectExternalID)
+			log.WithFields(f).Debug(msg)
+			return project.NewDeleteProjectByIDForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
 		err = service.DeleteCLAGroup(ctx, params.ProjectSfdcID)
@@ -198,7 +214,7 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:     events.CLAGroupDeleted,
 			ClaGroupModel: claGroupModel,
-			LfUsername:    user.UserName,
+			LfUsername:    authUser.UserName,
 			EventData:     &events.CLAGroupDeletedEventData{},
 		})
 
@@ -283,7 +299,7 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		f := logrus.Fields{
-			"functionName":   "ProjectGetSFProjectInfoByIDHandler",
+			"functionName":   "v2.project.handlers.ProjectGetSFProjectInfoByIDHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSFID,
 			"userEmail":      user.Email,
