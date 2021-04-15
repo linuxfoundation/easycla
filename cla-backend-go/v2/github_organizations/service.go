@@ -208,7 +208,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 			}
 			rorg.Repositories = append(rorg.Repositories, &models.ProjectGithubRepository{
 				ConnectionStatus:   Connected,
-				Enabled:            true,
+				Enabled:            repo.Enabled,
 				RepositoryID:       repo.RepositoryID,
 				RepositoryName:     repo.RepositoryName,
 				RepositoryGithubID: repoGithubID,
@@ -223,7 +223,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		} else {
 			rorg.Repositories = append(rorg.Repositories, &models.ProjectGithubRepository{
 				ConnectionStatus: ConnectionFailure,
-				Enabled:          true,
+				Enabled:          repo.Enabled,
 				RepositoryID:     repo.RepositoryID,
 				RepositoryName:   repo.RepositoryName,
 				ClaGroupID:       repo.RepositoryProjectID,

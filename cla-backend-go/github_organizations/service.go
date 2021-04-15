@@ -101,7 +101,14 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		return nil, projErr
 	}
 
-	if parentProjectSFID != projectSFID && parentProjectSFID != "" {
+	//Get SF Project
+	projectDetails, projDetailsErr := v2ProjectService.GetClient().GetProject(projectSFID)
+	if projDetailsErr != nil {
+		log.WithFields(f).Warnf("problem fetching parent project details for :%s ", projectSFID)
+		return nil, projDetailsErr
+	}
+
+	if parentProjectSFID != projectSFID && (projectDetails != nil && !utils.IsProjectHasRootParent(projectDetails)) {
 		log.WithFields(f).Debugf("found parent of projectSFID: %s to be %s. Searching github organization by parent SFID: %s...", projectSFID, parentProjectSFID, parentProjectSFID)
 		parentGithubModels, parentErr := s.repo.GetGithubOrganizationsByParent(ctx, parentProjectSFID)
 		if parentErr != nil {

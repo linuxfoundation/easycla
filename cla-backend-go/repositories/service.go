@@ -156,7 +156,20 @@ func (s *service) ListProjectRepositories(ctx context.Context, externalProjectID
 }
 
 func (s *service) GetRepository(ctx context.Context, repositoryID string) (*models.GithubRepository, error) {
-	return s.repo.GetRepository(ctx, repositoryID)
+	f := logrus.Fields{
+		"functionName": "v1.repository.GetRepository",
+		"repositoryID": repositoryID,
+	}
+	log.WithFields(f).Debug("Searching for repository...")
+	ghRepo, err := s.repo.GetRepository(ctx, repositoryID)
+	if err != nil || ghRepo != nil {
+		log.WithFields(f).WithError(err).Debug("unable to get repository")
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("Found repository : %+v ", ghRepo)
+
+	return ghRepo, nil
 }
 
 func (s *service) GetRepositoryByProjectSFID(ctx context.Context, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error) {
