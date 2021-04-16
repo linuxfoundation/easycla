@@ -88,7 +88,7 @@ func toDateFormat(t time.Time) string {
 	return t.Format("02-01-2006")
 }
 
-// Create event will create event in database.
+// CreateEvent event will create event in database.
 func (repo *repository) CreateEvent(event *models.Event) error {
 	f := logrus.Fields{
 		"functionName": "v1.events.repository.CreateEvent",
@@ -145,6 +145,8 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 	addAttribute(input.Item, "event_time", currentTimeString)
 	addAttribute(input.Item, "event_date", toDateFormat(currentTime))
 	addAttribute(input.Item, "event_date_and_contains_pii", eventDateAndContainsPII)
+	addAttribute(input.Item, "date_created", toDateFormat(currentTime))
+	addAttribute(input.Item, "date_modified", toDateFormat(currentTime))
 
 	input.Item["contains_pii"] = &dynamodb.AttributeValue{BOOL: &event.ContainsPII}
 	input.Item["event_time_epoch"] = &dynamodb.AttributeValue{N: aws.String(strconv.FormatInt(currentTime.Unix(), 10))}
