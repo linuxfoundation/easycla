@@ -86,7 +86,7 @@ func TestCLAGroupUpdatedEventData_GetEventDetailsString(t *testing.T) {
 		{
 			name:      "empty",
 			eventData: &CLAGroupUpdatedEventData{},
-			detailStr: "CLA Group ID: projectIDValue was updated by: john.",
+			detailStr: "CLA Group ID: projectIDValue was updated by the user john.",
 		},
 		{
 			name: "only name updated",
@@ -94,7 +94,7 @@ func TestCLAGroupUpdatedEventData_GetEventDetailsString(t *testing.T) {
 				NewClaGroupName: "updatedNameValue",
 				OldClaGroupName: "oldNameValue",
 			},
-			detailStr: "CLA Group ID: projectIDValue was updated by: john with Name from : oldNameValue to : updatedNameValue.",
+			detailStr: "CLA Group ID: projectIDValue was updated with Name from : oldNameValue to : updatedNameValue by the user john.",
 		},
 		{
 			name: "only name updated but old description still passed",
@@ -104,7 +104,7 @@ func TestCLAGroupUpdatedEventData_GetEventDetailsString(t *testing.T) {
 				NewClaGroupDescription: "oldDescriptionValue",
 				OldClaGroupDescription: "oldDescriptionValue",
 			},
-			detailStr: "CLA Group ID: projectIDValue was updated by: john with Name from : oldNameValue to : updatedNameValue.",
+			detailStr: "CLA Group ID: projectIDValue was updated with Name from : oldNameValue to : updatedNameValue by the user john.",
 		},
 		{
 			name: "only description updated",
@@ -112,7 +112,7 @@ func TestCLAGroupUpdatedEventData_GetEventDetailsString(t *testing.T) {
 				NewClaGroupDescription: "updatedDescriptionValue",
 				OldClaGroupDescription: "oldDescriptionValue",
 			},
-			detailStr: "CLA Group ID: projectIDValue was updated by: john with Description from : oldDescriptionValue to : updatedDescriptionValue.",
+			detailStr: "CLA Group ID: projectIDValue was updated with Description from : oldDescriptionValue to : updatedDescriptionValue by the user john.",
 		},
 		{
 			name: "only description updated but old name still passed",
@@ -122,7 +122,7 @@ func TestCLAGroupUpdatedEventData_GetEventDetailsString(t *testing.T) {
 				NewClaGroupName:        "oldNameValue",
 				OldClaGroupName:        "oldNameValue",
 			},
-			detailStr: "CLA Group ID: projectIDValue was updated by: john with Description from : oldDescriptionValue to : updatedDescriptionValue.",
+			detailStr: "CLA Group ID: projectIDValue was updated with Description from : oldDescriptionValue to : updatedDescriptionValue by the user john.",
 		},
 		{
 			name: "name and description updated",
@@ -132,7 +132,7 @@ func TestCLAGroupUpdatedEventData_GetEventDetailsString(t *testing.T) {
 				NewClaGroupDescription: "updatedDescriptionValue",
 				OldClaGroupDescription: "oldDescriptionValue",
 			},
-			detailStr: "CLA Group ID: projectIDValue was updated by: john with Name from : oldNameValue to : updatedNameValue, Description from : oldDescriptionValue to : updatedDescriptionValue.",
+			detailStr: "CLA Group ID: projectIDValue was updated with Name from : oldNameValue to : updatedNameValue, Description from : oldDescriptionValue to : updatedDescriptionValue by the user john.",
 		},
 	}
 
