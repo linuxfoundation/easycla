@@ -385,16 +385,6 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				utils.ErrorResponseInternalServerErrorWithError(reqID, fmt.Sprintf("unable to unenroll projects for CLA Group ID: %s", params.ClaGroupID), err))
 		}
 
-		eventsService.LogEvent(&events.LogEventArgs{
-			EventType:     events.CLAGroupUpdated,
-			ClaGroupModel: cg,
-			LfUsername:    authUser.UserName,
-			EventData: &events.CLAGroupUpdatedEventData{
-				OldClaGroupName:        cg.ProjectName,
-				OldClaGroupDescription: cg.ProjectDescription,
-			},
-		})
-
 		return cla_group.NewUnenrollProjectsOK().WithXRequestID(reqID)
 	})
 
