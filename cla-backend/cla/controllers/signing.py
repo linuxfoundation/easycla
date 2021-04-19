@@ -104,13 +104,23 @@ def request_employee_signature(project_id, company_id, user_id, return_url_type,
     :type return_url_type: string
     :param return_url: The URL to return the user to after signing is complete.
     """
+    fn = 'cla.controllers.signing.request_employee_signature'
 
     signing_service = get_signing_service()
     if return_url_type is not None and return_url_type.lower() == "gerrit":
+        cla.log.error(f'{fn} - return type is gerrit - invoking: request_employee_signature_gerrit')
         return signing_service.request_employee_signature_gerrit(str(project_id), str(company_id), str(user_id),
                                                                  return_url)
     elif return_url_type is not None and return_url_type.lower() == "github":
+        cla.log.error(f'{fn} - return type is github - invoking: request_employee_signature')
         return signing_service.request_employee_signature(str(project_id), str(company_id), str(user_id), return_url)
+    else:
+        msg = (f'{fn} - unsupported return type {return_url_type} for '
+               f'cla group: {project_id}, '
+               f'company: {company_id}, '
+               f'user: {user_id}')
+        cla.log.error(msg)
+        raise falcon.HTTPBadRequest(title=msg)
 
 
 def check_and_prepare_employee_signature(project_id, company_id, user_id):
