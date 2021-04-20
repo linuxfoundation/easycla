@@ -2000,12 +2000,26 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		return nil, errors.New(msg)
 	}
 
+	// Get CLA Manager
+	var cclaManagers []ClaManagerInfoParams
+	for i := range cclaSignature.SignatureACL {
+		cclaManagers = append(cclaManagers, ClaManagerInfoParams{
+			Username: utils.GetBestUsername(&cclaSignature.SignatureACL[i]),
+			Email:    getBestEmail(&cclaSignature.SignatureACL[i]),
+		})
+	}
+
 	// Keep track of existing company approvals
 	approvalList := ApprovalList{
 		DomainApprovals:         cclaSignature.DomainApprovalList,
 		GHOrgApprovals:          cclaSignature.GithubOrgApprovalList,
 		GitHubUsernameApprovals: cclaSignature.GithubUsernameApprovalList,
 		EmailApprovals:          cclaSignature.EmailApprovalList,
+		CLAManager:              claManager,
+		ICLAs:                   make([]*models.IclaSignature, 0),
+		ECLAs:                   make([]*models.Signature, 0),
+		ManagersInfo:            cclaManagers,
+		CCLASignature:           cclaSignature,
 	}
 
 	// Just grab and use the first one - need to figure out conflict resolution if more than one
@@ -2085,6 +2099,8 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			for _, email := range params.RemoveEmailApprovalList {
 				go func(email string) {
 					defer wg.Done()
+					var iclas []*models.IclaSignature
+					var eclas []*models.Signature
 					log.WithFields(f).Debugf("getting cla user record for email: %s ", email)
 					userSearch, userErr := repo.usersRepo.SearchUsers("user_emails", email, false)
 					if userErr != nil || userSearch == nil {
@@ -2107,6 +2123,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 					if len(signs.Signatures) > 0 {
 						approvalList.ECLAs = signs.Signatures
+						eclas = signs.Signatures
 					}
 
 					if len(userSearch.Users) > 0 {
@@ -2136,6 +2153,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							if result.Error == nil {
 								log.WithFields(f).Debug("processing icla...")
 								approvalList.ICLAs = append(approvalList.ICLAs, result.ICLASignature)
+								iclas = append(iclas, result.ICLASignature)
 							}
 						}
 
@@ -2143,6 +2161,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 					// Invalidate signatures
 					repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+
+					// Send email
+					repo.sendEmail(ctx, email, &approvalList, iclas, eclas)
 
 					//update gerrit permissions
 					gerritUser, getGerritUserErr := repo.getGerritUserByEmail(ctx, email, gerritICLAECLAs)
@@ -2262,6 +2283,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				for _, ghUsername := range params.RemoveGithubUsernameApprovalList {
 					go func(ghUsername string) {
 						defer wg.Done()
+						var iclas []*models.IclaSignature
+						var eclas []*models.Signature
+
 						criteria := &ApprovalCriteria{
 							GitHubUsername: ghUsername,
 						}
@@ -2273,6 +2297,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						}
 						if signs.Signatures != nil {
 							approvalList.ECLAs = signs.Signatures
+							eclas = signs.Signatures
 						}
 						// Get ICLAs
 						claUser, claErr := repo.usersRepo.GetUserByGitHubUsername(ghUsername)
@@ -2286,7 +2311,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 								log.WithFields(f).Debugf("unable to get icla signature for user with ghUsername: %s ", ghUsername)
 							}
 							if icla != nil {
-								// Convert to IclSignature instance to leverage invalidateSignatrues helper function
+								// Convert to IclSignature instance to leverage invalidateSignatures helper function
 								approvalList.ICLAs = []*models.IclaSignature{{
 									GithubUsername: icla.UserGHUsername,
 									LfUsername:     icla.UserLFID,
@@ -2296,6 +2321,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						}
 
 						repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+
+						// Send Email
+						repo.sendEmail(ctx, getBestEmail(claUser), &approvalList, iclas, eclas)
 
 					}(ghUsername)
 				}
@@ -2416,6 +2444,95 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	return updatedSig, nil
 }
 
+// sendEmail is a helper function used to render email for (CCLA, ICLA, ECLA cases)
+func (repo repository) sendEmail(ctx context.Context, email string, approvalList *ApprovalList, iclas []*models.IclaSignature, eclas []*models.Signature) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.sendEmail",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+	companyName := ""
+	company, companyErr := repo.companyRepo.GetCompany(ctx, approvalList.CompanyID)
+	if companyErr != nil {
+		log.WithFields(f).Debugf("unable to get company")
+	}
+	if company != nil {
+		companyName = company.CompanyName
+	}
+
+	params := InvalidateSignatureTemplateParams{
+		Company:       companyName,
+		RecipientName: email,
+		ClaManager:    utils.GetBestUsername(approvalList.CLAManager),
+		CLAManagers:   approvalList.ManagersInfo,
+		CLAGroupName:  approvalList.ClaGroupName,
+	}
+
+	// check for signature type (CCLA, ICLA, ECLA)
+	var removalType string = ""
+
+	// case 1 CCLA
+	if len(iclas) == 0 && len(eclas) == 0 {
+		removalType = CCLA
+	} else if len(iclas) > 0 && len(eclas) == 0 {
+		// case 2 ccla + icla
+		removalType = CCLAICLA
+	} else if len(iclas) > 0 && len(eclas) > 0 {
+		// case 3 ccla + icla + ecla
+		removalType = CCLAICLAECLA
+	}
+
+	// Send CCLA Email
+	if removalType == CCLA {
+		subject := fmt.Sprintf("EasyCLA: Approval List Update for :%s ", email)
+		log.WithFields(f).Debugf("sending approval list update removal for :%s ", email)
+		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLASignatureTemplateName, InvalidateCCLASignatureTemplate, params)
+		if renderErr != nil {
+			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
+		} else {
+			err := utils.SendEmail(subject, body, []string{email})
+			if err != nil {
+				log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
+			}
+		}
+	} else if removalType == ICLA {
+		subject := fmt.Sprintf("EasyCLA: Approval List Update for :%s ", email)
+		log.WithFields(f).Debugf("sending approval list update removal for :%s ", email)
+		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateICLASignatureTemplateName, InvalidateICLASignatureTemplate, params)
+		if renderErr != nil {
+			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
+		} else {
+			err := utils.SendEmail(subject, body, []string{email})
+			if err != nil {
+				log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
+			}
+		}
+	} else if removalType == CCLAICLA {
+		subject := fmt.Sprintf("EasyCLA: Approval List Update for :%s ", email)
+		log.WithFields(f).Debugf("sending approval list update removal for :%s ", email)
+		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAICLASignatureTemplateName, InvalidateCCLASignatureTemplate, params)
+		if renderErr != nil {
+			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
+		} else {
+			err := utils.SendEmail(subject, body, []string{email})
+			if err != nil {
+				log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
+			}
+		}
+	} else if removalType == CCLAICLAECLA {
+		subject := fmt.Sprintf("EasyCLA: Approval List Update for :%s ", email)
+		log.WithFields(f).Debugf("sending approval list update removal for :%s ", email)
+		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAICLAECLASignatureTemplateName, InvalidateCCLAICLAECLASignatureTemplate, params)
+		if renderErr != nil {
+			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
+		} else {
+			err := utils.SendEmail(subject, body, []string{email})
+			if err != nil {
+				log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
+			}
+		}
+	}
+}
+
 // invalidateSignatures is a helper function that invalidates signature records based on approval list
 func (repo repository) invalidateSignatures(ctx context.Context, approvalList *ApprovalList, claManager *models.User, eventArgs *events.LogEventArgs) {
 	f := logrus.Fields{
@@ -2442,32 +2559,14 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 					log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", signature)
 					return
 				}
+
 				user, verifyErr := repo.verifyUserApprovals(ctx, signature.SignatureReferenceID, signature.SignatureID, claManager, approvalList)
 				if verifyErr != nil {
 					log.WithFields(f).Warnf("unable to verify user: %s ", signature.SignatureReferenceID)
 					return
 				}
+				// Map representing CLA types against email ....
 				email := getBestEmail(user)
-				// send email
-				subject := fmt.Sprintf("EasyCLA: ICLA invalidated for %s on %s", email, approvalList.ClaGroupName)
-				log.WithFields(f).Debugf("sending invalidation email to user: %s ", email)
-				body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateSignatureTemplateName,
-					InvalidateSignatureTemplate, InvalidateSignatureTemplateParams{
-						RecipientName:   utils.GetBestUsername(user),
-						ClaType:         utils.ClaTypeICLA,
-						ClaManager:      utils.GetBestUsername(claManager),
-						RemovalCriteria: approvalList.Criteria,
-					})
-				if renderErr != nil {
-					log.WithFields(f).Debugf("unable to render invalidation notice for user : %s ", email)
-					return
-				}
-				err := utils.SendEmail(subject, body, []string{email})
-				if err != nil {
-					log.WithFields(f).Debugf("unable to send email invalidation notice to user: %s", email)
-					return
-				}
-
 				// Log Event
 				eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
 					SignatureID: icla.SignatureID,
@@ -2500,25 +2599,6 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 					return
 				}
 				email := getBestEmail(user)
-				// send email
-				subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated for %s on %s", email, approvalList.ClaGroupName)
-				log.WithFields(f).Debugf("sending invalidation email to user: %s ", email)
-				body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateSignatureTemplateName,
-					InvalidateSignatureTemplate, InvalidateSignatureTemplateParams{
-						RecipientName:   utils.GetBestUsername(user),
-						ClaType:         utils.ClaTypeECLA,
-						ClaManager:      utils.GetBestUsername(claManager),
-						RemovalCriteria: approvalList.Criteria,
-					})
-				if renderErr != nil {
-					log.WithFields(f).Debugf("unable to send invalidation signature email to : %s ", email)
-					return
-				}
-				err := utils.SendEmail(subject, body, []string{email})
-				if err != nil {
-					log.WithFields(f).Debugf("unable to send email invalidation notice to user: %s", email)
-					return
-				}
 				// Log Event
 				eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
 					SignatureID: ecla.SignatureID,
@@ -2570,6 +2650,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 		log.WithFields(f).Warnf("unable to get user record for ID: %s ", userID)
 		return nil, err
 	}
+	email := getBestEmail(user)
 
 	authUser := auth.User{
 		Email:    claManager.LfEmail,
@@ -2578,10 +2659,9 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 
 	if approvalList.Criteria == utils.EmailDomainCriteria {
 		// Handle Domains
-		email := getBestEmail(user)
 		domain := strings.Split(email, "@")[1]
 		if utils.StringInSlice(domain, approvalList.DomainApprovals) {
-			if !utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) && !utils.StringInSlice(getBestEmail(user), approvalList.EmailApprovals) {
+			if !utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) && !utils.StringInSlice(email, approvalList.EmailApprovals) {
 				//Invalidate record
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.EmailDomainCriteria)
 				err := repo.InvalidateProjectRecord(ctx, signatureID, note)
@@ -2610,6 +2690,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 		if utils.StringInSlice(user.GithubUsername, approvalList.GHUsernames) {
 			if !utils.StringInSlice(getBestEmail(user), approvalList.EmailApprovals) && !utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) {
 				//Invalidate record
+
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.GitHubOrgCriteria)
 				err := repo.InvalidateProjectRecord(ctx, signatureID, note)
 				if err != nil {
@@ -2625,6 +2706,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 			log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
 			return user, err
 		}
+
 	}
 
 	return user, nil

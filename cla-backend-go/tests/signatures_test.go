@@ -11,19 +11,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-//TestInvalidateSignatureTemplate validates email sent when signature is invalidated
-func TestInvalidateSignatureTemplate(t *testing.T) {
+func TestCCLAInvalidateSignatureTemplate(t *testing.T) {
 	params := signatures.InvalidateSignatureTemplateParams{
-		RecipientName:   "TestUser",
-		ClaType:         utils.ClaTypeICLA,
+		RecipientName:   "CCLATest",
+		ClaType:         utils.ClaTypeCCLA,
 		ClaManager:      "claManager",
+		CLAGroupName:    "claGroup test",
 		RemovalCriteria: "email removal",
-		ProjectName:     "testProject",
+		CLAManagers: []signatures.ClaManagerInfoParams{
+			{Username: "mgr_one", Email: "mgr_one_email"},
+			{Username: "mgr_two", Email: "mgr_two_email"},
+		},
+		Company: "TestCompany",
 	}
 
-	result, err := utils.RenderTemplate(utils.V1, signatures.InvalidateSignatureTemplateName, signatures.InvalidateSignatureTemplate, params)
+	result, err := utils.RenderTemplate(utils.V2, signatures.InvalidateCCLASignatureTemplateName, signatures.InvalidateCCLASignatureTemplate, params)
 	assert.NoError(t, err)
-	assert.Contains(t, result, "Hello TestUser")
-	assert.Contains(t, result, "The ICLA signature for TestUser has been invalidated.")
-	assert.Contains(t, result, "Please contact Project Manager for the claGroup testProject and/or CLA Manager from your company if you have more questions.")
+	assert.Contains(t, result, "This is a notification email from EasyCLA regarding the CLA Group claGroup test")
+	assert.Contains(t, result, "You were previously authorized to contribute on behalf of your company TestCompany under its CLA. However, a CLA Manager claManager has now removed you from the authorization list")
+	assert.Contains(t, result, "<li>mgr_one mgr_one_email</li>")
+
 }

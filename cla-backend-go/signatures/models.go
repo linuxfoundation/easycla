@@ -39,6 +39,9 @@ type ApprovalList struct {
 	GerritICLAECLAs         []string
 	ICLAs                   []*models.IclaSignature
 	ECLAs                   []*models.Signature
+	CLAManager              *models.User
+	ManagersInfo            []ClaManagerInfoParams
+	CCLASignature           *models.Signature
 }
 
 // GerritUserResponse is a data structure to hold the gerrit user query response
@@ -53,3 +56,14 @@ type ICLAUserResponse struct {
 	ICLASignature *models.IclaSignature
 	Error         error
 }
+
+const (
+	//CCLAICLA representing user removal under CCLA + ICLA
+	CCLAICLA = "CCLAICLA"
+	//CCLAICLAECLA representing user removal under CCLA + ICLA +ECLA
+	CCLAICLAECLA = "CCLAICLAECLA"
+	//CCLA representing normal use case of user under CCLA
+	CCLA = "ICLA"
+	//ICLA representing individual use case
+	ICLA = "ICLA"
+)
