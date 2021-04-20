@@ -1602,6 +1602,22 @@ def get_formatted_time(the_time: datetime) -> str:
     return the_time.strftime("%Y-%m-%dT%H:%M:%S.%f%z") + "+0000"
 
 
+def get_time_from_string(date_string: str) -> Optional[datetime]:
+    """
+    Helper function to return the specified datetime object from an ISO standard format string
+    :return:
+    """
+    # Try these formats
+    formats = ['%Y-%m-%d %H:%M:%S.%f%z', '%Y-%m-%dT%H:%M:%S%z', '%Y-%m-%dT%H:%M:%S.%f%z']
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_string, fmt)
+        except (ValueError, TypeError) as e:
+            pass
+            # print(f'unable to parse time {date_string} using {fmt}, error: {e}')
+    return None
+
+
 def get_public_email(user):
     """
     Helper function to return public user email to send emails

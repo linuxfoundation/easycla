@@ -1476,6 +1476,7 @@ class DocuSign(signing_service_interface.SigningService):
             # Log the event
             try:
                 # Load the Project by ID and send audit event
+                cla.log.debug(f'{fn} - creating an event log entry for event_type: {EventType.IndividualSignatureSigned}')
                 project = Project()
                 project.load(signature.get_signature_project_id())
                 event_data = (f'The user {user.get_user_name()} signed an individual CLA for '
@@ -1492,6 +1493,7 @@ class DocuSign(signing_service_interface.SigningService):
                     event_summary=event_summary,
                     contains_pii=False,
                 )
+                cla.log.debug(f'{fn} - created an event log entry for event_type: {EventType.IndividualSignatureSigned}')
             except DoesNotExist as err:
                 msg = (f'{fn} - unable to load project by CLA Group ID: {signature.get_signature_project_id()}, '
                        f'unable to send audit event, error: {err}')

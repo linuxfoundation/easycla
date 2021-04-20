@@ -4420,6 +4420,33 @@ class Event(model_interfaces.Event):
     #         ret.append(evt)
     #     return ret, result_iterator.last_evaluated_key, result_iterator.total_count
 
+    def get_events_type_by_week(self, event_type: EventType) -> dict:
+        filter_attributes = {
+            "event_type": event_type.name,
+        }
+        filter_condition = create_filter(filter_attributes, EventModel)
+        projection = ["event_id", "event_type", "date_created"]
+        cla.log.debug(f'querying events using filter: {filter_condition}...')
+        result_iterator = self.model.scan(filter_condition=filter_condition, attributes_to_get=projection)
+
+        ret = {}
+
+        for event_record in result_iterator:
+            date_time_value = cla.utils.get_time_from_string(str(event_record.date_created))
+            year = date_time_value.year
+            week_number = date_time_value.isocalendar()[1]
+            cla.log.debug(f'processing events - '
+                          f'{event_record.event_id} - '
+                          f'{event_record.event_type} - '
+                          f'{event_record.date_created} - '
+                          f'{year} - {week_number:02d}')
+            key = f'{year} {week_number:02d}'
+            if key in ret:
+                ret[key] += 1
+            else:
+                ret[key] = 1
+        return ret
+
     def set_event_data(self, event_data: str):
         self.model.event_data = event_data
         self.model.event_data_lower = event_data.lower()
