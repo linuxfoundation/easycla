@@ -1023,6 +1023,7 @@ class ProjectModel(BaseModel):
     project_live = BooleanAttribute(default=False)
     foundation_sfid = UnicodeAttribute(null=True)
     root_project_repositories_count = NumberAttribute(null=True)
+    note = UnicodeAttribute(null=True)
     # Indexes
     project_external_id_index = ExternalProjectIndex()
     project_name_search_index = ProjectNameIndex()
@@ -1050,6 +1051,7 @@ class Project(model_interfaces.Project):  # pylint: disable=too-many-public-meth
             project_ccla_requires_icla_signature=False,
             project_acl=None,
             project_live=False,
+            note=None
     ):
         super(Project).__init__()
         self.model = ProjectModel()
@@ -1062,6 +1064,7 @@ class Project(model_interfaces.Project):  # pylint: disable=too-many-public-meth
         self.model.project_ccla_requires_icla_signature = project_ccla_requires_icla_signature
         self.model.project_acl = project_acl
         self.model.project_live = project_live
+        self.model.note = note
 
     def __str__(self):
         return (
@@ -1270,6 +1273,9 @@ class Project(model_interfaces.Project):  # pylint: disable=too-many-public-meth
     def get_date_modified(self):
         return self.model.date_modified
 
+    def get_note(self) -> Optional[str]:
+        return self.model.note
+
     def set_project_id(self, project_id):
         self.model.project_id = str(project_id)
 
@@ -1296,6 +1302,9 @@ class Project(model_interfaces.Project):  # pylint: disable=too-many-public-meth
 
     def set_project_live(self, project_live):
         self.model.project_live = project_live
+
+    def set_note(self, note: str) -> None:
+        self.model.note = note
 
     def add_project_individual_document(self, document):
         self.model.project_individual_documents.append(document.model)
@@ -2064,6 +2073,15 @@ class Repository(model_interfaces.Repository):
 
     def get_repository_models_by_repository_sfdc_id(self, project_sfid) -> List[Repository]:
         repository_generator = self.model.repository_sfdc_index.query(project_sfid)
+        repositories = []
+        for repository_model in repository_generator:
+            repository = Repository()
+            repository.model = repository_model
+            repositories.append(repository)
+        return repositories
+
+    def get_repository_models_by_repository_cla_group_id(self, cla_group_id: str) -> List[Repository]:
+        repository_generator = self.model.repository_project_index.query(cla_group_id)
         repositories = []
         for repository_model in repository_generator:
             repository = Repository()
