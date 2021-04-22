@@ -371,12 +371,17 @@ type ContributorAssignCLADesignee struct {
 }
 
 // UserConvertToContactData . . .
-type UserConvertToContactData struct{}
+type UserConvertToContactData struct {
+	UserName  string
+	UserEmail string
+}
 
 // AssignRoleScopeData . . .
 type AssignRoleScopeData struct {
-	Role  string
-	Scope string
+	Role      string
+	Scope     string
+	UserName  string
+	UserEmail string
 }
 
 // ClaManagerRoleCreatedData . . .
@@ -1024,9 +1029,23 @@ func (ed *UserConvertToContactData) GetEventDetailsString(args *LogEventArgs) (s
 
 // GetEventDetailsString . . .
 func (ed *AssignRoleScopeData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s was assigned Scope: %s with Role: %s for Project: %s with ID: %s.",
-		args.UserName,
-		ed.Scope, ed.Role, args.ProjectName, args.ProjectSFID)
+	data := fmt.Sprintf("The user '%s' with email '%s' was added to the role %s", ed.UserName, ed.UserEmail, ed.Role)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
@@ -1995,7 +2014,7 @@ func (ed *ContributorAssignCLADesignee) GetEventSummaryString(args *LogEventArgs
 
 // GetEventSummaryString . . .
 func (ed *UserConvertToContactData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was converted to a contact", args.UserName)
+	data := fmt.Sprintf("The user '%s' with email '%s' was converted to a contact", ed.UserName, ed.UserEmail)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -2004,6 +2023,9 @@ func (ed *UserConvertToContactData) GetEventSummaryString(args *LogEventArgs) (s
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
 	data = data + "."
 	return data, true
@@ -2011,7 +2033,7 @@ func (ed *UserConvertToContactData) GetEventSummaryString(args *LogEventArgs) (s
 
 // GetEventSummaryString . . .
 func (ed *AssignRoleScopeData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was added to the role %s", args.UserName, ed.Role)
+	data := fmt.Sprintf("The user '%s' with email '%s' was added to the role %s", ed.UserName, ed.UserEmail, ed.Role)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -2021,13 +2043,16 @@ func (ed *AssignRoleScopeData) GetEventSummaryString(args *LogEventArgs) (string
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
 	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
 	data = data + "."
 	return data, true
 }
 
 // GetEventSummaryString . . .
 func (ed *ClaManagerRoleCreatedData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was added to the role %s", ed.UserName, ed.Role)
+	data := fmt.Sprintf("The user '%s' with email '%s' was added to the role %s", ed.UserName, ed.UserEmail, ed.Role)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -2046,7 +2071,7 @@ func (ed *ClaManagerRoleCreatedData) GetEventSummaryString(args *LogEventArgs) (
 
 // GetEventSummaryString . . .
 func (ed *ClaManagerRoleDeletedData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s was removed from the role %s", ed.UserName, ed.Role)
+	data := fmt.Sprintf("The user '%s' with email '%s' was added to the role %s", ed.UserName, ed.UserEmail, ed.Role)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}

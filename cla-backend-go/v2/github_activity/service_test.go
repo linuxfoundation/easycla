@@ -5,6 +5,8 @@ package github_activity
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
@@ -13,7 +15,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/google/go-github/v33/github"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryRenamedAction(t *testing.T) {
@@ -146,7 +147,7 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryTransferredA
 							NewGithubOrgName: newOrgName,
 						},
 					}).Return()
-			}else{
+			} else {
 				githubRepo.EXPECT().
 					DisableRepository(gomock.Any(), repoID).Return(nil)
 				eventsService.EXPECT().
@@ -155,7 +156,7 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryTransferredA
 						UserID:    "githubLoginValue",
 						ProjectID: "",
 						EventData: &events.RepositoryDisabledEventData{
-							RepositoryName:   repoName,
+							RepositoryName: repoName,
 						},
 					}).Return()
 			}
@@ -177,9 +178,9 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryTransferredA
 				Installation: nil,
 			})
 
-			if tc.newGithubOrg.AutoEnabled{
+			if tc.newGithubOrg.AutoEnabled {
 				assert.NoError(tt, err)
-			}else{
+			} else {
 				assert.Error(tt, err)
 			}
 		})

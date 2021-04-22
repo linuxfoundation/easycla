@@ -744,17 +744,16 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 	s.eventService.LogEventWithContext(ctx,
 		&events.LogEventArgs{
 			EventType:     events.AssignUserRoleScopeType,
-			LfUsername:    user.Username,
-			UserID:        user.ID,
 			ProjectSFID:   projectID,
 			CompanyModel:  v1CompanyModel,
 			ClaGroupModel: projectModel,
 			CLAGroupID:    projectModel.ProjectID,
 			CLAGroupName:  projectModel.ProjectName,
-			UserModel:     &v1Models.User{LfUsername: user.Username, UserID: user.ID},
 			EventData: &events.AssignRoleScopeData{
-				Role:  "contributor",
-				Scope: fmt.Sprintf("%s|%s", projectID, companyID),
+				Role:      "contributor",
+				Scope:     fmt.Sprintf("%s|%s", projectID, companyID),
+				UserName:  user.Username,
+				UserEmail: utils.StringValue(user.Email),
 			},
 		})
 

@@ -402,14 +402,14 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 	s.eventService.LogEventWithContext(ctx,
 		&events.LogEventArgs{
 			EventType:    events.AssignUserRoleScopeType,
-			LfUsername:   lfxUser.Username,
 			ProjectSFID:  projectSFID,
 			CompanyModel: v1CompanyModel,
 			CompanyID:    v1CompanyModel.CompanyID,
-			UserModel:    &v1Models.User{LfUsername: lfxUser.Username, UserID: lfxUser.ID},
 			EventData: &events.AssignRoleScopeData{
-				Role:  "cla-manager-designee",
-				Scope: fmt.Sprintf("%s|%s", projectSFID, v1CompanyModel.CompanyExternalID),
+				Role:      "cla-manager-designee",
+				Scope:     fmt.Sprintf("%s|%s", projectSFID, v1CompanyModel.CompanyExternalID),
+				UserName:  lfxUser.Username,
+				UserEmail: utils.StringValue(lfxUser.Email),
 			},
 		})
 

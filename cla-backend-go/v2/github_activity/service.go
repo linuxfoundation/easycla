@@ -7,10 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 	v1GithubOrg "github.com/communitybridge/easycla/cla-backend-go/github_organizations"
-	"strconv"
 
 	"github.com/sirupsen/logrus"
 
@@ -344,7 +345,7 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 			},
 		})
 
-		if s.sendEmail{
+		if s.sendEmail {
 			if err := s.notifyForGithubRepositoryTransferred(ctx, repoModel, oldGithubOrg, newGithubOrg, false); err != nil {
 				log.WithFields(f).Warnf("notifying cla managers via email failed : %v", err)
 			}

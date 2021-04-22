@@ -10,10 +10,11 @@ package events
 
 import (
 	context "context"
+	reflect "reflect"
+
 	models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
 	events0 "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/events"
 	gomock "github.com/golang/mock/gomock"
-	reflect "reflect"
 )
 
 // MockService is a mock of Service interface
