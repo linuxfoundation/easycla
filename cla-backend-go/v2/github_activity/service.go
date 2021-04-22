@@ -7,6 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/communitybridge/easycla/cla-backend-go/emails"
+	v1GithubOrg "github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 	"strconv"
 
 	"github.com/sirupsen/logrus"
@@ -33,18 +36,36 @@ type Service interface {
 
 type eventHandlerService struct {
 	githubRepo        repositories.Repository
+	githubOrgRepo     v1GithubOrg.Repository
 	eventService      events.Service
 	autoEnableService dynamo_events.AutoEnableService
+	emailService      emails.Service
+	sendEmail         bool
 }
 
 // NewService creates a new instance of the Event Handler Service
 func NewService(githubRepo repositories.Repository,
+	githubOrgRepo v1GithubOrg.Repository,
 	eventService events.Service,
-	autoEnableService dynamo_events.AutoEnableService) Service {
+	autoEnableService dynamo_events.AutoEnableService,
+	emailService emails.Service) Service {
+
+	return newService(githubRepo, githubOrgRepo, eventService, autoEnableService, emailService, true)
+}
+
+func newService(githubRepo repositories.Repository,
+	githubOrgRepo v1GithubOrg.Repository,
+	eventService events.Service,
+	autoEnableService dynamo_events.AutoEnableService,
+	emailService emails.Service,
+	sendEmail bool) Service {
 	return &eventHandlerService{
 		githubRepo:        githubRepo,
+		githubOrgRepo:     githubOrgRepo,
 		eventService:      eventService,
 		autoEnableService: autoEnableService,
+		emailService:      emailService,
+		sendEmail:         sendEmail,
 	}
 }
 
@@ -54,15 +75,29 @@ func (s *eventHandlerService) ProcessRepositoryEvent(event *github.RepositoryEve
 		"functionName":   "v2.github_activity.service.ProcessRepositoryEvent",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
-	log.Debugf("ProcessRepositoryEvent called for action : %s", *event.Action)
 	if event.Action == nil {
 		return fmt.Errorf("no action found in event payload")
 	}
+
+	if event.Repo == nil {
+		return fmt.Errorf("missing repository object in event payload")
+	}
+
+	log.Debugf("ProcessRepositoryEvent called for action : %s", *event.Action)
 	switch *event.Action {
 	case "created":
 		return s.handleRepositoryAddedAction(ctx, event.Sender, event.Repo)
+	case "renamed":
+		return s.handleRepositoryRenamedAction(ctx, event.Sender, event.Repo)
+	case "transferred":
+		if event.Org == nil {
+			return fmt.Errorf("missing org object in event payload")
+		}
+		return s.handleRepositoryTransferredAction(ctx, event.Sender, event.Repo, event.Org)
 	case "deleted":
 		return s.handleRepositoryRemovedAction(ctx, event.Sender, event.Repo)
+	case "archived":
+		return s.handleRepositoryArchivedAction(ctx, event.Sender, event.Repo)
 	default:
 		log.WithFields(f).Warnf("no handler for action : %s", *event.Action)
 	}
@@ -154,6 +189,262 @@ func (s *eventHandlerService) handleRepositoryRemovedAction(ctx context.Context,
 			RepositoryName: *repo.FullName,
 		},
 	})
+
+	if s.sendEmail {
+		subject := fmt.Sprintf("EasyCLA: Github Repository Was Removed")
+		body, err := emails.RenderGithubRepositoryDisabledTemplate(s.emailService, repoModel.RepositoryProjectID, emails.GithubRepositoryDisabledTemplateParams{
+			GithubRepositoryActionTemplateParams: emails.GithubRepositoryActionTemplateParams{
+				CommonEmailParams: emails.CommonEmailParams{
+					RecipientName: "CLA Manager",
+				},
+				RepositoryName: repoModel.RepositoryName,
+			},
+			GithubAction: "deleted",
+		})
+
+		if err != nil {
+			log.WithFields(f).Warnf("rendering email template failed : %v", err)
+			return nil
+		}
+
+		if err := s.emailService.NotifyClaManagersForClaGroupID(context.Background(), repoModel.RepositoryProjectID, subject, body); err != nil {
+			log.WithFields(f).Warnf("notifying cla managers via email failed : %v", err)
+		}
+
+	}
+
+	return nil
+}
+
+// handles the event when a repository is renamed so we rename the repo in our records as well
+func (s *eventHandlerService) handleRepositoryRenamedAction(ctx context.Context, sender *github.User, repo *github.Repository) error {
+	f := logrus.Fields{
+		"functionName":   "v2.github_activity.service.handleRepositoryRenamedAction",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	if repo.ID == nil || *repo.ID == 0 {
+		return fmt.Errorf("missing repo id")
+	}
+	repositoryExternalID := strconv.FormatInt(*repo.ID, 10)
+	repoModel, err := s.githubRepo.GetRepositoryByGithubID(context.Background(), repositoryExternalID, true)
+	if err != nil {
+		if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
+			log.WithFields(f).Warnf("event for non existing local repo : %s, nothing to do", *repo.FullName)
+			return nil
+		}
+		return fmt.Errorf("fetching the repo : %s by external id : %s failed : %v", *repo.FullName, repositoryExternalID, err)
+	}
+
+	if _, err := s.githubRepo.UpdateGithubRepository(ctx, repoModel.RepositoryID, &models.GithubRepositoryInput{
+		RepositoryName: repo.Name,
+		Note:           "repository was renamed externally",
+	}); err != nil {
+		log.WithFields(f).Warnf("renaming repo : %s failed : %v", *repo.FullName, err)
+		return err
+	}
+
+	if sender == nil || sender.Login == nil {
+		return fmt.Errorf("missing sender can not log the event")
+	}
+
+	// sending event for the action
+	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+		EventType: events.RepositoryRenamed,
+		ProjectID: repoModel.RepositoryProjectID,
+		UserID:    *sender.Login,
+		EventData: &events.RepositoryRenamedEventData{
+			NewRepositoryName: *repo.Name,
+			OldRepositoryName: repoModel.RepositoryName,
+		},
+	})
+
+	if s.sendEmail {
+		subject := fmt.Sprintf("EasyCLA: Github Repository Was Renamed")
+		body, err := emails.RenderGithubRepositoryRenamedTemplate(s.emailService, repoModel.RepositoryProjectID, emails.GithubRepositoryRenamedTemplateParams{
+			GithubRepositoryActionTemplateParams: emails.GithubRepositoryActionTemplateParams{
+				CommonEmailParams: emails.CommonEmailParams{
+					RecipientName: "CLA Manager",
+				},
+				RepositoryName: repoModel.RepositoryName,
+			},
+			NewRepositoryName: *repo.Name,
+			OldRepositoryName: repoModel.RepositoryName,
+		})
+
+		if err != nil {
+			log.WithFields(f).Warnf("rendering email template failed : %v", err)
+			return nil
+		}
+
+		if err := s.emailService.NotifyClaManagersForClaGroupID(context.Background(), repoModel.RepositoryProjectID, subject, body); err != nil {
+			log.WithFields(f).Warnf("notifying cla managers via email failed : %v", err)
+		}
+
+	}
+
+	return nil
+}
+
+func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Context, sender *github.User, repo *github.Repository, org *github.Organization) error {
+	f := logrus.Fields{
+		"functionName":          "v2.github_activity.service.handleRepositoryTransferredAction",
+		"repositoryName":        *repo.Name,
+		"newGithubOrganization": *org.Name,
+		utils.XREQUESTID:        ctx.Value(utils.XREQUESTID),
+	}
+
+	if repo.ID == nil || *repo.ID == 0 {
+		return fmt.Errorf("missing repo id")
+	}
+	repositoryExternalID := strconv.FormatInt(*repo.ID, 10)
+	repoModel, err := s.githubRepo.GetRepositoryByGithubID(context.Background(), repositoryExternalID, true)
+	if err != nil {
+		if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
+			log.WithFields(f).Warnf("event for non existing local repo : %s, nothing to do", *repo.FullName)
+			return nil
+		}
+		return fmt.Errorf("fetching the repo : %s by external id : %s failed : %v", *repo.FullName, repositoryExternalID, err)
+	}
+
+	newOrganizationName := *org.Name
+	oldOrganizationName := repoModel.RepositoryOrganizationName
+	// first check if it's a different organization name (could be a duplicate event)
+	if oldOrganizationName == *org.Name {
+		msg := fmt.Sprintf("nothing to change for github repo : %s, probably duplicate event was sent", repoModel.RepositoryName)
+		log.WithFields(f).Warnf(msg)
+		return fmt.Errorf(msg)
+	}
+
+	// fetch the old and the new github orgs from the db
+	oldGithubOrg, err := s.githubOrgRepo.GetGithubOrganization(ctx, oldOrganizationName)
+	if err != nil {
+		return fmt.Errorf("fetching the old organization name : %s failed : %v", oldOrganizationName, err)
+	}
+
+	newGithubOrg, err := s.githubOrgRepo.GetGithubOrganization(ctx, *org.Name)
+	if err != nil {
+		return fmt.Errorf("fetching the new organization name : %s failed : %v", newOrganizationName, err)
+	}
+
+	// we need to check if the new org name has autoenabled and have a cla group set otherwise we can't proceed
+	if !newGithubOrg.AutoEnabled || newGithubOrg.AutoEnabledClaGroupID == "" {
+		log.WithFields(f).Warnf("can't proceed with repo transfer operation because the new org doesn't have autoenabled=true, disabling the repo : %s", repoModel.RepositoryName)
+		if err := s.githubRepo.DisableRepository(ctx, repoModel.RepositoryID); err != nil {
+			return fmt.Errorf("disabling the repo : %s failed : %v", repoModel.RepositoryID, err)
+		}
+
+		// send event for the disabled repository.
+		s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+			EventType: events.RepositoryDisabled,
+			ProjectID: repoModel.RepositoryProjectID,
+			UserID:    *sender.Login,
+			EventData: &events.RepositoryDisabledEventData{
+				RepositoryName: repoModel.RepositoryName,
+			},
+		})
+
+		if s.sendEmail{
+			if err := s.notifyForGithubRepositoryTransferred(ctx, repoModel, oldGithubOrg, newGithubOrg, false); err != nil {
+				log.WithFields(f).Warnf("notifying cla managers via email failed : %v", err)
+			}
+		}
+
+		return fmt.Errorf("aborting the repository : %s transfer, new githubOrg : %s doesn't have claGroupID set", repoModel.RepositoryName, newGithubOrg.OrganizationName)
+	}
+
+	_, err = s.githubRepo.UpdateGithubRepository(ctx, repoModel.RepositoryID, &models.GithubRepositoryInput{
+		Note:                       fmt.Sprintf("repository was transferred from org : %s to : %s", oldGithubOrg.OrganizationName, newGithubOrg.OrganizationName),
+		RepositoryOrganizationName: aws.String(newGithubOrg.OrganizationName),
+		RepositoryURL:              repo.URL,
+	})
+
+	if err != nil {
+		return fmt.Errorf("repository : %s transfer failed for new github org : %s : %v", repoModel.RepositoryID, newGithubOrg.OrganizationName, err)
+	}
+
+	// sending event for the action
+	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+		EventType: events.RepositoryTransferred,
+		ProjectID: repoModel.RepositoryProjectID,
+		UserID:    *sender.Login,
+		EventData: &events.RepositoryTransferredEventData{
+			RepositoryName:   repoModel.RepositoryName,
+			OldGithubOrgName: oldGithubOrg.OrganizationName,
+			NewGithubOrgName: newGithubOrg.OrganizationName,
+		},
+	})
+
+	if s.sendEmail {
+		if err := s.notifyForGithubRepositoryTransferred(ctx, repoModel, oldGithubOrg, newGithubOrg, true); err != nil {
+			log.WithFields(f).Warnf("notifying cla managers via email failed : %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *eventHandlerService) notifyForGithubRepositoryTransferred(ctx context.Context, repoModel *models.GithubRepository, oldGithubOrg *models.GithubOrganization, newGithubOrg *models.GithubOrganization, success bool) error {
+	subject := fmt.Sprintf("EasyCLA: Github Repository Was Transferred")
+	body, err := emails.RenderGithubRepositoryTransferredTemplate(s.emailService, repoModel.RepositoryProjectID, emails.GithubRepositoryTransferredTemplateParams{
+		GithubRepositoryActionTemplateParams: emails.GithubRepositoryActionTemplateParams{
+			CommonEmailParams: emails.CommonEmailParams{
+				RecipientName: "CLA Manager",
+			},
+			RepositoryName: repoModel.RepositoryName,
+		},
+		OldGithubOrgName: oldGithubOrg.OrganizationName,
+		NewGithubOrgName: newGithubOrg.OrganizationName,
+	}, success)
+
+	if err != nil {
+		return fmt.Errorf("rendering email template failed : %v", err)
+	}
+
+	err = s.emailService.NotifyClaManagersForClaGroupID(ctx, repoModel.RepositoryProjectID, subject, body)
+	return err
+}
+
+func (s *eventHandlerService) handleRepositoryArchivedAction(ctx context.Context, sender *github.User, repo *github.Repository) error {
+	f := logrus.Fields{
+		"functionName":   "v2.github_activity.service.handleRepositoryArchivedAction",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	if repo.ID == nil || *repo.ID == 0 {
+		return fmt.Errorf("missing repo id")
+	}
+	repositoryExternalID := strconv.FormatInt(*repo.ID, 10)
+	repoModel, err := s.githubRepo.GetRepositoryByGithubID(context.Background(), repositoryExternalID, true)
+	if err != nil {
+		if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
+			log.WithFields(f).Warnf("event for non existing local repo : %s, nothing to do", *repo.FullName)
+			return nil
+		}
+		return fmt.Errorf("fetching the repo : %s by external id : %s failed : %v", *repo.FullName, repositoryExternalID, err)
+	}
+
+	if s.sendEmail {
+		subject := fmt.Sprintf("EasyCLA: Github Repository Was Archived")
+		body, err := emails.RenderGithubRepositoryArchivedTemplate(s.emailService, repoModel.RepositoryProjectID, emails.GithubRepositoryArchivedTemplateParams{
+			GithubRepositoryActionTemplateParams: emails.GithubRepositoryActionTemplateParams{
+				CommonEmailParams: emails.CommonEmailParams{
+					RecipientName: "CLA Manager",
+				},
+				RepositoryName: repoModel.RepositoryName,
+			},
+		})
+
+		if err != nil {
+			log.WithFields(f).Warnf("rendering email template failed : %v", err)
+			return nil
+		}
+
+		if err := s.emailService.NotifyClaManagersForClaGroupID(ctx, repoModel.RepositoryProjectID, subject, body); err != nil {
+			log.WithFields(f).Warnf("notifying cla managers via email failed : %v", err)
+		}
+
+	}
 
 	return nil
 }

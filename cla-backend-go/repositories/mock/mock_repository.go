@@ -10,10 +10,9 @@ package mock
 
 import (
 	context "context"
-	reflect "reflect"
-
 	models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
 	gomock "github.com/golang/mock/gomock"
+	reflect "reflect"
 )
 
 // MockRepository is a mock of Repository interface
@@ -244,16 +243,16 @@ func (mr *MockRepositoryMockRecorder) GetCLAGroupRepositoriesGroupByOrgs(ctx, pr
 }
 
 // ListProjectRepositories mocks base method
-func (m *MockRepository) ListProjectRepositories(ctx context.Context, externalProjectID, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error) {
+func (m *MockRepository) ListProjectRepositories(ctx context.Context, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListProjectRepositories", ctx, externalProjectID, projectSFID, enabled)
+	ret := m.ctrl.Call(m, "ListProjectRepositories", ctx, projectSFID, enabled)
 	ret0, _ := ret[0].(*models.ListGithubRepositories)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListProjectRepositories indicates an expected call of ListProjectRepositories
-func (mr *MockRepositoryMockRecorder) ListProjectRepositories(ctx, externalProjectID, projectSFID, enabled interface{}) *gomock.Call {
+func (mr *MockRepositoryMockRecorder) ListProjectRepositories(ctx, projectSFID, enabled interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProjectRepositories", reflect.TypeOf((*MockRepository)(nil).ListProjectRepositories), ctx, externalProjectID, projectSFID, enabled)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProjectRepositories", reflect.TypeOf((*MockRepository)(nil).ListProjectRepositories), ctx, projectSFID, enabled)
 }

@@ -20,6 +20,7 @@ import (
 type EmailTemplateService interface {
 	PrefillV2CLAProjectParams(projectSFIDs []string) ([]CLAProjectParams, error)
 	GetCLAGroupTemplateParamsFromProjectSFID(claGroupVersion, projectSFID string) (CLAGroupTemplateParams, error)
+	GetCLAGroupTemplateParamsFromCLAGroup(claGroupID string) (CLAGroupTemplateParams, error)
 }
 
 type emailTemplateServiceProvider struct {
@@ -84,6 +85,22 @@ func (s *emailTemplateServiceProvider) GetCLAGroupTemplateParamsFromProjectSFID(
 		return s.getV2CLAGroupTemplateParamsFromProjectSFID(projectSFID)
 	}
 	return s.getV1CLAGroupTemplateParamsFromProjectSFID(projectSFID)
+}
+
+// GetCLAGroupTemplateParamsFromCLAGroup fills up the CLAGroupTemplateParams with the basic information, it's missing the
+// project information, if needed can be added later on...
+func (s *emailTemplateServiceProvider) GetCLAGroupTemplateParamsFromCLAGroup(claGroupID string) (CLAGroupTemplateParams, error) {
+	claGroupModel, err := s.claGroupRepository.GetCLAGroupByID(context.Background(), claGroupID, false)
+	if err != nil {
+		return CLAGroupTemplateParams{}, err
+	}
+
+	params := CLAGroupTemplateParams{}
+	params.CLAGroupName = claGroupModel.ProjectName
+	params.CorporateConsole = s.corporateConsoleV2
+	params.Version = claGroupModel.Version
+
+	return params, nil
 }
 
 func (s *emailTemplateServiceProvider) getV2CLAGroupTemplateParamsFromProjectSFID(projectSFID string) (CLAGroupTemplateParams, error) {

@@ -32,6 +32,8 @@ const (
 	UserDeleted        = "user.deleted"
 
 	RepositoryAdded                    = "repository.added"
+	RepositoryRenamed                  = "repository.renamed"
+	RepositoryTransferred              = "repository.transferred"
 	RepositoryDisabled                 = "repository.disabled"
 	RepositoryUpdated                  = "repository.updated"
 	RepositoryBranchProtectionAdded    = "repository.branchprotection.updated"

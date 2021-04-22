@@ -10,11 +10,10 @@ package branch_protection
 
 import (
 	context "context"
-	reflect "reflect"
-
 	gomock "github.com/golang/mock/gomock"
 	github "github.com/google/go-github/v33/github"
 	githubv4 "github.com/shurcooL/githubv4"
+	reflect "reflect"
 )
 
 // MockCombinedRepository is a mock of CombinedRepository interface

@@ -275,6 +275,7 @@ func server(localMode bool) http.Handler {
 	templateService := template.NewService(stage, templateRepo, docraptorClient, awsSession)
 	v1ProjectService := project.NewService(v1CLAGroupRepo, repositoriesRepo, gerritRepo, projectClaGroupRepo, usersRepo)
 	emailTemplateService := emails.NewEmailTemplateService(v1CLAGroupRepo, projectClaGroupRepo, v1ProjectService, configFile.CorporateConsoleV1URL, configFile.CorporateConsoleV2URL)
+	emailService := emails.NewService(emailTemplateService, v1ProjectService)
 	v2ProjectService := v2Project.NewService(v1ProjectService, v1CLAGroupRepo, projectClaGroupRepo)
 	v1CompanyService := v1Company.NewService(v1CompanyRepo, configFile.CorporateConsoleV1URL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(v1CompanyService, signaturesRepo, v1CLAGroupRepo, usersRepo, v1CompanyRepo, projectClaGroupRepo, eventsService)
@@ -291,7 +292,7 @@ func server(localMode bool) http.Handler {
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, repositoriesRepo, projectClaGroupRepo)
 	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, repositoriesRepo, projectClaGroupRepo, githubOrganizationsService)
 	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo, v1ProjectService)
-	v2GithubActivityService := v2GithubActivity.NewService(repositoriesRepo, eventsService, autoEnableService)
+	v2GithubActivityService := v2GithubActivity.NewService(repositoriesRepo, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
 
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, projectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 

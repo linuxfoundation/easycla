@@ -10,10 +10,9 @@ package mock
 
 import (
 	context "context"
-	reflect "reflect"
-
 	models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
 	gomock "github.com/golang/mock/gomock"
+	reflect "reflect"
 )
 
 // MockService is a mock of Service interface

@@ -38,6 +38,19 @@ type RepositoryDisabledEventData struct {
 	RepositoryName string
 }
 
+// RepositoryRenamedEventData . . .
+type RepositoryRenamedEventData struct {
+	NewRepositoryName string
+	OldRepositoryName string
+}
+
+// RepositoryTransferredEventData . . .
+type RepositoryTransferredEventData struct {
+	RepositoryName   string
+	OldGithubOrgName string
+	NewGithubOrgName string
+}
+
 // RepositoryUpdatedEventData . . .
 type RepositoryUpdatedEventData struct {
 	RepositoryName string
@@ -435,6 +448,26 @@ func (ed *RepositoryAddedEventData) GetEventDetailsString(args *LogEventArgs) (s
 // GetEventDetailsString . . .
 func (ed *RepositoryDisabledEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The GitHub repository %s was deleted for the project %s", ed.RepositoryName, args.ProjectName)
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString . . .
+func (ed *RepositoryRenamedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitHub repository renamed from %s to %s for the project %s", ed.OldRepositoryName, ed.NewRepositoryName, args.ProjectName)
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString . . .
+func (ed *RepositoryTransferredEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitHub repository : %s transferred from %s to %s Github Organization for the project %s", ed.RepositoryName, ed.OldGithubOrgName, ed.NewGithubOrgName, args.ProjectName)
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -1091,6 +1124,44 @@ func (ed *RepositoryAddedEventData) GetEventSummaryString(args *LogEventArgs) (s
 // GetEventSummaryString . . .
 func (ed *RepositoryDisabledEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The GitHub repository %s was deleted", ed.RepositoryName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString . . .
+func (ed *RepositoryRenamedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitHub repository was renamed from %s to %s", ed.OldRepositoryName, ed.NewRepositoryName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString . . .
+func (ed *RepositoryTransferredEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitHub repository : %s was transferred from %s to %s Github Organization", ed.RepositoryName, ed.OldGithubOrgName, ed.NewGithubOrgName)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
