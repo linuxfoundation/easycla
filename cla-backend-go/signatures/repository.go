@@ -2042,7 +2042,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	var gerritICLAECLAs []string
 
 	// Only load the gerrit user information, which is costly, if we have updates to remove email or email domains
-	if params.RemoveEmailApprovalList != nil || params.RemoveDomainApprovalList != nil {
+	if (params.RemoveEmailApprovalList != nil && len(params.RemoveEmailApprovalList) > 0) || (params.RemoveDomainApprovalList != nil && len(params.RemoveDomainApprovalList) > 0) {
 
 		goRoutines := 2
 		gerritResultChannel := make(chan *GerritUserResponse, goRoutines)
@@ -2067,7 +2067,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	}
 
 	// If we have an add or remove email list...we need to run an update for this column
-	if params.AddEmailApprovalList != nil || params.RemoveEmailApprovalList != nil {
+	if (params.AddEmailApprovalList != nil && len(params.AddEmailApprovalList) > 0) || (params.RemoveEmailApprovalList != nil && len(params.RemoveEmailApprovalList) > 0) {
 		columnName := "email_whitelist"
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.EmailApprovalList, params.AddEmailApprovalList, params.RemoveEmailApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
@@ -2190,7 +2190,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 	}
 
-	if params.AddDomainApprovalList != nil || params.RemoveDomainApprovalList != nil {
+	if (params.AddDomainApprovalList != nil && len(params.AddDomainApprovalList) > 0) || (params.RemoveDomainApprovalList != nil && len(params.RemoveDomainApprovalList) > 0) {
 
 		columnName := "domain_whitelist"
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.DomainApprovalList, params.AddDomainApprovalList, params.RemoveDomainApprovalList)
@@ -2249,7 +2249,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 	}
 
-	if params.AddGithubUsernameApprovalList != nil || params.RemoveGithubUsernameApprovalList != nil {
+	if (params.AddGithubUsernameApprovalList != nil && len(params.AddGithubUsernameApprovalList) > 0) || (params.RemoveGithubUsernameApprovalList != nil && len(params.RemoveGithubUsernameApprovalList) > 0) {
 		columnName := "github_whitelist"
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GithubUsernameApprovalList, params.AddGithubUsernameApprovalList, params.RemoveGithubUsernameApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
@@ -2332,7 +2332,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 	}
 
-	if params.AddGithubOrgApprovalList != nil || params.RemoveGithubOrgApprovalList != nil {
+	if (params.AddGithubOrgApprovalList != nil && len(params.AddGithubOrgApprovalList) > 0) || (params.RemoveGithubOrgApprovalList != nil && len(params.RemoveGithubOrgApprovalList) > 0) {
 		columnName := "github_org_whitelist"
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GithubOrgApprovalList, params.AddGithubOrgApprovalList, params.RemoveGithubOrgApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
