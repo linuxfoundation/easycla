@@ -1458,12 +1458,14 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, proj
 		"userEmail":      authUser.Email,
 	}
 
-	log.WithFields(f).Debug("testing if user has access to project SFID")
+	log.WithFields(f).Debugf("testing if user %s/%s has access to project SFID: %s...", authUser.UserName, authUser.Email, projectSFID)
 	if utils.IsUserAuthorizedForProject(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
+		log.WithFields(f).Debugf("user %s/%s has access to project SFID: %s...", authUser.UserName, authUser.Email, projectSFID)
 		return true
 	}
+	log.WithFields(f).Debugf("user %s/%s doesn't have direct access to the project SFID: %s - loading CLA Group from project id...", authUser.UserName, authUser.Email, projectSFID)
 
-	log.WithFields(f).Debug("user doesn't have direct access to the projectSFID - loading CLA Group from project id...")
+	log.WithFields(f).Debug("loading CLA Group from project id...")
 	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project -> cla group mapping - returning false")
@@ -1495,10 +1497,12 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, proj
 	}
 
 	projectSFIDs := getProjectIDsFromModels(f, projectCLAGroupModel.FoundationSFID, projectCLAGroupModels)
-	f["projectIDs"] = strings.Join(projectSFIDs, ",")
-	log.WithFields(f).Debug("testing if user has access to any projects")
+	projectSFIDsCSV := strings.Join(projectSFIDs, ",") // Create a project SFID CSV for printout
+	f["projectIDs"] = projectSFIDsCSV
+
+	log.WithFields(f).Debugf("testing if user %s/%s has access to any cla group projects: %s", authUser.UserName, authUser.Email, projectSFIDsCSV)
 	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to at least of of the projects...")
+		log.WithFields(f).Debugf("user %s/%s has access to at least of of the projects: %s...", authUser.UserName, authUser.Email, projectSFIDsCSV)
 		return true
 	}
 
@@ -1601,7 +1605,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	f["projectIDs"] = projectSFIDsCSV
 
 	log.WithFields(f).Debugf("testing if user %s/%s has access to any cla group projects: %s", authUser.UserName, authUser.Email, projectSFIDsCSV)
-	if utils.IsUserAuthorizedForAnyProjectOrganization(ctx, authUser, projectSFIDs, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user %s/%s has access to at least of of the projects: %s...", authUser.UserName, authUser.Email, projectSFIDsCSV)
 		return true
 	}
