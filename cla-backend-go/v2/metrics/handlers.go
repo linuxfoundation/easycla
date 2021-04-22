@@ -111,7 +111,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyRepo v1Comp
 				return metrics.NewListCompanyProjectMetricsBadRequest().WithPayload(errorResponse(reqID, compErr))
 			}
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-			if !utils.IsUserAuthorizedForOrganization(authUser, company.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForOrganization(ctx, authUser, company.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
 				return metrics.NewListCompanyProjectMetricsForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 					Code: "403",
 					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to List Company Project Metrics with Organization scope of %s",

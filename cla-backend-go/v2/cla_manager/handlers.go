@@ -61,7 +61,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		}
 
 		log.WithFields(f).Debug("checking permissions...")
-		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
 			msg := fmt.Sprintf("user %s does not have access to DeleteCLAManager with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
 			return cla_manager.NewCreateCLAManagerForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -113,7 +113,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		}
 
 		log.WithFields(f).Debug("checking permissions...")
-		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
 			msg := fmt.Sprintf("user %s does not have access to DeleteCLAManager with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -320,7 +320,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		}
 
 		// Check perms...
-		if !utils.IsUserAuthorizedForOrganization(authUser, v1CompanyModel.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
+		if !utils.IsUserAuthorizedForOrganization(ctx, authUser, v1CompanyModel.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
 			msg := fmt.Sprintf("user %s does not have access to CreateCLAManagerRequest with Project|Organization scope of %s | %s",
 				authUser.UserName, params.ProjectSFID, v1CompanyModel.CompanyExternalID)
 			log.WithFields(f).Warn(msg)

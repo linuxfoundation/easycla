@@ -120,7 +120,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		}
 
 		// Must be in the Project|Organization Scope to see this - signature ACL is double-checked in the service level when the signature is loaded
-		if !utils.IsUserAuthorizedForProjectOrganizationTree(authUser, params.ProjectSFID, companyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, companyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
 			msg := fmt.Sprintf("user '%s' does not have access to update Project Company Approval List with Project|Organization scope of %s | %s",
 				authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
@@ -444,7 +444,6 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
 			"functionName":   "v2.signatures.handlers.SignaturesGetProjectCompanySignaturesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -606,7 +605,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			})
 		}
 
-		if !utils.IsUserAuthorizedForOrganization(authUser, companyModel.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
+		if !utils.IsUserAuthorizedForOrganization(ctx, authUser, companyModel.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
 			msg := fmt.Sprintf("%s - user %s is not authorized to view company signatures with Organization scope: %s",
 				utils.EasyCLA403Forbidden, authUser.UserName, companyModel.CompanyExternalID)
 			log.WithFields(f).Warn(msg)
@@ -1346,13 +1345,13 @@ func isUserHaveAccessOfSignedSignaturePDF(ctx context.Context, authUser *auth.Us
 		}
 
 		// Check the project|org tree starting with the foundation
-		if utils.IsUserAuthorizedForProjectOrganizationTree(authUser, foundationID, comp.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
+		if utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, foundationID, comp.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
 			return true, nil
 		}
 
 		// In case the project organization tree didn't pass, let's check the project list individually - if any has access, we return true
 		for _, proj := range projects {
-			if utils.IsUserAuthorizedForProjectOrganization(authUser, proj.ProjectSFID, comp.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
+			if utils.IsUserAuthorizedForProjectOrganization(ctx, authUser, proj.ProjectSFID, comp.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
 				log.WithFields(f).Debugf("user is authorized for %s scope for project ID: %s, org iD: %s", utils.ProjectOrgScope, proj.ProjectSFID, comp.CompanyExternalID)
 				return true, nil
 			}
@@ -1531,19 +1530,19 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	}
 
 	log.WithFields(f).Debugf("testing if user %s/%s has access to project SFID and organization SFID...", authUser.UserName, authUser.Email)
-	if utils.IsUserAuthorizedForProjectOrganization(authUser, projectSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectOrganization(ctx, authUser, projectSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user %s/%s has access to project SFID and organization SFID...", authUser.UserName, authUser.Email)
 		return true
 	}
 
 	log.WithFields(f).Debugf("testing if user %s/%s has access to project SFID and organization SFID tree...", authUser.UserName, authUser.Email)
-	if utils.IsUserAuthorizedForProjectOrganizationTree(authUser, projectSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, projectSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user %s/%s has access to project SFID and organization SFID tree...", authUser.UserName, authUser.Email)
 		return true
 	}
 
 	log.WithFields(f).Debugf("testing if user %s/%s has access to organization SFID...", authUser.UserName, authUser.Email)
-	if utils.IsUserAuthorizedForOrganization(authUser, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForOrganization(ctx, authUser, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user %s/%s has access to organization SFID...", authUser.UserName, authUser.Email)
 		return true
 	}
@@ -1564,26 +1563,27 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 
 	// Check the foundation permissions
 	f["foundationSFID"] = projectCLAGroupModel.FoundationSFID
-	log.WithFields(f).Debugf("testing if user %s/%s has access to parent foundation...", authUser.UserName, authUser.Email)
+	log.WithFields(f).Debugf("testing if user %s/%s has access to parent foundation SFID: %s...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID)
 	if utils.IsUserAuthorizedForProject(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debugf("user %s/%s has access to parent foundation...", authUser.UserName, authUser.Email)
+		log.WithFields(f).Debugf("user %s/%s has access to parent foundation SFID: %s...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID)
 		return true
 	}
-	log.WithFields(f).Debugf("testing if user %s/%s has access to parent foundation tree...", authUser.UserName, authUser.Email)
+
+	log.WithFields(f).Debugf("testing if user %s/%s has access to parent foundation SFID: %s tree...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID)
 	if utils.IsUserAuthorizedForProjectTree(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debugf("user %s/%s has access to parent foundation tree...", authUser.UserName, authUser.Email)
+		log.WithFields(f).Debugf("user %s/%s has access to parent foundation SFID: %s tree...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID)
 		return true
 	}
 
-	log.WithFields(f).Debugf("testing if user %s/%s has access to foundation SFID and organization SFID...", authUser.UserName, authUser.Email)
-	if utils.IsUserAuthorizedForProjectOrganization(authUser, projectCLAGroupModel.FoundationSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debugf("user %s/%s has access to foundation SFID and organization SFID...", authUser.UserName, authUser.Email)
+	log.WithFields(f).Debugf("testing if user %s/%s has access to foundation SFID %s and organization SFID %s ...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID, organizationSFID)
+	if utils.IsUserAuthorizedForProjectOrganization(ctx, authUser, projectCLAGroupModel.FoundationSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+		log.WithFields(f).Debugf("user %s/%s has access to foundation SFID %s and organization SFID %s...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID, organizationSFID)
 		return true
 	}
 
-	log.WithFields(f).Debugf("testing if user %s/%s has access to foundation SFID and organization SFID tree...", authUser.UserName, authUser.Email)
-	if utils.IsUserAuthorizedForProjectOrganizationTree(authUser, projectCLAGroupModel.FoundationSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debugf("user %s/%s has access to foundation SFID and organization SFID tree...", authUser.UserName, authUser.Email)
+	log.WithFields(f).Debugf("testing if user %s/%s has access to foundation SFID %s and organization SFID %s tree...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID, organizationSFID)
+	if utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, projectCLAGroupModel.FoundationSFID, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+		log.WithFields(f).Debugf("user %s/%s has access to foundation SFID %s and organization SFID %s tree...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID, organizationSFID)
 		return true
 	}
 
@@ -1595,11 +1595,20 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 		return false
 	}
 
+	// Get the list of the project group and projects associated with this CLA Group
 	projectSFIDs := getProjectIDsFromModels(f, projectCLAGroupModel.FoundationSFID, projectCLAGroupModels)
-	f["projectIDs"] = strings.Join(projectSFIDs, ",")
-	log.WithFields(f).Debugf("testing if user %s/%s has access to any cla group project + organization", authUser.UserName, authUser.Email)
-	if utils.IsUserAuthorizedForAnyProjectOrganization(authUser, projectSFIDs, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debugf("user %s/%s has access to at least of of the projects...", authUser.UserName, authUser.Email)
+	projectSFIDsCSV := strings.Join(projectSFIDs, ",") // Create a project SFID CSV for printout
+	f["projectIDs"] = projectSFIDsCSV
+
+	log.WithFields(f).Debugf("testing if user %s/%s has access to any cla group projects: %s", authUser.UserName, authUser.Email, projectSFIDsCSV)
+	if utils.IsUserAuthorizedForAnyProjectOrganization(ctx, authUser, projectSFIDs, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+		log.WithFields(f).Debugf("user %s/%s has access to at least of of the projects: %s...", authUser.UserName, authUser.Email, projectSFIDsCSV)
+		return true
+	}
+
+	log.WithFields(f).Debugf("testing if user %s/%s has access to any cla group projects: %s + organization SFID: %s", authUser.UserName, authUser.Email, projectSFIDsCSV, organizationSFID)
+	if utils.IsUserAuthorizedForAnyProjectOrganization(ctx, authUser, projectSFIDs, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+		log.WithFields(f).Debugf("user %s/%s has access to at least of of the projects: %s + organization SFID: %s...", authUser.UserName, authUser.Email, projectSFIDsCSV, organizationSFID)
 		return true
 	}
 

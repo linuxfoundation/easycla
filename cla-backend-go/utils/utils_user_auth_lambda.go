@@ -27,13 +27,28 @@ func IsUserAdmin(user *auth.User) bool {
 }
 
 // IsUserAuthorizedForOrganization helper function for determining if the user is authorized for this company
-func IsUserAuthorizedForOrganization(user *auth.User, companySFID string, adminScopeAllowed bool) bool {
+func IsUserAuthorizedForOrganization(ctx context.Context, user *auth.User, companySFID string, adminScopeAllowed bool) bool {
+	f := logrus.Fields{
+		"functionName":      "utils.IsUserAuthorizedForOrganization",
+		XREQUESTID:          ctx.Value(XREQUESTID),
+		"userName":          user.UserName,
+		"userEmail":         user.Email,
+		"companySFID":       companySFID,
+		"adminScopeAllowed": adminScopeAllowed,
+	}
 
 	if adminScopeAllowed && user.Admin {
+		log.WithFields(f).Debug("user is authorized - admin scope is allowed and admin scope set for user")
 		return true
 	}
 
-	return user.IsUserAuthorizedForOrganizationScope(companySFID)
+	val := user.IsUserAuthorizedForOrganizationScope(companySFID)
+	if val {
+		log.WithFields(f).Debugf("user is authorized for companySFID: %s", companySFID)
+	} else {
+		log.WithFields(f).Debugf("user is not authorized for companySFID: %s", companySFID)
+	}
+	return val
 }
 
 // IsUserAuthorizedForProjectTree helper function for determining if the user is authorized for this project hierarchy/tree
@@ -48,13 +63,17 @@ func IsUserAuthorizedForProjectTree(ctx context.Context, user *auth.User, projec
 	}
 
 	if adminScopeAllowed && user.Admin {
-		log.WithFields(f).Debug("admin scope is allowed and admin scope set for user")
+		log.WithFields(f).Debug("user is authorized - admin scope is allowed and admin scope set for user")
 		return true
 	}
 
-	log.WithFields(f).Debug("checking scope...")
+	log.WithFields(f).Debugf("checking project scope for projectSFID: %s...", projectSFID)
 	val := user.IsUserAuthorized(auth.Project, projectSFID, true)
-	log.WithFields(f).Debugf("user allowed: %t", val)
+	if val {
+		log.WithFields(f).Debugf("user is authorized for projectSFID: %s", projectSFID)
+	} else {
+		log.WithFields(f).Debugf("user is not authorized for projectSFID: %s", projectSFID)
+	}
 	return val
 }
 
@@ -70,13 +89,17 @@ func IsUserAuthorizedForProject(ctx context.Context, user *auth.User, projectSFI
 	}
 
 	if adminScopeAllowed && user.Admin {
-		log.WithFields(f).Debug("admin scope is allowed and admin scope set for user")
+		log.WithFields(f).Debug("user is authorized - admin scope is allowed and admin scope set for user")
 		return true
 	}
 
-	log.WithFields(f).Debug("checking scope...")
+	log.WithFields(f).Debugf("checking project scope for projectSFID: %s...", projectSFID)
 	val := user.IsUserAuthorizedForProjectScope(projectSFID)
-	log.WithFields(f).Debugf("user allowed: %t", val)
+	if val {
+		log.WithFields(f).Debugf("user is authorized for projectSFID: %s", projectSFID)
+	} else {
+		log.WithFields(f).Debugf("user is not authorized for projectSFID: %s", projectSFID)
+	}
 	return val
 }
 
@@ -109,35 +132,85 @@ func IsUserAuthorizedForAnyProjects(ctx context.Context, user *auth.User, projec
 }
 
 // IsUserAuthorizedForProjectOrganization helper function for determining if the user is authorized for this project organization scope
-func IsUserAuthorizedForProjectOrganization(user *auth.User, projectSFID, companySFID string, adminScopeAllowed bool) bool {
+func IsUserAuthorizedForProjectOrganization(ctx context.Context, user *auth.User, projectSFID, companySFID string, adminScopeAllowed bool) bool {
+	f := logrus.Fields{
+		"functionName":      "utils.IsUserAuthorizedForProjectOrganization",
+		XREQUESTID:          ctx.Value(XREQUESTID),
+		"userName":          user.UserName,
+		"userEmail":         user.Email,
+		"projectSFID":       projectSFID,
+		"companySFID":       companySFID,
+		"adminScopeAllowed": adminScopeAllowed,
+	}
 
 	if adminScopeAllowed && user.Admin {
+		log.WithFields(f).Debug("user is authorized - admin scope is allowed and admin scope set for user")
 		return true
 	}
 
-	return user.IsUserAuthorizedByProject(projectSFID, companySFID)
+	val := user.IsUserAuthorizedByProject(projectSFID, companySFID)
+	if val {
+		log.WithFields(f).Debugf("user is authorized for projectSFID: %s + companySFID: %s", projectSFID, companySFID)
+	} else {
+		log.WithFields(f).Debugf("user is not authorized for projectSFID: %s + companySFID: %s", projectSFID, companySFID)
+	}
+	return val
 }
 
 // IsUserAuthorizedForAnyProjectOrganization helper function for determining if the user is authorized for any of the specified projects with scope of project + organization
-func IsUserAuthorizedForAnyProjectOrganization(user *auth.User, projectSFIDs []string, companySFID string, adminScopeAllowed bool) bool {
+func IsUserAuthorizedForAnyProjectOrganization(ctx context.Context, user *auth.User, projectSFIDs []string, companySFID string, adminScopeAllowed bool) bool {
+	f := logrus.Fields{
+		"functionName":      "utils.IsUserAuthorizedForAnyProjectOrganization",
+		XREQUESTID:          ctx.Value(XREQUESTID),
+		"userName":          user.UserName,
+		"userEmail":         user.Email,
+		"projectSFIDs":      strings.Join(projectSFIDs, ","),
+		"companySFID":       companySFID,
+		"adminScopeAllowed": adminScopeAllowed,
+	}
+
+	if adminScopeAllowed && user.Admin {
+		log.WithFields(f).Debug("user is authorized - admin scope is allowed and admin scope set for user")
+		return true
+	}
+
 	for _, projectSFID := range projectSFIDs {
-		if IsUserAuthorizedForProjectOrganizationTree(user, projectSFID, companySFID, adminScopeAllowed) {
+		if IsUserAuthorizedForProjectOrganizationTree(ctx, user, projectSFID, companySFID, adminScopeAllowed) {
+			log.WithFields(f).Debugf("user is authorized for projectSFID: %s + companySFID: %s tree", projectSFID, companySFID)
 			return true
 		}
-		if IsUserAuthorizedForProjectOrganization(user, projectSFID, companySFID, adminScopeAllowed) {
+		if IsUserAuthorizedForProjectOrganization(ctx, user, projectSFID, companySFID, adminScopeAllowed) {
+			log.WithFields(f).Debugf("user is authorized for projectSFID: %s + companySFID: %s", projectSFID, companySFID)
 			return true
 		}
 	}
 
+	log.WithFields(f).Debugf("user is not authorized for any projectSFID: %s + companySFID: %s", strings.Join(projectSFIDs, ","), companySFID)
 	return false
 }
 
 // IsUserAuthorizedForProjectOrganizationTree helper function for determining if the user is authorized for this project organization scope and nested projects/orgs
-func IsUserAuthorizedForProjectOrganizationTree(user *auth.User, projectSFID, companySFID string, adminScopeAllowed bool) bool {
+func IsUserAuthorizedForProjectOrganizationTree(ctx context.Context, user *auth.User, projectSFID, companySFID string, adminScopeAllowed bool) bool {
+	f := logrus.Fields{
+		"functionName":      "utils.IsUserAuthorizedForProjectOrganizationTree",
+		XREQUESTID:          ctx.Value(XREQUESTID),
+		"userName":          user.UserName,
+		"userEmail":         user.Email,
+		"projectSFID":       projectSFID,
+		"companySFID":       companySFID,
+		"adminScopeAllowed": adminScopeAllowed,
+	}
 
 	if adminScopeAllowed && user.Admin {
+		log.WithFields(f).Debug("user is authorized - admin scope is allowed and admin scope set for user")
 		return true
 	}
 
-	return user.IsUserAuthorized(auth.ProjectOrganization, projectSFID+"|"+companySFID, true)
+	val := user.IsUserAuthorized(auth.ProjectOrganization, projectSFID+"|"+companySFID, true)
+	if val {
+		log.WithFields(f).Debugf("user is authorized for projectSFID: %s + companySFID: %s tree", projectSFID, companySFID)
+	} else {
+		log.WithFields(f).Debugf("user is not authorized for projectSFID: %s + companySFID: %s tree", projectSFID, companySFID)
+	}
+	return val
 }

@@ -291,7 +291,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 				return events.NewGetCompanyProjectEventsBadRequest().WithPayload(errorResponse(reqID, compErr))
 			}
 
-			if !utils.IsUserAuthorizedForOrganization(authUser, v1Company.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForOrganization(ctx, authUser, v1Company.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
 				return events.NewGetCompanyProjectEventsForbidden().WithPayload(&models.ErrorResponse{
 					Code: "403",
 					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to GetCompanyProject Events with Organization scope of %s",
