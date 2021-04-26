@@ -9,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 
 	"github.com/aws/aws-sdk-go/aws"
 
+	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/jinzhu/copier"
@@ -25,6 +27,7 @@ import (
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
+	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -46,6 +49,8 @@ type service struct {
 	v1ProjectService      project.Service
 	v1CompanyService      company.IService
 	v1SignatureService    signatures.SignatureService
+	v1SignatureRepo       signatures.SignatureRepository
+	usersService          users.Service
 	projectsClaGroupsRepo projects_cla_groups.Repository
 	s3                    *s3.S3
 	signaturesBucket      string
@@ -62,17 +67,20 @@ type Service interface {
 	GetSignedDocument(ctx context.Context, signatureID string) (*models.SignedDocument, error)
 	GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error)
 	GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error)
+	InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error
 }
 
 // NewService creates instance of v2 signature service
 func NewService(awsSession *session.Session, signaturesBucketName string, v1ProjectService project.Service,
 	v1CompanyService company.IService,
 	v1SignatureService signatures.SignatureService,
-	pcgRepo projects_cla_groups.Repository) *service {
+	pcgRepo projects_cla_groups.Repository, v1SignatureRepo signatures.SignatureRepository, usersService users.Service) *service {
 	return &service{
 		v1ProjectService:      v1ProjectService,
 		v1CompanyService:      v1CompanyService,
 		v1SignatureService:    v1SignatureService,
+		v1SignatureRepo:       v1SignatureRepo,
+		usersService:          usersService,
 		projectsClaGroupsRepo: pcgRepo,
 		s3:                    s3.New(awsSession),
 		signaturesBucket:      signaturesBucketName,
@@ -291,4 +299,69 @@ func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupI
 	}
 
 	return &resp, nil
+}
+
+func (s service) InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error {
+	f := logrus.Fields{
+		"functionName": "v2.signatures.service.InvalidateICLA",
+		"claGroupID":   claGroupID,
+		"userID":       userID,
+	}
+	// Get signature record
+	log.WithFields(f).Debug("getting signature record ...")
+	icla, iclaErr := s.v1SignatureService.GetIndividualSignature(ctx, claGroupID, userID)
+	if iclaErr != nil {
+		log.WithFields(f).Debug("unable to get individual signature")
+		return iclaErr
+	}
+
+	// Get cla Group
+	log.WithFields(f).Debug("getting clGroup...")
+	claGroup, claGrpErr := s.v1ProjectService.GetCLAGroupByID(ctx, claGroupID)
+	if claGrpErr != nil {
+		log.WithFields(f).Debug("unable to fetch cla Group record")
+		return claGrpErr
+	}
+
+	//Get user record
+	user, userErr := s.usersService.GetUser(userID)
+	if userErr != nil {
+		log.WithFields(f).Debug("unable to get user record")
+		return userErr
+	}
+
+	log.WithFields(f).Debug("invalidating signature record ...")
+	note := fmt.Sprintf("Signature invalidated (approved set to false) by %s for %s ", authUser.UserName, utils.GetBestUsername(user))
+	err := s.v1SignatureRepo.InvalidateProjectRecord(ctx, icla.SignatureID, note)
+	if err != nil {
+		log.WithFields(f).Debug("unable to invalidate icla record")
+		return err
+	}
+	// send email
+	email := utils.GetBestEmail(user)
+	log.WithFields(f).Debugf("sending invalidation email to : %s ", email)
+	subject := fmt.Sprintf("EasyCLA: ICLA invalidated for %s ", claGroup.ProjectName)
+	params := signatures.InvalidateSignatureTemplateParams{
+		RecipientName:  utils.GetBestUsername(user),
+		ProjectManager: authUser.UserName,
+		CLAGroupName:   claGroup.ProjectName,
+	}
+	body, renderErr := utils.RenderTemplate(claGroup.Version, signatures.InvalidateICLASignatureTemplateName, signatures.InvalidateICLASignatureTemplate, params)
+	if renderErr != nil {
+		log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
+	} else {
+		err := utils.SendEmail(subject, body, []string{email})
+		if err != nil {
+			log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
+		}
+	}
+
+	eventArgs.UserName = utils.GetBestUsername(user)
+	eventArgs.UserModel = user
+	eventArgs.ProjectName = claGroup.ProjectName
+
+	// Log event
+	eventsService.LogEventWithContext(ctx, eventArgs)
+
+	return nil
 }

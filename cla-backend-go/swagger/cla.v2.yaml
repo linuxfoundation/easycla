@@ -3103,6 +3103,35 @@ paths:
           $ref: '#/responses/internal-server-error'
       tags:
         - gerrits
+  /cla-group/{claGroupID}/user/{userID}/icla:
+    put:
+      summary: Invalidate ICLA record 
+      description: Invalidates a given ICLA record for a user
+      operationId: invalidateICLA
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: "#/parameters/path-userID"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - signatures
 
   /company/{companyID}:
     get:

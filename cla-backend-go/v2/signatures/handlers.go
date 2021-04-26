@@ -1255,6 +1255,34 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			}
 		})
 	})
+	api.SignaturesInvalidateICLAHandler = signatures.InvalidateICLAHandlerFunc(func(params signatures.InvalidateICLAParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.signatures.handlers.SignaturesInvalidateICLAHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     params.ClaGroupID,
+			"userID":         params.UserID,
+		}
+		log.WithFields(f).Debug("Invalidating ICLA record...")
+		eventArgs := &events.LogEventArgs{
+			EventType: events.InvalidatedSignature,
+			EventData: &events.SignatureProjectInvalidatedEventData{
+				InvalidatedCount: 1,
+			},
+		}
+		err := v2service.InvalidateICLA(ctx, params.ClaGroupID, params.UserID, authUser, eventsService, eventArgs)
+		if err != nil {
+			msg := "unable to invalidate icla"
+			log.WithFields(f).Warn(msg)
+			// return signatures.NewInvalidateSignatureBadRequest().WithXRequestID(reqID).WithPayload(
+			// 	utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+			return signatures.NewInvalidateICLABadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+		return signatures.NewInvalidateICLAOK().WithXRequestID(reqID)
+	})
 }
 
 // getProjectIDsFromModels is a helper function to extract the project SFIDs from the project CLA Group models

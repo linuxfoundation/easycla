@@ -16,6 +16,7 @@ type InvalidateSignatureTemplateParams struct {
 	ClaManager      string
 	RemovalCriteria string
 	ProjectName     string
+	ProjectManager  string
 	CLAManagers     []ClaManagerInfoParams
 	CLaManager      string
 	CLAGroupName    string

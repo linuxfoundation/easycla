@@ -4,6 +4,8 @@
 package utils
 
 import (
+	"strings"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
 )
 
@@ -22,4 +24,19 @@ func GetBestUsername(user *models.User) string {
 	}
 
 	return "User Name Unknown"
+}
+
+// GetBestEmail is a helper function to return the best email address for the user model
+func GetBestEmail(userModel *models.User) string {
+	if userModel.LfEmail != "" {
+		return userModel.LfEmail
+	}
+
+	for _, email := range userModel.Emails {
+		if email != "" && !strings.Contains(email, "noreply.github.com") {
+			return email
+		}
+	}
+
+	return ""
 }
