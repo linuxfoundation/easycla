@@ -4,6 +4,8 @@
 package project_service
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -230,6 +232,17 @@ func (pmm *Client) EnableCLA(projectSFID string) error {
 		"functionName": "v2.project-service.client.EnableCLA",
 		"projectSFID":  projectSFID,
 		"apiGWHost":    apiGWHost,
+	}
+
+	theLF, lookupErr := pmm.IsTheLinuxFoundation(projectSFID)
+	if lookupErr != nil {
+		log.WithFields(f).WithError(lookupErr).Warnf("unable to test if project is The Linux Foundation using projectSFID: %s", projectSFID)
+		return lookupErr
+	}
+	if theLF {
+		msg := fmt.Sprintf("unable to set the enabled CLA services for The Linux Foundation with projectSFID: %s - not allowed", projectSFID)
+		log.WithFields(f).Debug(msg)
+		return errors.New(msg)
 	}
 
 	tok, err := token.GetToken()

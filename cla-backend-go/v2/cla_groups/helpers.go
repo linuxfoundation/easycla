@@ -520,21 +520,26 @@ func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, cla
 					if parentLookupErr != nil || parentProjectSFID == "" {
 						log.WithFields(f).WithError(parentLookupErr).Warnf("unable to lookup parent project SFID for project: %s", projectSFID)
 					} else {
-						log.WithFields(f).Debugf("enabling parent project CLA service for project SFID: %s...", parentProjectSFID)
-						enableProjectErr := psClient.EnableCLA(parentProjectSFID)
-						if enableProjectErr != nil {
-							log.WithFields(f).WithError(enableProjectErr).Warnf("unable to enable CLA service for project: %s, error: %+v", parentProjectSFID, enableProjectErr)
-							errorList = append(errorList, enableProjectErr)
+						isTheLF, lookupErr := psClient.IsTheLinuxFoundation(parentProjectSFID)
+						if lookupErr != nil || isTheLF {
+							log.WithFields(f).Debugf("skipping setting the enabled services on The Linux Foundation parent project(s) for parent project SFID: %s", parentProjectSFID)
 						} else {
-							log.WithFields(f).Debugf("enabled CLA service for parent project: %s", parentProjectSFID)
-							// add event log entry
-							s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-								EventType:  events.ProjectServiceCLAEnabled,
-								ProjectID:  parentProjectSFID,
-								CLAGroupID: claGroupID,
-								LfUsername: authUser.UserName,
-								EventData:  &events.ProjectServiceCLAEnabledData{},
-							})
+							log.WithFields(f).Debugf("enabling parent project CLA service for project SFID: %s...", parentProjectSFID)
+							enableProjectErr := psClient.EnableCLA(parentProjectSFID)
+							if enableProjectErr != nil {
+								log.WithFields(f).WithError(enableProjectErr).Warnf("unable to enable CLA service for project: %s, error: %+v", parentProjectSFID, enableProjectErr)
+								errorList = append(errorList, enableProjectErr)
+							} else {
+								log.WithFields(f).Debugf("enabled CLA service for parent project: %s", parentProjectSFID)
+								// add event log entry
+								s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+									EventType:  events.ProjectServiceCLAEnabled,
+									ProjectID:  parentProjectSFID,
+									CLAGroupID: claGroupID,
+									LfUsername: authUser.UserName,
+									EventData:  &events.ProjectServiceCLAEnabledData{},
+								})
+							}
 						}
 					}
 				}
