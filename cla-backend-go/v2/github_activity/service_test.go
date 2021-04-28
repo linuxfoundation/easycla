@@ -165,9 +165,9 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryTransferredA
 			err := activityService.ProcessRepositoryEvent(&github.RepositoryEvent{
 				Action: aws.String("transferred"),
 				Repo: &github.Repository{
-					ID:   aws.Int64(1),
-					Name: &repoName,
-					HTMLURL:  &newRepoUrl,
+					ID:      aws.Int64(1),
+					Name:    &repoName,
+					HTMLURL: &newRepoUrl,
 				},
 				Org: &github.Organization{
 					Login: &newOrgName,
