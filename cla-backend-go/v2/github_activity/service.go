@@ -84,7 +84,7 @@ func (s *eventHandlerService) ProcessRepositoryEvent(event *github.RepositoryEve
 		return fmt.Errorf("missing repository object in event payload")
 	}
 
-	log.Debugf("ProcessRepositoryEvent called for action : %s", *event.Action)
+	log.Debugf("ProcessRepositoryEvent called for action : %s for repository : %s", *event.Action, *event.Repo.Name)
 	switch *event.Action {
 	case "created":
 		return s.handleRepositoryAddedAction(ctx, event.Sender, event.Repo)
@@ -176,6 +176,8 @@ func (s *eventHandlerService) handleRepositoryRemovedAction(ctx context.Context,
 		return fmt.Errorf("fetching the repo : %s by external id : %s failed : %v", *repo.FullName, repositoryExternalID, err)
 	}
 
+	log.WithFields(f).Infof("disabling repo : %s", repoModel.RepositoryID)
+
 	if err := s.githubRepo.DisableRepository(context.Background(), repoModel.RepositoryID); err != nil {
 		log.WithFields(f).Warnf("disabling repo : %s failed : %v", *repo.FullName, err)
 		return err
@@ -236,6 +238,8 @@ func (s *eventHandlerService) handleRepositoryRenamedAction(ctx context.Context,
 		}
 		return fmt.Errorf("fetching the repo : %s by external id : %s failed : %v", *repo.FullName, repositoryExternalID, err)
 	}
+
+	log.WithFields(f).Infof("renaming Github Repository from : %s to : %s", repoModel.RepositoryName, *repo.Name)
 
 	if _, err := s.githubRepo.UpdateGithubRepository(ctx, repoModel.RepositoryID, &models.GithubRepositoryInput{
 		RepositoryName: repo.Name,
@@ -298,6 +302,7 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 	if repo.ID == nil || *repo.ID == 0 {
 		return fmt.Errorf("missing repo id")
 	}
+
 	repositoryExternalID := strconv.FormatInt(*repo.ID, 10)
 	repoModel, err := s.githubRepo.GetRepositoryByGithubID(context.Background(), repositoryExternalID, true)
 	if err != nil {
@@ -310,6 +315,9 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 
 	newOrganizationName := *org.Name
 	oldOrganizationName := repoModel.RepositoryOrganizationName
+
+	log.WithFields(f).Infof("running transfer for repository : %s from Github Org : %s to Github Org : %s", *repo.Name, oldOrganizationName, newOrganizationName)
+
 	// first check if it's a different organization name (could be a duplicate event)
 	if oldOrganizationName == *org.Name {
 		msg := fmt.Sprintf("nothing to change for github repo : %s, probably duplicate event was sent", repoModel.RepositoryName)
@@ -325,30 +333,19 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 
 	newGithubOrg, err := s.githubOrgRepo.GetGithubOrganization(ctx, *org.Name)
 	if err != nil {
+		disabledErr := s.disableFailedTransferRepo(ctx, sender, f, repoModel, oldGithubOrg, newGithubOrg)
+		if disabledErr != nil {
+			return disabledErr
+		}
+
 		return fmt.Errorf("fetching the new organization name : %s failed : %v", newOrganizationName, err)
 	}
 
 	// we need to check if the new org name has autoenabled and have a cla group set otherwise we can't proceed
 	if !newGithubOrg.AutoEnabled || newGithubOrg.AutoEnabledClaGroupID == "" {
-		log.WithFields(f).Warnf("can't proceed with repo transfer operation because the new org doesn't have autoenabled=true, disabling the repo : %s", repoModel.RepositoryName)
-		if err := s.githubRepo.DisableRepository(ctx, repoModel.RepositoryID); err != nil {
-			return fmt.Errorf("disabling the repo : %s failed : %v", repoModel.RepositoryID, err)
-		}
-
-		// send event for the disabled repository.
-		s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType: events.RepositoryDisabled,
-			ProjectID: repoModel.RepositoryProjectID,
-			UserID:    *sender.Login,
-			EventData: &events.RepositoryDisabledEventData{
-				RepositoryName: repoModel.RepositoryName,
-			},
-		})
-
-		if s.sendEmail {
-			if err := s.notifyForGithubRepositoryTransferred(ctx, repoModel, oldGithubOrg, newGithubOrg, false); err != nil {
-				log.WithFields(f).Warnf("notifying cla managers via email failed : %v", err)
-			}
+		disabledErr := s.disableFailedTransferRepo(ctx, sender, f, repoModel, oldGithubOrg, newGithubOrg)
+		if disabledErr != nil {
+			return disabledErr
 		}
 
 		return fmt.Errorf("aborting the repository : %s transfer, new githubOrg : %s doesn't have claGroupID set", repoModel.RepositoryName, newGithubOrg.OrganizationName)
@@ -382,6 +379,30 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 		}
 	}
 
+	return nil
+}
+
+func (s *eventHandlerService) disableFailedTransferRepo(ctx context.Context, sender *github.User, f logrus.Fields, repoModel *models.GithubRepository, oldGithubOrg *models.GithubOrganization, newGithubOrg *models.GithubOrganization) error {
+	log.WithFields(f).Warnf("can't proceed with repo transfer operation because the new org doesn't have autoenabled=true, disabling the repo : %s", repoModel.RepositoryName)
+	if err := s.githubRepo.DisableRepository(ctx, repoModel.RepositoryID); err != nil {
+		return fmt.Errorf("disabling the repo : %s failed : %v", repoModel.RepositoryID, err)
+	}
+
+	// send event for the disabled repository.
+	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+		EventType: events.RepositoryDisabled,
+		ProjectID: repoModel.RepositoryProjectID,
+		UserID:    *sender.Login,
+		EventData: &events.RepositoryDisabledEventData{
+			RepositoryName: repoModel.RepositoryName,
+		},
+	})
+
+	if s.sendEmail {
+		if err := s.notifyForGithubRepositoryTransferred(ctx, repoModel, oldGithubOrg, newGithubOrg, false); err != nil {
+			log.WithFields(f).Warnf("notifying cla managers via email failed : %v", err)
+		}
+	}
 	return nil
 }
 
@@ -424,6 +445,8 @@ func (s *eventHandlerService) handleRepositoryArchivedAction(ctx context.Context
 		}
 		return fmt.Errorf("fetching the repo : %s by external id : %s failed : %v", *repo.FullName, repositoryExternalID, err)
 	}
+
+	log.WithFields(f).Infof("archiving repository : %s", repoModel.RepositoryName)
 
 	if s.sendEmail {
 		subject := fmt.Sprintf("EasyCLA: Github Repository Was Archived")

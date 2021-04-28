@@ -234,9 +234,9 @@ func (r *repo) UpdateGithubRepository(ctx context.Context, repositoryID string, 
 				noteValue = fmt.Sprintf("%s. %s", repoModel.Note, noteValue)
 			}
 		}
-		expressionAttributeNames["#N"] = aws.String("note")
-		expressionAttributeValues[":n"] = &dynamodb.AttributeValue{S: aws.String(noteValue)}
-		updateExpression = updateExpression + " #N = :n, "
+		expressionAttributeNames["#NO"] = aws.String("note")
+		expressionAttributeValues[":no"] = &dynamodb.AttributeValue{S: aws.String(noteValue)}
+		updateExpression = updateExpression + " #NO = :no, "
 	}
 
 	if input.Enabled != nil && repoModel.Enabled != *input.Enabled {
