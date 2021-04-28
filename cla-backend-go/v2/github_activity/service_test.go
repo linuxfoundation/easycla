@@ -167,10 +167,10 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryTransferredA
 				Repo: &github.Repository{
 					ID:   aws.Int64(1),
 					Name: &repoName,
-					URL:  &newRepoUrl,
+					HTMLURL:  &newRepoUrl,
 				},
 				Org: &github.Organization{
-					Name: &newOrgName,
+					Login: &newOrgName,
 				},
 				Sender: &github.User{
 					Login: aws.String("githubLoginValue"),

@@ -292,10 +292,20 @@ func (s *eventHandlerService) handleRepositoryRenamedAction(ctx context.Context,
 }
 
 func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Context, sender *github.User, repo *github.Repository, org *github.Organization) error {
+
+	if repo.Name == nil {
+		return fmt.Errorf("missing repo name can't proceed with transfer")
+	}
+	repoName := *repo.Name
+
+	if org.Login == nil {
+		return fmt.Errorf("missing organization login information can't proceed with transferring the rpo : %s", *org.Name)
+	}
+
 	f := logrus.Fields{
 		"functionName":          "v2.github_activity.service.handleRepositoryTransferredAction",
-		"repositoryName":        *repo.Name,
-		"newGithubOrganization": *org.Name,
+		"repositoryName":        repoName,
+		"newGithubOrganization": *org.Login,
 		utils.XREQUESTID:        ctx.Value(utils.XREQUESTID),
 	}
 
@@ -307,19 +317,19 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 	repoModel, err := s.githubRepo.GetRepositoryByGithubID(context.Background(), repositoryExternalID, true)
 	if err != nil {
 		if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
-			log.WithFields(f).Warnf("event for non existing local repo : %s, nothing to do", *repo.FullName)
+			log.WithFields(f).Warnf("event for non existing local repo : %s, nothing to do", repoName)
 			return nil
 		}
-		return fmt.Errorf("fetching the repo : %s by external id : %s failed : %v", *repo.FullName, repositoryExternalID, err)
+		return fmt.Errorf("fetching the repo : %s by external id : %s failed : %v", repoName, repositoryExternalID, err)
 	}
 
-	newOrganizationName := *org.Name
+	newOrganizationName := *org.Login
 	oldOrganizationName := repoModel.RepositoryOrganizationName
 
-	log.WithFields(f).Infof("running transfer for repository : %s from Github Org : %s to Github Org : %s", *repo.Name, oldOrganizationName, newOrganizationName)
+	log.WithFields(f).Infof("running transfer for repository : %s from Github Org : %s to Github Org : %s", repoName, oldOrganizationName, newOrganizationName)
 
 	// first check if it's a different organization name (could be a duplicate event)
-	if oldOrganizationName == *org.Name {
+	if oldOrganizationName == newOrganizationName {
 		msg := fmt.Sprintf("nothing to change for github repo : %s, probably duplicate event was sent", repoModel.RepositoryName)
 		log.WithFields(f).Warnf(msg)
 		return fmt.Errorf(msg)
@@ -331,7 +341,7 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 		return fmt.Errorf("fetching the old organization name : %s failed : %v", oldOrganizationName, err)
 	}
 
-	newGithubOrg, err := s.githubOrgRepo.GetGithubOrganization(ctx, *org.Name)
+	newGithubOrg, err := s.githubOrgRepo.GetGithubOrganization(ctx, newOrganizationName)
 	if err != nil {
 		disabledErr := s.disableFailedTransferRepo(ctx, sender, f, repoModel, oldGithubOrg, newGithubOrg)
 		if disabledErr != nil {
@@ -354,7 +364,7 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 	_, err = s.githubRepo.UpdateGithubRepository(ctx, repoModel.RepositoryID, &models.GithubRepositoryInput{
 		Note:                       fmt.Sprintf("repository was transferred from org : %s to : %s", oldGithubOrg.OrganizationName, newGithubOrg.OrganizationName),
 		RepositoryOrganizationName: aws.String(newGithubOrg.OrganizationName),
-		RepositoryURL:              repo.URL,
+		RepositoryURL:              repo.HTMLURL,
 	})
 
 	if err != nil {
