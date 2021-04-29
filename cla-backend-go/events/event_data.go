@@ -645,8 +645,19 @@ func (ed *CLAManagerRequestCreatedEventData) GetEventDetailsString(args *LogEven
 
 // GetEventDetailsString . . .
 func (ed *CLAManagerCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s, LFID: %s, Email: %s was added as CLA Manager for Company: %s, Project: %s.",
-		ed.UserName, ed.UserLFID, ed.UserEmail, ed.CompanyName, ed.ProjectName)
+	data := fmt.Sprintf("The user: %s LFID: %s, email: %s was added as CLA Manager", ed.UserName, ed.UserLFID, ed.UserEmail)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -656,8 +667,19 @@ func (ed *CLAManagerCreatedEventData) GetEventDetailsString(args *LogEventArgs) 
 
 // GetEventDetailsString . . .
 func (ed *CLAManagerDeletedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("User: %s LFID: %s, Email: %s was removed as CLA Manager for Company: %s, Project: %s ",
-		ed.UserName, ed.UserLFID, ed.UserEmail, ed.CompanyName, ed.ProjectName)
+	data := fmt.Sprintf("The user: %s LFID: %s, email: %s was removed as CLA Manager", ed.UserName, ed.UserLFID, ed.UserEmail)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}

@@ -82,8 +82,8 @@ type service struct {
 
 // Service interface
 type Service interface {
-	CreateCLAManager(ctx context.Context, claGroupID string, params cla_manager.CreateCLAManagerParams, authUsername string) (*models.CompanyClaManager, *models.ErrorResponse)
-	DeleteCLAManager(ctx context.Context, claGroupID string, params cla_manager.DeleteCLAManagerParams) *models.ErrorResponse
+	CreateCLAManager(ctx context.Context, authUser *auth.User, claGroupID string, params cla_manager.CreateCLAManagerParams, authUsername string) (*models.CompanyClaManager, *models.ErrorResponse)
+	DeleteCLAManager(ctx context.Context, authUser *auth.User, claGroupID string, params cla_manager.DeleteCLAManagerParams) *models.ErrorResponse
 	InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User) ([]*models.ClaManagerDesignee, error)
 	CreateCLAManagerDesignee(ctx context.Context, companyID string, projectID string, userEmail string) (*models.ClaManagerDesignee, error)
 	CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User) (*models.ClaManagerDesignee, error)
@@ -120,7 +120,7 @@ func NewService(emailTemplateService emails.EmailTemplateService, compService co
 }
 
 // CreateCLAManager creates Cla Manager
-func (s *service) CreateCLAManager(ctx context.Context, claGroupID string, params cla_manager.CreateCLAManagerParams, authUsername string) (*models.CompanyClaManager, *models.ErrorResponse) {
+func (s *service) CreateCLAManager(ctx context.Context, authUser *auth.User, claGroupID string, params cla_manager.CreateCLAManagerParams, authUsername string) (*models.CompanyClaManager, *models.ErrorResponse) {
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.CreateCLAManager",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -237,7 +237,7 @@ func (s *service) CreateCLAManager(ctx context.Context, claGroupID string, param
 	}
 
 	// Add CLA Manager to Database
-	signature, addErr := s.managerService.AddClaManager(ctx, v1CompanyModel.CompanyID, claGroupID, user.Username, projectSF.Name)
+	signature, addErr := s.managerService.AddClaManager(ctx, authUser, v1CompanyModel.CompanyID, claGroupID, user.Username, projectSF.Name)
 	if addErr != nil {
 		msg := buildErrorMessageCreate(params, addErr)
 		log.WithFields(f).Warn(msg)
@@ -273,17 +273,17 @@ func (s *service) CreateCLAManager(ctx context.Context, claGroupID string, param
 	return claCompanyManager, nil
 }
 
-func (s *service) DeleteCLAManager(ctx context.Context, claGroupID string, params cla_manager.DeleteCLAManagerParams) *models.ErrorResponse {
+func (s *service) DeleteCLAManager(ctx context.Context, authUser *auth.User, claGroupID string, params cla_manager.DeleteCLAManagerParams) *models.ErrorResponse {
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.DeleteCLAManager",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    params.ProjectSFID,
 		"companyID":      params.CompanyID,
-		"xUserName":      params.XUSERNAME,
-		"xEmail":         params.XEMAIL,
+		"authUserName":   authUser.UserName,
+		"authUserEmail":  authUser.Email,
 	}
 
-	signature, deleteErr := s.managerService.RemoveClaManager(ctx, params.CompanyID, claGroupID, params.UserLFID)
+	signature, deleteErr := s.managerService.RemoveClaManager(ctx, authUser, params.CompanyID, claGroupID, params.UserLFID)
 
 	if deleteErr != nil {
 		msg := buildErrorMessageDelete(params, deleteErr)

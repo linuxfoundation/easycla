@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/LF-Engineering/lfx-kit/auth"
+
 	user_service "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
 	"github.com/sirupsen/logrus"
 
@@ -713,7 +715,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		}
 
 		// Audit Event sent from service upon success
-		signature, addErr := service.AddClaManager(ctx, params.CompanyID, params.ProjectID, params.Body.UserLFID, "")
+		signature, addErr := service.AddClaManager(ctx, ToAuthUser(claUser), params.CompanyID, params.ProjectID, params.Body.UserLFID, "")
 		if addErr != nil {
 			msg := buildErrorMessageAddManager("Add CLA Manager - Service Error", params, addErr)
 			log.Warn(msg)
@@ -825,7 +827,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		}
 
 		// Audit Event sent from service upon success
-		signature, deleteErr := service.RemoveClaManager(ctx, params.CompanyID, params.ProjectID, params.UserLFID)
+		signature, deleteErr := service.RemoveClaManager(ctx, ToAuthUser(claUser), params.CompanyID, params.ProjectID, params.UserLFID)
 
 		if deleteErr != nil {
 			msg := buildErrorMessageDeleteManager("EasyCLA - 400 Bad Request - Delete CLA Manager - Service Error", params, deleteErr)
@@ -1012,5 +1014,14 @@ func sendRequestDeniedEmailToRequester(emailSvc emails.EmailTemplateService, ema
 		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
 	} else {
 		log.Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
+	}
+}
+
+// ToAuthUser converts a legacy v1 CLA user to a v2 platform auth user
+func ToAuthUser(claUser *user.CLAUser) *auth.User {
+	return &auth.User{
+		UserName: claUser.LFUsername,
+		Email:    claUser.LFEmail,
+		ACL:      auth.ACL{},
 	}
 }

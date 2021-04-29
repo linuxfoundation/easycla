@@ -59,7 +59,7 @@ func NewService(stage string, templateRepo Repository, docraptorClient docraptor
 // GetTemplates API call
 func (s service) GetTemplates(ctx context.Context) ([]models.Template, error) {
 	f := logrus.Fields{
-		"functionName":   "GetTemplates",
+		"functionName":   "v1.template.service.GetTemplates",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 	log.WithFields(f).Debug("Loading templates...")
@@ -81,7 +81,7 @@ func (s service) GetTemplates(ctx context.Context) ([]models.Template, error) {
 
 func (s service) CreateTemplatePreview(ctx context.Context, claGroupFields *models.CreateClaGroupTemplate, templateFor string) ([]byte, error) {
 	f := logrus.Fields{
-		"functionName":   "CreateTemplatePreview",
+		"functionName":   "v1.template.service.CreateTemplatePreview",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"templateID":     claGroupFields.TemplateID,
 		"templateFor":    templateFor,
@@ -93,6 +93,7 @@ func (s service) CreateTemplatePreview(ctx context.Context, claGroupFields *mode
 	if claGroupFields.TemplateID != "" {
 		templateID = claGroupFields.TemplateID
 	}
+	log.WithFields(f).Debugf("using template ID: %s", templateID)
 
 	// Get Template
 	template, err = s.templateRepo.GetTemplate(templateID)
@@ -101,6 +102,7 @@ func (s service) CreateTemplatePreview(ctx context.Context, claGroupFields *mode
 			claGroupFields.TemplateID)
 		return nil, err
 	}
+	log.WithFields(f).Debugf("loaded template ID: %s with ID: %s", template.Name, template.ID)
 
 	// Apply template fields
 	iclaTemplateHTML, cclaTemplateHTML, err := s.InjectProjectInformationIntoTemplate(template, claGroupFields.MetaFields)
@@ -134,7 +136,7 @@ func (s service) CreateTemplatePreview(ctx context.Context, claGroupFields *mode
 // CreateCLAGroupTemplate
 func (s service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, claGroupFields *models.CreateClaGroupTemplate) (models.TemplatePdfs, error) {
 	f := logrus.Fields{
-		"functionName":   "CreateCLAGroupTemplate",
+		"functionName":   "v1.template.service.CreateCLAGroupTemplate",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"claGroupFields": claGroupFields,
@@ -265,7 +267,7 @@ func (s service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, 
 
 func (s service) GetCLATemplatePreview(ctx context.Context, claGroupID, claType string, watermark bool) ([]byte, error) {
 	f := logrus.Fields{
-		"functionName":   "GetCLATemplatePreview",
+		"functionName":   "v1.template.service.GetCLATemplatePreview",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"claType":        claType,
@@ -357,6 +359,11 @@ func (s service) GetCLATemplatePreview(ctx context.Context, claGroupID, claType 
 
 // InjectProjectInformationIntoTemplate
 func (s service) InjectProjectInformationIntoTemplate(template models.Template, metaFields []*models.MetaField) (string, string, error) {
+	f := logrus.Fields{
+		"functionName": "v1.template.service.InjectProjectInformationIntoTemplate",
+		"templateName": template.Name,
+		"templateID":   template.ID,
+	}
 	lookupMap := map[string]models.MetaField{}
 	for _, field := range template.MetaFields {
 		lookupMap[field.Name] = *field
@@ -381,11 +388,13 @@ func (s service) InjectProjectInformationIntoTemplate(template models.Template, 
 		return "", "", errors.New("bad request: required fields for template were not found")
 	}
 
+	log.WithFields(f).Debugf("Rendering ICLA body for template: %s with id: %s", template.Name, template.ID)
 	iclaTemplateHTML, err := raymond.Render(template.IclaHTMLBody, metaFieldsMap)
 	if err != nil {
 		return "", "", err
 	}
 
+	log.WithFields(f).Debugf("Rendering CCLA body for template: %s with id: %s", template.Name, template.ID)
 	cclaTemplateHTML, err := raymond.Render(template.CclaHTMLBody, metaFieldsMap)
 	if err != nil {
 		return "", "", err
@@ -414,7 +423,7 @@ func (s service) generateTemplateS3FilePath(claGroupID, claType string) string {
 // SaveTemplateToS3
 func (s service) SaveTemplateToS3(bucket, filepath string, template io.ReadCloser) (string, error) {
 	f := logrus.Fields{
-		"functionName": "SaveTemplateToS3",
+		"functionName": "v1.template.service.SaveTemplateToS3",
 		"bucket":       bucket,
 		"filepath":     filepath,
 	}

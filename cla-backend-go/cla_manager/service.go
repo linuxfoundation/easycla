@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/LF-Engineering/lfx-kit/auth"
+
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
@@ -35,8 +37,8 @@ type IService interface {
 	PendingRequest(companyID, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 	DeleteRequest(requestID string) error
 
-	AddClaManager(ctx context.Context, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error)
-	RemoveClaManager(ctx context.Context, companyID string, claGroupID string, LFID string) (*models.Signature, error)
+	AddClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error)
+	RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string) (*models.Signature, error)
 }
 
 type service struct {
@@ -189,7 +191,7 @@ func (s service) DeleteRequest(requestID string) error {
 }
 
 // AddClaManager Adds LFID to Signature Access Control List list
-func (s service) AddClaManager(ctx context.Context, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error) {
+func (s service) AddClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error) {
 
 	userModel, userErr := s.usersService.GetUserByLFUserName(LFID)
 	if userErr != nil || userModel == nil {
@@ -254,16 +256,14 @@ func (s service) AddClaManager(ctx context.Context, companyID string, claGroupID
 	// Send an event
 	s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 		EventType:     events.ClaManagerCreated,
-		ProjectID:     claGroupModel.ProjectExternalID,
+		UserName:      authUser.UserName,
 		CLAGroupID:    claGroupID,
 		CLAGroupName:  claGroupModel.ProjectName,
 		ClaGroupModel: claGroupModel,
+		ProjectID:     claGroupModel.ProjectExternalID,
+		ProjectSFID:   claGroupModel.ProjectExternalID,
 		CompanyID:     companyID,
 		CompanyModel:  companyModel,
-		LfUsername:    LFID,
-		UserID:        LFID,
-		UserModel:     userModel,
-		ProjectSFID:   claGroupModel.ProjectExternalID,
 		EventData: &events.CLAManagerCreatedEventData{
 			CompanyName: companyModel.CompanyName,
 			ProjectName: claGroupModel.ProjectName,
@@ -300,7 +300,7 @@ func (s service) getCompanySignature(ctx context.Context, companyID string, claG
 }
 
 // RemoveClaManager removes lfid from signature acl with given company and project
-func (s service) RemoveClaManager(ctx context.Context, companyID string, claGroupID string, LFID string) (*models.Signature, error) {
+func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string) (*models.Signature, error) {
 
 	userModel, userErr := s.usersService.GetUserByLFUserName(LFID)
 	if userErr != nil || userModel == nil {
@@ -367,16 +367,15 @@ func (s service) RemoveClaManager(ctx context.Context, companyID string, claGrou
 	// Send an event
 	s.eventsService.LogEvent(&events.LogEventArgs{
 		EventType:     events.ClaManagerDeleted,
-		ProjectID:     claGroupModel.ProjectExternalID,
+		LfUsername:    userModel.LfUsername,
+		UserName:      authUser.UserName,
 		CLAGroupID:    claGroupID,
 		CLAGroupName:  claGroupModel.ProjectName,
 		ClaGroupModel: claGroupModel,
+		ProjectID:     claGroupModel.ProjectExternalID,
+		ProjectSFID:   claGroupModel.ProjectExternalID,
 		CompanyID:     companyID,
 		CompanyModel:  companyModel,
-		LfUsername:    userModel.LfUsername,
-		UserID:        LFID,
-		UserModel:     userModel,
-		ProjectSFID:   claGroupModel.ProjectExternalID,
 		EventData: &events.CLAManagerDeletedEventData{
 			CompanyName: companyModel.CompanyName,
 			ProjectName: claGroupModel.ProjectName,

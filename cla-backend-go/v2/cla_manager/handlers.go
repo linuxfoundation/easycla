@@ -78,7 +78,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			return cla_manager.NewCreateCLAManagerInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, err.Error(), err))
 		}
 
-		compCLAManager, errorResponse := service.CreateCLAManager(ctx, cginfo.ClaGroupID, params, authUser.UserName)
+		compCLAManager, errorResponse := service.CreateCLAManager(ctx, authUser, cginfo.ClaGroupID, params, authUser.UserName)
 		if errorResponse != nil {
 			if errorResponse.Code == BadRequest {
 				return cla_manager.NewCreateCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(errorResponse)
@@ -126,7 +126,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
-		errResponse := service.DeleteCLAManager(ctx, cginfo.ClaGroupID, params)
+		errResponse := service.DeleteCLAManager(ctx, authUser, cginfo.ClaGroupID, params)
 		if errResponse != nil {
 			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(errResponse)
 		}
