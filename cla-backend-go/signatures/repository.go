@@ -2138,10 +2138,24 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 										Error: fmt.Errorf("unable to get icla for user: %s ", user.UserID),
 									}
 								} else {
+
+									// Update gerrit user
+									if utils.StringInSlice(user.LfUsername, gerritICLAECLAs) {
+										gerritIclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
+										if gerritIclaErr != nil {
+											msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+											log.WithFields(f).WithError(gerritIclaErr).Warn(msg)
+										}
+										eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
+										if eclaErr != nil {
+											msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+											log.WithFields(f).WithError(eclaErr).Warn(msg)
+										}
+									}
 									results <- &ICLAUserResponse{
 										ICLASignature: &models.IclaSignature{
 											GithubUsername: icla.UserGHUsername,
-											LfUsername:     icla.UserLFID,
+											LfUsername:     user.LfUsername,
 											SignatureID:    icla.SignatureID,
 										},
 									}
@@ -2165,25 +2179,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 					// Send email
 					repo.sendEmail(ctx, email, &approvalList, iclas, eclas)
 
-					//update gerrit permissions
-					gerritUser, getGerritUserErr := repo.getGerritUserByEmail(ctx, email, gerritICLAECLAs)
-					if getGerritUserErr != nil || gerritUser == nil {
-						msg := fmt.Sprintf("unable to get gerrit user by email : %s ", email)
-						log.WithFields(f).WithError(getGerritUserErr).Warn(msg)
-						return
-					}
-					iclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, gerritUser.LfUsername, utils.ClaTypeICLA)
-					if iclaErr != nil {
-						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", gerritUser.LfUsername, approvalList.ClaGroupID)
-						log.WithFields(f).Warn(msg)
-						return
-					}
-					eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, gerritUser.LfUsername, utils.ClaTypeECLA)
-					if eclaErr != nil {
-						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", gerritUser.LfUsername, approvalList.ClaGroupID)
-						log.WithFields(f).Warn(msg)
-						return
-					}
 				}(email)
 			}
 			wg.Wait()
@@ -2613,30 +2608,6 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 	}
 }
 
-// getGerritUsersByEmail searches gerrit instances for users with given email
-func (repo repository) getGerritUserByEmail(ctx context.Context, email string, gerritICLAECLAs []string) (*models.User, error) {
-	f := logrus.Fields{
-		"functionName":   "v1.signatures.repository.getGerritUserByEmail",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"email":          email,
-	}
-
-	log.WithFields(f).Debugf("checking gerrit user for email: %s ", email)
-	if email != "" {
-		claUser, err := repo.usersRepo.GetUserByEmail(email)
-		if err != nil {
-			msg := fmt.Sprintf("unable to get easyclauser by email: %s ", email)
-			log.WithFields(f).Warn(msg)
-			return nil, err
-		}
-		if utils.StringInSlice(claUser.LfUsername, gerritICLAECLAs) {
-			return claUser, nil
-		}
-	}
-
-	return nil, nil
-}
-
 // verify UserApprovals checks user
 func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatureID string, claManager *models.User, approvalList *ApprovalList) (*models.User, error) {
 	f := logrus.Fields{
@@ -2659,9 +2630,10 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 
 	if approvalList.Criteria == utils.EmailDomainCriteria {
 		// Handle Domains
+		log.WithFields(f).Debugf("Handling domain for user email: %s  with approval list: %+v ", email, approvalList.ApprovalList)
 		domain := strings.Split(email, "@")[1]
-		if utils.StringInSlice(domain, approvalList.DomainApprovals) {
-			if !utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) && !utils.StringInSlice(email, approvalList.EmailApprovals) {
+		if utils.StringInSlice(domain, approvalList.ApprovalList) {
+			if (!utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) || utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs)) && !utils.StringInSlice(email, approvalList.EmailApprovals) {
 				//Invalidate record
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.EmailDomainCriteria)
 				err := repo.InvalidateProjectRecord(ctx, signatureID, note)
@@ -2670,18 +2642,19 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 					return user, err
 				}
 
-				log.WithFields(f).Debugf("removing gerrit user:%s  from claGroup: %s ...", user.LfUsername, approvalList.ClaGroupID)
-				iclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
-				if iclaErr != nil {
-					msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
-					log.WithFields(f).Warn(msg)
-					return user, iclaErr
-				}
-				eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
-				if eclaErr != nil {
-					msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
-					log.WithFields(f).Warn(msg)
-					return user, eclaErr
+				// Update Gerrit group users
+				if utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs) {
+					log.WithFields(f).Debugf("removing gerrit user:%s  from claGroup: %s ...", user.LfUsername, approvalList.ClaGroupID)
+					iclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
+					if iclaErr != nil {
+						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+						log.WithFields(f).Warn(msg)
+					}
+					eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
+					if eclaErr != nil {
+						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+						log.WithFields(f).Warn(msg)
+					}
 				}
 			}
 		}
