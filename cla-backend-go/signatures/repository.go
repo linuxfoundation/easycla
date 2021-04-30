@@ -2877,6 +2877,13 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
 
+	if searchTerm != nil {
+		log.WithFields(f).Debugf("adding search term filter for : %s ", *searchTerm)
+		filterAdded := true
+		searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(*searchTerm)).Or(expression.Name("user_email").Contains(strings.ToLower(*searchTerm)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
+	}
+
 	// Use the builder to create the expression
 	expr, err := expression.NewBuilder().
 		WithKeyCondition(condition).
