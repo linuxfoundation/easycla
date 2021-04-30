@@ -2478,8 +2478,8 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 
 	// Send CCLA Email
 	if removalType == CCLA {
-		subject := fmt.Sprintf("EasyCLA: Approval List Update for :%s ", email)
-		log.WithFields(f).Debugf("sending approval list update removal for :%s ", email)
+		subject := fmt.Sprintf("EasyCLA: CCLA invalidated  for :%s ", approvalList.ClaGroupName)
+		log.WithFields(f).Debugf("sending ccla invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLASignatureTemplateName, InvalidateCCLASignatureTemplate, params)
 		if renderErr != nil {
 			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
@@ -2490,8 +2490,8 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 			}
 		}
 	} else if removalType == ICLA {
-		subject := fmt.Sprintf("EasyCLA: Approval List Update for :%s ", email)
-		log.WithFields(f).Debugf("sending approval list update removal for :%s ", email)
+		subject := fmt.Sprintf("EasyCLA: ICLA invalidated  for :%s ", approvalList.ClaGroupName)
+		log.WithFields(f).Debugf("sending icla invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateICLASignatureTemplateName, InvalidateICLASignatureTemplate, params)
 		if renderErr != nil {
 			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
@@ -2502,8 +2502,8 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 			}
 		}
 	} else if removalType == CCLAICLA {
-		subject := fmt.Sprintf("EasyCLA: Approval List Update for :%s ", email)
-		log.WithFields(f).Debugf("sending approval list update removal for :%s ", email)
+		subject := fmt.Sprintf("EasyCLA: ICLA invalidated  for :%s ", approvalList.ClaGroupName)
+		log.WithFields(f).Debugf("sending icla invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAICLASignatureTemplateName, InvalidateCCLASignatureTemplate, params)
 		if renderErr != nil {
 			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
@@ -2514,8 +2514,8 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 			}
 		}
 	} else if removalType == CCLAICLAECLA {
-		subject := fmt.Sprintf("EasyCLA: Approval List Update for :%s ", email)
-		log.WithFields(f).Debugf("sending approval list update removal for :%s ", email)
+		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated  for :%s ", approvalList.ClaGroupName)
+		log.WithFields(f).Debugf("sending employee acknowledgement invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAICLAECLASignatureTemplateName, InvalidateCCLAICLAECLASignatureTemplate, params)
 		if renderErr != nil {
 			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
