@@ -263,7 +263,7 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 				return nil
 			}
 			var parentProjectName, parentProjectID string
-			if utils.IsProjectCategory(project, parentProject) {
+			if !utils.IsProjectHasRootParent(project) {
 				parentProjectName = parentProject.Name
 				parentProjectID = parentProject.ID
 			} else {

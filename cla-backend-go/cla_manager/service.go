@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
@@ -193,6 +194,15 @@ func (s service) DeleteRequest(requestID string) error {
 // AddClaManager Adds LFID to Signature Access Control List list
 func (s service) AddClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error) {
 
+	f := logrus.Fields{
+		"functionName":   "v1.cla_manager.AddClaManager",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyID,
+		"claGroupID":     claGroupID,
+		"LFID":           LFID,
+		"projectName":    projectSFName,
+	}
+
 	userModel, userErr := s.usersService.GetUserByLFUserName(LFID)
 	if userErr != nil || userModel == nil {
 		return nil, userErr
@@ -218,7 +228,7 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 
 	claManagers := sigModel.SignatureACL
 
-	log.Debugf("Got Company signatures - Company: %s , Project: %s , signatureID: %s ",
+	log.WithFields(f).Debugf("Got Company signatures - Company: %s , Project: %s , signatureID: %s ",
 		companyID, claGroupID, sigModel.SignatureID)
 
 	// Update the signature ACL
@@ -230,7 +240,7 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 	// Update the company ACL record in EasyCLA
 	companyACLError := s.companyService.AddUserToCompanyAccessList(ctx, companyID, LFID)
 	if companyACLError != nil {
-		log.Warnf("AddCLAManager- Unable to add user to company ACL, companyID: %s, user: %s, error: %+v", companyID, LFID, companyACLError)
+		log.WithFields(f).Warnf("AddCLAManager- Unable to add user to company ACL, companyID: %s, user: %s, error: %+v", companyID, LFID, companyACLError)
 		return nil, companyACLError
 	}
 
@@ -257,6 +267,7 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 	s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 		EventType:     events.ClaManagerCreated,
 		UserName:      authUser.UserName,
+		LfUsername:    authUser.UserName,
 		CLAGroupID:    claGroupID,
 		CLAGroupName:  claGroupModel.ProjectName,
 		ClaGroupModel: claGroupModel,
@@ -302,6 +313,14 @@ func (s service) getCompanySignature(ctx context.Context, companyID string, claG
 // RemoveClaManager removes lfid from signature acl with given company and project
 func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string) (*models.Signature, error) {
 
+	f := logrus.Fields{
+		"functionName":   "v1.cla_manager.RemoveClaManager",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"LFID":           LFID,
+		"companyID":      companyID,
+	}
+
 	userModel, userErr := s.usersService.GetUserByLFUserName(LFID)
 	if userErr != nil || userModel == nil {
 		return nil, userErr
@@ -333,7 +352,7 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 	// Update the signature ACL
 	updatedSignature, aclErr := s.sigService.RemoveCLAManager(ctx, sigModel.SignatureID, LFID)
 	if aclErr != nil || updatedSignature == nil {
-		log.Warnf("remove CLA Manager returned an error or empty signature model using Signature ID: %s, error: %+v",
+		log.WithFields(f).Warnf("remove CLA Manager returned an error or empty signature model using Signature ID: %s, error: %+v",
 			sigModel.SignatureID, sigErr)
 		return nil, aclErr
 	}
@@ -367,7 +386,7 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 	// Send an event
 	s.eventsService.LogEvent(&events.LogEventArgs{
 		EventType:     events.ClaManagerDeleted,
-		LfUsername:    userModel.LfUsername,
+		LfUsername:    authUser.UserName,
 		UserName:      authUser.UserName,
 		CLAGroupID:    claGroupID,
 		CLAGroupName:  claGroupModel.ProjectName,
