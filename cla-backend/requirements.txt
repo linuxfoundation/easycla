@@ -46,7 +46,7 @@ python-dateutil==2.8.0
 python-jose==3.0.1
 requests==2.22.0
 requests-oauthlib==1.2.0
-rsa==4.1
+rsa==4.7
 s3transfer==0.2.1
 sentinels==1.0.0
 six==1.13.0
