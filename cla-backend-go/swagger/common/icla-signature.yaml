@@ -5,21 +5,44 @@ type: object
 title: ICLASignature
 properties:
   signature_id:
-    type: string
+    description: the signature ID
+    $ref: './common/properties/internal-id.yaml'
   github_username:
     type: string
+    description: the user's github username
+    example: 'tomcruise'
   lf_username:
     type: string
+    description: the user's LF username
+    example: 'tomcruise'
   user_name:
     type: string
+    description: the user's user name/real name
+    example: 'Tom Cruise'
   user_email:
     type: string
+    description: the user's email address
+    example: 'tomcruise@hollywood.com'
   signed_on:
     type: string
+    description: the date/time the ICLA was signed
+    example: '2020-03-16T17:57:58Z'
   userDocusignName:
     type: string
+    description: the name provided on the DocuSign document
+    example: 'Jack Daniels'
   userDocusignDateSigned:
     type: string
+    description: the signature date signed value from DocuSign
+    example: '2020-03-16T17:57:58Z'
+  signatureApproved:
+    type: boolean
+    description: the signature approved flag - true or false value
+    example: true
+  signatureSigned:
+    type: boolean
+    description: the signature signed flag - true or false value
+    example: true
   signatureModified:
     type: string
     description: the signature modified created time

@@ -151,6 +151,7 @@ swagger-build-acs-service:
 		-t v2/acs-service \
 		-f swagger/acs-service.yaml
 
+build-swagger: swagger-build
 swagger-build: clean-swagger swagger-prep swagger-build-v1-services swagger-build-v2-services swagger-build-project-service swagger-build-organization-service swagger-build-user-service swagger-build-acs-service
 
 swagger-validate: swagger-v1-validate swagger-v2-validate
