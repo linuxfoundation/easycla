@@ -3027,6 +3027,7 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 		intermediateResponse = append(intermediateResponse, &iclaSignatureWithDetails{
 			IclaSignature: &models.IclaSignature{
 				GithubUsername:         sig.UserGithubUsername,
+				UserID:                 sig.SignatureReferenceID,
 				LfUsername:             sig.UserLFUsername,
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,

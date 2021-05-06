@@ -7,6 +7,9 @@ properties:
   signature_id:
     description: the signature ID
     $ref: './common/properties/internal-id.yaml'
+  user_id:
+    description: the user ID
+    $ref: './common/properties/internal-id.yaml'
   github_username:
     type: string
     description: the user's github username
