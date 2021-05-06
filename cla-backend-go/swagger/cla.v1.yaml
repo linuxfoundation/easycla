@@ -354,6 +354,8 @@ paths:
         - $ref: '#/parameters/signatureType'
         - $ref: '#/parameters/claType'
         - $ref: '#/parameters/sortOrder'
+        - $ref: '#/parameters/approved'
+        - $ref: '#/parameters/signed'
       responses:
         '200':
           description: 'Success'
@@ -392,6 +394,8 @@ paths:
         - $ref: '#/parameters/signatureType'
         - $ref: '#/parameters/claType'
         - $ref: '#/parameters/sortOrder'
+        - $ref: '#/parameters/approved'
+        - $ref: '#/parameters/signed'
         - name: body
           in: body
           schema:
@@ -2513,6 +2517,18 @@ parameters:
     required: false
     # UUID v4 regex
     # pattern: '[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}'
+  approved:
+    name: approved
+    description: The signature approved query parameter. If set with a value of true, the query would return approved signatures. If set with a value of false, the query would return invalidated/disabled signatures.
+    in: query
+    type: boolean
+    required: false
+  signed:
+    name: signed
+    description: The signature signed query parameter. If set with a value of true, the query would return signed signatures. If set with a value of false, the query would return incomplete/unsigned signatures.
+    in: query
+    type: boolean
+    required: false
   sortOrder:
     name: sortOrder
     description: The sort order - either asc or desc

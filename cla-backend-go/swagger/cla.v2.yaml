@@ -1619,6 +1619,8 @@ paths:
         - $ref: '#/parameters/sortOrder'
         - $ref: '#/parameters/pageSize'
         - $ref: '#/parameters/nextKey'
+        - $ref: '#/parameters/approved'
+        - $ref: '#/parameters/signed'
       responses:
         '200':
           description: 'Success'
@@ -1641,7 +1643,7 @@ paths:
 
   /cla-group/{claGroupID}/corporate-contributors:
     get:
-      summary: List corporate contributors for cla group
+      summary: List corporate contributors
       description: Returns a list of corporate contributor for the CLA Group
       operationId: listClaGroupCorporateContributors
       parameters:
@@ -1763,6 +1765,8 @@ paths:
         - $ref: '#/parameters/signatureType'
         - $ref: '#/parameters/claType'
         - $ref: '#/parameters/sortOrder'
+        - $ref: '#/parameters/signed'
+        - $ref: '#/parameters/approved'
       responses:
         '200':
           description: 'Success'
@@ -1894,8 +1898,8 @@ paths:
   # --------------------------------------------------------
   /signatures/project/{claGroupID}/ccla/pdfs:
     get:
-      summary: Downloads all corporate CLAs for this project
-      description: Downloads the corporate CLAs for this project
+      summary: Download corporate CLAs
+      description: Downloads all the corporate CLAs for this project
       operationId: downloadProjectSignatureCCLAs
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -3105,7 +3109,7 @@ paths:
         - gerrits
   /cla-group/{claGroupID}/user/{userID}/icla:
     put:
-      summary: Invalidate ICLA record 
+      summary: Invalidate ICLA record
       description: Invalidates a given ICLA record for a user
       operationId: invalidateICLA
       parameters:
@@ -3770,6 +3774,18 @@ parameters:
     required: false
     # UUID v4 regex
     # pattern: '[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}'
+  approved:
+    name: approved
+    description: The signature approved query parameter. If set with a value of true, the query would return approved signatures. If set with a value of false, the query would return invalidated/disabled signatures.
+    in: query
+    type: boolean
+    required: false
+  signed:
+    name: signed
+    description: The signature signed query parameter. If set with a value of true, the query would return signed signatures. If set with a value of false, the query would return incomplete/unsigned signatures.
+    in: query
+    type: boolean
+    required: false
   sortOrder:
     name: sortOrder
     description: The sort order - either asc or desc

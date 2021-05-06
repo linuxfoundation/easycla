@@ -59,11 +59,11 @@ func iclaSigCsvLine(sig *v1Models.IclaSignature) string {
 	} else {
 		dateTime = t.Format("Jan 2,2006")
 	}
-	return fmt.Sprintf("\n%s,%s,%s,%s,\"%s\"", sig.GithubUsername, sig.LfUsername, sig.UserName, sig.UserEmail, dateTime)
+	return fmt.Sprintf("\n%s,%s,%s,%s,\"%s\",%t,%t", sig.GithubUsername, sig.LfUsername, sig.UserName, sig.UserEmail, dateTime, sig.SignatureApproved, sig.SignatureSigned)
 }
 
 func cclaSigCsvHeader() string {
-	return `Company Name,Signed,Approved,DomainApprovalList,EmailApprovalList,GitHubOrgApprovalList,GitHubUsernameApprovalList,Date Signed`
+	return `Company Name,Signed,Approved,DomainApprovalList,EmailApprovalList,GitHubOrgApprovalList,GitHubUsernameApprovalList,Date Signed,Approved,Signed`
 }
 
 func cclaSigCsvLine(sig *v1Models.Signature) string {
@@ -75,7 +75,7 @@ func cclaSigCsvLine(sig *v1Models.Signature) string {
 	} else {
 		dateTime = t.Format("Jan 2,2006")
 	}
-	return fmt.Sprintf("\n\"%s\",%t,%t,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"",
+	return fmt.Sprintf("\n\"%s\",%t,%t,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%t,%t",
 		sig.CompanyName,
 		sig.SignatureSigned,
 		sig.SignatureApproved,
@@ -83,5 +83,7 @@ func cclaSigCsvLine(sig *v1Models.Signature) string {
 		strings.Join(sig.EmailApprovalList, ","),
 		strings.Join(sig.GithubOrgApprovalList, ","),
 		strings.Join(sig.GithubUsernameApprovalList, ","),
-		dateTime)
+		dateTime,
+		sig.SignatureApproved,
+		sig.SignatureApproved)
 }

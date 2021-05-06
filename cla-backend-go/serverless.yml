@@ -249,6 +249,8 @@ provider:
     # https://github.com/pypa/setuptools/issues/2350 and
     # https://github.com/pypa/setuptools/issues/2232
     SETUPTOOLS_USE_DISTUTILS: stdlib
+    # Turn on USER_AUTH_TRACING to see additional debug of user scopes for the authenticated users - output is verbose
+    USER_AUTH_TRACING: true
 
   stackTags:
     Name: ${self:service}

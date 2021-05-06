@@ -33,11 +33,11 @@ import (
 // SignatureService interface
 type SignatureService interface {
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
-	GetIndividualSignature(ctx context.Context, claGroupID, userID string) (*models.Signature, error)
-	GetCorporateSignature(ctx context.Context, claGroupID, companyID string) (*models.Signature, error)
+	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
+	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
 	GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error)
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
-	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
+	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, params signatures.GetProjectCompanySignaturesParams) (*models.Signatures, error)
 	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams) (*models.Signatures, error)
@@ -53,8 +53,8 @@ type SignatureService interface {
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
 	RemoveCLAManager(ctx context.Context, ignatureID, claManagerID string) (*models.Signature, error)
 
-	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error)
-	GetClaGroupCCLASignatures(ctx context.Context, claGroupID string) (*models.Signatures, error)
+	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error)
+	GetClaGroupCCLASignatures(ctx context.Context, claGroupID string, approved, signed *bool) (*models.Signatures, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error)
 }
 
@@ -83,13 +83,13 @@ func (s service) GetSignature(ctx context.Context, signatureID string) (*models.
 }
 
 // GetIndividualSignature returns the signature associated with the specified CLA Group and User ID
-func (s service) GetIndividualSignature(ctx context.Context, claGroupID, userID string) (*models.Signature, error) {
-	return s.repo.GetIndividualSignature(ctx, claGroupID, userID)
+func (s service) GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error) {
+	return s.repo.GetIndividualSignature(ctx, claGroupID, userID, approved, signed)
 }
 
 // GetCorporateSignature returns the signature associated with the specified CLA Group and Company ID
-func (s service) GetCorporateSignature(ctx context.Context, claGroupID, companyID string) (*models.Signature, error) {
-	return s.repo.GetCorporateSignature(ctx, claGroupID, companyID)
+func (s service) GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error) {
+	return s.repo.GetCorporateSignature(ctx, claGroupID, companyID, approved, signed)
 }
 
 // GetProjectSignatures returns the list of signatures associated with the specified project
@@ -115,8 +115,8 @@ func (s service) CreateProjectSummaryReport(ctx context.Context, params signatur
 }
 
 // GetProjectCompanySignature returns the signature associated with the specified project and company
-func (s service) GetProjectCompanySignature(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, pageSize *int64) (*models.Signature, error) {
-	return s.repo.GetProjectCompanySignature(ctx, companyID, projectID, signed, approved, nextKey, pageSize)
+func (s service) GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error) {
+	return s.repo.GetProjectCompanySignature(ctx, companyID, projectID, approved, signed, nextKey, pageSize)
 }
 
 // GetProjectCompanySignatures returns the list of signatures associated with the specified project
@@ -790,16 +790,18 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 	}
 }
 
-func (s service) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
-	return s.repo.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm, pageSize, nextKey)
+func (s service) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
+	return s.repo.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm, approved, signed, pageSize, nextKey)
 }
 
-func (s service) GetClaGroupCCLASignatures(ctx context.Context, claGroupID string) (*models.Signatures, error) {
+func (s service) GetClaGroupCCLASignatures(ctx context.Context, claGroupID string, approved, signed *bool) (*models.Signatures, error) {
 	pageSize := utils.Int64(1000)
 	return s.repo.GetProjectSignatures(ctx, signatures.GetProjectSignaturesParams{
 		ClaType:   aws.String(utils.ClaTypeCCLA),
 		ProjectID: claGroupID,
 		PageSize:  pageSize,
+		Approved:  approved,
+		Signed:    signed,
 	})
 }
 

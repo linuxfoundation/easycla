@@ -64,13 +64,13 @@ type SignatureRepository interface {
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
-	GetIndividualSignature(ctx context.Context, claGroupID, userID string) (*models.Signature, error)
-	GetCorporateSignature(ctx context.Context, claGroupID, companyID string) (*models.Signature, error)
+	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
+	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
 	GetSignatureACL(ctx context.Context, signatureID string) ([]string, error)
 	GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error)
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
-	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
-	GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error)
+	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
+	GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error)
 	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, pageSize int64) (*models.Signatures, error)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams, pageSize int64, loadACL bool) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
@@ -87,7 +87,7 @@ type SignatureRepository interface {
 	AddUsersDetails(ctx context.Context, signatureID string, userID string) error
 	AddSignedOn(ctx context.Context, signatureID string) error
 
-	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error)
+	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error)
 }
 
@@ -437,7 +437,7 @@ func (repo repository) GetSignature(ctx context.Context, signatureID string) (*m
 }
 
 // GetIndividualSignature returns the signature record for the specified CLA Group and User
-func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, userID string) (*models.Signature, error) {
+func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error) {
 	f := logrus.Fields{
 		"functionName":           "v1.signatures.repository.GetIndividualSignature",
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
@@ -457,9 +457,19 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 		And(expression.Key("signature_reference_id").Equal(expression.Value(userID)))
 	filter := expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
 		And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-		And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
-		And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+
+	// If the caller provided a signature signed value...add the appropriate filter
+	if signed != nil {
+		log.WithFields(f).Debugf("adding signature_signed: %t filter", *signed)
+		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(*signed))))
+	}
+
+	// If the caller provided a signature approved value...add the appropriate filter
+	if approved != nil {
+		log.WithFields(f).Debugf("adding signature_approved: %t filter", *approved)
+		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(*approved))))
+	}
 
 	builder := expression.NewBuilder().
 		WithKeyCondition(condition).
@@ -532,7 +542,7 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 }
 
 // GetCorporateSignature returns the signature record for the specified CLA Group and Company ID
-func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, companyID string) (*models.Signature, error) {
+func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error) {
 	f := logrus.Fields{
 		"functionName":           "v1.signatures.repository.GetCorporateSignature",
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
@@ -541,8 +551,8 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 		"companyID":              companyID,
 		"signatureType":          "ccla",
 		"signatureReferenceType": "company",
-		"signatureApproved":      "true",
-		"signatureSigned":        "true",
+		"signatureApproved":      utils.BoolValue(approved),
+		"signatureSigned":        utils.BoolValue(signed),
 	}
 
 	// These are the keys we want to match for an CCLA Signature with a given CLA Group and Company ID
@@ -550,9 +560,19 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 		And(expression.Key("signature_reference_id").Equal(expression.Value(companyID)))
 	filter := expression.Name("signature_type").Equal(expression.Value("ccla")).
 		And(expression.Name("signature_reference_type").Equal(expression.Value("company"))).
-		And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
-		And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+
+	// If the caller provided a signature signed value...add the appropriate filter
+	if signed != nil {
+		log.WithFields(f).Debugf("adding signature_signed: %t filter", *signed)
+		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(*signed))))
+	}
+
+	// If the caller provided a signature approved value...add the appropriate filter
+	if approved != nil {
+		log.WithFields(f).Debugf("adding signature_approved: %t filter", *approved)
+		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(*approved))))
+	}
 
 	builder := expression.NewBuilder().
 		WithKeyCondition(condition).
@@ -685,7 +705,7 @@ func addConditionToFilter(filter expression.ConditionBuilder, cond expression.Co
 }
 
 // GetProjectSignatures returns a list of signatures for the specified project
-func (repo repository) GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error) {
+func (repo repository) GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error) { // nolint
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetProjectSignatures",
 		"tableName":      repo.signatureTableName,
@@ -698,6 +718,8 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		"pageSize":       aws.Int64Value(params.PageSize),
 		"nextKey":        aws.StringValue(params.NextKey),
 		"sortOrder":      aws.StringValue(params.SortOrder),
+		"approved":       utils.BoolValue(params.Approved),
+		"signed":         utils.BoolValue(params.Signed),
 	}
 
 	indexName := SignatureProjectIDIndex
@@ -722,21 +744,15 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		if strings.ToLower(*params.ClaType) == utils.ClaTypeICLA {
 			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
 				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-				And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
-				And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
 
 		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeECLA {
 			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
 				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-				And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
-				And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 				And(expression.Name("signature_user_ccla_company_id").AttributeExists())
 		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeCCLA {
 			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)).
 				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany))).
-				And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
-				And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
 		}
 	} else {
@@ -770,13 +786,18 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 				filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 			}
 		}
+	}
 
-		// Filter condition to cater for approved and signed signatures
-		signatureApprovedExpression := expression.Name("signature_approved").Equal(expression.Value(true))
-		filter = addConditionToFilter(filter, signatureApprovedExpression, &filterAdded)
+	// If the caller provided a signature approved value...add the appropriate filter
+	if params.Approved != nil {
+		log.WithFields(f).Debugf("adding signature_approved: %t filter", *params.Approved)
+		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved))))
+	}
 
-		signatureSignedExpression := expression.Name("signature_signed").Equal(expression.Value(true))
-		filter = addConditionToFilter(filter, signatureSignedExpression, &filterAdded)
+	// If the caller provided a signature signed value...add the appropriate filter
+	if params.Signed != nil {
+		log.WithFields(f).Debugf("adding signature_signed: %t filter", *params.Signed)
+		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed))))
 	}
 
 	if filterAdded {
@@ -902,6 +923,8 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 		"pageSize":       aws.Int64Value(params.PageSize),
 		"nextKey":        aws.StringValue(params.NextKey),
 		"sortOrder":      aws.StringValue(params.SortOrder),
+		"approved":       utils.BoolValue(params.Approved),
+		"signed":         utils.BoolValue(params.Signed),
 		"companyIDList":  params.Body,
 	}
 
@@ -927,21 +950,15 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 		if strings.ToLower(*params.ClaType) == utils.ClaTypeICLA {
 			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
 				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-				And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
-				And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
 
 		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeECLA {
 			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
 				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-				And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
-				And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 				And(expression.Name("signature_user_ccla_company_id").AttributeExists())
 		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeCCLA {
 			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)).
 				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany))).
-				And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
-				And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
 		}
 	} else {
@@ -975,13 +992,18 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 				filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 			}
 		}
+	}
 
-		// Filter condition to cater for approved and signed signatures
-		signatureApprovedExpression := expression.Name("signature_approved").Equal(expression.Value(true))
-		filter = addConditionToFilter(filter, signatureApprovedExpression, &filterAdded)
+	// If the caller provided a signature approved value...add the appropriate filter
+	if params.Approved != nil {
+		log.WithFields(f).Debugf("adding signature_approved: %t filter", *params.Approved)
+		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved))))
+	}
 
-		signatureSignedExpression := expression.Name("signature_signed").Equal(expression.Value(true))
-		filter = addConditionToFilter(filter, signatureSignedExpression, &filterAdded)
+	// If the caller provided a signature signed value...add the appropriate filter
+	if params.Signed != nil {
+		log.WithFields(f).Debugf("adding signature_signed: %t filter", *params.Signed)
+		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed))))
 	}
 
 	if len(params.Body) > 0 {
@@ -1107,7 +1129,7 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 }
 
 // GetProjectCompanySignature returns a the signature for the specified project and specified company with the other query flags
-func (repo repository) GetProjectCompanySignature(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, pageSize *int64) (*models.Signature, error) {
+func (repo repository) GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetProjectCompanySignature",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -1141,17 +1163,17 @@ func (repo repository) GetProjectCompanySignature(ctx context.Context, companyID
 }
 
 // GetProjectCompanySignatures returns a list of signatures for the specified project and specified company
-func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, signed, approved *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error) {
+func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetProjectCompanySignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 		"projectID":      projectID,
-		"signed":         aws.BoolValue(signed),
-		"approved":       aws.BoolValue(approved),
 		"nextKey":        aws.StringValue(nextKey),
 		"sortOrder":      aws.StringValue(sortOrder),
 		"pageSize":       aws.Int64Value(pageSize),
+		"approved":       utils.BoolValue(approved),
+		"signed":         utils.BoolValue(signed),
 	}
 
 	// These are the keys we want to match
@@ -1161,16 +1183,16 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 	filter := expression.Name("signature_type").Equal(expression.Value("ccla")).
 		And(expression.Name("signature_reference_type").Equal(expression.Value("company")))
 
-	// If the caller provided a signature signed value...add the appropriate filter
-	if signed != nil {
-		log.WithFields(f).Debugf("adding signature_signed: %t filter", *signed)
-		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(*signed))))
-	}
-
 	// If the caller provided a signature approved value...add the appropriate filter
 	if approved != nil {
 		log.WithFields(f).Debugf("adding signature_approved: %t filter", *approved)
-		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(*approved))))
+		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved))))
+	}
+
+	// If the caller provided a signature signed value...add the appropriate filter
+	if signed != nil {
+		log.WithFields(f).Debugf("adding signature_signed: %t filter", *signed)
+		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed))))
 	}
 
 	limit := int64(10)
@@ -1989,11 +2011,11 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	}
 	log.WithFields(f).Debug("querying database for approval list details")
 
-	signed, approved := true, true
+	approved, signed := true, true
 	pageSize := int64(10)
 
 	// Get CCLA signature - For Approval List info
-	cclaSignature, err := repo.GetCorporateSignature(ctx, projectID, companyID)
+	cclaSignature, err := repo.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
 	if err != nil || cclaSignature == nil {
 		msg := fmt.Sprintf("unable to get corporate signature for CLA Group: %s and company: %s", projectID, companyID)
 		log.WithFields(f).Warn(msg)
@@ -2132,7 +2154,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						go func() {
 							defer close(results)
 							for _, user := range userSearch.Users {
-								icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, user.UserID)
+								icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, user.UserID, &approved, &signed)
 								if iclaErr != nil || icla == nil {
 									results <- &ICLAUserResponse{
 										Error: fmt.Errorf("unable to get icla for user: %s ", user.UserID),
@@ -2208,7 +2230,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		if params.RemoveDomainApprovalList != nil {
 			// Get ICLAs
 			log.WithFields(f).Debug("getting icla records... ")
-			iclas, iclaErr := repo.GetClaGroupICLASignatures(ctx, approvalList.ClaGroupID, nil, 0, "")
+			iclas, iclaErr := repo.GetClaGroupICLASignatures(ctx, approvalList.ClaGroupID, nil, &approved, &signed, 0, "")
 			if iclaErr != nil {
 				log.WithFields(f).Warn("unable to get iclas")
 			}
@@ -2301,7 +2323,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							return
 						}
 						if claUser != nil {
-							icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, claUser.UserID)
+							icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, claUser.UserID, &approved, &signed)
 							if iclaErr != nil || icla == nil {
 								log.WithFields(f).Debugf("unable to get icla signature for user with ghUsername: %s ", ghUsername)
 							}
@@ -2428,7 +2450,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	}
 
 	// Query the CCLA signature once again to load the most recent updates which include approval list updates from above
-	updatedSig, err := repo.GetCorporateSignature(ctx, projectID, companyID)
+	updatedSig, err := repo.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
 	if err != nil || cclaSignature == nil {
 		msg := fmt.Sprintf("unable to get corporate signature for CLA Group: %s and company: %s", projectID, companyID)
 		log.WithFields(f).Warn(msg)
@@ -2862,20 +2884,27 @@ func (repo repository) AddSignedOn(ctx context.Context, signatureID string) erro
 	return nil
 }
 
-func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
+func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetClaGroupICLASignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"searchTerm":     utils.StringValue(searchTerm),
+		"approved":       utils.BoolValue(approved),
+		"signed":         utils.BoolValue(signed),
 	}
 
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
 	filter := expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
 		And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-		And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true)))).
-		And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
 		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+
+	if approved != nil {
+		filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved))))
+	}
+	if signed != nil {
+		filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed))))
+	}
 
 	if searchTerm != nil {
 		log.WithFields(f).Debugf("adding search term filter for : %s ", *searchTerm)

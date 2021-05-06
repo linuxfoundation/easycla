@@ -107,7 +107,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			}
 
 			log.WithFields(f).Debug("checking permissions")
-			if !utils.IsUserAuthorizedForOrganization(ctx, authUser, v2CompanyModel.CompanyExternalID, utils.ALLOW_ADMIN_SCOPE) {
+			if !utils.IsUserAuthorizedForOrganization(ctx, authUser, params.CompanySFID, utils.ALLOW_ADMIN_SCOPE) {
 				msg := fmt.Sprintf("user %s does not have access to CompanyGetCompanyByExternalIDHandler with Organization scope of %s",
 					authUser.UserName, v2CompanyModel.CompanyExternalID)
 				log.WithFields(f).Warn(msg)

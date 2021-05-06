@@ -4,6 +4,9 @@
 package utils
 
 import (
+	"os"
+	"strconv"
+
 	"github.com/LF-Engineering/lfx-kit/auth"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/sirupsen/logrus"
@@ -24,5 +27,9 @@ func SetAuthUserProperties(authUser *auth.User, xUserName *string, xEmail *strin
 		authUser.Email = *xEmail
 	}
 
+	tracingEnabled, conversionErr := strconv.ParseBool(os.Getenv("USER_AUTH_TRACING"))
+	if conversionErr == nil && tracingEnabled {
+		log.WithFields(f).Debugf("Auth User: %+v", authUser)
+	}
 	log.WithFields(f).Debugf("set authuser x-username:%s and x-email:%s", authUser.UserName, authUser.Email)
 }

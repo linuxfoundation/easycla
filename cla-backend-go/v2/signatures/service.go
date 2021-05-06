@@ -61,7 +61,7 @@ type Service interface {
 	GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error)
 	GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
 	GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
-	GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error)
+	GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error)
 	GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companySFID string, searchTerm *string) (*models.CorporateContributorList, error)
 	GetSignedDocument(ctx context.Context, signatureID string) (*models.SignedDocument, error)
@@ -140,11 +140,11 @@ func (s service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGro
 
 func (s service) GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error) {
 	var b bytes.Buffer
-	result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, nil, 0, "")
+	result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, nil, nil, nil, 0, "")
 	if err != nil {
 		return nil, err
 	}
-	b.WriteString(`GitHub ID,LF_ID,Name,Email,Date Signed`)
+	b.WriteString(`GitHub ID,LF_ID,Name,Email,Date Signed,Approved,Signed`)
 	for _, sig := range result.List {
 		b.WriteString(iclaSigCsvLine(sig))
 	}
@@ -158,7 +158,7 @@ func (s service) GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID str
 		"claGroupID":     claGroupID,
 	}
 	log.WithFields(f).Debug("querying for CCLA signatures...")
-	result, err := s.v1SignatureService.GetClaGroupCCLASignatures(ctx, claGroupID)
+	result, err := s.v1SignatureService.GetClaGroupCCLASignatures(ctx, claGroupID, nil, nil)
 	if err != nil {
 		log.WithFields(f).Warnf("error loading CCLA signatures for CLA group, error: %+v", err)
 		return nil, err
@@ -175,16 +175,18 @@ func (s service) GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID str
 	return b.Bytes(), nil
 }
 
-func (s service) GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
+func (s service) GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.signatures.service.GetProjectIclaSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"searchTerm":     utils.StringValue(searchTerm),
+		"approved":       utils.BoolValue(approved),
+		"signed":         utils.BoolValue(signed),
 	}
 
 	var out models.IclaSignatures
-	result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm, pageSize, nextKey)
+	result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm, approved, signed, pageSize, nextKey)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load ICLA signatures using the specified search parameters")
 		return nil, err
@@ -309,7 +311,8 @@ func (s service) InvalidateICLA(ctx context.Context, claGroupID string, userID s
 	}
 	// Get signature record
 	log.WithFields(f).Debug("getting signature record ...")
-	icla, iclaErr := s.v1SignatureService.GetIndividualSignature(ctx, claGroupID, userID)
+	approved, signed := true, true
+	icla, iclaErr := s.v1SignatureService.GetIndividualSignature(ctx, claGroupID, userID, &approved, &signed)
 	if iclaErr != nil {
 		log.WithFields(f).Debug("unable to get individual signature")
 		return iclaErr

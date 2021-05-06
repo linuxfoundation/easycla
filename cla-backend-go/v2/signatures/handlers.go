@@ -369,6 +369,8 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"signatureType":  params.SignatureType,
+			"approved":       utils.BoolValue(params.Approved),
+			"signed":         utils.BoolValue(params.Signed),
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group by ID...")
@@ -420,6 +422,8 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			SignatureType: params.SignatureType,
 			ClaType:       params.ClaType,
 			SortOrder:     params.SortOrder,
+			Approved:      params.Approved,
+			Signed:        params.Signed,
 		})
 		if err != nil {
 			msg := fmt.Sprintf("error retrieving project signatures for projectID: %s, error: %+v",
@@ -812,6 +816,8 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			"claGroupID":     params.ClaGroupID,
 			"searchTerm":     utils.StringValue(params.SearchTerm),
 			"sortOrder":      utils.StringValue(params.SortOrder),
+			"approved":       utils.BoolValue(params.Approved),
+			"signed":         utils.BoolValue(params.Signed),
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group by ID...")
@@ -859,7 +865,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			nextKey = *params.NextKey
 		}
 
-		results, err := v2service.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm, pageSize, nextKey)
+		results, err := v2service.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm, params.Approved, params.Signed, pageSize, nextKey)
 		if err != nil {
 			msg := fmt.Sprintf("problem loading ICLA signatures by CLA Group ID search term: %s", aws.StringValue(params.SearchTerm))
 			log.WithFields(f).WithError(err).Warn(msg)

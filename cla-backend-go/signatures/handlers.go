@@ -38,7 +38,8 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		}
 
 		log.WithFields(f).Debug("querying for individual signature...")
-		signatureModel, sigErr := service.GetIndividualSignature(ctx, params.ClaGroupID, params.UserID)
+		approved, signed := true, true
+		signatureModel, sigErr := service.GetIndividualSignature(ctx, params.ClaGroupID, params.UserID, &approved, &signed)
 		if sigErr != nil {
 			msg := fmt.Sprintf("error retrieving signature using ClaGroupID: %s, userID: %s, error: %+v",
 				params.ClaGroupID, params.UserID, sigErr)
@@ -85,22 +86,29 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 	api.SignaturesGetSignedCCLADocumentHandler = signatures.GetSignedCCLADocumentHandlerFunc(func(params signatures.GetSignedCCLADocumentParams) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-		signatureModel, sigErr := service.GetCorporateSignature(ctx, params.ClaGroupID, params.CompanyID)
+		f := logrus.Fields{
+			"functionName":   "v1.signatures.handler.SignaturesGetSignedCCLADocumentHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     params.ClaGroupID,
+			"companyID":      params.CompanyID,
+		}
+
+		approved, signed := true, true
+		signatureModel, sigErr := service.GetCorporateSignature(ctx, params.ClaGroupID, params.CompanyID, &approved, &signed)
 		if sigErr != nil {
 			msg := fmt.Sprintf("EasyCLA - 500 Internal Server Error -  error retrieving signature using ClaGroupID: %s, CompanyID: %s, error: %+v",
 				params.ClaGroupID, params.CompanyID, sigErr)
-			log.Warn(msg)
+			log.WithFields(f).WithError(sigErr).Warn(msg)
 			return signatures.NewGetSignedCCLADocumentInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "500",
 				Message: msg,
 			})
-
 		}
 
 		if signatureModel == nil {
 			msg := fmt.Sprintf("EasyCLA - 404 Not Found - -  error retrieving signature using ClaGroupID: %s, CompanyID: %s",
 				params.ClaGroupID, params.CompanyID)
-			log.Warn(msg)
+			log.WithFields(f).Warn(msg)
 			return signatures.NewGetSignedCCLADocumentNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "404",
 				Message: msg,
@@ -114,7 +122,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		if s3Err != nil {
 			msg := fmt.Sprintf("EasyCLA - 500 Internal Server Error -  unable to locate PDF from source using ClaGroupID: %s, CompanyID: %s, s3 error: %+v",
 				params.ClaGroupID, params.CompanyID, s3Err)
-			log.Warn(msg)
+			log.WithFields(f).WithError(s3Err).Warn(msg)
 			return signatures.NewGetSignedCCLADocumentInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "500",
 				Message: msg,
@@ -130,9 +138,9 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			if writeErr != nil {
 				msg := fmt.Sprintf("EasyCLA - 500 Internal Server Error - generating s3 redirect for the client client using source using ClaGroupID: %s, CompanyID: %s, error: %+v",
 					params.ClaGroupID, params.CompanyID, s3Err)
-				log.Warn(msg)
+				log.WithFields(f).WithError(writeErr).Warn(msg)
 			}
-			log.Debugf("SignaturesGetSignedICLADocumentHandler - wrote %d bytes", bytesWritten)
+			log.WithFields(f).Debugf("wrote %d bytes", bytesWritten)
 		})
 	})
 
