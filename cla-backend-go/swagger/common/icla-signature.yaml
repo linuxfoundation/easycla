@@ -42,10 +42,12 @@ properties:
     type: boolean
     description: the signature approved flag - true or false value
     example: true
+    x-omitempty: false
   signatureSigned:
     type: boolean
     description: the signature signed flag - true or false value
     example: true
+    x-omitempty: false
   signatureModified:
     type: string
     description: the signature modified created time

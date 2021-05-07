@@ -32,10 +32,12 @@ properties:
     type: boolean
     description: the signature signed flag - true or false value
     example: true
+    x-omitempty: false
   signatureApproved:
     type: boolean
     description: the signature approved flag - true or false value
     example: true
+    x-omitempty: false
   signatureReferenceType:
     type: string
     description: the signature reference type - either user or company

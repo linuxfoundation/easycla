@@ -452,6 +452,7 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 
 	log.WithFields(f).Debug("querying signature for icla records ...")
 
+	var filterAdded bool
 	// These are the keys we want to match for an ICLA Signature with a given CLA Group and User ID
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID)).
 		And(expression.Key("signature_reference_id").Equal(expression.Value(userID)))
@@ -459,16 +460,17 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 		And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
 		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
 
-	// If the caller provided a signature signed value...add the appropriate filter
-	if signed != nil {
-		log.WithFields(f).Debugf("adding signature_signed: %t filter", *signed)
-		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(*signed))))
-	}
-
-	// If the caller provided a signature approved value...add the appropriate filter
 	if approved != nil {
-		log.WithFields(f).Debugf("adding signature_approved: %t filter", *approved)
-		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(*approved))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(approved))
+		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
+	}
+	if signed != nil {
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
+		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 
 	builder := expression.NewBuilder().
@@ -555,6 +557,7 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 		"signatureSigned":        utils.BoolValue(signed),
 	}
 
+	var filterAdded bool
 	// These are the keys we want to match for an CCLA Signature with a given CLA Group and Company ID
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID)).
 		And(expression.Key("signature_reference_id").Equal(expression.Value(companyID)))
@@ -562,16 +565,17 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 		And(expression.Name("signature_reference_type").Equal(expression.Value("company"))).
 		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
 
-	// If the caller provided a signature signed value...add the appropriate filter
-	if signed != nil {
-		log.WithFields(f).Debugf("adding signature_signed: %t filter", *signed)
-		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(*signed))))
-	}
-
-	// If the caller provided a signature approved value...add the appropriate filter
 	if approved != nil {
-		log.WithFields(f).Debugf("adding signature_approved: %t filter", *approved)
-		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(*approved))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(approved))
+		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
+	}
+	if signed != nil {
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
+		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 
 	builder := expression.NewBuilder().
@@ -788,16 +792,17 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		}
 	}
 
-	// If the caller provided a signature approved value...add the appropriate filter
 	if params.Approved != nil {
-		log.WithFields(f).Debugf("adding signature_approved: %t filter", *params.Approved)
-		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(params.Approved))
+		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
-
-	// If the caller provided a signature signed value...add the appropriate filter
 	if params.Signed != nil {
-		log.WithFields(f).Debugf("adding signature_signed: %t filter", *params.Signed)
-		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(params.Signed))
+		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 
 	if filterAdded {
@@ -994,16 +999,17 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 		}
 	}
 
-	// If the caller provided a signature approved value...add the appropriate filter
 	if params.Approved != nil {
-		log.WithFields(f).Debugf("adding signature_approved: %t filter", *params.Approved)
-		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(params.Approved))
+		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
-
-	// If the caller provided a signature signed value...add the appropriate filter
 	if params.Signed != nil {
-		log.WithFields(f).Debugf("adding signature_signed: %t filter", *params.Signed)
-		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(params.Signed))
+		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 
 	if len(params.Body) > 0 {
@@ -1176,6 +1182,7 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 		"signed":         utils.BoolValue(signed),
 	}
 
+	var filterAdded bool
 	// These are the keys we want to match
 	//condition := expression.Key("signature_project_id").Equal(expression.Value(projectID))
 	condition := expression.Key("signature_project_id").Equal(expression.Value(projectID)).
@@ -1183,16 +1190,17 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 	filter := expression.Name("signature_type").Equal(expression.Value("ccla")).
 		And(expression.Name("signature_reference_type").Equal(expression.Value("company")))
 
-	// If the caller provided a signature approved value...add the appropriate filter
 	if approved != nil {
-		log.WithFields(f).Debugf("adding signature_approved: %t filter", *approved)
-		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(approved))
+		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
-
-	// If the caller provided a signature signed value...add the appropriate filter
 	if signed != nil {
-		log.WithFields(f).Debugf("adding signature_signed: %t filter", *signed)
-		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
+		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 
 	limit := int64(10)
@@ -2894,21 +2902,27 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		"signed":         utils.BoolValue(signed),
 	}
 
+	var filterAdded bool
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
 	filter := expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
 		And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
 		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
 
 	if approved != nil {
-		filter.And(expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(approved))
+		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 	if signed != nil {
-		filter.And(expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed))))
+		filterAdded = true
+		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
+		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
+		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 
 	if searchTerm != nil {
 		log.WithFields(f).Debugf("adding search term filter for : %s ", *searchTerm)
-		filterAdded := true
 		searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(*searchTerm)).Or(expression.Name("user_email").Contains(strings.ToLower(*searchTerm)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
