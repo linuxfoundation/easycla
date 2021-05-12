@@ -29,6 +29,11 @@ type Config struct {
 	// EnableCLAServiceForParent is a configuration flag to indicate if we should set the enable_services=[CLA] attribute on the parent project object in the project service when a child project is associated with a CLA group. This determines the v2 project console experience/behavior."
 	EnableCLAServiceForParent bool `json:"enable_cla_service_for_parent"`
 
+	// SignatureQueryDefault is a flag to indicate how a default signature query should return data - show only 'active' signatures or 'all' signatures when no other query signed/approved params are provided
+	SignatureQueryDefault string `json:"signature_query_default"`
+	// SignatureQueryDefaultValue the default value for the SignatureQueryDefault configuration value
+	SignatureQueryDefaultValue string `json:"signature_query_default_value"`
+
 	// SFDC
 
 	// GitHub

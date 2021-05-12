@@ -167,3 +167,13 @@ const RemoveApprovals = "RemoveApprovals"
 
 //GitHubUsernameCriteria represents criteria based on GH username
 const GitHubUsernameCriteria = "GitHubUsername"
+
+// SignatureQueryDefaultAll the signature query default active value - A flag to indicate how a default signature
+// query should return data - show only 'active' signatures or 'all' signatures when no other query signed/approved
+// params are provided
+const SignatureQueryDefaultAll = "all"
+
+// SignatureQueryDefaultActive the signature query default active value - A flag to indicate how a default signature
+// query should return data - show only 'active' signatures or 'all' signatures when no other query signed/approved
+// params are provided
+const SignatureQueryDefaultActive = "active"

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/communitybridge/easycla/cla-backend-go/config"
+
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/sirupsen/logrus"
 
@@ -473,6 +475,13 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 
+	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
+	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
+		filterAdded = true
+		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
+	}
+
 	builder := expression.NewBuilder().
 		WithKeyCondition(condition).
 		WithFilter(filter).
@@ -576,6 +585,13 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
+	}
+
+	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
+	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
+		filterAdded = true
+		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
 
 	builder := expression.NewBuilder().
@@ -805,6 +821,13 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 
+	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
+	if params.Approved == nil && params.Signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
+		filterAdded = true
+		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
+	}
+
 	if filterAdded {
 		builder = builder.WithFilter(filter)
 	}
@@ -1012,6 +1035,13 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 
+	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
+	if params.Approved == nil && params.Signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
+		filterAdded = true
+		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
+	}
+
 	if len(params.Body) > 0 {
 		// expression.Name("Color").In(expression.Value("red"), expression.Value("green"), expression.Value("blue"))
 		var referenceIDExpressions []expression.OperandBuilder
@@ -1201,6 +1231,13 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
+	}
+
+	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
+	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
+		filterAdded = true
+		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
 
 	limit := int64(10)
@@ -2919,6 +2956,13 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
+	}
+
+	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
+	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
+		filterAdded = true
+		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
 
 	if searchTerm != nil {

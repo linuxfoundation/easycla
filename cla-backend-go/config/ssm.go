@@ -45,6 +45,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		"stage":        stage,
 	}
 	config := Config{}
+	config.SignatureQueryDefaultValue = "all"
 
 	ssmClient := ssm.New(awsSession)
 
@@ -94,6 +95,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-lfx-metrics-report-sqs-url-%s", stage),
 		fmt.Sprintf("cla-lfx-metrics-report-enabled-%s", stage),
 		fmt.Sprintf("cla-enable-services-for-parent-%s", stage),
+		fmt.Sprintf("cla-signature-query-default-%s", stage),
 		fmt.Sprintf("cla-platform-api-gw-%s", stage),
 	}
 
@@ -220,6 +222,12 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 				config.EnableCLAServiceForParent = false
 			} else {
 				config.EnableCLAServiceForParent = boolVal
+			}
+		case fmt.Sprintf("cla-signature-query-default-%s", stage):
+			if resp.value == "" {
+				config.SignatureQueryDefault = config.SignatureQueryDefaultValue
+			} else {
+				config.SignatureQueryDefault = resp.value
 			}
 		}
 	}
