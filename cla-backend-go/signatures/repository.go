@@ -5,6 +5,8 @@ package signatures
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -464,13 +466,13 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 
 	if approved != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(approved))
+		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(approved))
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 	if signed != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
+		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
@@ -478,6 +480,7 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
 	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
 		filterAdded = true
+		log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
 		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
 		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
@@ -576,13 +579,13 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 
 	if approved != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(approved))
+		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(approved))
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 	if signed != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
+		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
@@ -590,6 +593,7 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
 	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
 		filterAdded = true
+		log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
 		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
 		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
@@ -742,10 +746,8 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		"signed":         utils.BoolValue(params.Signed),
 	}
 
-	indexName := SignatureProjectIDIndex
-	if params.SortOrder != nil && *params.SortOrder != "" {
-		indexName = SignatureProjectDateIDIndex
-	}
+	// Always sort by date
+	indexName := SignatureProjectDateIDIndex
 
 	realPageSize := int64(100)
 	if params.PageSize != nil && *params.PageSize > 0 {
@@ -782,7 +784,7 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		}
 
 		if params.SignatureType != nil {
-			if params.SearchTerm != nil && (params.FullMatch != nil && !*params.FullMatch) {
+			if params.SearchTerm != nil && utils.StringValue(params.SearchTerm) != "" && (params.FullMatch != nil && !*params.FullMatch) {
 				indexName = SignatureProjectIDTypeIndex
 				condition = condition.And(expression.Key("signature_type").Equal(expression.Value(strings.ToLower(*params.SignatureType))))
 			} else {
@@ -797,12 +799,15 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 			}
 		}
 
-		if params.SearchTerm != nil {
+		if params.SearchTerm != nil && utils.StringValue(params.SearchTerm) != "" {
 			if *params.FullMatch {
 				indexName = SignatureReferenceSearchIndex
-				condition = condition.And(expression.Key("signature_reference_name_lower").Equal(expression.Value(strings.ToLower(*params.SearchTerm))))
+				log.WithFields(f).Debugf("adding filter signature_reference_name_lower: %s", strings.ToLower(utils.StringValue(params.SearchTerm)))
+				condition = condition.And(expression.Key("signature_reference_name_lower").Equal(expression.Value(strings.ToLower(utils.StringValue(params.SearchTerm)))))
 			} else {
-				searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(*params.SearchTerm)).Or(expression.Name("user_email").Contains(strings.ToLower(*params.SearchTerm)))
+				log.WithFields(f).Debugf("adding filters signature_reference_name_lower: %s or user_email: %s", strings.ToLower(utils.StringValue(params.SearchTerm)), strings.ToLower(utils.StringValue(params.SearchTerm)))
+				searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(utils.StringValue(params.SearchTerm))).
+					Or(expression.Name("user_email").Contains(strings.ToLower(utils.StringValue(params.SearchTerm))))
 				filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 			}
 		}
@@ -810,13 +815,13 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 
 	if params.Approved != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(params.Approved))
+		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(params.Approved))
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 	if params.Signed != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(params.Signed))
+		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(params.Signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
@@ -824,6 +829,7 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
 	if params.Approved == nil && params.Signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
 		filterAdded = true
+		log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
 		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
 		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
@@ -854,25 +860,35 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 	}
 	f["indexName"] = indexName
 
-	// If we have the next key, set the exclusive start key value
 	if params.NextKey != nil {
-		log.WithFields(f).Debugf("received a nextKey, value: %s", *params.NextKey)
-		// The primary key of the first item that this operation will evaluate.
-		// and the query key (if not the same)
-		queryInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
-			"signature_id": {
-				S: params.NextKey,
-			},
-			"signature_project_id": {
-				S: &params.ProjectID,
-			},
+		queryInput.ExclusiveStartKey, err = decodeNextKey(*params.NextKey)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem decoding next key value")
+			return nil, err
 		}
-		if params.FullMatch != nil && *params.FullMatch && params.SearchTerm != nil {
-			queryInput.ExclusiveStartKey["signature_reference_name_lower"] = &dynamodb.AttributeValue{
-				S: params.SearchTerm,
+		log.WithFields(f).Debugf("received a nextKey, value: %s - decoded: %+v", *params.NextKey, queryInput.ExclusiveStartKey)
+	}
+	/*
+		// If we have the next key, set the exclusive start key value
+		if params.NextKey != nil {
+			log.WithFields(f).Debugf("received a nextKey, value: %s", *params.NextKey)
+			// The primary key of the first item that this operation will evaluate.
+			// and the query key (if not the same)
+			queryInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
+				"signature_id": {
+					S: params.NextKey,
+				},
+				"signature_project_id": {
+					S: &params.ProjectID,
+				},
+			}
+			if params.FullMatch != nil && utils.BoolValue(params.FullMatch) && params.SearchTerm != nil && utils.StringValue(params.SearchTerm) != "" {
+				queryInput.ExclusiveStartKey["signature_reference_name_lower"] = &dynamodb.AttributeValue{
+					S: params.SearchTerm,
+				}
 			}
 		}
-	}
+	*/
 
 	sigs := make([]*models.Signature, 0)
 	var lastEvaluatedKey string
@@ -926,6 +942,16 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 	if int64(len(sigs)) > realPageSize {
 		sigs = sigs[0:realPageSize]
 		lastEvaluatedKey = sigs[realPageSize-1].SignatureID
+	}
+
+	if len(lastEvaluatedKey) > 0 {
+		log.WithFields(f).Debug("building next key...")
+		encodedString, err := buildNextKey(indexName, sigs[len(sigs)-1])
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to build nextKey")
+		}
+		lastEvaluatedKey = encodedString
+		log.WithFields(f).Debugf("lastEvaluatedKey encoded is: %s", encodedString)
 	}
 
 	return &models.Signatures{
@@ -1011,12 +1037,13 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 			}
 		}
 
-		if params.SearchTerm != nil {
-			if *params.FullMatch {
+		if params.SearchTerm != nil && utils.StringValue(params.SearchTerm) != "" {
+			if utils.BoolValue(params.FullMatch) {
 				indexName = SignatureReferenceSearchIndex
-				condition = condition.And(expression.Key("signature_reference_name_lower").Equal(expression.Value(strings.ToLower(*params.SearchTerm))))
+				condition = condition.And(expression.Key("signature_reference_name_lower").Equal(expression.Value(strings.ToLower(utils.StringValue(params.SearchTerm)))))
 			} else {
-				searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(*params.SearchTerm)).Or(expression.Name("user_email").Contains(strings.ToLower(*params.SearchTerm)))
+				searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(utils.StringValue(params.SearchTerm))).
+					Or(expression.Name("user_email").Contains(strings.ToLower(utils.StringValue(params.SearchTerm))))
 				filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 			}
 		}
@@ -1024,13 +1051,13 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 
 	if params.Approved != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(params.Approved))
+		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(params.Approved))
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 	if params.Signed != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(params.Signed))
+		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(params.Signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
@@ -1038,6 +1065,7 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
 	if params.Approved == nil && params.Signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
 		filterAdded = true
+		log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
 		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
 		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
@@ -1094,7 +1122,7 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 				S: &params.ProjectID,
 			},
 		}
-		if params.FullMatch != nil && *params.FullMatch && params.SearchTerm != nil {
+		if params.FullMatch != nil && *params.FullMatch && params.SearchTerm != nil && utils.StringValue(params.SearchTerm) != "" {
 			queryInput.ExclusiveStartKey["signature_reference_name_lower"] = &dynamodb.AttributeValue{
 				S: params.SearchTerm,
 			}
@@ -1222,13 +1250,13 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 
 	if approved != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(approved))
+		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(approved))
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 	if signed != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
+		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
@@ -1236,6 +1264,7 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
 	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
 		filterAdded = true
+		log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
 		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
 		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
@@ -2947,13 +2976,13 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 
 	if approved != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_approved filter: %t", aws.BoolValue(approved))
+		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(approved))
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
 	if signed != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding signature_signed filter: %t", aws.BoolValue(signed))
+		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
 		filter = addConditionToFilter(filter, searchTermExpression, &filterAdded)
 	}
@@ -2961,6 +2990,7 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
 	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
 		filterAdded = true
+		log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
 		filter = addConditionToFilter(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
 		filter = addConditionToFilter(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
@@ -3335,4 +3365,67 @@ func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, 
 		queryType:           claType,
 		Error:               nil,
 	}
+}
+
+func buildNextKey(indexName string, signature *models.Signature) (string, error) {
+	nextKey := make(map[string]*dynamodb.AttributeValue)
+	nextKey["signature_id"] = &dynamodb.AttributeValue{S: aws.String(signature.SignatureID)}
+	switch indexName {
+	// TODO: review all these use-cases
+	case SignatureProjectIDIndex:
+		nextKey["signature_project_id"] = &dynamodb.AttributeValue{S: aws.String(signature.ProjectID)}
+	case SignatureProjectDateIDIndex:
+		nextKey["signature_project_id"] = &dynamodb.AttributeValue{S: aws.String(signature.ProjectID)}
+		nextKey["date_modified"] = &dynamodb.AttributeValue{S: aws.String(signature.SignatureModified)}
+	case SignatureProjectReferenceIndex:
+		nextKey["signature_project_id"] = &dynamodb.AttributeValue{S: aws.String(signature.ProjectID)}
+		nextKey["signature_reference_id"] = &dynamodb.AttributeValue{S: aws.String(signature.SignatureReferenceID)}
+	case SignatureProjectIDSigTypeSignedApprovedIDIndex:
+		nextKey["signature_project_id"] = &dynamodb.AttributeValue{S: aws.String(signature.ProjectID)}
+		nextKey["signature_signed_approved_id"] = &dynamodb.AttributeValue{S: aws.String(fmt.Sprintf("%t#%t", signature.SignatureSigned, signature.SignatureApproved))}
+	case SignatureProjectIDTypeIndex:
+		nextKey["signature_project_id"] = &dynamodb.AttributeValue{S: aws.String(signature.ProjectID)}
+		nextKey["signature_type"] = &dynamodb.AttributeValue{S: aws.String(signature.SignatureType)}
+	case SignatureReferenceIndex:
+		nextKey["signature_reference_id"] = &dynamodb.AttributeValue{S: aws.String(signature.SignatureReferenceID)}
+	case SignatureReferenceSearchIndex:
+		nextKey["signature_project_id"] = &dynamodb.AttributeValue{S: aws.String(signature.ProjectID)}
+		nextKey["signature_reference_name_lower"] = &dynamodb.AttributeValue{S: aws.String(signature.SignatureReferenceNameLower)}
+	}
+
+	return encodeNextKey(nextKey)
+}
+
+// encodeNextKey encodes the map as a string
+func encodeNextKey(in map[string]*dynamodb.AttributeValue) (string, error) {
+	if len(in) == 0 {
+		return "", nil
+	}
+	b, err := json.Marshal(in)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
+}
+
+// decodeNextKey decodes the next key value into a dynamodb attribute value
+func decodeNextKey(str string) (map[string]*dynamodb.AttributeValue, error) {
+	f := logrus.Fields{
+		"functionName": "v1.events.repository.decodeNextKey",
+	}
+
+	sDec, err := base64.StdEncoding.DecodeString(str)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error decoding string %s", str)
+		return nil, err
+	}
+
+	var m map[string]*dynamodb.AttributeValue
+	err = json.Unmarshal(sDec, &m)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error unmarshalling string after decoding: %s", sDec)
+		return nil, err
+	}
+
+	return m, nil
 }
