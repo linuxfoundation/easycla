@@ -415,7 +415,6 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 		"signedEntityName": signedEntityName,
 	}
 
-	var ErrNotInOrg error
 	role := utils.CLASignatoryRole
 	log.WithFields(f).Debug("called")
 	usc := userService.GetClient()
@@ -438,20 +437,20 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 	// assign user role of cla signatory for this project
 	osc := organizationService.GetClient()
 
-	// make user cla-signatory
+	// Attempt to assign the cla-signatory role
 	log.WithFields(f).Debugf("assigning user role of %s...", role)
 	err = osc.CreateOrgUserRoleOrgScopeProjectOrg(ctx, userEmail, projectSFID, companySFID, roleID)
 	if err != nil {
+		// Log the error - but assigning the cla-signatory role is not a requirement as most users do not have a LF Login - do not throw an error
 		if strings.Contains(err.Error(), "associated with some organization") {
 			msg := fmt.Sprintf("user: %s already associated with some organization", user.Username)
-			ErrNotInOrg = errors.New(msg)
 			log.WithFields(f).WithError(err).Warn(msg)
-			return ErrNotInOrg
-		}
-		// Ignore conflict - role has already been assigned, otherwise, return the error
-		if _, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
+			// return errors.New(msg)
+		} else if _, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
+			log.WithFields(f).WithError(err).Warnf("assigning user role of %s failed - user already assigned the role: %v", role, err)
+			// return err
+		} else {
 			log.WithFields(f).WithError(err).Warnf("assigning user role of %s failed: %v", role, err)
-			return err
 		}
 	}
 
