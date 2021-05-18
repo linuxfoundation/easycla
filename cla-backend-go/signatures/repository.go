@@ -868,27 +868,6 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		}
 		log.WithFields(f).Debugf("received a nextKey, value: %s - decoded: %+v", *params.NextKey, queryInput.ExclusiveStartKey)
 	}
-	/*
-		// If we have the next key, set the exclusive start key value
-		if params.NextKey != nil {
-			log.WithFields(f).Debugf("received a nextKey, value: %s", *params.NextKey)
-			// The primary key of the first item that this operation will evaluate.
-			// and the query key (if not the same)
-			queryInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
-				"signature_id": {
-					S: params.NextKey,
-				},
-				"signature_project_id": {
-					S: &params.ProjectID,
-				},
-			}
-			if params.FullMatch != nil && utils.BoolValue(params.FullMatch) && params.SearchTerm != nil && utils.StringValue(params.SearchTerm) != "" {
-				queryInput.ExclusiveStartKey["signature_reference_name_lower"] = &dynamodb.AttributeValue{
-					S: params.SearchTerm,
-				}
-			}
-		}
-	*/
 
 	sigs := make([]*models.Signature, 0)
 	var lastEvaluatedKey string
@@ -1283,6 +1262,7 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 		return nil, err
 	}
 
+	indexName := SignatureProjectReferenceIndex
 	// Assemble the query input parameters
 	queryInput := &dynamodb.QueryInput{
 		ExpressionAttributeNames:  expr.Names(),
@@ -1291,27 +1271,21 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 		FilterExpression:          expr.Filter(),
 		ProjectionExpression:      expr.Projection(),
 		TableName:                 aws.String(repo.signatureTableName),
-		IndexName:                 aws.String(SignatureProjectReferenceIndex), // Name of a secondary index to scan
+		IndexName:                 aws.String(indexName), // Name of a secondary index to scan
 		Limit:                     aws.Int64(limit),
-		//IndexName:                 aws.String("project-signature-index"), // Name of a secondary index to scan
 	}
 
 	// If we have the next key, set the exclusive start key value
 	if nextKey != nil {
-		log.WithFields(f).Debugf("Received a nextKey, value: %s", *nextKey)
-		// The primary key of the first item that this operation will evaluate.
-		// and the query key (if not the same)
-		queryInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
-			"signature_id": {
-				S: nextKey,
-			},
-			"signature_project_id": {
-				S: &projectID,
-			},
+		queryInput.ExclusiveStartKey, err = decodeNextKey(*nextKey)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem decoding next key value")
+			return nil, err
 		}
+		log.WithFields(f).Debugf("received a nextKey, value: %s - decoded: %+v", *nextKey, queryInput.ExclusiveStartKey)
 	}
 
-	var sigs []*models.Signature
+	sigs := make([]*models.Signature, 0)
 	var lastEvaluatedKey string
 
 	// Loop until we have all the records
@@ -1338,7 +1312,6 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 		// Add to the signatures response model to the list
 		sigs = append(sigs, signatureList...)
 
-		// log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey["signature_id"])
 		if results.LastEvaluatedKey["signature_id"] != nil {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
 			queryInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
@@ -1346,7 +1319,10 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 					S: aws.String(lastEvaluatedKey),
 				},
 				"signature_project_id": {
-					S: &projectID,
+					S: aws.String(projectID),
+				},
+				"signature_reference_id": {
+					S: aws.String(companyID),
 				},
 			}
 		} else {
@@ -1368,6 +1344,17 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 		return nil, err
 	}
 
+	// Calculate the next key - this uses a compound key - need to encode it before sharing with the caller
+	if len(lastEvaluatedKey) > 0 {
+		log.WithFields(f).Debug("building next key...")
+		encodedString, err := buildNextKey(indexName, sigs[len(sigs)-1])
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to build nextKey")
+		}
+		lastEvaluatedKey = encodedString
+		log.WithFields(f).Debugf("lastEvaluatedKey encoded is: %s", encodedString)
+	}
+
 	// Meta-data for the response
 	totalCount := *describeTableResult.Table.ItemCount
 
@@ -1384,7 +1371,7 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 	}, nil
 }
 
-// Get project signatures with no pagination
+// ProjectSignatures - get project signatures with no pagination
 func (repo repository) ProjectSignatures(ctx context.Context, projectID string) (*models.Signatures, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.ProjectSignatures",
