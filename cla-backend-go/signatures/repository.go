@@ -1192,7 +1192,7 @@ func (repo repository) GetProjectCompanySignature(ctx context.Context, companyID
 		return nil, getErr
 	}
 
-	if sigs == nil || sigs.Signatures == nil {
+	if sigs == nil || len(sigs.Signatures) == 0 {
 		return nil, nil
 	}
 
@@ -1300,17 +1300,20 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 		}
 		log.WithFields(f).Debugf("query response received with %d results", len(results.Items))
 
-		// Convert the list of DB models to a list of response models
-		log.WithFields(f).Debugf("building response model for %d results", len(results.Items))
-		signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, projectID, LoadACLDetails)
-		if modelErr != nil {
-			log.WithFields(f).Warnf("error converting DB model to response model for signatures with project %s with company: %s, error: %v",
-				projectID, companyID, modelErr)
-			return nil, modelErr
-		}
+		// If we have any results - may not have any after filters are applied, but may have more records to page through...
+		if len(results.Items) > 0 {
+			// Convert the list of DB models to a list of response models
+			log.WithFields(f).Debugf("building response model for %d results", len(results.Items))
+			signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, projectID, LoadACLDetails)
+			if modelErr != nil {
+				log.WithFields(f).Warnf("error converting DB model to response model for signatures with project %s with company: %s, error: %v",
+					projectID, companyID, modelErr)
+				return nil, modelErr
+			}
 
-		// Add to the signatures response model to the list
-		sigs = append(sigs, signatureList...)
+			// Add to the signatures response model to the list
+			sigs = append(sigs, signatureList...)
+		}
 
 		if results.LastEvaluatedKey["signature_id"] != nil {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
