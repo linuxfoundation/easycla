@@ -164,6 +164,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 
 		claGroup, err := service.UpdateCLAGroup(ctx, authUser, claGroupModel, params.Body, utils.StringValue(params.XUSERNAME))
 		if err != nil {
+			// Return a 409 conflict if we have a duplicate name
+			if _, ok := err.(*utils.CLAGroupNameConflict); ok {
+				return cla_group.NewUpdateClaGroupConflict().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseConflictWithError(reqID, err.Error(), err))
+			}
 			log.WithFields(f).WithError(err).Warn("unable to update the CLA Group Name and/or Description - update failed")
 			return cla_group.NewUpdateClaGroupBadRequest().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseBadRequestWithError(reqID, fmt.Sprintf("unable to update CLA Group by ID: %s", params.ClaGroupID), err))
