@@ -52,7 +52,7 @@
     "@types/node": "^12.11.1",
     "@ng-bootstrap/ng-bootstrap": "^6.1.0",
     "auth0-js": "^9.13.2",
-    "aws-sdk": "^2.733.0",
+    "aws-sdk": "^2.885.0",
     "bootstrap": "^4.4.0",
     "query-string": "^6.13.6",
     "rxjs": "~6.6.7",

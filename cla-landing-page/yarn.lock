@@ -2419,7 +2419,7 @@ autoprefixer@9.7.4:
     postcss "^7.0.26"
     postcss-value-parser "^4.0.2"
 
-aws-sdk@^2.224.1, aws-sdk@^2.733.0:
+aws-sdk@^2.224.1:
   version "2.775.0"
   resolved "https://registry.yarnpkg.com/aws-sdk/-/aws-sdk-2.775.0.tgz#707c369e84b79cf3b136819c01f849b93fb44eab"
   integrity sha512-rlej1sgHmfhl+PJqpQ2qOOsbHEEnLBIKBmanMTUNGiEAfuS0MpFjXECXTpJIOrbUzl3OZuAYrGuBkg2qrBwRbQ==
@@ -2438,6 +2438,21 @@ aws-sdk@^2.803.0:
   version "2.806.0"
   resolved "https://registry.yarnpkg.com/aws-sdk/-/aws-sdk-2.806.0.tgz#5bd3ac07425ee34f5dc9dc40a38d78c49066a88f"
   integrity sha512-kCrGfZyzZiS56qblXEzznkTi64ZbzhQGlbyEjDI9cIUjX4dA9IyqvNWUdJvUQoZmiEnObbuXMVrv7blJzT8uhQ==
+  dependencies:
+    buffer "4.9.2"
+    events "1.1.1"
+    ieee754 "1.1.13"
+    jmespath "0.15.0"
+    querystring "0.2.0"
+    sax "1.2.1"
+    url "0.10.3"
+    uuid "3.3.2"
+    xml2js "0.4.19"
+
+aws-sdk@^2.885.0:
+  version "2.899.0"
+  resolved "https://registry.yarnpkg.com/aws-sdk/-/aws-sdk-2.899.0.tgz#fac90b8926707b3e9dcd1e7d5937cfa71c0be5ca"
+  integrity sha512-k8jSANDQGvTyyj1f/7Hj4SWaV61/gjj/BopRmavAr6n1ayjXtUeVrV8G29+ABD3V82pHXDqLq47bqNmZ9m86xQ==
   dependencies:
     buffer "4.9.2"
     events "1.1.1"
