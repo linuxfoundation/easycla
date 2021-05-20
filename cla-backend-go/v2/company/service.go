@@ -1798,7 +1798,7 @@ func (s *service) RequestCompanyAdmin(ctx context.Context, userID string, claMan
 		return orgErr
 	}
 	if len(organizations.Data) > 0 {
-		msg := fmt.Sprintf("Comapny already exist with the name: %s ", companyName)
+		msg := fmt.Sprintf("Company already exists with the name: %s ", companyName)
 		log.Warn(msg)
 		return errors.New(msg)
 	}
