@@ -248,22 +248,37 @@ func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID st
 	}
 
 	_, nowStr := utils.CurrentTime()
-	input := &ProjectClaGroup{
-		ProjectSFID:    projectSFID,
-		ProjectName:    projectName,
-		ClaGroupID:     claGroupID,
-		ClaGroupName:   claGroupName,
-		FoundationSFID: foundationSFID,
-		FoundationName: foundationName,
-		Note:           fmt.Sprintf("Associate CLA Group with project API request on: %s", nowStr),
-		Version:        "v1",
-		DateCreated:    nowStr,
-		DateModified:   nowStr,
-	}
-
-	av, err := dynamodbattribute.MarshalMap(input)
-	if err != nil {
-		return err
+	item := map[string]*dynamodb.AttributeValue{
+		"project_sfid": {
+			S: aws.String(projectSFID),
+		},
+		"project_name": {
+			S: aws.String(projectName),
+		},
+		"cla_group_id": {
+			S: aws.String(claGroupID),
+		},
+		"cla_group_name": {
+			S: aws.String(claGroupName),
+		},
+		"foundation_sfid": {
+			S: aws.String(foundationSFID),
+		},
+		"foundation_name": {
+			S: aws.String(foundationName),
+		},
+		"note": {
+			S: aws.String(fmt.Sprintf("Associate CLA Group with project API request on: %s", nowStr)),
+		},
+		"version": {
+			S: aws.String("v1"),
+		},
+		"date_created": {
+			S: aws.String(nowStr),
+		},
+		"date_modified": {
+			S: aws.String(nowStr),
+		},
 	}
 
 	log.WithFields(f).Debug("Locating records with matching projectSFID...")
@@ -277,9 +292,9 @@ func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID st
 		log.WithFields(f).Debugf("record found with matching projectSFID: %+v", existingRecord)
 	}
 
-	log.WithFields(f).Debugf("adding entry into the %s table with: %+v", repo.tableName, input)
-	_, err = repo.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
-		Item:                av,
+	log.WithFields(f).Debugf("adding entry into the %s table with: %+v", repo.tableName, item)
+	_, err := repo.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
+		Item:                item,
 		TableName:           aws.String(repo.tableName),
 		ConditionExpression: aws.String("attribute_not_exists(project_sfid)"),
 	})
