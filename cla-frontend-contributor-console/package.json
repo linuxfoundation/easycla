@@ -13,7 +13,7 @@
     "install-frontend": "../scripts/install-frontend.sh"
   },
   "dependencies": {
-    "graceful-fs": "^4.2.2",
+    "graceful-fs": "^4.2.6",
     "ionic": "^3.20.0",
     "serverless": "^2.15.0",
     "serverless-cloudfront-invalidate": "^1.2.1",
