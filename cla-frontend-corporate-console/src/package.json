@@ -38,7 +38,7 @@
     "@swimlane/ngx-datatable": "^11.3.2",
     "@types/lodash": "4.14.112",
     "@types/node": "^8.0.17",
-    "aws-sdk": "^2.304.0",
+    "aws-sdk": "^2.897.0",
     "chart.js": "^2.5.0",
     "google-libphonenumber": "^2.0.18",
     "graceful-fs": "^4.2.2",
