@@ -10,7 +10,7 @@
     "test": "./node_modules/.bin/jasmine --config=jasmine.json"
   },
   "dependencies": {
-    "graceful-fs": "^4.2.2"
+    "graceful-fs": "^4.2.6"
   },
   "devDependencies": {
     "babel-core": "^6.26.0",
