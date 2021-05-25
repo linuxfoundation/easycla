@@ -16,7 +16,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
 
-// GithubRepoModifyEvent github repository modify event
+// GithubRepoModifyAddEvent github repository modify add event
 func (s *service) GithubRepoModifyAddEvent(event events.DynamoDBEventRecord) error {
 	ctx := utils.NewContext()
 	f := logrus.Fields{
@@ -201,7 +201,7 @@ func (s *service) setRepositoryCount(ctx context.Context, claGroupID string, par
 
 	// Update projects-cla-group table
 	log.WithFields(f).Debugf("Updating the projects-cla-groups-table for projectSFID: %s ", projectSFID)
-	pcgErr := s.projectsClaGroupRepo.UpdateRepositoriesCount(projectSFID, int64(repoCount), true)
+	pcgErr := s.projectsClaGroupRepo.UpdateRepositoriesCount(ctx, projectSFID, int64(repoCount), true)
 	if pcgErr != nil {
 		log.WithFields(f).WithError(updateErr).Debugf("Failed to set repositories_count for project: %s ", projectSFID)
 		return pcgErr

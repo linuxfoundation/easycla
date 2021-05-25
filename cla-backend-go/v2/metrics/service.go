@@ -4,6 +4,7 @@
 package metrics
 
 import (
+	"context"
 	"errors"
 	"math"
 	"sort"
@@ -35,7 +36,7 @@ type Service interface {
 	GetTopCompanies() (*models.TopCompanies, error)
 	GetTopProjects() (*models.TopProjects, error)
 	ListProjectMetrics(paramPageSize *int64, paramNextKey *string) (*models.ListProjectMetric, error)
-	ListCompanyProjectMetrics(companyID string, projectSFID string) (*models.CompanyProjectMetrics, error)
+	ListCompanyProjectMetrics(ctx context.Context, companyID string, projectSFID string) (*models.CompanyProjectMetrics, error)
 }
 
 type service struct {
@@ -287,7 +288,7 @@ func (s *service) ListProjectMetrics(paramPageSize *int64, paramNextKey *string)
 	return &out, nil
 }
 
-func (s *service) ListCompanyProjectMetrics(companyID string, projectSFID string) (*models.CompanyProjectMetrics, error) {
+func (s *service) ListCompanyProjectMetrics(ctx context.Context, companyID string, projectSFID string) (*models.CompanyProjectMetrics, error) {
 	psc := project_service.GetClient()
 	claGroupList := utils.NewStringSet()
 	project, err := psc.GetProject(projectSFID)
@@ -295,7 +296,7 @@ func (s *service) ListCompanyProjectMetrics(companyID string, projectSFID string
 		return nil, err
 	}
 	if project.ProjectType == FoundationType {
-		cgmList, cgerr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(projectSFID)
+		cgmList, cgerr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, projectSFID)
 		if cgerr != nil {
 			return nil, err
 		}
@@ -303,7 +304,7 @@ func (s *service) ListCompanyProjectMetrics(companyID string, projectSFID string
 			claGroupList.Add(cgm.ClaGroupID)
 		}
 	} else {
-		cgm, cgerr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+		cgm, cgerr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 		if cgerr != nil {
 			return nil, err
 		}

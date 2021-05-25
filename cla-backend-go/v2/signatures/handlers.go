@@ -529,7 +529,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 
 		// Locate the CLA Group for the provided project SFID
 		log.WithFields(f).Debug("loading project signatures...")
-		projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(params.ProjectSFID)
+		projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("problem loading project -> cla group mapping")
 			return signatures.NewGetProjectCompanyEmployeeSignaturesBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(
@@ -758,7 +758,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		}
 
 		// Lookup the Project to CLA Group mapping table entries - this will have the correct details
-		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(params.ClaGroupID)
+		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, params.ClaGroupID)
 		// Should have at least one entry if we're setup correctly - it will have the foundation (parent project/project group) and project details set
 		if projectCLAGroupErr != nil || len(projectCLAGroupEntries) == 0 {
 			msg := fmt.Sprintf("unable to load project CLA Group mappings for CLA Group: %s - has this project been migrated to v2?", params.ClaGroupID)
@@ -936,7 +936,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		}
 
 		// Lookup the Project to CLA Group mapping table entries - this will have the correct details
-		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(params.ClaGroupID)
+		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, params.ClaGroupID)
 		// Should have at least one entry if we're setup correctly - it will have the foundation (parent project/project group) and project details set
 		if projectCLAGroupErr != nil || len(projectCLAGroupEntries) == 0 {
 			msg := fmt.Sprintf("unable to load project CLA Group mappings for CLA Group: %s - has this project been migrated to v2?", params.ClaGroupID)
@@ -1318,7 +1318,7 @@ func isUserHaveAccessOfSignedSignaturePDF(ctx context.Context, authUser *auth.Us
 	}
 	var projectCLAGroup *v1Models.ClaGroup
 
-	projects, err := projectClaGroupRepo.GetProjectsIdsForClaGroup(signature.ProjectID)
+	projects, err := projectClaGroupRepo.GetProjectsIdsForClaGroup(ctx, signature.ProjectID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("error loading load project IDs for CLA Group")
 		return false, err
@@ -1429,7 +1429,7 @@ func isUserHaveAccessToCLAGroupProjects(ctx context.Context, authUser *auth.User
 
 	// Lookup the project IDs for the CLA Group
 	log.WithFields(f).Debug("looking up projects associated with the CLA Group...")
-	projectCLAGroupModels, err := projectClaGroupsRepo.GetProjectsIdsForClaGroup(claGroupID)
+	projectCLAGroupModels, err := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project cla group mappings by CLA Group ID - failed permission check")
 		return false
@@ -1500,7 +1500,7 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, proj
 	log.WithFields(f).Debugf("user %s/%s doesn't have direct access to the project SFID: %s - loading CLA Group from project id...", authUser.UserName, authUser.Email, projectSFID)
 
 	log.WithFields(f).Debug("loading CLA Group from project id...")
-	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project -> cla group mapping - returning false")
 		return false
@@ -1524,7 +1524,7 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, proj
 
 	// Lookup the other project IDs for the CLA Group
 	log.WithFields(f).Debug("looking up other projects associated with the CLA Group...")
-	projectCLAGroupModels, err := projectClaGroupsRepo.GetProjectsIdsForClaGroup(projectCLAGroupModel.ClaGroupID)
+	projectCLAGroupModels, err := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, projectCLAGroupModel.ClaGroupID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project cla group mappings by CLA Group ID - returning false")
 		return false
@@ -1589,7 +1589,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	// other projects or the parent project group/foundation
 
 	log.WithFields(f).Debugf("user %s/%s doesn't have direct access to the project only, project + organization, or organization only - loading CLA Group from project id...", authUser.UserName, authUser.Email)
-	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project -> cla group mapping - returning false")
 		return false
@@ -1627,7 +1627,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 
 	// Lookup the other project IDs associated with this CLA Group
 	log.WithFields(f).Debug("looking up other projects associated with the CLA Group...")
-	projectCLAGroupModels, err := projectClaGroupsRepo.GetProjectsIdsForClaGroup(projectCLAGroupModel.ClaGroupID)
+	projectCLAGroupModels, err := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, projectCLAGroupModel.ClaGroupID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project cla group mappings by CLA Group ID - returning false")
 		return false

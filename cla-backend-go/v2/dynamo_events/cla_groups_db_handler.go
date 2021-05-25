@@ -7,18 +7,21 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/project"
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
 
 func (s *service) ProcessCLAGroupUpdateEvents(event events.DynamoDBEventRecord) error {
+	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName": "ProcessCLAGroupUpdateEvents",
-		"eventID":      event.EventID,
-		"eventName":    event.EventName,
-		"eventSource":  event.EventSource,
-		"event":        event,
-		"newImage":     event.Change.NewImage,
-		"oldImage":     event.Change.OldImage,
+		"functionName":   "ProcessCLAGroupUpdateEvents",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"eventID":        event.EventID,
+		"eventName":      event.EventName,
+		"eventSource":    event.EventSource,
+		"event":          event,
+		"newImage":       event.Change.NewImage,
+		"oldImage":       event.Change.OldImage,
 	}
 
 	log.WithFields(f).Debug("processing event")
@@ -52,14 +55,14 @@ func (s *service) ProcessCLAGroupUpdateEvents(event events.DynamoDBEventRecord) 
 	}
 
 	if oldProject.ProjectName != updatedProject.ProjectName {
-		claProjects, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(updatedProject.ProjectID)
+		claProjects, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, updatedProject.ProjectID)
 		if err != nil {
 			log.WithFields(f).Warnf("unabled to update cla group name : %v", err)
 			return nil
 		}
 
 		for _, claProject := range claProjects {
-			if err := s.projectsClaGroupRepo.UpdateClaGroupName(claProject.ProjectSFID, updatedProject.ProjectName); err != nil {
+			if err := s.projectsClaGroupRepo.UpdateClaGroupName(ctx, claProject.ProjectSFID, updatedProject.ProjectName); err != nil {
 				log.WithFields(f).Warnf("updating cla project : %s with name : %s failed : %v", claProject.ProjectSFID, updatedProject.ProjectName, err)
 				return nil
 			}

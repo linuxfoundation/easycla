@@ -176,7 +176,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	if project.Parent == "" || (project.Foundation != nil &&
 		(project.Foundation.Name == utils.TheLinuxFoundation || project.Foundation.Name == utils.LFProjectsLLC)) {
 		// this is root project
-		cgmlist, perr := s.projectClaGroupsRepo.GetProjectsIdsForFoundation(utils.StringValue(input.ProjectSfid))
+		cgmlist, perr := s.projectClaGroupsRepo.GetProjectsIdsForFoundation(ctx, utils.StringValue(input.ProjectSfid))
 		if perr != nil {
 			log.WithFields(f).WithError(err).Warn("unable to lookup other projects associated with this project SFID")
 			return nil, perr
@@ -197,7 +197,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		claGroupID = (claGroups.List())[0]
 
 	} else {
-		cgm, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(utils.StringValue(input.ProjectSfid))
+		cgm, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, utils.StringValue(input.ProjectSfid))
 		if perr != nil {
 			log.WithFields(f).WithError(err).Warn("unable to lookup CLA Group ID for this project SFID")
 			return nil, perr

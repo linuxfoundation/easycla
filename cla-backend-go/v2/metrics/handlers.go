@@ -120,7 +120,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyRepo v1Comp
 				})
 			}
 
-			result, err := service.ListCompanyProjectMetrics(params.CompanyID, params.ProjectSFID)
+			result, err := service.ListCompanyProjectMetrics(ctx, params.CompanyID, params.ProjectSFID)
 			if err != nil {
 				return metrics.NewListCompanyProjectMetricsBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}

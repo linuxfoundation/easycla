@@ -8,8 +8,8 @@ replace github.com/awslabs/aws-lambda-go-api-proxy => github.com/LF-Engineering/
 
 require (
 	github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
-	github.com/LF-Engineering/lfx-kit v0.1.24
-	github.com/LF-Engineering/lfx-models v0.6.42
+	github.com/LF-Engineering/lfx-kit v0.1.25
+	github.com/LF-Engineering/lfx-models v0.6.44
 	github.com/aws/aws-lambda-go v1.22.0
 	github.com/aws/aws-sdk-go v1.36.27
 	github.com/aymerick/raymond v2.0.2+incompatible
@@ -48,7 +48,7 @@ require (
 	github.com/rs/cors v1.7.0
 	github.com/savaki/dynastore v0.0.0-20171109173440-28d8558bb429
 	github.com/shurcooL/githubv4 v0.0.0-20201206200315-234843c633fa
-	github.com/shurcooL/graphql v0.0.0-20200928012149-18c5c3165e3a
+	github.com/shurcooL/graphql v0.0.0-20200928012149-18c5c3165e3a // indirect
 	github.com/sirupsen/logrus v1.7.0
 	github.com/spf13/afero v1.3.0 // indirect
 	github.com/spf13/cast v1.3.1 // indirect

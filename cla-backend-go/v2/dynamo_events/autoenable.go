@@ -65,16 +65,16 @@ type autoEnableServiceProvider struct {
 }
 
 func (a *autoEnableServiceProvider) CreateAutoEnabledRepository(repo *github.Repository) (*models.GithubRepository, error) {
+	ctx := utils.NewContext()
 	repositoryFullName := *repo.FullName
 	repositoryExternalID := strconv.FormatInt(*repo.ID, 10)
-
 	f := logrus.Fields{
 		"functionName":       "handleRepositoryAddedAction",
+		utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
 		"repositoryFullName": repositoryFullName,
 	}
 
 	organizationName := strings.Split(repositoryFullName, "/")[0]
-	ctx := context.Background()
 	orgModel, err := a.githubOrgRepo.GetGithubOrganization(ctx, organizationName)
 	if err != nil {
 		log.Warnf("fetching github org failed : %v", err)
@@ -106,7 +106,7 @@ func (a *autoEnableServiceProvider) CreateAutoEnabledRepository(repo *github.Rep
 			return nil, listErr
 		}
 	}
-	claGroupModel, err := a.claRepository.GetCLAGroup(claGroupID)
+	claGroupModel, err := a.claRepository.GetCLAGroup(ctx, claGroupID)
 	if err != nil {
 		log.Warnf("fetching the cla group for cla group id : %s failed : %v", claGroupID, err)
 		return nil, err

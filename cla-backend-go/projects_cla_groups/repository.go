@@ -4,6 +4,7 @@
 package projects_cla_groups
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -42,19 +43,19 @@ var (
 
 // Repository provides interface for interacting with project_cla_groups table
 type Repository interface {
-	GetClaGroupIDForProject(projectSFID string) (*ProjectClaGroup, error)
-	GetProjectsIdsForClaGroup(claGroupID string) ([]*ProjectClaGroup, error)
-	GetProjectsIdsForFoundation(foundationSFID string) ([]*ProjectClaGroup, error)
-	GetProjectsIdsForAllFoundation() ([]*ProjectClaGroup, error)
-	AssociateClaGroupWithProject(claGroupID string, projectSFID string, foundationSFID string) error
-	RemoveProjectAssociatedWithClaGroup(claGroupID string, projectSFIDList []string, all bool) error
-	GetCLAGroupNameByID(claGroupID string) (string, error)
-	GetCLAGroup(claGroupID string) (*ProjectClaGroup, error)
+	GetClaGroupIDForProject(ctx context.Context, projectSFID string) (*ProjectClaGroup, error)
+	GetProjectsIdsForClaGroup(ctx context.Context, claGroupID string) ([]*ProjectClaGroup, error)
+	GetProjectsIdsForFoundation(ctx context.Context, foundationSFID string) ([]*ProjectClaGroup, error)
+	GetProjectsIdsForAllFoundation(ctx context.Context) ([]*ProjectClaGroup, error)
+	AssociateClaGroupWithProject(ctx context.Context, claGroupID string, projectSFID string, foundationSFID string) error
+	RemoveProjectAssociatedWithClaGroup(ctx context.Context, claGroupID string, projectSFIDList []string, all bool) error
+	GetCLAGroupNameByID(ctx context.Context, claGroupID string) (string, error)
+	GetCLAGroup(ctx context.Context, claGroupID string) (*ProjectClaGroup, error)
 
-	IsExistingFoundationLevelCLAGroup(foundationSFID string) (bool, error)
-	IsAssociated(projectSFID string, claGroupID string) (bool, error)
-	UpdateRepositoriesCount(projectSFID string, diff int64, reset bool) error
-	UpdateClaGroupName(projectSFID string, claGroupName string) error
+	IsExistingFoundationLevelCLAGroup(ctx context.Context, foundationSFID string) (bool, error)
+	IsAssociated(ctx context.Context, projectSFID string, claGroupID string) (bool, error)
+	UpdateRepositoriesCount(ctx context.Context, projectSFID string, diff int64, reset bool) error
+	UpdateClaGroupName(ctx context.Context, projectSFID string, claGroupName string) error
 }
 
 type repo struct {
@@ -72,11 +73,12 @@ func NewRepository(awsSession *session.Session, stage string) Repository {
 	}
 }
 
-func (repo *repo) queryClaGroupsProjects(keyCondition expression.KeyConditionBuilder, indexName *string) ([]*ProjectClaGroup, error) {
+func (repo *repo) queryClaGroupsProjects(ctx context.Context, keyCondition expression.KeyConditionBuilder, indexName *string) ([]*ProjectClaGroup, error) {
 	f := logrus.Fields{
-		"functionName": "project_cla_groups.repository.queryClaGroupsProjects",
-		"indexName":    aws.StringValue(indexName),
-		"keyCondition": fmt.Sprintf("%+v", keyCondition),
+		"functionName":   "project_cla_groups.repository.queryClaGroupsProjects",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"indexName":      aws.StringValue(indexName),
+		"keyCondition":   fmt.Sprintf("%+v", keyCondition),
 	}
 
 	expr, err := expression.NewBuilder().WithKeyCondition(keyCondition).Build()
@@ -123,11 +125,12 @@ func (repo *repo) queryClaGroupsProjects(keyCondition expression.KeyConditionBui
 }
 
 // GetClaGroupIDForProject retrieves the CLA Group ID for the project
-func (repo *repo) GetClaGroupIDForProject(projectSFID string) (*ProjectClaGroup, error) {
+func (repo *repo) GetClaGroupIDForProject(ctx context.Context, projectSFID string) (*ProjectClaGroup, error) {
 	f := logrus.Fields{
-		"functionName": "project_cla_groups.repository.GetClaGroupIDForProject",
-		"tableName":    repo.tableName,
-		"projectSFID":  projectSFID,
+		"functionName":   "project_cla_groups.repository.GetClaGroupIDForProject",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"tableName":      repo.tableName,
+		"projectSFID":    projectSFID,
 	}
 
 	result, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
@@ -147,7 +150,7 @@ func (repo *repo) GetClaGroupIDForProject(projectSFID string) (*ProjectClaGroup,
 	if len(result.Item) == 0 {
 		// Query by foundation sfid index returns multiple results
 		log.WithFields(f).Debug("no results querying by project SFID - checking if this is a foundation SFID")
-		pcgs, foundationErr := repo.GetProjectsIdsForFoundation(projectSFID)
+		pcgs, foundationErr := repo.GetProjectsIdsForFoundation(ctx, projectSFID)
 		if foundationErr != nil {
 			log.WithFields(f).Warnf("unable to lookup CLA Group associated with project, error: %+v", foundationErr)
 			return nil, err
@@ -171,18 +174,23 @@ func (repo *repo) GetClaGroupIDForProject(projectSFID string) (*ProjectClaGroup,
 	return &out, nil
 }
 
-func (repo *repo) GetProjectsIdsForClaGroup(claGroupID string) ([]*ProjectClaGroup, error) {
+func (repo *repo) GetProjectsIdsForClaGroup(ctx context.Context, claGroupID string) ([]*ProjectClaGroup, error) {
 	keyCondition := expression.Key("cla_group_id").Equal(expression.Value(claGroupID))
-	return repo.queryClaGroupsProjects(keyCondition, aws.String(CLAGroupIDIndex))
+	return repo.queryClaGroupsProjects(ctx, keyCondition, aws.String(CLAGroupIDIndex))
 }
 
-func (repo *repo) GetProjectsIdsForFoundation(foundationSFID string) ([]*ProjectClaGroup, error) {
+func (repo *repo) GetProjectsIdsForFoundation(ctx context.Context, foundationSFID string) ([]*ProjectClaGroup, error) {
 	keyCondition := expression.Key("foundation_sfid").Equal(expression.Value(foundationSFID))
-	return repo.queryClaGroupsProjects(keyCondition, aws.String(FoundationSFIDIndex))
+	return repo.queryClaGroupsProjects(ctx, keyCondition, aws.String(FoundationSFIDIndex))
 }
 
-func (repo *repo) GetProjectsIdsForAllFoundation() ([]*ProjectClaGroup, error) {
-	f := logrus.Fields{"functionName": "project_cla_groups.repository.GetProjectsIdsForAllFoundation", "tableName": repo.tableName}
+func (repo *repo) GetProjectsIdsForAllFoundation(ctx context.Context) ([]*ProjectClaGroup, error) {
+	f := logrus.Fields{
+		"functionName":   "project_cla_groups.repository.GetProjectsIdsForAllFoundation",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"tableName":      repo.tableName,
+	}
+
 	scanInput := &dynamodb.ScanInput{
 		TableName: aws.String(repo.tableName),
 	}
@@ -210,9 +218,10 @@ func (repo *repo) GetProjectsIdsForAllFoundation() ([]*ProjectClaGroup, error) {
 }
 
 // AssociateClaGroupWithProject creates entry in db to track cla_group association with project/foundation
-func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID string, foundationSFID string) error {
+func (repo *repo) AssociateClaGroupWithProject(ctx context.Context, claGroupID string, projectSFID string, foundationSFID string) error {
 	f := logrus.Fields{
 		"functionName":   "project_cla_groups.repository.AssociateClaGroupWithProject",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"projectSFID":    projectSFID,
 		"foundationSFID": foundationSFID,
@@ -240,7 +249,7 @@ func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID st
 	}
 
 	// Lookup the CLA Group name/Project Name
-	claGroupName, claGroupLookupErr := repo.GetCLAGroupNameByID(claGroupID)
+	claGroupName, claGroupLookupErr := repo.GetCLAGroupNameByID(ctx, claGroupID)
 	if claGroupLookupErr != nil {
 		claGroupName = NotDefined
 		log.Warnf("unable to lookup CLA Group/Project by ID, error: %+v - using '%s'",
@@ -282,7 +291,7 @@ func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID st
 	}
 
 	log.WithFields(f).Debug("Locating records with matching projectSFID...")
-	existingRecord, lookupErr := repo.GetClaGroupIDForProject(projectSFID)
+	existingRecord, lookupErr := repo.GetClaGroupIDForProject(ctx, projectSFID)
 	if lookupErr != nil {
 		log.WithFields(f).Warnf("cannot lookup record by projectSFID, error: %+v", lookupErr)
 	}
@@ -313,14 +322,15 @@ func (repo *repo) AssociateClaGroupWithProject(claGroupID string, projectSFID st
 }
 
 // RemoveProjectAssociatedWithClaGroup removes all associated project with cla_group
-func (repo *repo) RemoveProjectAssociatedWithClaGroup(claGroupID string, projectSFIDList []string, all bool) error {
+func (repo *repo) RemoveProjectAssociatedWithClaGroup(ctx context.Context, claGroupID string, projectSFIDList []string, all bool) error {
 	f := logrus.Fields{
 		"functionName":    "project_cla_groups.repository.RemoveProjectAssociatedWithClaGroup",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"claGroupID":      claGroupID,
 		"projectSFIDList": projectSFIDList,
 		"all":             all,
 	}
-	list, err := repo.GetProjectsIdsForClaGroup(claGroupID)
+	list, err := repo.GetProjectsIdsForClaGroup(ctx, claGroupID)
 	if err != nil {
 		log.WithFields(f).Warnf("unable to fetch projects IDs for CLA Group, error: %+v", err)
 		return err
@@ -355,7 +365,7 @@ func (repo *repo) RemoveProjectAssociatedWithClaGroup(claGroupID string, project
 }
 
 // GetCLAGroupNameByID helper function to fetch the CLA Group name
-func (repo *repo) GetCLAGroupNameByID(claGroupID string) (string, error) {
+func (repo *repo) GetCLAGroupNameByID(ctx context.Context, claGroupID string) (string, error) {
 	tableName := fmt.Sprintf("cla-%s-projects", repo.stage)
 	result, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
@@ -382,7 +392,7 @@ func (repo *repo) GetCLAGroupNameByID(claGroupID string) (string, error) {
 }
 
 // GetCLAGroup helper function to fetch the CLA Group
-func (repo *repo) GetCLAGroup(claGroupID string) (*ProjectClaGroup, error) {
+func (repo *repo) GetCLAGroup(ctx context.Context, claGroupID string) (*ProjectClaGroup, error) {
 	tableName := fmt.Sprintf("cla-%s-projects", repo.stage)
 	result, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
@@ -409,16 +419,17 @@ func (repo *repo) GetCLAGroup(claGroupID string) (*ProjectClaGroup, error) {
 }
 
 // UpdateRepositoriesCount updates the repositories count
-func (repo *repo) UpdateRepositoriesCount(projectSFID string, diff int64, reset bool) error {
+func (repo *repo) UpdateRepositoriesCount(ctx context.Context, projectSFID string, diff int64, reset bool) error {
 	f := logrus.Fields{
-		"functionName": "project_cla_groups.repository.UpdateRepositoriesCount",
-		"projectSFID":  projectSFID,
-		"diff":         diff,
-		"reset":        reset,
+		"functionName":   "project_cla_groups.repository.UpdateRepositoriesCount",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+		"diff":           diff,
+		"reset":          reset,
 	}
 
 	// Check to see if we have an existing record
-	existingProjectCLAGroupMapping, err := repo.GetClaGroupIDForProject(projectSFID)
+	existingProjectCLAGroupMapping, err := repo.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup existing project cla group mapping")
 		return err
@@ -472,15 +483,16 @@ func (repo *repo) UpdateRepositoriesCount(projectSFID string, diff int64, reset 
 }
 
 // UpdateClaGroupName updates cla group name for given projectSFID
-func (repo *repo) UpdateClaGroupName(projectSFID string, claGroupName string) error {
+func (repo *repo) UpdateClaGroupName(ctx context.Context, projectSFID string, claGroupName string) error {
 	f := logrus.Fields{
-		"functionName": "project_cla_groups.repository.UpdateClaGroupName",
-		"projectSFID":  projectSFID,
-		"claGroupName": claGroupName,
+		"functionName":   "project_cla_groups.repository.UpdateClaGroupName",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+		"claGroupName":   claGroupName,
 	}
 
 	// Check to see if we have an existing record
-	existingProjectCLAGroupMapping, err := repo.GetClaGroupIDForProject(projectSFID)
+	existingProjectCLAGroupMapping, err := repo.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup existing project cla group mapping")
 		return err
@@ -528,8 +540,8 @@ func (repo *repo) UpdateClaGroupName(projectSFID string, claGroupName string) er
 // IsExistingFoundationLevelCLAGroup is a query helper function to determine if the
 // specified foundation SFID has an entry in the mapping table to signify that
 // it's a foundation level CLA Group (foundationSFID == projectSFID)
-func (repo *repo) IsExistingFoundationLevelCLAGroup(foundationSFID string) (bool, error) {
-	projectCLAGroupModels, err := repo.GetProjectsIdsForFoundation(foundationSFID)
+func (repo *repo) IsExistingFoundationLevelCLAGroup(ctx context.Context, foundationSFID string) (bool, error) {
+	projectCLAGroupModels, err := repo.GetProjectsIdsForFoundation(ctx, foundationSFID)
 	if err != nil {
 		return false, err
 	}
@@ -543,8 +555,8 @@ func (repo *repo) IsExistingFoundationLevelCLAGroup(foundationSFID string) (bool
 	return false, nil
 }
 
-func (repo *repo) IsAssociated(projectSFID string, claGroupID string) (bool, error) {
-	pmlist, err := repo.GetProjectsIdsForClaGroup(claGroupID)
+func (repo *repo) IsAssociated(ctx context.Context, projectSFID string, claGroupID string) (bool, error) {
+	pmlist, err := repo.GetProjectsIdsForClaGroup(ctx, claGroupID)
 	if err != nil {
 		return false, err
 	}

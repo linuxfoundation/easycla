@@ -50,7 +50,7 @@ type CombinedRepo interface {
 	GetCompany(ctx context.Context, companyID string) (*models.Company, error)
 	GetUserByUserName(userName string, fullMatch bool) (*models.User, error)
 	GetUser(userID string) (*models.User, error)
-	GetClaGroupIDForProject(projectSFID string) (*projects_cla_groups.ProjectClaGroup, error)
+	GetClaGroupIDForProject(ctx context.Context, projectSFID string) (*projects_cla_groups.ProjectClaGroup, error)
 }
 
 type service struct {
@@ -207,7 +207,7 @@ func (s *service) loadCLAGroup(ctx context.Context, args *LogEventArgs) error {
 			args.CLAGroupName = claGroupModel.ProjectName
 			args.CLAGroupID = claGroupID
 		} else if args.ProjectSFID != "" {
-			projectCLAGroupModel, projectCLAGroupErr := s.combinedRepo.GetClaGroupIDForProject(args.ProjectSFID)
+			projectCLAGroupModel, projectCLAGroupErr := s.combinedRepo.GetClaGroupIDForProject(ctx, args.ProjectSFID)
 			if projectCLAGroupErr != nil || projectCLAGroupModel == nil {
 				log.WithFields(f).WithError(projectCLAGroupErr).Warnf("failed to load project CLA Group mapping by SFID: %s", args.ProjectSFID)
 				return nil

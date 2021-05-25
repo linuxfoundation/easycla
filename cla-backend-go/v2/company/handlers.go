@@ -761,7 +761,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	// other projects or the parent project group/foundation
 
 	log.WithFields(f).Debug("user doesn't have direct access to the project only, project + organization, or organization only - loading CLA Group from project id...")
-	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project -> cla group mapping - returning false")
 		return false
@@ -798,7 +798,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 
 	// Lookup the other project IDs associated with this CLA Group
 	log.WithFields(f).Debug("looking up other projects associated with the CLA Group...")
-	projectCLAGroupModels, err := projectClaGroupsRepo.GetProjectsIdsForClaGroup(projectCLAGroupModel.ClaGroupID)
+	projectCLAGroupModels, err := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, projectCLAGroupModel.ClaGroupID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading project cla group mappings by CLA Group ID - returning false")
 		return false

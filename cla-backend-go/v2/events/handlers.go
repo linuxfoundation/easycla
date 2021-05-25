@@ -176,7 +176,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 				})
 			}
 
-			pm, err := projectsClaGroupsRepo.GetClaGroupIDForProject(params.ProjectSFID)
+			pm, err := projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 			if err != nil {
 				if err == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
 					msg := fmt.Sprintf("no cla group associated with this project: %s", params.ProjectSFID)
@@ -226,7 +226,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 
 			// Lookup the CLA Group associated with this Project SFID...
 			log.WithFields(f).Debugf("loading CLA Group for projectSFID: %s", params.ProjectSFID)
-			pm, err := projectsClaGroupsRepo.GetClaGroupIDForProject(params.ProjectSFID)
+			pm, err := projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 			if err != nil {
 				msg := fmt.Sprintf("problem loading CLA Group from Project SFID:: %s", params.ProjectSFID)
 				log.WithFields(f).Warn(msg)
@@ -313,7 +313,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 				result, err = service.GetCompanyFoundationEvents(v1Company.CompanyExternalID, "", params.ProjectSFID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents))
 			} else {
 				log.WithFields(f).Debugf("loading project level events for projectSFID :%s...", params.ProjectSFID)
-				pm, perr := projectsClaGroupsRepo.GetClaGroupIDForProject(params.ProjectSFID)
+				pm, perr := projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 				if perr != nil {
 					if perr == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
 						// Although the API should view this as a bad request since the project doesn't seem to belong to a

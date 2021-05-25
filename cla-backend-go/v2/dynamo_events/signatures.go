@@ -186,7 +186,7 @@ func (s *service) SignatureSignedEvent(event events.DynamoDBEventRecord) error {
 
 			// Load the list of SF projects associated with this CLA Group
 			log.WithFields(f).Debugf("querying SF projects for CLA Group: %s", newSignature.SignatureProjectID)
-			projectCLAGroups, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(newSignature.SignatureProjectID)
+			projectCLAGroups, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, newSignature.SignatureProjectID)
 			log.WithFields(f).Debugf("found %d SF projects for CLA Group: %s", len(projectCLAGroups), newSignature.SignatureProjectID)
 
 			// Only proceed if we have one or more SF projects - otherwise, we can't assign and cleanup/adjust roles
@@ -421,7 +421,7 @@ func (s *service) assignContributor(ctx context.Context, newSignature Signature,
 		}
 		// Load the list of SF projects associated with this CLA Group
 		log.WithFields(f).Debugf("querying SF projects for CLA Group: %s", newSignature.SignatureProjectID)
-		projectCLAGroups, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(newSignature.SignatureProjectID)
+		projectCLAGroups, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, newSignature.SignatureProjectID)
 		log.WithFields(f).Debugf("found %d SF projects for CLA Group: %s", len(projectCLAGroups), newSignature.SignatureProjectID)
 
 		if err != nil {
@@ -483,7 +483,7 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 		return orgErr
 	}
 
-	projectCLAGroups, pcgErr := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(signature.SignatureProjectID)
+	projectCLAGroups, pcgErr := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, signature.SignatureProjectID)
 	if pcgErr != nil {
 		log.WithFields(f).WithError(pcgErr).Warnf("unable to get project mappings for claGroupID: %s ", signature.SignatureProjectID)
 		return pcgErr

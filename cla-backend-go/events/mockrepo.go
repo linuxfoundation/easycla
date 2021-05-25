@@ -44,7 +44,7 @@ func (repo *mockRepository) GetClaGroupEvents(claGroupID string, nextKey *string
 	panic("implement me")
 }
 
-func (repo *mockRepository) GetClaGroupIDForProject(projectSFID string) (*projects_cla_groups.ProjectClaGroup, error) {
+func (repo *mockRepository) GetClaGroupIDForProject(ctx context.Context, projectSFID string) (*projects_cla_groups.ProjectClaGroup, error) {
 	return nil, nil
 }
 

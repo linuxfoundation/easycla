@@ -63,7 +63,7 @@ func (s service) AddGithubOrganization(ctx context.Context, projectSFID string, 
 
 	// check if valid cla group id is passed
 	if input.AutoEnabledClaGroupID != "" {
-		if _, err := s.claRepository.GetCLAGroupNameByID(input.AutoEnabledClaGroupID); err != nil {
+		if _, err := s.claRepository.GetCLAGroupNameByID(ctx, input.AutoEnabledClaGroupID); err != nil {
 			return nil, err
 		}
 	}
@@ -161,7 +161,7 @@ func (s service) GetGithubOrganizationByName(ctx context.Context, githubOrgName 
 func (s service) UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
 	// check if valid cla group id is passed
 	if autoEnabledClaGroupID != "" {
-		if _, err := s.claRepository.GetCLAGroupNameByID(autoEnabledClaGroupID); err != nil {
+		if _, err := s.claRepository.GetCLAGroupNameByID(ctx, autoEnabledClaGroupID); err != nil {
 			return err
 		}
 	}

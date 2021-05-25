@@ -110,7 +110,7 @@ func Configure(api *operations.EasyclaAPI, v1Service v1Gerrits.Service, projectS
 					XRequestID: reqID,
 				})
 			}
-			ok, err := projectsClaGroupsRepo.IsAssociated(params.ProjectSFID, params.ClaGroupID)
+			ok, err := projectsClaGroupsRepo.IsAssociated(ctx, params.ProjectSFID, params.ClaGroupID)
 			if err != nil {
 				return gerrits.NewAddGerritBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
@@ -183,7 +183,7 @@ func Configure(api *operations.EasyclaAPI, v1Service v1Gerrits.Service, projectS
 			}
 
 			log.WithFields(f).Debug("checking if project CLA Group mapping...")
-			ok, err := projectsClaGroupsRepo.IsAssociated(params.ProjectSFID, params.ClaGroupID)
+			ok, err := projectsClaGroupsRepo.IsAssociated(ctx, params.ProjectSFID, params.ClaGroupID)
 			if err != nil {
 				msg := fmt.Sprintf("unable to determine project CLA group association for project: %s and CLA Group: %s", params.ProjectSFID, params.ClaGroupID)
 				log.WithFields(f).WithError(err).Warn(msg)

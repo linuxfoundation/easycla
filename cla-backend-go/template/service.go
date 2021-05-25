@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
@@ -42,16 +44,16 @@ type Service interface {
 type service struct {
 	stage           string // The AWS stage (dev, staging, prod)
 	templateRepo    Repository
-	docraptorClient docraptor.Client
+	docRaptorClient docraptor.Client
 	s3Client        *s3manager.Uploader
 }
 
 // NewService API call
-func NewService(stage string, templateRepo Repository, docraptorClient docraptor.Client, awsSession *session.Session) service {
+func NewService(stage string, templateRepo Repository, docRaptorClient docraptor.Client, awsSession *session.Session) service {
 	return service{
 		stage:           stage,
 		templateRepo:    templateRepo,
-		docraptorClient: docraptorClient,
+		docRaptorClient: docRaptorClient,
 		s3Client:        s3manager.NewUploader(awsSession),
 	}
 }
@@ -120,7 +122,7 @@ func (s service) CreateTemplatePreview(ctx context.Context, claGroupFields *mode
 		return nil, errors.New("invalid value of template_for")
 	}
 
-	pdf, err := s.docraptorClient.CreatePDF(templateHTML, templateFor)
+	pdf, err := s.docRaptorClient.CreatePDF(templateHTML, templateFor)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +135,7 @@ func (s service) CreateTemplatePreview(ctx context.Context, claGroupFields *mode
 	return ioutil.ReadAll(pdf)
 }
 
-// CreateCLAGroupTemplate
+// CreateCLAGroupTemplate service method
 func (s service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, claGroupFields *models.CreateClaGroupTemplate) (models.TemplatePdfs, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.template.service.CreateCLAGroupTemplate",
@@ -148,8 +150,6 @@ func (s service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, 
 		log.WithFields(f).WithError(err).Warnf("Unable to fetch CLA group by id: %s - returning empty template PDFs", claGroupID)
 		return models.TemplatePdfs{}, err
 	}
-
-	// Verify the caller is authorized for the project that owns this CLA Group
 
 	// Get Template
 	template, err := s.templateRepo.GetTemplate(claGroupFields.TemplateID)
@@ -181,7 +181,7 @@ func (s service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, 
 		// Invoke the go routine - any errors will be handled below
 		eg.Go(func() error {
 			log.WithFields(f).Debugf("Creating PDF for %s", claTypeICLA)
-			iclaPdf, iclaErr := s.docraptorClient.CreatePDF(iclaTemplateHTML, claTypeICLA)
+			iclaPdf, iclaErr := s.docRaptorClient.CreatePDF(iclaTemplateHTML, claTypeICLA)
 			if iclaErr != nil {
 				log.WithFields(f).WithError(iclaErr).Warn("Problem generating ICLA template via docraptor client - returning empty template PDFs")
 				return err
@@ -208,7 +208,7 @@ func (s service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, 
 		// Invoke the go routine - any errors will be handled below
 		eg.Go(func() error {
 			log.WithFields(f).Debugf("Creating PDF for %s", claTypeCCLA)
-			cclaPdf, cclaErr := s.docraptorClient.CreatePDF(cclaTemplateHTML, claTypeCCLA)
+			cclaPdf, cclaErr := s.docRaptorClient.CreatePDF(cclaTemplateHTML, claTypeCCLA)
 			if cclaErr != nil {
 				log.WithFields(f).WithError(cclaErr).Warn("Problem generating CCLA template via docraptor client - returning empty template PDFs")
 				return err
@@ -317,7 +317,7 @@ func (s service) GetCLATemplatePreview(ctx context.Context, claGroupID, claType 
 		return nil, err
 	}
 
-	doc := claGroupDocuments[0]
+	doc := getLatestDocument(ctx, claGroupDocuments)
 	pdfS3URL := doc.DocumentS3URL
 	if pdfS3URL == "" {
 		err = fmt.Errorf("s3 url is empty for groupID : %s and document %s", claGroupID, doc.DocumentFileID)
@@ -357,7 +357,82 @@ func (s service) GetCLATemplatePreview(ctx context.Context, claGroupID, claType 
 	return b, nil
 }
 
-// InjectProjectInformationIntoTemplate
+func getLatestDocument(ctx context.Context, documents []models.ClaGroupDocument) *models.ClaGroupDocument {
+	f := logrus.Fields{
+		"functionName":   "v1.template.service.getLatestDocument",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+	var latestDocument *models.ClaGroupDocument
+	var latestMajorVersion = 0
+	var latestMinorVersion = 0
+	var latestDateTime time.Time
+	for _, currentDocument := range documents {
+		if latestDocument == nil {
+			latestDocument = &currentDocument // nolint
+			// Grab and save the major version
+			major, convertErr := strconv.Atoi(latestDocument.DocumentMajorVersion)
+			if convertErr != nil {
+				log.WithFields(f).WithError(convertErr).Warnf("problem converting document major version to int: %s", latestDocument.DocumentMajorVersion)
+				major = 0
+			}
+			latestMajorVersion = major
+
+			// Grab and save the major version
+			minor, convertErr := strconv.Atoi(latestDocument.DocumentMinorVersion)
+			if convertErr != nil {
+				log.WithFields(f).WithError(convertErr).Warnf("problem converting document minor version to int: %s", latestDocument.DocumentMinorVersion)
+				minor = 0
+			}
+			latestMinorVersion = minor
+
+			dateTime, dateTimeErr := utils.ParseDateTime(latestDocument.DocumentCreationDate)
+			if dateTimeErr != nil {
+				log.WithFields(f).WithError(dateTimeErr).Warnf("problem converting document creation date to time object: %s", latestDocument.DocumentCreationDate)
+			}
+			latestDateTime = dateTime
+
+			continue
+		}
+
+		// Grab and save the major version
+		major, convertErr := strconv.Atoi(currentDocument.DocumentMajorVersion)
+		if convertErr != nil {
+			log.WithFields(f).WithError(convertErr).Warnf("problem converting document major version to int: %s", currentDocument.DocumentMajorVersion)
+			major = 0
+		}
+
+		// Grab and save the major version
+		minor, convertErr := strconv.Atoi(currentDocument.DocumentMinorVersion)
+		if convertErr != nil {
+			log.WithFields(f).WithError(convertErr).Warnf("problem converting document minor version to int: %s", currentDocument.DocumentMinorVersion)
+			minor = 0
+		}
+
+		dateTime, dateTimeErr := utils.ParseDateTime(currentDocument.DocumentCreationDate)
+		if dateTimeErr != nil {
+			log.WithFields(f).WithError(dateTimeErr).Warnf("problem converting document creation date to time object: %s", currentDocument.DocumentCreationDate)
+		}
+
+		if major > latestMajorVersion {
+			latestDocument = &currentDocument // nolint
+			continue
+		}
+
+		if minor > latestMinorVersion {
+			latestDocument = &currentDocument // nolint
+			continue
+		}
+
+		if dateTime.After(latestDateTime) {
+			latestDocument = &currentDocument // nolint
+			continue
+		}
+	}
+
+	return latestDocument
+}
+
+// InjectProjectInformationIntoTemplate service function
 func (s service) InjectProjectInformationIntoTemplate(template models.Template, metaFields []*models.MetaField) (string, string, error) {
 	f := logrus.Fields{
 		"functionName": "v1.template.service.InjectProjectInformationIntoTemplate",

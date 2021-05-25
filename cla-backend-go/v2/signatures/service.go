@@ -88,7 +88,7 @@ func NewService(awsSession *session.Session, signaturesBucketName string, v1Proj
 }
 
 func (s *service) GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error) {
-	pm, err := s.projectsClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+	pm, err := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
 		return nil, err
 	}

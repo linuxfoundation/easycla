@@ -87,7 +87,7 @@ func (s *service) validateClaGroupInput(ctx context.Context, input *models.Creat
 
 	// Look up any existing configuration with this foundation SFID in our database...
 	log.WithFields(f).Debug("loading existing project IDs by foundation SFID...")
-	claGroupProjectModels, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(foundationSFID)
+	claGroupProjectModels, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, foundationSFID)
 	if lookupErr != nil {
 		log.WithFields(f).Warnf("problem looking up foundation level CLA group using foundation ID: %s, error: %+v", foundationSFID, lookupErr)
 		return false, lookupErr
@@ -249,7 +249,7 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 	}
 
 	// check if projects are not already enabled
-	enabledProjects, err := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(foundationSFID)
+	enabledProjects, err := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, foundationSFID)
 	if err != nil {
 		return err
 	}
@@ -357,7 +357,7 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 	}
 
 	// check if projects are already enrolled/enabled
-	enabledProjects, err := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(foundationSFID)
+	enabledProjects, err := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, foundationSFID)
 	if err != nil {
 		return err
 	}
@@ -407,11 +407,11 @@ func (s *service) AssociateCLAGroupWithProjects(ctx context.Context, request *As
 		go func(projectSFID, parentProjectSFID, claGroupID string) {
 			defer wg.Done()
 			log.WithFields(f).Debugf("associating cla_group with project: %s", projectSFID)
-			err := s.projectsClaGroupsRepo.AssociateClaGroupWithProject(claGroupID, projectSFID, parentProjectSFID)
+			err := s.projectsClaGroupsRepo.AssociateClaGroupWithProject(ctx, claGroupID, projectSFID, parentProjectSFID)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warnf("associating cla_group with project: %s failed", projectSFID)
 				log.WithFields(f).Debug("deleting stale entries from cla_group project association")
-				deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(claGroupID, request.ProjectSFIDList, false)
+				deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(ctx, claGroupID, request.ProjectSFIDList, false)
 				if deleteErr != nil {
 					log.WithFields(f).WithError(deleteErr).Warn("deleting stale entries from cla_group project association failed")
 				}
@@ -454,7 +454,7 @@ func (s *service) UnassociateCLAGroupWithProjects(ctx context.Context, request *
 		"projectSFIDList": strings.Join(request.ProjectSFIDList, ","),
 	}
 
-	deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(request.CLAGroupID, request.ProjectSFIDList, false)
+	deleteErr := s.projectsClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(ctx, request.CLAGroupID, request.ProjectSFIDList, false)
 	if deleteErr != nil {
 		log.WithFields(f).Warnf("problem disassociating projects with CLA Group, error: %+v", deleteErr)
 		return deleteErr

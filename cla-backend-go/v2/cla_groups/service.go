@@ -193,7 +193,7 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 	}
 
 	// Build the response model
-	subProjectList, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(claGroup.ProjectID)
+	subProjectList, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroup.ProjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +289,7 @@ func (s *service) UpdateCLAGroup(ctx context.Context, authUser *auth.User, claGr
 	}
 
 	// Load the project IDs for this CLA Group
-	subProjectList, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(claGroupModel.ProjectID)
+	subProjectList, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupModel.ProjectID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem getting project IDs for CLA Group")
 		return nil, err
@@ -530,7 +530,7 @@ func (s *service) buildClaGroupSummaryResponseModel(ctx context.Context, f logru
 		}
 
 		// How many SF projects are associated with this CLA Group?
-		cgprojects, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(v1ClaGroup.ProjectID)
+		cgprojects, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, v1ClaGroup.ProjectID)
 		if err != nil {
 			return nil, &utils.ProjectCLAGroupMappingNotFound{CLAGroupID: v1ClaGroup.ProjectID, Err: err}
 		}
@@ -566,7 +566,7 @@ func (s *service) buildClaGroupSummaryResponseModel(ctx context.Context, f logru
 
 func (s *service) appendCLAGroupsForFoundation(ctx context.Context, f logrus.Fields, projectOrFoundationSFID string, v1ClaGroups *v1Models.ClaGroups) error {
 	log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
-	projectCLAGroupMappings, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(projectOrFoundationSFID)
+	projectCLAGroupMappings, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, projectOrFoundationSFID)
 	if lookupErr != nil {
 		log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
 		return &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
@@ -640,7 +640,7 @@ func (s *service) appendCLAGroupsForProject(ctx context.Context, f logrus.Fields
 	}
 
 	log.WithFields(f).Debug("locating CLA Group mapping...")
-	projectCLAGroup, lookupErr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(projectOrFoundationSFID)
+	projectCLAGroup, lookupErr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, projectOrFoundationSFID)
 	if lookupErr != nil {
 		log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
 		return "", "", &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
@@ -679,9 +679,9 @@ func (s *service) ListAllFoundationClaGroups(ctx context.Context, foundationID *
 	var out []*projects_cla_groups.ProjectClaGroup
 	var err error
 	if foundationID != nil {
-		out, err = s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(*foundationID)
+		out, err = s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, utils.StringValue(foundationID))
 	} else {
-		out, err = s.projectsClaGroupsRepo.GetProjectsIdsForAllFoundation()
+		out, err = s.projectsClaGroupsRepo.GetProjectsIdsForAllFoundation(ctx)
 	}
 	if err != nil {
 		return nil, err
@@ -708,7 +708,7 @@ func (s *service) DeleteCLAGroup(ctx context.Context, claGroupModel *v1Models.Cl
 	oscClient := organization_service.GetClient()
 
 	// Get a list of project CLA Group entries - need to know which SF Projects we're dealing with...
-	projectCLAGroupEntries, projErr := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(claGroupModel.ProjectID)
+	projectCLAGroupEntries, projErr := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupModel.ProjectID)
 	if projErr != nil {
 		log.WithFields(f).Warnf("unable to fetch project IDs for CLA Group, error: %+v", projErr)
 		return projErr

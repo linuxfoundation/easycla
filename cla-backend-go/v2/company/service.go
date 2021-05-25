@@ -1194,20 +1194,20 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 	// Determine query index (foundation or project)
 	if !utils.IsProjectCategory(projectDetails, parentProjectDetails) {
 		// get all projects for all cla group under foundation
-		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForFoundation(projectSFID)
+		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForFoundation(ctx, projectSFID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get project IDs for foundation SFID: %s", projectSFID)
 			return nil, err
 		}
 	} else {
 		// get cla group id from project
-		projectMapping, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+		projectMapping, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 		if perr != nil {
 			log.WithFields(f).WithError(perr).Warnf("unable to get CLA group IDs for project SFID: %s", projectSFID)
 			return nil, err
 		}
 		// get all projects for that cla group
-		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(projectMapping.ClaGroupID)
+		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, projectMapping.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get project IDs for CLA Group: %s", projectMapping.ClaGroupID)
 			return nil, err
@@ -1609,7 +1609,7 @@ func (s *service) getCompanyAndClaGroup(ctx context.Context, companyID, projectS
 		t := time.Now()
 		var pm *projects_cla_groups.ProjectClaGroup
 		log.WithFields(f).Debugf("loading CLA Group by project SFID: %s", projectSFID)
-		pm, projectErr := s.projectClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+		pm, projectErr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 		if projectErr != nil {
 			log.WithFields(f).Debugf("cla group mapping not found for projectSFID %s", projectSFID)
 			// Return the result through the channel

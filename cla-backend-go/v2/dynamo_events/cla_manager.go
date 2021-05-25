@@ -19,7 +19,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// SetInitialCLAManagerACSPermissions
+// SetInitialCLAManagerACSPermissions establishes the initial CLA manager permissions
 func (s *service) SetInitialCLAManagerACSPermissions(ctx context.Context, signatureID string) error {
 	f := logrus.Fields{
 		"functionName":   "SetInitialCLAManagerACSPermissions",
@@ -124,7 +124,7 @@ func (s *service) SetInitialCLAManagerACSPermissions(ctx context.Context, signat
 
 	// fetch list of projects under cla group
 	log.WithFields(f).Debug("locating SF projects associated with the CLA Group...")
-	projectList, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(sig.ProjectID)
+	projectList, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, sig.ProjectID)
 	if err != nil {
 		log.WithFields(f).Warnf("unable to fetch list of projects associated with CLA Group: %s, error: %+v",
 			sig.ProjectID, err)

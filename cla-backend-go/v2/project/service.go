@@ -50,7 +50,7 @@ func (s *service) GetCLAProjectsByID(ctx context.Context, foundationSFID string)
 	}
 
 	enabledClas := make([]*models.EnabledCla, 0)
-	claGroupsMapping, err := s.projectsClaGroups.GetProjectsIdsForFoundation(foundationSFID)
+	claGroupsMapping, err := s.projectsClaGroups.GetProjectsIdsForFoundation(ctx, foundationSFID)
 	if err != nil {
 		return nil, err
 	}

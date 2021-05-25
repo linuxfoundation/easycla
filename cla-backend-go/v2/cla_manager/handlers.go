@@ -68,7 +68,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
-		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(params.ProjectSFID)
+		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 		if err != nil {
 			if err == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
 				msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
@@ -119,7 +119,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(params.ProjectSFID)
+		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 		if err != nil {
 			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
 			log.WithFields(f).WithError(err).Warn(msg)
@@ -190,7 +190,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			log.WithFields(f).Debugf("processing CLA Manager Designee by group request")
 
 			log.WithFields(f).Debugf("getting project IDs for CLA group")
-			projectCLAGroups, getErr := projectClaGroupRepo.GetProjectsIdsForClaGroup(params.ClaGroupID)
+			projectCLAGroups, getErr := projectClaGroupRepo.GetProjectsIdsForClaGroup(ctx, params.ClaGroupID)
 			if getErr != nil {
 				msg := fmt.Sprintf("error getting SF projects for claGroup: %s ", params.ClaGroupID)
 				log.WithFields(f).WithError(getErr).Warn(msg)

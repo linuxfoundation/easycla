@@ -97,7 +97,7 @@ func (s *service) AddGithubRepositories(ctx context.Context, projectSFID string,
 		parentProjectSFID = project.Parent
 	}
 
-	allMappings, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(aws.StringValue(input.ClaGroupID))
+	allMappings, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, aws.StringValue(input.ClaGroupID))
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to get project IDs for CLA Group")
 		return nil, err

@@ -197,7 +197,7 @@ func (s service) ApproveCclaApprovalListRequest(ctx context.Context, claUser *us
 
 	// Get project cla Group records
 	log.WithFields(f).Debugf("Getting SalesForce Projects for claGroup: %s ", claGroupID)
-	projectCLAGroups, getErr := s.projectsCLAGroupRepository.GetProjectsIdsForClaGroup(claGroupID)
+	projectCLAGroups, getErr := s.projectsCLAGroupRepository.GetProjectsIdsForClaGroup(ctx, claGroupID)
 	if getErr != nil {
 		msg := fmt.Sprintf("Error getting SF projects for claGroup: %s ", claGroupID)
 		log.Debug(msg)

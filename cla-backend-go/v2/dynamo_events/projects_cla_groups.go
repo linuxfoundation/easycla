@@ -378,7 +378,7 @@ func (s *service) addCLAManagerDesigneePermissions(ctx context.Context, claGroup
 
 	} else {
 		// Signed at Project level Use case
-		pcgs, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(claGroupID)
+		pcgs, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("problem getting project cla Groups for claGroupID: %s", claGroupID)
 			return err

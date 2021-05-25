@@ -373,7 +373,7 @@ func (repo *repo) GetClaGroupByProjectSFID(ctx context.Context, projectSFID stri
 		"tableName":       repo.claGroupTable}
 	log.WithFields(f).Debugf("loading project")
 
-	claGroupProject, err := repo.projectClaGroupRepo.GetClaGroupIDForProject(projectSFID)
+	claGroupProject, err := repo.projectClaGroupRepo.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).Warnf("error fetching CLA Group ID for project, error: %v", err)
 		return nil, err

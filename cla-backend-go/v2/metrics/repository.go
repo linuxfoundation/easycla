@@ -4,6 +4,7 @@
 package metrics
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -967,7 +968,7 @@ type claGroup struct {
 
 func (repo *repo) getClaGroupProjectsMapping() (map[string]*claGroup, error) {
 	r := make(map[string]*claGroup)
-	cgpList, err := repo.projectsClaGroupsRepo.GetProjectsIdsForAllFoundation()
+	cgpList, err := repo.projectsClaGroupsRepo.GetProjectsIdsForAllFoundation(context.Background())
 	if err != nil {
 		return r, err
 	}
@@ -1073,7 +1074,7 @@ func (repo *repo) projectHelperMap(in *CompanyProjectMetrics, claGroupMapping ma
 	log.Printf("length of projectIDArray %d", len(projectIDArray))
 
 	for projectSFID := range projectIDArray {
-		projectData, err := repo.projectsClaGroupsRepo.GetClaGroupIDForProject(projectSFID)
+		projectData, err := repo.projectsClaGroupsRepo.GetClaGroupIDForProject(context.Background(), projectSFID)
 		if err != nil {
 			log.Warnf("projectHelperMap/GetClaGroupIDForProject error = unable to get project details from easycla. %s", projectSFID)
 			continue

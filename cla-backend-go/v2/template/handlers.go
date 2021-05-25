@@ -5,7 +5,11 @@ package template
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
+
+	v1ProjectsCLAGroups "github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/sirupsen/logrus"
 
@@ -25,14 +29,14 @@ import (
 )
 
 // Configure API call
-func Configure(api *operations.EasyclaAPI, service v1Template.Service, eventsService v1Events.Service) {
+func Configure(api *operations.EasyclaAPI, service v1Template.Service, v1ProjectClaGroupService v1ProjectsCLAGroups.Service, eventsService v1Events.Service) {
 	// Retrieve a list of available templates
 	api.TemplateGetTemplatesHandler = template.GetTemplatesHandlerFunc(func(params template.GetTemplatesParams, user *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "TemplateGetTemplatesHandler",
+			"functionName":   "v2.template.handlers.TemplateGetTemplatesHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		}
 
@@ -50,14 +54,29 @@ func Configure(api *operations.EasyclaAPI, service v1Template.Service, eventsSer
 		return template.NewGetTemplatesOK().WithPayload(response)
 	})
 
-	api.TemplateCreateCLAGroupTemplateHandler = template.CreateCLAGroupTemplateHandlerFunc(func(params template.CreateCLAGroupTemplateParams, user *auth.User) middleware.Responder {
+	api.TemplateCreateCLAGroupTemplateHandler = template.CreateCLAGroupTemplateHandlerFunc(func(params template.CreateCLAGroupTemplateParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
-		utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "TemplateCreateCLAGroupTemplateHandler",
+			"functionName":   "v2.template.handlers.TemplateCreateCLAGroupTemplateHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
+		}
+
+		projectCLAGroups, lookupErr := v1ProjectClaGroupService.GetProjectsIdsForClaGroup(ctx, params.ClaGroupID)
+		if lookupErr != nil || len(projectCLAGroups) == 0 {
+			msg := fmt.Sprintf("unable to lookup CLA Group mapping using CLA Group ID: %s", params.ClaGroupID)
+			return template.NewGetTemplatesBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, lookupErr))
+		}
+		projectSFIDs := getProjectSFIDList(projectCLAGroups)
+
+		// Check authorization
+		if !utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("authUser '%s' does not have access to create CLA Group template with Project scope of any %s",
+				authUser.UserName, strings.Join(projectSFIDs, ","))
+			log.WithFields(f).Debug(msg)
+			return template.NewGetTemplatesForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
 		input := &v1Models.CreateClaGroupTemplate{}
@@ -66,7 +85,8 @@ func Configure(api *operations.EasyclaAPI, service v1Template.Service, eventsSer
 			log.WithFields(f).WithError(err).Warn("problem converting templates")
 			return template.NewGetTemplatesInternalServerError().WithPayload(errorResponse(reqID, err))
 		}
-		pdfUrls, err := service.CreateCLAGroupTemplate(params.HTTPRequest.Context(), params.ClaGroupID, input)
+
+		pdfUrls, err := service.CreateCLAGroupTemplate(ctx, params.ClaGroupID, input)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("Error generating PDFs from provided templates, error: %v", err)
 			return template.NewGetTemplatesBadRequest().WithPayload(errorResponse(reqID, err))
@@ -75,7 +95,7 @@ func Configure(api *operations.EasyclaAPI, service v1Template.Service, eventsSer
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:  events.CLATemplateCreated,
 			ProjectID:  params.ClaGroupID,
-			LfUsername: user.UserName,
+			LfUsername: authUser.UserName,
 			EventData:  &events.CLATemplateCreatedEventData{},
 		})
 
@@ -94,7 +114,7 @@ func Configure(api *operations.EasyclaAPI, service v1Template.Service, eventsSer
 		ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "TemplateTemplatePreviewHandler",
+			"functionName":   "v2.template.handlers.TemplateTemplatePreviewHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"templateFor":    params.TemplateFor,
 		}
@@ -123,10 +143,10 @@ func Configure(api *operations.EasyclaAPI, service v1Template.Service, eventsSer
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
 		f := logrus.Fields{
-			"functionName":   "TemplateGetCLATemplatePreviewHandler",
+			"functionName":   "v2.template.handlers.TemplateGetCLATemplatePreviewHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		}
-		pdf, err := service.GetCLATemplatePreview(params.HTTPRequest.Context(), params.ClaGroupID, params.ClaType, *params.Watermark)
+		pdf, err := service.GetCLATemplatePreview(ctx, params.ClaGroupID, params.ClaType, *params.Watermark)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("Error getting PDFs for provided cla group ID : %s, error: %v", params.ClaGroupID, err)
 			return writeResponse(http.StatusBadRequest, runtime.JSONMime, runtime.JSONProducer(), reqID, errorResponse(reqID, err))
@@ -140,6 +160,15 @@ func Configure(api *operations.EasyclaAPI, service v1Template.Service, eventsSer
 			}
 		})
 	})
+}
+
+// getProjectSFIDList is a helper function to extract the project SFID values from the list of project to CLA group mapping records
+func getProjectSFIDList(groups []*v1ProjectsCLAGroups.ProjectClaGroup) []string {
+	var response []string
+	for _, projectCLAGroup := range groups {
+		response = append(response, projectCLAGroup.ProjectSFID)
+	}
+	return response
 }
 
 type codedResponse interface {

@@ -42,25 +42,25 @@ type Service interface {
 
 // service
 type service struct {
-	repo             ProjectRepository
-	repositoriesRepo repositories.Repository
-	gerritRepo       gerrits.Repository
-	projectCGRepo    projects_cla_groups.Repository
-	usersRepo        users.UserRepository
+	repo                ProjectRepository
+	repositoriesRepo    repositories.Repository
+	gerritRepo          gerrits.Repository
+	projectCLAGroupRepo projects_cla_groups.Repository
+	usersRepo           users.UserRepository
 }
 
 // NewService returns an instance of the project service
-func NewService(projectRepo ProjectRepository, repositoriesRepo repositories.Repository, gerritRepo gerrits.Repository, pcgRepo projects_cla_groups.Repository, usersRepo users.UserRepository) Service {
+func NewService(projectRepo ProjectRepository, repositoriesRepo repositories.Repository, gerritRepo gerrits.Repository, projectCLAGroupRepo projects_cla_groups.Repository, usersRepo users.UserRepository) Service {
 	return service{
-		repo:             projectRepo,
-		repositoriesRepo: repositoriesRepo,
-		gerritRepo:       gerritRepo,
-		projectCGRepo:    pcgRepo,
-		usersRepo:        usersRepo,
+		repo:                projectRepo,
+		repositoriesRepo:    repositoriesRepo,
+		gerritRepo:          gerritRepo,
+		projectCLAGroupRepo: projectCLAGroupRepo,
+		usersRepo:           usersRepo,
 	}
 }
 
-// CreateProject service method
+// CreateCLAGroup service method
 func (s service) CreateCLAGroup(ctx context.Context, claGroupModel *models.ClaGroup) (*models.ClaGroup, error) {
 	return s.repo.CreateCLAGroup(ctx, claGroupModel)
 }
@@ -70,7 +70,7 @@ func (s service) GetCLAGroups(ctx context.Context, params *project.GetProjectsPa
 	return s.repo.GetCLAGroups(ctx, params)
 }
 
-// GetProjectByID service method
+// GetCLAGroupByID service method
 func (s service) GetCLAGroupByID(ctx context.Context, claGroupID string) (*models.ClaGroup, error) {
 	f := logrus.Fields{
 		"functionName":    "GetCLAGroupByID",
@@ -337,7 +337,7 @@ func (s service) SignedAtFoundationLevel(ctx context.Context, foundationSFID str
 	}
 
 	log.WithFields(f).Debug("querying foundation CLA Group entries...")
-	entries, pcgErr := s.projectCGRepo.GetProjectsIdsForFoundation(foundationSFID)
+	entries, pcgErr := s.projectCLAGroupRepo.GetProjectsIdsForFoundation(ctx, foundationSFID)
 	if pcgErr != nil {
 		return false, pcgErr
 	}

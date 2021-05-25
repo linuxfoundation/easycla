@@ -446,7 +446,7 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 	}
 
 	log.WithFields(f).Debugf("Getting project sf mappings for claGroupID: %s ", claGroupID)
-	pcgs, pcgErr := s.projectCGRepo.GetProjectsIdsForClaGroup(claGroupID)
+	pcgs, pcgErr := s.projectCGRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
 	if pcgErr != nil {
 		log.WithFields(f).Warnf("Problem getting mappings for claGroup: %s , error: %+v ", claGroupID, pcgErr)
 		return nil, pcgErr
@@ -890,7 +890,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 
 	// Get project cla Group records
 	log.WithFields(f).Debugf("Getting SalesForce Projects for claGroup: %s ", projectID)
-	projectCLAGroups, getErr := s.projectCGRepo.GetProjectsIdsForClaGroup(projectID)
+	projectCLAGroups, getErr := s.projectCGRepo.GetProjectsIdsForClaGroup(ctx, projectID)
 	if getErr != nil {
 		msg := fmt.Sprintf("Error getting SF projects for claGroup: %s ", projectID)
 		log.Debug(msg)
@@ -1191,7 +1191,7 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 
 	// Get mappings
 	var projectSFIDs []string
-	pcgs, pcgErr := s.projectCGRepo.GetProjectsIdsForClaGroup(notifyCLAManagers.ClaGroupID)
+	pcgs, pcgErr := s.projectCGRepo.GetProjectsIdsForClaGroup(ctx, notifyCLAManagers.ClaGroupID)
 	if pcgErr != nil {
 		log.WithFields(f).Warnf("problem getting cla_group_mappings by claGroupID: %s ", notifyCLAManagers.ClaGroupID)
 		return pcgErr

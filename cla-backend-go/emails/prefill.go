@@ -53,7 +53,7 @@ func (s *emailTemplateServiceProvider) PrefillV2CLAProjectParams(projectSFIDs []
 	// keeping a cache so we can safe some of the remote svc calls
 	signedAtFoundationLevelCache := map[string]bool{}
 	for _, pSFID := range projectSFIDs {
-		projectCLAGroup, err := s.repository.GetClaGroupIDForProject(pSFID)
+		projectCLAGroup, err := s.repository.GetClaGroupIDForProject(context.Background(), pSFID)
 		if err != nil {
 			return nil, fmt.Errorf("fetching project : %s failed: %v", pSFID, err)
 		}
@@ -104,7 +104,7 @@ func (s *emailTemplateServiceProvider) GetCLAGroupTemplateParamsFromCLAGroup(cla
 }
 
 func (s *emailTemplateServiceProvider) getV2CLAGroupTemplateParamsFromProjectSFID(projectSFID string) (CLAGroupTemplateParams, error) {
-	projectCLAGroup, err := s.repository.GetClaGroupIDForProject(projectSFID)
+	projectCLAGroup, err := s.repository.GetClaGroupIDForProject(context.Background(), projectSFID)
 	if err != nil {
 		return CLAGroupTemplateParams{}, err
 	}
@@ -114,7 +114,7 @@ func (s *emailTemplateServiceProvider) getV2CLAGroupTemplateParamsFromProjectSFI
 	params.CorporateConsole = s.corporateConsoleV2
 	params.Version = projectCLAGroup.Version
 
-	projects, err := s.repository.GetProjectsIdsForClaGroup(projectCLAGroup.ClaGroupID)
+	projects, err := s.repository.GetProjectsIdsForClaGroup(context.Background(), projectCLAGroup.ClaGroupID)
 	if err != nil {
 		return CLAGroupTemplateParams{}, fmt.Errorf("getProjectsIdsForClaGroup failed : %w", err)
 	}

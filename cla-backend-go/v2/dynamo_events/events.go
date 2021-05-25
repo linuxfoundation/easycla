@@ -34,7 +34,7 @@ func (s *service) EventAddedEvent(event events.DynamoDBEventRecord) error {
 	} else {
 		companySFID = companyModel.CompanyExternalID
 	}
-	pmList, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(newEvent.EventProjectID)
+	pmList, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, newEvent.EventProjectID)
 	if err != nil || len(pmList) == 0 {
 		log.WithFields(f).Error("unable to get project mapping detail", err)
 	} else {
