@@ -40,7 +40,7 @@
     "@types/node": "^8.0.17",
     "auth0-js": "^9.13.2",
     "aws-sdk": "^2.304.0",
-    "chart.js": "^2.5.0",
+    "chart.js": "^2.9.4",
     "google-libphonenumber": "^2.0.18",
     "graceful-fs": "^4.2.2",
     "ionic-angular": "3.9.2",
