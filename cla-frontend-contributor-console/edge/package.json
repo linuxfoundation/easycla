@@ -10,7 +10,7 @@
     "test": "./node_modules/.bin/jasmine --config=jasmine.json"
   },
   "dependencies": {
-    "graceful-fs": "^4.2.2"
+    "graceful-fs": "^4.2.6"
   },
   "resolutions": {
     "node-sass": "4.13.1",
