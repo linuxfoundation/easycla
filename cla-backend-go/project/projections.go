@@ -24,6 +24,7 @@ func buildProjection() expression.ProjectionBuilder {
 		expression.Name("project_corporate_documents"),
 		expression.Name("project_individual_documents"),
 		expression.Name("project_member_documents"),
+		expression.Name("project_template_id"),
 		expression.Name("date_created"),
 		expression.Name("date_modified"),
 		expression.Name("version"),

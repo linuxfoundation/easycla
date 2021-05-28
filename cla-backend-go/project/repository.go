@@ -111,6 +111,7 @@ func (repo *repo) CreateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 	addStringAttribute(input.Item, "foundation_sfid", claGroupModel.FoundationSFID)
 	addStringAttribute(input.Item, "project_description", claGroupModel.ProjectDescription)
 	addStringAttribute(input.Item, "project_name", claGroupModel.ProjectName)
+	addStringAttribute(input.Item, "project_template_id", claGroupModel.ProjectTemplateID)
 	addStringAttribute(input.Item, "project_name_lower", strings.ToLower(claGroupModel.ProjectName))
 	addStringSliceAttribute(input.Item, "project_acl", claGroupModel.ProjectACL)
 	addBooleanAttribute(input.Item, "project_icla_enabled", claGroupModel.ProjectICLAEnabled)
@@ -355,15 +356,13 @@ func (repo *repo) GetClaGroupsByFoundationSFID(ctx context.Context, foundationSF
 		}
 	}
 
-	// log.WithFields(f).Debugf("foundation projects!: %#v ", projects)
-
 	return &models.ClaGroups{
 		ResultCount: int64(len(projects)),
 		Projects:    projects,
 	}, nil
 }
 
-// GetClaGroupsByProjectSFID returns cla_group associated with project
+// GetClaGroupByProjectSFID returns cla_group associated with project
 func (repo *repo) GetClaGroupByProjectSFID(ctx context.Context, projectSFID string, loadRepoDetails bool) (*models.ClaGroup, error) {
 	f := logrus.Fields{
 		"functionName":    "project.repository.GetClaGroupByProjectSFID",
@@ -647,6 +646,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		"ProjectICLAEnabled":      claGroupModel.ProjectICLAEnabled,
 		"ProjectCCLAEnabled":      claGroupModel.ProjectCCLAEnabled,
 		"ProjectCCLARequiresICLA": claGroupModel.ProjectCCLARequiresICLA,
+		"ProjectTemplateID":       claGroupModel.ProjectTemplateID,
 		"ProjectLive":             claGroupModel.ProjectLive,
 		"tableName":               repo.claGroupTable}
 	log.WithFields(f).Debugf("processing update CLA Group request")
@@ -663,6 +663,14 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 
 	if existingCLAGroup == nil {
 		return nil, ErrProjectDoesNotExist
+	}
+
+	// We don't allow CLA Group templates to be changed - this requires a legal review
+	if existingCLAGroup.ProjectTemplateID != claGroupModel.ProjectTemplateID {
+		msg := fmt.Sprintf("problem updating CLA Group - changing CLA templates is not allowed - project: %s with ID: %s - previous template: %s updated template: %s",
+			claGroupModel.ProjectName, claGroupModel.ProjectID, claGroupModel.ProjectTemplateID, claGroupModel.ProjectTemplateID)
+		log.WithFields(f).Warn(msg)
+		return nil, errors.New(msg)
 	}
 
 	expressionAttributeNames := map[string]*string{}
@@ -890,6 +898,7 @@ func (repo *repo) buildCLAGroupModel(ctx context.Context, dbModel DBProjectModel
 		ProjectCCLAEnabled:           dbModel.ProjectCclaEnabled,
 		ProjectICLAEnabled:           dbModel.ProjectIclaEnabled,
 		ProjectCCLARequiresICLA:      dbModel.ProjectCclaRequiresIclaSignature,
+		ProjectTemplateID:            dbModel.ProjectTemplateID,
 		ProjectLive:                  dbModel.ProjectLive,
 		ProjectCorporateDocuments:    buildCLAGroupDocumentModels(dbModel.ProjectCorporateDocuments),
 		ProjectIndividualDocuments:   buildCLAGroupDocumentModels(dbModel.ProjectIndividualDocuments),

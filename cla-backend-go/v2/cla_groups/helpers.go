@@ -35,11 +35,12 @@ func (s *service) validateClaGroupInput(ctx context.Context, input *models.Creat
 	if input.ClaGroupName == nil {
 		return false, fmt.Errorf("missing CLA Group parameter")
 	}
+
 	foundationSFID := *input.FoundationSfid
 	claGroupName := *input.ClaGroupName
 
 	f := logrus.Fields{
-		"functionName":        "validateClaGroupInput",
+		"functionName":        "v2.cla_groups.helpers.validateClaGroupInput",
 		utils.XREQUESTID:      ctx.Value(utils.XREQUESTID),
 		"ClaGroupName":        claGroupName,
 		"ClaGroupDescription": input.ClaGroupDescription,
@@ -48,19 +49,37 @@ func (s *service) validateClaGroupInput(ctx context.Context, input *models.Creat
 		"CclaEnabled":         *input.CclaEnabled,
 		"CclaRequiresIcla":    *input.CclaRequiresIcla,
 		"ProjectSfidList":     strings.Join(input.ProjectSfidList, ","),
+		"templateID":          input.TemplateFields.TemplateID,
 	}
 
 	log.WithFields(f).Debug("validating CLA Group input...")
+
+	if input.TemplateFields.TemplateID == "" {
+		msg := "missing CLA Group template ID value"
+		log.WithFields(f).Warn(msg)
+		return false, errors.New(msg)
+	}
+	if !s.v1TemplateService.CLAGroupTemplateExists(ctx, input.TemplateFields.TemplateID) {
+		msg := "invalid template ID"
+		log.WithFields(f).Warn(msg)
+		return false, errors.New(msg)
+	}
 	// First, check that all the required flags are set and make sense
 	if foundationSFID == "" {
-		return false, fmt.Errorf("bad request: foundation_sfid cannot be empty")
+		msg := "bad request: foundation_sfid cannot be empty"
+		log.WithFields(f).Warn(msg)
+		return false, errors.New(msg)
 	}
 	if !*input.IclaEnabled && !*input.CclaEnabled {
-		return false, fmt.Errorf("bad request: can not create cla group with both icla and ccla disabled")
+		msg := "bad request: can not create cla group with both icla and ccla disabled"
+		log.WithFields(f).Warn(msg)
+		return false, errors.New(msg)
 	}
 	if *input.CclaRequiresIcla {
 		if !(*input.IclaEnabled && *input.CclaEnabled) {
-			return false, fmt.Errorf("bad request: ccla_requires_icla can not be enabled if one of icla/ccla is disabled")
+			msg := "bad request: ccla_requires_icla can not be enabled if one of icla/ccla is disabled"
+			log.WithFields(f).Warn(msg)
+			return false, errors.New(msg)
 		}
 	}
 

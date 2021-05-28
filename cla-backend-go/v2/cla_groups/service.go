@@ -106,6 +106,7 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 		"CclaRequiresIcla":    aws.BoolValue(input.CclaRequiresIcla),
 		"ProjectSfidList":     strings.Join(input.ProjectSfidList, ","),
 		"projectManagerLFID":  projectManagerLFID,
+		"claGroupTemplate":    input.TemplateFields.TemplateID,
 	}
 
 	log.WithFields(f).Debug("validating CLA Group input")
@@ -142,6 +143,7 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 		ProjectACL:              []string{projectManagerLFID},
 		ProjectICLAEnabled:      *input.IclaEnabled,
 		ProjectName:             *input.ClaGroupName,
+		ProjectTemplateID:       input.TemplateFields.TemplateID,
 		Version:                 "v2",
 	})
 	if err != nil {
@@ -220,6 +222,7 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 		ClaGroupDescription: claGroup.ProjectDescription,
 		ClaGroupID:          claGroup.ProjectID,
 		ClaGroupName:        claGroup.ProjectName,
+		TemplateID:          claGroup.ProjectTemplateID,
 		FoundationSfid:      claGroup.FoundationSFID,
 		FoundationName:      foundationName,
 		IclaEnabled:         claGroup.ProjectICLAEnabled,
@@ -518,6 +521,7 @@ func (s *service) buildClaGroupSummaryResponseModel(ctx context.Context, f logru
 			ClaGroupDescription: v1ClaGroup.ProjectDescription,
 			ClaGroupID:          v1ClaGroup.ProjectID,
 			ClaGroupName:        v1ClaGroup.ProjectName,
+			TemplateID:          v1ClaGroup.ProjectTemplateID,
 			FoundationSfid:      v1ClaGroup.FoundationSFID,
 			FoundationName:      foundationName,
 			IclaEnabled:         v1ClaGroup.ProjectICLAEnabled,

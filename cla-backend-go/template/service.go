@@ -39,6 +39,7 @@ type Service interface {
 	CreateCLAGroupTemplate(ctx context.Context, claGroupID string, claGroupFields *models.CreateClaGroupTemplate) (models.TemplatePdfs, error)
 	CreateTemplatePreview(ctx context.Context, claGroupFields *models.CreateClaGroupTemplate, templateFor string) ([]byte, error)
 	GetCLATemplatePreview(ctx context.Context, claGroupID, claType string, watermark bool) ([]byte, error)
+	CLAGroupTemplateExists(ctx context.Context, templateID string) bool
 }
 
 type service struct {
@@ -154,7 +155,7 @@ func (s service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, 
 	// Get Template
 	template, err := s.templateRepo.GetTemplate(claGroupFields.TemplateID)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("Unable to fetch template fields: %s - returning empty template PDFs",
+		log.WithFields(f).WithError(err).Warnf("Unable to fetch template id: %s - returning empty template PDFs",
 			claGroupFields.TemplateID)
 		return models.TemplatePdfs{}, err
 	}
@@ -495,7 +496,7 @@ func (s service) generateTemplateS3FilePath(claGroupID, claType string) string {
 	return fileName
 }
 
-// SaveTemplateToS3
+// SaveTemplateToS3 uploads the specified template contents to S3 storage
 func (s service) SaveTemplateToS3(bucket, filepath string, template io.ReadCloser) (string, error) {
 	f := logrus.Fields{
 		"functionName": "v1.template.service.SaveTemplateToS3",
@@ -522,4 +523,9 @@ func (s service) SaveTemplateToS3(bucket, filepath string, template io.ReadClose
 	}
 
 	return result.Location, nil
+}
+
+// CLAGroupTemplateExists return true if the specified template ID exists, false otherwise
+func (s service) CLAGroupTemplateExists(ctx context.Context, templateID string) bool {
+	return s.templateRepo.CLAGroupTemplateExists(ctx, templateID)
 }

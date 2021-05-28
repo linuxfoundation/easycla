@@ -15,6 +15,7 @@ type DBProjectModel struct {
 	ProjectNameLower                 string                   `dynamodbav:"project_name_lower"`
 	ProjectDescription               string                   `dynamodbav:"project_description"`
 	Version                          string                   `dynamodbav:"version"`
+	ProjectTemplateID                string                   `dynamodbav:"project_template_id"`
 	ProjectCclaEnabled               bool                     `dynamodbav:"project_ccla_enabled"`
 	ProjectCclaRequiresIclaSignature bool                     `dynamodbav:"project_ccla_requires_icla_signature"`
 	ProjectIclaEnabled               bool                     `dynamodbav:"project_icla_enabled"`

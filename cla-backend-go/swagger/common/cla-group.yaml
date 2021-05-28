@@ -31,12 +31,16 @@ properties:
     description: Flag indicating whether CLA is signed at Foundation level (true) or Project level (false)
     example: true
     type: boolean
-    x-omitempty: false 
+    x-omitempty: false
   projectCCLAEnabled:
     description: Flag to indicate if the Corporate/Company Contributor License Agreement is enabled
     example: true
     type: boolean
     x-omitempty: false
+  projectTemplateID:
+    title: CLA group template
+    description: the ID of the template - used to generate the ICLA and CCLA PDFs
+    $ref: './common/properties/internal-id.yaml'
   projectICLAEnabled:
     description: Flag to indicate if the Individual Contributor License Agreement is enabled
     example: true

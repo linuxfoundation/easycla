@@ -1,0 +1,86 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+title: CLA Group Summary
+description: a summary of the CLA Group information
+properties:
+  foundationLevelCLA:
+    description: Flag indicating whether CLA is signed at Foundation level (true) or Project level (false)
+    type: boolean
+    x-omitempty: false
+  cla_group_id:
+    type: string
+    example: 'b1e86e26-d8c8-4fd8-9f8d-5c723d5dac9f'
+    description: id of the CLA group
+    x-omitempty: false
+  cla_group_name:
+    $ref: './common/properties/cla-group-name.yaml'
+    x-omitempty: false
+  cla_group_description:
+    $ref: './common/properties/cla-group-description.yaml'
+    x-omitempty: false
+  ccla_enabled:
+    type: boolean
+    example: true
+    description: flag to indicate if CCLA is enabled
+    x-omitempty: false
+  ccla_requires_icla:
+    type: boolean
+    example: true
+    description: flag to indicate if corporate contributors requires to sign ICLA
+    x-omitempty: false
+  icla_enabled:
+    type: boolean
+    example: true
+    description: flag to indicate if ICLA is enabled
+    x-omitempty: false
+  template_id:
+    title: CLA group template
+    description: the ID of the template - used to generate the ICLA and CCLA PDFs
+    $ref: './common/properties/internal-id.yaml'
+  foundation_sfid:
+    type: string
+    example: 'a09410000182dD2AAI'
+    description: foundation sfid under which this CLA group is created
+    x-omitempty: false
+  root_project_repositories_count:
+    type: integer
+    description: number of repositories added to this CLA Group from root project
+    x-omitempty: false
+  foundation_name:
+    type: string
+    example: 'Academy Software Foundation'
+    description: foundation name under which this CLA group is created
+    x-omitempty: false
+  repositories_count:
+    type: integer
+    description: total repositories under this cla-group
+    x-omitempty: false
+  total_signatures:
+    type: integer
+    description: aggregate count of ICLA and CCLA contributors within this CLA Group
+    x-omitempty: false
+  project_list:
+    x-omitempty: false
+    description: list of projects under foundation for which this CLA group is created
+    type: array
+    items:
+      $ref: '#/definitions/cla-group-project'
+  icla_pdf_url:
+    description: template URL for ICLA document
+    type: string
+    example: 'https://cla-signature-files-dev.s3.amazonaws.com/contract-group/b1e86e26-d8c8-4fd8-9f8d-5c723d5dac9f/template/icla.pdf'
+    x-omitempty: false
+  ccla_pdf_url:
+    description: template URL for CCLA document
+    type: string
+    example: 'https://cla-signature-files-dev.s3.amazonaws.com/contract-group/b1e86e26-d8c8-4fd8-9f8d-5c723d5dac9f/template/ccla.pdf'
+    x-omitempty: false
+  setup_completion_pct:
+    description: the CLA Group setup complete percentage, values range from 0-100 inclusive
+    type: integer
+    minimum: 0
+    maximum: 100
+    example: 100
+    x-omitempty: false

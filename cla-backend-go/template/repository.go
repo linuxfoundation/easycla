@@ -39,6 +39,7 @@ var (
 type Repository interface {
 	GetTemplates(ctx context.Context) ([]models.Template, error)
 	GetTemplate(templateID string) (models.Template, error)
+	CLAGroupTemplateExists(ctx context.Context, templateID string) bool
 	GetCLAGroup(claGroupID string) (*models.ClaGroup, error)
 	GetCLADocuments(claGroupID string, claType string) ([]models.ClaGroupDocument, error)
 	UpdateDynamoContractGroupTemplates(ctx context.Context, ContractGroupID string, template models.Template, pdfUrls models.TemplatePdfs, projectCCLAEnabled, projectICLAEnabled bool) error
@@ -135,6 +136,12 @@ func (r repository) GetTemplate(templateID string) (models.Template, error) {
 	}
 
 	return template, nil
+}
+
+// CLAGroupTemplateExists return true if the specified template ID exists, false otherwise
+func (r repository) CLAGroupTemplateExists(ctx context.Context, templateID string) bool {
+	_, ok := templateMap[templateID]
+	return ok
 }
 
 // GetCLAGroup This method belongs in the contract group package. We are leaving it here
