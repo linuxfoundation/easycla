@@ -850,7 +850,6 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			log.Warn(msg)
 			return signatures.NewGetProjectCompanyEmployeeSignaturesForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
-		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for ICLA signatures...")
 
