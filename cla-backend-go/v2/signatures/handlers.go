@@ -369,8 +369,6 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     params.ClaGroupID,
 			"signatureType":  params.SignatureType,
-			"approved":       utils.BoolValue(params.Approved),
-			"signed":         utils.BoolValue(params.Signed),
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group by ID...")
@@ -387,7 +385,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		f["foundationSFID"] = claGroupModel.FoundationSFID
 
 		// Check to see if this CLA Group is configured for ICLAs...
-		if !claGroupModel.ProjectICLAEnabled {
+		if params.SignatureType != nil && utils.StringValue(params.ClaType) == utils.ClaTypeICLA && !claGroupModel.ProjectICLAEnabled {
 			log.WithFields(f).Warn(iclaNotSupportedForCLAGroup)
 			// Return 200 as the retool UI can't handle 400's
 			return signatures.NewGetProjectSignaturesOK().WithXRequestID(reqID).WithPayload(&models.Signatures{
@@ -396,19 +394,27 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 				Signatures:  []*models.Signature{}, // empty list
 				TotalCount:  0,
 			})
-			//return signatures.NewGetProjectSignaturesBadRequest().WithXRequestID(reqID).WithPayload(
-			//	utils.ErrorResponseBadRequest(reqID, iclaNotSupportedForCLAGroup))
 		}
 
-		if false {
-			log.WithFields(f).Debug("checking access control permissions for user...")
-			if !isUserHaveAccessToCLAGroupProjects(ctx, authUser, params.ClaGroupID, projectClaGroupsRepo, projectRepo) {
-				msg := fmt.Sprintf("user '%s' is not authorized to view project ICLA signatures any scope of project", authUser.UserName)
-				log.Warn(msg)
-				return signatures.NewGetProjectSignaturesForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
-			}
-			log.WithFields(f).Debug("user has access for this query")
+		// Check to see if this CLA Group is configured for CCLAs...
+		if params.SignatureType != nil && utils.StringValue(params.ClaType) == utils.ClaTypeCCLA && !claGroupModel.ProjectCCLAEnabled {
+			log.WithFields(f).Warn(cclaNotSupportedForCLAGroup)
+			// Return 200 as the retool UI can't handle 400's
+			return signatures.NewGetProjectSignaturesOK().WithXRequestID(reqID).WithPayload(&models.Signatures{
+				ProjectID:   params.ClaGroupID,
+				ResultCount: 0,
+				Signatures:  []*models.Signature{}, // empty list
+				TotalCount:  0,
+			})
 		}
+
+		log.WithFields(f).Debug("checking access control permissions for user...")
+		if !isUserHaveAccessToCLAGroupProjects(ctx, authUser, params.ClaGroupID, projectClaGroupsRepo, projectRepo) {
+			msg := fmt.Sprintf("user '%s' is not authorized to view project ICLA signatures any scope of project", authUser.UserName)
+			log.Warn(msg)
+			return signatures.NewGetProjectSignaturesForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("loading project signatures...")
 		projectSignatures, err := v1SignatureService.GetProjectSignatures(ctx, v1Signatures.GetProjectSignaturesParams{
