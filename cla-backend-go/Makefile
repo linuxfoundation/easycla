@@ -62,7 +62,7 @@ setup-deploy:
 	@yarn add serverless && yarn install
 
 clean:
-	@rm -rf cla cla-mac cla-linux \
+	@rm -rf cla cla-mac* cla-linux \
 		./v2/project-service/client ./v2/project-service/models \
 		./v2/organization-service/client ./v2/organization-service/models \
 		./v2/user-service/client ./v2/user-service/models \
@@ -204,6 +204,11 @@ build-linux: deps
 build-mac: deps
 	@echo "Building Mac OSX amd64 binary..."
 	env GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(SERVICE)-mac main.go
+	@chmod +x $(SERVICE)-mac
+
+build-mac-arm: deps
+	@echo "Building Mac OSX Arm64 binary..."
+	env GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(SERVICE)-mac-arm64 main.go
 	@chmod +x $(SERVICE)-mac
 
 rebuild-mac: clean fmt build-mac lint

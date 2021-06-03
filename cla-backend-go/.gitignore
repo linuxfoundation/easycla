@@ -3,7 +3,7 @@
 # Project specific ignores
 cla-backend-go
 cla
-cla-mac
+cla-mac*
 backend-aws-lambda
 backend-aws-lambda-mac
 backend-aws-lambda-linux
