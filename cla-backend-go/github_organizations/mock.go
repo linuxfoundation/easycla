@@ -143,15 +143,15 @@ func (mr *MockRepositoryMockRecorder) GetGithubOrganizationsByParent(arg0, arg1 
 }
 
 // UpdateGithubOrganization mocks base method
-func (m *MockRepository) UpdateGithubOrganization(arg0 context.Context, arg1, arg2 string, arg3 bool, arg4 string, arg5 bool) error {
+func (m *MockRepository) UpdateGithubOrganization(arg0 context.Context, arg1, arg2 string, arg3 bool, arg4 string, arg5 bool, arg6 *bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateGithubOrganization", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret := m.ctrl.Call(m, "UpdateGithubOrganization", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateGithubOrganization indicates an expected call of UpdateGithubOrganization
-func (mr *MockRepositoryMockRecorder) UpdateGithubOrganization(arg0, arg1, arg2, arg3, arg4, arg5 interface{}) *gomock.Call {
+func (mr *MockRepositoryMockRecorder) UpdateGithubOrganization(arg0, arg1, arg2, arg3, arg4, arg5, arg6 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGithubOrganization", reflect.TypeOf((*MockRepository)(nil).UpdateGithubOrganization), arg0, arg1, arg2, arg3, arg4, arg5)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGithubOrganization", reflect.TypeOf((*MockRepository)(nil).UpdateGithubOrganization), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 }

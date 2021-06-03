@@ -42,7 +42,7 @@ type Repository interface {
 	GetGithubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error)
 	GetGithubOrganization(ctx context.Context, githubOrganizationName string) (*models.GithubOrganization, error)
 	GetGithubOrganizationByName(ctx context.Context, githubOrganizationName string) (*models.GithubOrganizations, error)
-	UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
+	UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error
 	DeleteGithubOrganization(ctx context.Context, projectSFID string, githubOrgName string) error
 	DeleteGithubOrganizationByParent(ctx context.Context, parentProjectSFID string, githubOrgName string) error
 }
@@ -108,12 +108,15 @@ func (repo repository) AddGithubOrganization(ctx context.Context, parentProjectS
 		}
 
 		// Attempt to simply update the existing record - we should only have one
+		// activate GH org by updating the enabled flag
+		enabled := true
 		updateErr := repo.UpdateGithubOrganization(ctx,
 			projectSFID,
 			utils.StringValue(input.OrganizationName),
 			autoEnabled,
 			autoEnabledCLAGroupID,
 			branchProtectionEnabled,
+			&enabled,
 		)
 		if updateErr != nil {
 			log.WithFields(f).WithError(updateErr).Warn("unable to update existing github organization record")
@@ -141,6 +144,7 @@ func (repo repository) AddGithubOrganization(ctx context.Context, parentProjectS
 
 	// No existing records - create one
 	_, currentTime := utils.CurrentTime()
+	enabled := true
 	githubOrg := &GithubOrganization{
 		DateCreated:                currentTime,
 		DateModified:               currentTime,
@@ -149,6 +153,7 @@ func (repo repository) AddGithubOrganization(ctx context.Context, parentProjectS
 		OrganizationNameLower:      strings.ToLower(*input.OrganizationName),
 		OrganizationSFID:           parentProjectSFID,
 		ProjectSFID:                projectSFID,
+		Enabled:                    aws.BoolValue(&enabled),
 		AutoEnabled:                aws.BoolValue(input.AutoEnabled),
 		AutoEnabledClaGroupID:      input.AutoEnabledClaGroupID,
 		BranchProtectionEnabled:    aws.BoolValue(input.BranchProtectionEnabled),
@@ -369,7 +374,7 @@ func (repo repository) GetGithubOrganization(ctx context.Context, githubOrganiza
 }
 
 // UpdateGithubOrganization updates the specified GitHub organization based on the update model provided
-func (repo repository) UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
+func (repo repository) UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error {
 	f := logrus.Fields{
 		"functionName":            "v1.github_organizations.repository.UpdateGitHubOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
@@ -393,34 +398,46 @@ func (repo repository) UpdateGithubOrganization(ctx context.Context, projectSFID
 		return lookupErr
 	}
 
+	expressionAttributeNames := map[string]*string{
+		"#A": aws.String("auto_enabled"),
+		"#C": aws.String("auto_enabled_cla_group_id"),
+		"#B": aws.String("branch_protection_enabled"),
+		"#M": aws.String("date_modified"),
+	}
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
+		":a": {
+			BOOL: aws.Bool(autoEnabled),
+		},
+		":c": {
+			S: aws.String(autoEnabledClaGroupID),
+		},
+		":b": {
+			BOOL: aws.Bool(branchProtectionEnabled),
+		},
+		":m": {
+			S: aws.String(currentTime),
+		},
+	}
+	updateExpression := "SET #A = :a, #C = :c, #B = :b, #M = :m,"
+
+	if enabled != nil {
+		expressionAttributeNames["#E"] = aws.String("enabled")
+		expressionAttributeValues[":e"] = &dynamodb.AttributeValue{
+			BOOL: aws.Bool(*enabled),
+		}
+		updateExpression = updateExpression + " #E = :e "
+	}
+
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"organization_name": {
 				S: aws.String(githubOrg.OrganizationName),
 			},
 		},
-		ExpressionAttributeNames: map[string]*string{
-			"#A": aws.String("auto_enabled"),
-			"#C": aws.String("auto_enabled_cla_group_id"),
-			"#B": aws.String("branch_protection_enabled"),
-			"#M": aws.String("date_modified"),
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":a": {
-				BOOL: aws.Bool(autoEnabled),
-			},
-			":c": {
-				S: aws.String(autoEnabledClaGroupID),
-			},
-			":b": {
-				BOOL: aws.Bool(branchProtectionEnabled),
-			},
-			":m": {
-				S: aws.String(currentTime),
-			},
-		},
-		UpdateExpression: aws.String("SET #A = :a, #C = :c, #B = :b, #M = :m"),
-		TableName:        aws.String(repo.githubOrgTableName),
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		UpdateExpression:          &updateExpression,
+		TableName:                 aws.String(repo.githubOrgTableName),
 	}
 
 	log.WithFields(f).Debug("updating github organization record...")
@@ -456,14 +473,36 @@ func (repo repository) DeleteGithubOrganization(ctx context.Context, projectSFID
 	}
 
 	log.WithFields(f).Debug("Deleting GitHub organization...")
-	_, err := repo.dynamoDBClient.DeleteItem(&dynamodb.DeleteItemInput{
-		Key: map[string]*dynamodb.AttributeValue{
-			"organization_name": {
-				S: aws.String(githubOrganizationName),
+	// Update enabled flag as false
+	_, currentTime := utils.CurrentTime()
+	note := fmt.Sprintf("Enabled set to false due to org deletion at %s ", currentTime)
+	_, err := repo.dynamoDBClient.UpdateItem(
+		&dynamodb.UpdateItemInput{
+			Key: map[string]*dynamodb.AttributeValue{
+				"organization_name": {
+					S: aws.String(githubOrganizationName),
+				},
 			},
+			ExpressionAttributeNames: map[string]*string{
+				"#E": aws.String("enabled"),
+				"#N": aws.String("note"),
+				"#D": aws.String("date_modified"),
+			},
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":e": {
+					BOOL: aws.Bool(false),
+				},
+				":n": {
+					S: aws.String(note),
+				},
+				":d": {
+					S: aws.String(currentTime),
+				},
+			},
+			UpdateExpression: aws.String("SET #E = :e, #N = :n, #D = :d"),
+			TableName:        aws.String(repo.githubOrgTableName),
 		},
-		TableName: aws.String(repo.githubOrgTableName),
-	})
+	)
 	if err != nil {
 		errMsg := fmt.Sprintf("error deleting github organization: %s - %+v", githubOrgName, err)
 		log.WithFields(f).Warnf(errMsg)

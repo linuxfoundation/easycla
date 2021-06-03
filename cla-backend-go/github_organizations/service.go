@@ -165,7 +165,7 @@ func (s service) UpdateGithubOrganization(ctx context.Context, projectSFID strin
 			return err
 		}
 	}
-	return s.repo.UpdateGithubOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled)
+	return s.repo.UpdateGithubOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, nil)
 }
 
 func (s service) DeleteGithubOrganization(ctx context.Context, projectSFID string, githubOrgName string) error {

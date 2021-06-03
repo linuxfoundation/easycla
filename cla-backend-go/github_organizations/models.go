@@ -14,6 +14,7 @@ type GithubOrganization struct {
 	OrganizationNameLower      string `json:"organization_name_lower,omitempty"`
 	OrganizationSFID           string `json:"organization_sfid,omitempty"`
 	ProjectSFID                string `json:"project_sfid"`
+	Enabled                    bool   `json:"enabled"`
 	AutoEnabled                bool   `json:"auto_enabled"`
 	BranchProtectionEnabled    bool   `json:"branch_protection_enabled"`
 	AutoEnabledClaGroupID      string `json:"auto_enabled_cla_group_id,omitempty"`
@@ -29,6 +30,7 @@ func ToModel(in *GithubOrganization) *models.GithubOrganization {
 		OrganizationName:           in.OrganizationName,
 		OrganizationSfid:           in.OrganizationSFID,
 		Version:                    in.Version,
+		Enabled:                    in.Enabled,
 		AutoEnabled:                in.AutoEnabled,
 		AutoEnabledClaGroupID:      in.AutoEnabledClaGroupID,
 		BranchProtectionEnabled:    in.BranchProtectionEnabled,

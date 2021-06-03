@@ -310,7 +310,7 @@ func (s service) AddGithubOrganization(ctx context.Context, projectSFID string, 
 }
 
 func (s service) UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
-	return s.repo.UpdateGithubOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled)
+	return s.repo.UpdateGithubOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, nil)
 }
 
 func (s service) DeleteGithubOrganization(ctx context.Context, projectSFID string, githubOrgName string) error {

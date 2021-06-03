@@ -28,6 +28,10 @@ properties:
   projectSFID:
     type: string
     example: "a0941000002wBz4AAA"
+  enabled:
+    type: boolean
+    description: Flag that indicates whether this Github Organization is active
+    x-omitempty: false
   autoEnabled:
     type: boolean
     description: Flag to indicate if this GitHub Organization is configured to allow new repositories to be auto-enabled/auto-enrolled in EasyCLA.
