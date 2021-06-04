@@ -206,10 +206,10 @@ build-mac: deps
 	env GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(SERVICE)-mac main.go
 	@chmod +x $(SERVICE)-mac
 
-build-mac-arm: deps
+build-mac-arm64: deps
 	@echo "Building Mac OSX Arm64 binary..."
 	env GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(SERVICE)-mac-arm64 main.go
-	@chmod +x $(SERVICE)-mac
+	@chmod +x $(SERVICE)-mac-arm64
 
 rebuild-mac: clean fmt build-mac lint
 	./$(SERVICE)-mac
@@ -257,7 +257,6 @@ build-metrics-report-lambda-mac: deps
 	@echo "Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(METRICS_REPORT_BIN)-mac cmd/metrics_report_lambda/main.go
 	@chmod +x $(METRICS_REPORT_BIN)-mac
-
 
 build-dynamo-events-lambda: build-dynamo-events-lambda-linux
 build-dynamo-events-lambda-linux: deps
