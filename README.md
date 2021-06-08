@@ -36,7 +36,7 @@ The CLA project has two backend components:
 
 ## CLA Frontend
 
-For EasyCLA version 2, the various consoles are managed in separate repositories.
+For EasyCLA version 2, all three consoles are hosted in separate repositories.
 
 * [Project Control Center](https://projectadmin.lfx.linuxfoundation.org/) contains all the old v1 Project Console
   capabilities plus many new features. This new console includes not only the EasyCLA components, but also the project
