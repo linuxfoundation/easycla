@@ -3526,6 +3526,7 @@ class GitHubOrgModel(BaseModel):
     organization_company_id = UnicodeAttribute(null=True)
     auto_enabled = BooleanAttribute(null=True)
     branch_protection_enabled = BooleanAttribute(null=True)
+    enabled = BooleanAttribute(null=True)
     note = UnicodeAttribute(null=True)
 
 
@@ -3536,7 +3537,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
 
     def __init__(
             self, organization_name=None, organization_installation_id=None, organization_sfid=None,
-            auto_enabled=False, branch_protection_enabled=False, note=None,
+            auto_enabled=False, branch_protection_enabled=False, note=None, enabled=True
     ):
         super(GitHubOrg).__init__()
         self.model = GitHubOrgModel()
@@ -3548,6 +3549,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
         self.model.auto_enabled = auto_enabled
         self.model.branch_protection_enabled = branch_protection_enabled
         self.model.note = note
+        self.model.enabled = enabled
 
     def __str__(self):
         return (
@@ -3559,6 +3561,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
             f'auto_enabled: {self.model.auto_enabled},'
             f'branch_protection_enabled: {self.model.branch_protection_enabled},'
             f'note: {self.model.note}'
+            f'enabled: {self.model.enabled}'
         )
 
     def to_dict(self):
@@ -3611,6 +3614,9 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
         :rtype: str
         """
         return self.model.note
+    
+    def get_enabled(self):
+        return self.model.enabled
 
     def set_organization_name(self, organization_name):
         self.model.organization_name = organization_name
@@ -3640,6 +3646,9 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
 
     def set_note(self, note):
         self.model.note = note
+    
+    def set_enabled(self, enabled):
+        self.model.enabled = enabled
 
     def get_organization_by_sfid(self, sfid) -> List:
         organization_generator = self.model.organization_sfid_index.query(sfid)

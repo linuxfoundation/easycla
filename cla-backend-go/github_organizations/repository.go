@@ -199,6 +199,9 @@ func (repo repository) GetGithubOrganizations(ctx context.Context, projectSFID s
 	condition := expression.Key("project_sfid").Equal(expression.Value(projectSFID))
 	builder := expression.NewBuilder().WithKeyCondition(condition)
 
+	filter := expression.Name("enabled").Equal(expression.Value(true))
+	builder = builder.WithFilter(filter)
+
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
 	if err != nil {
