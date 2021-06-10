@@ -16,7 +16,7 @@ New **code files** should include a [short-form SPDX ID](https://spdx.org/ids) a
 // SPDX-License-Identifier: MIT
 ```
 
-New **documentation files** should include a [short-form SPDX ID](https://spdx.org/ids) at the top, indicating the project license for code, which is CC-BY-4.0. This should look like the following:
+New **documentation files** should include a [short-form SPDX ID](https://spdx.org/ids) at the top, indicating the project license for documentation, which is CC-BY-4.0. This should look like the following:
 
 ```text
 SPDX-License-Identifier: CC-BY-4.0
