@@ -460,9 +460,10 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 	// These are the keys we want to match for an ICLA Signature with a given CLA Group and User ID
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID)).
 		And(expression.Key("signature_reference_id").Equal(expression.Value(userID)))
-	filter := expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
-		And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+	var filter expression.ConditionBuilder
+	filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
 
 	if approved != nil {
 		filterAdded = true
@@ -573,21 +574,20 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 	// These are the keys we want to match for an CCLA Signature with a given CLA Group and Company ID
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID)).
 		And(expression.Key("signature_reference_id").Equal(expression.Value(companyID)))
-	filter := expression.Name("signature_type").Equal(expression.Value("ccla")).
-		And(expression.Name("signature_reference_type").Equal(expression.Value("company"))).
-		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+	var filter expression.ConditionBuilder
+	filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
 
 	if approved != nil {
 		filterAdded = true
 		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(approved))
-		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
-		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
+		filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved))), &filterAdded)
 	}
 	if signed != nil {
 		filterAdded = true
 		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
-		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
-		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
+		filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed))), &filterAdded)
 	}
 
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
@@ -761,21 +761,20 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 
 	if params.ClaType != nil {
 		if strings.ToLower(*params.ClaType) == utils.ClaTypeICLA {
-			log.WithFields(f).Debugf("adding filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: not exists", utils.SignatureTypeCLA, utils.SignatureReferenceTypeUser)
-			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
-				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
-
+			log.WithFields(f).Debugf("adding ICLA filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: not exists", utils.SignatureTypeCLA, utils.SignatureReferenceTypeUser)
+			filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
 		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeECLA {
-			log.WithFields(f).Debugf("adding filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: exists", utils.SignatureTypeCLA, utils.SignatureReferenceTypeUser)
-			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
-				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-				And(expression.Name("signature_user_ccla_company_id").AttributeExists())
+			log.WithFields(f).Debugf("adding ECLA filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: exists", utils.SignatureTypeCLA, utils.SignatureReferenceTypeUser)
+			filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeExists(), &filterAdded)
 		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeCCLA {
-			log.WithFields(f).Debugf("adding filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: not exists", utils.SignatureTypeCCLA, utils.SignatureReferenceTypeCompany)
-			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)).
-				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany))).
-				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+			log.WithFields(f).Debugf("adding CCLA filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: not exists", utils.SignatureTypeCCLA, utils.SignatureReferenceTypeCompany)
+			filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
 		}
 	} else {
 		if params.SearchField != nil {
@@ -818,27 +817,24 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 	}
 
 	if params.Approved != nil {
-		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(params.Approved))
-		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved)))
+		log.WithFields(f).Debugf("adding signature_approved: %t filter", aws.BoolValue(params.Approved))
+		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(params.Approved))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
 	if params.Signed != nil {
-		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(params.Signed))
-		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed)))
+		log.WithFields(f).Debugf("adding signature_signed: %t filter", aws.BoolValue(params.Signed))
+		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(params.Signed))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
 
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
 	if params.Approved == nil && params.Signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
-		log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
-		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(true)).
-			And(expression.Name("signature_signed").Equal(expression.Value(true)))
-		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
+		log.WithFields(f).Debug("adding signature_approved: true and signature_signed: true filters")
+		filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+		filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
 
-	log.WithFields(f).Debugf("filterAdded: %t", filterAdded)
 	if filterAdded {
-		log.WithFields(f).Debugf("filter: %+v", filter)
 		builder = builder.WithFilter(filter)
 	}
 
@@ -883,6 +879,7 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 				params.ProjectID, errQuery)
 			return nil, errQuery
 		}
+		log.WithFields(f).Debugf("returned %d results", len(results.Items))
 
 		// Convert the list of DB models to a list of response models
 		signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, params.ProjectID, LoadACLDetails)
@@ -895,7 +892,6 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		// Add to the signatures response model to the list
 		sigs = append(sigs, signatureList...)
 
-		//log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey)
 		if results.LastEvaluatedKey["signature_id"] != nil {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
@@ -935,6 +931,7 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		log.WithFields(f).Debugf("lastEvaluatedKey encoded is: %s", encodedString)
 	}
 
+	log.WithFields(f).Debugf("returning %d signatures for CLA Group ID: %s", len(sigs), params.ProjectID)
 	return &models.Signatures{
 		ProjectID:      params.ProjectID,
 		ResultCount:    int64(len(sigs)),
@@ -983,18 +980,20 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 	if params.ClaType != nil {
 		filterAdded = true
 		if strings.ToLower(*params.ClaType) == utils.ClaTypeICLA {
-			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
-				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
-
+			log.WithFields(f).Debugf("adding ICLA filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: not exists", utils.SignatureTypeCLA, utils.SignatureReferenceTypeUser)
+			filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
 		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeECLA {
-			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
-				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-				And(expression.Name("signature_user_ccla_company_id").AttributeExists())
+			log.WithFields(f).Debugf("adding ECLA filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: exists", utils.SignatureTypeCLA, utils.SignatureReferenceTypeUser)
+			filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeExists(), &filterAdded)
 		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeCCLA {
-			filter = expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)).
-				And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany))).
-				And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+			log.WithFields(f).Debugf("adding CCLA filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: not exists", utils.SignatureTypeCCLA, utils.SignatureReferenceTypeCompany)
+			filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
 		}
 	} else {
 		if params.SearchField != nil {
@@ -1226,8 +1225,10 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 	//condition := expression.Key("signature_project_id").Equal(expression.Value(projectID))
 	condition := expression.Key("signature_project_id").Equal(expression.Value(projectID)).
 		And(expression.Key("signature_reference_id").Equal(expression.Value(companyID)))
-	filter := expression.Name("signature_type").Equal(expression.Value("ccla")).
-		And(expression.Name("signature_reference_type").Equal(expression.Value("company")))
+	var filter expression.ConditionBuilder
+	filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
 
 	if approved != nil {
 		filterAdded = true
@@ -1505,18 +1506,22 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	// This is the keys we want to match
 	condition := expression.Key("signature_user_ccla_company_id").Equal(expression.Value(params.CompanyID)).And(
 		expression.Key("signature_project_id").Equal(expression.Value(params.ProjectID)))
+
+	var filterAdded bool
+	var filter expression.ConditionBuilder
+
 	// Check for approved signatures
-	filter := expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true))).
-		And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true))))
+	filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 
 	if criteria != nil && criteria.GitHubUsername != "" {
 		log.WithFields(f).Debugf("adding Githubusername criteria filter for :%s ", criteria.GitHubUsername)
-		filter = filter.And(expression.Name("user_github_username").Equal(expression.Value(criteria.GitHubUsername)))
+		filter = addAndCondition(filter, expression.Name("user_github_username").Equal(expression.Value(criteria.GitHubUsername)), &filterAdded)
 	}
 
 	if criteria != nil && criteria.UserEmail != "" {
 		log.WithFields(f).Debugf("adding useremail criteria filter for : %s ", criteria.UserEmail)
-		filter = filter.And(expression.Name("user_email").Equal(expression.Value(criteria.UserEmail)))
+		filter = addAndCondition(filter, expression.Name("user_email").Equal(expression.Value(criteria.UserEmail)), &filterAdded)
 	}
 
 	// Use the nice builder to create the expression
@@ -1630,12 +1635,13 @@ func (repo repository) GetCompanySignatures(ctx context.Context, params signatur
 	// This is the keys we want to match
 	condition := expression.Key("signature_reference_id").Equal(expression.Value(params.CompanyID))
 
-	// Check for approved signatures
-	filter := expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true))).
-		And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true))))
+	var filterAdded bool
+	var filter expression.ConditionBuilder
+	filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 
 	if params.SignatureType != nil {
-		filter = filter.And(expression.Name("signature_type").Equal(expression.Value(*params.SignatureType)))
+		filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(*params.SignatureType)), &filterAdded)
 	}
 
 	// Use the nice builder to create the expression
@@ -1754,10 +1760,16 @@ func (repo repository) GetCompanyIDsWithSignedCorporateSignatures(ctx context.Co
 
 	// These are the keys we want to match
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
-	filter := expression.Name("signature_type").Equal(expression.Value("ccla")).
-		And(expression.Name("signature_reference_type").Equal(expression.Value("company"))).
-		And(expression.Name("signature_signed").Equal(expression.Value(aws.Bool(true)))).
-		And(expression.Name("signature_approved").Equal(expression.Value(aws.Bool(true))))
+
+	var filterAdded bool
+	var filter expression.ConditionBuilder
+
+	filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
+	// Check for approved signatures
+	filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 
 	// Batch size
 	limit := int64(100)
@@ -2958,11 +2970,13 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		"searchTerm":     utils.StringValue(searchTerm),
 	}
 
-	var filterAdded bool
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
-	filter := expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)).
-		And(expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser))).
-		And(expression.Name("signature_user_ccla_company_id").AttributeNotExists())
+
+	var filter expression.ConditionBuilder
+	var filterAdded bool
+	filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
 
 	if approved != nil {
 		f["approved"] = utils.BoolValue(approved)

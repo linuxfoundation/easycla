@@ -458,15 +458,29 @@ func (s *service) loadMetrics(ctx context.Context, f logrus.Fields, responseMode
 
 	for idx, responseEntry := range responseModel.List {
 		go func(index int, responseEntry *models.ClaGroupSummary) {
-			log.WithFields(f).Debugf("fetching project signature metrics for CLA Group (%d): %s - %s", index, responseEntry.ClaGroupID, responseEntry.ClaGroupName)
-			iclaSignatureDetails, err := s.signatureService.GetProjectSignatures(ctx, signatures.GetProjectSignaturesParams{ProjectID: responseEntry.ClaGroupID, ClaType: aws.String(utils.ClaTypeICLA), SignatureType: aws.String(utils.SignatureTypeCLA)})
+			log.WithFields(f).Debugf("loading project signature metrics for CLA Group (idx:%d): %s - %s", index, responseEntry.ClaGroupID, responseEntry.ClaGroupName)
+			iclaSignatureDetails, err := s.signatureService.GetProjectSignatures(ctx,
+				signatures.GetProjectSignaturesParams{
+					Approved:  utils.Bool(true),
+					ClaType:   aws.String(utils.ClaTypeICLA),
+					ProjectID: responseEntry.ClaGroupID,
+					Signed:    utils.Bool(true),
+				},
+			)
 			if err != nil {
-				log.WithFields(f).Warnf("error while getting ICLA Signature using cla group ID %s Error: %v", responseEntry.ClaGroupID, err)
+				log.WithFields(f).WithError(err).Warnf("error while getting ICLA Signature using CLA Group ID %s Error: %v", responseEntry.ClaGroupID, err)
 			}
 
-			cclaSignatureDetails, err := s.signatureService.GetProjectSignatures(ctx, signatures.GetProjectSignaturesParams{ProjectID: responseEntry.ClaGroupID, ClaType: aws.String(utils.ClaTypeCCLA), SignatureType: aws.String(utils.SignatureTypeCCLA)})
+			cclaSignatureDetails, err := s.signatureService.GetProjectSignatures(ctx,
+				signatures.GetProjectSignaturesParams{
+					Approved:  utils.Bool(true),
+					ProjectID: responseEntry.ClaGroupID,
+					ClaType:   aws.String(utils.ClaTypeCCLA),
+					Signed:    utils.Bool(true),
+				},
+			)
 			if err != nil {
-				log.WithFields(f).Warnf("error while getting ICLA Signature using cla group ID %s Error: %v", responseEntry.ClaGroupID, err)
+				log.WithFields(f).WithError(err).Warnf("error while getting ICLA Signature using CLA Group ID %s Error: %v", responseEntry.ClaGroupID, err)
 			}
 
 			metricsResultChannel <- &MetricsResult{
@@ -482,6 +496,7 @@ func (s *service) loadMetrics(ctx context.Context, f logrus.Fields, responseMode
 	for range responseModel.List {
 		select {
 		case response := <-metricsResultChannel:
+			log.WithFields(f).Debugf("Signature Metrics: CCLA Signatures: %d, ICLA Signatures: %d", response.cclaSignatureCount, response.iclaSignatureCount)
 			responseModel.List[response.index].TotalSignatures = response.cclaSignatureCount + response.iclaSignatureCount
 		case <-ctx.Done():
 			log.WithError(ctx.Err()).Warnf("waiting for metrics failed with timeout")
