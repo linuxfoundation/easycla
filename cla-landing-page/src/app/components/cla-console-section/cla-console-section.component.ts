@@ -11,10 +11,11 @@ import { LandingPageService } from 'src/app/service/landing-page.service';
 import { environment } from 'src/environments/environment';
 
 declare let process: any;
+
 @Component({
   selector: 'app-cla-console-section',
   templateUrl: './cla-console-section.component.html',
-  styleUrls: ['./cla-console-section.component.scss']
+  styleUrls: ['./cla-console-section.component.scss'],
 })
 export class ClaConsoleSectionComponent implements OnInit {
   @Input() consoleMetadata: any;
@@ -32,7 +33,7 @@ export class ClaConsoleSectionComponent implements OnInit {
     private storageService: StorageService,
     private router: ActivatedRoute,
     private modalService: NgbModal,
-    private landingPageService: LandingPageService
+    private landingPageService: LandingPageService,
   ) {
     if (!this.landingPageService.hasEventInitilize) {
       this.landingPageService.hasEventInitilize = true;
@@ -51,7 +52,7 @@ export class ClaConsoleSectionComponent implements OnInit {
     this.version = this.router.snapshot.queryParamMap.get('version');
     const element: any = document.getElementById('lfx-header');
     let projectConsoleUrl = EnvConfig.default[AppSettings.PROJECT_CONSOLE_LINK] + '#/login';
-    let corporateConsoleUrl = EnvConfig.default[AppSettings.CORPORATE_CONSOLE_LINK] + '#/login'
+    let corporateConsoleUrl = EnvConfig.default[AppSettings.CORPORATE_CONSOLE_LINK] + '#/login';
     if (this.version === '2') {
       // Set redirect URL to new V2 console.
       projectConsoleUrl = EnvConfig.default[AppSettings.PROJECT_CONSOLE_LINK_V2];
@@ -60,16 +61,16 @@ export class ClaConsoleSectionComponent implements OnInit {
     this.links = [
       {
         title: 'Project Login',
-        emit: "project-login-event"
+        emit: 'project-login-event',
       },
       {
         title: 'CLA Manager Login',
-        emit: "corporate-login-event"
+        emit: 'corporate-login-event',
       },
       {
         title: 'Developer',
-        url: AppSettings.CONTRIBUTORS_LEARN_MORE
-      }
+        url: AppSettings.CONTRIBUTORS_LEARN_MORE,
+      },
     ];
     element.links = this.links;
   }
@@ -92,12 +93,8 @@ export class ClaConsoleSectionComponent implements OnInit {
     this.modelRef = this.modalService.open(this.versionModal, {
       centered: true,
       backdrop: 'static',
-      keyboard: false
+      keyboard: false,
     });
-  }
-
-  onClickRequestAccess() {
-    window.open(AppSettings.REQUEST_ACCESS_LINK, '_blank');
   }
 
   onClickLearnMore() {
@@ -110,7 +107,7 @@ export class ClaConsoleSectionComponent implements OnInit {
 
   onClickVersionProceed() {
     if (this.selectedVersion === '') {
-      this.error = 'Please select a EasyCLA Version.'
+      this.error = 'Please select a EasyCLA Version.';
     } else {
       this.redirectAsPerTypeAndVersion(this.consoleType, this.selectedVersion);
     }
@@ -118,7 +115,7 @@ export class ClaConsoleSectionComponent implements OnInit {
 
   redirectAsPerTypeAndVersion(type: string, version: string) {
     let projectConsoleUrl = EnvConfig.default[AppSettings.PROJECT_CONSOLE_LINK] + '#/login';
-    let corporateConsoleUrl = EnvConfig.default[AppSettings.CORPORATE_CONSOLE_LINK] + '#/login'
+    let corporateConsoleUrl = EnvConfig.default[AppSettings.CORPORATE_CONSOLE_LINK] + '#/login';
 
     if (version === '2') {
       projectConsoleUrl = EnvConfig.default[AppSettings.PROJECT_CONSOLE_LINK_V2];
