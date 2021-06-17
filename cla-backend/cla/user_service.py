@@ -6,7 +6,6 @@ import os
 from typing import List
 from urllib.parse import quote
 
-
 import requests
 
 import cla
@@ -33,7 +32,7 @@ class UserServiceInstance:
         Queries the platform user service for the specified user id. The
         result will return all the details for the user as a dictionary.
         """
-        fn = 'user_service.get_user_by_sf_id'
+        fn = 'cla.user_service.get_user_by_sf_id'
 
         headers = {
             'Authorization': f'bearer {self.get_access_token()}',
@@ -58,7 +57,7 @@ class UserServiceInstance:
         The result will return summary information for the users as a
         dictionary.
         """
-        fn = 'user_service._get_users_by_key_value'
+        fn = 'cla.user_service._get_users_by_key_value'
 
         headers = {
             'Authorization': f'bearer {self.get_access_token()}',
@@ -102,7 +101,7 @@ class UserServiceInstance:
 
     def get_users_by_email(self, email: str) -> List[dict]:
         return self._get_users_by_key_value("email", email)
-    
+
     def has_role(self, username: str, role: str, organization_id: str, cla_group_id: str) -> bool:
         """
         Function that checks whether lf user has a role
@@ -117,7 +116,7 @@ class UserServiceInstance:
         :rtype: bool
         """
         scopes = {}
-        function = 'has_role'
+        function = 'cla.user_service.has_role'
         scopes = self._list_org_user_scopes(organization_id, role)
         if scopes:
             log.info(f'{function} - Found scopes : {scopes} for organization: {organization_id}')
@@ -144,7 +143,7 @@ class UserServiceInstance:
 
         log.info(f'{function} - {username} does not have role scope')
         return False
-    
+
     def _has_project_org_scope(self, project_sfid: str, organization_id: str, username: str, scopes: dict) -> bool:
         """
         Helper function that checks whether there exists project_org_scope for given role
@@ -158,22 +157,25 @@ class UserServiceInstance:
         :type scopes: dict
         :rtype: bool
         """
-        function = '_has_project_org_scope_role'
+        function = 'cla.user_service._has_project_org_scope_role'
         try:
             user_roles = scopes['userroles']
-            log.info(f'{function} - User roles: {user_roles}')
+            log.info(f'{function} - User roles for user: \'{username}\' are: {user_roles}')
         except KeyError as err:
-            log.warning(f'{function} - error: {err} ')
+            log.info(f'{function} - user: \'{username}\' scope does not have \'userroles\', error: {err} '
+                     f'Returning False.')
             return False
+
+        # For each user role assigned to the user...
         for user_role in user_roles:
+            # If the username matches...
             if user_role['Contact']['Username'] == username:
-                #Since already filtered by role ...get first item
+                # Since already filtered by role ...get first item
                 for scope in user_role['RoleScopes'][0]['Scopes']:
                     log.info(f'{function}- Checking objectID for scope: {project_sfid}|{organization_id}')
                     if scope['ObjectID'] == f'{project_sfid}|{organization_id}':
                         return True
         return False
-
 
     def _list_org_user_scopes(self, organization_id: str, role: str) -> dict:
         """
@@ -182,12 +184,10 @@ class UserServiceInstance:
         :type organization_id: string
         :param role: role to filter the user org scopes
         :type role: string
-        :param cla_group_id: cla_group_id thats mapped to salesforce projects
-        :type cla_group_id: string
         :return: json dict representing org user role scopes
         :rtype: dict
         """
-        function = '_list_org_user_scopes'
+        function = 'cla.user_service._list_org_user_scopes'
         headers = {
             'Authorization': f'bearer {self.get_access_token()}',
             'accept': 'application/json'
@@ -199,11 +199,12 @@ class UserServiceInstance:
             r = requests.get(url, headers=headers, params=params)
             return r.json()
         except requests.exceptions.HTTPError as err:
-            log.warning('%s - Could not get user org scopes for organization: %s with role: %s , error: %s ', function, organization_id, role, err)
+            log.warning('%s - Could not get user org scopes for organization: %s with role: %s , error: %s ', function,
+                        organization_id, role, err)
             return None
 
     def get_access_token(self):
-        fn = 'user_service.get_access_token'
+        fn = 'cla.user_service.get_access_token'
         # Use previously cached value, if not expired
         if self.access_token and datetime.datetime.now() < self.access_token_expires:
             cla.log.debug(f'{fn} - using cached access token: {self.access_token[0:10]}...')
