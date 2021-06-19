@@ -21,6 +21,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	psproject "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/client/project"
+	v2ProjectServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/models"
 
 	"github.com/sirupsen/logrus"
 )
@@ -221,9 +222,22 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 		return err
 	}
 
+	foundationProjectSummary, err := psc.GetSummary(foundationSFID)
+	if err != nil {
+		log.WithFields(f).Warnf("validation failure - problem fetching project details from project service, error: %+v", err)
+		return err
+	}
+
+	// build Tree that tracks parent and child projects
+	projectTree, err := buildProjectTree(foundationProjectSummary)
+	if err != nil {
+		log.WithFields(f).Warnf("unable to process project summary :%+v ", foundationProjectSummary)
+		return err
+	}
+
 	// Is our parent the LF project?
 	log.WithFields(f).Debugf("looking up LF parent project record...")
-	isLFParent, err := psc.IsTheLinuxFoundation(foundationProjectDetails.Parent)
+	isLFParent, err := psc.IsTheLinuxFoundation(projectTree.Parent.ID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup %s or %s project", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return err
@@ -235,7 +249,7 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 			return err
 		}
 
-		if foundationProjectDetails.Parent != "" && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
+		if projectTree.Parent != nil && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
 			msg := fmt.Sprintf("input validation failure - foundationSFID: %s , foundationType: %s , projectSFID: %s , projectType: %s ",
 				foundationProjectDetails.Parent, foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
 			log.WithFields(f).Warnf(msg)
@@ -245,26 +259,12 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 	}
 
 	// Check to see if all the provided enrolled projects are part of this foundation
-	foundationProjectIDList := utils.NewStringSet()
-	for _, pr := range foundationProjectDetails.Projects {
-		foundationProjectIDList.Add(pr.ID)
-	}
-	invalidProjectSFIDs := utils.NewStringSet()
-	for _, projectSFID := range projectSFIDList {
-		// Ok to have foundation ID in the project list - this means it's a Foundation Level CLA Group
-		if foundationSFID == projectSFID {
-			continue
-		}
 
-		// If the input/provided project ID is not in the SF project list...
-		if !foundationProjectIDList.Include(projectSFID) {
-			invalidProjectSFIDs.Add(projectSFID)
-		}
-	}
+	exists := projectsExist(projectTree, projectSFIDList)
 
-	if invalidProjectSFIDs.Length() != 0 {
-		log.WithFields(f).Warnf("validation failure - provided projects are not under the SF foundation: %+v", invalidProjectSFIDs.List())
-		return fmt.Errorf("bad request: invalid project_sfid: %+v. One or more provided projects are not under the SF foundation", invalidProjectSFIDs.List())
+	if !exists {
+		log.WithFields(f).Warnf("validation failure - provided projects are not under the SF foundation: %+v", projectTree)
+		return fmt.Errorf("bad request: invalid project_sfid: %+v. One or more provided projects are not under the SF foundation", projectTree)
 	}
 
 	// check if projects are not already enabled
@@ -276,7 +276,8 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 	for _, pr := range enabledProjects {
 		enabledProjectList.Add(pr.ProjectSFID)
 	}
-	invalidProjectSFIDs = utils.NewStringSet()
+
+	invalidProjectSFIDs := utils.NewStringSet()
 	for _, projectSFID := range projectSFIDList {
 		// Ok to have foundation ID in the project list - no need to check if it's already in the sub-project enabled list
 		if foundationSFID == projectSFID {
@@ -323,6 +324,19 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 		return err
 	}
 
+	foundationProjectSummary, err := psc.GetSummary(foundationSFID)
+	if err != nil {
+		log.WithFields(f).Warnf("validation failure - problem fetching project details from project service, error: %+v", err)
+		return err
+	}
+
+	// build Tree that tracks parent and child projects
+	projectTree, err := buildProjectTree(foundationProjectSummary)
+	if err != nil {
+		log.WithFields(f).Warnf("unable to process project summary :%+v ", foundationProjectSummary)
+		return err
+	}
+
 	// Is our parent the LF project?
 	log.WithFields(f).Debugf("looking up LF parent project record...")
 	isLFParent, err := psc.IsTheLinuxFoundation(foundationProjectDetails.Parent)
@@ -353,26 +367,11 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 	} */
 
 	// Check to see if all the provided enrolled projects are part of this foundation
-	foundationProjectIDList := utils.NewStringSet()
-	for _, pr := range foundationProjectDetails.Projects {
-		foundationProjectIDList.Add(pr.ID)
-	}
-	invalidProjectSFIDs := utils.NewStringSet()
-	for _, projectSFID := range projectSFIDList {
-		// Ok to have foundation ID in the project list - this means it's a Foundation Level CLA Group
-		if foundationSFID == projectSFID {
-			continue
-		}
+	exists := projectsExist(projectTree, projectSFIDList)
 
-		// If the input/provided project ID is not in the SF project list...
-		if !foundationProjectIDList.Include(projectSFID) {
-			invalidProjectSFIDs.Add(projectSFID)
-		}
-	}
-
-	if invalidProjectSFIDs.Length() != 0 {
-		log.WithFields(f).Warnf("validation failure - provided projects are not under the SF foundation: %+v", invalidProjectSFIDs.List())
-		return fmt.Errorf("bad request: invalid project_sfid: %+v. One or more of the provided projects are not under the SF foundation", invalidProjectSFIDs.List())
+	if !exists {
+		log.WithFields(f).Warnf("validation failure - provided projects are not under the SF foundation: %+v", projectTree)
+		return fmt.Errorf("bad request: invalid project_sfid: %+v. One or more provided projects are not under the SF foundation", projectTree)
 	}
 
 	// check if projects are already enrolled/enabled
@@ -384,7 +383,7 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 	for _, pr := range enabledProjects {
 		enabledProjectList.Add(pr.ProjectSFID)
 	}
-	invalidProjectSFIDs = utils.NewStringSet()
+	invalidProjectSFIDs := utils.NewStringSet()
 	for _, projectSFID := range projectSFIDList {
 		// Ok to have foundation ID in the project list - no need to check if it's already in the sub-project enabled list
 		if foundationSFID == projectSFID {
@@ -727,4 +726,92 @@ func getUniqueCLAGroupIDs(projectCLAGroupMappings []*projects_cla_groups.Project
 	}
 
 	return keys
+}
+
+// buildTree helper function that builds tree based on nessted Projects
+func buildProjectTree(projectSummaryList []*v2ProjectServiceModels.ProjectSummary) (*ProjectNode, error) {
+	f := logrus.Fields{
+		"functionName": "v2.cla_groups.helpers.buildTree",
+	}
+
+	log.WithFields(f).Debugf("Building project summary tree for : %+v ...", projectSummaryList)
+	var root ProjectNode
+
+	if len(projectSummaryList) == 0 {
+		msg := "project summary list is empty"
+		log.WithFields(f).Debugf(msg)
+		return nil, errors.New(msg)
+	}
+	projectSummary := projectSummaryList[0]
+	// Get ParentProject ID
+	parentProjectID, err := v2ProjectService.GetClient().GetParentProject(projectSummary.ID)
+	if err != nil {
+		log.WithFields(f).Debugf("unable to get parent project for : %s ", projectSummary.ID)
+	}
+
+	// Use Parent as root for projects to help in validation checks for enrolling / unenrolling
+	root = ProjectNode{
+		Parent: nil,
+		ID:     parentProjectID,
+		Children: []*ProjectNode{{
+			ID:   projectSummary.ID,
+			Name: projectSummary.Name,
+		}},
+	}
+
+	// Aggregate projects
+	for _, summary := range projectSummaryList {
+		for _, child := range root.Children {
+			child.addChildren(summary)
+		}
+	}
+
+	return &root, nil
+}
+
+func (n *ProjectNode) addChildren(summary *v2ProjectServiceModels.ProjectSummary) {
+	f := logrus.Fields{
+		"functionName": "v2.cla_groups.helpers.addChidlren",
+	}
+
+	log.WithFields(f).Debugf("Agrregating children for %+v ...", summary)
+	for _, subProject := range summary.Projects {
+		child := &ProjectNode{
+			Parent: n,
+			ID:     subProject.ID,
+			Name:   subProject.Name,
+		}
+		n.Children = append(n.Children, child)
+		log.WithFields(f).Debugf("added child : %+v ", child)
+	}
+}
+
+// findByID searches for given projectSFID recursively using DFS algorithm
+func findByID(node *ProjectNode, projectSFID string) *ProjectNode {
+	f := logrus.Fields{
+		"functionName": "v2.cla_groups.helpers.fundByID",
+	}
+	log.WithFields(f).Debugf("searching for :%s ...", projectSFID)
+	if node.ID == projectSFID {
+		return node
+	}
+
+	if len(node.Children) > 0 {
+		for _, child := range node.Children {
+			findByID(child, projectSFID)
+		}
+	}
+
+	return nil
+}
+
+// projectsExist searches for given list of projects in foundation items
+func projectsExist(node *ProjectNode, projectSFIDs []string) bool {
+	for _, projectSFID := range projectSFIDs {
+		found := findByID(node, projectSFID)
+		if found == nil {
+			return false
+		}
+	}
+	return true
 }

@@ -38,3 +38,11 @@ type UnassociateCLAGroupWithProjectsModel struct {
 	FoundationSFID  string
 	ProjectSFIDList []string
 }
+
+// ProjectNode representing nested projects
+type ProjectNode struct {
+	Parent   *ProjectNode
+	ID       string
+	Name     string
+	Children []*ProjectNode
+}

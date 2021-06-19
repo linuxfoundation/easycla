@@ -324,3 +324,36 @@ func (pmm *Client) DisableCLA(projectSFID string) error {
 	}
 	return pmm.updateEnabledServices(projectSFID, newEnabledServices, clientAuth)
 }
+
+//GetSummary gets projects tree heirachy and project details
+func (pmm *Client) GetSummary(projectSFID string) ([]*models.ProjectSummary, error) {
+	f := logrus.Fields{
+		"functionName": "v2.project-service.client.Summary",
+		"projectID":    projectSFID,
+	}
+
+	tok, err := token.GetToken()
+	if err != nil {
+		return nil, err
+	}
+
+	clientAuth := runtimeClient.BearerToken(tok)
+
+	filter := fmt.Sprintf("id eq %s", projectSFID)
+	log.WithFields(f).Debugf("Getting project summary for :%s ", projectSFID)
+	view := "pcc"
+
+	params := &project.GetSummaryParams{
+		DollarFilter: &filter,
+		View:         &view,
+	}
+
+	result, err := pmm.cl.Project.GetSummary(params, clientAuth)
+
+	if err != nil {
+		log.WithFields(f).Debugf("unable to query project summary for : %s , error: %+v ", projectSFID, err)
+		return nil, err
+	}
+
+	return result.Payload.Data, nil
+}
