@@ -523,9 +523,9 @@ func buildApprovalListSummary(approvalListChanges *models.ApprovalList) string {
 	approvalListSummary += appendList(approvalListChanges.RemoveEmailApprovalList, "Removed Email:")
 	approvalListSummary += appendList(approvalListChanges.AddDomainApprovalList, "Added Domain:")
 	approvalListSummary += appendList(approvalListChanges.RemoveDomainApprovalList, "Removed Domain:")
-	approvalListSummary += appendList(approvalListChanges.AddGithubUsernameApprovalList, "Added GithHub User:")
+	approvalListSummary += appendList(approvalListChanges.AddGithubUsernameApprovalList, "Added GitHub User:")
 	approvalListSummary += appendList(approvalListChanges.RemoveGithubUsernameApprovalList, "Removed GitHub User:")
-	approvalListSummary += appendList(approvalListChanges.AddGithubOrgApprovalList, "Added GithHub Organization:")
+	approvalListSummary += appendList(approvalListChanges.AddGithubOrgApprovalList, "Added GitHub Organization:")
 	approvalListSummary += appendList(approvalListChanges.RemoveGithubOrgApprovalList, "Removed GitHub Organization:")
 	approvalListSummary += "</ul>"
 	return approvalListSummary
