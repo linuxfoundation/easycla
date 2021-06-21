@@ -4,6 +4,9 @@
 package tests
 
 import (
+	"os"
+	"testing"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/communitybridge/easycla/cla-backend-go/config"
@@ -11,8 +14,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"testing"
 )
 
 var functionalTestEnabled = false

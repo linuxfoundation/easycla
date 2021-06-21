@@ -7,8 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
