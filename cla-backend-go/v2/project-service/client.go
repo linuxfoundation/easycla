@@ -4,6 +4,7 @@
 package project_service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -106,11 +107,12 @@ func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed
 }
 
 // GetProjectByName returns project details for the associated project name
-func (pmm *Client) GetProjectByName(projectName string) (*models.ProjectListSearch, error) {
+func (pmm *Client) GetProjectByName(ctx context.Context, projectName string) (*models.ProjectListSearch, error) {
 	f := logrus.Fields{
-		"functionName": "v2.project-service.client.GetProjectByName",
-		"projectName":  projectName,
-		"apiGWHost":    apiGWHost,
+		"functionName":   "v2.project-service.client.GetProjectByName",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectName":    projectName,
+		"apiGWHost":      apiGWHost,
 	}
 	tok, err := token.GetToken()
 	if err != nil {
@@ -120,7 +122,8 @@ func (pmm *Client) GetProjectByName(projectName string) (*models.ProjectListSear
 
 	clientAuth := runtimeClient.BearerToken(tok)
 	result, err := pmm.cl.Project.SearchProjects(&project.SearchProjectsParams{
-		Name: []string{projectName},
+		Name:    []string{projectName},
+		Context: ctx,
 	}, clientAuth)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warning("problem searching projects by name")
@@ -227,11 +230,12 @@ func (pmm *Client) IsParentTheLinuxFoundation(projectSFID string) (bool, error) 
 }
 
 // EnableCLA enables CLA service in project-service
-func (pmm *Client) EnableCLA(projectSFID string) error {
+func (pmm *Client) EnableCLA(ctx context.Context, projectSFID string) error {
 	f := logrus.Fields{
-		"functionName": "v2.project-service.client.EnableCLA",
-		"projectSFID":  projectSFID,
-		"apiGWHost":    apiGWHost,
+		"functionName":   "v2.project-service.client.EnableCLA",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+		"apiGWHost":      apiGWHost,
 	}
 
 	theLF, lookupErr := pmm.IsTheLinuxFoundation(projectSFID)
@@ -267,33 +271,45 @@ func (pmm *Client) EnableCLA(projectSFID string) error {
 
 	enabledServices := projectDetails.EnabledServices
 	enabledServices = append(enabledServices, CLA)
-	return pmm.updateEnabledServices(projectSFID, enabledServices, clientAuth)
+	return pmm.updateEnabledServices(ctx, projectSFID, enabledServices, clientAuth)
 }
 
-func (pmm *Client) updateEnabledServices(projectSFID string, enabledServices []string, clientAuth runtime.ClientAuthInfoWriter) error {
+func (pmm *Client) updateEnabledServices(ctx context.Context, projectSFID string, enabledServices []string, clientAuth runtime.ClientAuthInfoWriter) error {
+	f := logrus.Fields{
+		"functionName":    "v2.project-service.client.updateEnabledServices",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"projectSFID":     projectSFID,
+		"enabledServices": enabledServices,
+		"apiGWHost":       apiGWHost,
+	}
+
 	params := project.NewUpdateProjectParams()
 	params.ProjectID = projectSFID
 	if len(enabledServices) == 0 {
 		enabledServices = append(enabledServices, NA)
 	}
+
 	params.Body = &models.ProjectInput{
 		ProjectCommon: models.ProjectCommon{
 			EnabledServices: enabledServices,
 		},
 	}
+
 	_, err := pmm.cl.Project.UpdateProject(params, clientAuth) //nolint
 	if err != nil {
-		return err
+		log.WithFields(f).WithError(err).Warnf("problem updating project enabled services")
 	}
+
 	return err
 }
 
 // DisableCLA enables CLA service in project-service
-func (pmm *Client) DisableCLA(projectSFID string) error {
+func (pmm *Client) DisableCLA(ctx context.Context, projectSFID string) error {
 	f := logrus.Fields{
-		"functionName": "v2.project-service.client.DisableCLA",
-		"projectSFID":  projectSFID,
-		"apiGWHost":    apiGWHost,
+		"functionName":   "v2.project-service.client.DisableCLA",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+		"apiGWHost":      apiGWHost,
 	}
 
 	tok, err := token.GetToken()
@@ -322,14 +338,15 @@ func (pmm *Client) DisableCLA(projectSFID string) error {
 		// CLA already disabled
 		return nil
 	}
-	return pmm.updateEnabledServices(projectSFID, newEnabledServices, clientAuth)
+	return pmm.updateEnabledServices(ctx, projectSFID, newEnabledServices, clientAuth)
 }
 
-//GetSummary gets projects tree heirachy and project details
-func (pmm *Client) GetSummary(projectSFID string) ([]*models.ProjectSummary, error) {
+//GetSummary gets projects tree hierarchy and project details
+func (pmm *Client) GetSummary(ctx context.Context, projectSFID string) ([]*models.ProjectSummary, error) {
 	f := logrus.Fields{
-		"functionName": "v2.project-service.client.Summary",
-		"projectID":    projectSFID,
+		"functionName":   "v2.project-service.client.Summary",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectID":      projectSFID,
 	}
 
 	tok, err := token.GetToken()
@@ -342,16 +359,24 @@ func (pmm *Client) GetSummary(projectSFID string) ([]*models.ProjectSummary, err
 	filter := fmt.Sprintf("id eq %s", projectSFID)
 	log.WithFields(f).Debugf("Getting project summary for :%s ", projectSFID)
 	view := "pcc"
+	offsetDefault := int64(0)
+	orderByDefault := string("createddate")
+	pageSizeDefault := int64(100)
 
 	params := &project.GetSummaryParams{
 		DollarFilter: &filter,
+		MyProjects:   nil,
+		Offset:       &offsetDefault,
+		OrderBy:      &orderByDefault,
+		PageSize:     &pageSizeDefault,
 		View:         &view,
+		Context:      ctx, // must set for the GetSummary API call, otherwise we get a Err:context.deadlineExceededError{}
 	}
 
 	result, err := pmm.cl.Project.GetSummary(params, clientAuth)
 
 	if err != nil {
-		log.WithFields(f).Debugf("unable to query project summary for : %s , error: %+v ", projectSFID, err)
+		log.WithFields(f).WithError(err).Debugf("unable to query project summary for : %s , error: %+v ", projectSFID, err)
 		return nil, err
 	}
 

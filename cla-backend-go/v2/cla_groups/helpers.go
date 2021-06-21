@@ -222,7 +222,7 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 		return err
 	}
 
-	foundationProjectSummary, err := psc.GetSummary(foundationSFID)
+	foundationProjectSummary, err := psc.GetSummary(ctx, foundationSFID)
 	if err != nil {
 		log.WithFields(f).Warnf("validation failure - problem fetching project details from project service, error: %+v", err)
 		return err
@@ -324,7 +324,7 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 		return err
 	}
 
-	foundationProjectSummary, err := psc.GetSummary(foundationSFID)
+	foundationProjectSummary, err := psc.GetSummary(ctx, foundationSFID)
 	if err != nil {
 		log.WithFields(f).Warnf("validation failure - problem fetching project details from project service, error: %+v", err)
 		return err
@@ -516,7 +516,7 @@ func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, cla
 		go func(psClient *v2ProjectService.Client, claGroupID, projectSFID string) {
 			defer wg.Done()
 			log.WithFields(f).Debugf("enabling project CLA service for project: %s...", projectSFID)
-			enableProjectErr := psClient.EnableCLA(projectSFID)
+			enableProjectErr := psClient.EnableCLA(ctx, projectSFID)
 			if enableProjectErr != nil {
 				log.WithFields(f).WithError(enableProjectErr).Warnf("unable to enable CLA service for project: %s, error: %+v", projectSFID, enableProjectErr)
 				errorList = append(errorList, enableProjectErr)
@@ -543,7 +543,7 @@ func (s *service) EnableCLAService(ctx context.Context, authUser *auth.User, cla
 							log.WithFields(f).Debugf("skipping setting the enabled services on The Linux Foundation parent project(s) for parent project SFID: %s", parentProjectSFID)
 						} else {
 							log.WithFields(f).Debugf("enabling parent project CLA service for project SFID: %s...", parentProjectSFID)
-							enableProjectErr := psClient.EnableCLA(parentProjectSFID)
+							enableProjectErr := psClient.EnableCLA(ctx, parentProjectSFID)
 							if enableProjectErr != nil {
 								log.WithFields(f).WithError(enableProjectErr).Warnf("unable to enable CLA service for project: %s, error: %+v", parentProjectSFID, enableProjectErr)
 								errorList = append(errorList, enableProjectErr)
@@ -598,7 +598,7 @@ func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, cl
 		// Execute as a go routine
 		go func(psClient *v2ProjectService.Client, claGroupID, projectSFID string) {
 			defer wg.Done()
-			disableProjectErr := psClient.DisableCLA(projectSFID)
+			disableProjectErr := psClient.DisableCLA(ctx, projectSFID)
 			if disableProjectErr != nil {
 				log.WithFields(f).WithError(disableProjectErr).
 					Warnf("unable to disable CLA service for project: %s, error: %+v", projectSFID, disableProjectErr)
