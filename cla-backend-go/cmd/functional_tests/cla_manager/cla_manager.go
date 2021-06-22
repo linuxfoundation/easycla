@@ -16,7 +16,7 @@ import (
 var (
 	claManagerToken            string
 	claProspectiveManagerToken string
-	claManagerCreateRequestID  string = "no-set"
+	claManagerCreateRequestID  = "no-set"
 )
 
 const (

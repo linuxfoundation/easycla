@@ -11,11 +11,11 @@ type Service interface { // nolint
 }
 
 type service struct {
-	repo Repository
+	repo RepositoryInterface
 }
 
 // NewService creates a new user service
-func NewService(repo Repository) Service {
+func NewService(repo RepositoryInterface) Service {
 	return service{
 		repo: repo,
 	}

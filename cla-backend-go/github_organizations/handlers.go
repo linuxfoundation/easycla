@@ -22,7 +22,7 @@ import (
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.ClaAPI, service Service, eventService events.Service) {
+func Configure(api *operations.ClaAPI, service ServiceInterface, eventService events.Service) {
 	api.GithubOrganizationsGetProjectGithubOrganizationsHandler = github_organizations.GetProjectGithubOrganizationsHandlerFunc(
 		func(params github_organizations.GetProjectGithubOrganizationsParams, claUser *user.CLAUser) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)

@@ -227,14 +227,15 @@ func (s *service) SignatureSignedEvent(event events.DynamoDBEventRecord) error {
 				}
 			} else {
 				for _, projectCLAGroup := range projectCLAGroups {
+					pcg := projectCLAGroup // make a copy of the loop variable to use in the closure, avoids the loopclosure: loop variable projectCLAGroup captured by func literal lint error
 					eg.Go(func() error {
 						// Remove any roles that were previously assigned for cla-manager-designee
 						log.WithFields(f).Debugf("removing existing %s role for project: '%s' (%s) and company: '%s' (%s)",
-							utils.CLADesigneeRole, projectCLAGroup.ProjectName, projectCLAGroup.ProjectSFID, companyModel.CompanyName, companyModel.CompanyExternalID)
-						err = s.removeCLAPermissionsByProjectOrganizationRole(ctx, projectCLAGroup.ProjectSFID, companyModel.CompanyExternalID, []string{utils.CLADesigneeRole})
+							utils.CLADesigneeRole, pcg.ProjectName, pcg.ProjectSFID, companyModel.CompanyName, companyModel.CompanyExternalID)
+						err = s.removeCLAPermissionsByProjectOrganizationRole(ctx, pcg.ProjectSFID, companyModel.CompanyExternalID, []string{utils.CLADesigneeRole})
 						if err != nil {
 							log.WithFields(f).Warnf("failed to remove %s roles for project: '%s' (%s) and company: '%s' (%s), error: %+v",
-								utils.CLADesigneeRole, projectCLAGroup.ProjectName, projectCLAGroup.ProjectSFID, companyModel.CompanyName, companyModel.CompanyExternalID, err)
+								utils.CLADesigneeRole, pcg.ProjectName, pcg.ProjectSFID, companyModel.CompanyName, companyModel.CompanyExternalID, err)
 							return err
 						}
 

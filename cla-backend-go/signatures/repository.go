@@ -108,13 +108,13 @@ type repository struct {
 	usersRepo          users.UserRepository
 	eventsService      events.Service
 	repositoriesRepo   repositories.Repository
-	ghOrgRepo          github_organizations.Repository
+	ghOrgRepo          github_organizations.RepositoryInterface
 	gerritService      gerrits.Service
 	signatureTableName string
 }
 
 // NewRepository creates a new instance of the whitelist service
-func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service, repositoriesRepo repositories.Repository, ghOrgRepo github_organizations.Repository, gerritService gerrits.Service) SignatureRepository {
+func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service, repositoriesRepo repositories.Repository, ghOrgRepo github_organizations.RepositoryInterface, gerritService gerrits.Service) SignatureRepository {
 	return repository{
 		stage:              stage,
 		dynamoDBClient:     dynamodb.New(awsSession),
@@ -2563,7 +2563,7 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 	}
 
 	// check for signature type (CCLA, ICLA, ECLA)
-	var removalType string = ""
+	var removalType = ""
 
 	// case 1 CCLA
 	if len(iclas) == 0 && len(eclas) == 0 {

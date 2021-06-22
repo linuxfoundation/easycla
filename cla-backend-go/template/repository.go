@@ -35,8 +35,8 @@ var (
 	ASWFStyleTemplateID = "18b8ad08-d7d4-4d75-ad25-30bbfffd59cf"
 )
 
-// Repository interface functions
-type Repository interface {
+// RepositoryInterface interface functions
+type RepositoryInterface interface {
 	GetTemplates(ctx context.Context) ([]models.Template, error)
 	GetTemplate(templateID string) (models.Template, error)
 	CLAGroupTemplateExists(ctx context.Context, templateID string) bool
@@ -45,7 +45,8 @@ type Repository interface {
 	UpdateDynamoContractGroupTemplates(ctx context.Context, ContractGroupID string, template models.Template, pdfUrls models.TemplatePdfs, projectCCLAEnabled, projectICLAEnabled bool) error
 }
 
-type repository struct {
+// Repository object/struct
+type Repository struct {
 	stage          string // The AWS stage (dev, staging, prod)
 	dynamoDBClient *dynamodb.DynamoDB
 }
@@ -98,16 +99,16 @@ type DocumentTab struct {
 	DocumentTabAnchorIgnoreIfNotPresent bool   `json:"document_tab_anchor_ignore_if_not_present"`
 }
 
-// NewRepository creates a new instance of the repository service
-func NewRepository(awsSession *session.Session, stage string) repository {
-	return repository{
+// NewRepository creates a new instance of the Repository service
+func NewRepository(awsSession *session.Session, stage string) Repository {
+	return Repository{
 		stage:          stage,
 		dynamoDBClient: dynamodb.New(awsSession),
 	}
 }
 
 // GetTemplates returns a list containing all the template models
-func (r repository) GetTemplates(ctx context.Context) ([]models.Template, error) {
+func (r Repository) GetTemplates(ctx context.Context) ([]models.Template, error) {
 	f := logrus.Fields{
 		"functionName":   "GetTemplates",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -129,7 +130,7 @@ func (r repository) GetTemplates(ctx context.Context) ([]models.Template, error)
 }
 
 // GetTemplate returns the template based on the template ID
-func (r repository) GetTemplate(templateID string) (models.Template, error) {
+func (r Repository) GetTemplate(templateID string) (models.Template, error) {
 	template, ok := templateMap[templateID]
 	if !ok {
 		return models.Template{}, ErrTemplateNotFound
@@ -139,15 +140,15 @@ func (r repository) GetTemplate(templateID string) (models.Template, error) {
 }
 
 // CLAGroupTemplateExists return true if the specified template ID exists, false otherwise
-func (r repository) CLAGroupTemplateExists(ctx context.Context, templateID string) bool {
+func (r Repository) CLAGroupTemplateExists(ctx context.Context, templateID string) bool {
 	_, ok := templateMap[templateID]
 	return ok
 }
 
 // GetCLAGroup This method belongs in the contract group package. We are leaving it here
-// because it accesses DynamoDB, but the contract group repository is designed
+// because it accesses DynamoDB, but the contract group Repository is designed
 // to connect to postgres
-func (r repository) GetCLAGroup(claGroupID string) (*models.ClaGroup, error) {
+func (r Repository) GetCLAGroup(claGroupID string) (*models.ClaGroup, error) {
 	log.Debugf("GetCLAGroup - claGroupID: %s", claGroupID)
 
 	dbModel, err := r.fetchCLAGroup(claGroupID)
@@ -158,7 +159,7 @@ func (r repository) GetCLAGroup(claGroupID string) (*models.ClaGroup, error) {
 }
 
 // GetCLADocuments fetches the cla documents inside of the CLA Group, it's separate method for perf reasons
-func (r repository) GetCLADocuments(claGroupID string, claType string) ([]models.ClaGroupDocument, error) {
+func (r Repository) GetCLADocuments(claGroupID string, claType string) ([]models.ClaGroupDocument, error) {
 	log.Debugf("GetCLADocuments - claGroupID: %s - claType : %s", claGroupID, claType)
 	dbModel, err := r.fetchCLAGroup(claGroupID)
 	if err != nil {
@@ -179,7 +180,7 @@ func (r repository) GetCLADocuments(claGroupID string, claType string) ([]models
 	return projectDocuments, nil
 }
 
-func (r repository) buildProjectDocuments(dbProjectDocumentModels []DBProjectDocumentModel) []models.ClaGroupDocument {
+func (r Repository) buildProjectDocuments(dbProjectDocumentModels []DBProjectDocumentModel) []models.ClaGroupDocument {
 	if len(dbProjectDocumentModels) == 0 {
 		return nil
 	}
@@ -204,7 +205,7 @@ func (r repository) buildProjectDocuments(dbProjectDocumentModels []DBProjectDoc
 }
 
 // fetchCLAGroup brings back the CLA db model from dynamodb
-func (r repository) fetchCLAGroup(claGroupID string) (*DBProjectModel, error) {
+func (r Repository) fetchCLAGroup(claGroupID string) (*DBProjectModel, error) {
 	var dbModel DBProjectModel
 	tableName := fmt.Sprintf("cla-%s-projects", r.stage)
 
@@ -230,7 +231,7 @@ func (r repository) fetchCLAGroup(claGroupID string) (*DBProjectModel, error) {
 }
 
 // buildProjectModel maps the database model to the API response model
-func (r repository) buildProjectModel(dbModel DBProjectModel) *models.ClaGroup {
+func (r Repository) buildProjectModel(dbModel DBProjectModel) *models.ClaGroup {
 	return &models.ClaGroup{
 		ProjectID:               dbModel.ProjectID,
 		ProjectExternalID:       dbModel.ProjectExternalID,
@@ -246,7 +247,7 @@ func (r repository) buildProjectModel(dbModel DBProjectModel) *models.ClaGroup {
 }
 
 // UpdateDynamoContractGroupTemplates updates the templates in the data store
-func (r repository) UpdateDynamoContractGroupTemplates(ctx context.Context, claGroupID string, template models.Template, pdfUrls models.TemplatePdfs, projectCCLAEnabled, projectICLAEnabled bool) error {
+func (r Repository) UpdateDynamoContractGroupTemplates(ctx context.Context, claGroupID string, template models.Template, pdfUrls models.TemplatePdfs, projectCCLAEnabled, projectICLAEnabled bool) error {
 	f := logrus.Fields{
 		"functionName":   "UpdateDynamoContractGroupTemplates",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),

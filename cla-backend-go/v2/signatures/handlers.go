@@ -40,7 +40,7 @@ import (
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, claGroupService project.Service, projectRepo project.ProjectRepository, companyService company.IService, v1SignatureService signatureService.SignatureService, sessionStore *dynastore.Store, eventsService events.Service, v2service Service, projectClaGroupsRepo projects_cla_groups.Repository) { //nolint
+func Configure(api *operations.EasyclaAPI, claGroupService project.Service, projectRepo project.ProjectRepository, companyService company.IService, v1SignatureService signatureService.SignatureService, sessionStore *dynastore.Store, eventsService events.Service, v2service ServiceInterface, projectClaGroupsRepo projects_cla_groups.Repository) { //nolint
 
 	const problemLoadingCLAGroupByID = "problem loading cla group by ID"
 	const iclaNotSupportedForCLAGroup = "individual contribution is not supported for this project"
@@ -1370,7 +1370,7 @@ func isUserHaveAccessOfSignedSignaturePDF(ctx context.Context, authUser *auth.Us
 	}
 
 	// Corporate signature...we can check the company details
-	if signature.SignatureType == CclaSignatureType {
+	if signature.SignatureType == utils.SignatureTypeCCLA {
 		comp, err := companyService.GetCompany(ctx, signature.SignatureReferenceID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("failed to load company record using signature reference id: %s", signature.SignatureReferenceID)

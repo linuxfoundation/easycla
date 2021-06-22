@@ -34,7 +34,7 @@ linters-settings:
     check-blank: true
   govet:
     check-shadowing: true
-  golint:
+  revive:
     min-confidence: 0
   dupl:
     threshold: 100
@@ -48,7 +48,7 @@ linters-settings:
 linters:
   disable-all: true
   enable:
-    - golint
+    - revive
     - govet
     - errcheck
     - deadcode

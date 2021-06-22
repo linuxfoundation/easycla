@@ -33,8 +33,8 @@ const (
 	claTypeCCLA = "ccla"
 )
 
-// Service interface
-type Service interface {
+// ServiceInterface interface
+type ServiceInterface interface {
 	GetTemplates(ctx context.Context) ([]models.Template, error)
 	CreateCLAGroupTemplate(ctx context.Context, claGroupID string, claGroupFields *models.CreateClaGroupTemplate) (models.TemplatePdfs, error)
 	CreateTemplatePreview(ctx context.Context, claGroupFields *models.CreateClaGroupTemplate, templateFor string) ([]byte, error)
@@ -42,16 +42,17 @@ type Service interface {
 	CLAGroupTemplateExists(ctx context.Context, templateID string) bool
 }
 
-type service struct {
+// Service object/struct
+type Service struct {
 	stage           string // The AWS stage (dev, staging, prod)
-	templateRepo    Repository
+	templateRepo    RepositoryInterface
 	docRaptorClient docraptor.Client
 	s3Client        *s3manager.Uploader
 }
 
 // NewService API call
-func NewService(stage string, templateRepo Repository, docRaptorClient docraptor.Client, awsSession *session.Session) service {
-	return service{
+func NewService(stage string, templateRepo RepositoryInterface, docRaptorClient docraptor.Client, awsSession *session.Session) Service {
+	return Service{
 		stage:           stage,
 		templateRepo:    templateRepo,
 		docRaptorClient: docRaptorClient,
@@ -60,7 +61,7 @@ func NewService(stage string, templateRepo Repository, docRaptorClient docraptor
 }
 
 // GetTemplates API call
-func (s service) GetTemplates(ctx context.Context) ([]models.Template, error) {
+func (s Service) GetTemplates(ctx context.Context) ([]models.Template, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.template.service.GetTemplates",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -82,7 +83,8 @@ func (s service) GetTemplates(ctx context.Context) ([]models.Template, error) {
 	return templates, nil
 }
 
-func (s service) CreateTemplatePreview(ctx context.Context, claGroupFields *models.CreateClaGroupTemplate, templateFor string) ([]byte, error) {
+// CreateTemplatePreview returns a PDF using the specified CLA Group field values and template identifier
+func (s Service) CreateTemplatePreview(ctx context.Context, claGroupFields *models.CreateClaGroupTemplate, templateFor string) ([]byte, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.template.service.CreateTemplatePreview",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -137,7 +139,7 @@ func (s service) CreateTemplatePreview(ctx context.Context, claGroupFields *mode
 }
 
 // CreateCLAGroupTemplate service method
-func (s service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, claGroupFields *models.CreateClaGroupTemplate) (models.TemplatePdfs, error) {
+func (s Service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, claGroupFields *models.CreateClaGroupTemplate) (models.TemplatePdfs, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.template.service.CreateCLAGroupTemplate",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -266,7 +268,8 @@ func (s service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, 
 	return pdfUrls, nil
 }
 
-func (s service) GetCLATemplatePreview(ctx context.Context, claGroupID, claType string, watermark bool) ([]byte, error) {
+// GetCLATemplatePreview returns a preview of the specified CLA Group and CLA type
+func (s Service) GetCLATemplatePreview(ctx context.Context, claGroupID, claType string, watermark bool) ([]byte, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.template.service.GetCLATemplatePreview",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -434,7 +437,7 @@ func getLatestDocument(ctx context.Context, documents []models.ClaGroupDocument)
 }
 
 // InjectProjectInformationIntoTemplate service function
-func (s service) InjectProjectInformationIntoTemplate(template models.Template, metaFields []*models.MetaField) (string, string, error) {
+func (s Service) InjectProjectInformationIntoTemplate(template models.Template, metaFields []*models.MetaField) (string, string, error) {
 	f := logrus.Fields{
 		"functionName": "v1.template.service.InjectProjectInformationIntoTemplate",
 		"templateName": template.Name,
@@ -480,7 +483,7 @@ func (s service) InjectProjectInformationIntoTemplate(template models.Template, 
 }
 
 // generateTemplateS3FilePath helper function to generate a suitable s3 path and filename for the template
-func (s service) generateTemplateS3FilePath(claGroupID, claType string) string {
+func (s Service) generateTemplateS3FilePath(claGroupID, claType string) string {
 	fileNameTemplate := "contract-group/%s/template/%s"
 	var ext string
 	switch claType {
@@ -497,7 +500,7 @@ func (s service) generateTemplateS3FilePath(claGroupID, claType string) string {
 }
 
 // SaveTemplateToS3 uploads the specified template contents to S3 storage
-func (s service) SaveTemplateToS3(bucket, filepath string, template io.ReadCloser) (string, error) {
+func (s Service) SaveTemplateToS3(bucket, filepath string, template io.ReadCloser) (string, error) {
 	f := logrus.Fields{
 		"functionName": "v1.template.service.SaveTemplateToS3",
 		"bucket":       bucket,
@@ -526,6 +529,6 @@ func (s service) SaveTemplateToS3(bucket, filepath string, template io.ReadClose
 }
 
 // CLAGroupTemplateExists return true if the specified template ID exists, false otherwise
-func (s service) CLAGroupTemplateExists(ctx context.Context, templateID string) bool {
+func (s Service) CLAGroupTemplateExists(ctx context.Context, templateID string) bool {
 	return s.templateRepo.CLAGroupTemplateExists(ctx, templateID)
 }

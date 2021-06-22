@@ -58,7 +58,7 @@ type service struct {
 	eventsRepo               claevent.Repository
 	projectRepo              project.ProjectRepository
 	projectService           project.Service
-	githubOrgService         github_organizations.Service
+	githubOrgService         github_organizations.ServiceInterface
 	repositoryService        repositories.Service
 	gerritService            gerrits.Service
 	autoEnableService        *autoEnableServiceProvider
@@ -80,7 +80,7 @@ func NewService(stage string,
 	eventsRepo claevent.Repository,
 	projectRepo project.ProjectRepository,
 	projService project.Service,
-	githubOrgService github_organizations.Service,
+	githubOrgService github_organizations.ServiceInterface,
 	repositoryService repositories.Service,
 	gerritService gerrits.Service,
 	claManagerRequestsRepo cla_manager.IRepository,

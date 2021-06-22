@@ -76,22 +76,24 @@ type UpdateRepoBranchProtectionMutation struct {
 	} `graphql:"updateBranchProtectionRule(input: $input)"`
 }
 
-type branchProtectionRepositoryV4 struct {
+// BranchProtectionRepositoryV4 wraps a v4 github client
+type BranchProtectionRepositoryV4 struct {
 	client *githubv4.Client
 }
 
-// NewBranchProtectionRepositoryV4 creates a new branchProtectionRepositoryV4
-func NewBranchProtectionRepositoryV4(installationID int64) (*branchProtectionRepositoryV4, error) {
+// NewBranchProtectionRepositoryV4 creates a new BranchProtectionRepositoryV4
+func NewBranchProtectionRepositoryV4(installationID int64) (*BranchProtectionRepositoryV4, error) {
 	client, clientErr := github.NewGithubV4AppClient(installationID)
 	if clientErr != nil {
 		return nil, clientErr
 	}
-	return &branchProtectionRepositoryV4{
+	return &BranchProtectionRepositoryV4{
 		client: client,
 	}, nil
 }
 
-func (r *branchProtectionRepositoryV4) GetRepositoryBranchProtections(ctx context.Context, repositoryOwner, repositoryName string) (*RepoBranchProtectionQueryResult, error) {
+// GetRepositoryBranchProtections returns the repository branch protections for the specified repository
+func (r *BranchProtectionRepositoryV4) GetRepositoryBranchProtections(ctx context.Context, repositoryOwner, repositoryName string) (*RepoBranchProtectionQueryResult, error) {
 	var queryResult RepoBranchProtectionQueryResult
 
 	variables := map[string]interface{}{
@@ -107,7 +109,8 @@ func (r *branchProtectionRepositoryV4) GetRepositoryBranchProtections(ctx contex
 	return &queryResult, nil
 }
 
-func (r *branchProtectionRepositoryV4) CreateBranchProtection(ctx context.Context, input *githubv4.CreateBranchProtectionRuleInput) (*CreateRepoBranchProtectionMutation, error) {
+// CreateBranchProtection creates the repository branch protections for the specified repository
+func (r *BranchProtectionRepositoryV4) CreateBranchProtection(ctx context.Context, input *githubv4.CreateBranchProtectionRuleInput) (*CreateRepoBranchProtectionMutation, error) {
 	var createMutationResult CreateRepoBranchProtectionMutation
 	err := r.client.Mutate(ctx, &createMutationResult, *input, nil)
 	if err != nil {
@@ -116,7 +119,8 @@ func (r *branchProtectionRepositoryV4) CreateBranchProtection(ctx context.Contex
 	return &createMutationResult, nil
 }
 
-func (r *branchProtectionRepositoryV4) UpdateBranchProtection(ctx context.Context, input *githubv4.UpdateBranchProtectionRuleInput) (*UpdateRepoBranchProtectionMutation, error) {
+// UpdateBranchProtection updates the repository branch protections for the specified repository
+func (r *BranchProtectionRepositoryV4) UpdateBranchProtection(ctx context.Context, input *githubv4.UpdateBranchProtectionRuleInput) (*UpdateRepoBranchProtectionMutation, error) {
 	var updateMutationResult UpdateRepoBranchProtectionMutation
 	err := r.client.Mutate(ctx, &updateMutationResult, *input, nil)
 	if err != nil {
@@ -126,7 +130,7 @@ func (r *branchProtectionRepositoryV4) UpdateBranchProtection(ctx context.Contex
 }
 
 // GetRepositoryIDFromName when provided the organization and repository name, returns the repository ID
-func (r *branchProtectionRepositoryV4) GetRepositoryIDFromName(ctx context.Context, repositoryOwner, repositoryName string) (string, error) {
+func (r *BranchProtectionRepositoryV4) GetRepositoryIDFromName(ctx context.Context, repositoryOwner, repositoryName string) (string, error) {
 
 	// Define the graphql query
 	//"query": "query{repository(name: \"test1\", owner: \"deal-test-org\") {id}}"
@@ -155,6 +159,5 @@ func (r *branchProtectionRepositoryV4) GetRepositoryIDFromName(ctx context.Conte
 
 // EnableBranchProtectionForPattern enables branch protection for the given branch protection input
 func EnableBranchProtectionForPattern(ctx context.Context, repositoryOwner, repositoryName string, input *BranchProtectionRule) error {
-
 	return nil
 }

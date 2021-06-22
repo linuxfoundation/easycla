@@ -41,7 +41,7 @@ import (
 
 type service struct {
 	v1ProjectService      v1Project.Service
-	v1TemplateService     v1Template.Service
+	v1TemplateService     v1Template.ServiceInterface
 	projectsClaGroupsRepo projects_cla_groups.Repository
 	claManagerRequests    v1ClaManager.IService
 	signatureService      signatureService.SignatureService
@@ -68,7 +68,7 @@ type Service interface {
 }
 
 // NewService returns instance of CLA group service
-func NewService(projectService v1Project.Service, templateService v1Template.Service, projectsClaGroupsRepo projects_cla_groups.Repository, claMangerRequests v1ClaManager.IService, signatureService signatureService.SignatureService, metricsRepo metrics.Repository, gerritService gerrits.Service, repositoriesService repositories.Service, eventsService events.Service) Service {
+func NewService(projectService v1Project.Service, templateService v1Template.ServiceInterface, projectsClaGroupsRepo projects_cla_groups.Repository, claMangerRequests v1ClaManager.IService, signatureService signatureService.SignatureService, metricsRepo metrics.Repository, gerritService gerrits.Service, repositoriesService repositories.Service, eventsService events.Service) Service {
 	return &service{
 		v1ProjectService:      projectService, // aka cla_group service of v1
 		v1TemplateService:     templateService,

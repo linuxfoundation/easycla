@@ -14,7 +14,7 @@ import (
 )
 
 // Configure API call
-func Configure(api *operations.ClaAPI, service Service, eventsService events.Service) {
+func Configure(api *operations.ClaAPI, service ServiceInterface, eventsService events.Service) {
 	// Retrieve a list of available templates
 	api.TemplateGetTemplatesHandler = template.GetTemplatesHandlerFunc(func(params template.GetTemplatesParams, claUser *user.CLAUser) middleware.Responder {
 

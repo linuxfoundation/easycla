@@ -29,7 +29,7 @@ import (
 )
 
 // Configure API call
-func Configure(api *operations.EasyclaAPI, service v1Template.Service, v1ProjectClaGroupService v1ProjectsCLAGroups.Service, eventsService v1Events.Service) {
+func Configure(api *operations.EasyclaAPI, service v1Template.ServiceInterface, v1ProjectClaGroupService v1ProjectsCLAGroups.Service, eventsService v1Events.Service) {
 	// Retrieve a list of available templates
 	api.TemplateGetTemplatesHandler = template.GetTemplatesHandlerFunc(func(params template.GetTemplatesParams, user *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)

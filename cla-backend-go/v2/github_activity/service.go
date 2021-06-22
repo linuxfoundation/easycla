@@ -37,7 +37,7 @@ type Service interface {
 
 type eventHandlerService struct {
 	githubRepo        repositories.Repository
-	githubOrgRepo     v1GithubOrg.Repository
+	githubOrgRepo     v1GithubOrg.RepositoryInterface
 	eventService      events.Service
 	autoEnableService dynamo_events.AutoEnableService
 	emailService      emails.Service
@@ -46,7 +46,7 @@ type eventHandlerService struct {
 
 // NewService creates a new instance of the Event Handler Service
 func NewService(githubRepo repositories.Repository,
-	githubOrgRepo v1GithubOrg.Repository,
+	githubOrgRepo v1GithubOrg.RepositoryInterface,
 	eventService events.Service,
 	autoEnableService dynamo_events.AutoEnableService,
 	emailService emails.Service) Service {
@@ -55,7 +55,7 @@ func NewService(githubRepo repositories.Repository,
 }
 
 func newService(githubRepo repositories.Repository,
-	githubOrgRepo v1GithubOrg.Repository,
+	githubOrgRepo v1GithubOrg.RepositoryInterface,
 	eventService events.Service,
 	autoEnableService dynamo_events.AutoEnableService,
 	emailService emails.Service,

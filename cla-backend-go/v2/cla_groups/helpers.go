@@ -237,10 +237,14 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 
 	// Is our parent the LF project?
 	log.WithFields(f).Debugf("looking up LF parent project record...")
-	isLFParent, err := psc.IsTheLinuxFoundation(projectTree.Parent.ID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup %s or %s project", utils.TheLinuxFoundation, utils.LFProjectsLLC)
-		return err
+	isLFParent := false
+	// if we have a project tree parent ID - check to see if it is one of our root parents
+	if projectTree != nil && projectTree.Parent != nil && projectTree.Parent.ID != "" {
+		isLFParent, err = psc.IsTheLinuxFoundation(projectTree.Parent.ID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup %s or %s project", utils.TheLinuxFoundation, utils.LFProjectsLLC)
+			return err
+		}
 	}
 
 	for _, projectSFID := range projectSFIDList {

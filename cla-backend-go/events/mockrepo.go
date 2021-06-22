@@ -88,7 +88,7 @@ func (repo *mockRepository) LogEventWithContext(ctx context.Context, args *LogEv
 var events []*models.Event
 
 // NewMockRepository creates a new instance of the mock event repository
-func NewMockRepository() *mockRepository {
+func NewMockRepository() *mockRepository { // nolint
 	return &mockRepository{}
 }
 

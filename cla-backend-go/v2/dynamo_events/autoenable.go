@@ -41,7 +41,7 @@ type AutoEnableService interface {
 // NewAutoEnableService creates a new AutoEnableService
 func NewAutoEnableService(repositoryService repositories.Service,
 	githubRepo repositories.Repository,
-	githubOrgRepo github_organizations.Repository,
+	githubOrgRepo github_organizations.RepositoryInterface,
 	claRepository projects_cla_groups.Repository,
 	claService project.Service,
 ) AutoEnableService {
@@ -59,7 +59,7 @@ func NewAutoEnableService(repositoryService repositories.Service,
 type autoEnableServiceProvider struct {
 	repositoryService repositories.Service
 	githubRepo        repositories.Repository
-	githubOrgRepo     github_organizations.Repository
+	githubOrgRepo     github_organizations.RepositoryInterface
 	claRepository     projects_cla_groups.Repository
 	claService        project.Service
 }

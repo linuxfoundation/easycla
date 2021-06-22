@@ -34,30 +34,17 @@ import (
 
 // constants
 const (
-	// used when we want to query all data from dependent service.
-	HugePageSize      = int64(10000)
-	CclaSignatureType = "ccla"
-	ClaSignatureType  = "cla"
+	// HugePageSize constant for querying signatures
+	HugePageSize = int64(10000)
 )
 
-// errors
 var (
+	// ErrZipNotPresent error
 	ErrZipNotPresent = errors.New("zip file not present")
 )
 
-type service struct {
-	v1ProjectService      project.Service
-	v1CompanyService      company.IService
-	v1SignatureService    signatures.SignatureService
-	v1SignatureRepo       signatures.SignatureRepository
-	usersService          users.Service
-	projectsClaGroupsRepo projects_cla_groups.Repository
-	s3                    *s3.S3
-	signaturesBucket      string
-}
-
-// Service contains method of v2 signature service
-type Service interface {
+// ServiceInterface contains method of v2 signature service
+type ServiceInterface interface {
 	GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error)
 	GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
 	GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
@@ -68,6 +55,17 @@ type Service interface {
 	GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error)
 	GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error)
 	InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error
+}
+
+type service struct {
+	v1ProjectService      project.Service
+	v1CompanyService      company.IService
+	v1SignatureService    signatures.SignatureService
+	v1SignatureRepo       signatures.SignatureRepository
+	usersService          users.Service
+	projectsClaGroupsRepo projects_cla_groups.Repository
+	s3                    *s3.S3
+	signaturesBucket      string
 }
 
 // NewService creates instance of v2 signature service
@@ -206,14 +204,14 @@ func (s service) GetSignedDocument(ctx context.Context, signatureID string) (*mo
 	if err != nil {
 		return nil, err
 	}
-	if sig.SignatureType == ClaSignatureType && sig.CompanyName != "" {
+	if sig.SignatureType == utils.SignatureTypeCLA && sig.CompanyName != "" {
 		return nil, errors.New("bad request. employee signature does not have signed document")
 	}
 	var url string
 	switch sig.SignatureType {
-	case ClaSignatureType:
+	case utils.SignatureTypeCLA:
 		url = utils.SignedCLAFilename(sig.ProjectID, "icla", sig.SignatureReferenceID, sig.SignatureID)
-	case CclaSignatureType:
+	case utils.SignatureTypeCCLA:
 		url = utils.SignedCLAFilename(sig.ProjectID, "ccla", sig.SignatureReferenceID, sig.SignatureID)
 	}
 	signedURL, err := utils.GetDownloadLink(url)

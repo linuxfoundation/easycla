@@ -11,26 +11,27 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// Repository interface methods
-type Repository interface {
+// RepositoryInterface interface methods
+type RepositoryInterface interface {
 	GetUserAndProfilesByLFID(lfidUsername string) (CLAUser, error)
 	GetUserProjectIDs(userID string) ([]string, error)
 	GetClaManagerCorporateClaIDs(userID string) ([]string, error)
 }
 
-type repository struct {
+// Repository object/struct
+type Repository struct {
 	db *sqlx.DB
 }
 
 // NewRepository creates a new user repository
-func NewRepository(db *sqlx.DB) repository {
-	return repository{
+func NewRepository(db *sqlx.DB) Repository {
+	return Repository{
 		db: db,
 	}
 }
 
 // GetUserAndProfilesByLFID get user profile by LFID
-func (repo repository) GetUserAndProfilesByLFID(lfidUsername string) (CLAUser, error) {
+func (repo Repository) GetUserAndProfilesByLFID(lfidUsername string) (CLAUser, error) {
 	log.Debugf("lfidUsername: %s", lfidUsername)
 	sql := `
 		SELECT
@@ -74,13 +75,13 @@ func (repo repository) GetUserAndProfilesByLFID(lfidUsername string) (CLAUser, e
 }
 
 // GetUserByGithubID returns the user details based on the github ID
-func (repo repository) GetUserByGithubID(githubID string) (CLAUser, error) {
+func (repo Repository) GetUserByGithubID(githubID string) (CLAUser, error) {
 	// TODO: Implement when adding authentication to the Corporate Console
 	return CLAUser{}, nil
 }
 
 // GetUserProjectIDs get the user project ID's based on the specified user ID
-func (repo repository) GetUserProjectIDs(userID string) ([]string, error) {
+func (repo Repository) GetUserProjectIDs(userID string) ([]string, error) {
 	getUserProjectIDsSQL := `
 		SELECT
 			project_sfdc_id
@@ -113,7 +114,7 @@ func (repo repository) GetUserProjectIDs(userID string) ([]string, error) {
 }
 
 // GetClaManagerCorporateClaIDs returns a list of CLA manager corporate CLAs associated with the specified user
-func (repo repository) GetClaManagerCorporateClaIDs(userID string) ([]string, error) {
+func (repo Repository) GetClaManagerCorporateClaIDs(userID string) ([]string, error) {
 	getClaManagerCorporateClaIDsSQL := `
 		SELECT
 			corporate_cla_group_id
@@ -146,6 +147,6 @@ func (repo repository) GetClaManagerCorporateClaIDs(userID string) ([]string, er
 }
 
 // GetUserCompanyIDs returns a list of company IDs based on the user
-func (repo repository) GetUserCompanyIDs(userID string) ([]string, error) {
+func (repo Repository) GetUserCompanyIDs(userID string) ([]string, error) {
 	return []string{}, nil
 }
