@@ -2272,7 +2272,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_return_url = UnicodeAttribute(null=True)
     signature_callback_url = UnicodeAttribute(null=True)
     signature_user_ccla_company_id = UnicodeAttribute(null=True)
-    signature_acl = UnicodeSetAttribute(default=set())
+    signature_acl = UnicodeSetAttribute()
     signature_project_index = ProjectSignatureIndex()
     signature_reference_index = ReferenceSignatureIndex()
     signature_envelope_id = UnicodeAttribute(null=True)
@@ -2538,7 +2538,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         return self.model.signature_user_ccla_company_id
 
     def get_signature_acl(self):
-        return self.model.signature_acl
+        return self.model.signature_acl or set()
 
     def get_signature_return_url_type(self):
         # Refers to either Gerrit or GitHub
@@ -2716,11 +2716,15 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         self.model.signature_project_external_id = signature_project_external_id
 
     def add_signature_acl(self, username):
+        if not self.model.signature_acl:
+            self.model.signature_acl = set()
         self.model.signature_acl.add(username)
 
     def remove_signature_acl(self, username):
-        if username in self.model.signature_acl:
-            self.model.signature_acl.remove(username)
+        current_acl = self.model.signature_acl or set()
+        if username not in current_acl:
+            return
+        self.model.signature_acl.remove(username)
 
     def set_user_email(self, user_email):
         self.model.user_email = user_email
@@ -2938,6 +2942,34 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             cla.log.warning(
                 "Why do we have more than one employee signature for this user? - Will return the first one only.")
         return signatures[0]
+
+    def get_employee_signature_by_company_project_list(self, company_id, project_id, user_id) -> Optional[List[Signature]]:
+        """
+        Returns the employee signature for the specified user associated with
+        the project/company. Returns None if no employee signature exists for
+        this set of query parameters.
+        """
+        signature_attributes = {
+            "signature_signed": True,
+            "signature_approved": True,
+            "signature_type": 'cla',
+            "signature_reference_type": 'user',
+            "signature_project_id": project_id,
+            "signature_user_ccla_company_id": company_id
+        }
+        filter_condition = create_filter(signature_attributes, SignatureModel)
+        signature_generator = self.model.signature_reference_index.query(
+            user_id, filter_condition=filter_condition
+        )
+        signatures = []
+        for signature_model in signature_generator:
+            signature = Signature()
+            signature.model = signature_model
+            signatures.append(signature)
+        # No employee signatures were found that were signed/approved
+        if len(signatures) == 0:
+            return None
+        return signatures
 
     def get_employee_signatures_by_company_project_model(self, company_id, project_id) -> List[Signature]:
         signature_attributes = {
