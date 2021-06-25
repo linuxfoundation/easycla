@@ -229,11 +229,7 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 	}
 
 	// build Tree that tracks parent and child projects
-	projectTree, err := buildProjectTree(foundationProjectSummary)
-	if err != nil {
-		log.WithFields(f).Warnf("unable to process project summary :%+v ", foundationProjectSummary)
-		return err
-	}
+	projectTree := buildProjectNode(foundationProjectSummary)
 
 	// Is our parent the LF project?
 	log.WithFields(f).Debugf("looking up LF parent project record...")
@@ -253,22 +249,18 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 			return err
 		}
 
-		if projectTree.Parent != nil && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
+		if projectTree != nil && projectTree.Parent != nil && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
 			msg := fmt.Sprintf("input validation failure - foundationSFID: %s , foundationType: %s , projectSFID: %s , projectType: %s ",
 				foundationProjectDetails.Parent, foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
 			log.WithFields(f).Warnf(msg)
 			return fmt.Errorf(msg)
 		}
-
 	}
 
 	// Check to see if all the provided enrolled projects are part of this foundation
-
-	exists := projectsExist(projectTree, projectSFIDList)
-
-	if !exists {
-		log.WithFields(f).Warnf("validation failure - provided projects are not under the SF foundation: %+v", projectTree)
-		return fmt.Errorf("bad request: invalid project_sfid: %+v. One or more provided projects are not under the SF foundation", projectTree)
+	if !allProjectsExistInTree(projectTree, projectSFIDList) {
+		log.WithFields(f).Warnf("validation failure - one or more provided projects are not under the project tree: %+v", projectTree.String())
+		return fmt.Errorf("bad request: invalid project_sfid: %+v. One or more provided projects are not under the parent", projectTree.String())
 	}
 
 	// check if projects are not already enabled
@@ -335,11 +327,7 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 	}
 
 	// build Tree that tracks parent and child projects
-	projectTree, err := buildProjectTree(foundationProjectSummary)
-	if err != nil {
-		log.WithFields(f).Warnf("unable to process project summary :%+v ", foundationProjectSummary)
-		return err
-	}
+	projectTree := buildProjectNode(foundationProjectSummary)
 
 	// Is our parent the LF project?
 	log.WithFields(f).Debugf("looking up LF parent project record...")
@@ -364,18 +352,10 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 
 	}
 
-	// Comment out the below as we want to support stand-alone projects
-	/* if len(foundationProjectDetails.Projects) == 0 {
-		log.WithFields(f).Warn("validation failure - project does not have any subprojects")
-		return fmt.Errorf("bad request: invalid input to enroll projects. project does not have any subprojects")
-	} */
-
 	// Check to see if all the provided enrolled projects are part of this foundation
-	exists := projectsExist(projectTree, projectSFIDList)
-
-	if !exists {
-		log.WithFields(f).Warnf("validation failure - provided projects are not under the SF foundation: %+v", projectTree)
-		return fmt.Errorf("bad request: invalid project_sfid: %+v. One or more provided projects are not under the SF foundation", projectTree)
+	if !allProjectsExistInTree(projectTree, projectSFIDList) {
+		log.WithFields(f).Warnf("validation failure - one or more provided projects are not under the project tree: %+v", projectTree.String())
+		return fmt.Errorf("bad request: invalid project_sfid: %+v. One or more provided projects are not under the parent", projectTree.String())
 	}
 
 	// check if projects are already enrolled/enabled
@@ -732,85 +712,88 @@ func getUniqueCLAGroupIDs(projectCLAGroupMappings []*projects_cla_groups.Project
 	return keys
 }
 
-// buildTree helper function that builds tree based on nessted Projects
-func buildProjectTree(projectSummaryList []*v2ProjectServiceModels.ProjectSummary) (*ProjectNode, error) {
-	f := logrus.Fields{
-		"functionName": "v2.cla_groups.helpers.buildTree",
+func buildProjectNode(projectSummaryList []*v2ProjectServiceModels.ProjectSummary) *ProjectNode {
+	root := &ProjectNode{
+		ID:       "",
+		Name:     "",
+		Children: nil,
 	}
 
-	log.WithFields(f).Debugf("Building project summary tree for : %+v ...", projectSummaryList)
-	var root ProjectNode
+	parentSFID := ""
+	parentName := ""
+	for _, projectSummaryEntry := range projectSummaryList {
+		// Get ParentProject
+		parentProjectModel, err := v2ProjectService.GetClient().GetParentProjectModel(projectSummaryEntry.ID)
 
-	if len(projectSummaryList) == 0 {
-		msg := "project summary list is empty"
-		log.WithFields(f).Debugf(msg)
-		return nil, errors.New(msg)
-	}
-	projectSummary := projectSummaryList[0]
-	// Get ParentProject ID
-	parentProjectID, err := v2ProjectService.GetClient().GetParentProject(projectSummary.ID)
-	if err != nil {
-		log.WithFields(f).Debugf("unable to get parent project for : %s ", projectSummary.ID)
-	}
+		if parentSFID == "" && err == nil && parentProjectModel != nil {
+			// Update our root node
+			root.Parent = nil
+			root.ID = parentProjectModel.ID
+			root.Name = parentProjectModel.Name
 
-	// Use Parent as root for projects to help in validation checks for enrolling / unenrolling
-	root = ProjectNode{
-		Parent: nil,
-		ID:     parentProjectID,
-		Children: []*ProjectNode{{
-			ID:   projectSummary.ID,
-			Name: projectSummary.Name,
-		}},
-	}
-
-	// Aggregate projects
-	for _, summary := range projectSummaryList {
-		for _, child := range root.Children {
-			child.addChildren(summary)
+			// Save the parentSFID
+			parentSFID = parentProjectModel.ID
+			parentName = parentProjectModel.Name
 		}
+
+		if parentSFID != "" && err == nil && parentProjectModel != nil && parentSFID != parentProjectModel.ID {
+			//We have different parents !!!
+			log.Warnf("current parent Name: %s ID: %s does not match other parent Name: %s, parent ID: %s", parentName, parentSFID, parentProjectModel.Name, parentProjectModel.ID)
+		}
+
+		root.Children = append(root.Children, getLeafNodeFromProjectSFID(projectSummaryEntry.ID, parentName, parentSFID))
 	}
 
-	return &root, nil
+	return root
 }
 
-func (n *ProjectNode) addChildren(summary *v2ProjectServiceModels.ProjectSummary) {
-	f := logrus.Fields{
-		"functionName": "v2.cla_groups.helpers.addChidlren",
+func getLeafNodeFromProjectSFID(projectSFID, parentName, parentSFID string) *ProjectNode {
+
+	// Get ParentProject
+	projectModel, err := v2ProjectService.GetClient().GetProject(projectSFID)
+	if err != nil {
+		return nil
 	}
 
-	log.WithFields(f).Debugf("Agrregating children for %+v ...", summary)
-	for _, subProject := range summary.Projects {
-		child := &ProjectNode{
-			Parent: n,
-			ID:     subProject.ID,
-			Name:   subProject.Name,
-		}
-		n.Children = append(n.Children, child)
-		log.WithFields(f).Debugf("added child : %+v ", child)
+	node := &ProjectNode{
+		ID:   projectModel.ID,
+		Name: projectModel.Name,
+		Parent: &ProjectNode{
+			ID:   parentName,
+			Name: parentSFID,
+		},
 	}
+
+	// For this node, collect the list of child nodes...
+	for _, childNode := range projectModel.Projects {
+		node.Children = append(node.Children, getLeafNodeFromProjectSFID(childNode.ID, projectModel.Name, projectModel.ID))
+
+	}
+
+	return node
 }
 
 // findByID searches for given projectSFID recursively using DFS algorithm
 func findByID(node *ProjectNode, projectSFID string) *ProjectNode {
-	f := logrus.Fields{
-		"functionName": "v2.cla_groups.helpers.fundByID",
+	if node == nil {
+		return nil
 	}
-	log.WithFields(f).Debugf("searching for :%s ...", projectSFID)
 	if node.ID == projectSFID {
 		return node
 	}
 
-	if len(node.Children) > 0 {
-		for _, child := range node.Children {
-			findByID(child, projectSFID)
+	for _, child := range node.Children {
+		foundNode := findByID(child, projectSFID)
+		if foundNode != nil {
+			return foundNode
 		}
 	}
 
 	return nil
 }
 
-// projectsExist searches for given list of projects in foundation items
-func projectsExist(node *ProjectNode, projectSFIDs []string) bool {
+// allProjectsExistInTree searches for given list of projects in foundation items
+func allProjectsExistInTree(node *ProjectNode, projectSFIDs []string) bool {
 	for _, projectSFID := range projectSFIDs {
 		found := findByID(node, projectSFID)
 		if found == nil {
@@ -818,4 +801,29 @@ func projectsExist(node *ProjectNode, projectSFIDs []string) bool {
 		}
 	}
 	return true
+}
+
+func (n *ProjectNode) String() string {
+	if n == nil {
+		return ""
+	}
+	msg := fmt.Sprintf("projectSFID: '%s', projectName: '%s'\n", n.ID, n.Name)
+
+	if n.Parent == nil {
+		msg = fmt.Sprintf("%s 'parentProjectSFID':'%s','parentProjectName':'%s'\n", msg, "", "")
+	} else {
+		msg = fmt.Sprintf("%s 'parentProjectSFID':'%s','parentProjectName':'%s'\n", msg, n.Parent.ID, n.Parent.Name)
+	}
+
+	if len(n.Children) == 0 {
+		msg = fmt.Sprintf("%s children: no children\n", msg)
+	} else {
+		for _, child := range n.Children {
+			if child != nil {
+				msg = fmt.Sprintf("%s 'child': %s\n", msg, child.String())
+			}
+		}
+	}
+
+	return msg
 }

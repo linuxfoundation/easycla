@@ -34,6 +34,7 @@ linters-settings:
     check-blank: true
   govet:
     check-shadowing: true
+    fieldalignment: true
   revive:
     min-confidence: 0
   dupl:
@@ -41,10 +42,7 @@ linters-settings:
   goconst:
     min-len:         2
     min-occurrences: 2
-  maligned:
-    # print struct with more effective memory layout or not, false by default
-    suggest-new: true
- 
+
 linters:
   disable-all: true
   enable:
@@ -67,8 +65,9 @@ linters:
     - unparam
     - unused
     - nakedret
-    - maligned
+    #- maligned # The repository of the linter has been archived by the owner.  Replaced by govet 'fieldalignment'.
     #- dupl
+    - bodyclose
 
 issues:
   exclude-use-default: false

@@ -38,8 +38,8 @@ type Client struct {
 var (
 	projectServiceClient *Client
 	// Short term cache - only for the lifetime of this lambda
-	projectServiceModes = make(map[string]*models.ProjectOutputDetailed)
-	apiGWHost           string
+	projectServiceModels = make(map[string]*models.ProjectOutputDetailed)
+	apiGWHost            string
 )
 
 // InitClient initializes the user_service client
@@ -78,12 +78,12 @@ func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed
 	}
 
 	// Lookup in cache first
-	existingModel, exists := projectServiceModes[projectSFID]
+	existingModel, exists := projectServiceModels[projectSFID]
 	if exists {
-		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModes))
+		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
 		return existingModel, nil
 	}
-	log.WithFields(f).Debugf("cache miss - cache size: %d", len(projectServiceModes))
+	log.WithFields(f).Debugf("cache miss - cache size: %d", len(projectServiceModels))
 
 	tok, err := token.GetToken()
 	if err != nil {
@@ -100,8 +100,8 @@ func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed
 	}
 
 	// Update our cache for next time
-	projectServiceModes[projectSFID] = projectModel
-	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModes))
+	projectServiceModels[projectSFID] = projectModel
+	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
 
 	return projectModel, nil
 }
@@ -142,12 +142,12 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 	}
 
 	// Lookup in cache first
-	existingModel, exists := projectServiceModes[projectSFID]
+	existingModel, exists := projectServiceModels[projectSFID]
 	if exists {
-		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModes))
+		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
 		return existingModel.Parent, nil
 	}
-	log.WithFields(f).Debugf("cache miss - cache size: %d", len(projectServiceModes))
+	log.WithFields(f).Debugf("cache miss - cache size: %d", len(projectServiceModels))
 
 	log.WithFields(f).Debug("looking up projectModel in SF by projectSFID")
 	projectModel, err := pmm.GetProject(projectSFID)
@@ -157,8 +157,8 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 	}
 
 	// Update our cache for next time
-	projectServiceModes[projectSFID] = projectModel
-	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModes))
+	projectServiceModels[projectSFID] = projectModel
+	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
 
 	// Do they have a parent?
 	if projectModel.Parent == "" || (projectModel.Foundation != nil &&
@@ -169,6 +169,82 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 
 	log.WithFields(f).Debugf("returning parent projectSFID: %s", projectModel.Parent)
 	return projectModel.Parent, nil
+}
+
+// GetParentProjectModel returns the parent project model if there is a parent, otherwise returns nil
+func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOutputDetailed, error) {
+	f := logrus.Fields{
+		"functionName": "v2.project-service.client.GetParentProjectModel",
+		"projectSFID":  projectSFID,
+		"apiGWHost":    apiGWHost,
+	}
+
+	// Lookup in cache first
+	var exists bool
+	var existingModel *models.ProjectOutputDetailed
+	var existingParentModel *models.ProjectOutputDetailed
+
+	// Current project in the cache?
+	existingModel, exists = projectServiceModels[projectSFID]
+	if exists {
+		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
+
+		// Parent in the cache?
+		existingParentModel, exists = projectServiceModels[existingModel.Parent]
+		if exists {
+			return existingParentModel, nil
+		}
+
+		// Parent project not in the cache - lookup
+		parentProjectModel, err := pmm.GetProject(existingModel.Parent)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel projectSFID: '%s'", existingModel.Parent)
+			return nil, err
+		}
+
+		// Update our cache for next time
+		projectServiceModels[existingModel.Parent] = parentProjectModel
+		log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
+
+		return parentProjectModel, nil
+	}
+
+	log.WithFields(f).Debugf("cache miss - looking up projectModel in projectSFID: %s", projectSFID)
+	projectModel, err := pmm.GetProject(projectSFID)
+	if err != nil {
+		log.WithFields(f).Warnf("unable to lookup projectModel in projectModel service by projectSFID, error: %+v", err)
+		return nil, err
+	}
+
+	// Update our cache for next time
+	projectServiceModels[projectSFID] = projectModel
+	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
+
+	// Do they have a parent?
+	if projectModel.Parent == "" || (projectModel.Foundation != nil &&
+		(projectModel.Foundation.Name == utils.TheLinuxFoundation || projectModel.Foundation.Name == utils.LFProjectsLLC)) {
+		log.WithFields(f).Debugf("no parent for projectSFID or %s or %s is the parent...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
+		return nil, nil
+	}
+
+	// Parent in the cache?
+	existingParentModel, exists = projectServiceModels[projectModel.Parent]
+	if exists {
+		return existingParentModel, nil
+	}
+
+	// Parent project not in the cache - lookup
+	parentProjectModel, err := pmm.GetProject(projectModel.Parent)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel projectSFID: '%s'", projectModel.Parent)
+		return nil, err
+	}
+
+	// Update our cache for next time
+	projectServiceModels[existingModel.Parent] = parentProjectModel
+	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
+
+	return parentProjectModel, nil
 }
 
 // IsTheLinuxFoundation returns true if the specified project SFID is the The Linux Foundation project

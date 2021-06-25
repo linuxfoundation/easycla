@@ -19,7 +19,7 @@ LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X m
 BUILD_TAGS=-tags aws_lambda
 
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
-LINT_VERSION=v1.37.0
+LINT_VERSION=v1.41.1
 SWAGGER_TOOL_VERSION=v0.24.0
 GO_PKGS=$(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/)
 GO_FILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')

@@ -57,7 +57,8 @@ type ServiceInterface interface {
 	InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error
 }
 
-type service struct {
+// Service structure/model
+type Service struct {
 	v1ProjectService      project.Service
 	v1CompanyService      company.IService
 	v1SignatureService    signatures.SignatureService
@@ -72,8 +73,8 @@ type service struct {
 func NewService(awsSession *session.Session, signaturesBucketName string, v1ProjectService project.Service,
 	v1CompanyService company.IService,
 	v1SignatureService signatures.SignatureService,
-	pcgRepo projects_cla_groups.Repository, v1SignatureRepo signatures.SignatureRepository, usersService users.Service) *service {
-	return &service{
+	pcgRepo projects_cla_groups.Repository, v1SignatureRepo signatures.SignatureRepository, usersService users.Service) *Service {
+	return &Service{
 		v1ProjectService:      v1ProjectService,
 		v1CompanyService:      v1CompanyService,
 		v1SignatureService:    v1SignatureService,
@@ -85,7 +86,8 @@ func NewService(awsSession *session.Session, signaturesBucketName string, v1Proj
 	}
 }
 
-func (s *service) GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error) {
+// GetProjectCompanySignatures return the signatures for the specified project and company information
+func (s *Service) GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error) {
 	pm, err := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
 		return nil, err
@@ -106,6 +108,7 @@ func (s *service) GetProjectCompanySignatures(ctx context.Context, companyID, co
 	return v2SignaturesReplaceCompanyID(resp, companyID, companySFID)
 }
 
+// eclaSigCsvLine returns a single ECLA signature CSV line
 func eclaSigCsvLine(sig *v1Models.CorporateContributor) string {
 	var dateTime string
 	t, err := utils.ParseDateTime(sig.Timestamp)
@@ -118,7 +121,8 @@ func eclaSigCsvLine(sig *v1Models.CorporateContributor) string {
 	return fmt.Sprintf("\n%s,%s,%s,%s,\"%s\"", sig.GithubID, sig.LinuxFoundationID, sig.Name, sig.Email, dateTime)
 }
 
-func (s service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error) {
+// GetClaGroupCorporateContributorsCsv returns the CLA Group corporate contributors as a CSV
+func (s *Service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error) {
 	var b bytes.Buffer
 	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, nil)
 	if err != nil {
@@ -136,7 +140,8 @@ func (s service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGro
 	return b.Bytes(), nil
 }
 
-func (s service) GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error) {
+// GetProjectIclaSignaturesCsv returns the ICLA signatures as a CSV file for the specified CLA Group
+func (s *Service) GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error) {
 	var b bytes.Buffer
 	result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, nil, nil, nil, 0, "")
 	if err != nil {
@@ -149,7 +154,8 @@ func (s service) GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID str
 	return b.Bytes(), nil
 }
 
-func (s service) GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error) {
+// GetProjectCclaSignaturesCsv returns the ICLA signatures as a CSV file for the specified CLA Group and search term filters
+func (s *Service) GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error) {
 	f := logrus.Fields{
 		"functionName":   "GetProjectCclaSignaturesCsv",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -173,7 +179,8 @@ func (s service) GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID str
 	return b.Bytes(), nil
 }
 
-func (s service) GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
+// GetProjectIclaSignatures returns the ICLA signatures for the specified CLA Group and search term filters
+func (s *Service) GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.signatures.service.GetProjectIclaSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -199,7 +206,8 @@ func (s service) GetProjectIclaSignatures(ctx context.Context, claGroupID string
 	return &out, nil
 }
 
-func (s service) GetSignedDocument(ctx context.Context, signatureID string) (*models.SignedDocument, error) {
+// GetSignedDocument returns the signed document for the specified signature ID
+func (s *Service) GetSignedDocument(ctx context.Context, signatureID string) (*models.SignedDocument, error) {
 	sig, err := s.v1SignatureService.GetSignature(ctx, signatureID)
 	if err != nil {
 		return nil, err
@@ -224,7 +232,8 @@ func (s service) GetSignedDocument(ctx context.Context, signatureID string) (*mo
 	}, nil
 }
 
-func (s service) GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error) {
+// GetSignedCclaZipPdf returns the signed CCLA Zip PDF reference
+func (s *Service) GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error) {
 	url := utils.SignedClaGroupZipFilename(claGroupID, CCLA)
 	ok, err := s.IsZipPresentOnS3(url)
 	if err != nil {
@@ -242,7 +251,8 @@ func (s service) GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, erro
 	}, nil
 }
 
-func (s service) GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error) {
+// GetSignedIclaZipPdf returns the signed ICLA Zip PDF reference
+func (s *Service) GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error) {
 	url := utils.SignedClaGroupZipFilename(claGroupID, ICLA)
 	ok, err := s.IsZipPresentOnS3(url)
 	if err != nil {
@@ -260,7 +270,8 @@ func (s service) GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, erro
 	}, nil
 }
 
-func (s service) IsZipPresentOnS3(zipFilePath string) (bool, error) {
+// IsZipPresentOnS3 returns true if the specified file is present in S3
+func (s *Service) IsZipPresentOnS3(zipFilePath string) (bool, error) {
 	_, err := s.s3.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(s.signaturesBucket),
 		Key:    aws.String(zipFilePath),
@@ -275,7 +286,8 @@ func (s service) IsZipPresentOnS3(zipFilePath string) (bool, error) {
 	return true, nil
 }
 
-func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID string, searchTerm *string) (*models.CorporateContributorList, error) {
+// GetClaGroupCorporateContributors returns the list of corporate contributors for the specified CLA Group and company
+func (s *Service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID string, searchTerm *string) (*models.CorporateContributorList, error) {
 	f := logrus.Fields{
 		"functionName": "GetClaGroupCorporateContributors",
 		"claGroupID":   claGroupID,
@@ -301,7 +313,8 @@ func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupI
 	return &resp, nil
 }
 
-func (s service) InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error {
+// InvalidateICLA invalidates the specified signature record using the supplied parameters
+func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error {
 	f := logrus.Fields{
 		"functionName": "v2.signatures.service.InvalidateICLA",
 		"claGroupID":   claGroupID,
