@@ -65,16 +65,14 @@ paths:
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
             $ref: '#/definitions/health'
-        '503':
-          description: ''
-          schema:
-            $ref: '#/definitions/health'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '503':
+          $ref: '#/responses/service-unavailable'
       tags:
         - health
 
@@ -3174,6 +3172,14 @@ responses:
       $ref: '#/definitions/error-response'
   internal-server-error:
     description: 'Internal server error'
+    headers:
+      x-request-id:
+        type: string
+        description: The unique request ID value - assigned/set by the API Gateway based on the session
+    schema:
+      $ref: '#/definitions/error-response'
+  service-unavailable:
+    description: 'Service unavailable'
     headers:
       x-request-id:
         type: string

@@ -57,16 +57,14 @@ paths:
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
             $ref: '#/definitions/health'
-        '503':
-          description: 'Service unavailable'
-          schema:
-            $ref: '#/definitions/health'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '503':
+          $ref: '#/responses/service-unavailable'
       tags:
         - health
 
@@ -3708,6 +3706,14 @@ responses:
         description: The unique request ID value - assigned/set by the API Gateway based on the session
     schema:
       $ref: '#/definitions/error-response'
+  service-unavailable:
+    description: Service unavailable
+    headers:
+      x-request-id:
+        type: string
+        description: The unique request ID value - assigned/set by the API Gateway based on the session
+    schema:
+      $ref: '#/definitions/error-response'
   conflict:
     description: Duplicate Resource
     headers:
@@ -3838,13 +3844,6 @@ parameters:
     in: query
     type: string
     pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
-  signingEntityName:
-    name: signingEntityName
-    description: The signing entity name of a Company (Salesforce and EasyCLA)
-    in: query
-    type: string
-    required: true
-    pattern: '[^<>]*' # allow everything except greater than and less than symbols
   companyID:
     name: companyID
     description: The internal company ID representing signing entity name instance (EasyCLA)
@@ -3935,12 +3934,6 @@ parameters:
     pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
     minLength: 5
     maxLength: 255
-  companySFID:
-    name: companySFID
-    description: salesforce id of the company
-    in: query
-    type: string
-    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
   gerritHost:
     name: gerritHost
     description: host of the gerrit server
@@ -4111,9 +4104,6 @@ definitions:
 
   template-pdfs:
     $ref: './common/template-pdfs.yaml'
-
-  github-organizations:
-    $ref: './common/github-organizations.yaml'
 
   github-organization:
     $ref: './common/github-organization.yaml'
@@ -4375,7 +4365,7 @@ definitions:
       Employees:
         type: string
         description: The number of employees of the company
-        example: "500 - 4999, 10000+"
+        example: "500 - 4999"
         pattern: '^([\w\d\s\-\,\.\/]+){2,}$'
       signingEntityNames:
         type: array
@@ -4527,17 +4517,6 @@ definitions:
       companySFID:
         type: string
 
-  contributors:
-    type: object
-    title: contributors
-    description: List of contributor roles for a user
-    properties:
-      list:
-        type: array
-        items:
-          $ref:
-            '#/definitions/contributor'
-
   contributor:
     type: object
     title: Contributor
@@ -4568,42 +4547,6 @@ definitions:
         description: 'The role association with company'
         example: 'contributor'
         x-omitempty: false
-
-  company-owner:
-    type: object
-    title: Company Owner
-    description: Company Owner
-    properties:
-      lf_username:
-        type: string
-        description: 'the LF username'
-        x-omitempty: false
-        example: 'username'
-      name:
-        type: string
-        description: 'name of the user'
-        example: 'john'
-        x-omitempty: false
-      user_sfid:
-        type: string
-        description: 'the user SalesForce ID'
-        x-omitempty: false
-      email:
-        $ref: './common/properties/email.yaml'
-        x-omitempty: false
-      type:
-        type: string
-        x-omitempty: false
-        example: 'contact'
-      assigned_on:
-        type: string
-        x-omitempty: false
-      company_sfid:
-        type: string
-        description: 'the Organization SalesForce ID'
-        x-omitempty: false
-        example: 'abc134234adsdf43'
-
 
   cla-manager-designee:
     type: object

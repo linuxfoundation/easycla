@@ -116,7 +116,8 @@ swagger-build-project-service:
 	swagger -q generate client \
 		--copyright-file=copyright-header.txt \
 		-t v2/project-service \
-		-f swagger/project-service.yaml
+		-f swagger/project-service.yaml \
+		--skip-validation # needed, currently seeing: body.default.Filename in body must be of type string: "null", and definitions.artifact-upload-init-request.default.Filename in body must be of type string: "null" issues, notified PS team
 
 swagger-build-organization-service:
 	@echo
@@ -127,7 +128,8 @@ swagger-build-organization-service:
 	swagger -q generate client \
 		--copyright-file=copyright-header.txt \
 		-t v2/organization-service \
-		-f swagger/organization-service.yaml
+		-f swagger/organization-service.yaml \
+		--skip-validation # needed, currently seeing: - username in query must be of type string: "null"
 
 swagger-build-user-service:
 	@echo
@@ -138,7 +140,8 @@ swagger-build-user-service:
 	swagger -q generate client \
 		--copyright-file=copyright-header.txt \
 		-t v2/user-service \
-		-f swagger/user-service.yaml
+		-f swagger/user-service.yaml \
+		--skip-validation # needed, many validation errors
 
 swagger-build-acs-service:
 	@echo
