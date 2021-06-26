@@ -92,11 +92,22 @@ func Configure(api *operations.EasyclaAPI, service v1Template.ServiceInterface, 
 			return template.NewGetTemplatesBadRequest().WithPayload(errorResponse(reqID, err))
 		}
 
+		// Need the template name for the event log
+		templateName, lookupErr := service.GetTemplateName(ctx, input.TemplateID)
+		if lookupErr != nil || templateName == "" {
+			log.WithFields(f).WithError(lookupErr).Warnf("Error looking up template name with ID: %s", input.TemplateID)
+			return template.NewGetTemplatesBadRequest().WithPayload(errorResponse(reqID, err))
+		}
+
 		eventsService.LogEvent(&events.LogEventArgs{
-			EventType:  events.CLATemplateCreated,
-			ProjectID:  params.ClaGroupID,
-			LfUsername: authUser.UserName,
-			EventData:  &events.CLATemplateCreatedEventData{},
+			EventType:         events.CLATemplateCreated,
+			ProjectID:         params.ClaGroupID,
+			ProjectSFID:       projectCLAGroups[0].ProjectSFID,
+			ParentProjectSFID: projectCLAGroups[0].FoundationSFID,
+			LfUsername:        authUser.UserName,
+			EventData: &events.CLATemplateCreatedEventData{
+				TemplateName: templateName,
+			},
 		})
 
 		response := &models.TemplatePdfs{}

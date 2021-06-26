@@ -38,6 +38,7 @@ var (
 // RepositoryInterface interface functions
 type RepositoryInterface interface {
 	GetTemplates(ctx context.Context) ([]models.Template, error)
+	GetTemplateName(ctx context.Context, templateID string) (string, error)
 	GetTemplate(templateID string) (models.Template, error)
 	CLAGroupTemplateExists(ctx context.Context, templateID string) bool
 	GetCLAGroup(claGroupID string) (*models.ClaGroup, error)
@@ -127,6 +128,26 @@ func (r Repository) GetTemplates(ctx context.Context) ([]models.Template, error)
 	})
 
 	return templates, nil
+}
+
+// GetTemplateName returns the template name when provided the template ID
+func (r Repository) GetTemplateName(ctx context.Context, templateID string) (string, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.template.repository.GetTemplateName",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"templateID":     templateID,
+	}
+
+	// For each template...
+	for _, template := range templateMap {
+		// If we have a match
+		if template.ID == templateID {
+			return template.Name, nil
+		}
+	}
+
+	log.WithFields(f).Warnf("unable to locate template with ID: %s", templateID)
+	return "", nil
 }
 
 // GetTemplate returns the template based on the template ID

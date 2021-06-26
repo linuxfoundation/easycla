@@ -36,6 +36,7 @@ const (
 // ServiceInterface interface
 type ServiceInterface interface {
 	GetTemplates(ctx context.Context) ([]models.Template, error)
+	GetTemplateName(ctx context.Context, templateID string) (string, error)
 	CreateCLAGroupTemplate(ctx context.Context, claGroupID string, claGroupFields *models.CreateClaGroupTemplate) (models.TemplatePdfs, error)
 	CreateTemplatePreview(ctx context.Context, claGroupFields *models.CreateClaGroupTemplate, templateFor string) ([]byte, error)
 	GetCLATemplatePreview(ctx context.Context, claGroupID, claType string, watermark bool) ([]byte, error)
@@ -81,6 +82,22 @@ func (s Service) GetTemplates(ctx context.Context) ([]models.Template, error) {
 	}
 
 	return templates, nil
+}
+
+// GetTemplateName returns the template name when provided the template ID
+func (s Service) GetTemplateName(ctx context.Context, templateID string) (string, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.template.service.GetTemplateName",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"templateID":     templateID,
+	}
+	templateName, err := s.templateRepo.GetTemplateName(ctx, templateID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem loading template by ID: %s", templateID)
+		return "", err
+	}
+
+	return templateName, nil
 }
 
 // CreateTemplatePreview returns a PDF using the specified CLA Group field values and template identifier
