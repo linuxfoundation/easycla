@@ -4,13 +4,18 @@
 package template
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/template"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/user"
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime/middleware"
+	"github.com/sirupsen/logrus"
 )
 
 // Configure API call
@@ -26,17 +31,47 @@ func Configure(api *operations.ClaAPI, service ServiceInterface, eventsService e
 	})
 
 	api.TemplateCreateCLAGroupTemplateHandler = template.CreateCLAGroupTemplateHandlerFunc(func(params template.CreateCLAGroupTemplateParams, claUser *user.CLAUser) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":   "v2.signatures.handlers.SignaturesGetProjectSignaturesHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     params.ClaGroupID,
+			"templateID":     params.Body.TemplateID,
+		}
+
 		pdfUrls, err := service.CreateCLAGroupTemplate(params.HTTPRequest.Context(), params.ClaGroupID, &params.Body)
 		if err != nil {
-			log.Warnf("Error generating PDFs from provided templates, error: %v", err)
-			return template.NewGetTemplatesBadRequest().WithPayload(errorResponse(err))
+			msg := fmt.Sprintf("Error generating PDFs from provided templates, error: %v", err)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return template.NewGetTemplatesBadRequest().WithPayload(utils.ToV1ErrorResponse(utils.ErrorResponseBadRequestWithError(reqID, msg, err)))
+		}
+
+		// Need the template name for the event log
+		templateName, lookupErr := service.GetTemplateName(ctx, params.Body.TemplateID)
+		if lookupErr != nil || templateName == "" {
+			msg := fmt.Sprintf("Error looking up template name with ID: %s", params.Body.TemplateID)
+			log.WithFields(f).WithError(lookupErr).Warn(msg)
+			return template.NewGetTemplatesBadRequest().WithPayload(utils.ToV1ErrorResponse(utils.ErrorResponseBadRequestWithError(reqID, msg, lookupErr)))
+		}
+
+		// Grab the new POC value from the request
+		newPOCValue := ""
+		for _, field := range params.Body.MetaFields {
+			if field.TemplateVariable == "CONTACT_EMAIL" {
+				newPOCValue = field.Value
+				break
+			}
 		}
 
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType: events.CLATemplateCreated,
 			ProjectID: params.ClaGroupID,
 			UserID:    claUser.UserID,
-			EventData: &events.CLATemplateCreatedEventData{},
+			EventData: &events.CLATemplateCreatedEventData{
+				TemplateName: templateName,
+				NewPOC:       newPOCValue,
+			},
 		})
 
 		return template.NewCreateCLAGroupTemplateOK().WithPayload(&pdfUrls)

@@ -166,6 +166,8 @@ type CompanyACLUserAddedEventData struct {
 // CLATemplateCreatedEventData data model
 type CLATemplateCreatedEventData struct {
 	TemplateName string
+	OldPOC       string
+	NewPOC       string
 }
 
 // GitHubOrganizationAddedEventData data model
@@ -585,18 +587,25 @@ func (ed *CompanyACLUserAddedEventData) GetEventDetailsString(args *LogEventArgs
 func (ed *CLATemplateCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := "A CLA Group template was created or updated" // nolint
 	if args.CLAGroupName != "" {
-		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+		data = fmt.Sprintf("%s for the CLA Group %s", data, args.CLAGroupName)
 	}
 	if ed.TemplateName != "" {
-		data = data + fmt.Sprintf(" using template: %s", ed.TemplateName)
+		data = fmt.Sprintf("%s using template: %s", data, ed.TemplateName)
 	}
 	if args.ProjectName != "" {
-		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+		data = fmt.Sprintf("%s for the project %s", data, args.ProjectName)
 	}
 	if args.UserName != "" {
-		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+		data = fmt.Sprintf("%s by the user %s", data, args.UserName)
 	}
-	data = data + "."
+	data = fmt.Sprintf("%s.", data)
+
+	if ed.OldPOC != "" && ed.NewPOC != "" {
+		data = fmt.Sprintf("%s The point of contact email was changed from %s to %s.", data, ed.OldPOC, ed.NewPOC)
+	} else if ed.NewPOC != "" {
+		data = fmt.Sprintf("%s The point of contact email was set to %s.", data, ed.NewPOC)
+	}
+
 	return data, true
 }
 
@@ -1462,21 +1471,8 @@ func (ed *CompanyACLUserAddedEventData) GetEventSummaryString(args *LogEventArgs
 
 // GetEventSummaryString returns the summary string for this event
 func (ed *CLATemplateCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := "A CLA Group template was created or updated" // nolint
-	if args.CLAGroupName != "" {
-		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
-	}
-	if ed.TemplateName != "" {
-		data = data + fmt.Sprintf(" using template: %s", ed.TemplateName)
-	}
-	if args.ProjectName != "" {
-		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
-	}
-	if args.UserName != "" {
-		data = data + fmt.Sprintf(" by the user %s", args.UserName)
-	}
-	data = data + "."
-	return data, true
+	// Same output as the details
+	return ed.GetEventDetailsString(args)
 }
 
 // GetEventSummaryString returns the summary string for this event

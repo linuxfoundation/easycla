@@ -99,6 +99,15 @@ func Configure(api *operations.EasyclaAPI, service v1Template.ServiceInterface, 
 			return template.NewGetTemplatesBadRequest().WithPayload(errorResponse(reqID, err))
 		}
 
+		// Grab the new POC value from the request
+		newPOCValue := ""
+		for _, field := range input.MetaFields {
+			if field.TemplateVariable == "CONTACT_EMAIL" {
+				newPOCValue = field.Value
+				break
+			}
+		}
+
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:         events.CLATemplateCreated,
 			ProjectID:         params.ClaGroupID,
@@ -107,6 +116,7 @@ func Configure(api *operations.EasyclaAPI, service v1Template.ServiceInterface, 
 			LfUsername:        authUser.UserName,
 			EventData: &events.CLATemplateCreatedEventData{
 				TemplateName: templateName,
+				NewPOC:       newPOCValue,
 			},
 		})
 
