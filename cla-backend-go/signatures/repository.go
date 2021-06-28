@@ -747,7 +747,7 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 	// Always sort by date
 	indexName := SignatureProjectDateIDIndex
 
-	realPageSize := int64(100)
+	realPageSize := int64(1000)
 	if params.PageSize != nil && *params.PageSize > 0 {
 		realPageSize = *params.PageSize
 	}
@@ -759,61 +759,38 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 	var filter expression.ConditionBuilder
 	var filterAdded = false
 
-	if params.ClaType != nil {
-		if strings.ToLower(*params.ClaType) == utils.ClaTypeICLA {
+	if params.ClaType != nil || params.SignatureType != nil {
+		switch getCLATypeFromParams(params) {
+		case utils.ClaTypeICLA:
 			log.WithFields(f).Debugf("adding ICLA filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: not exists", utils.SignatureTypeCLA, utils.SignatureReferenceTypeUser)
 			filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)), &filterAdded)
 			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
 			filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
-		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeECLA {
+		case utils.ClaTypeECLA:
 			log.WithFields(f).Debugf("adding ECLA filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: exists", utils.SignatureTypeCLA, utils.SignatureReferenceTypeUser)
 			filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)), &filterAdded)
 			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
+			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
 			filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeExists(), &filterAdded)
-		} else if strings.ToLower(*params.ClaType) == utils.ClaTypeCCLA {
+		case utils.ClaTypeCCLA:
 			log.WithFields(f).Debugf("adding CCLA filters: signature_type: %s, signature_reference_type: %s, signature_user_ccla_company_id: not exists", utils.SignatureTypeCCLA, utils.SignatureReferenceTypeCompany)
 			filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)), &filterAdded)
 			filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany)), &filterAdded)
 			filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
 		}
-	} else {
-		if params.SearchField != nil {
-			log.WithFields(f).Debugf("adding filters: signature_type: %s", expression.Value(params.SearchField))
-			searchFieldExpression := expression.Name("signature_reference_type").Equal(expression.Value(params.SearchField))
-			filter = addAndCondition(filter, searchFieldExpression, &filterAdded)
-		}
+	}
 
-		if params.SignatureType != nil {
-			if params.SearchTerm != nil && utils.StringValue(params.SearchTerm) != "" && (params.FullMatch != nil && !*params.FullMatch) {
-				log.WithFields(f).Debugf("adding filters: signature_type: %s", strings.ToLower(utils.StringValue(params.SignatureType)))
-				indexName = SignatureProjectIDTypeIndex
-				condition = condition.And(expression.Key("signature_type").Equal(expression.Value(strings.ToLower(utils.StringValue(params.SignatureType)))))
-			} else {
-				log.WithFields(f).Debugf("adding filters: signature_type: %s", utils.StringValue(params.SignatureType))
-				signatureTypeExpression := expression.Name("signature_type").Equal(expression.Value(utils.StringValue(params.SignatureType)))
-				filter = addAndCondition(filter, signatureTypeExpression, &filterAdded)
-			}
-			if *params.SignatureType == utils.ClaTypeCCLA {
-				log.WithFields(f).Debug("adding filters: signature_reference_id: exists, signature_user_ccla_company_id: not exists")
-				signatureReferenceIDExpression := expression.Name("signature_reference_id").AttributeExists()
-				signatureUserCclaCompanyIDExpression := expression.Name("signature_user_ccla_company_id").AttributeNotExists()
-				filter = addAndCondition(filter, signatureReferenceIDExpression, &filterAdded)
-				filter = addAndCondition(filter, signatureUserCclaCompanyIDExpression, &filterAdded)
-			}
-		}
-
-		if params.SearchTerm != nil && utils.StringValue(params.SearchTerm) != "" {
-			if *params.FullMatch {
-				indexName = SignatureReferenceSearchIndex
-				log.WithFields(f).Debugf("adding filter signature_reference_name_lower: %s", strings.ToLower(utils.StringValue(params.SearchTerm)))
-				condition = condition.And(expression.Key("signature_reference_name_lower").Equal(expression.Value(strings.ToLower(utils.StringValue(params.SearchTerm)))))
-			} else {
-				log.WithFields(f).Debugf("adding filters signature_reference_name_lower: %s or user_email: %s", strings.ToLower(utils.StringValue(params.SearchTerm)), strings.ToLower(utils.StringValue(params.SearchTerm)))
-				searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(utils.StringValue(params.SearchTerm))).
-					Or(expression.Name("user_email").Contains(strings.ToLower(utils.StringValue(params.SearchTerm))))
-				filter = addAndCondition(filter, searchTermExpression, &filterAdded)
-			}
-		}
+	if params.SearchTerm != nil && utils.StringValue(params.SearchTerm) != "" {
+		//if *params.FullMatch {
+		//	indexName = SignatureReferenceSearchIndex
+		//	log.WithFields(f).Debugf("adding filter signature_reference_name_lower: %s", strings.ToLower(utils.StringValue(params.SearchTerm)))
+		//	condition = condition.And(expression.Key("signature_reference_name_lower").Equal(expression.Value(strings.ToLower(utils.StringValue(params.SearchTerm)))))
+		//} // else {
+		log.WithFields(f).Debugf("adding filters signature_reference_name_lower: %s or user_email: %s", strings.ToLower(utils.StringValue(params.SearchTerm)), strings.ToLower(utils.StringValue(params.SearchTerm)))
+		searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(utils.StringValue(params.SearchTerm))).
+			Or(expression.Name("user_email").Contains(strings.ToLower(utils.StringValue(params.SearchTerm))))
+		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
+		//}
 	}
 
 	if params.Approved != nil {
@@ -821,6 +798,7 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(params.Approved))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
+
 	if params.Signed != nil {
 		log.WithFields(f).Debugf("adding signature_signed: %t filter", aws.BoolValue(params.Signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(params.Signed))
@@ -857,6 +835,7 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		IndexName:                 aws.String(indexName),   // Name of a secondary index to scan
 	}
 	f["indexName"] = indexName
+	log.WithFields(f).Debugf("queryInput: %+v", queryInput)
 
 	if params.NextKey != nil {
 		queryInput.ExclusiveStartKey, err = decodeNextKey(*params.NextKey)
@@ -939,6 +918,24 @@ func (repo repository) GetProjectSignatures(ctx context.Context, params signatur
 		LastKeyScanned: lastEvaluatedKey,
 		Signatures:     sigs,
 	}, nil
+}
+
+// getCLATypeFromParams helper function to combine the new CLA Type parameter and the old legacy signature type parameter - returns one of the values from utils.ClaTypeICLA, utils.ClaTypeECLA, utils.ClaTypeCCLA or empty string if nothing matches
+func getCLATypeFromParams(params signatures.GetProjectSignaturesParams) string {
+	if params.ClaType != nil {
+		return strings.ToLower(*params.ClaType)
+	} else if params.SignatureType != nil {
+		// ICLA -> CLAType == icla, SignatureType == cla
+		// ECLA -> CLAType == ecla, SignatureType == ecla
+		// CCLA -> CLAType == ccla, SignatureType == ccla
+		if strings.ToLower(*params.SignatureType) == "cla" {
+			return utils.ClaTypeICLA
+		}
+
+		return strings.ToLower(*params.SignatureType)
+	}
+
+	return ""
 }
 
 // CreateProjectSummaryReport generates a project summary report based on the specified input
