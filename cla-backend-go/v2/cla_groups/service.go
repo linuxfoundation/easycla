@@ -646,7 +646,6 @@ func (s *service) appendCLAGroupsForProject(ctx context.Context, f logrus.Fields
 	// Since this is a project and not a foundation, we'll want to set he parent foundation ID and name (which is
 	// our parent in this case)
 	var foundationID, foundationName string
-	log.WithFields(f).Debug("found 'project' in platform project service.")
 	if sfProjectModelDetails.ProjectOutput.Foundation != nil {
 		foundationID = sfProjectModelDetails.ProjectOutput.Foundation.ID
 		foundationName = sfProjectModelDetails.ProjectOutput.Foundation.Name
@@ -658,18 +657,17 @@ func (s *service) appendCLAGroupsForProject(ctx context.Context, f logrus.Fields
 		log.WithFields(f).Debugf("no parent - using project as foundation ID: %s and name: %s", foundationID, foundationName)
 	}
 
-	log.WithFields(f).Debug("locating CLA Group mapping...")
+	log.WithFields(f).Debugf("locating CLA Group mapping using projectOrFoundationSFID: '%s'...", projectOrFoundationSFID)
 	projectCLAGroup, lookupErr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, projectOrFoundationSFID)
-	if lookupErr != nil {
-		log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
+	if lookupErr != nil || projectCLAGroup == nil || projectCLAGroup.ClaGroupID == "" {
+		log.WithFields(f).WithError(lookupErr).Warnf("problem locating CLA group by project id: '%s'", projectOrFoundationSFID)
 		return "", "", &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
 	}
 
-	log.WithFields(f).Debugf("loading CLA Group by ID: %s", projectCLAGroup.ClaGroupID)
+	log.WithFields(f).Debugf("loading CLA Group by ID: '%s' - %+v", projectCLAGroup.ClaGroupID, projectCLAGroup)
 	v1ClaGroupsByProject, claGroupLoadErr := s.v1ProjectService.GetCLAGroupByID(ctx, projectCLAGroup.ClaGroupID)
-	//v1ClaGroupsByProject, prjerr := s.v1ProjectService.GetClaGroupByProjectSFID(projectOrFoundationSFID, DontLoadDetails)
 	if claGroupLoadErr != nil {
-		log.WithFields(f).Warnf("problem loading CLA group by id, error: %+v", claGroupLoadErr)
+		log.WithFields(f).Warnf("problem loading CLA group by id: '%s', error: %+v", projectCLAGroup.ClaGroupID, claGroupLoadErr)
 		return "", "", &utils.CLAGroupNotFound{CLAGroupID: projectCLAGroup.ClaGroupID, Err: claGroupLoadErr}
 	}
 
