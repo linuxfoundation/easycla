@@ -21,11 +21,11 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/signatures"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	githubpkg "github.com/google/go-github/v33/github"
 	"golang.org/x/oauth2"
 )

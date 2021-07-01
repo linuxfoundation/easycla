@@ -9,7 +9,7 @@ import (
 	"reflect"
 
 	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/test_models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/verdverm/frisby"
 )
 

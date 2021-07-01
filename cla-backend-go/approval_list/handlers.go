@@ -9,9 +9,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/company"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/company"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/user"

@@ -11,9 +11,9 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/github_organizations"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/github_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/github"
 	"github.com/communitybridge/easycla/cla-backend-go/user"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"

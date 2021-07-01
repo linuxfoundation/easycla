@@ -5,7 +5,7 @@ package utils
 
 import (
 	"github.com/LF-Engineering/lfx-kit/auth"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/sirupsen/logrus"
 )

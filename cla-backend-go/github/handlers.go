@@ -14,8 +14,8 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/user"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations"
-	gh "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/github"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
+	gh "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/github"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"

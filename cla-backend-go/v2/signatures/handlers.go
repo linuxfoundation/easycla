@@ -21,14 +21,14 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/project"
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
-	v1Signatures "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/signatures"
+	v1Signatures "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/github"

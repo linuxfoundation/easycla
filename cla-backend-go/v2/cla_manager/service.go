@@ -29,7 +29,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
 
 	v1ClaManager "github.com/communitybridge/easycla/cla-backend-go/cla_manager"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	v1User "github.com/communitybridge/easycla/cla-backend-go/user"
 	easyCLAUser "github.com/communitybridge/easycla/cla-backend-go/users"

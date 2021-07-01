@@ -3,7 +3,7 @@
 
 package events
 
-import "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+import "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 
 //IndividualSignedEvent represntative of ICLA signatures
 const IndividualSignedEvent = "IndividualSignatureSigned"

@@ -12,14 +12,14 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/organization"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/organization"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/company"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/company"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/user"
 	orgService "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"

@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"

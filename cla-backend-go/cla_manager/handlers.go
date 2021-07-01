@@ -14,18 +14,18 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/cla_manager"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/cla_manager"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-sdk-go/aws"
-	sigAPI "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/signatures"
+	sigAPI "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/user"

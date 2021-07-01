@@ -4,9 +4,9 @@
 package events
 
 import (
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations"
-	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/events"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
+	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/user"
 	"github.com/go-openapi/runtime/middleware"

@@ -16,8 +16,8 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/project"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/project"
 	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 )

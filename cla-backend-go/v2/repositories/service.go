@@ -21,7 +21,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/github"
 
 	"github.com/aws/aws-sdk-go/aws"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"

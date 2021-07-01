@@ -4,7 +4,7 @@
 package signatures
 
 import (
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 )
 

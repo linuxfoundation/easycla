@@ -16,7 +16,7 @@ import (
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	v1Events "github.com/communitybridge/easycla/cla-backend-go/events"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/template"

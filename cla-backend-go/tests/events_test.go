@@ -8,7 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
-	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/events"
+	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 	"github.com/stretchr/testify/assert"
 )
 

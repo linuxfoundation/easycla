@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"

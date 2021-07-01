@@ -17,7 +17,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/dynamo_events"
 

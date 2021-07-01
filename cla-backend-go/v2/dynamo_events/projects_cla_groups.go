@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/signatures"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	organizationService "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
 	userService "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
 
@@ -18,7 +18,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	claEvents "github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"

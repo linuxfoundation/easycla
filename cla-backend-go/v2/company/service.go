@@ -27,9 +27,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	v1Company "github.com/communitybridge/easycla/cla-backend-go/company"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	v1ProjectParams "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/project"
-	v1SignatureParams "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/signatures"
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	v1ProjectParams "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/project"
+	v1SignatureParams "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"

@@ -11,7 +11,7 @@ import (
 	v2AcsService "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
 
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"

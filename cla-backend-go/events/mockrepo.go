@@ -12,8 +12,8 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/events"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 	"github.com/go-openapi/strfmt"
 )
 

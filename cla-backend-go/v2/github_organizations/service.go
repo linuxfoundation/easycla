@@ -20,7 +20,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	v1GithubOrg "github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 	v1Repositories "github.com/communitybridge/easycla/cla-backend-go/repositories"

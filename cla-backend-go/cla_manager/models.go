@@ -3,7 +3,7 @@
 
 package cla_manager
 
-import "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+import "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 
 // CLAManagerRequests data model
 type CLAManagerRequests struct {

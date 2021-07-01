@@ -4,7 +4,7 @@
 package gerrits
 
 import (
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/go-openapi/strfmt"
 )
 

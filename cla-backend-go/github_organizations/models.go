@@ -3,7 +3,7 @@
 
 package github_organizations
 
-import "github.com/communitybridge/easycla/cla-backend-go/gen/models"
+import "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 
 // GithubOrganization is data model for github organizations
 type GithubOrganization struct {

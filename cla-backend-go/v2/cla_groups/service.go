@@ -27,8 +27,8 @@ import (
 
 	"github.com/jinzhu/copier"
 
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/signatures"
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	v1Project "github.com/communitybridge/easycla/cla-backend-go/project"

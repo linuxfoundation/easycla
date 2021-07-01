@@ -27,8 +27,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/models"
-	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/events"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 )
 
 // errors

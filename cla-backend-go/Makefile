@@ -29,7 +29,9 @@ GO_FILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')
 all: all-mac
 all-mac: clean swagger deps fmt build-mac build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac test lint
 all-linux: clean swagger deps fmt build-linux build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux test lint
+lambdas-mac: build-aws-lambda-mac
 build-lambdas-mac: build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-metrics-report-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac
+lambdas: build-lambdas-linux
 build-lambdas-linux: build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-metrics-report-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux
 
 generate: swagger
@@ -70,13 +72,17 @@ clean:
 		functional-tests* metrics-aws-lambda* metrics-report-lambda* \
 		user-subscribe-lambda* zipbuild-lambda* zipbuilder-scheduler-lambda*
 
+swagger-clean: clean-swagger
 clean-swagger:
 	@rm -rf gen/
 
 clean-all: clean clean-swagger
 	@rm -rf vendor/
 
-swagger: clean-swagger swagger-build swagger-validate
+swagger: clean-swagger swagger-prep swagger-build swagger-validate
+build-swagger: swagger-build
+swagger-build: swagger-build-v1-services swagger-build-v2-services swagger-build-project-service swagger-build-organization-service swagger-build-user-service swagger-build-acs-service
+swagger-validate: swagger-v1-validate swagger-v2-validate
 
 swagger-prep:
 	@mkdir gen
@@ -89,6 +95,8 @@ swagger-build-v1-services:
 		-t gen \
 		-f swagger/cla.v1.compiled.yaml \
 		--copyright-file=copyright-header.txt \
+		--server-package=v1/restapi \
+		--model-package=v1/models \
 		--exclude-main \
 		-A cla \
 		-P user.CLAUser
@@ -153,11 +161,6 @@ swagger-build-acs-service:
 		--copyright-file=copyright-header.txt \
 		-t v2/acs-service \
 		-f swagger/acs-service.yaml
-
-build-swagger: swagger-build
-swagger-build: clean-swagger swagger-prep swagger-build-v1-services swagger-build-v2-services swagger-build-project-service swagger-build-organization-service swagger-build-user-service swagger-build-acs-service
-
-swagger-validate: swagger-v1-validate swagger-v2-validate
 
 swagger-v1-validate:
 	@echo ""

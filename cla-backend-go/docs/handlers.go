@@ -4,8 +4,8 @@
 package docs
 
 import (
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/restapi/operations/docs"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/docs"
 	"github.com/go-openapi/runtime/middleware"
 )
 
