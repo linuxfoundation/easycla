@@ -20,14 +20,14 @@ const (
 
 func TestIsProjectHasRootParentNoParent(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = ""
+	project.Parent = utils.StringRef("")
 	project.Foundation = nil
 	assert.True(t, utils.IsProjectHasRootParent(project), "Project Has Root Parent - Empty Parent")
 }
 
 func TestIsProjectHasRootParentLF(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = testProjectParentID
+	project.Parent = utils.StringRef(testProjectParentID)
 	project.Foundation = &models.Foundation{
 		ID:      testProjectID,
 		LogoURL: testProjectLogo,
@@ -38,7 +38,7 @@ func TestIsProjectHasRootParentLF(t *testing.T) {
 
 func TestIsProjectHasRootParentLFProjectsLLC(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = testProjectParentID
+	project.Parent = utils.StringRef(testProjectParentID)
 	project.Foundation = &models.Foundation{
 		ID:      testProjectID,
 		LogoURL: testProjectLogo,
@@ -49,7 +49,7 @@ func TestIsProjectHasRootParentLFProjectsLLC(t *testing.T) {
 
 func TestIsProjectHasRootParentNonLF(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = testProjectParentID
+	project.Parent = utils.StringRef(testProjectParentID)
 	project.Foundation = &models.Foundation{
 		ID:      testProjectID,
 		LogoURL: testProjectLogo,
@@ -60,7 +60,7 @@ func TestIsProjectHasRootParentNonLF(t *testing.T) {
 
 func TestIsStandaloneProject(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = ""
+	project.Parent = utils.StringRef("")
 	project.Foundation = nil
 	project.Projects = []*models.ProjectOutput{}
 	assert.True(t, utils.IsStandaloneProject(project), "Standalone Project with No Parent with No Children")
@@ -68,7 +68,7 @@ func TestIsStandaloneProject(t *testing.T) {
 
 func TestLFParent(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = testProjectParentID
+	project.Parent = utils.StringRef(testProjectParentID)
 	project.Foundation = &models.Foundation{
 		ID:      testProjectID,
 		LogoURL: testProjectLogo,
@@ -80,7 +80,7 @@ func TestLFParent(t *testing.T) {
 
 func TestLFProjectsLLCParent(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = testProjectParentID
+	project.Parent = utils.StringRef(testProjectParentID)
 	project.Foundation = &models.Foundation{
 		ID:      testProjectID,
 		LogoURL: testProjectLogo,
@@ -92,7 +92,7 @@ func TestLFProjectsLLCParent(t *testing.T) {
 
 func TestLFParentWithChildren(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = testProjectParentID
+	project.Parent = utils.StringRef(testProjectParentID)
 	project.Foundation = &models.Foundation{
 		ID:      testProjectID,
 		LogoURL: testProjectLogo,
@@ -104,7 +104,7 @@ func TestLFParentWithChildren(t *testing.T) {
 
 func TestLFProjectsLLCParentWithChildren(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = testProjectParentID
+	project.Parent = utils.StringRef(testProjectParentID)
 	project.Foundation = &models.Foundation{
 		ID:      testProjectID,
 		LogoURL: testProjectLogo,
@@ -140,7 +140,7 @@ func TestLFProjectsLLCParentWithChildren(t *testing.T) {
 
 func TestIsProjectHaveChildrenNoChildren(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = testProjectParentID
+	project.Parent = utils.StringRef(testProjectParentID)
 	project.Foundation = nil
 	project.Projects = []*models.ProjectOutput{}
 	assert.False(t, utils.IsProjectHaveChildren(project), "Project has no children")
@@ -148,7 +148,7 @@ func TestIsProjectHaveChildrenNoChildren(t *testing.T) {
 
 func TestIsProjectHaveChildrenWithChildren(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
-	project.Parent = testProjectParentID
+	project.Parent = utils.StringRef(testProjectParentID)
 	project.Foundation = nil
 	child := &models.ProjectOutput{
 		ProjectCommon:     models.ProjectCommon{},

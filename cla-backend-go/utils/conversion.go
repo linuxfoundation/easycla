@@ -11,6 +11,11 @@ func StringValue(input *string) string {
 	return *input
 }
 
+// StringRef function convert string to string reference
+func StringRef(input string) *string {
+	return &input
+}
+
 // Int64Value function convert int64 pointer to string
 func Int64Value(input *int64) int64 {
 	if input == nil {

@@ -306,15 +306,15 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				}
 				var parentProject *v2ProjectServiceModels.ProjectOutputDetailed
 				// Handle the ONAP edge case
-				if project.Parent != "" {
-					parentProject, projectErr = psc.GetProject(project.Parent)
+				if utils.StringValue(project.Parent) != "" {
+					parentProject, projectErr = psc.GetProject(utils.StringValue(project.Parent))
 					if parentProject == nil || projectErr != nil {
-						msg := fmt.Sprintf("Failed to get parent: %s", project.Parent)
+						msg := fmt.Sprintf("Failed to get parent: %s", utils.StringValue(project.Parent))
 						log.WithFields(f).Warnf(msg)
 						return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 					}
 				}
-				if (project.Parent != "" && !utils.IsProjectCategory(project, parentProject)) || (utils.IsProjectHasRootParent(project) && project.ProjectType == utils.ProjectTypeProjectGroup) {
+				if (utils.StringValue(project.Parent) != "" && !utils.IsProjectCategory(project, parentProject)) || (utils.IsProjectHasRootParent(project) && project.ProjectType == utils.ProjectTypeProjectGroup) {
 					msg := fmt.Sprintf("Unable to enroll salesforce foundation project: %s in project level cla-group.", projectSFID)
 					return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 				}

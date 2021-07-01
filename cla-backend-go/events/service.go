@@ -255,11 +255,11 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 		args.ProjectName = project.Name
 
 		// Try to load and set the parent information
-		if project.Parent != "" {
-			log.WithFields(f).Debugf("loading salesforce project parent by ID: %s...", project.Parent)
-			parentProject, parentProjectErr := project_service.GetClient().GetProject(project.Parent)
+		if utils.StringValue(project.Parent) != "" {
+			log.WithFields(f).Debugf("loading salesforce project parent by ID: %s...", utils.StringValue(project.Parent))
+			parentProject, parentProjectErr := project_service.GetClient().GetProject(utils.StringValue(project.Parent))
 			if parentProjectErr != nil || parentProject == nil {
-				log.WithFields(f).Warnf("failed to load salesforce project parent by ID: %s", project.Parent)
+				log.WithFields(f).Warnf("failed to load salesforce project parent by ID: %s", utils.StringValue(project.Parent))
 				return nil
 			}
 			var parentProjectName, parentProjectID string
@@ -271,7 +271,7 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 				parentProjectID = project.ID
 			}
 			log.WithFields(f).Debugf("loaded salesforce project by parent ID: %s - resulting in ID: %s with name: %s",
-				project.Parent, parentProjectID, parentProjectName)
+				utils.StringValue(project.Parent), parentProjectID, parentProjectName)
 			args.ParentProjectSFID = parentProjectID
 			args.ParentProjectName = parentProjectName
 		} else if project.Foundation != nil {

@@ -145,7 +145,7 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 	existingModel, exists := projectServiceModels[projectSFID]
 	if exists {
 		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
-		return existingModel.Parent, nil
+		return utils.StringValue(existingModel.Parent), nil
 	}
 	log.WithFields(f).Debugf("cache miss - cache size: %d", len(projectServiceModels))
 
@@ -161,14 +161,14 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
 
 	// Do they have a parent?
-	if projectModel.Parent == "" || (projectModel.Foundation != nil &&
+	if utils.StringValue(projectModel.Parent) == "" || (projectModel.Foundation != nil &&
 		(projectModel.Foundation.Name == utils.TheLinuxFoundation || projectModel.Foundation.Name == utils.LFProjectsLLC)) {
 		log.WithFields(f).Debugf("no parent for projectSFID or %s or %s is the parent...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return projectSFID, nil
 	}
 
-	log.WithFields(f).Debugf("returning parent projectSFID: %s", projectModel.Parent)
-	return projectModel.Parent, nil
+	log.WithFields(f).Debugf("returning parent projectSFID: %s", utils.StringValue(projectModel.Parent))
+	return utils.StringValue(projectModel.Parent), nil
 }
 
 // GetParentProjectModel returns the parent project model if there is a parent, otherwise returns nil
@@ -190,20 +190,20 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
 
 		// Parent in the cache?
-		existingParentModel, exists = projectServiceModels[existingModel.Parent]
+		existingParentModel, exists = projectServiceModels[utils.StringValue(existingModel.Parent)]
 		if exists {
 			return existingParentModel, nil
 		}
 
 		// Parent project not in the cache - lookup
-		parentProjectModel, err := pmm.GetProject(existingModel.Parent)
+		parentProjectModel, err := pmm.GetProject(utils.StringValue(existingModel.Parent))
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel projectSFID: '%s'", existingModel.Parent)
+			log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel projectSFID: '%s'", utils.StringValue(existingModel.Parent))
 			return nil, err
 		}
 
 		// Update our cache for next time
-		projectServiceModels[existingModel.Parent] = parentProjectModel
+		projectServiceModels[utils.StringValue(existingModel.Parent)] = parentProjectModel
 		log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
 
 		return parentProjectModel, nil
@@ -221,27 +221,27 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
 
 	// Do they have a parent?
-	if projectModel.Parent == "" || (projectModel.Foundation != nil &&
+	if utils.StringValue(projectModel.Parent) == "" || (projectModel.Foundation != nil &&
 		(projectModel.Foundation.Name == utils.TheLinuxFoundation || projectModel.Foundation.Name == utils.LFProjectsLLC)) {
 		log.WithFields(f).Debugf("no parent for projectSFID or %s or %s is the parent...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return nil, nil
 	}
 
 	// Parent in the cache?
-	existingParentModel, exists = projectServiceModels[projectModel.Parent]
+	existingParentModel, exists = projectServiceModels[utils.StringValue(projectModel.Parent)]
 	if exists {
 		return existingParentModel, nil
 	}
 
 	// Parent project not in the cache - lookup
-	parentProjectModel, err := pmm.GetProject(projectModel.Parent)
+	parentProjectModel, err := pmm.GetProject(utils.StringValue(projectModel.Parent))
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel projectSFID: '%s'", projectModel.Parent)
+		log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel projectSFID: '%s'", utils.StringValue(projectModel.Parent))
 		return nil, err
 	}
 
 	// Update our cache for next time
-	projectServiceModels[existingModel.Parent] = parentProjectModel
+	projectServiceModels[utils.StringValue(existingModel.Parent)] = parentProjectModel
 	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
 
 	return parentProjectModel, nil
@@ -286,13 +286,13 @@ func (pmm *Client) IsParentTheLinuxFoundation(projectSFID string) (bool, error) 
 		return false, err
 	}
 
-	if projectModel.Parent == "" {
+	if utils.StringValue(projectModel.Parent) == "" {
 		return false, nil
 	}
 
-	parentProjectModel, err := pmm.GetProject(projectModel.Parent)
+	parentProjectModel, err := pmm.GetProject(utils.StringValue(projectModel.Parent))
 	if err != nil {
-		log.WithFields(f).Warnf("unable to lookup parent project by ID: %s error: %+v", projectModel.Parent, err)
+		log.WithFields(f).Warnf("unable to lookup parent project by ID: %s error: %+v", utils.StringValue(projectModel.Parent), err)
 		return false, err
 	}
 

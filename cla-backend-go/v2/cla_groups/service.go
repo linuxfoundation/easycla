@@ -386,7 +386,7 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 	var parentDetails *v2ProjectServiceModels.ProjectOutputDetailed
 	var parentDetailErr error
 
-	if sfProjectModelDetails.Parent != "" {
+	if utils.StringValue(sfProjectModelDetails.Parent) != "" {
 		var parentSFID string
 		// Use utility function that considers TLF and LF Projects, LLC
 		parentSFID, parentDetailErr = v2ProjectService.GetClient().GetParentProject(projectOrFoundationSFID)
