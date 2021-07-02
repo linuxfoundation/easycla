@@ -1467,13 +1467,27 @@ func (s *service) fillActiveCLA(ctx context.Context, wg *sync.WaitGroup, sig *v1
 			log.WithFields(f).Warnf("signature : %s have empty signature_acl", sig.SignatureID)
 			return
 		}
-		lfUsername := sig.SignatureACL[0].LfUsername
-		user, err := usc.GetUserByUsername(lfUsername)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to get user with lf username : %s", lfUsername)
-			return
+
+		// get cla manager with cla signatory permission
+		orgClient := orgService.GetClient()
+		for _, lfUser := range sig.SignatureACL {
+			log.WithFields(f).Debugf("")
+			hasScope, hasScopeErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLASignatoryRole, lfUser.LfUsername, v1CompanyModel.CompanyExternalID, cg.ProjectSFID)
+			if hasScopeErr != nil {
+				log.WithFields(f).WithError(hasScopeErr).Warnf("unable to check for %s permissions for user: %s ", utils.CLASignatoryRole, lfUser.LfUsername)
+				continue
+			}
+			if hasScope {
+				log.WithFields(f).Debugf("%s has %s permissions", lfUser.LfUsername, utils.CLASignatoryRole)
+				user, err := usc.GetUserByUsername(lfUser.LfUsername)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warnf("unable to get user with lf username : %s", lfUser.LfUsername)
+					return
+				}
+				signatoryName = user.Name
+				break
+			}
 		}
-		signatoryName = user.Name
 	}()
 
 	cwg.Wait()
