@@ -974,7 +974,13 @@ func (ed *ClaManagerAccessRequestDeletedEventData) GetEventDetailsString(args *L
 
 // GetEventDetailsString returns the details string for this event
 func (ed *CLAGroupCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Group ID: %s, Name: %s was created", args.ProjectID, args.ProjectName)
+	data := fmt.Sprintf("The CLA group %s was created", args.CLAGroupName)
+	if args.CLAGroupID != "" {
+		data = data + fmt.Sprintf(" with the CLA group ID %s", args.CLAGroupID)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -1009,7 +1015,13 @@ func (ed *CLAGroupUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (s
 
 // GetEventDetailsString returns the details string for this event
 func (ed *CLAGroupDeletedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("CLA Group ID: %s was deleted", args.ProjectID)
+	data := fmt.Sprintf("The CLA group %s was deleted", args.CLAGroupName)
+	if args.CLAGroupID != "" {
+		data = data + fmt.Sprintf(" with the CLA group ID %s", args.CLAGroupID)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -1905,7 +1917,14 @@ func (ed *ClaManagerAccessRequestDeletedEventData) GetEventSummaryString(args *L
 
 // GetEventSummaryString returns the summary string for this event
 func (ed *CLAGroupCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The CLA Group %s was created by the user %s.", args.ProjectName, args.UserName)
+	data := fmt.Sprintf("The CLA group %s was created", args.CLAGroupName)
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
 	return data, true
 }
 
@@ -1939,7 +1958,10 @@ func (ed *CLAGroupUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (s
 
 // GetEventSummaryString returns the summary string for this event
 func (ed *CLAGroupDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The CLA Group %s was deleted", args.ProjectName)
+	data := fmt.Sprintf("The CLA group %s was deleted", args.CLAGroupName)
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}

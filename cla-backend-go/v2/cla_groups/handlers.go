@@ -72,10 +72,12 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 
 		// Log the event
 		eventsService.LogEvent(&events.LogEventArgs{
-			EventType:  events.CLAGroupCreated,
-			ProjectID:  claGroup.ClaGroupID,
-			LfUsername: authUser.UserName,
-			EventData:  &events.CLAGroupCreatedEventData{},
+			EventType:         events.CLAGroupCreated,
+			CLAGroupName:      claGroup.ClaGroupName,
+			CLAGroupID:        claGroup.ClaGroupID,
+			ParentProjectSFID: utils.StringValue(params.ClaGroupInput.FoundationSfid),
+			LfUsername:        authUser.UserName,
+			EventData:         &events.CLAGroupCreatedEventData{},
 		})
 
 		return cla_group.NewCreateClaGroupOK().WithXRequestID(reqID).WithPayload(claGroup)

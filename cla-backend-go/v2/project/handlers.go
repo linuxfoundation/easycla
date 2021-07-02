@@ -214,6 +214,7 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:     events.CLAGroupDeleted,
 			ClaGroupModel: claGroupModel,
+			ProjectSFID:   params.ProjectSfdcID,
 			LfUsername:    authUser.UserName,
 			EventData:     &events.CLAGroupDeletedEventData{},
 		})
