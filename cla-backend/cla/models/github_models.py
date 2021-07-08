@@ -844,6 +844,7 @@ def handle_commit_from_user(project, commit_sha, author_info, signed, missing): 
                               f'user: {author_username}, '
                               f'email {author_email}) is on the approved list, '
                               'but not affiliated with a company')
+                
                 list_author_info.append(True)
                 break
         missing.append((commit_sha, list_author_info))

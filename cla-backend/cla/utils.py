@@ -1001,8 +1001,10 @@ def get_comment_body(repository_type, sign_url, signed, missing):
                 )
             else:
                 if True in commit_hashes:
+                    cla.log.info(f"{fn} filter True in commit hash listing: {commit_hashes}")
+                    filtered_commits = [commit_hash for commit_hash in commit_hashes if commit_hash != True]
                     committers_comment += (
-                            f"<li>{author} ({' ,'.join(commit_hashes[:-1])}) "
+                            f"<li>{author} ({' ,'.join(filtered_commits)}) "
                             + f"is authorized, but they must confirm their affiliation with their company. "
                             + f"Start the authorization process "
                             + f"<a href='{sign_url}' target='_blank'> by clicking here</a>, click \"Corporate\","
