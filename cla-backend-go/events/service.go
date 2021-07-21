@@ -255,13 +255,14 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 		args.ProjectName = project.Name
 
 		// Try to load and set the parent information
-		if project.Foundation != nil && project.Foundation.ID != "" {
-			log.WithFields(f).Debugf("loading salesforce project parent by ID: %s...", project.Foundation.ID)
+		if utils.IsProjectHaveParent(project) {
+			log.WithFields(f).Debugf("loading project parent by ID: %s...", project.Foundation.ID)
 			parentProject, parentProjectErr := project_service.GetClient().GetProject(project.Foundation.ID)
 			if parentProjectErr != nil || parentProject == nil {
-				log.WithFields(f).Warnf("failed to load salesforce project parent by ID: %s", project.Foundation.ID)
+				log.WithFields(f).Warnf("failed to load project parent by ID: %s", project.Foundation.ID)
 				return nil
 			}
+
 			var parentProjectName, parentProjectID string
 			if !utils.IsProjectHasRootParent(project) {
 				parentProjectName = parentProject.Name
@@ -270,14 +271,14 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 				parentProjectName = project.Name
 				parentProjectID = project.ID
 			}
-			log.WithFields(f).Debugf("loaded salesforce project by parent ID: %s - resulting in ID: %s with name: %s",
+			log.WithFields(f).Debugf("loaded project by parent ID: %s - resulting in ID: %s with name: %s",
 				project.Foundation.ID, parentProjectID, parentProjectName)
 			args.ParentProjectSFID = parentProjectID
 			args.ParentProjectName = parentProjectName
-		} else if project.Foundation != nil {
-			// if there's no parent set the foundation as parent project
-			args.ParentProjectSFID = project.Foundation.ID
-			args.ParentProjectName = project.Foundation.Name
+		} else {
+			// No parent, just use the current project as the parent
+			args.ParentProjectSFID = project.ID
+			args.ParentProjectName = project.Name
 		}
 	} else {
 		log.WithFields(f).Warnf("project sfid %s was not set properly can't set parent project fields in event", args.ProjectSFID)
