@@ -270,7 +270,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			"projectSFIDList": strings.Join(params.ProjectSFIDList, ","),
 		}
 
-		cg, getCLAGroupErr := v1ProjectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, getCLAGroupErr := v1ProjectService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if getCLAGroupErr != nil {
 			if _, ok := getCLAGroupErr.(*utils.CLAGroupNotFound); ok {
 				return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
@@ -285,14 +285,14 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		}
 
 		// Check permissions
-		if !isUserHaveAccessToCLAProject(ctx, authUser, cg.FoundationSFID, []string{cg.ProjectExternalID}, projectClaGroupsRepo) {
-			msg := fmt.Sprintf("user %s does not have access to enroll projects with project scope of: %s", authUser.UserName, cg.FoundationSFID)
+		if !isUserHaveAccessToCLAProject(ctx, authUser, claGroupModel.FoundationSFID, []string{claGroupModel.ProjectExternalID}, projectClaGroupsRepo) {
+			msg := fmt.Sprintf("user %s does not have access to enroll projects with project scope of: %s", authUser.UserName, claGroupModel.FoundationSFID)
 			log.WithFields(f).Warn(msg)
 			return cla_group.NewEnrollProjectsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		if !cg.FoundationLevelCLA {
-			log.WithFields(f).Debug("locating project by sfid...")
+		if !claGroupModel.FoundationLevelCLA {
+			log.WithFields(f).Debug("cla group is not a foundation level CLA group - locating project by sfid...")
 			psc := v2ProjectService.GetClient()
 			for _, projectSFID := range params.ProjectSFIDList {
 				project, projectErr := psc.GetProject(projectSFID)
@@ -321,16 +321,16 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 					return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 				}
 			}
-
 		}
 
 		// Enroll the project(s) into the CLA Group
 		enrollCLAGroupErr := service.EnrollProjectsInClaGroup(ctx, &EnrollProjectsModel{
 			AuthUser:        authUser,
 			CLAGroupID:      params.ClaGroupID,
-			FoundationSFID:  cg.FoundationSFID,
+			FoundationSFID:  claGroupModel.FoundationSFID,
 			ProjectSFIDList: params.ProjectSFIDList,
 		})
+
 		if enrollCLAGroupErr != nil {
 			if strings.Contains(enrollCLAGroupErr.Error(), "bad request") {
 				return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(

@@ -1027,7 +1027,7 @@ func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollP
 	return nil
 }
 
-//func (s *service) UnenrollProjectsInClaGroup(ctx context.Context, claGroupID string, foundationSFID string, projectSFIDList []string) error {
+// UnenrollProjectsInClaGroup un-enrolls the specified projects from the CLA group
 func (s *service) UnenrollProjectsInClaGroup(ctx context.Context, request *UnenrollProjectsModel) error {
 	f := logrus.Fields{
 		"functionName":    "v2.cla_groups.service.UnenrollProjectsInClaGroup",
@@ -1051,7 +1051,7 @@ func (s *service) UnenrollProjectsInClaGroup(ctx context.Context, request *Unenr
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Separate go routine for unenrolling projects
+	// Separate go routine for un-enrolling projects
 	go func(c context.Context, authUser *auth.User, claGroupID string, foundationSFID string, projSFIDList []string) {
 		defer wg.Done()
 		log.WithFields(f).Debug("unenrolling projects in CLA Group")

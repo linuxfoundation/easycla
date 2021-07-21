@@ -161,9 +161,9 @@ func (s *service) validateClaGroupInput(ctx context.Context, input *models.Creat
 	log.WithFields(f).Debugf("looking up LF parent project record...")
 	isLFParent := false
 	if utils.IsProjectHaveParent(foundationProjectDetails) {
-		isLFParent, err = psc.IsTheLinuxFoundation(foundationProjectDetails.Foundation.ID)
+		isLFParent, err = psc.IsTheLinuxFoundation(utils.GetProjectParentSFID(foundationProjectDetails))
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup parent project by SFID: %s", foundationProjectDetails.Foundation.ID)
+			log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup parent project by SFID: %s", utils.GetProjectParentSFID(foundationProjectDetails))
 			return false, err
 		}
 	}
@@ -361,7 +361,7 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 
 		if !isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup) {
 			msg := fmt.Sprintf("input validation failure - foundationSFID: %s , foundationType: %s , projectSFID: %s , projectType: %s ",
-				foundationProjectDetails.Foundation.ID, foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
+				utils.GetProjectParentSFID(foundationProjectDetails), foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
 			log.WithFields(f).Warnf(msg)
 			return fmt.Errorf(msg)
 		}

@@ -147,12 +147,12 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel using projectSFID: '%s'", projectSFID)
 		return projectSFID, err
 	}
-	if parentModel == nil || parentModel.Foundation == nil || parentModel.Foundation.ID == "" {
+	if parentModel == nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel using projectSFID: '%s'", projectSFID)
 		return projectSFID, err
 	}
 
-	return parentModel.Foundation.ID, nil
+	return parentModel.ID, nil
 }
 
 // GetParentProjectModel returns the parent project model if there is a parent, otherwise returns nil
@@ -293,7 +293,7 @@ func (pmm *Client) IsParentTheLinuxFoundation(projectSFID string) (bool, error) 
 		return false, err
 	}
 
-	if projectModel.Foundation == nil || projectModel.Foundation.ID == "" {
+	if !utils.IsProjectHaveParent(projectModel) {
 		return false, nil
 	}
 

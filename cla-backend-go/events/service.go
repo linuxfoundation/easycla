@@ -256,17 +256,17 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 
 		// Try to load and set the parent information
 		if utils.IsProjectHaveParent(project) {
-			log.WithFields(f).Debugf("loading project parent by ID: %s...", project.Foundation.ID)
-			parentProject, parentProjectErr := project_service.GetClient().GetProject(project.Foundation.ID)
-			if parentProjectErr != nil || parentProject == nil {
-				log.WithFields(f).Warnf("failed to load project parent by ID: %s", project.Foundation.ID)
+			log.WithFields(f).Debugf("loading project parent by ID: %s...", utils.GetProjectParentSFID(project))
+			parentProjectModel, parentProjectErr := project_service.GetClient().GetParentProjectModel(project.ID)
+			if parentProjectErr != nil || parentProjectModel == nil {
+				log.WithFields(f).Warnf("failed to load project parent by ID: %s", utils.GetProjectParentSFID(project))
 				return nil
 			}
 
 			var parentProjectName, parentProjectID string
 			if !utils.IsProjectHasRootParent(project) {
-				parentProjectName = parentProject.Name
-				parentProjectID = parentProject.ID
+				parentProjectName = parentProjectModel.Name
+				parentProjectID = parentProjectModel.ID
 			} else {
 				parentProjectName = project.Name
 				parentProjectID = project.ID
