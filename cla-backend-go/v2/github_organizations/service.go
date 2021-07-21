@@ -92,18 +92,19 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 
 	psc := v2ProjectService.GetClient()
 	log.WithFields(f).Debug("loading project details from the project service...")
-	projectServiceRecord, err := psc.GetProject(projectSFID)
+	project, err := psc.GetProject(projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem loading project details from the project service")
 		return nil, err
 	}
 
 	var parentProjectSFID string
-	if utils.IsProjectHasRootParent(projectServiceRecord) {
+	if !utils.IsProjectHaveParent(project) || utils.IsProjectHasRootParent(project) || utils.GetProjectParentSFID(project) == "" {
 		parentProjectSFID = projectSFID
 	} else {
-		parentProjectSFID = utils.StringValue(projectServiceRecord.Parent)
+		parentProjectSFID = utils.GetProjectParentSFID(project)
 	}
+
 	f["parentProjectSFID"] = parentProjectSFID
 	log.WithFields(f).Debug("located parentProjectID...")
 
@@ -290,12 +291,12 @@ func (s service) AddGithubOrganization(ctx context.Context, projectSFID string, 
 	}
 
 	var parentProjectSFID string
-	if utils.StringValue(project.Parent) == "" || (project.Foundation != nil &&
-		(project.Foundation.Name == utils.TheLinuxFoundation || project.Foundation.Name == utils.LFProjectsLLC)) {
+	if !utils.IsProjectHaveParent(project) || utils.IsProjectHasRootParent(project) || utils.GetProjectParentSFID(project) == "" {
 		parentProjectSFID = projectSFID
 	} else {
-		parentProjectSFID = utils.StringValue(project.Parent)
+		parentProjectSFID = utils.GetProjectParentSFID(project)
 	}
+
 	f["parentProjectSFID"] = parentProjectSFID
 	log.WithFields(f).Debug("located parentProjectID...")
 

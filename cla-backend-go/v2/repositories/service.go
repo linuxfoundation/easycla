@@ -90,11 +90,10 @@ func (s *service) AddGithubRepositories(ctx context.Context, projectSFID string,
 	}
 
 	var parentProjectSFID string
-	if utils.StringValue(project.Parent) == "" || (project.Foundation != nil &&
-		(project.Foundation.Name == utils.TheLinuxFoundation || project.Foundation.Name == utils.LFProjectsLLC)) {
+	if !utils.IsProjectHaveParent(project) || utils.IsProjectHasRootParent(project) || utils.GetProjectParentSFID(project) == "" {
 		parentProjectSFID = projectSFID
 	} else {
-		parentProjectSFID = utils.StringValue(project.Parent)
+		parentProjectSFID = utils.GetProjectParentSFID(project)
 	}
 
 	allMappings, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, aws.StringValue(input.ClaGroupID))
@@ -252,8 +251,8 @@ func (s *service) ListProjectRepositories(ctx context.Context, projectSFID strin
 		return nil, err
 	}
 	f["projectName"] = projectModel.Name
-	if utils.StringValue(projectModel.Parent) != "" {
-		f["projectParentSFID"] = projectModel.Parent
+	if utils.IsProjectHaveParent(projectModel) {
+		f["projectParentSFID"] = utils.GetProjectParentSFID(projectModel)
 	}
 	log.WithFields(f).Debug("loaded project from the project service")
 	enabled := true

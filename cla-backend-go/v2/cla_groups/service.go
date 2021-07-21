@@ -386,7 +386,8 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 	var parentDetails *v2ProjectServiceModels.ProjectOutputDetailed
 	var parentDetailErr error
 
-	if utils.StringValue(sfProjectModelDetails.Parent) != "" {
+	// If we have a parent...
+	if utils.IsProjectHaveParent(sfProjectModelDetails) {
 		var parentSFID string
 		// Use utility function that considers TLF and LF Projects, LLC
 		parentSFID, parentDetailErr = v2ProjectService.GetClient().GetParentProject(projectOrFoundationSFID)
@@ -646,9 +647,9 @@ func (s *service) appendCLAGroupsForProject(ctx context.Context, f logrus.Fields
 	// Since this is a project and not a foundation, we'll want to set he parent foundation ID and name (which is
 	// our parent in this case)
 	var foundationID, foundationName string
-	if sfProjectModelDetails.ProjectOutput.Foundation != nil {
-		foundationID = sfProjectModelDetails.ProjectOutput.Foundation.ID
-		foundationName = sfProjectModelDetails.ProjectOutput.Foundation.Name
+	if utils.IsProjectHaveParent(sfProjectModelDetails) {
+		foundationID = sfProjectModelDetails.Foundation.ID
+		foundationName = sfProjectModelDetails.Foundation.Name
 		log.WithFields(f).Debugf("using parent foundation ID: %s and name: %s", foundationID, foundationName)
 	} else {
 		// Project with no parent - must be a standalone - use our ID and Name as the foundation

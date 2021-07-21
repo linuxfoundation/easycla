@@ -159,16 +159,19 @@ func (s *service) validateClaGroupInput(ctx context.Context, input *models.Creat
 
 	// Is our parent the LF project?
 	log.WithFields(f).Debugf("looking up LF parent project record...")
-	isLFParent, err := psc.IsTheLinuxFoundation(utils.StringValue(foundationProjectDetails.Parent))
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup %s or %s project", utils.TheLinuxFoundation, utils.LFProjectsLLC)
-		return false, err
+	isLFParent := false
+	if utils.IsProjectHaveParent(foundationProjectDetails) {
+		isLFParent, err = psc.IsTheLinuxFoundation(foundationProjectDetails.Foundation.ID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup parent project by SFID: %s", foundationProjectDetails.Foundation.ID)
+			return false, err
+		}
 	}
 
 	// If the foundation details in the platform project service indicates that this foundation has no parent or no
 	// children/sub-project... (stand alone project situation)
 	log.WithFields(f).Debug("checking to see if we have a standalone project...")
-	if (utils.StringValue(foundationProjectDetails.Parent) == "" || isLFParent) && len(foundationProjectDetails.Projects) == 0 {
+	if isLFParent && len(foundationProjectDetails.Projects) == 0 {
 		log.WithFields(f).Debug("we have a standalone project...")
 		// Did the user actually pass in any projects?  If none - add the foundation ID to the list and return to
 		// indicate it is a "standalone project"
@@ -218,14 +221,20 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 	// fetch the foundation model details from the platform project service which includes a list of its sub projects
 	foundationProjectDetails, err := psc.GetProject(foundationSFID)
 	if err != nil {
-		log.WithFields(f).Warnf("validation failure - problem fetching project details from project service, error: %+v", err)
+		log.WithFields(f).WithError(err).Warnf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
 		return err
+	}
+	if foundationProjectDetails == nil {
+		return fmt.Errorf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
 	}
 
 	foundationProjectSummary, err := psc.GetSummary(ctx, foundationSFID)
 	if err != nil {
-		log.WithFields(f).Warnf("validation failure - problem fetching project details from project service, error: %+v", err)
+		log.WithFields(f).WithError(err).Warnf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
 		return err
+	}
+	if foundationProjectSummary == nil {
+		return fmt.Errorf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
 	}
 
 	// build Tree that tracks parent and child projects
@@ -251,7 +260,7 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 
 		if projectTree != nil && projectTree.Parent != nil && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
 			msg := fmt.Sprintf("input validation failure - foundationSFID: %s , foundationType: %s , projectSFID: %s , projectType: %s ",
-				utils.StringValue(foundationProjectDetails.Parent), foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
+				foundationProjectDetails.Foundation.ID, foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
 			log.WithFields(f).Warnf(msg)
 			return fmt.Errorf(msg)
 		}
@@ -316,14 +325,18 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 	// fetch the foundation model details from the platform project service which includes a list of its sub projects
 	foundationProjectDetails, err := psc.GetProject(foundationSFID)
 	if err != nil {
-		log.WithFields(f).Warnf("validation failure - problem fetching project details from project service, error: %+v", err)
 		return err
+	}
+	if foundationProjectDetails == nil {
+		return fmt.Errorf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
 	}
 
 	foundationProjectSummary, err := psc.GetSummary(ctx, foundationSFID)
 	if err != nil {
-		log.WithFields(f).Warnf("validation failure - problem fetching project details from project service, error: %+v", err)
 		return err
+	}
+	if foundationProjectSummary == nil {
+		return fmt.Errorf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
 	}
 
 	// build Tree that tracks parent and child projects
@@ -331,10 +344,13 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 
 	// Is our parent the LF project?
 	log.WithFields(f).Debugf("looking up LF parent project record...")
-	isLFParent, err := psc.IsTheLinuxFoundation(utils.StringValue(foundationProjectDetails.Parent))
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup %s or %s project", utils.TheLinuxFoundation, utils.LFProjectsLLC)
-		return err
+	isLFParent := false
+	if utils.IsProjectHaveParent(foundationProjectDetails) {
+		isLFParent, err = psc.IsTheLinuxFoundation(foundationProjectDetails.Foundation.ID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup parent project by SFID: %s", foundationProjectDetails.Foundation.ID)
+			return err
+		}
 	}
 
 	for _, projectSFID := range projectSFIDList {
@@ -343,9 +359,9 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 			return err
 		}
 
-		if utils.StringValue(foundationProjectDetails.Parent) != "" && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
+		if !isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup) {
 			msg := fmt.Sprintf("input validation failure - foundationSFID: %s , foundationType: %s , projectSFID: %s , projectType: %s ",
-				utils.StringValue(foundationProjectDetails.Parent), foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
+				foundationProjectDetails.Foundation.ID, foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
 			log.WithFields(f).Warnf(msg)
 			return fmt.Errorf(msg)
 		}

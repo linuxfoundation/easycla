@@ -1144,6 +1144,9 @@ func (s *service) GetCompanyCLAGroupManagers(ctx context.Context, companyID, cla
 
 func v2ProjectToMap(projectDetails *v2ProjectServiceModels.ProjectOutputDetailed) (map[string]*v2ProjectServiceModels.ProjectOutput, error) {
 	epmap := make(map[string]*v2ProjectServiceModels.ProjectOutput) // key project_sfid
+	if projectDetails == nil {
+		return epmap, nil
+	}
 	var pr v2ProjectServiceModels.ProjectOutput
 	err := copier.Copy(&pr, projectDetails)
 	if err != nil {
@@ -1212,7 +1215,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 			log.WithFields(f).WithError(err).Warnf("unable to get project IDs for CLA Group: %s", projectMapping.ClaGroupID)
 			return nil, err
 		}
-		if len(allProjectMapping) > 1 {
+		if len(allProjectMapping) > 1 && projectDetails.Foundation != nil && projectDetails.Foundation.ID != "" {
 			// reload data in projectDetails for all projects of foundation
 			projectDetails, err = psc.GetProject(projectDetails.Foundation.ID)
 			if err != nil {

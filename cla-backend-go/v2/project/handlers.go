@@ -317,10 +317,10 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 
 		// Lookup the parent info, if it's available
 		var parentName string
-		if utils.StringValue(sfProject.Parent) != "" {
-			sfParentProject, err := psc.GetProject(utils.StringValue(sfProject.Parent))
+		if utils.IsProjectHaveParent(sfProject) {
+			sfParentProject, err := psc.GetProject(utils.GetProjectParentSFID(sfProject))
 			if err != nil {
-				log.WithFields(f).WithError(err).Warnf("unable to load parant project by ID: %s", utils.StringValue(sfProject.Parent))
+				log.WithFields(f).WithError(err).Warnf("unable to load parant project by ID: %s", utils.GetProjectParentSFID(sfProject))
 			}
 
 			if sfParentProject != nil {
@@ -335,18 +335,17 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 
 func buildSFProjectSummary(sfProject *v2ProjectServiceModels.ProjectOutputDetailed, parentName string) *models.SfProjectSummary {
 	return &models.SfProjectSummary{
-		EntityName:  utils.StringValue(sfProject.EntityName),
-		EntityType:  sfProject.EntityType,
-		Funding:     sfProject.Funding,
-		ID:          sfProject.ID,
-		LfSupported: sfProject.LFSponsored,
-		Name:        sfProject.Name,
-		ParentID:    utils.StringValue(sfProject.Parent),
-		ParentName:  parentName,
-		Slug:        sfProject.Slug,
-		Status:      sfProject.Status,
-		Type:        sfProject.Type,
-		IsStandalone: (sfProject.Type != utils.ProjectTypeProjectGroup) && (utils.StringValue(sfProject.Parent) == "" || (sfProject.Foundation != nil &&
-			(sfProject.Foundation.Name == utils.TheLinuxFoundation || sfProject.Foundation.Name == utils.LFProjectsLLC))),
+		EntityName:   utils.StringValue(sfProject.EntityName),
+		EntityType:   sfProject.EntityType,
+		Funding:      sfProject.Funding,
+		ID:           sfProject.ID,
+		LfSupported:  sfProject.LFSponsored,
+		Name:         sfProject.Name,
+		ParentID:     utils.GetProjectParentSFID(sfProject),
+		ParentName:   parentName,
+		Slug:         sfProject.Slug,
+		Status:       sfProject.Status,
+		Type:         sfProject.Type,
+		IsStandalone: utils.IsStandaloneProject(sfProject),
 	}
 }

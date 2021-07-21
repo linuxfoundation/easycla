@@ -5,15 +5,28 @@ package utils
 
 import "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/models"
 
+// GetProjectParentSFID returns the project parent SFID if available, otherwise returns empty string
+func GetProjectParentSFID(project *models.ProjectOutputDetailed) string {
+	if project == nil || project.Foundation == nil || project.Foundation.ID == "" {
+		return ""
+	}
+	return project.Foundation.ID
+}
+
+// IsProjectHaveParent returns true if the specified project has a parent
+func IsProjectHaveParent(project *models.ProjectOutputDetailed) bool {
+	return project != nil && project.Foundation != nil && project.Foundation.ID != "" && project.Foundation.Name != ""
+}
+
 // IsProjectHasRootParent determines if the a given project has a root parent. A root parent is a parent that is empty parent or the parent is TLF or LFProjects
 func IsProjectHasRootParent(project *models.ProjectOutputDetailed) bool {
-	return StringValue(project.Parent) == "" || (project.Foundation != nil && (project.Foundation.Name == TheLinuxFoundation || project.Foundation.Name == LFProjectsLLC))
+	return project.Foundation == nil || (project.Foundation != nil && project.Foundation.ID != "" && (project.Foundation.Name == TheLinuxFoundation || project.Foundation.Name == LFProjectsLLC))
 }
 
 // IsStandaloneProject determines if a given project is a standalone project. A standalone project is a project with no parent or the parent is TLF/LFProjects and does not have any children
 func IsStandaloneProject(project *models.ProjectOutputDetailed) bool {
 	// standalone: No parent or parent is TLF/LFProjects....and no children
-	return (StringValue(project.Parent) == "" ||
+	return (project.Foundation == nil ||
 		(project.Foundation != nil && (project.Foundation.Name == TheLinuxFoundation || project.Foundation.Name == LFProjectsLLC))) &&
 		len(project.Projects) == 0
 }

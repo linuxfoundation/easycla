@@ -308,15 +308,15 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				}
 				var parentProject *v2ProjectServiceModels.ProjectOutputDetailed
 				// Handle the ONAP edge case
-				if utils.StringValue(project.Parent) != "" {
-					parentProject, projectErr = psc.GetProject(utils.StringValue(project.Parent))
+				if utils.IsProjectHaveParent(project) {
+					parentProject, projectErr = psc.GetProject(utils.GetProjectParentSFID(project))
 					if parentProject == nil || projectErr != nil {
-						msg := fmt.Sprintf("Failed to get parent: %s", utils.StringValue(project.Parent))
+						msg := fmt.Sprintf("Failed to get parent: %s", utils.GetProjectParentSFID(project))
 						log.WithFields(f).Warnf(msg)
 						return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 					}
 				}
-				if (utils.StringValue(project.Parent) != "" && !utils.IsProjectCategory(project, parentProject)) || (utils.IsProjectHasRootParent(project) && project.ProjectType == utils.ProjectTypeProjectGroup) {
+				if (utils.IsProjectHaveParent(project) && !utils.IsProjectCategory(project, parentProject)) || (utils.IsProjectHasRootParent(project) && project.ProjectType == utils.ProjectTypeProjectGroup) {
 					msg := fmt.Sprintf("Unable to enroll salesforce foundation project: %s in project level cla-group.", projectSFID)
 					return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 				}
@@ -424,9 +424,9 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		log.WithFields(f).Debug("found project - evaluating parent...")
 		var projectSFIDs []string
 		// Add the foundation ID, if available
-		if project.Foundation != nil && project.Foundation.ID != "" {
-			log.WithFields(f).Debugf("parent project - found %s - adding to list of project IDs...", project.Foundation.ID)
-			projectSFIDs = append(projectSFIDs, project.Foundation.ID)
+		if utils.IsProjectHaveParent(project) {
+			log.WithFields(f).Debugf("parent project - found %s - adding to list of project IDs...", utils.GetProjectParentSFID(project))
+			projectSFIDs = append(projectSFIDs, utils.GetProjectParentSFID(project))
 		}
 		log.WithFields(f).Debug("project - adding to list of project IDs...")
 		projectSFIDs = append(projectSFIDs, project.ID)
