@@ -30,8 +30,10 @@
     "glob-parent": "^5.1.2",
     "kind-of": "^6.0.3",
     "lodash": "^4.17.19",
+    "netmask": "^2.0.1",
     "minimist": "^1.2.3",
     "normalize-url": "^4.5.1",
-    "ws": "^7.4.6"
+    "ws": "^7.4.6",
+    "xmlhttprequest-ssl": "^1.6.2"
   }
 }
