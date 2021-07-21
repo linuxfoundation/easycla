@@ -173,8 +173,12 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	if exists {
 		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
 
+		if !utils.IsProjectHaveParent(existingModel) {
+			return nil, nil
+		}
+
 		// Does this project they have a parent? projectModel.Parent is deprecated and no longer returned, use project.Foundation.ID/Name attribute instead
-		if existingModel.Foundation != nil && existingModel.Foundation.ID != "" && (existingModel.Foundation.Name == utils.TheLinuxFoundation || existingModel.Foundation.Name == utils.LFProjectsLLC) {
+		if existingModel.Foundation.Name == utils.TheLinuxFoundation || existingModel.Foundation.Name == utils.LFProjectsLLC {
 			log.WithFields(f).Debugf("no parent for projectSFID %s or %s or %s is the parent...", projectSFID, utils.TheLinuxFoundation, utils.LFProjectsLLC)
 			return nil, nil
 		}
@@ -217,12 +221,12 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
 
 	// No parent
-	if projectModel.Foundation == nil || projectModel.Foundation.ID == "" {
+	if !utils.IsProjectHaveParent(existingModel) {
 		return nil, nil
 	}
 
 	// Do they have a parent? projectModel.Parent is deprecated and no longer returned
-	if projectModel.Foundation != nil && projectModel.Foundation.ID != "" && (projectModel.Foundation.Name == utils.TheLinuxFoundation || projectModel.Foundation.Name == utils.LFProjectsLLC) {
+	if projectModel.Foundation.Name == utils.TheLinuxFoundation || projectModel.Foundation.Name == utils.LFProjectsLLC {
 		log.WithFields(f).Debugf("no parent for projectSFID or %s or %s is the parent...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return nil, nil
 	}
