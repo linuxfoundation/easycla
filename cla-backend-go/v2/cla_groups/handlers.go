@@ -356,7 +356,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			"projectSFIDList": strings.Join(params.ProjectSFIDList, ","),
 		}
 
-		cg, err := v1ProjectService.GetCLAGroupByID(ctx, params.ClaGroupID)
+		claGroupModel, err := v1ProjectService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			if err, ok := err.(*utils.CLAGroupNotFound); ok {
 				return cla_group.NewUnenrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
@@ -371,8 +371,8 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		}
 
 		// Check permissions
-		if !isUserHaveAccessToCLAProject(ctx, authUser, cg.FoundationSFID, []string{cg.ProjectExternalID}, projectClaGroupsRepo) {
-			msg := fmt.Sprintf("user %s does not have access to unenroll projects with project scope of: %s", authUser.UserName, cg.FoundationSFID)
+		if !isUserHaveAccessToCLAProject(ctx, authUser, claGroupModel.FoundationSFID, []string{claGroupModel.ProjectExternalID}, projectClaGroupsRepo) {
+			msg := fmt.Sprintf("user %s does not have access to unenroll projects with project scope of: %s", authUser.UserName, claGroupModel.FoundationSFID)
 			log.WithFields(f).Warn(msg)
 			return cla_group.NewUnenrollProjectsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
@@ -380,7 +380,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		err = service.UnenrollProjectsInClaGroup(ctx, &UnenrollProjectsModel{
 			AuthUser:        authUser,
 			CLAGroupID:      params.ClaGroupID,
-			FoundationSFID:  cg.FoundationSFID,
+			FoundationSFID:  claGroupModel.FoundationSFID,
 			ProjectSFIDList: params.ProjectSFIDList,
 		})
 		if err != nil {

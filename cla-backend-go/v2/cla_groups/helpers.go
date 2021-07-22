@@ -315,12 +315,6 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 		log.WithFields(f).Warn("validation failure - there should be at least one subproject associated...")
 		return fmt.Errorf("bad request: there should be at least one subproject associated")
 	}
-	// Comment out the below as we want to support project-level projects
-	/* log.WithFields(f).Debug("checking to see if foundation is in project list...")
-	if !isFoundationIDInList(foundationSFID, projectSFIDList) {
-		log.WithFields(f).Warn("validation failure - unable to unenroll Project Group from CLA Group")
-		return fmt.Errorf("bad request: unable to unenroll Project Group from CLA Group")
-	} */
 
 	// fetch the foundation model details from the platform project service which includes a list of its sub projects
 	foundationProjectDetails, err := psc.GetProject(foundationSFID)
@@ -339,31 +333,18 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 		return fmt.Errorf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
 	}
 
+	// Combine all the projectSFID values and check to see if any are the project root - shouldn't be in the list
+	if psc.IsAnyProjectTheRootParent(append(projectSFIDList, foundationSFID)) {
+		return errors.New("validation failure - one of the input projects is the root Linux Foundation project")
+	}
+
 	// build Tree that tracks parent and child projects
 	projectTree := buildProjectNode(foundationProjectSummary)
 
-	// Is our parent the LF project?
-	log.WithFields(f).Debugf("looking up LF parent project record...")
-	isLFParent := false
-	if utils.IsProjectHaveParent(foundationProjectDetails) {
-		isLFParent, err = psc.IsTheLinuxFoundation(foundationProjectDetails.Foundation.ID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup parent project by SFID: %s", foundationProjectDetails.Foundation.ID)
-			return err
-		}
-	}
-
 	for _, projectSFID := range projectSFIDList {
-		projectDetails, projErr := psc.GetProject(projectSFID)
+		_, projErr := psc.GetProject(projectSFID)
 		if projErr != nil {
 			return err
-		}
-
-		if !isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup) {
-			msg := fmt.Sprintf("input validation failure - foundationSFID: %s , foundationType: %s , projectSFID: %s , projectType: %s ",
-				utils.GetProjectParentSFID(foundationProjectDetails), foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
-			log.WithFields(f).Warnf(msg)
-			return fmt.Errorf(msg)
 		}
 	}
 

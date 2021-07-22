@@ -184,7 +184,7 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 		}
 
 		// Grab the parent ID once
-		projectParentSFID := existingModel.Foundation.ID
+		projectParentSFID := utils.GetProjectParentSFID(existingModel)
 
 		// Parent SFID in the cache?
 		existingParentModel, exists = projectServiceModels[projectParentSFID]
@@ -221,7 +221,7 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
 
 	// No parent
-	if !utils.IsProjectHaveParent(existingModel) {
+	if !utils.IsProjectHaveParent(projectModel) {
 		return nil, nil
 	}
 
@@ -232,7 +232,7 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	}
 
 	// Grab the parent ID once
-	projectParentSFID := projectModel.Foundation.ID
+	projectParentSFID := utils.GetProjectParentSFID(projectModel)
 
 	// Parent in the cache?
 	existingParentModel, exists = projectServiceModels[projectParentSFID]
@@ -262,7 +262,6 @@ func (pmm *Client) IsTheLinuxFoundation(projectSFID string) (bool, error) {
 		"apiGWHost":    apiGWHost,
 	}
 
-	log.WithFields(f).Debug("querying project...")
 	projectModel, err := pmm.GetProject(projectSFID)
 	if err != nil {
 		log.WithFields(f).Warnf("unable to lookup project by ID: %s error: %+v", projectSFID, err)
@@ -464,4 +463,20 @@ func (pmm *Client) GetSummary(ctx context.Context, projectSFID string) ([]*model
 	}
 
 	return result.Payload.Data, nil
+}
+
+// IsAnyProjectTheRootParent returns true if one or more of the project ID's in the list is one of the root parents, returns false otherwise
+func (pmm *Client) IsAnyProjectTheRootParent(sliceProjectSFID []string) bool {
+	var retVal bool
+
+	// Check each project to see if it is one of the root parents
+	for _, projectSFID := range sliceProjectSFID {
+		// If so, return true, we're done
+		if isTLF, err := pmm.IsTheLinuxFoundation(projectSFID); isTLF && err == nil {
+			retVal = isTLF
+			break
+		}
+	}
+
+	return retVal
 }
