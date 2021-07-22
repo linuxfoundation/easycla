@@ -177,7 +177,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			githubAccessToken = ""
 		}
 
-		ghApprovalList, err := service.GetGithubOrganizationsFromWhitelist(ctx, params.SignatureID, githubAccessToken)
+		ghApprovalList, err := service.GetGithubOrganizationsFromApprovalList(ctx, params.SignatureID, githubAccessToken)
 		if err != nil {
 			log.Warnf("error fetching github organization approval list entries v using signature_id: %s, error: %+v",
 				params.SignatureID, err)
@@ -203,7 +203,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			githubAccessToken = ""
 		}
 
-		ghApprovalList, err := service.AddGithubOrganizationToWhitelist(ctx, params.SignatureID, params.Body, githubAccessToken)
+		ghApprovalList, err := service.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
 		if err != nil {
 			log.Warnf("error adding github organization %s using signature_id: %s to the whitelist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
@@ -253,7 +253,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			githubAccessToken = ""
 		}
 
-		ghApprovalList, err := service.DeleteGithubOrganizationFromWhitelist(ctx, params.SignatureID, params.Body, githubAccessToken)
+		ghApprovalList, err := service.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
 		if err != nil {
 			log.Warnf("error deleting github organization %s using signature_id: %s from the whitelist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)

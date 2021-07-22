@@ -52,7 +52,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "v2.signatures.handlers.SignaturesGetGitHubOrgWhitelistHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetSignatureHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"signatureID":    params.SignatureID,
 		}
@@ -208,15 +208,15 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			githubAccessToken = ""
 		}
 
-		ghWhiteList, err := v1SignatureService.GetGithubOrganizationsFromWhitelist(ctx, params.SignatureID, githubAccessToken)
+		ghOrgApprovalList, err := v1SignatureService.GetGithubOrganizationsFromApprovalList(ctx, params.SignatureID, githubAccessToken)
 		if err != nil {
-			log.WithFields(f).Warnf("error fetching github organization whitelist entries v using signature_id: %s, error: %+v",
+			log.WithFields(f).Warnf("error fetching github organization approval list entries using signature_id: %s, error: %+v",
 				params.SignatureID, err)
 			return signatures.NewGetGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		var response []models.GithubOrg
-		err = copier.Copy(&response, ghWhiteList)
+		err = copier.Copy(&response, ghOrgApprovalList)
 		if err != nil {
 			return signatures.NewGetGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
@@ -254,7 +254,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			return signatures.NewAddGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
-		ghApprovalList, err := v1SignatureService.AddGithubOrganizationToWhitelist(ctx, params.SignatureID, input, githubAccessToken)
+		ghApprovalList, err := v1SignatureService.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, input, githubAccessToken)
 		if err != nil {
 			log.WithFields(f).Warnf("error adding github organization %s using signature_id: %s to the approval list, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
@@ -322,7 +322,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			return signatures.NewDeleteGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
-		ghApprovalList, err := v1SignatureService.DeleteGithubOrganizationFromWhitelist(ctx, params.SignatureID, input, githubAccessToken)
+		ghApprovalList, err := v1SignatureService.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, input, githubAccessToken)
 		if err != nil {
 			log.WithFields(f).Warnf("error deleting github organization %s using signature_id: %s from the approval list, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
@@ -1480,68 +1480,6 @@ func isUserHaveAccessToCLAGroupProjects(ctx context.Context, authUser *auth.User
 	log.WithFields(f).Debug("testing if user has access to any projects")
 	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to at least of of the projects...")
-		return true
-	}
-
-	log.WithFields(f).Debug("exhausted project checks - user does not have access to project")
-	return false
-}
-
-// isUserHaveAccessToCLAProject is a helper function to determine if the user has access to the specified project
-func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, projectSFID string, projectClaGroupsRepo projects_cla_groups.Repository) bool { // nolint
-	f := logrus.Fields{
-		"functionName":   "v2.signatures.handlers.isUserHaveAccessToCLAProject",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"projectSFID":    projectSFID,
-		"userName":       authUser.UserName,
-		"userEmail":      authUser.Email,
-	}
-
-	log.WithFields(f).Debugf("testing if user %s/%s has access to project SFID: %s...", authUser.UserName, authUser.Email, projectSFID)
-	if utils.IsUserAuthorizedForProject(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debugf("user %s/%s has access to project SFID: %s...", authUser.UserName, authUser.Email, projectSFID)
-		return true
-	}
-	log.WithFields(f).Debugf("user %s/%s doesn't have direct access to the project SFID: %s - loading CLA Group from project id...", authUser.UserName, authUser.Email, projectSFID)
-
-	log.WithFields(f).Debug("loading CLA Group from project id...")
-	projectCLAGroupModel, err := projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem loading project -> cla group mapping - returning false")
-		return false
-	}
-	if projectCLAGroupModel == nil {
-		log.WithFields(f).WithError(err).Warnf("problem loading project -> cla group mapping - no mapping found - returning false")
-		return false
-	}
-
-	f["foundationSFID"] = projectCLAGroupModel.FoundationSFID
-	log.WithFields(f).Debug("testing if user has access to parent foundation...")
-	if utils.IsUserAuthorizedForProjectTree(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to parent foundation tree...")
-		return true
-	}
-	if utils.IsUserAuthorizedForProject(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debug("user has access to parent foundation...")
-		return true
-	}
-	log.WithFields(f).Debug("user does not have access to parent foundation...")
-
-	// Lookup the other project IDs for the CLA Group
-	log.WithFields(f).Debug("looking up other projects associated with the CLA Group...")
-	projectCLAGroupModels, err := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, projectCLAGroupModel.ClaGroupID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem loading project cla group mappings by CLA Group ID - returning false")
-		return false
-	}
-
-	projectSFIDs := getProjectIDsFromModels(f, projectCLAGroupModel.FoundationSFID, projectCLAGroupModels)
-	projectSFIDsCSV := strings.Join(projectSFIDs, ",") // Create a project SFID CSV for printout
-	f["projectIDs"] = projectSFIDsCSV
-
-	log.WithFields(f).Debugf("testing if user %s/%s has access to any cla group projects: %s", authUser.UserName, authUser.Email, projectSFIDsCSV)
-	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
-		log.WithFields(f).Debugf("user %s/%s has access to at least of of the projects: %s...", authUser.UserName, authUser.Email, projectSFIDsCSV)
 		return true
 	}
 

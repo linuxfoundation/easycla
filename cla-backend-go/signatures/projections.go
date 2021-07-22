@@ -28,6 +28,8 @@ func buildProjection() expression.ProjectionBuilder {
 		expression.Name("domain_whitelist"),
 		expression.Name("github_whitelist"),
 		expression.Name("github_org_whitelist"),
+		expression.Name("gitlab_username_approval_list"), // added for GitLab support
+		expression.Name("gitlab_project_approval_list"),  // added for GitLab support
 		expression.Name("user_github_username"),
 		expression.Name("user_lf_username"),
 		expression.Name("user_name"),

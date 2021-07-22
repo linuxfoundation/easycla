@@ -60,11 +60,11 @@ const (
 	BigPageSize     = 200
 )
 
-// SignatureRepository interface defines the functions for the github whitelist service
+// SignatureRepository interface defines the functions for the the signature repository
 type SignatureRepository interface {
-	GetGithubOrganizationsFromWhitelist(ctx context.Context, signatureID string) ([]models.GithubOrg, error)
-	AddGithubOrganizationToWhitelist(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
-	DeleteGithubOrganizationFromWhitelist(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
+	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string) ([]models.GithubOrg, error)
+	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
+	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
@@ -113,7 +113,7 @@ type repository struct {
 	signatureTableName string
 }
 
-// NewRepository creates a new instance of the whitelist service
+// NewRepository creates a new instance of the signature repository service
 func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service, repositoriesRepo repositories.Repository, ghOrgRepo github_organizations.RepositoryInterface, gerritService gerrits.Service) SignatureRepository {
 	return repository{
 		stage:              stage,
@@ -128,10 +128,10 @@ func NewRepository(awsSession *session.Session, stage string, companyRepo compan
 	}
 }
 
-// GetGithubOrganizationsFromWhitelist returns a list of GH organizations stored in the whitelist
-func (repo repository) GetGithubOrganizationsFromWhitelist(ctx context.Context, signatureID string) ([]models.GithubOrg, error) {
+// GetGithubOrganizationsFromApprovalList returns a list of GH organizations stored in the approval list
+func (repo repository) GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string) ([]models.GithubOrg, error) {
 	f := logrus.Fields{
-		"functionName":   "v1.signatures.repository.GetGitHubOrganizationsFromWhitelist",
+		"functionName":   "v1.signatures.repository.GetGithubOrganizationsFromApprovalList",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"signatureID":    signatureID,
 	}
@@ -146,7 +146,7 @@ func (repo repository) GetGithubOrganizationsFromWhitelist(ctx context.Context, 
 	})
 
 	if err != nil {
-		log.WithFields(f).Warnf("Error retrieving GH organization whitelist for signatureID: %s, error: %v", signatureID, err)
+		log.WithFields(f).Warnf("Error retrieving GH organization approval list for signatureID: %s, error: %v", signatureID, err)
 		return nil, err
 	}
 
@@ -172,16 +172,16 @@ func (repo repository) GetGithubOrganizationsFromWhitelist(ctx context.Context, 
 	return orgs, nil
 }
 
-// AddGithubOrganizationToWhitelist adds the specified GH organization to the whitelist
-func (repo repository) AddGithubOrganizationToWhitelist(ctx context.Context, signatureID, GitHubOrganizationID string) ([]models.GithubOrg, error) {
+// AddGithubOrganizationToApprovalList adds the specified GH organization to the approval list
+func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, GitHubOrganizationID string) ([]models.GithubOrg, error) {
 	f := logrus.Fields{
-		"functionName":         "v1.signatures.repository.AddGitHubOrganizationToWhitelist",
+		"functionName":         "v1.signatures.repository.AddGithubOrganizationToApprovalList",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
 		"signatureID":          signatureID,
 		"GitHubOrganizationID": GitHubOrganizationID,
 	}
 	// get item from dynamoDB table
-	log.WithFields(f).Debugf("querying database for GitHub organization whitelist using signatureID: %s", signatureID)
+	log.WithFields(f).Debugf("querying database for GitHub organization approval list using signatureID: %s", signatureID)
 
 	result, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(repo.signatureTableName),
@@ -193,7 +193,7 @@ func (repo repository) AddGithubOrganizationToWhitelist(ctx context.Context, sig
 	})
 
 	if err != nil {
-		log.WithFields(f).Warnf("Error retrieving GitHub organization whitelist for signatureID: %s and GH Org: %s, error: %v",
+		log.WithFields(f).Warnf("Error retrieving GitHub organization approval list for signatureID: %s and GH Org: %s, error: %v",
 			signatureID, GitHubOrganizationID, err)
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (repo repository) AddGithubOrganizationToWhitelist(ctx context.Context, sig
 
 	updatedItemFromMap, ok := updatedValues.Attributes["github_org_whitelist"]
 	if !ok {
-		msg := fmt.Sprintf("unable to fetch updated whitelist organization values for "+
+		msg := fmt.Sprintf("unable to fetch updated github organization approval list values for "+
 			"organization id: %s for signature: %s - list is empty - returning empty list",
 			GitHubOrganizationID, signatureID)
 		log.WithFields(f).Debugf(msg)
@@ -265,10 +265,10 @@ func (repo repository) AddGithubOrganizationToWhitelist(ctx context.Context, sig
 	return buildResponse(updatedItemFromMap.L), nil
 }
 
-// DeleteGithubOrganizationFromWhitelist removes the specified GH organization from the whitelist
-func (repo repository) DeleteGithubOrganizationFromWhitelist(ctx context.Context, signatureID, GitHubOrganizationID string) ([]models.GithubOrg, error) {
+// DeleteGithubOrganizationFromApprovalList removes the specified GH organization from the approval list
+func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, GitHubOrganizationID string) ([]models.GithubOrg, error) {
 	f := logrus.Fields{
-		"functionName":         "v1.signatures.repository.DeleteGitHubOrganizationFromWhitelist",
+		"functionName":         "v1.signatures.repository.DeleteGithubOrganizationFromApprovalList",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
 		"signatureID":          signatureID,
 		"GitHubOrganizationID": GitHubOrganizationID,
@@ -284,14 +284,14 @@ func (repo repository) DeleteGithubOrganizationFromWhitelist(ctx context.Context
 	})
 
 	if err != nil {
-		log.WithFields(f).Warnf("error retrieving GH organization whitelist for signatureID: %s and GH Org: %s, error: %v",
+		log.WithFields(f).Warnf("error retrieving GH organization approval list for signatureID: %s and GH Org: %s, error: %v",
 			signatureID, GitHubOrganizationID, err)
 		return nil, err
 	}
 
 	itemFromMap, ok := result.Item["github_org_whitelist"]
 	if !ok {
-		log.WithFields(f).Warnf("unable to remove whitelist organization: %s for signature: %s - list is empty",
+		log.WithFields(f).Warnf("unable to remove github organization approval list entry: %s for signature: %s - list is empty",
 			GitHubOrganizationID, signatureID)
 		return nil, errors.New("no github_org_whitelist column")
 	}
@@ -311,7 +311,7 @@ func (repo repository) DeleteGithubOrganizationFromWhitelist(ctx context.Context
 		// ValidationException: ExpressionAttributeValues contains invalid value: Supplied AttributeValue
 		// is empty, must contain exactly one of the supported data types for the key)
 
-		log.WithFields(f).Debugf("clearing out github org whitelist for organization: %s for signature: %s - list is empty",
+		log.WithFields(f).Debugf("clearing out github org approval list for organization: %s for signature: %s - list is empty",
 			GitHubOrganizationID, signatureID)
 		nullFlag := true
 
@@ -336,7 +336,7 @@ func (repo repository) DeleteGithubOrganizationFromWhitelist(ctx context.Context
 
 		_, err = repo.dynamoDBClient.UpdateItem(input)
 		if err != nil {
-			log.WithFields(f).Warnf("error updating github org whitelist to NULL value, error: %v", err)
+			log.WithFields(f).Warnf("error updating github org approva list to NULL value, error: %v", err)
 			return nil, err
 		}
 
@@ -369,13 +369,13 @@ func (repo repository) DeleteGithubOrganizationFromWhitelist(ctx context.Context
 
 	updatedValues, err := repo.dynamoDBClient.UpdateItem(input)
 	if err != nil {
-		log.WithFields(f).Warnf("Error updating github org whitelist, error: %v", err)
+		log.WithFields(f).Warnf("Error updating github org approva list, error: %v", err)
 		return nil, err
 	}
 
 	updatedItemFromMap, ok := updatedValues.Attributes["github_org_whitelist"]
 	if !ok {
-		msg := fmt.Sprintf("unable to fetch updated whitelist organization values for "+
+		msg := fmt.Sprintf("unable to fetch updated approva list organization values for "+
 			"organization id: %s for signature: %s - list is empty - returning empty list",
 			GitHubOrganizationID, signatureID)
 		log.WithFields(f).Debugf(msg)
@@ -2802,12 +2802,7 @@ func (repo repository) removeColumn(ctx context.Context, signatureID, columnName
 		ExpressionAttributeNames: map[string]*string{
 			"#" + columnName: aws.String(columnName),
 		},
-		//ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-		//	":a": {
-		//		S: aws.String("bar"),
-		//	},
-		//},
-		UpdateExpression: aws.String("REMOVE #" + columnName), //aws.String("REMOVE github_org_whitelist"),
+		UpdateExpression: aws.String("REMOVE #" + columnName),
 		ReturnValues:     aws.String(dynamodb.ReturnValueNone),
 	}
 

@@ -45,9 +45,9 @@ type SignatureService interface {
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams) (*models.Signatures, error)
 	InvalidateProjectRecords(ctx context.Context, projectID, note string) (int, error)
 
-	GetGithubOrganizationsFromWhitelist(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error)
-	AddGithubOrganizationToWhitelist(ctx context.Context, signatureID string, whiteListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
-	DeleteGithubOrganizationFromWhitelist(ctx context.Context, signatureID string, whiteListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
+	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error)
+	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
+	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
 	UpdateApprovalList(ctx context.Context, authUser *auth.User, claGroupModel *models.ClaGroup, companyModel *models.Company, claGroupID string, params *models.ApprovalList) (*models.Signature, error)
 
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
@@ -66,7 +66,7 @@ type service struct {
 	githubOrgValidation bool
 }
 
-// NewService creates a new whitelist service
+// NewService creates a new signature service
 func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool) SignatureService {
 	return service{
 		repo,
@@ -196,18 +196,18 @@ func (s service) GetUserSignatures(ctx context.Context, params signatures.GetUse
 	return userSignatures, nil
 }
 
-// GetGithubOrganizationsFromWhitelist retrieves the organization from the whitelist
-func (s service) GetGithubOrganizationsFromWhitelist(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error) {
+// GetGithubOrganizationsFromApprovalList retrieves the organization from the approval list
+func (s service) GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error) {
 
 	if signatureID == "" {
-		msg := "unable to get GitHub organizations whitelist - signature ID is nil"
+		msg := "unable to get GitHub organizations approval list - signature ID is nil"
 		log.Warn(msg)
 		return nil, errors.New(msg)
 	}
 
-	orgIds, err := s.repo.GetGithubOrganizationsFromWhitelist(ctx, signatureID)
+	orgIds, err := s.repo.GetGithubOrganizationsFromApprovalList(ctx, signatureID)
 	if err != nil {
-		log.Warnf("error loading github organization from whitelist using signatureID: %s, error: %v",
+		log.Warnf("error loading github organization from approval list using signatureID: %s, error: %v",
 			signatureID, err)
 		return nil, err
 	}
@@ -249,18 +249,18 @@ func (s service) GetGithubOrganizationsFromWhitelist(ctx context.Context, signat
 	return orgIds, nil
 }
 
-// AddGithubOrganizationToWhitelist adds the GH organization to the whitelist
-func (s service) AddGithubOrganizationToWhitelist(ctx context.Context, signatureID string, whiteListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error) {
-	organizationID := whiteListParams.OrganizationID
+// AddGithubOrganizationToApprovalList adds the GH organization to the approval list
+func (s service) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error) {
+	organizationID := approvalListParams.OrganizationID
 
 	if signatureID == "" {
-		msg := "unable to add GitHub organization from whitelist - signature ID is nil"
+		msg := "unable to add GitHub organization from approval list - signature ID is nil"
 		log.Warn(msg)
 		return nil, errors.New(msg)
 	}
 
 	if organizationID == nil {
-		msg := "unable to add GitHub organization from whitelist - organization ID is nil"
+		msg := "unable to add GitHub organization from approval list - organization ID is nil"
 		log.Warn(msg)
 		return nil, errors.New(msg)
 	}
@@ -309,30 +309,30 @@ func (s service) AddGithubOrganizationToWhitelist(ctx context.Context, signature
 		}
 	}
 
-	gitHubWhiteList, err := s.repo.AddGithubOrganizationToWhitelist(ctx, signatureID, *organizationID)
+	gitHubOrgApprovalList, err := s.repo.AddGithubOrganizationToApprovalList(ctx, signatureID, *organizationID)
 	if err != nil {
-		log.Warnf("issue adding github organization to white list using signatureID: %s, gh org id: %s, error: %v",
+		log.Warnf("issue adding github organization to approval list using signatureID: %s, gh org id: %s, error: %v",
 			signatureID, *organizationID, err)
 		return nil, err
 	}
 
-	return gitHubWhiteList, nil
+	return gitHubOrgApprovalList, nil
 }
 
-// DeleteGithubOrganizationFromWhitelist deletes the specified GH organization from the whitelist
-func (s service) DeleteGithubOrganizationFromWhitelist(ctx context.Context, signatureID string, whiteListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error) {
+// DeleteGithubOrganizationFromApprovalList deletes the specified GH organization from the approval list
+func (s service) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error) {
 
 	// Extract the payload values
-	organizationID := whiteListParams.OrganizationID
+	organizationID := approvalListParams.OrganizationID
 
 	if signatureID == "" {
-		msg := "unable to delete GitHub organization from whitelist - signature ID is nil"
+		msg := "unable to delete GitHub organization from approval list - signature ID is nil"
 		log.Warn(msg)
 		return nil, errors.New(msg)
 	}
 
 	if organizationID == nil {
-		msg := "unable to delete GitHub organization from whitelist - organization ID is nil"
+		msg := "unable to delete GitHub organization from approval list - organization ID is nil"
 		log.Warn(msg)
 		return nil, errors.New(msg)
 	}
@@ -381,12 +381,12 @@ func (s service) DeleteGithubOrganizationFromWhitelist(ctx context.Context, sign
 		}
 	}
 
-	gitHubWhiteList, err := s.repo.DeleteGithubOrganizationFromWhitelist(ctx, signatureID, *organizationID)
+	gitHubOrgApprovalList, err := s.repo.DeleteGithubOrganizationFromApprovalList(ctx, signatureID, *organizationID)
 	if err != nil {
 		return nil, err
 	}
 
-	return gitHubWhiteList, nil
+	return gitHubOrgApprovalList, nil
 }
 
 // UpdateApprovalList service method

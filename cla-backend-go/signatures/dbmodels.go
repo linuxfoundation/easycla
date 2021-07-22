@@ -19,10 +19,12 @@ type ItemSignature struct {
 	SignatureReferenceType        string   `json:"signature_reference_type"`
 	SignatureType                 string   `json:"signature_type"`
 	SignatureUserCompanyID        string   `json:"signature_user_ccla_company_id"`
-	EmailWhitelist                []string `json:"email_whitelist"`
-	DomainWhitelist               []string `json:"domain_whitelist"`
-	GitHubWhitelist               []string `json:"github_whitelist"`
-	GitHubOrgWhitelist            []string `json:"github_org_whitelist"`
+	EmailApprovalList             []string `json:"email_whitelist"`
+	EmailDomainApprovalList       []string `json:"domain_whitelist"`
+	GitHubUsernameApprovalList    []string `json:"github_whitelist"`
+	GitHubOrgApprovalList         []string `json:"github_org_whitelist"`
+	GitLabUsernameApprovalList    []string `json:"gitlab_username_approval_list"`
+	GitLabGroupApprovalList       []string `json:"gitlab_group_approval_list"`
 	SignatureACL                  []string `json:"signature_acl"`
 	UserGithubUsername            string   `json:"user_github_username"`
 	UserLFUsername                string   `json:"user_lf_username"`

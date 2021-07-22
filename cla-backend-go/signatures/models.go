@@ -22,7 +22,7 @@ type ApprovalCriteria struct {
 	GitHubUsername string
 }
 
-//ApprovalList ...
+//ApprovalList data model
 type ApprovalList struct {
 	Criteria                string
 	ApprovalList            []string
@@ -31,11 +31,13 @@ type ApprovalList struct {
 	ClaGroupName            string
 	CompanyID               string
 	Version                 string
-	DomainApprovals         []string
-	GHOrgApprovals          []string
-	GitHubUsernameApprovals []string
 	EmailApprovals          []string
+	DomainApprovals         []string
+	GitHubUsernameApprovals []string
 	GHUsernames             []string
+	GHOrgApprovals          []string
+	GitLabUsernameApprovals []string
+	GitLabGroupApprovals    []string
 	GerritICLAECLAs         []string
 	ICLAs                   []*models.IclaSignature
 	ECLAs                   []*models.Signature
