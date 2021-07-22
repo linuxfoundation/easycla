@@ -1070,7 +1070,6 @@ func (s *service) UnenrollProjectsInClaGroup(ctx context.Context, request *Unenr
 	// Separate go routine for disabling the CLA Service in the project service
 	go func(c context.Context, claGroupID string, projSFIDList []string) {
 		defer wg.Done()
-		log.WithFields(f).Debug("disabling CLA service in platform project service")
 		// Note: log entry will be created by disable CLA Service call
 		errDisableCLA := s.DisableCLAService(c, request.AuthUser, claGroupID, projSFIDList)
 		if errDisableCLA != nil {

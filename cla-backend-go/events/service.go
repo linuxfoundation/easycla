@@ -372,45 +372,38 @@ func (s *service) loadDetails(ctx context.Context, args *LogEventArgs) error {
 	f := logrus.Fields{
 		"functionName":   "v1.events.service.loadDetails",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"args":           fmt.Sprintf("%+v", args),
 	}
 
-	log.WithFields(f).Debug("loading company details...")
 	err := s.loadCompany(ctx, args)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load company details...")
 		return err
 	}
 
-	log.WithFields(f).Debug("loading SF project details...")
 	err = s.loadSFProject(ctx, args)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load SF project details...")
 		return err
 	}
 
-	log.WithFields(f).Debug("loading CLA Group details...")
 	err = s.loadCLAGroup(ctx, args)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load CLA Group details...")
 		return err
 	}
 
-	log.WithFields(f).Debug("loading LF user details ...")
 	err = s.loadLFUser(ctx, args)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load LF User details...")
 		return err
 	}
 
-	log.WithFields(f).Debug("loading user details...")
 	err = s.loadUser(ctx, args)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load user details...")
 		return err
 	}
 
-	log.WithFields(f).Debug("loading LF user details...")
 	err = s.loadLFUser(ctx, args)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load LF user details...")

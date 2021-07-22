@@ -214,8 +214,7 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 	psc := v2ProjectService.GetClient()
 
 	if len(projectSFIDList) == 0 {
-		log.WithFields(f).Warn("validation failure - there should be at least one subproject associated...")
-		return fmt.Errorf("bad request: there should be at least one subproject associated")
+		return errors.New("validation failure - there should be at least one project provided for the enroll request")
 	}
 
 	// fetch the foundation model details from the platform project service which includes a list of its sub projects
@@ -225,16 +224,21 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 		return err
 	}
 	if foundationProjectDetails == nil {
-		return fmt.Errorf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
+		return fmt.Errorf("validation failure - problem fetching project details for project: %s", foundationSFID)
 	}
 
 	foundationProjectSummary, err := psc.GetSummary(ctx, foundationSFID)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
+		log.WithFields(f).WithError(err).Warnf("validation failure - problem fetching project details for project: %s", foundationSFID)
 		return err
 	}
 	if foundationProjectSummary == nil {
 		return fmt.Errorf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
+	}
+
+	// Combine all the projectSFID values and check to see if any are the project root - shouldn't be in the list
+	if psc.IsAnyProjectTheRootParent(append(projectSFIDList, foundationSFID)) {
+		return errors.New("validation failure - one of the input projects is the root Linux Foundation project")
 	}
 
 	// build Tree that tracks parent and child projects
@@ -252,10 +256,11 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 		}
 	}
 
+	// Make sure each project exists in the project service
 	for _, projectSFID := range projectSFIDList {
 		projectDetails, projErr := psc.GetProject(projectSFID)
 		if projErr != nil {
-			return err
+			return fmt.Errorf("validation failure - unable to lookup project by ID %s due to the error: %+v", projectSFID, err)
 		}
 
 		if projectTree != nil && projectTree.Parent != nil && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
@@ -312,8 +317,7 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 	psc := v2ProjectService.GetClient()
 
 	if len(projectSFIDList) == 0 {
-		log.WithFields(f).Warn("validation failure - there should be at least one subproject associated...")
-		return fmt.Errorf("bad request: there should be at least one subproject associated")
+		return errors.New("validation failure - there should be at least one project provided for the unenroll request")
 	}
 
 	// fetch the foundation model details from the platform project service which includes a list of its sub projects
@@ -322,7 +326,7 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 		return err
 	}
 	if foundationProjectDetails == nil {
-		return fmt.Errorf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
+		return fmt.Errorf("validation failure - problem fetching project details for project: %s", foundationSFID)
 	}
 
 	foundationProjectSummary, err := psc.GetSummary(ctx, foundationSFID)
@@ -330,7 +334,7 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 		return err
 	}
 	if foundationProjectSummary == nil {
-		return fmt.Errorf("validation failure - problem fetching project details from project service for project: %s", foundationSFID)
+		return fmt.Errorf("validation failure - problem fetching project details for project: %s", foundationSFID)
 	}
 
 	// Combine all the projectSFID values and check to see if any are the project root - shouldn't be in the list
@@ -338,13 +342,25 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 		return errors.New("validation failure - one of the input projects is the root Linux Foundation project")
 	}
 
+	// Grab the existing list of project CLA Groups associated with this foundation
+	existingProjectCLAGroupModels, err := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, foundationSFID)
+	if err != nil {
+		return err
+	}
+	log.WithFields(f).Debugf("before unenroll, we have %d projects associated with the CLA Group - we will be removing %d and will have %d remaining.", len(existingProjectCLAGroupModels), len(projectSFIDList), len(existingProjectCLAGroupModels)-len(projectSFIDList))
+
+	if len(existingProjectCLAGroupModels)-len(projectSFIDList) <= 1 {
+		return fmt.Errorf("validation failure - must have at least one project enrolled in the CLA group under parent: %s with ID: %s", foundationProjectDetails.Name, foundationSFID)
+	}
+
 	// build Tree that tracks parent and child projects
 	projectTree := buildProjectNode(foundationProjectSummary)
 
+	// Make sure each project exists in the project service
 	for _, projectSFID := range projectSFIDList {
 		_, projErr := psc.GetProject(projectSFID)
 		if projErr != nil {
-			return err
+			return fmt.Errorf("validation failure - unable to lookup project by ID %s due to the error: %+v", projectSFID, err)
 		}
 	}
 
@@ -567,7 +583,6 @@ func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, cl
 		"claGroupID":      claGroupID,
 	}
 
-	log.WithFields(f).Debug("disabling CLA service in platform project service")
 	// Run this in parallel...
 	var errorList []error
 	var wg sync.WaitGroup
@@ -578,6 +593,7 @@ func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, cl
 		// Execute as a go routine
 		go func(psClient *v2ProjectService.Client, claGroupID, projectSFID string) {
 			defer wg.Done()
+			log.WithFields(f).Debugf("disabling CLA service for project: %s", projectSFID)
 			disableProjectErr := psClient.DisableCLA(ctx, projectSFID)
 			if disableProjectErr != nil {
 				log.WithFields(f).WithError(disableProjectErr).

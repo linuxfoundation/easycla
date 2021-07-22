@@ -242,22 +242,10 @@ jobs:
           name: Build
           command: |
             cd cla-backend-go
-            echo "Building AWS Lambda - API..."
-            make build-aws-lambda-linux
-            echo "Building AWS Metrics Lambda..."
-            make build-metrics-lambda-linux
-            echo "Building AWS Metrics Report Lambda..."
-            make build-metrics-report-lambda
-            echo "Building AWS Lambda - DynamoDB Events Handler..."
-            make build-dynamo-events-lambda-linux
-            echo "Building AWS Lambda - Zip Builder Scheduler..."
-            make build-zipbuilder-scheduler-lambda-linux
-            echo "Building AWS Lambda - Zip Builder Handler..."
-            make build-zipbuilder-lambda-linux
+            echo "Building Lambdas..."
+            make build-lambdas-linux
             echo "Building Functional Tests..."
             make build-functional-tests-linux
-            echo "Building User Subscribe..."
-            make build-user-subscribe-lambda-linux
       - run:
           name: Test
           command: |
