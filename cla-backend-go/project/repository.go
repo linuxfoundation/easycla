@@ -665,18 +665,11 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		return nil, ErrProjectDoesNotExist
 	}
 
-	// We don't allow CLA Group templates to be changed - this requires a legal review
-	if existingCLAGroup.ProjectTemplateID != claGroupModel.ProjectTemplateID {
-		msg := fmt.Sprintf("problem updating CLA Group - changing CLA templates is not allowed - project: %s with ID: %s - previous template: %s updated template: %s",
-			claGroupModel.ProjectName, claGroupModel.ProjectID, claGroupModel.ProjectTemplateID, claGroupModel.ProjectTemplateID)
-		log.WithFields(f).Warn(msg)
-		return nil, errors.New(msg)
-	}
-
 	expressionAttributeNames := map[string]*string{}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
 	updateExpression := "SET "
 
+	// An update to the CLA Group name...
 	if claGroupModel.ProjectName != "" && existingCLAGroup.ProjectName != claGroupModel.ProjectName {
 		log.WithFields(f).Debugf("adding project_name: %s", claGroupModel.ProjectName)
 		expressionAttributeNames["#N"] = aws.String("project_name")
@@ -688,6 +681,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		updateExpression = updateExpression + " #LOW = :low, "
 	}
 
+	// An update to the CLA Group description...
 	if existingCLAGroup.ProjectDescription != claGroupModel.ProjectDescription {
 		log.WithFields(f).Debugf("adding project_description: %s", claGroupModel.ProjectDescription)
 		expressionAttributeNames["#DESC"] = aws.String("project_description")
@@ -695,6 +689,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		updateExpression = updateExpression + " #DESC = :desc, "
 	}
 
+	// An update to the project ACL
 	if claGroupModel.ProjectACL != nil && len(claGroupModel.ProjectACL) > 0 {
 		log.WithFields(f).Debugf("adding project_acl: %s", claGroupModel.ProjectACL)
 		expressionAttributeNames["#A"] = aws.String("project_acl")
@@ -702,6 +697,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		updateExpression = updateExpression + " #A = :a, "
 	}
 
+	// An update to the ICLA enabled flag
 	if claGroupModel.ProjectICLAEnabled != existingCLAGroup.ProjectICLAEnabled {
 		log.WithFields(f).Debugf("adding project_icla_enabled: %t", claGroupModel.ProjectICLAEnabled)
 		expressionAttributeNames["#I"] = aws.String("project_icla_enabled")
@@ -709,6 +705,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		updateExpression = updateExpression + " #I = :i, "
 	}
 
+	// An update to the CCLA enabled flag
 	if claGroupModel.ProjectCCLAEnabled != existingCLAGroup.ProjectCCLAEnabled {
 		log.WithFields(f).Debugf("adding project_ccla_enabled: %t", claGroupModel.ProjectCCLAEnabled)
 		expressionAttributeNames["#C"] = aws.String("project_ccla_enabled")
@@ -716,6 +713,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		updateExpression = updateExpression + " #C = :c, "
 	}
 
+	// An update to the CCLA requires ICLA flag
 	if claGroupModel.ProjectCCLARequiresICLA != existingCLAGroup.ProjectCCLARequiresICLA {
 		log.WithFields(f).Debugf("adding project_ccla_requires_icla_signature: %t", claGroupModel.ProjectCCLARequiresICLA)
 		expressionAttributeNames["#CI"] = aws.String("project_ccla_requires_icla_signature")
@@ -723,6 +721,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		updateExpression = updateExpression + " #CI = :ci, "
 	}
 
+	// An update to the project live flag
 	if claGroupModel.ProjectLive != existingCLAGroup.ProjectLive {
 		log.WithFields(f).Debugf("adding project_live: %t", claGroupModel.ProjectLive)
 		expressionAttributeNames["#PL"] = aws.String("project_live")
@@ -730,6 +729,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		updateExpression = updateExpression + " #PL = :pl, "
 	}
 
+	// We'll update the date modified time
 	_, currentTimeString := utils.CurrentTime()
 	log.WithFields(f).Debugf("adding date_modified: %s", currentTimeString)
 	expressionAttributeNames["#M"] = aws.String("date_modified")
@@ -748,7 +748,6 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 		UpdateExpression:          &updateExpression,
 		TableName:                 aws.String(repo.claGroupTable),
 	}
-	//log.Debugf("Update input: %+V", updateInput.GoString())
 
 	// Make the DynamoDB Update API call
 	_, updateErr := repo.dynamoDBClient.UpdateItem(updateInput)

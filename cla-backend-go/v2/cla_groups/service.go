@@ -286,6 +286,7 @@ func (s *service) UpdateCLAGroup(ctx context.Context, authUser *auth.User, claGr
 		ProjectACL:                   claGroupModel.ProjectACL,
 		ProjectICLAEnabled:           claGroupModel.ProjectICLAEnabled,
 		ProjectCCLAEnabled:           claGroupModel.ProjectCCLAEnabled,
+		ProjectTemplateID:            claGroupModel.ProjectTemplateID,
 		ProjectCCLARequiresICLA:      claGroupModel.ProjectCCLARequiresICLA,
 		ProjectIndividualDocuments:   claGroupModel.ProjectIndividualDocuments,
 		ProjectCorporateDocuments:    claGroupModel.ProjectCorporateDocuments,

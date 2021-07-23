@@ -323,7 +323,7 @@ func (s service) GetClaGroupsByFoundationSFID(ctx context.Context, foundationSFI
 	return s.repo.GetClaGroupsByFoundationSFID(ctx, foundationSFID, loadRepoDetails)
 }
 
-// GetClaGroupByProjectSFID( service method
+// GetClaGroupByProjectSFID service method
 func (s service) GetClaGroupByProjectSFID(ctx context.Context, projectSFID string, loadRepoDetails bool) (*models.ClaGroup, error) {
 	return s.repo.GetClaGroupByProjectSFID(ctx, projectSFID, loadRepoDetails)
 }
