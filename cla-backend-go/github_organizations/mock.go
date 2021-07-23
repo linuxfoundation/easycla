@@ -39,10 +39,10 @@ func (m *MockRepository) EXPECT() *MockRepositoryMockRecorder {
 	return m.recorder
 }
 
-// AddGithubOrganization mocks base method
-func (m *MockRepository) AddGithubOrganization(arg0 context.Context, arg1, arg2 string, arg3 *models.CreateGithubOrganization) (*models.GithubOrganization, error) {
+// AddGitHubOrganization mocks base method
+func (m *MockRepository) AddGitHubOrganization(arg0 context.Context, arg1, arg2 string, arg3 *models.CreateGithubOrganization) (*models.GithubOrganization, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddGithubOrganization", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "AddGitHubOrganization", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*models.GithubOrganization)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -51,13 +51,13 @@ func (m *MockRepository) AddGithubOrganization(arg0 context.Context, arg1, arg2 
 // AddGithubOrganization indicates an expected call of AddGithubOrganization
 func (mr *MockRepositoryMockRecorder) AddGithubOrganization(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGithubOrganization", reflect.TypeOf((*MockRepository)(nil).AddGithubOrganization), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGitHubOrganization", reflect.TypeOf((*MockRepository)(nil).AddGitHubOrganization), arg0, arg1, arg2, arg3)
 }
 
-// DeleteGithubOrganization mocks base method
-func (m *MockRepository) DeleteGithubOrganization(arg0 context.Context, arg1, arg2 string) error {
+// DeleteGitHubOrganization mocks base method
+func (m *MockRepository) DeleteGitHubOrganization(arg0 context.Context, arg1, arg2 string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteGithubOrganization", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "DeleteGitHubOrganization", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
@@ -65,13 +65,13 @@ func (m *MockRepository) DeleteGithubOrganization(arg0 context.Context, arg1, ar
 // DeleteGithubOrganization indicates an expected call of DeleteGithubOrganization
 func (mr *MockRepositoryMockRecorder) DeleteGithubOrganization(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGithubOrganization", reflect.TypeOf((*MockRepository)(nil).DeleteGithubOrganization), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGitHubOrganization", reflect.TypeOf((*MockRepository)(nil).DeleteGitHubOrganization), arg0, arg1, arg2)
 }
 
 // DeleteGithubOrganizationByParent mocks base method
-func (m *MockRepository) DeleteGithubOrganizationByParent(arg0 context.Context, arg1, arg2 string) error {
+func (m *MockRepository) DeleteGitHubOrganizationByParent(arg0 context.Context, arg1, arg2 string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteGithubOrganizationByParent", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "DeleteGitHubOrganizationByParent", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
@@ -79,13 +79,13 @@ func (m *MockRepository) DeleteGithubOrganizationByParent(arg0 context.Context, 
 // DeleteGithubOrganizationByParent indicates an expected call of DeleteGithubOrganizationByParent
 func (mr *MockRepositoryMockRecorder) DeleteGithubOrganizationByParent(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGithubOrganizationByParent", reflect.TypeOf((*MockRepository)(nil).DeleteGithubOrganizationByParent), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGitHubOrganizationByParent", reflect.TypeOf((*MockRepository)(nil).DeleteGitHubOrganizationByParent), arg0, arg1, arg2)
 }
 
 // GetGithubOrganization mocks base method
-func (m *MockRepository) GetGithubOrganization(arg0 context.Context, arg1 string) (*models.GithubOrganization, error) {
+func (m *MockRepository) GetGitHubOrganization(arg0 context.Context, arg1 string) (*models.GithubOrganization, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGithubOrganization", arg0, arg1)
+	ret := m.ctrl.Call(m, "GetGitHubOrganization", arg0, arg1)
 	ret0, _ := ret[0].(*models.GithubOrganization)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -94,13 +94,13 @@ func (m *MockRepository) GetGithubOrganization(arg0 context.Context, arg1 string
 // GetGithubOrganization indicates an expected call of GetGithubOrganization
 func (mr *MockRepositoryMockRecorder) GetGithubOrganization(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGithubOrganization", reflect.TypeOf((*MockRepository)(nil).GetGithubOrganization), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGitHubOrganization", reflect.TypeOf((*MockRepository)(nil).GetGitHubOrganization), arg0, arg1)
 }
 
-// GetGithubOrganizationByName mocks base method
-func (m *MockRepository) GetGithubOrganizationByName(arg0 context.Context, arg1 string) (*models.GithubOrganizations, error) {
+// GetGitHubOrganizationByName mocks base method
+func (m *MockRepository) GetGitHubOrganizationByName(arg0 context.Context, arg1 string) (*models.GithubOrganizations, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGithubOrganizationByName", arg0, arg1)
+	ret := m.ctrl.Call(m, "GetGitHubOrganizationByName", arg0, arg1)
 	ret0, _ := ret[0].(*models.GithubOrganizations)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -109,13 +109,13 @@ func (m *MockRepository) GetGithubOrganizationByName(arg0 context.Context, arg1 
 // GetGithubOrganizationByName indicates an expected call of GetGithubOrganizationByName
 func (mr *MockRepositoryMockRecorder) GetGithubOrganizationByName(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGithubOrganizationByName", reflect.TypeOf((*MockRepository)(nil).GetGithubOrganizationByName), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGitHubOrganizationByName", reflect.TypeOf((*MockRepository)(nil).GetGitHubOrganizationByName), arg0, arg1)
 }
 
-// GetGithubOrganizations mocks base method
-func (m *MockRepository) GetGithubOrganizations(arg0 context.Context, arg1 string) (*models.GithubOrganizations, error) {
+// GetGitHubOrganizations mocks base method
+func (m *MockRepository) GetGitHubOrganizations(arg0 context.Context, arg1 string) (*models.GithubOrganizations, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGithubOrganizations", arg0, arg1)
+	ret := m.ctrl.Call(m, "GetGitHubOrganizations", arg0, arg1)
 	ret0, _ := ret[0].(*models.GithubOrganizations)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -124,13 +124,13 @@ func (m *MockRepository) GetGithubOrganizations(arg0 context.Context, arg1 strin
 // GetGithubOrganizations indicates an expected call of GetGithubOrganizations
 func (mr *MockRepositoryMockRecorder) GetGithubOrganizations(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGithubOrganizations", reflect.TypeOf((*MockRepository)(nil).GetGithubOrganizations), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGitHubOrganizations", reflect.TypeOf((*MockRepository)(nil).GetGitHubOrganizations), arg0, arg1)
 }
 
-// GetGithubOrganizationsByParent mocks base method
-func (m *MockRepository) GetGithubOrganizationsByParent(arg0 context.Context, arg1 string) (*models.GithubOrganizations, error) {
+// GetGitHubOrganizationsByParent mocks base method
+func (m *MockRepository) GetGitHubOrganizationsByParent(arg0 context.Context, arg1 string) (*models.GithubOrganizations, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGithubOrganizationsByParent", arg0, arg1)
+	ret := m.ctrl.Call(m, "GetGitHubOrganizationsByParent", arg0, arg1)
 	ret0, _ := ret[0].(*models.GithubOrganizations)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -139,13 +139,13 @@ func (m *MockRepository) GetGithubOrganizationsByParent(arg0 context.Context, ar
 // GetGithubOrganizationsByParent indicates an expected call of GetGithubOrganizationsByParent
 func (mr *MockRepositoryMockRecorder) GetGithubOrganizationsByParent(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGithubOrganizationsByParent", reflect.TypeOf((*MockRepository)(nil).GetGithubOrganizationsByParent), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGitHubOrganizationsByParent", reflect.TypeOf((*MockRepository)(nil).GetGitHubOrganizationsByParent), arg0, arg1)
 }
 
-// UpdateGithubOrganization mocks base method
-func (m *MockRepository) UpdateGithubOrganization(arg0 context.Context, arg1, arg2 string, arg3 bool, arg4 string, arg5 bool, arg6 *bool) error {
+// UpdateGitHubOrganization mocks base method
+func (m *MockRepository) UpdateGitHubOrganization(arg0 context.Context, arg1, arg2 string, arg3 bool, arg4 string, arg5 bool, arg6 *bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateGithubOrganization", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+	ret := m.ctrl.Call(m, "UpdateGitHubOrganization", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
@@ -153,5 +153,5 @@ func (m *MockRepository) UpdateGithubOrganization(arg0 context.Context, arg1, ar
 // UpdateGithubOrganization indicates an expected call of UpdateGithubOrganization
 func (mr *MockRepositoryMockRecorder) UpdateGithubOrganization(arg0, arg1, arg2, arg3, arg4, arg5, arg6 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGithubOrganization", reflect.TypeOf((*MockRepository)(nil).UpdateGithubOrganization), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGitHubOrganization", reflect.TypeOf((*MockRepository)(nil).UpdateGitHubOrganization), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 }

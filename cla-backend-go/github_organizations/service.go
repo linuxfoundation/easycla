@@ -21,12 +21,12 @@ import (
 
 // ServiceInterface contains functions of GithubOrganizations service
 type ServiceInterface interface {
-	AddGithubOrganization(ctx context.Context, projectSFID string, input *models.CreateGithubOrganization) (*models.GithubOrganization, error)
-	GetGithubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error)
-	GetGithubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error)
-	GetGithubOrganizationByName(ctx context.Context, githubOrgName string) (*models.GithubOrganization, error)
-	UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
-	DeleteGithubOrganization(ctx context.Context, projectSFID string, githubOrgName string) error
+	AddGitHubOrganization(ctx context.Context, projectSFID string, input *models.CreateGithubOrganization) (*models.GithubOrganization, error)
+	GetGitHubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error)
+	GetGitHubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error)
+	GetGitHubOrganizationByName(ctx context.Context, githubOrgName string) (*models.GithubOrganization, error)
+	UpdateGitHubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
+	DeleteGitHubOrganization(ctx context.Context, projectSFID string, githubOrgName string) error
 	RemoveDuplicates(input []*models.GithubOrganization) []*models.GithubOrganization
 }
 
@@ -46,8 +46,8 @@ func NewService(repo RepositoryInterface, ghRepository repositories.Repository, 
 	}
 }
 
-// AddGithubOrganization adds the github organization for the specified project
-func (s Service) AddGithubOrganization(ctx context.Context, projectSFID string, input *models.CreateGithubOrganization) (*models.GithubOrganization, error) {
+// AddGitHubOrganization adds the github organization for the specified project
+func (s Service) AddGitHubOrganization(ctx context.Context, projectSFID string, input *models.CreateGithubOrganization) (*models.GithubOrganization, error) {
 	f := logrus.Fields{
 		"functionName":            "AddGitHubOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
@@ -70,11 +70,11 @@ func (s Service) AddGithubOrganization(ctx context.Context, projectSFID string, 
 		}
 	}
 
-	return s.repo.AddGithubOrganization(ctx, parentProjectSFID, projectSFID, input)
+	return s.repo.AddGitHubOrganization(ctx, parentProjectSFID, projectSFID, input)
 }
 
-// GetGithubOrganizations returns the github organization for the specified project
-func (s Service) GetGithubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error) {
+// GetGitHubOrganizations returns the github organization for the specified project
+func (s Service) GetGitHubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error) {
 	f := logrus.Fields{
 		"functionName":   "GetGitHubOrganizations",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -85,7 +85,7 @@ func (s Service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	var gitHubOrgModels = models.GithubOrganizations{}
 	var githubOrgs = make([]*models.GithubOrganization, 0)
 
-	projectGithubModels, err := s.repo.GetGithubOrganizations(ctx, projectSFID)
+	projectGithubModels, err := s.repo.GetGitHubOrganizations(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).Warnf("problem fetching github organizations by projectSFID, error: %+v", err)
 		return nil, err
@@ -113,7 +113,7 @@ func (s Service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 
 	if parentProjectSFID != projectSFID && (projectDetails != nil && !utils.IsProjectHasRootParent(projectDetails)) {
 		log.WithFields(f).Debugf("found parent of projectSFID: %s to be %s. Searching github organization by parent SFID: %s...", projectSFID, parentProjectSFID, parentProjectSFID)
-		parentGithubModels, parentErr := s.repo.GetGithubOrganizationsByParent(ctx, parentProjectSFID)
+		parentGithubModels, parentErr := s.repo.GetGitHubOrganizationsByParent(ctx, parentProjectSFID)
 		if parentErr != nil {
 			log.WithFields(f).Warnf("problem fetching github organizations by paarent projectSFID: %s , error: %+v", parentProjectSFID, err)
 			return nil, parentErr
@@ -133,20 +133,20 @@ func (s Service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	return &gitHubOrgModels, err
 }
 
-// GetGithubOrganizationsByParent returns the github organizations for the specified parent project SFID
-func (s Service) GetGithubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error) {
-	return s.repo.GetGithubOrganizationsByParent(ctx, parentProjectSFID)
+// GetGitHubOrganizationsByParent returns the github organizations for the specified parent project SFID
+func (s Service) GetGitHubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error) {
+	return s.repo.GetGitHubOrganizationsByParent(ctx, parentProjectSFID)
 }
 
-// GetGithubOrganizationByName returns the github organizations for the specified github organization name
-func (s Service) GetGithubOrganizationByName(ctx context.Context, githubOrgName string) (*models.GithubOrganization, error) {
+// GetGitHubOrganizationByName returns the github organizations for the specified github organization name
+func (s Service) GetGitHubOrganizationByName(ctx context.Context, githubOrgName string) (*models.GithubOrganization, error) {
 	f := logrus.Fields{
 		"functionName":   "GetGitHubOrganizationByName",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"githubOrgName":  githubOrgName,
 	}
 
-	gitHubOrgs, err := s.repo.GetGithubOrganizationByName(ctx, githubOrgName)
+	gitHubOrgs, err := s.repo.GetGitHubOrganizationByName(ctx, githubOrgName)
 	if err != nil {
 		log.WithFields(f).Warnf("problem fetching github organizations by name, error: %+v", err)
 		return nil, err
@@ -163,19 +163,19 @@ func (s Service) GetGithubOrganizationByName(ctx context.Context, githubOrgName 
 	return gitHubOrgs.List[0], err
 }
 
-// UpdateGithubOrganization updates the specified github organization based on the project SFID, organization name provided values
-func (s Service) UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
+// UpdateGitHubOrganization updates the specified github organization based on the project SFID, organization name provided values
+func (s Service) UpdateGitHubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
 	// check if valid cla group id is passed
 	if autoEnabledClaGroupID != "" {
 		if _, err := s.claRepository.GetCLAGroupNameByID(ctx, autoEnabledClaGroupID); err != nil {
 			return err
 		}
 	}
-	return s.repo.UpdateGithubOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, nil)
+	return s.repo.UpdateGitHubOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, nil)
 }
 
-// DeleteGithubOrganization removes the specified github organization under the projectSFID
-func (s Service) DeleteGithubOrganization(ctx context.Context, projectSFID string, githubOrgName string) error {
+// DeleteGitHubOrganization removes the specified github organization under the projectSFID
+func (s Service) DeleteGitHubOrganization(ctx context.Context, projectSFID string, githubOrgName string) error {
 	f := logrus.Fields{
 		"functionName":   "DeleteGitHubOrganization",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -196,7 +196,7 @@ func (s Service) DeleteGithubOrganization(ctx context.Context, projectSFID strin
 		return err
 	}
 
-	return s.repo.DeleteGithubOrganization(ctx, projectSFID, githubOrgName)
+	return s.repo.DeleteGitHubOrganization(ctx, projectSFID, githubOrgName)
 }
 
 // RemoveDuplicates removes any duplicates from the specified list

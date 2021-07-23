@@ -336,12 +336,12 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 	}
 
 	// fetch the old and the new github orgs from the db
-	oldGithubOrg, err := s.githubOrgRepo.GetGithubOrganization(ctx, oldOrganizationName)
+	oldGithubOrg, err := s.githubOrgRepo.GetGitHubOrganization(ctx, oldOrganizationName)
 	if err != nil {
 		return fmt.Errorf("fetching the old organization name : %s failed : %v", oldOrganizationName, err)
 	}
 
-	newGithubOrg, err := s.githubOrgRepo.GetGithubOrganization(ctx, newOrganizationName)
+	newGithubOrg, err := s.githubOrgRepo.GetGitHubOrganization(ctx, newOrganizationName)
 	if err != nil {
 		disabledErr := s.disableFailedTransferRepo(ctx, sender, f, repoModel, oldGithubOrg, newGithubOrg)
 		if disabledErr != nil {

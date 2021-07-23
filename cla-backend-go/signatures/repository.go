@@ -2466,7 +2466,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			}
 
 			for _, ghOrgRepo := range ghOrgRepositories {
-				ghOrg, getGHOrgErr := repo.ghOrgRepo.GetGithubOrganization(ctx, ghOrgRepo.RepositoryOrganizationName)
+				ghOrg, getGHOrgErr := repo.ghOrgRepo.GetGitHubOrganization(ctx, ghOrgRepo.RepositoryOrganizationName)
 				if getGHOrgErr != nil {
 					msg := fmt.Sprintf("unable to get gh org by name: %s ", ghOrgRepo.RepositoryOrganizationName)
 					log.WithFields(f).WithError(getGHOrgErr).Warn(msg)

@@ -238,10 +238,10 @@ func (m *MockGithubOrgRepo) EXPECT() *MockGithubOrgRepoMockRecorder {
 	return m.recorder
 }
 
-// GetGithubOrganizationByName mocks base method
-func (m *MockGithubOrgRepo) GetGithubOrganizationByName(ctx context.Context, githubOrganizationName string) (*models.GithubOrganizations, error) {
+// GetGitHubOrganizationByName mocks base method
+func (m *MockGithubOrgRepo) GetGitHubOrganizationByName(ctx context.Context, githubOrganizationName string) (*models.GithubOrganizations, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGithubOrganizationByName", ctx, githubOrganizationName)
+	ret := m.ctrl.Call(m, "GetGitHubOrganizationByName", ctx, githubOrganizationName)
 	ret0, _ := ret[0].(*models.GithubOrganizations)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -250,13 +250,13 @@ func (m *MockGithubOrgRepo) GetGithubOrganizationByName(ctx context.Context, git
 // GetGithubOrganizationByName indicates an expected call of GetGithubOrganizationByName
 func (mr *MockGithubOrgRepoMockRecorder) GetGithubOrganizationByName(ctx, githubOrganizationName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGithubOrganizationByName", reflect.TypeOf((*MockGithubOrgRepo)(nil).GetGithubOrganizationByName), ctx, githubOrganizationName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGitHubOrganizationByName", reflect.TypeOf((*MockGithubOrgRepo)(nil).GetGitHubOrganizationByName), ctx, githubOrganizationName)
 }
 
 // GetGithubOrganization mocks base method
-func (m *MockGithubOrgRepo) GetGithubOrganization(ctx context.Context, githubOrganizationName string) (*models.GithubOrganization, error) {
+func (m *MockGithubOrgRepo) GetGitHubOrganization(ctx context.Context, githubOrganizationName string) (*models.GithubOrganization, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGithubOrganization", ctx, githubOrganizationName)
+	ret := m.ctrl.Call(m, "GetGitHubOrganization", ctx, githubOrganizationName)
 	ret0, _ := ret[0].(*models.GithubOrganization)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -265,13 +265,13 @@ func (m *MockGithubOrgRepo) GetGithubOrganization(ctx context.Context, githubOrg
 // GetGithubOrganization indicates an expected call of GetGithubOrganization
 func (mr *MockGithubOrgRepoMockRecorder) GetGithubOrganization(ctx, githubOrganizationName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGithubOrganization", reflect.TypeOf((*MockGithubOrgRepo)(nil).GetGithubOrganization), ctx, githubOrganizationName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGitHubOrganization", reflect.TypeOf((*MockGithubOrgRepo)(nil).GetGitHubOrganization), ctx, githubOrganizationName)
 }
 
-// GetGithubOrganizations mocks base method
-func (m *MockGithubOrgRepo) GetGithubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error) {
+// GetGitHubOrganizations mocks base method
+func (m *MockGithubOrgRepo) GetGitHubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGithubOrganizations", ctx, projectSFID)
+	ret := m.ctrl.Call(m, "GetGitHubOrganizations", ctx, projectSFID)
 	ret0, _ := ret[0].(*models.GithubOrganizations)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -280,5 +280,5 @@ func (m *MockGithubOrgRepo) GetGithubOrganizations(ctx context.Context, projectS
 // GetGithubOrganizations indicates an expected call of GetGithubOrganizations
 func (mr *MockGithubOrgRepoMockRecorder) GetGithubOrganizations(ctx, projectSFID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGithubOrganizations", reflect.TypeOf((*MockGithubOrgRepo)(nil).GetGithubOrganizations), ctx, projectSFID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGitHubOrganizations", reflect.TypeOf((*MockGithubOrgRepo)(nil).GetGitHubOrganizations), ctx, projectSFID)
 }

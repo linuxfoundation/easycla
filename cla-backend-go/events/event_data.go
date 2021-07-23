@@ -185,9 +185,10 @@ type GitHubOrganizationDeletedEventData struct {
 
 // GitHubOrganizationUpdatedEventData data model
 type GitHubOrganizationUpdatedEventData struct {
-	GitHubOrganizationName string
-	AutoEnabled            bool
-	AutoEnabledClaGroupID  string
+	GitHubOrganizationName  string
+	AutoEnabled             bool
+	AutoEnabledClaGroupID   string
+	BranchProtectionEnabled bool
 }
 
 // CCLAApprovalListRequestCreatedEventData data model
@@ -635,10 +636,14 @@ func (ed *GitHubOrganizationDeletedEventData) GetEventDetailsString(args *LogEve
 
 // GetEventDetailsString returns the details string for this event
 func (ed *GitHubOrganizationUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("GitHub Organization:%s was updated with auto-enabled: %t",
-		ed.GitHubOrganizationName, ed.AutoEnabled)
+	data := fmt.Sprintf("The GitHub Organization '%s' was updated", ed.GitHubOrganizationName)
+	data = data + fmt.Sprintf(" with auto-enabled set to %t", ed.AutoEnabled)
+	data = data + fmt.Sprintf(" with branch protection set to %t", ed.BranchProtectionEnabled)
 	if ed.AutoEnabledClaGroupID != "" {
-		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
+		data = data + fmt.Sprintf(" with auto-enabled-cla-group ID value of %s", ed.AutoEnabledClaGroupID)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for project %s", args.ProjectName)
 	}
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
@@ -1525,13 +1530,11 @@ func (ed *GitHubOrganizationDeletedEventData) GetEventSummaryString(args *LogEve
 
 // GetEventSummaryString returns the summary string for this event
 func (ed *GitHubOrganizationUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("GitHub Organization: %s was updated with auto-enabled: %t",
-		ed.GitHubOrganizationName, ed.AutoEnabled)
+	data := fmt.Sprintf("The GitHub Organization '%s' was updated", ed.GitHubOrganizationName)
+	data = data + fmt.Sprintf(" with auto-enabled set to %t", ed.AutoEnabled)
+	data = data + fmt.Sprintf(" with branch protection set to %t", ed.BranchProtectionEnabled)
 	if ed.AutoEnabledClaGroupID != "" {
-		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
-	}
-	if args.CLAGroupName != "" {
-		data = data + fmt.Sprintf(" for CLA Group %s", args.CLAGroupName)
+		data = data + fmt.Sprintf(" with auto-enabled-cla-group ID value of %s", ed.AutoEnabledClaGroupID)
 	}
 	if args.ProjectName != "" {
 		data = data + fmt.Sprintf(" for project %s", args.ProjectName)

@@ -82,7 +82,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 
 	// Load the GitHub Organization and Repository details - result will be missing CLA Group info and ProjectSFID details
 	log.WithFields(f).Debugf("loading GitHub organizations for projectSFID: %s", projectSFID)
-	orgs, err := s.ghService.GetGithubOrganizations(ctx, projectSFID)
+	orgs, err := s.ghService.GetGitHubOrganizations(ctx, projectSFID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem loading github organizations from the project service")
 		return nil, err
@@ -301,7 +301,7 @@ func (s service) AddGithubOrganization(ctx context.Context, projectSFID string, 
 	log.WithFields(f).Debug("located parentProjectID...")
 
 	log.WithFields(f).Debug("adding github organization...")
-	resp, err := s.repo.AddGithubOrganization(ctx, parentProjectSFID, projectSFID, &in)
+	resp, err := s.repo.AddGitHubOrganization(ctx, parentProjectSFID, projectSFID, &in)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem adding github organization for project")
 		return nil, err
@@ -311,7 +311,7 @@ func (s service) AddGithubOrganization(ctx context.Context, projectSFID string, 
 }
 
 func (s service) UpdateGithubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
-	return s.repo.UpdateGithubOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, nil)
+	return s.repo.UpdateGitHubOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, nil)
 }
 
 func (s service) DeleteGithubOrganization(ctx context.Context, projectSFID string, githubOrgName string) error {
@@ -338,5 +338,5 @@ func (s service) DeleteGithubOrganization(ctx context.Context, projectSFID strin
 	}
 
 	log.WithFields(f).Debug("deleting github github organization...")
-	return s.repo.DeleteGithubOrganization(ctx, projectSFID, githubOrgName)
+	return s.repo.DeleteGitHubOrganization(ctx, projectSFID, githubOrgName)
 }

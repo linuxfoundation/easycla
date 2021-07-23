@@ -38,9 +38,9 @@ type Service interface {
 
 // GithubOrgRepo provide method to get github organization by name
 type GithubOrgRepo interface {
-	GetGithubOrganizationByName(ctx context.Context, githubOrganizationName string) (*models.GithubOrganizations, error)
-	GetGithubOrganization(ctx context.Context, githubOrganizationName string) (*models.GithubOrganization, error)
-	GetGithubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error)
+	GetGitHubOrganizationByName(ctx context.Context, githubOrganizationName string) (*models.GithubOrganizations, error)
+	GetGitHubOrganization(ctx context.Context, githubOrganizationName string) (*models.GithubOrganization, error)
+	GetGitHubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error)
 }
 
 type service struct {
@@ -88,7 +88,7 @@ func (s *service) AddGithubRepository(ctx context.Context, externalProjectID str
 		return nil, projectErr
 	}
 
-	org, err := s.ghOrgRepo.GetGithubOrganizationByName(ctx, utils.StringValue(input.RepositoryOrganizationName))
+	org, err := s.ghOrgRepo.GetGitHubOrganizationByName(ctx, utils.StringValue(input.RepositoryOrganizationName))
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem loading github organization by name: %s", utils.StringValue(input.RepositoryOrganizationName))
 		return nil, err

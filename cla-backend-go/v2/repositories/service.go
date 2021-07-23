@@ -44,9 +44,9 @@ type Service interface {
 
 // GithubOrgRepo provide method to get github organization by name
 type GithubOrgRepo interface {
-	GetGithubOrganizationByName(ctx context.Context, githubOrganizationName string) (*v1Models.GithubOrganizations, error)
-	GetGithubOrganization(ctx context.Context, githubOrganizationName string) (*v1Models.GithubOrganization, error)
-	GetGithubOrganizations(ctx context.Context, projectSFID string) (*v1Models.GithubOrganizations, error)
+	GetGitHubOrganizationByName(ctx context.Context, githubOrganizationName string) (*v1Models.GithubOrganizations, error)
+	GetGitHubOrganization(ctx context.Context, githubOrganizationName string) (*v1Models.GithubOrganization, error)
+	GetGitHubOrganizations(ctx context.Context, projectSFID string) (*v1Models.GithubOrganizations, error)
 }
 
 type service struct {
@@ -112,7 +112,7 @@ func (s *service) AddGithubRepositories(ctx context.Context, projectSFID string,
 		return nil, fmt.Errorf("provided cla group id %s is not linked to project sfid %s", utils.StringValue(input.ClaGroupID), projectSFID)
 	}
 
-	org, err := s.ghOrgRepo.GetGithubOrganizationByName(ctx, utils.StringValue(input.GithubOrganizationName))
+	org, err := s.ghOrgRepo.GetGitHubOrganizationByName(ctx, utils.StringValue(input.GithubOrganizationName))
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to get organization by name")
 		return nil, err
@@ -261,13 +261,13 @@ func (s *service) ListProjectRepositories(ctx context.Context, projectSFID strin
 	//// Lookup orgs via projectSFID
 	//log.WithFields(f).Debug("querying EasyCLA for organizations by project id...")
 	//var githubOrgList *v1Models.GithubOrganizations
-	//githubOrgList, err = s.ghOrgRepo.GetGithubOrganizations(ctx, projectSFID)
+	//githubOrgList, err = s.ghOrgRepo.GetGitHubOrganizations(ctx, projectSFID)
 	//if err != nil {
 	//	log.WithFields(f).WithError(err).Warn("unable to lookup project by id in the github organization table")
 	//	if projectModel.Parent != "" {
 	//		log.WithFields(f).Debugf("querying for organizations by parent project id: %s...", projectModel.Parent)
 	//		var ghOrgErr error
-	//		githubOrgList, ghOrgErr = s.ghOrgRepo.GetGithubOrganizations(ctx, projectModel.Parent)
+	//		githubOrgList, ghOrgErr = s.ghOrgRepo.GetGitHubOrganizations(ctx, projectModel.Parent)
 	//		if ghOrgErr != nil {
 	//			log.WithFields(f).WithError(ghOrgErr).Warn("unable to lookup project by parent id in the github organization table")
 	//			return nil, ghOrgErr
@@ -516,7 +516,7 @@ func (s *service) getBranchProtectionRepositoryForOrgName(ctx context.Context, g
 		"githubOrgName":  githubOrgName,
 	}
 
-	githubOrg, err := s.ghOrgRepo.GetGithubOrganization(ctx, githubOrgName)
+	githubOrg, err := s.ghOrgRepo.GetGitHubOrganization(ctx, githubOrgName)
 	if err != nil {
 		log.WithFields(f).Warnf("fetching githubOrg %s failed, error: %v", githubOrgName, err)
 		return nil, err

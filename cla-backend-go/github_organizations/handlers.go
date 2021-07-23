@@ -28,7 +28,7 @@ func Configure(api *operations.ClaAPI, service ServiceInterface, eventService ev
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
-			result, err := service.GetGithubOrganizations(ctx, params.ProjectSFID)
+			result, err := service.GetGitHubOrganizations(ctx, params.ProjectSFID)
 			if err != nil {
 				if _, ok := err.(*v2ProjectServiceClient.GetProjectNotFound); ok {
 					return github_organizations.NewGetProjectGithubOrganizationsNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -65,7 +65,7 @@ func Configure(api *operations.ClaAPI, service ServiceInterface, eventService ev
 				return github_organizations.NewAddProjectGithubOrganizationNotFound().WithPayload(errorResponse(err))
 			}
 
-			result, err := service.AddGithubOrganization(ctx, params.ProjectSFID, params.Body)
+			result, err := service.AddGitHubOrganization(ctx, params.ProjectSFID, params.Body)
 			if err != nil {
 				if _, ok := err.(*v2ProjectServiceClient.GetProjectNotFound); ok {
 					return github_organizations.NewAddProjectGithubOrganizationNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -114,7 +114,7 @@ func Configure(api *operations.ClaAPI, service ServiceInterface, eventService ev
 				return github_organizations.NewDeleteProjectGithubOrganizationNotFound().WithPayload(errorResponse(err))
 			}
 
-			err = service.DeleteGithubOrganization(ctx, params.ProjectSFID, params.OrgName)
+			err = service.DeleteGitHubOrganization(ctx, params.ProjectSFID, params.OrgName)
 			if err != nil {
 				if _, ok := err.(*v2ProjectServiceClient.GetProjectNotFound); ok {
 					return github_organizations.NewDeleteProjectGithubOrganizationNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -155,7 +155,7 @@ func Configure(api *operations.ClaAPI, service ServiceInterface, eventService ev
 				})
 			}
 
-			err := service.UpdateGithubOrganization(ctx, params.ProjectSFID, params.OrgName, *params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
+			err := service.UpdateGitHubOrganization(ctx, params.ProjectSFID, params.OrgName, *params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
 			if err != nil {
 				if errors.Is(err, projects_cla_groups.ErrCLAGroupDoesNotExist) {
 					return github_organizations.NewUpdateProjectGithubOrganizationConfigNotFound().WithPayload(errorResponse(err))

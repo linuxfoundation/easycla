@@ -97,7 +97,7 @@ func (s *service) EnableBranchProtectionServiceHandler(event events.DynamoDBEven
 
 		parentOrgName := newRepoModel.RepositoryOrganizationName
 		log.WithFields(f).Warnf("problem locating github organization by name: %s, error: %+v", parentOrgName, err)
-		gitHubOrg, err := s.githubOrgService.GetGithubOrganizationByName(context.Background(), parentOrgName)
+		gitHubOrg, err := s.githubOrgService.GetGitHubOrganizationByName(context.Background(), parentOrgName)
 		if err != nil {
 			log.WithFields(f).Warnf("problem locating github organization by name: %s, error: %+v", parentOrgName, err)
 			return nil
@@ -150,7 +150,7 @@ func (s *service) DisableBranchProtectionServiceHandler(event events.DynamoDBEve
 	// Branch protection only available for GitHub
 	if oldRepoModel.RepositoryType == utils.GitHubType {
 		parentOrgName := oldRepoModel.RepositoryOrganizationName
-		gitHubOrg, err := s.githubOrgService.GetGithubOrganizationByName(context.Background(), parentOrgName)
+		gitHubOrg, err := s.githubOrgService.GetGitHubOrganizationByName(context.Background(), parentOrgName)
 		if err != nil {
 			log.WithFields(f).Warnf("problem locating github organization by name: %s, error: %+v", parentOrgName, err)
 			return nil

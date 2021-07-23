@@ -75,7 +75,7 @@ func (a *autoEnableServiceProvider) CreateAutoEnabledRepository(repo *github.Rep
 	}
 
 	organizationName := strings.Split(repositoryFullName, "/")[0]
-	orgModel, err := a.githubOrgRepo.GetGithubOrganization(ctx, organizationName)
+	orgModel, err := a.githubOrgRepo.GetGitHubOrganization(ctx, organizationName)
 	if err != nil {
 		log.Warnf("fetching github org failed : %v", err)
 		return nil, err

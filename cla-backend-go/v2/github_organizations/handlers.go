@@ -232,8 +232,10 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				EventType:   events.GitHubOrganizationUpdated,
 				ProjectSFID: params.ProjectSFID,
 				EventData: &events.GitHubOrganizationUpdatedEventData{
-					GitHubOrganizationName: params.OrgName,
-					AutoEnabled:            utils.BoolValue(params.Body.AutoEnabled),
+					GitHubOrganizationName:  params.OrgName,
+					AutoEnabled:             utils.BoolValue(params.Body.AutoEnabled),
+					AutoEnabledClaGroupID:   params.Body.AutoEnabledClaGroupID,
+					BranchProtectionEnabled: params.Body.BranchProtectionEnabled,
 				},
 			})
 
