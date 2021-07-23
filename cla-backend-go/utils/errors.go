@@ -366,3 +366,43 @@ func (e *InvalidCLAType) Error() string {
 func (e *InvalidCLAType) Unwrap() error {
 	return e.Err
 }
+
+// EnrollError is an error model for representing enroll/un-enroll errors
+type EnrollError struct {
+	Type    string
+	Message string
+	Err     error
+}
+
+// Error is an error string function for enroll/un-enroll error
+func (e *EnrollError) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("%s validation error: %s", e.Type, e.Message)
+	}
+	return fmt.Sprintf("%s validation error: %s due to error: %+v", e.Type, e.Message, e.Err)
+}
+
+// Unwrap method returns its contained error
+func (e *EnrollError) Unwrap() error {
+	return e.Err
+}
+
+// EnrollValidationError is an error model for representing enroll/un-enroll validation errors
+type EnrollValidationError struct {
+	Type    string
+	Message string
+	Err     error
+}
+
+// Error is an error string function for enroll/un-enroll validation error
+func (e *EnrollValidationError) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("%s validation error: %s", e.Type, e.Message)
+	}
+	return fmt.Sprintf("%s validation error: %s due to error: %+v", e.Type, e.Message, e.Err)
+}
+
+// Unwrap method returns its contained error
+func (e *EnrollValidationError) Unwrap() error {
+	return e.Err
+}

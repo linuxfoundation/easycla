@@ -980,8 +980,11 @@ func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollP
 	log.WithFields(f).Debug("validating enroll project input")
 	err := s.validateEnrollProjectsInput(ctx, request.FoundationSFID, request.ProjectSFIDList)
 	if err != nil {
-		log.WithFields(f).Warnf("validating enroll project input failed. error = %s", err)
-		return err
+		return &utils.EnrollValidationError{
+			Type:    "enroll",
+			Message: "invalid project ID value",
+			Err:     err,
+		}
 	}
 
 	// Setup a wait group to enroll and enable CLA service - we'll want to work quickly here
@@ -1020,8 +1023,11 @@ func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollP
 	// Wait until all go routines are done
 	wg.Wait()
 	if len(errorList) > 0 {
-		log.WithFields(f).WithError(errorList[0]).Warnf("encountered %d errors when enrolling and enabling CLA service for %d projects", len(errorList), len(request.ProjectSFIDList))
-		return errorList[0]
+		return &utils.EnrollError{
+			Type:    "enroll",
+			Message: fmt.Sprintf("encountered %d errors when enrolling and disabling CLA service for %d projects", len(errorList), len(request.ProjectSFIDList)),
+			Err:     errorList[0],
+		}
 	}
 
 	return nil
@@ -1042,8 +1048,11 @@ func (s *service) UnenrollProjectsInClaGroup(ctx context.Context, request *Unenr
 	log.WithFields(f).Debug("validating unenroll project input")
 	err := s.validateUnenrollProjectsInput(ctx, request.FoundationSFID, request.ProjectSFIDList)
 	if err != nil {
-		log.WithFields(f).Warnf("validating unenroll project input failed. error = %s", err)
-		return err
+		return &utils.EnrollValidationError{
+			Type:    "unenroll",
+			Message: "invalid project ID value",
+			Err:     err,
+		}
 	}
 
 	// Setup a wait group to enroll and enable CLA service - we'll want to work quickly here
@@ -1081,8 +1090,11 @@ func (s *service) UnenrollProjectsInClaGroup(ctx context.Context, request *Unenr
 	// Wait until all go routines are done
 	wg.Wait()
 	if len(errorList) > 0 {
-		log.WithFields(f).WithError(errorList[0]).Warnf("encountered %d errors when unenrolling and disabling CLA service for %d projects", len(errorList), len(request.ProjectSFIDList))
-		return errorList[0]
+		return &utils.EnrollError{
+			Type:    "unenroll",
+			Message: fmt.Sprintf("encountered %d errors when unenrolling and disabling CLA service for %d projects", len(errorList), len(request.ProjectSFIDList)),
+			Err:     errorList[0],
+		}
 	}
 
 	return nil

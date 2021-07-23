@@ -332,6 +332,14 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		})
 
 		if enrollCLAGroupErr != nil {
+			if _, ok := enrollCLAGroupErr.(*utils.EnrollValidationError); ok {
+				return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseBadRequestWithError(reqID, "unable to enroll projects in CLA Group", enrollCLAGroupErr))
+			}
+			if _, ok := enrollCLAGroupErr.(*utils.EnrollError); ok {
+				return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseBadRequestWithError(reqID, "unable to enroll projects in CLA Group", enrollCLAGroupErr))
+			}
 			if strings.Contains(enrollCLAGroupErr.Error(), "bad request") {
 				return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseBadRequestWithError(reqID, "unable to enroll projects in CLA Group", enrollCLAGroupErr))
@@ -384,6 +392,14 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			ProjectSFIDList: params.ProjectSFIDList,
 		})
 		if err != nil {
+			if _, ok := err.(*utils.EnrollValidationError); ok {
+				return cla_group.NewUnenrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseBadRequestWithError(reqID, "unable to enroll projects in CLA Group", err))
+			}
+			if _, ok := err.(*utils.EnrollError); ok {
+				return cla_group.NewUnenrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseBadRequestWithError(reqID, "unable to enroll projects in CLA Group", err))
+			}
 			if strings.Contains(err.Error(), "bad request") {
 				return cla_group.NewUnenrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseBadRequestWithError(reqID, fmt.Sprintf("unable to unenroll projects for CLA Group ID: %s", params.ClaGroupID), err))
