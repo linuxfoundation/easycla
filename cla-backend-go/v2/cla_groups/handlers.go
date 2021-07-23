@@ -60,9 +60,8 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			return cla_group.NewCreateClaGroupForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		claGroup, err := service.CreateCLAGroup(ctx, authUser, params.ClaGroupInput, utils.StringValue(params.XUSERNAME))
+		claGroupSummary, err := service.CreateCLAGroup(ctx, authUser, params.ClaGroupInput, utils.StringValue(params.XUSERNAME))
 		if err != nil {
-			log.WithFields(f).WithError(err).Warn("unable to create the CLA Group")
 			return cla_group.NewCreateClaGroupBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:       "400",
 				Message:    fmt.Sprintf("EasyCLA - 400 Bad Request - %s", err.Error()),
@@ -70,17 +69,23 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			})
 		}
 
+		claGroupModel, err := service.GetCLAGroup(ctx, claGroupSummary.ClaGroupID)
+		if err != nil {
+			return cla_group.NewCreateClaGroupBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, "problem loading newly created CLA Group", err))
+		}
+
 		// Log the event
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:         events.CLAGroupCreated,
-			CLAGroupName:      claGroup.ClaGroupName,
-			CLAGroupID:        claGroup.ClaGroupID,
-			ParentProjectSFID: utils.StringValue(params.ClaGroupInput.FoundationSfid),
+			CLAGroupName:      claGroupSummary.ClaGroupName,
+			CLAGroupID:        claGroupSummary.ClaGroupID,
+			ClaGroupModel:     claGroupModel,
+			ParentProjectSFID: claGroupSummary.FoundationSfid,
 			LfUsername:        authUser.UserName,
 			EventData:         &events.CLAGroupCreatedEventData{},
 		})
 
-		return cla_group.NewCreateClaGroupOK().WithXRequestID(reqID).WithPayload(claGroup)
+		return cla_group.NewCreateClaGroupOK().WithXRequestID(reqID).WithPayload(claGroupSummary)
 	})
 
 	api.ClaGroupUpdateClaGroupHandler = cla_group.UpdateClaGroupHandlerFunc(func(params cla_group.UpdateClaGroupParams, authUser *auth.User) middleware.Responder {
@@ -164,7 +169,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		oldCLAGroupName = claGroupModel.ProjectName
 		oldCLAGroupDescription = claGroupModel.ProjectDescription
 
-		claGroup, err := service.UpdateCLAGroup(ctx, authUser, claGroupModel, params.Body, utils.StringValue(params.XUSERNAME))
+		claGroupSummary, err := service.UpdateCLAGroup(ctx, authUser, claGroupModel, params.Body)
 		if err != nil {
 			// Return a 409 conflict if we have a duplicate name
 			if _, ok := err.(*utils.CLAGroupNameConflict); ok {
@@ -180,7 +185,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:         events.CLAGroupUpdated,
 			ClaGroupModel:     claGroupModel,
-			ProjectID:         claGroup.ClaGroupID,
+			ProjectID:         claGroupSummary.ClaGroupID,
 			ProjectSFID:       projectCLAGroupModels[0].ProjectSFID,
 			ParentProjectSFID: projectCLAGroupModels[0].FoundationSFID,
 			LfUsername:        authUser.UserName,
@@ -192,7 +197,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			},
 		})
 
-		return cla_group.NewUpdateClaGroupOK().WithXRequestID(reqID).WithPayload(claGroup)
+		return cla_group.NewUpdateClaGroupOK().WithXRequestID(reqID).WithPayload(claGroupSummary)
 	})
 
 	api.ClaGroupDeleteClaGroupHandler = cla_group.DeleteClaGroupHandlerFunc(func(params cla_group.DeleteClaGroupParams, authUser *auth.User) middleware.Responder {

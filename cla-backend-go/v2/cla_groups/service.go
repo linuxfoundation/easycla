@@ -54,7 +54,8 @@ type service struct {
 // Service interface
 type Service interface {
 	CreateCLAGroup(ctx context.Context, authUser *auth.User, input *models.CreateClaGroupInput, projectManagerLFID string) (*models.ClaGroupSummary, error)
-	UpdateCLAGroup(ctx context.Context, authUser *auth.User, claGroupModel *v1Models.ClaGroup, input *models.UpdateClaGroupInput, projectManagerLFID string) (*models.ClaGroupSummary, error)
+	GetCLAGroup(ctx context.Context, claGroupID string) (*v1Models.ClaGroup, error)
+	UpdateCLAGroup(ctx context.Context, authUser *auth.User, claGroupModel *v1Models.ClaGroup, input *models.UpdateClaGroupInput) (*models.ClaGroupSummary, error)
 	ListClaGroupsForFoundationOrProject(ctx context.Context, foundationSFID string) (*models.ClaGroupListSummary, error)
 	ListAllFoundationClaGroups(ctx context.Context, foundationID *string) (*models.FoundationMappingList, error)
 	DeleteCLAGroup(ctx context.Context, claGroupModel *v1Models.ClaGroup, authUser *auth.User) error
@@ -82,6 +83,7 @@ func NewService(projectService v1Project.Service, templateService v1Template.Ser
 	}
 }
 
+// CreateCLAGroup creates a new CLA group
 func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input *models.CreateClaGroupInput, projectManagerLFID string) (*models.ClaGroupSummary, error) {
 	// Validate the input
 	log.WithField("input", input).Debugf("validating create cla group input")
@@ -231,7 +233,13 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 	}, nil
 }
 
-func (s *service) UpdateCLAGroup(ctx context.Context, authUser *auth.User, claGroupModel *v1Models.ClaGroup, input *models.UpdateClaGroupInput, projectManagerLFID string) (*models.ClaGroupSummary, error) {
+// GetCLAGroup returns the CLA group associated with the specified ID
+func (s *service) GetCLAGroup(ctx context.Context, claGroupID string) (*v1Models.ClaGroup, error) {
+	return s.v1ProjectService.GetCLAGroupByID(ctx, claGroupID)
+}
+
+// UpdateCLAGroup updates the specified CLA group with the input details
+func (s *service) UpdateCLAGroup(ctx context.Context, authUser *auth.User, claGroupModel *v1Models.ClaGroup, input *models.UpdateClaGroupInput) (*models.ClaGroupSummary, error) {
 	// Validate the input
 	f := logrus.Fields{
 		"functionName":        "v2.cla_groups.service.UpdateCLAGroup",
