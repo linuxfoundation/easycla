@@ -1027,7 +1027,7 @@ func (ed *CLAGroupUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (s
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
-	return data, true
+	return data + ".", true
 }
 
 // GetEventDetailsString returns the details string for this event
@@ -1939,8 +1939,7 @@ func (ed *CLAGroupCreatedEventData) GetEventSummaryString(args *LogEventArgs) (s
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
-	data = data + "."
-	return data, true
+	return data + ".", true
 }
 
 // GetEventSummaryString returns the summary string for this event
@@ -1973,7 +1972,7 @@ func (ed *CLAGroupUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (s
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
-	return data, true
+	return data + ".", true
 }
 
 // GetEventSummaryString returns the summary string for this event
