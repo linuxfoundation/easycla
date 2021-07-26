@@ -134,6 +134,7 @@ provider:
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-users"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-metrics"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-projects-cla-groups"
+        - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs"
     - Effect: Allow
       Action:
         - dynamodb:Query
@@ -193,6 +194,9 @@ provider:
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-cla-manager-requests/index/cla-manager-requests-project-index"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-projects-cla-groups/index/cla-group-id-index"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-projects-cla-groups/index/foundation-sfid-index"
+        - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-org-sfid-index"
+        - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-organization-name-lower-search-index"
+        - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-project-sfid-organization-name-index"
 
   environment:
     STAGE: ${self:provider.stage}

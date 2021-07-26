@@ -20,6 +20,7 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fnproject/fdk-go v0.0.2
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
+	github.com/gin-gonic/gin v1.7.2
 	github.com/go-openapi/errors v0.19.6
 	github.com/go-openapi/loads v0.19.5
 	github.com/go-openapi/runtime v0.19.19
@@ -27,10 +28,11 @@ require (
 	github.com/go-openapi/strfmt v0.19.5
 	github.com/go-openapi/swag v0.19.9
 	github.com/go-openapi/validate v0.19.10
+	github.com/go-playground/validator/v10 v10.7.0 // indirect
 	github.com/go-resty/resty/v2 v2.3.0
 	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/golang/mock v1.4.4
-	github.com/golang/protobuf v1.4.3 // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-github/v33 v33.0.0
 	github.com/google/uuid v1.1.4
 	github.com/gorilla/sessions v1.2.1 // indirect
@@ -38,9 +40,12 @@ require (
 	github.com/jessevdk/go-flags v1.4.0
 	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/jmoiron/sqlx v1.2.0
+	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/juju/mempool v0.0.0-20160205104927-24974d6c264f // indirect
 	github.com/juju/zip v0.0.0-20160205105221-f6b1e93fa2e2
 	github.com/kr/pretty v0.2.0 // indirect
+	github.com/leodido/go-urn v1.2.1 // indirect
+	github.com/mattn/go-isatty v0.0.13 // indirect
 	github.com/mitchellh/mapstructure v1.3.2
 	github.com/mozillazg/request v0.8.0 // indirect
 	github.com/pdfcpu/pdfcpu v0.3.5-0.20200802160406-be1e0eb55afc
@@ -57,13 +62,19 @@ require (
 	github.com/spf13/viper v1.7.1
 	github.com/stretchr/testify v1.6.1
 	github.com/tencentyun/scf-go-lib v0.0.0-20200116145541-9a6ea1bf75b8
+	github.com/ugorji/go v1.2.6 // indirect
 	github.com/verdverm/frisby v0.0.0-20170604211311-b16556248a9a
+	github.com/xanzy/go-gitlab v0.50.1
 	go.uber.org/ratelimit v0.1.0
-	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
+	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect
+	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
-	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
+	golang.org/x/text v0.3.6 // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	google.golang.org/appengine v1.6.6 // indirect
-	google.golang.org/protobuf v1.24.0 // indirect
+	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

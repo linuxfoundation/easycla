@@ -87,6 +87,8 @@ func IsUserAuthorizedForProjectTree(ctx context.Context, user *auth.User, projec
 		"adminScopeAllowed": adminScopeAllowed,
 	}
 
+	log.WithFields(f).Debugf("checking user auth for project tree")
+
 	// If we are running locally and want to disable permission checks
 	if skipPermissionChecks() {
 		log.WithFields(f).Debug("skipping permissions check")

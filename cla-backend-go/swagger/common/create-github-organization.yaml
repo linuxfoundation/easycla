@@ -7,7 +7,7 @@ required:
 properties:
   organizationName:
     type: string
-    description: The GitHub Organization name
+    description: The Organization name
     example: "kubernetes"
     # Pattern aligns with UI and other platform services including Org Service
     # \w Any word character (alphanumeric & underscore), dashes, periods
@@ -23,5 +23,5 @@ properties:
     description: Specifies which Cla group ID to be used when autoEnabled flag in enabled for the Github Organization. If autoEnabled is on this field needs to be set as well.
   branchProtectionEnabled:
     type: boolean
-    description: Flag to indicate if this GitHub Organization is configured to automatically setup branch protection on CLA enabled repositories.
+    description: Flag to indicate if this Organization is configured to automatically setup branch protection on CLA enabled repositories.
     default: false

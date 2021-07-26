@@ -191,6 +191,26 @@ type GitHubOrganizationUpdatedEventData struct {
 	BranchProtectionEnabled bool
 }
 
+// GitlabOrganizationAddedEventData data model
+type GitlabOrganizationAddedEventData struct {
+	GitlabOrganizationName  string
+	AutoEnabled             bool
+	AutoEnabledClaGroupID   string
+	BranchProtectionEnabled bool
+}
+
+// GitlabOrganizationDeletedEventData data model
+type GitlabOrganizationDeletedEventData struct {
+	GitlabOrganizationName string
+}
+
+// GitlabOrganizationUpdatedEventData data model
+type GitlabOrganizationUpdatedEventData struct {
+	GitlabOrganizationName string
+	AutoEnabled            bool
+	AutoEnabledClaGroupID  string
+}
+
 // CCLAApprovalListRequestCreatedEventData data model
 type CCLAApprovalListRequestCreatedEventData struct {
 	RequestID string
@@ -644,6 +664,44 @@ func (ed *GitHubOrganizationUpdatedEventData) GetEventDetailsString(args *LogEve
 	}
 	if args.ProjectName != "" {
 		data = data + fmt.Sprintf(" for project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *GitlabOrganizationAddedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("Gitlab Organization: %s was added with auto-enabled: %t, with branch protection enabled: %t",
+		ed.GitlabOrganizationName, ed.AutoEnabled, ed.BranchProtectionEnabled)
+	if ed.AutoEnabledClaGroupID != "" {
+		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *GitlabOrganizationDeletedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("GitHub Organization: %s was deleted ", ed.GitlabOrganizationName)
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *GitlabOrganizationUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("GitHub Organization:%s was updated with auto-enabled: %t",
+		ed.GitlabOrganizationName, ed.AutoEnabled)
+	if ed.AutoEnabledClaGroupID != "" {
+		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
 	}
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
@@ -1547,6 +1605,62 @@ func (ed *GitHubOrganizationUpdatedEventData) GetEventSummaryString(args *LogEve
 	data = data + fmt.Sprintf(" with branch protection set to %t", ed.BranchProtectionEnabled)
 	if ed.AutoEnabledClaGroupID != "" {
 		data = data + fmt.Sprintf(" with auto-enabled-cla-group ID value of %s", ed.AutoEnabledClaGroupID)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *GitlabOrganizationAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab organization %s was added with auto-enabled set to %t with branch protection enabled set to %t",
+		ed.GitlabOrganizationName, ed.AutoEnabled, ed.BranchProtectionEnabled)
+	if ed.AutoEnabledClaGroupID != "" {
+		data = data + fmt.Sprintf(" with auto-enabled-cla-group set to %s", ed.AutoEnabledClaGroupID)
+	}
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *GitlabOrganizationDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab organization %s was deleted", ed.GitlabOrganizationName)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for project %s", args.ProjectName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *GitlabOrganizationUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("Gitlab Organization: %s was updated with auto-enabled: %t",
+		ed.GitlabOrganizationName, ed.AutoEnabled)
+	if ed.AutoEnabledClaGroupID != "" {
+		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
+	}
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for CLA Group %s", args.CLAGroupName)
 	}
 	if args.ProjectName != "" {
 		data = data + fmt.Sprintf(" for project %s", args.ProjectName)

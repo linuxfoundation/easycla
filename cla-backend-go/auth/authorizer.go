@@ -125,6 +125,7 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 		}
 		return nil, err
 	}
+	//log.WithFields(f).Debugf("user loaded : %+v with scopes : %+v", lfuser, scopes)
 
 	for _, scope := range scopes {
 		switch Scope(scope) {
@@ -151,5 +152,6 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 		}
 	}
 
+	//log.WithFields(f).Debugf("returning user from auth : %+v", lfuser)
 	return &lfuser, nil
 }

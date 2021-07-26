@@ -51,6 +51,9 @@ type Config struct {
 	// GitHub Application
 	GitHub GitHub `json:"github"`
 
+	// Gitlab Application
+	Gitlab Gitlab `json:"gitlab"`
+
 	// Dynamo Session Store
 	SessionStoreTableName string `json:"sessionStoreTableName"`
 
@@ -132,6 +135,15 @@ type GitHub struct {
 	TestOrganizationInstallationID string `json:"test_organization_installation_id"`
 	TestRepository                 string `json:"test_repository"`
 	TestRepositoryID               string `json:"test_repository_id"`
+}
+
+// Gitlab model
+type Gitlab struct {
+	ClientSecret  string `json:"clientSecret"`
+	AppID         string `json:"app_id"`
+	AppPrivateKey string `json:"app_private_key"`
+	RedirectURI   string `json:"redirect_uri"`
+	WebHookURI    string `json:"web_hook_uri"`
 }
 
 // MetricsReport keeps the config needed to send the metrics data report

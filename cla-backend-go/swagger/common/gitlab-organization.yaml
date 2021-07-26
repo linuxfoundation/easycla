@@ -1,0 +1,82 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+properties:
+  organizationID:
+    type: string
+    description: internal id of the gitlab organization
+  dateCreated:
+    type: string
+    example: "2020-02-06T09:31:49.245630+0000"
+    minLength: 18
+    maxLength: 64
+  dateModified:
+    type: string
+    example: "2020-02-06T09:31:49.245646+0000"
+    minLength: 18
+    maxLength: 64
+  organizationName:
+    type: string
+    example: "communitybridge"
+  organizationSfid:
+    type: string
+    example: "a0941000002wBz4AAA"
+  version:
+    type: string
+    example: "v1"
+  projectSFID:
+    type: string
+    example: "a0941000002wBz4AAA"
+  enabled:
+    type: boolean
+    description: Flag that indicates whether this Gitlab Organization is active
+    x-omitempty: false
+  connected:
+    type: boolean
+    description: Flag that indicates whether this Gitlab Organization is authorized with Gitlab, if false it might mean that Gitlab Oauth process is not compeleted yet or the token was revoked and user needs to go through the auth process again
+    x-omitempty: false
+  autoEnabled:
+    type: boolean
+    description: Flag to indicate if this Gitlab Organization is configured to allow new repositories to be auto-enabled/auto-enrolled in EasyCLA.
+    x-omitempty: false
+  autoEnabledClaGroupID:
+    type: string
+    description: Specifies which Cla group ID to be used when autoEnabled flag in enabled for the Github Organization. If autoEnabled is on this field needs to be set as well.
+  gitlabInfo:
+    type: object
+    properties:
+      error:
+        type: string
+        example: "unable to get gitlab info of communitybridge"
+      details:
+        type: object
+        properties:
+          id:
+            type: integer
+            x-nullable: true
+            example: 1476068
+          bio:
+            type: string
+            x-nullable: true
+          htmlUrl:
+            type: string
+            x-nullable: true
+            example: "https://github.com/communitybridge"
+            format: uri
+          installationURL:
+            type: string
+            x-nullable: true
+            description: "if the Gitlab Organization is not connected yet can use this url to go through the process of authorizing the easyCLA bot"
+            format: uri
+
+  repositories:
+    type: object
+    properties:
+      error:
+        type: string
+        example: "unable to get repositories for installation id : 6854001"
+      list:
+        type: array
+        items:
+          $ref: '#/definitions/github-repository-info'

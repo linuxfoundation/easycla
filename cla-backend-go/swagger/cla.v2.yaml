@@ -1604,6 +1604,81 @@ paths:
       tags:
         - github-repositories
 
+  /project/{projectSFID}/gitlab/organizations:
+    post:
+      summary: Add new Gitlab Organization in the project
+      description: Endpoint to create a new Gitlab Organization in EasyCLA
+      operationId: addProjectGitlabOrganization
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: projectSFID
+          in: path
+          type: string
+          required: true
+        - in: body
+          name: body
+          schema:
+            $ref: '#/definitions/create-gitlab-organization'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/gitlab-organization'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gitlab-organizations
+    get:
+      summary: Get the Gitlab organizations of the project
+      description: Endpoint to return the list of Gitlab organization for the project
+      operationId: getProjectGitlabOrganizations
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: projectSFID
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/project-gitlab-organizations'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gitlab-organizations
+
   /cla-group/{claGroupID}/icla/signatures:
     get:
       summary: List individual signatures for CLA Group
@@ -3665,6 +3740,43 @@ paths:
       tags:
         - github-activity
 
+  /gitlab/oauth/callback:
+    get:
+      summary: The endpoint is called after user authorizes EasyCLA bot
+      description: The endpoint is responsible for storing the access token for the user and registering the webhooks is autoenable is on
+      security: []
+      operationId: gitlabOauthCallback
+      parameters:
+        - name: code
+          description: oauth code used to fetch the access token
+          in: query
+          type: string
+          required: true
+        - name: state
+          description: state is used to find the gitlab organization
+          in: query
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/success-response'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gitlab-activity
+
 responses:
   unauthorized:
     description: Unauthorized
@@ -3825,7 +3937,7 @@ parameters:
     in: query
     type: string
     required: false
-    enum: [ccla,ecla,cla]
+    enum: [ ccla,ecla,cla ]
   claType:
     name: claType
     description: >
@@ -3836,7 +3948,7 @@ parameters:
     in: query
     type: string
     required: false
-    enum: [ccla,ecla,icla]
+    enum: [ ccla,ecla,icla ]
   templateCLAType:
     name: claType
     in: query
@@ -4118,6 +4230,12 @@ definitions:
 
   update-github-organization:
     $ref: './common/update-github-organization.yaml'
+
+  gitlab-organization:
+    $ref: './common/gitlab-organization.yaml'
+
+  create-gitlab-organization:
+    $ref: './common/create-github-organization.yaml'
 
   user:
     $ref: './common/user.yaml'
@@ -5139,6 +5257,9 @@ definitions:
         items:
           type: string
 
+  gitlab-organizations:
+    $ref: './common/gitlab-organizations.yaml'
+
   project-github-organizations:
     type: object
     properties:
@@ -5172,6 +5293,56 @@ definitions:
       github_organization_name:
         type: string
         description: The GitHub Organization name
+        example: "kubernetes"
+        # Pattern aligns with UI and other platform services including Org Service
+        # \w Any word character (alphanumeric & underscore), dashes, periods
+        pattern: '^([\w\-\.]+){2,255}$'
+        minLength: 2
+        maxLength: 255
+      connection_status:
+        type: string
+        enum:
+          - connected
+          - partial_connection
+          - connection_failure
+          - no_connection
+      repositories:
+        type: array
+        items:
+          $ref: '#/definitions/project-github-repository'
+
+  project-gitlab-organizations:
+    type: object
+    properties:
+      list:
+        type: array
+        items:
+          $ref: '#/definitions/project-gitlab-organization'
+
+  project-gitlab-organization:
+    type: object
+    properties:
+      auto_enabled:
+        type: boolean
+        description: Flag to indicate if auto-enabled flag should be enabled. Organizations with auto-enable turned on will automatically include any new repositories to the EasyCLA configuration.
+        x-omitempty: false
+      autoEnableCLAGroupID:
+        type: string
+        description: The CLA Group ID which is attached to the auto-enabled flag
+      autoEnabledCLAGroupName:
+        type: string
+        description: The CLA Group name which is attached to the auto-enabled flag
+      branchProtectionEnabled:
+        type: boolean
+        description: Flag to indicate if this GitHub Organization is configured to automatically setup branch protection on CLA enabled repositories.
+        x-omitempty: false
+      installationURL:
+        type: string
+        x-nullable: true
+        format: uri
+      gitlab_organization_name:
+        type: string
+        description: The Gitlab Organization name
         example: "kubernetes"
         # Pattern aligns with UI and other platform services including Org Service
         # \w Any word character (alphanumeric & underscore), dashes, periods

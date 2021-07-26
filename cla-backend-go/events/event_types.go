@@ -49,6 +49,10 @@ const (
 	GitHubOrganizationDeleted = "github_organization.deleted"
 	GitHubOrganizationUpdated = "github_organization.updated"
 
+	GitlabOrganizationAdded   = "gitlab_organization.added"
+	GitlabOrganizationDeleted = "gitlab_organization.deleted"
+	GitlabOrganizationUpdated = "gitlab_organization.updated"
+
 	CompanyACLUserAdded       = "company_acl.user_added"
 	CompanyACLRequestAdded    = "company_acl.request_added"
 	CompanyACLRequestApproved = "company_acl.request_approved"

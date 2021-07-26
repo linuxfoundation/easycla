@@ -14,6 +14,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
+
+	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
+
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/dynamo_events"
@@ -226,7 +230,10 @@ func server(localMode bool) http.Handler {
 	if err != nil {
 		logrus.Panic(err)
 	}
+	// initialize github
 	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
+	// initialize gitlab
+	gitlab.Init(configFile.Gitlab.AppID, configFile.Gitlab.AppPrivateKey)
 
 	// Our backend repository handlers
 	userRepo := user.NewDynamoRepository(awsSession, stage)
@@ -241,6 +248,7 @@ func server(localMode bool) http.Handler {
 	v1CLAGroupRepo := project.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, v1ProjectClaGroupRepo)
 	metricsRepo := metrics.NewRepository(awsSession, stage, configFile.APIGatewayURL, v1ProjectClaGroupRepo)
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
+	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
 	claManagerReqRepo := cla_manager.NewRepository(awsSession, stage)
 
 	// Our service layer handlers
@@ -291,6 +299,7 @@ func server(localMode bool) http.Handler {
 	authorizer := auth.NewAuthorizer(authValidator, userRepo)
 	v2MetricsService := metrics.NewService(metricsRepo, v1ProjectClaGroupRepo)
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, repositoriesRepo, v1ProjectClaGroupRepo)
+	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v1ProjectClaGroupRepo)
 	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, repositoriesRepo, v1ProjectClaGroupRepo, githubOrganizationsService)
 	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, repositoriesRepo, githubOrganizationsRepo, v1ProjectClaGroupRepo, v1ProjectService)
 	v2GithubActivityService := v2GithubActivity.NewService(repositoriesRepo, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
@@ -330,6 +339,7 @@ func server(localMode bool) http.Handler {
 	v2Metrics.Configure(v2API, v2MetricsService, v1CompanyRepo)
 	github_organizations.Configure(api, githubOrganizationsService, eventsService)
 	v2GithubOrganizations.Configure(v2API, v2GithubOrganizationsService, eventsService)
+	gitlab_organizations.Configure(v2API, gitlabOrganizationsService, eventsService)
 	repositories.Configure(api, v1RepositoriesService, eventsService)
 	v2Repositories.Configure(v2API, v2RepositoriesService, eventsService)
 	gerrits.Configure(api, gerritService, v1ProjectService, eventsService)
