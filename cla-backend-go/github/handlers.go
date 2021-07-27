@@ -20,7 +20,7 @@ import (
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/gofrs/uuid"
-	ghLib "github.com/google/go-github/v33/github"
+	ghLib "github.com/google/go-github/v37/github"
 	"github.com/savaki/dynastore"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"

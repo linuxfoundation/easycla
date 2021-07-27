@@ -26,7 +26,7 @@ import (
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	githubpkg "github.com/google/go-github/v33/github"
+	githubpkg "github.com/google/go-github/v37/github"
 	"golang.org/x/oauth2"
 )
 

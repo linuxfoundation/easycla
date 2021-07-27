@@ -12,7 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/google/go-github/v33/github"
+	"github.com/google/go-github/v37/github"
 )
 
 // errors

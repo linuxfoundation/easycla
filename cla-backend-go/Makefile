@@ -41,7 +41,8 @@ setup: $(LINT_TOOL) setup-dev setup-deploy
 tool-setup:
 	@echo "Installing gobin for installing tools..."
 	@# gobin is the equivalent of 'go get' whilst in module-aware mode but this does not modify your go.mod
-	GO111MODULE=off go get -u github.com/myitcv/gobin
+	#GO111MODULE=off go get -u github.com/myitcv/gobin
+	go get -u github.com/myitcv/gobin
 
 setup_dev: setup-dev
 setup-dev: tool-setup
@@ -199,7 +200,7 @@ run:
 
 deps:
 	go env -w GOPRIVATE=github.com/LF-Engineering/*
-	go mod download
+	go mod download -x
 
 build: build-linux
 build-linux: deps

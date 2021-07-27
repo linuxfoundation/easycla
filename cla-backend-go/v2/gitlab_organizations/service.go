@@ -6,11 +6,12 @@ package gitlab_organizations
 import (
 	"context"
 	"fmt"
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	"github.com/go-openapi/strfmt"
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/communitybridge/easycla/cla-backend-go/config"
+	"github.com/go-openapi/strfmt"
 
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"

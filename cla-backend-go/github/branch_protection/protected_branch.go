@@ -14,7 +14,7 @@ import (
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
-	githubpkg "github.com/google/go-github/v33/github"
+	githubpkg "github.com/google/go-github/v37/github"
 )
 
 const (

@@ -13,7 +13,7 @@ import (
 	"github.com/shurcooL/githubv4"
 
 	"github.com/bradleyfalzon/ghinstallation"
-	"github.com/google/go-github/v33/github"
+	"github.com/google/go-github/v37/github"
 	"golang.org/x/oauth2"
 )
 

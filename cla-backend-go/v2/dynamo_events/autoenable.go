@@ -20,7 +20,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/go-openapi/swag"
-	"github.com/google/go-github/v33/github"
+	"github.com/google/go-github/v37/github"
 	"github.com/sirupsen/logrus"
 )
 

@@ -41,3 +41,12 @@ func BoolValue(input *bool) bool {
 func Bool(input bool) *bool {
 	return &input
 }
+
+// GetNilSliceIfEmpty returns a nil reference is the specified slice is empty, otherwise returns a reference to the original slice
+func GetNilSliceIfEmpty(slice []string) []string {
+	if len(slice) == 0 {
+		return nil
+	}
+
+	return slice
+}

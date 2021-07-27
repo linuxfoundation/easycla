@@ -11,7 +11,7 @@ import (
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
-	"github.com/google/go-github/v33/github" // with go modules enabled (GO111MODULE=on or outside GOPATH)0:w
+	"github.com/google/go-github/v37/github" // with go modules enabled (GO111MODULE=on or outside GOPATH)0:w
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"

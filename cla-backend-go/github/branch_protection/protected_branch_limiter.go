@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/communitybridge/easycla/cla-backend-go/github"
-	githubpkg "github.com/google/go-github/v33/github"
+	githubpkg "github.com/google/go-github/v37/github"
 	"github.com/shurcooL/githubv4"
 	"go.uber.org/ratelimit"
 	"golang.org/x/time/rate"

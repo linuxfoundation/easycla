@@ -11,7 +11,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
-	"github.com/google/go-github/v33/github"
+	"github.com/google/go-github/v37/github"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 )
@@ -40,15 +40,15 @@ func GetInstallationRepositories(ctx context.Context, installationID int64) ([]*
 	}
 
 	for {
-		repos, resp, err := client.Apps.ListRepos(ctx, opts)
+		listReposResponse, resp, err := client.Apps.ListRepos(ctx, opts)
 		if err != nil {
 			msg := fmt.Sprintf("error while getting repositories associated for installation, error: %+v", err)
 			log.WithFields(f).WithError(err).Warn(msg)
 			return nil, errors.New(msg)
 		}
 
-		log.WithFields(f).Debugf("fetched %d records...", len(repos))
-		allRepos = append(allRepos, repos...)
+		log.WithFields(f).Debugf("fetched %d records...", len(listReposResponse.Repositories))
+		allRepos = append(allRepos, listReposResponse.Repositories...)
 		if resp.NextPage == 0 {
 			break
 		}
