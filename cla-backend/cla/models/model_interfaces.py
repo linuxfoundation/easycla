@@ -1788,6 +1788,52 @@ class DocumentTab(object):
         raise NotImplementedError()
 
 
+class GitlabOrg(object):
+    """
+    Interface to the GitlabOrg model
+    """
+
+    def to_dict(self):
+        """
+        Converts models to dictionaries for JSON serialization.
+
+        :return: A dict representation of the model.
+        :rtype: dict
+        """
+        raise NotImplementedError()
+
+    def save(self):
+        """
+        Simple abstraction around the supported ORMs to save a model.
+        """
+        raise NotImplementedError()
+
+    def load(self, organization_id):
+        """
+        Simple abstraction around the supported ORMs to load a model.
+        Should populate the current object.
+
+        :param organization_id: The gitlab organization's ID.
+        :type organization_id: string
+        """
+        raise NotImplementedError()
+
+    def delete(self):
+        """
+        Simple abstraction around the supported ORMs to delete a model.
+        """
+        raise NotImplementedError()
+
+    def all(self):
+        """
+        Fetches all gitlab organizations in the CLA system.
+
+        :return: A list of GitlabOrg objects.
+        :rtype: [cla.models.model_interfaces.GitlabOrg]
+        """
+        raise NotImplementedError()
+
+
 class GitHubOrg(object):
     """
     Interface to the GitHubOrg model.

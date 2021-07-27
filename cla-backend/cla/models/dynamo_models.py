@@ -403,6 +403,56 @@ class GithubOrgSFIndex(GlobalSecondaryIndex):
     organization_sfid = UnicodeAttribute(hash_key=True)
 
 
+class GitlabOrgSFIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying gitlab organizations by a Salesforce ID.
+    """
+
+    class Meta:
+        """Meta class for external ID github org index."""
+
+        index_name = "gitlab-org-sfid-index"
+        write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
+        read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
+        projection = AllProjection()
+
+    organization_sfid = UnicodeAttribute(hash_key=True)
+
+
+class GitlabOrgProjectSfidOrganizationNameIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying gitlab organizations by a Project sfid and
+    Organization Name.
+    """
+
+    class Meta:
+        """Meta class for external ID github org index."""
+
+        index_name = "gitlab-project-sfid-organization-name-index"
+        write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
+        read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
+        projection = AllProjection()
+
+    project_sfid = UnicodeAttribute(hash_key=True)
+    organization_name = UnicodeAttribute(range_key=True)
+
+
+class GitlabOrganizationNameLowerIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying gitlab organizations by Organization Name.
+    """
+
+    class Meta:
+        """Meta class for external ID github org index."""
+
+        index_name = "gitlab-organization-name-lower-search-index"
+        write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
+        read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
+        projection = AllProjection()
+
+    organization_name_lower = UnicodeAttribute(hash_key=True)
+
+
 class GerritProjectIDIndex(GlobalSecondaryIndex):
     """
     This class represents a global secondary index for querying gerrit's by the project ID
@@ -2943,7 +2993,8 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
                 "Why do we have more than one employee signature for this user? - Will return the first one only.")
         return signatures[0]
 
-    def get_employee_signature_by_company_project_list(self, company_id, project_id, user_id) -> Optional[List[Signature]]:
+    def get_employee_signature_by_company_project_list(self, company_id, project_id, user_id) -> Optional[
+        List[Signature]]:
         """
         Returns the employee signature for the specified user associated with
         the project/company. Returns None if no employee signature exists for
@@ -3535,10 +3586,34 @@ class Store(key_value_store_interface.KeyValueStore):
         return exp_datetime.timestamp()
 
 
+class GitlabOrgModel(BaseModel):
+    """
+    Represents a Gitlab Organization in the database.
+    """
+
+    class Meta:
+        table_name = "cla-{}-gitlab-orgs".format(stage)
+        if stage == "local":
+            host = "http://localhost:8000"
+
+    organization_id = UnicodeAttribute(hash_key=True)
+    organization_name = UnicodeAttribute(null=True)
+    organization_name_lower = UnicodeAttribute(null=True)
+    organization_sfid = UnicodeAttribute()
+    project_sfid = UnicodeAttribute()
+    organization_sfid_index = GitlabOrgSFIndex()
+    project_sfid_organization_name_index = GitlabOrgProjectSfidOrganizationNameIndex()
+    organization_name_lowe_index = GitlabOrganizationNameLowerIndex()
+    auto_enabled = BooleanAttribute(null=True)
+    auto_enabled_cla_group_id = UnicodeAttribute(null=True)
+    branch_protection_enabled = BooleanAttribute(null=True)
+    enabled = BooleanAttribute(null=True)
+    note = UnicodeAttribute(null=True)
+
+
 class GitHubOrgModel(BaseModel):
     """
-    Represents a Github Organization in the database.
-    Company_id, project_id are deprecated now that organizations are under an SFDC ID.
+    Represents a Gitlab Organization in the database.
     """
 
     class Meta:
@@ -3553,7 +3628,9 @@ class GitHubOrgModel(BaseModel):
     organization_installation_id = NumberAttribute(null=True)
     organization_sfid = UnicodeAttribute()
     project_sfid = UnicodeAttribute()
-    organization_sfid_index = GithubOrgSFIndex()
+    organization_sfid_index = GitlabOrgSFIndex()
+    project_sfid_organization_name_index = GitlabOrgProjectSfidOrganizationNameIndex()
+    organization_name_lowe_index = GitlabOrganizationNameLowerIndex()
     organization_project_id = UnicodeAttribute(null=True)
     organization_company_id = UnicodeAttribute(null=True)
     auto_enabled = BooleanAttribute(null=True)
@@ -3646,7 +3723,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
         :rtype: str
         """
         return self.model.note
-    
+
     def get_enabled(self):
         return self.model.enabled
 
@@ -3678,7 +3755,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
 
     def set_note(self, note):
         self.model.note = note
-    
+
     def set_enabled(self, enabled):
         self.model.enabled = enabled
 
@@ -3712,6 +3789,150 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
         ret = []
         for organization in orgs:
             org = GitHubOrg()
+            org.model = organization
+            ret.append(org)
+        return ret
+
+
+class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-methods
+    """
+    ORM-agnostic wrapper for the DynamoDB GitlabOrg model.
+    """
+
+    def __init__(
+            self, organization_id=None, organization_name=None, organization_sfid=None,
+            project_sfid=None, auto_enabled=False, branch_protection_enabled=False, note=None, enabled=True
+    ):
+        super(GitlabOrg).__init__()
+        self.model = GitlabOrgModel()
+        if not organization_id:
+            organization_id = str(uuid.uuid4())
+        self.model.organization_id = organization_id
+
+        self.model.organization_name = organization_name
+        if self.model.organization_name:
+            self.model.organization_name_lower = self.model.organization_name.lower()
+
+        self.model.organization_sfid = organization_sfid
+        self.model.project_sfid = project_sfid
+        self.model.auto_enabled = auto_enabled
+        self.model.branch_protection_enabled = branch_protection_enabled
+        self.model.enabled = enabled
+        self.model.note = note
+
+    def __str__(self):
+        return (
+            f'organization id:{self.model.organization_id}, '
+            f'organization name:{self.model.organization_name}, '
+            f'organization SFID: {self.model.organization_sfid}, '
+            f'auto_enabled: {self.model.auto_enabled},'
+            f'branch_protection_enabled: {self.model.branch_protection_enabled},'
+            f'enabled: {self.model.enabled},'
+            f'note: {self.model.note}'
+        )
+
+    def to_dict(self):
+        ret = dict(self.model)
+        if ret["organization_sfid"] == "null":
+            ret["organization_sfid"] = None
+        return ret
+
+    def save(self) -> None:
+        self.model.date_modified = datetime.datetime.utcnow()
+        self.model.save()
+
+    def load(self, organization_id: str):
+        try:
+            organization = self.model.get(organization_id)
+        except GitlabOrgModel.DoesNotExist:
+            raise cla.models.DoesNotExist("Gitlab Org not found")
+        self.model = organization
+
+    def delete(self):
+        self.model.delete()
+
+    def get_organization_id(self):
+        return self.model.organization_id
+
+    def get_organization_name(self):
+        return self.model.organization_name
+
+    def get_organization_sfid(self):
+        return self.model.organization_sfid
+
+    def get_project_sfid(self):
+        return self.model.project_sfid
+
+    def get_organization_name_lower(self):
+        return self.model.organization_name_lower
+
+    def get_auto_enabled(self):
+        return self.model.auto_enabled
+
+    def get_branch_protection_enabled(self):
+        return self.model.branch_protection_enabled
+
+    def get_note(self):
+        """
+        Getter for the note.
+        :return: the note value for the github organization record
+        :rtype: str
+        """
+        return self.model.note
+
+    def get_enabled(self):
+        return self.model.enabled
+
+    def set_organization_name(self, organization_name):
+        self.model.organization_name = organization_name
+        if self.model.organization_name:
+            self.model.organization_name_lower = self.model.organization_name.lower()
+
+    def set_organization_sfid(self, organization_sfid):
+        self.model.organization_sfid = organization_sfid
+
+    def set_project_sfid(self, project_sfid):
+        self.model.project_sfid = project_sfid
+
+    def set_organization_name_lower(self, organization_name_lower):
+        self.model.organization_name_lower = organization_name_lower
+
+    def set_auto_enabled(self, auto_enabled):
+        self.model.auto_enabled = auto_enabled
+
+    def set_branch_protection_enabled(self, branch_protection_enabled):
+        self.model.branch_protection_enabled = branch_protection_enabled
+
+    def set_note(self, note):
+        self.model.note = note
+
+    def set_enabled(self, enabled):
+        self.model.enabled = enabled
+
+    def get_organization_by_sfid(self, sfid) -> List:
+        organization_generator = self.model.organization_sfid_index.query(sfid)
+        organizations = []
+        for org_model in organization_generator:
+            org = GitlabOrg()
+            org.model = org_model
+            organizations.append(org)
+        return organizations
+
+    def get_organization_by_lower_name(self, organization_name):
+        organization_name = organization_name.lower()
+        organization_generator = self.model.organization_name_lowe_index.query(organization_name)
+        organizations = []
+        for org_model in organization_generator:
+            org = GitlabOrg()
+            org.model = org_model
+            organizations.append(org)
+        return organizations
+
+    def all(self):
+        orgs = self.model.scan()
+        ret = []
+        for organization in orgs:
+            org = GitlabOrg()
             org.model = organization
             ret.append(org)
         return ret
