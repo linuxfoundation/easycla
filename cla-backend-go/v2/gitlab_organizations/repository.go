@@ -36,6 +36,8 @@ type RepositoryInterface interface {
 	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error)
 	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*GitlabOrganization, error)
 	UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID, authInfo string) error
+	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error
+	DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
 }
 
 // Repository object/struct
@@ -98,7 +100,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 		return nil, err
 	}
 
-	enabled := false
+	enabled := true
 	gitlabOrg := &GitlabOrganization{
 		OrganizationID:          organizationID.String(),
 		DateCreated:             currentTime,
@@ -154,8 +156,8 @@ func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID s
 	condition := expression.Key("organization_sfid").Equal(expression.Value(projectSFID))
 	builder := expression.NewBuilder().WithKeyCondition(condition)
 
-	//filter := expression.Name("enabled").Equal(expression.Value(true))
-	//builder = builder.WithFilter(filter)
+	filter := expression.Name("enabled").Equal(expression.Value(true))
+	builder = builder.WithFilter(filter)
 
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
@@ -206,6 +208,8 @@ func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, githubOr
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
 		"githubOrganizationName": githubOrganizationName,
 	}
+
+	githubOrganizationName = strings.ToLower(githubOrganizationName)
 
 	condition := expression.Key("organization_name_lower").Equal(expression.Value(strings.ToLower(githubOrganizationName)))
 	builder := expression.NewBuilder().WithKeyCondition(condition)
@@ -334,6 +338,147 @@ func (repo Repository) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabO
 	if updateErr != nil {
 		log.WithFields(f).Warnf("unable to update Gitlab organization record, error: %+v", updateErr)
 		return updateErr
+	}
+
+	return nil
+}
+
+func (repo Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error {
+	f := logrus.Fields{
+		"functionName":            "gitlab_organizations.repository.UpdateGitlabOrganization",
+		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
+		"projectSFID":             projectSFID,
+		"organizationName":        organizationName,
+		"autoEnabled":             autoEnabled,
+		"autoEnabledClaGroupID":   autoEnabledClaGroupID,
+		"branchProtectionEnabled": branchProtectionEnabled,
+		"tableName":               repo.gitlabOrgTableName,
+	}
+
+	_, currentTime := utils.CurrentTime()
+	gitlabOrgs, lookupErr := repo.GetGitlabOrganizationByName(ctx, organizationName)
+	if lookupErr != nil {
+		log.WithFields(f).Warnf("error looking up Gitlab organization by name, error: %+v", lookupErr)
+		return lookupErr
+	}
+	if gitlabOrgs == nil || len(gitlabOrgs.List) == 0 {
+		lookupErr := errors.New("unable to lookup Gitlab organization by name")
+		log.WithFields(f).Warnf("error looking up Gitlab organization, error: %+v", lookupErr)
+		return lookupErr
+	}
+
+	gitlabOrg := gitlabOrgs.List[0]
+
+	expressionAttributeNames := map[string]*string{
+		"#A": aws.String("auto_enabled"),
+		"#C": aws.String("auto_enabled_cla_group_id"),
+		"#B": aws.String("branch_protection_enabled"),
+		"#M": aws.String("date_modified"),
+	}
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
+		":a": {
+			BOOL: aws.Bool(autoEnabled),
+		},
+		":c": {
+			S: aws.String(autoEnabledClaGroupID),
+		},
+		":b": {
+			BOOL: aws.Bool(branchProtectionEnabled),
+		},
+		":m": {
+			S: aws.String(currentTime),
+		},
+	}
+	updateExpression := "SET #A = :a, #C = :c, #B = :b, #M = :m"
+
+	if enabled != nil {
+		expressionAttributeNames["#E"] = aws.String("enabled")
+		expressionAttributeValues[":e"] = &dynamodb.AttributeValue{
+			BOOL: aws.Bool(*enabled),
+		}
+		updateExpression = updateExpression + ", #E = :e "
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"organization_id": {
+				S: aws.String(gitlabOrg.OrganizationID),
+			},
+		},
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		UpdateExpression:          &updateExpression,
+		TableName:                 aws.String(repo.gitlabOrgTableName),
+	}
+
+	log.WithFields(f).Debugf("updating gitlab organization record: %+v", input)
+	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
+	if updateErr != nil {
+		log.WithFields(f).Warnf("unable to update Gitlab organization record, error: %+v", updateErr)
+		return updateErr
+	}
+
+	return nil
+}
+
+func (repo Repository) DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.github_organizations.repository.DeleteGitHubOrganization",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+		"githubOrgName":  gitlabOrgName,
+	}
+
+	var gitlabOrganizationID string
+	orgs, orgErr := repo.GetGitlabOrganizations(ctx, projectSFID)
+	if orgErr != nil {
+		errMsg := fmt.Sprintf("gitlab organization is not found using projectSFID: %s, error: %+v", projectSFID, orgErr)
+		log.WithFields(f).Warn(errMsg)
+		return errors.New(errMsg)
+	}
+
+	for _, githubOrg := range orgs.List {
+		if strings.EqualFold(githubOrg.OrganizationName, gitlabOrgName) {
+			gitlabOrganizationID = githubOrg.OrganizationID
+			break
+		}
+	}
+
+	log.WithFields(f).Debug("Deleting GitHub organization...")
+	// Update enabled flag as false
+	_, currentTime := utils.CurrentTime()
+	note := fmt.Sprintf("Enabled set to false due to org deletion at %s ", currentTime)
+	_, err := repo.dynamoDBClient.UpdateItem(
+		&dynamodb.UpdateItemInput{
+			Key: map[string]*dynamodb.AttributeValue{
+				"organization_id": {
+					S: aws.String(gitlabOrganizationID),
+				},
+			},
+			ExpressionAttributeNames: map[string]*string{
+				"#E": aws.String("enabled"),
+				"#N": aws.String("note"),
+				"#D": aws.String("date_modified"),
+			},
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":e": {
+					BOOL: aws.Bool(false),
+				},
+				":n": {
+					S: aws.String(note),
+				},
+				":d": {
+					S: aws.String(currentTime),
+				},
+			},
+			UpdateExpression: aws.String("SET #E = :e, #N = :n, #D = :d"),
+			TableName:        aws.String(repo.gitlabOrgTableName),
+		},
+	)
+	if err != nil {
+		errMsg := fmt.Sprintf("error deleting gitlab organization: %s - %+v", gitlabOrgName, err)
+		log.WithFields(f).Warnf(errMsg)
+		return errors.New(errMsg)
 	}
 
 	return nil

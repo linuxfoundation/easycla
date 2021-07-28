@@ -1679,6 +1679,82 @@ paths:
       tags:
         - gitlab-organizations
 
+  /project/{projectSFID}/gitlab/organizations/{orgName}/config:
+    put:
+      summary: Update Gitlab Organization Configuration
+      description: Endpoint to adjust the Gitlab Organization Configuration, such as toggling the auto-enable flag
+      operationId: updateProjectGitlabOrganizationConfig
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: projectSFID
+          in: path
+          type: string
+          required: true
+        - name: orgName
+          in: path
+          type: string
+          required: true
+        - in: body
+          name: body
+          schema:
+            $ref: '#/definitions/update-gitlab-organization'
+          required: true
+      responses:
+        '200':
+          description: 'Resource Updated'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - gitlab-organizations
+
+    delete:
+      summary: Delete Gitlab organization in the project
+      description: Endpoint to delete the Gitlab organization for the project
+      operationId: deleteProjectGitlabOrganization
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: projectSFID
+          in: path
+          type: string
+          required: true
+        - name: orgName
+          in: path
+          type: string
+          required: true
+      responses:
+        '204':
+          description: 'Deleted'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - gitlab-organizations
+
   /cla-group/{claGroupID}/icla/signatures:
     get:
       summary: List individual signatures for CLA Group
@@ -4236,6 +4312,9 @@ definitions:
 
   create-gitlab-organization:
     $ref: './common/create-github-organization.yaml'
+
+  update-gitlab-organization:
+    $ref: './common/update-github-organization.yaml'
 
   user:
     $ref: './common/user.yaml'

@@ -29,19 +29,21 @@ type Service interface {
 	AddGitlabOrganization(ctx context.Context, projectSFID string, input *models.CreateGitlabOrganization) (*models.GitlabOrganization, error)
 	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*models.GitlabOrganization, error)
 	GetGitlabOrganizationByState(ctx context.Context, gitlabOrganizationID, authState string) (*models.GitlabOrganization, error)
+	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
 	UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, oauthResp *gitlab.OauthSuccessResponse) error
+	DeleteGitlabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error
 }
 
 type service struct {
-	repo                    RepositoryInterface
-	projectsCLAGroupService projects_cla_groups.Repository
+	repo               RepositoryInterface
+	claGroupRepository projects_cla_groups.Repository
 }
 
 // NewService creates a new githubOrganizations service
-func NewService(repo RepositoryInterface, projectsCLAGroupService projects_cla_groups.Repository) Service {
+func NewService(repo RepositoryInterface, claGroupRepository projects_cla_groups.Repository) Service {
 	return service{
-		repo:                    repo,
-		projectsCLAGroupService: projectsCLAGroupService,
+		repo:               repo,
+		claGroupRepository: claGroupRepository,
 	}
 }
 
@@ -76,6 +78,17 @@ func (s service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganiz
 
 	return s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, authInfoEncrypted)
 
+}
+
+func (s service) UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
+	// check if valid cla group id is passed
+	if autoEnabledClaGroupID != "" {
+		if _, err := s.claGroupRepository.GetCLAGroupNameByID(ctx, autoEnabledClaGroupID); err != nil {
+			return err
+		}
+	}
+
+	return s.repo.UpdateGitlabOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, nil)
 }
 
 func (s service) GetGitlabOrganizationByState(ctx context.Context, gitlabOrganizationID, authState string) (*models.GitlabOrganization, error) {
@@ -187,7 +200,7 @@ func (s service) GetGitlabOrganizations(ctx context.Context, projectSFID string)
 		autoEnabledCLAGroupName := ""
 		if org.AutoEnabledClaGroupID != "" {
 			log.WithFields(f).Debugf("Loading CLA Group by ID: %s to obtain the name for GitHub auth enabled CLA Group response", org.AutoEnabledClaGroupID)
-			claGroupMode, claGroupLookupErr := s.projectsCLAGroupService.GetCLAGroup(ctx, org.AutoEnabledClaGroupID)
+			claGroupMode, claGroupLookupErr := s.claGroupRepository.GetCLAGroup(ctx, org.AutoEnabledClaGroupID)
 			if claGroupLookupErr != nil {
 				log.WithFields(f).WithError(claGroupLookupErr).Warnf("Unable to lookup CLA Group by ID: %s", org.AutoEnabledClaGroupID)
 			}
@@ -246,6 +259,33 @@ func (s service) GetGitlabOrganizations(ctx context.Context, projectSFID string)
 	}
 
 	return out, nil
+}
+
+func (s service) DeleteGitlabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error {
+	f := logrus.Fields{
+		"functionName":   "DeleteGitHubOrganization",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+		"gitlabOrgName":  gitlabOrgName,
+	}
+
+	// Lookup the parent
+	parentProjectSFID, projErr := v2ProjectService.GetClient().GetParentProject(projectSFID)
+	if projErr != nil {
+		log.WithFields(f).Warnf("problem fetching project parent SFID, error: %+v", projErr)
+		return projErr
+	}
+
+	log.WithFields(f).Debugf("retrieved parent of project sfid : %s -> %s", projectSFID, parentProjectSFID)
+
+	// Todo: Enable this when the repositories are implemented
+	//err := s.ghRepository.DisableRepositoriesOfGithubOrganization(ctx, parentProjectSFID, gitlabOrgName)
+	//if err != nil {
+	//	log.WithFields(f).Warnf("problem disabling repositories for github organizations, error: %+v", projErr)
+	//	return err
+	//}
+
+	return s.repo.DeleteGitlabOrganization(ctx, projectSFID, gitlabOrgName)
 }
 
 func buildInstallationURL(gitlabOrgID string, authStateNonce string) *strfmt.URI {
