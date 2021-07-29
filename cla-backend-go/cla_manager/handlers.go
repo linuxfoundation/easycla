@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-openapi/strfmt"
+
 	"github.com/LF-Engineering/lfx-kit/auth"
 
 	user_service "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
@@ -192,7 +194,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			sendRequestAccessEmailToCLAManagers(emailSvc, emails.RequestAccessToCLAManagersTemplateParams{
 				CommonEmailParams: emails.CommonEmailParams{
 					RecipientName:    manager.Username,
-					RecipientAddress: manager.LfEmail,
+					RecipientAddress: manager.LfEmail.String(),
 					CompanyName:      companyModel.CompanyName,
 				},
 				RequesterName:  params.Body.UserName,
@@ -368,7 +370,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			sendRequestApprovedEmailToCLAManagers(emailSvc, emails.RequestApprovedToCLAManagersTemplateParams{
 				CommonEmailParams: emails.CommonEmailParams{
 					RecipientName:    manager.Username,
-					RecipientAddress: manager.LfEmail,
+					RecipientAddress: manager.LfEmail.String(),
 					CompanyName:      companyModel.CompanyName,
 				},
 				RequesterName:  request.UserName,
@@ -483,7 +485,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			sendRequestDeniedEmailToCLAManagers(emailSvc, emails.RequestDeniedToCLAManagersTemplateParams{
 				CommonEmailParams: emails.CommonEmailParams{
 					RecipientName:    manager.Username,
-					RecipientAddress: manager.LfEmail,
+					RecipientAddress: manager.LfEmail.String(),
 					CompanyName:      companyModel.CompanyName,
 				},
 				RequesterName:  request.UserName,
@@ -654,7 +656,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 				DateModified:   nowStr,
 				Emails:         userServiceClient.EmailsToSlice(sfdcUserObject),
 				GithubUsername: sfdcUserObject.GithubID, //this is the github username
-				LfEmail:        userServiceClient.GetPrimaryEmail(sfdcUserObject),
+				LfEmail:        strfmt.Email(userServiceClient.GetPrimaryEmail(sfdcUserObject)),
 				LfUsername:     sfdcUserObject.Username,
 				Note:           "created from SF record",
 				UserExternalID: sfdcUserObject.ID,
@@ -759,7 +761,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 				DateModified:   nowStr,
 				Emails:         userServiceClient.EmailsToSlice(sfdcUserObject),
 				GithubUsername: sfdcUserObject.GithubID, //this is the github username
-				LfEmail:        userServiceClient.GetPrimaryEmail(sfdcUserObject),
+				LfEmail:        strfmt.Email(userServiceClient.GetPrimaryEmail(sfdcUserObject)),
 				LfUsername:     sfdcUserObject.Username,
 				Note:           "created from SF record",
 				UserExternalID: sfdcUserObject.ID,

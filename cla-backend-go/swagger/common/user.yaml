@@ -7,9 +7,11 @@ title: User
 description: User model
 properties:
   userID:
-    type: string
+    $ref: './common/properties/internal-id.yaml'
+    description: the user's internal/unique ID
   userExternalID:
-    type: string
+    $ref: './common/properties/external-id.yaml'
+    description: the user's external ID tied to SF
   username:
     type: string
   dateCreated:
@@ -17,21 +19,37 @@ properties:
   dateModified:
     type: string
   lfEmail:
-    type: string
+    $ref: './common/properties/email.yaml'
   lfUsername:
     type: string
   companyID:
-    type: string
+    $ref: './common/properties/internal-id.yaml'
+    description: the user's optional company ID
   githubID:
     type: string
+    description: the user's github ID
+    example: '123434'
   githubUsername:
     type: string
+    description: the user's github username
+    example: 'grapes42'
+  gitlabID:
+    type: string
+    description: the user's gitlab ID
+    example: '123434'
+  gitlabUsername:
+    type: string
+    description: the user's gitlab username
+    example: 'orangejuice'
   admin:
     type: boolean
   version:
     type: string
+    description: the version identifier for this record
+    example: 'v1'
   note:
     type: string
+    description: an optional note for this user record
   emails:
     type: array
     items:

@@ -67,7 +67,7 @@ func (s *service) SetInitialCLAManagerACSPermissions(ctx context.Context, signat
 
 		log.WithFields(f).Debugf("searching user by email: %s", sig.SignatureACL[0].LfEmail)
 		if sig.SignatureACL[0].LfEmail != "" {
-			claManager, err = userServiceClient.SearchUserByEmail(sig.SignatureACL[0].LfEmail)
+			claManager, err = userServiceClient.SearchUserByEmail(sig.SignatureACL[0].LfEmail.String())
 			if err != nil || claManager == nil {
 				log.WithFields(f).Warnf("unable to lookup user by email: %s, error: %+v",
 					sig.SignatureACL[0].LfEmail, err)

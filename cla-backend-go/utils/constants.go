@@ -156,17 +156,23 @@ const EmailDomainCriteria = "Email Domain Criteria"
 //EmailCriteria represents approvals based on email addresses
 const EmailCriteria = "Email Criteria"
 
-//GitHubOrgCriteria represents approvals based on GH org membership
-const GitHubOrgCriteria = "GitHub Org Criteria"
-
 //AddApprovals is an action for adding approvals
 const AddApprovals = "AddApprovals"
 
 //RemoveApprovals is an action for removing approvals
 const RemoveApprovals = "RemoveApprovals"
 
-//GitHubUsernameCriteria represents criteria based on GH username
+//GitHubUsernameCriteria represents criteria based on GitHub username
 const GitHubUsernameCriteria = "GitHubUsername"
+
+//GitHubOrgCriteria represents approvals based on GitHub org membership
+const GitHubOrgCriteria = "GitHub Org Criteria"
+
+//GitlabUsernameCriteria represents criteria based on gitlab username
+const GitlabUsernameCriteria = "GitHubUsername"
+
+//GitlabOrgCriteria represents approvals based on gitlab org group membership
+const GitlabOrgCriteria = "Gitlab Org Criteria"
 
 // SignatureQueryDefaultAll the signature query default active value - A flag to indicate how a default signature
 // query should return data - show only 'active' signatures or 'all' signatures when no other query signed/approved

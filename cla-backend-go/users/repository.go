@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-openapi/strfmt"
+
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
 	"github.com/sirupsen/logrus"
@@ -39,7 +41,10 @@ type UserRepository interface {
 	GetUserByExternalID(userExternalID string) (*models.User, error)
 	GetUserByUserName(userName string, fullMatch bool) (*models.User, error)
 	GetUserByEmail(userEmail string) (*models.User, error)
+	GetUserByGitHubID(gitHubID string) (*models.User, error)
 	GetUserByGitHubUsername(gitHubUsername string) (*models.User, error)
+	GetUserByGitlabID(gitlabID string) (*models.User, error)
+	GetUserByGitlabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(searchField string, searchTerm string, fullMatch bool) (*models.Users, error)
 }
 
@@ -100,9 +105,21 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 		}
 	}
 
+	if user.GitlabID != "" {
+		attributes["user_gitlab_id"] = &dynamodb.AttributeValue{
+			S: aws.String(user.GitlabID),
+		}
+	}
+
+	if user.GitlabUsername != "" {
+		attributes["user_gitlab_username"] = &dynamodb.AttributeValue{
+			S: aws.String(user.GitlabUsername),
+		}
+	}
+
 	if user.LfEmail != "" {
 		attributes["lf_email"] = &dynamodb.AttributeValue{
-			S: aws.String(user.LfEmail),
+			S: aws.String(user.LfEmail.String()),
 		}
 	}
 
@@ -257,7 +274,7 @@ func (repo repository) Save(user *models.UserUpdate) (*models.User, error) {
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
 	updateExpression := "SET "
 
-	if user.LfEmail != "" && oldUserModel.LfEmail != user.LfEmail {
+	if user.LfEmail != "" && oldUserModel.LfEmail.String() != user.LfEmail {
 		log.WithFields(f).Debugf("building query - adding lf_email: %s", user.LfEmail)
 		expressionAttributeNames["#E"] = aws.String("lf_email")
 		expressionAttributeValues[":e"] = &dynamodb.AttributeValue{S: aws.String(user.LfEmail)}
@@ -694,10 +711,64 @@ func (repo repository) GetUserByEmail(userEmail string) (*models.User, error) {
 	return convertDBUserModel(dbUserModels[0]), nil
 }
 
+// GetUserByGitHubID fetches the user record by github ID
+func (repo repository) GetUserByGitHubID(gitHubID string) (*models.User, error) {
+	f := logrus.Fields{
+		"functionName": "users.repository.GetUserByGitHubID",
+		"gitHubID":     gitHubID,
+	}
+	// This is the key we want to match
+	condition := expression.Key("user_github_id").Equal(expression.Value(gitHubID))
+
+	// These are the columns we want returned
+	projection := buildUserProjection()
+
+	// Use the nice builder to create the expression
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithProjection(projection).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error building expression for user_github_id : %s, error: %v", gitHubID, err)
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.tableName),
+		IndexName:                 aws.String("github-id-index"),
+	}
+
+	// Make the DynamoDB Query API call
+	result, err := repo.dynamoDBClient.Query(queryInput)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error retrieving user by user_github_id: %s, error: %+v", gitHubID, err)
+		return nil, err
+	}
+
+	// The user model
+	var dbUserModels []DBUser
+
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &dbUserModels)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error unmarshalling user record from database for user_github_id: %s, error: %+v", gitHubID, err)
+		return nil, err
+	}
+
+	if len(dbUserModels) == 0 {
+		return nil, errors.NotFound("user not found when searching by user_github_id: %s", gitHubID)
+	} else if len(dbUserModels) > 1 {
+		log.WithFields(f).WithError(err).Warnf("retrieved %d results for the user_github_id query when we should return 0 or 1", len(dbUserModels))
+	}
+
+	return convertDBUserModel(dbUserModels[0]), nil
+}
+
 // GetUserByGitHubUsername fetches the user record by github username
 func (repo repository) GetUserByGitHubUsername(gitHubUsername string) (*models.User, error) {
 	f := logrus.Fields{
-		"functionName":   "users.repository.GetUserByGitHubUsername",
+		"functionName":   "users.repository.GetUserByGitlabUsername",
 		"gitHubUsername": gitHubUsername,
 	}
 	// This is the key we want to match
@@ -743,6 +814,114 @@ func (repo repository) GetUserByGitHubUsername(gitHubUsername string) (*models.U
 		return nil, errors.NotFound("user not found when searching by user_github_username: %s", gitHubUsername)
 	} else if len(dbUserModels) > 1 {
 		log.WithFields(f).WithError(err).Warnf("retrieved %d results for the user_github_username query when we should return 0 or 1", len(dbUserModels))
+	}
+
+	return convertDBUserModel(dbUserModels[0]), nil
+}
+
+// GetUserByGitlabID fetches the user record by gitlab ID
+func (repo repository) GetUserByGitlabID(gitlabID string) (*models.User, error) {
+	f := logrus.Fields{
+		"functionName": "users.repository.GetUserByGitlabID",
+		"gitlabID":     gitlabID,
+	}
+	// This is the key we want to match
+	condition := expression.Key("user_gitlab_id").Equal(expression.Value(gitlabID))
+
+	// These are the columns we want returned
+	projection := buildUserProjection()
+
+	// Use the nice builder to create the expression
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithProjection(projection).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error building expression for user_gitlab_id : %s, error: %v", gitlabID, err)
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.tableName),
+		IndexName:                 aws.String("gitlab-id-index"),
+	}
+
+	// Make the DynamoDB Query API call
+	result, err := repo.dynamoDBClient.Query(queryInput)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error retrieving user by user_gitlab_id: %s, error: %+v", gitlabID, err)
+		return nil, err
+	}
+
+	// The user model
+	var dbUserModels []DBUser
+
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &dbUserModels)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error unmarshalling user record from database for user_gitlab_id: %s, error: %+v", gitlabID, err)
+		return nil, err
+	}
+
+	if len(dbUserModels) == 0 {
+		return nil, errors.NotFound("user not found when searching by user_gitlab_id: %s", gitlabID)
+	} else if len(dbUserModels) > 1 {
+		log.WithFields(f).WithError(err).Warnf("retrieved %d results for the user_gitlab_id query when we should return 0 or 1", len(dbUserModels))
+	}
+
+	return convertDBUserModel(dbUserModels[0]), nil
+}
+
+// GetUserByGitlabUsername fetches the user record by gitlab username
+func (repo repository) GetUserByGitlabUsername(gitlabUsername string) (*models.User, error) {
+	f := logrus.Fields{
+		"functionName":   "users.repository.GetUserByGitlabUsername",
+		"gitlabUsername": gitlabUsername,
+	}
+	// This is the key we want to match
+	condition := expression.Key("user_gitlab_username").Equal(expression.Value(gitlabUsername))
+
+	// These are the columns we want returned
+	projection := buildUserProjection()
+
+	// Use the nice builder to create the expression
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithProjection(projection).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error building expression for user_gitlab_username : %s, error: %v", gitlabUsername, err)
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.tableName),
+		IndexName:                 aws.String("gitlab-username-index"),
+	}
+
+	// Make the DynamoDB Query API call
+	result, err := repo.dynamoDBClient.Query(queryInput)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error retrieving user by user_gitlab_username: %s, error: %+v", gitlabUsername, err)
+		return nil, err
+	}
+
+	// The user model
+	var dbUserModels []DBUser
+
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &dbUserModels)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error unmarshalling user record from database for user_gitlab_username: %s, error: %+v", gitlabUsername, err)
+		return nil, err
+	}
+
+	if len(dbUserModels) == 0 {
+		return nil, errors.NotFound("user not found when searching by user_gitlab_username: %s", gitlabUsername)
+	} else if len(dbUserModels) > 1 {
+		log.WithFields(f).WithError(err).Warnf("retrieved %d results for the user_gitlab_username query when we should return 0 or 1", len(dbUserModels))
 	}
 
 	return convertDBUserModel(dbUserModels[0]), nil
@@ -818,7 +997,6 @@ func (repo repository) SearchUsers(searchField string, searchTerm string, fullMa
 		users = append(users, userList...)
 
 		if results.LastEvaluatedKey["user_id"] != nil {
-			//log.Debugf("LastEvaluatedKey: %+v", result.LastEvaluatedKey["signature_id"])
 			lastEvaluatedKey = *results.LastEvaluatedKey["user_id"].S
 			scanInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
 				"user_id": {
@@ -858,7 +1036,7 @@ func convertDBUserModel(user DBUser) *models.User {
 		UserID:         user.UserID,
 		UserExternalID: user.UserExternalID,
 		Admin:          user.Admin,
-		LfEmail:        user.LFEmail,
+		LfEmail:        strfmt.Email(user.LFEmail),
 		LfUsername:     user.LFUsername,
 		DateCreated:    user.DateCreated,
 		DateModified:   user.DateModified,
@@ -866,8 +1044,10 @@ func convertDBUserModel(user DBUser) *models.User {
 		Version:        user.Version,
 		Emails:         user.UserEmails,
 		GithubID:       user.UserGithubID,
-		CompanyID:      user.UserCompanyID,
 		GithubUsername: user.UserGithubUsername,
+		GitlabID:       user.UserGitlabID,
+		GitlabUsername: user.UserGitlabUsername,
+		CompanyID:      user.UserCompanyID,
 		Note:           user.Note,
 	}
 }
@@ -885,6 +1065,8 @@ func buildUserProjection() expression.ProjectionBuilder {
 		expression.Name("user_emails"),
 		expression.Name("user_github_username"),
 		expression.Name("user_github_id"),
+		expression.Name("user_gitlab_username"),
+		expression.Name("user_gitlab_id"),
 		expression.Name("date_created"),
 		expression.Name("date_modified"),
 		expression.Name("version"),

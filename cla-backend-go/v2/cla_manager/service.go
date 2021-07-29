@@ -204,7 +204,7 @@ func (s *service) CreateCLAManager(ctx context.Context, authUser *auth.User, cla
 		claUserModel := &v1Models.User{
 			CompanyID:      v1CompanyModel.CompanyID,
 			UserExternalID: v1CompanyModel.CompanyExternalID,
-			LfEmail:        *user.Emails[0].EmailAddress,
+			LfEmail:        strfmt.Email(*user.Emails[0].EmailAddress),
 			Admin:          true,
 			LfUsername:     user.Username,
 			DateCreated:    currentTimeString,

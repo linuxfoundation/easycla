@@ -6,6 +6,8 @@ package users
 import (
 	"fmt"
 
+	"github.com/go-openapi/strfmt"
+
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
@@ -43,7 +45,7 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		}
 
 		newUser := &models.User{
-			LfEmail:    claUser.LFEmail,
+			LfEmail:    strfmt.Email(claUser.LFEmail),
 			LfUsername: claUser.LFUsername,
 			Username:   claUser.Name,
 		}

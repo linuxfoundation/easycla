@@ -16,7 +16,9 @@ type DBUser struct {
 	Version            string   `json:"version"`
 	UserEmails         []string `json:"user_emails"`
 	UserGithubID       string   `json:"user_github_id"`
-	UserCompanyID      string   `json:"user_company_id"`
 	UserGithubUsername string   `json:"user_github_username"`
+	UserGitlabID       string   `json:"user_gitlab_id"`
+	UserGitlabUsername string   `json:"user_gitlab_username"`
+	UserCompanyID      string   `json:"user_company_id"`
 	Note               string   `json:"note"`
 }

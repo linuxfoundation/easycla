@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/go-openapi/strfmt"
+
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/users"
@@ -617,10 +619,10 @@ func (s service) getPreferredNameAndEmail(ctx context.Context, lfid string) (str
 
 	userEmail := userModel.LfEmail
 	if userEmail == "" && userModel.Emails != nil && len(userModel.Emails) > 0 {
-		userEmail = userModel.Emails[0]
+		userEmail = strfmt.Email(userModel.Emails[0])
 	}
 
-	return userName, userEmail, nil
+	return userName, userEmail.String(), nil
 }
 
 func (s service) GetCompanyByExternalID(ctx context.Context, companySFID string) (*models.Company, error) {
@@ -866,7 +868,7 @@ func getCompanyAdmin(ctx context.Context, companySFID string) (*models.User, err
 			for _, rs := range usc.RoleScopes {
 				if rs.RoleName == "company-admin" {
 					companyAdmin := &models.User{
-						LfEmail:        usc.Contact.EmailAddress,
+						LfEmail:        strfmt.Email(usc.Contact.EmailAddress),
 						LfUsername:     usc.Contact.Username,
 						UserExternalID: usc.Contact.ID,
 						Username:       usc.Contact.Name,

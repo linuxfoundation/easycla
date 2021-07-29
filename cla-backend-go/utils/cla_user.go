@@ -29,7 +29,7 @@ func GetBestUsername(user *models.User) string {
 // GetBestEmail is a helper function to return the best email address for the user model
 func GetBestEmail(userModel *models.User) string {
 	if userModel.LfEmail != "" {
-		return userModel.LfEmail
+		return userModel.LfEmail.String()
 	}
 
 	for _, email := range userModel.Emails {

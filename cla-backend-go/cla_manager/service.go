@@ -191,7 +191,7 @@ func (s service) DeleteRequest(requestID string) error {
 	return nil
 }
 
-// AddClaManager Adds LFID to Signature Access Control List list
+// AddClaManager Adds LFID to Signature Access Control list
 func (s service) AddClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error) {
 
 	f := logrus.Fields{
@@ -249,17 +249,17 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 		sendClaManagerAddedEmailToCLAManagers(s.emailTemplateService, emails.ClaManagerAddedToCLAManagersTemplateParams{
 			CommonEmailParams: emails.CommonEmailParams{
 				RecipientName:    manager.Username,
-				RecipientAddress: manager.LfEmail,
+				RecipientAddress: manager.LfEmail.String(),
 				CompanyName:      companyModel.CompanyName,
 			},
 			Name:  userModel.Username,
-			Email: userModel.LfEmail,
+			Email: userModel.LfEmail.String(),
 		}, claGroupModel)
 	}
 	// Notify the added user
 	sendClaManagerAddedEmailToUser(s.emailTemplateService, emails.CommonEmailParams{
 		RecipientName:    userModel.Username,
-		RecipientAddress: userModel.LfEmail,
+		RecipientAddress: userModel.LfEmail.String(),
 		CompanyName:      companyModel.CompanyName,
 	}, claGroupModel)
 
@@ -279,7 +279,7 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 			CompanyName: companyModel.CompanyName,
 			ProjectName: claGroupModel.ProjectName,
 			UserName:    userModel.Username,
-			UserEmail:   userModel.LfEmail,
+			UserEmail:   userModel.LfEmail.String(),
 			UserLFID:    userModel.LfUsername,
 		},
 	})
@@ -368,18 +368,18 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 		sendClaManagerDeleteEmailToCLAManagers(s.emailTemplateService, emails.ClaManagerDeletedToCLAManagersTemplateParams{
 			CommonEmailParams: emails.CommonEmailParams{
 				RecipientName:    manager.Username,
-				RecipientAddress: manager.LfEmail,
+				RecipientAddress: manager.LfEmail.String(),
 				CompanyName:      companyModel.CompanyName,
 			},
 			Name:  userModel.LfUsername,
-			Email: userModel.LfEmail,
+			Email: userModel.LfEmail.String(),
 		}, claGroupModel)
 	}
 
 	// Notify the removed manager
 	sendRemovedClaManagerEmailToRecipient(s.emailTemplateService, emails.CommonEmailParams{
 		RecipientName:    userModel.LfUsername,
-		RecipientAddress: userModel.LfEmail,
+		RecipientAddress: userModel.LfEmail.String(),
 		CompanyName:      companyModel.CompanyName,
 	}, claGroupModel, claManagers)
 
@@ -399,7 +399,7 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 			CompanyName: companyModel.CompanyName,
 			ProjectName: claGroupModel.ProjectName,
 			UserName:    userModel.LfUsername,
-			UserEmail:   userModel.LfEmail,
+			UserEmail:   userModel.LfEmail.String(),
 			UserLFID:    LFID,
 		},
 	})
@@ -452,7 +452,7 @@ func sendClaManagerAddedEmailToCLAManagers(emailSvc emails.EmailTemplateService,
 func sendRemovedClaManagerEmailToRecipient(emailSvc emails.EmailTemplateService, emailParams emails.CommonEmailParams, claGroupModel *models.ClaGroup, claManagers []models.User) {
 	projectName := claGroupModel.ProjectName
 
-	emailCLAManagerParams := []emails.ClaManagerInfoParams{}
+	var emailCLAManagerParams []emails.ClaManagerInfoParams
 
 	log.Debugf("CLA Managers found: %+v", claManagers)
 
@@ -462,7 +462,7 @@ func sendRemovedClaManagerEmailToRecipient(emailSvc emails.EmailTemplateService,
 		// Need to determine which email...
 		var whichEmail = ""
 		if companyAdmin.LfEmail != "" {
-			whichEmail = companyAdmin.LfEmail
+			whichEmail = companyAdmin.LfEmail.String()
 			log.Debugf("Found email : %s ", whichEmail)
 		}
 

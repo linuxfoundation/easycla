@@ -23,10 +23,13 @@ type ItemSignature struct {
 	EmailDomainApprovalList       []string `json:"domain_whitelist"`
 	GitHubUsernameApprovalList    []string `json:"github_whitelist"`
 	GitHubOrgApprovalList         []string `json:"github_org_whitelist"`
-	GitLabUsernameApprovalList    []string `json:"gitlab_username_approval_list"`
-	GitLabGroupApprovalList       []string `json:"gitlab_group_approval_list"`
+	GitlabUsernameApprovalList    []string `json:"gitlab_username_approval_list"`
+	GitlabOrgApprovalList         []string `json:"gitlab_org_approval_list"`
 	SignatureACL                  []string `json:"signature_acl"`
+	UserGithubID                  string   `json:"user_github_id"`
 	UserGithubUsername            string   `json:"user_github_username"`
+	UserGitlabID                  string   `json:"user_gitlab_id"`
+	UserGitlabUsername            string   `json:"user_gitlab_username"`
 	UserLFUsername                string   `json:"user_lf_username"`
 	UserName                      string   `json:"user_name"`
 	UserEmail                     string   `json:"user_email"`

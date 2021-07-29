@@ -20,6 +20,7 @@ type SignatureCompanyID struct {
 type ApprovalCriteria struct {
 	UserEmail      string
 	GitHubUsername string
+	GitlabUsername string
 }
 
 //ApprovalList data model
@@ -34,10 +35,11 @@ type ApprovalList struct {
 	EmailApprovals          []string
 	DomainApprovals         []string
 	GitHubUsernameApprovals []string
-	GHUsernames             []string
-	GHOrgApprovals          []string
-	GitLabUsernameApprovals []string
-	GitLabGroupApprovals    []string
+	GitHubUsernames         []string
+	GitHubOrgApprovals      []string
+	GitlabUsernameApprovals []string
+	GitlabOrgApprovals      []string
+	GitlabUsernames         []string
 	GerritICLAECLAs         []string
 	ICLAs                   []*models.IclaSignature
 	ECLAs                   []*models.Signature

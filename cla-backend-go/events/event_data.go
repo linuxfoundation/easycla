@@ -327,6 +327,26 @@ type CLAApprovalListRemoveGitHubOrgData struct {
 	ApprovalListGitHubOrg string
 }
 
+// CLAApprovalListAddGitlabUsernameData data model
+type CLAApprovalListAddGitlabUsernameData struct {
+	ApprovalListGitlabUsername string
+}
+
+// CLAApprovalListRemoveGitlabUsernameData data model
+type CLAApprovalListRemoveGitlabUsernameData struct {
+	ApprovalListGitlabUsername string
+}
+
+// CLAApprovalListAddGitlabOrgData data model
+type CLAApprovalListAddGitlabOrgData struct {
+	ApprovalListGitlabOrg string
+}
+
+// CLAApprovalListRemoveGitlabOrgData data model
+type CLAApprovalListRemoveGitlabOrgData struct {
+	ApprovalListGitlabOrg string
+}
+
 // ApprovalListGitHubOrganizationAddedEventData data model
 type ApprovalListGitHubOrganizationAddedEventData struct {
 	GitHubOrganizationName string
@@ -969,6 +989,94 @@ func (ed *CLAApprovalListAddGitHubOrgData) GetEventDetailsString(args *LogEventA
 // GetEventDetailsString returns the details string for this event
 func (ed *CLAApprovalListRemoveGitHubOrgData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The GitHub organization %s was removed from the approval list", ed.ApprovalListGitHubOrg)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *CLAApprovalListAddGitlabUsernameData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab username %s was added to the approval list", ed.ApprovalListGitlabUsername)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *CLAApprovalListRemoveGitlabUsernameData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab username %s was removed from the approval list", ed.ApprovalListGitlabUsername)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *CLAApprovalListAddGitlabOrgData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab organization %s was added to the approval list", ed.ApprovalListGitlabOrg)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *CLAApprovalListRemoveGitlabOrgData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab organization %s was removed from the approval list", ed.ApprovalListGitlabOrg)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -1948,6 +2056,82 @@ func (ed *CLAApprovalListAddGitHubOrgData) GetEventSummaryString(args *LogEventA
 // GetEventSummaryString returns the summary string for this event
 func (ed *CLAApprovalListRemoveGitHubOrgData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The GitHub organization %s was removed from the approval list", ed.ApprovalListGitHubOrg)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *CLAApprovalListAddGitlabUsernameData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab username %s was added to the approval list", ed.ApprovalListGitlabUsername)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *CLAApprovalListRemoveGitlabUsernameData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab username %s was removed from the approval list", ed.ApprovalListGitlabUsername)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *CLAApprovalListAddGitlabOrgData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab organization %s was added to the approval list", ed.ApprovalListGitlabOrg)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *CLAApprovalListRemoveGitlabOrgData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The Gitlab organization %s was removed from the approval list", ed.ApprovalListGitlabOrg)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}

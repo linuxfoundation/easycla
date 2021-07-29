@@ -81,7 +81,15 @@ properties:
   userGHUsername:
     type: string
     description: the user's GitHub username, when available
-    example: linux-user
+    example: 'github-user'
+  userGitlabID:
+    type: string
+    description: the user's Gitlab ID, when available
+    example: '1864'
+  userGitlabUsername:
+    type: string
+    description: the user's Gitlab username, when available
+    example: 'gitlab-user'
   userLFID:
     type: string
     description: the user's LF Login ID
@@ -129,6 +137,18 @@ properties:
   githubOrgApprovalList:
     type: array
     description: a list of zero or more GitHub organization values in the approval list
+    x-nullable: true
+    items:
+      type: string
+  gitlabUsernameApprovalList:
+    type: array
+    description: a list of zero or more Gitlab user name values in the approval list
+    x-nullable: true
+    items:
+      type: string
+  gitlabOrgApprovalList:
+    type: array
+    description: a list of zero or more Gitlab organization values in the approval list
     x-nullable: true
     items:
       type: string

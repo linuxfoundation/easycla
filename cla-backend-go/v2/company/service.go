@@ -1128,7 +1128,7 @@ func (s *service) GetCompanyCLAGroupManagers(ctx context.Context, companyID, cla
 			// DB doesn't have approved_on value - just use sig created date/time
 			ApprovedOn:       sigModel.SignatureCreated,
 			LfUsername:       user.LfUsername,
-			Email:            strfmt.Email(user.LfEmail),
+			Email:            user.LfEmail,
 			Name:             user.Username,
 			UserSfid:         user.UserExternalID,
 			ProjectID:        sigModel.ProjectID,

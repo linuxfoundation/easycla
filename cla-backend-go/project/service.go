@@ -376,7 +376,7 @@ func (s service) GetCLAManagers(ctx context.Context, claGroupID string) ([]*mode
 			return nil, err
 		}
 		managers = append(managers, &models.ClaManagerUser{
-			UserEmail: u.LfEmail,
+			UserEmail: u.LfEmail.String(),
 			UserLFID:  u.LfUsername,
 			UserName:  u.Username,
 		})

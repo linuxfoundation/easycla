@@ -1169,7 +1169,7 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 	}, nil
 }
 
-// GetProjectCompanySignature returns a the signature for the specified project and specified company with the other query flags
+// GetProjectCompanySignature returns the signature for the specified project and specified company with the other query flags
 func (repo repository) GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetProjectCompanySignature",
@@ -1513,7 +1513,7 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 
 	if criteria != nil && criteria.GitHubUsername != "" {
 		log.WithFields(f).Debugf("adding Githubusername criteria filter for :%s ", criteria.GitHubUsername)
-		filter = addAndCondition(filter, expression.Name("user_github_username").Equal(expression.Value(criteria.GitHubUsername)), &filterAdded)
+		filter = addAndCondition(filter, expression.Name(SignatureUserGitHubUsername).Equal(expression.Value(criteria.GitHubUsername)), &filterAdded)
 	}
 
 	if criteria != nil && criteria.UserEmail != "" {
@@ -2108,10 +2108,12 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 	// Keep track of existing company approvals
 	approvalList := ApprovalList{
-		DomainApprovals:         cclaSignature.DomainApprovalList,
-		GHOrgApprovals:          cclaSignature.GithubOrgApprovalList,
-		GitHubUsernameApprovals: cclaSignature.GithubUsernameApprovalList,
 		EmailApprovals:          cclaSignature.EmailApprovalList,
+		DomainApprovals:         cclaSignature.DomainApprovalList,
+		GitHubUsernameApprovals: cclaSignature.GithubUsernameApprovalList,
+		GitHubOrgApprovals:      cclaSignature.GithubOrgApprovalList,
+		GitlabUsernameApprovals: cclaSignature.GitlabUsernameApprovalList,
+		GitlabOrgApprovals:      cclaSignature.GitlabOrgApprovalList,
 		CLAManager:              claManager,
 		ICLAs:                   make([]*models.IclaSignature, 0),
 		ECLAs:                   make([]*models.Signature, 0),
@@ -2131,7 +2133,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	}
 
 	authUser := auth.User{
-		Email:    claManager.LfEmail,
+		Email:    claManager.LfEmail.String(),
 		UserName: claManager.LfUsername,
 	}
 
@@ -2165,7 +2167,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 	// If we have an add or remove email list...we need to run an update for this column
 	if (params.AddEmailApprovalList != nil && len(params.AddEmailApprovalList) > 0) || (params.RemoveEmailApprovalList != nil && len(params.RemoveEmailApprovalList) > 0) {
-		columnName := "email_whitelist"
+		columnName := SignatureEmailApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.EmailApprovalList, params.AddEmailApprovalList, params.RemoveEmailApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
@@ -2179,7 +2181,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			}
 		} else {
 			haveAdditions = true
-			expressionAttributeNames["#E"] = aws.String("email_whitelist")
+			expressionAttributeNames["#E"] = aws.String(columnName)
 			expressionAttributeValues[":e"] = attrList
 			updateExpression = updateExpression + " #E = :e, "
 		}
@@ -2207,7 +2209,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 					criteria := &ApprovalCriteria{
 						UserEmail: email,
 					}
-					log.WithFields(f).Debugf("Updating signature records for emailApprovalList: %+v ", params.RemoveEmailApprovalList)
+					log.WithFields(f).Debugf("Updating signature records for email approval list: %+v ", params.RemoveEmailApprovalList)
 					signs, appErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria, pageSize)
 					if appErr != nil {
 						log.WithFields(f).Debugf("unable to get Company Employee signatures : %+v ", appErr)
@@ -2215,7 +2217,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 					}
 
 					if len(signs.Signatures) == 0 {
-						log.WithFields(f).Debugf("company employee signatures do not exist for company:%s and project: %s ", companyID, projectID)
+						log.WithFields(f).Debugf("company employee signatures do not exist for company: %s and project: %s ", companyID, projectID)
 					}
 
 					if len(signs.Signatures) > 0 {
@@ -2240,12 +2242,12 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 									if utils.StringInSlice(user.LfUsername, gerritICLAECLAs) {
 										gerritIclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
 										if gerritIclaErr != nil {
-											msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+											msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
 											log.WithFields(f).WithError(gerritIclaErr).Warn(msg)
 										}
 										eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
 										if eclaErr != nil {
-											msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+											msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
 											log.WithFields(f).WithError(eclaErr).Warn(msg)
 										}
 									}
@@ -2284,7 +2286,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 	if (params.AddDomainApprovalList != nil && len(params.AddDomainApprovalList) > 0) || (params.RemoveDomainApprovalList != nil && len(params.RemoveDomainApprovalList) > 0) {
 
-		columnName := "domain_whitelist"
+		columnName := SignatureDomainApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.DomainApprovalList, params.AddDomainApprovalList, params.RemoveDomainApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
@@ -2342,7 +2344,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	}
 
 	if (params.AddGithubUsernameApprovalList != nil && len(params.AddGithubUsernameApprovalList) > 0) || (params.RemoveGithubUsernameApprovalList != nil && len(params.RemoveGithubUsernameApprovalList) > 0) {
-		columnName := "github_whitelist"
+		columnName := SignatureGitHubUsernameApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GithubUsernameApprovalList, params.AddGithubUsernameApprovalList, params.RemoveGithubUsernameApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
@@ -2356,9 +2358,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			}
 		} else {
 			haveAdditions = true
-			expressionAttributeNames["#G"] = aws.String(columnName)
-			expressionAttributeValues[":g"] = attrList
-			updateExpression = updateExpression + " #G = :g, "
+			expressionAttributeNames["#GHU"] = aws.String(columnName)
+			expressionAttributeValues[":ghu"] = attrList
+			updateExpression = updateExpression + " #GHU = :ghu, "
 		}
 		if params.RemoveGithubUsernameApprovalList != nil {
 			// if email removal update signature approvals
@@ -2381,7 +2383,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						criteria := &ApprovalCriteria{
 							GitHubUsername: ghUsername,
 						}
-						log.WithFields(f).Debugf("Updating signature records for ghUsernameApporvalList: %+v ", params.RemoveGithubUsernameApprovalList)
+						log.WithFields(f).Debugf("Updating signature records for github username apporval list: %+v ", params.RemoveGithubUsernameApprovalList)
 						signs, ghUserErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria, pageSize)
 						if ghUserErr != nil {
 							log.WithFields(f).Debugf("unable to get Company Employee signatures : %+v ", ghUserErr)
@@ -2394,13 +2396,13 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						// Get ICLAs
 						claUser, claErr := repo.usersRepo.GetUserByGitHubUsername(ghUsername)
 						if claErr != nil {
-							log.WithFields(f).Debugf("unable to get User by GH Username: %s ", ghUsername)
+							log.WithFields(f).Debugf("unable to get user by github username: %s ", ghUsername)
 							return
 						}
 						if claUser != nil {
 							icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, claUser.UserID, &approved, &signed)
 							if iclaErr != nil || icla == nil {
-								log.WithFields(f).Debugf("unable to get icla signature for user with ghUsername: %s ", ghUsername)
+								log.WithFields(f).Debugf("unable to get icla signature for user with github username: %s ", ghUsername)
 							}
 							if icla != nil {
 								// Convert to IclSignature instance to leverage invalidateSignatures helper function
@@ -2425,7 +2427,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	}
 
 	if (params.AddGithubOrgApprovalList != nil && len(params.AddGithubOrgApprovalList) > 0) || (params.RemoveGithubOrgApprovalList != nil && len(params.RemoveGithubOrgApprovalList) > 0) {
-		columnName := "github_org_whitelist"
+		columnName := SignatureGitHubOrgApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GithubOrgApprovalList, params.AddGithubOrgApprovalList, params.RemoveGithubOrgApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
@@ -2439,9 +2441,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			}
 		} else {
 			haveAdditions = true
-			expressionAttributeNames["#GO"] = aws.String("github_org_whitelist")
-			expressionAttributeValues[":go"] = attrList
-			updateExpression = updateExpression + " #GO = :go, "
+			expressionAttributeNames["#GHO"] = aws.String(columnName)
+			expressionAttributeValues[":gho"] = attrList
+			updateExpression = updateExpression + " #GHO = :gho, "
 		}
 
 		if params.RemoveGithubOrgApprovalList != nil {
@@ -2452,14 +2454,14 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			// Get repositories by CLAGroup
 			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GetRepositoriesByCLAGroup(ctx, projectID, true)
 			if getRepoByCLAGroupErr != nil {
-				msg := fmt.Sprintf("unable to fetch repositories for claGroupID: %s ", projectID)
+				msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
 				log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)
 				return nil, errors.New(msg)
 			}
 			var ghOrgRepositories []*models.GithubRepository
 			var ghOrgs []*models.GithubOrganization
 			for _, repository := range repositories {
-				// Check for matching organization name in repositories table against approvalList removal GH Orgs
+				// Check for matching organization name in repositories table against approvalList removal GitHub organizations
 				if utils.StringInSlice(repository.RepositoryOrganizationName, approvalList.ApprovalList) {
 					ghOrgRepositories = append(ghOrgRepositories, repository)
 				}
@@ -2479,18 +2481,169 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			for _, ghOrg := range ghOrgs {
 				ghOrgUsers, getOrgMembersErr := github.GetOrganizationMembers(ctx, ghOrg.OrganizationName, ghOrg.OrganizationInstallationID)
 				if getOrgMembersErr != nil {
-					msg := fmt.Sprintf("unable to fetch ghOrgUsers for org: %s ", ghOrg.OrganizationName)
+					msg := fmt.Sprintf("unable to fetch github organization users for org: %s ", ghOrg.OrganizationName)
 					log.WithFields(f).WithError(getOrgMembersErr).Warnf(msg)
 					return nil, errors.New(msg)
 				}
 				ghUsernames = append(ghUsernames, ghOrgUsers...)
 			}
-			approvalList.GHUsernames = utils.RemoveDuplicates(ghUsernames)
+			approvalList.GitHubUsernames = utils.RemoveDuplicates(ghUsernames)
 
 			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
 		}
 	}
 
+	if (params.AddGitlabUsernameApprovalList != nil && len(params.AddGitlabUsernameApprovalList) > 0) || (params.RemoveGitlabUsernameApprovalList != nil && len(params.RemoveGitlabUsernameApprovalList) > 0) {
+		columnName := SignatureGitlabUsernameApprovalListColumn
+		attrList := buildApprovalAttributeList(ctx, cclaSignature.GitlabUsernameApprovalList, params.AddGitlabUsernameApprovalList, params.RemoveGitlabUsernameApprovalList)
+		// If no entries after consolidating all the updates, we need to remove the column
+		if attrList == nil || attrList.L == nil {
+			var rmColErr error
+			cclaSignature, rmColErr = repo.removeColumn(ctx, cclaSignature.SignatureID, columnName)
+			if rmColErr != nil {
+				msg := fmt.Sprintf("unable to remove column %s for signature for company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t",
+					columnName, companyID, projectID, true, true)
+				log.WithFields(f).Warn(msg)
+				return nil, errors.New(msg)
+			}
+		} else {
+			haveAdditions = true
+			expressionAttributeNames["#GLU"] = aws.String(columnName)
+			expressionAttributeValues[":glu"] = attrList
+			updateExpression = updateExpression + " #GLU = :glu, "
+		}
+		if params.RemoveGitlabUsernameApprovalList != nil {
+			// if email removal update signature approvals
+			if params.RemoveGitlabUsernameApprovalList != nil {
+				approvalList.Criteria = utils.GitlabUsernameCriteria
+				approvalList.ApprovalList = params.RemoveGitlabUsernameApprovalList
+				approvalList.Action = utils.RemoveApprovals
+				approvalList.ClaGroupID = projectID
+				approvalList.ClaGroupName = claGroupModel.ProjectName
+				approvalList.CompanyID = companyID
+				approvalList.Version = claGroupModel.Version
+
+				// Get ICLAs
+				var wg sync.WaitGroup
+				wg.Add(len(params.RemoveGitlabUsernameApprovalList))
+				for _, ghUsername := range params.RemoveGitlabUsernameApprovalList {
+					go func(gitLabUsername string) {
+						defer wg.Done()
+						var iclas []*models.IclaSignature
+						var eclas []*models.Signature
+
+						criteria := &ApprovalCriteria{
+							GitlabUsername: gitLabUsername,
+						}
+						log.WithFields(f).Debugf("Updating signature records for gitlab username apporval list: %+v ", params.RemoveGitlabUsernameApprovalList)
+						signs, ghUserErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria, pageSize)
+						if ghUserErr != nil {
+							log.WithFields(f).Debugf("unable to get Company Employee signatures : %+v ", ghUserErr)
+							return
+						}
+						if signs.Signatures != nil {
+							approvalList.ECLAs = signs.Signatures
+							eclas = signs.Signatures
+						}
+
+						claUser, claErr := repo.usersRepo.GetUserByGitlabUsername(gitLabUsername)
+						if claErr != nil {
+							log.WithFields(f).Debugf("unable to get User by gitlab username: %s ", gitLabUsername)
+							return
+						}
+						if claUser != nil {
+							icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, claUser.UserID, &approved, &signed)
+							if iclaErr != nil || icla == nil {
+								log.WithFields(f).Debugf("unable to get icla signature for user with gitlab username: %s ", gitLabUsername)
+							}
+							if icla != nil {
+								// Convert to IclSignature instance to leverage invalidateSignatures helper function
+								approvalList.ICLAs = []*models.IclaSignature{{
+									GitlabUsername: icla.UserGHUsername,
+									LfUsername:     icla.UserLFID,
+									SignatureID:    icla.SignatureID,
+								}}
+							}
+						}
+
+						repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+
+						// Send Email
+						repo.sendEmail(ctx, getBestEmail(claUser), &approvalList, iclas, eclas)
+
+					}(ghUsername)
+				}
+				wg.Wait()
+			}
+		}
+	}
+
+	if (params.AddGitlabOrgApprovalList != nil && len(params.AddGitlabOrgApprovalList) > 0) || (params.RemoveGitlabOrgApprovalList != nil && len(params.RemoveGitlabOrgApprovalList) > 0) {
+		columnName := SignatureGitlabOrgApprovalListColumn
+		attrList := buildApprovalAttributeList(ctx, cclaSignature.GitlabOrgApprovalList, params.AddGitlabOrgApprovalList, params.RemoveGitlabOrgApprovalList)
+		// If no entries after consolidating all the updates, we need to remove the column
+		if attrList == nil || attrList.L == nil {
+			var rmColErr error
+			cclaSignature, rmColErr = repo.removeColumn(ctx, cclaSignature.SignatureID, columnName)
+			if rmColErr != nil {
+				msg := fmt.Sprintf("unable to remove column %s for signature for company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t",
+					columnName, companyID, projectID, true, true)
+				log.WithFields(f).Warn(msg)
+				return nil, errors.New(msg)
+			}
+		} else {
+			haveAdditions = true
+			expressionAttributeNames["#GLO"] = aws.String(columnName)
+			expressionAttributeValues[":glo"] = attrList
+			updateExpression = updateExpression + " #GLO = :glo, "
+		}
+
+		if params.RemoveGithubOrgApprovalList != nil {
+			approvalList.Criteria = utils.GitlabOrgCriteria
+			approvalList.ApprovalList = params.RemoveGitlabOrgApprovalList
+			approvalList.Action = utils.RemoveApprovals
+			approvalList.Version = claGroupModel.Version
+			// Get repositories by CLAGroup
+			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GetRepositoriesByCLAGroup(ctx, projectID, true)
+			if getRepoByCLAGroupErr != nil {
+				msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
+				log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)
+				return nil, errors.New(msg)
+			}
+			var gitLabOrgRepositories []*models.GithubRepository
+			var gitLabOrgs []*models.GithubOrganization
+			for _, repository := range repositories {
+				// Check for matching organization name in repositories table against approvalList removal gitlab organizations/groups
+				if utils.StringInSlice(repository.RepositoryOrganizationName, approvalList.ApprovalList) {
+					gitLabOrgRepositories = append(gitLabOrgRepositories, repository)
+				}
+			}
+
+			for _, gitLabOrgRepo := range gitLabOrgRepositories {
+				gitLabOrg, getGitlabOrgErr := repo.ghOrgRepo.GetGitHubOrganization(ctx, gitLabOrgRepo.RepositoryOrganizationName)
+				if getGitlabOrgErr != nil {
+					msg := fmt.Sprintf("unable to get gitlab organization by name: %s ", gitLabOrgRepo.RepositoryOrganizationName)
+					log.WithFields(f).WithError(getGitlabOrgErr).Warn(msg)
+					return nil, errors.New(msg)
+				}
+				gitLabOrgs = append(gitLabOrgs, gitLabOrg)
+			}
+
+			var gitLabUsernames []string
+			for _, gitLabOrg := range gitLabOrgs {
+				gitLabOrgUsers, getOrgMembersErr := github.GetOrganizationMembers(ctx, gitLabOrg.OrganizationName, gitLabOrg.OrganizationInstallationID)
+				if getOrgMembersErr != nil {
+					msg := fmt.Sprintf("unable to fetch gitLabOrgUsers for org: %s ", gitLabOrg.OrganizationName)
+					log.WithFields(f).WithError(getOrgMembersErr).Warnf(msg)
+					return nil, errors.New(msg)
+				}
+				gitLabUsernames = append(gitLabUsernames, gitLabOrgUsers...)
+			}
+			approvalList.GitlabUsernames = utils.RemoveDuplicates(gitLabUsernames)
+
+			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+		}
+	}
 	// Ensure at least one value is set for us to update
 	if !haveAdditions {
 		log.WithFields(f).Debugf("no updates required to any of the approved list values company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t - expecting at least something to update",
@@ -2511,7 +2664,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		},
 		ExpressionAttributeNames:  expressionAttributeNames,
 		ExpressionAttributeValues: expressionAttributeValues,
-		UpdateExpression:          aws.String(updateExpression), //aws.String("SET #L = :l"),
+		UpdateExpression:          aws.String(updateExpression),
 	}
 
 	log.WithFields(f).Debugf("updating approval list for company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t",
@@ -2721,7 +2874,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 	email := getBestEmail(user)
 
 	authUser := auth.User{
-		Email:    claManager.LfEmail,
+		Email:    claManager.LfEmail.String(),
 		UserName: claManager.LfUsername,
 	}
 
@@ -2757,7 +2910,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 		}
 	} else if approvalList.Criteria == utils.GitHubOrgCriteria {
 		// Handle GH Org Approvals
-		if utils.StringInSlice(user.GithubUsername, approvalList.GHUsernames) {
+		if utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernames) {
 			if !utils.StringInSlice(getBestEmail(user), approvalList.EmailApprovals) && !utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) {
 				//Invalidate record
 
@@ -2869,7 +3022,7 @@ func (repo repository) AddUsersDetails(ctx context.Context, signatureID string, 
 	}
 	var email string
 	if userModel.LfEmail != "" {
-		email = userModel.LfEmail
+		email = userModel.LfEmail.String()
 	} else {
 		if len(userModel.Emails) > 0 {
 			email = userModel.Emails[0]
@@ -2885,7 +3038,7 @@ func (repo repository) AddUsersDetails(ctx context.Context, signatureID string, 
 		},
 	}
 	ue := utils.NewDynamoUpdateExpression()
-	ue.AddAttributeName("#gh_username", "user_github_username", userModel.GithubUsername != "")
+	ue.AddAttributeName("#gh_username", SignatureUserGitHubUsername, userModel.GithubUsername != "")
 	ue.AddAttributeName("#lf_username", "user_lf_username", userModel.LfUsername != "")
 	ue.AddAttributeName("#name", "user_name", userModel.Username != "")
 	ue.AddAttributeName("#email", "user_email", email != "")
@@ -2996,7 +3149,7 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		log.WithFields(f).Debugf("adding search term filter for: '%s'", searchTermValue)
 		searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(searchTermValue)).
 			Or(expression.Name("user_email").Contains(strings.ToLower(searchTermValue))).
-			Or(expression.Name("user_github_username").Contains(strings.ToLower(searchTermValue))).
+			Or(expression.Name(SignatureUserGitHubUsername).Contains(strings.ToLower(searchTermValue))).
 			Or(expression.Name("user_docusign_name").Contains(strings.ToLower(searchTermValue)))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}

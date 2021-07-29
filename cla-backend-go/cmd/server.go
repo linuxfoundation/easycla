@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-openapi/strfmt"
+
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
@@ -651,7 +653,7 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 
 	// Attempt to create the user
 	newUser := &models.User{
-		LfEmail:    claUser.LFEmail,
+		LfEmail:    strfmt.Email(claUser.LFEmail),
 		LfUsername: claUser.LFUsername,
 		Username:   claUser.Name,
 	}

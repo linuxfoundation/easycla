@@ -7,50 +7,87 @@ description: A signature approval list for a project / company
 properties:
   AddEmailApprovalList:
     type: array
+    title: Add User Email
     description: a list of zero or more email addresses to be added to the approval list
     x-nullable: true
     items:
       type: string
   RemoveEmailApprovalList:
     type: array
-    description: a list of zero or more email addresses to be from to the approval list
+    title: Remove User Email
+    description: a list of zero or more email addresses to be removed from the approval list
     x-nullable: true
     items:
       type: string
   AddDomainApprovalList:
     type: array
+    title: Add Domain Email
     description: a list of zero or more domains to be added to the approval list
     x-nullable: true
     items:
       type: string
+      example: 'linuxfoundation.org'
   RemoveDomainApprovalList:
     type: array
+    title: Remove Domain Email
     description: a list of zero or more domains to be removed from the approval list
     x-nullable: true
     items:
       type: string
+      example: 'linuxfoundation.org'
   AddGithubUsernameApprovalList:
     type: array
+    title: Add GitHub Username
     description: a list of zero or more GitHub user name values to be added to the approval list
     x-nullable: true
     items:
       type: string
   RemoveGithubUsernameApprovalList:
     type: array
+    title: Remove GitHub Username
     description: a list of zero or more GitHub user name values to be removed from the approval list
     x-nullable: true
     items:
       type: string
   AddGithubOrgApprovalList:
     type: array
+    title: Add GitHub Organization
     description: a list of zero or more GitHub organization values to be added to the approval list
     x-nullable: true
     items:
       type: string
   RemoveGithubOrgApprovalList:
     type: array
+    title: Remove GitHub Organization
     description: a list of zero or more GitHub organization values to be removed from the approval list
     x-nullable: true
     items:
       type: string
-
+  AddGitlabUsernameApprovalList:
+    type: array
+    title: Add Gitlab Username
+    description: a list of zero or more Gitlab user name values to be added to the approval list
+    x-nullable: true
+    items:
+      type: string
+  RemoveGitlabUsernameApprovalList:
+    type: array
+    title: Remove Gitlab Username
+    description: a list of zero or more Gitlab user name values to be removed from the approval list
+    x-nullable: true
+    items:
+      type: string
+  AddGitlabOrgApprovalList:
+    type: array
+    title: Add Gitlab Organization
+    description: a list of zero or more Gitlab organization values to be added to the approval list
+    x-nullable: true
+    items:
+      type: string
+  RemoveGitlabOrgApprovalList:
+    type: array
+    title: Remove Gitlab Organization
+    description: a list of zero or more Gitlab organization values to be removed from the approval list
+    x-nullable: true
+    items:
+      type: string

@@ -108,15 +108,11 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
 			log.Warn(msg)
 			if _, ok := err.(*utils.CompanyNotFound); ok {
-				return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
-					Code:    "404",
-				})
+				return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseBadRequestWithError(reqID, fmt.Sprintf("company not found - unable to locate company by ID: %s", params.CompanyID), err))
 			}
-			return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: "EasyCLA - 400 Bad Request - error getting company - " + msg,
-				Code:    "400",
-			})
+			return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequestWithError(reqID, fmt.Sprintf("unable to locate company by ID: %s", params.CompanyID), err))
 		}
 
 		// Must be in the Project|Organization Scope to see this - signature ACL is double-checked in the service level when the signature is loaded

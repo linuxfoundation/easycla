@@ -336,7 +336,7 @@ func (s service) sendRequestSentEmail(companyModel *models.Company, claGroupMode
 		// Need to determine which email...
 		var whichEmail = ""
 		if manager.LfEmail != "" {
-			whichEmail = manager.LfEmail
+			whichEmail = manager.LfEmail.String()
 		}
 
 		// If no LF Email try to grab the first other email in their email list
@@ -391,7 +391,7 @@ func (s service) sendRequestRejectedEmailToRecipient(emailParams emails.CommonEm
 		// Need to determine which email...
 		var whichEmail = ""
 		if manager.LfEmail != "" {
-			whichEmail = manager.LfEmail
+			whichEmail = manager.LfEmail.String()
 		}
 
 		// If no LF Email try to grab the first other email in their email list

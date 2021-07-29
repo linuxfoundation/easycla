@@ -9,6 +9,8 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/go-openapi/strfmt"
+
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
@@ -162,7 +164,7 @@ func Create(ctx context.Context, user event.Event) {
 		DateCreated:    nowStr,
 		DateModified:   nowStr,
 		Emails:         emails,
-		LfEmail:        primaryEmail,
+		LfEmail:        strfmt.Email(primaryEmail),
 		LfUsername:     sfdcUserObject.Username,
 		Note:           "Create via user-service event",
 		UserExternalID: sfdcUserObject.ID,
@@ -306,7 +308,7 @@ func createUserFromUpdatedModel(userModelUpdated *usersModels.UserUpdated) error
 
 	newUserModel := &models.User{
 		Emails:         emails,
-		LfEmail:        primaryEmail,
+		LfEmail:        strfmt.Email(primaryEmail),
 		LfUsername:     sfdcUserObject.Username,
 		Note:           "Update via user-service event",
 		UserExternalID: sfdcUserObject.ID,

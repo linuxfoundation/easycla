@@ -527,6 +527,10 @@ func buildApprovalListSummary(approvalListChanges *models.ApprovalList) string {
 	approvalListSummary += appendList(approvalListChanges.RemoveGithubUsernameApprovalList, "Removed GitHub User:")
 	approvalListSummary += appendList(approvalListChanges.AddGithubOrgApprovalList, "Added GitHub Organization:")
 	approvalListSummary += appendList(approvalListChanges.RemoveGithubOrgApprovalList, "Removed GitHub Organization:")
+	approvalListSummary += appendList(approvalListChanges.AddGitlabUsernameApprovalList, "Added Gitlab User:")
+	approvalListSummary += appendList(approvalListChanges.RemoveGitlabUsernameApprovalList, "Removed Gitlab User:")
+	approvalListSummary += appendList(approvalListChanges.AddGitlabOrgApprovalList, "Added Gitlab Organization:")
+	approvalListSummary += appendList(approvalListChanges.RemoveGitlabOrgApprovalList, "Removed Gitlab Organization:")
 	approvalListSummary += "</ul>"
 	return approvalListSummary
 }
@@ -627,25 +631,66 @@ func (s service) getRemoveGitHubContributors(approvalList *models.ApprovalList) 
 
 	return userModelList
 }
+
+// getAddGitlabContributors is a helper function to look up the Gitlab contributors impacted by the Approval List update
+func (s service) getAddGitlabContributors(approvalList *models.ApprovalList) []*models.User {
+	var userModelList []*models.User
+	for _, value := range approvalList.AddGitlabUsernameApprovalList {
+		userModel, err := s.usersService.GetUserByGitHubUsername(value)
+		if err != nil {
+			log.Warnf("unable to lookup user by Gitlab username: %s, error: %+v", value, err)
+		} else {
+			userModelList = append(userModelList, userModel)
+		}
+	}
+
+	return userModelList
+}
+
+// getRemoveGitlabContributors is a helper function to look up the Gitlab contributors impacted by the Approval List update
+func (s service) getRemoveGitlabContributors(approvalList *models.ApprovalList) []*models.User {
+	var userModelList []*models.User
+	for _, value := range approvalList.RemoveGitlabUsernameApprovalList {
+		userModel, err := s.usersService.GetUserByGitHubUsername(value)
+		if err != nil {
+			log.Warnf("unable to lookup user by Gitlab username: %s, error: %+v", value, err)
+		} else {
+			userModelList = append(userModelList, userModel)
+		}
+	}
+
+	return userModelList
+}
+
 func (s service) sendRequestAccessEmailToContributors(authUser *auth.User, companyModel *models.Company, claGroupModel *models.ClaGroup, approvalList *models.ApprovalList) {
 	addEmailUsers := s.getAddEmailContributors(approvalList)
 	for _, user := range addEmailUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "added", "to",
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "added", "to",
 			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
 	}
 	removeEmailUsers := s.getRemoveEmailContributors(approvalList)
 	for _, user := range removeEmailUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "removed", "from",
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "removed", "from",
 			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
 	}
 	addGitHubUsers := s.getAddGitHubContributors(approvalList)
 	for _, user := range addGitHubUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "added", "to",
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "added", "to",
 			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
 	}
 	removeGitHubUsers := s.getRemoveGitHubContributors(approvalList)
 	for _, user := range removeGitHubUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail, "removed", "from",
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "removed", "from",
+			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
+	}
+	addGitlabUsers := s.getAddGitlabContributors(approvalList)
+	for _, user := range addGitlabUsers {
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "added", "to",
+			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
+	}
+	removeGitlabUsers := s.getRemoveGitlabContributors(approvalList)
+	for _, user := range removeGitlabUsers {
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "removed", "from",
 			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
 	}
 }
@@ -788,6 +833,75 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			},
 		})
 	}
+	for _, value := range approvalList.AddGitlabUsernameApprovalList {
+		// Send an event
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+			EventType:     events.ClaApprovalListUpdated,
+			ProjectID:     claGroupModel.ProjectExternalID,
+			ClaGroupModel: claGroupModel,
+			CompanyID:     companyModel.CompanyID,
+			CompanyModel:  companyModel,
+			LfUsername:    userModel.LfUsername,
+			UserID:        userModel.UserID,
+			UserModel:     userModel,
+			ProjectSFID:   claGroupModel.ProjectExternalID,
+			EventData: &events.CLAApprovalListAddGitlabUsernameData{
+				ApprovalListGitlabUsername: value,
+			},
+		})
+	}
+	for _, value := range approvalList.RemoveGitlabUsernameApprovalList {
+		// Send an event
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+			EventType:     events.ClaApprovalListUpdated,
+			ProjectID:     claGroupModel.ProjectExternalID,
+			ClaGroupModel: claGroupModel,
+			CompanyID:     companyModel.CompanyID,
+			CompanyModel:  companyModel,
+			LfUsername:    userModel.LfUsername,
+			UserID:        userModel.UserID,
+			UserModel:     userModel,
+			ProjectSFID:   claGroupModel.ProjectExternalID,
+			EventData: &events.CLAApprovalListRemoveGitlabUsernameData{
+				ApprovalListGitlabUsername: value,
+			},
+		})
+	}
+	for _, value := range approvalList.AddGitlabOrgApprovalList {
+		// Send an event
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+			EventType:     events.ClaApprovalListUpdated,
+			ProjectID:     claGroupModel.ProjectExternalID,
+			ClaGroupModel: claGroupModel,
+			CompanyID:     companyModel.CompanyID,
+			CompanyModel:  companyModel,
+			LfUsername:    userModel.LfUsername,
+			UserID:        userModel.UserID,
+			UserModel:     userModel,
+			ProjectSFID:   claGroupModel.ProjectExternalID,
+			EventData: &events.CLAApprovalListAddGitlabOrgData{
+				ApprovalListGitlabOrg: value,
+			},
+		})
+	}
+	for _, value := range approvalList.RemoveGitlabOrgApprovalList {
+		// Send an event
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+			EventType:     events.ClaApprovalListUpdated,
+			CLAGroupID:    claGroupModel.ProjectID,
+			ProjectID:     claGroupModel.ProjectExternalID,
+			ClaGroupModel: claGroupModel,
+			CompanyID:     companyModel.CompanyID,
+			CompanyModel:  companyModel,
+			LfUsername:    userModel.LfUsername,
+			UserID:        userModel.UserID,
+			UserModel:     userModel,
+			ProjectSFID:   claGroupModel.ProjectExternalID,
+			EventData: &events.CLAApprovalListRemoveGitlabOrgData{
+				ApprovalListGitlabOrg: value,
+			},
+		})
+	}
 }
 
 func (s service) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
@@ -853,7 +967,7 @@ func sendRequestAccessEmailToContributorRecipient(authUser *auth.User, companyMo
 // getBestEmail is a helper function to return the best email address for the user model
 func getBestEmail(userModel *models.User) string {
 	if userModel.LfEmail != "" {
-		return userModel.LfEmail
+		return userModel.LfEmail.String()
 	}
 
 	for _, email := range userModel.Emails {

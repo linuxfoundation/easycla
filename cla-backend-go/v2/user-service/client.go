@@ -28,8 +28,8 @@ import (
 	"github.com/go-openapi/strfmt"
 )
 
-// errors
 var (
+	// ErrUserNotFound is an error for users not found
 	ErrUserNotFound = errors.New("user not found")
 )
 

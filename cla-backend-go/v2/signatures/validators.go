@@ -31,7 +31,9 @@ func hasApprovalListUpdates(params signatures.UpdateApprovalListParams) bool {
 	if len(params.Body.AddEmailApprovalList) > 0 || len(params.Body.RemoveEmailApprovalList) > 0 ||
 		len(params.Body.AddDomainApprovalList) > 0 || len(params.Body.RemoveDomainApprovalList) > 0 ||
 		len(params.Body.AddGithubUsernameApprovalList) > 0 || len(params.Body.RemoveGithubUsernameApprovalList) > 0 ||
-		len(params.Body.AddGithubOrgApprovalList) > 0 || len(params.Body.RemoveGithubOrgApprovalList) > 0 {
+		len(params.Body.AddGithubOrgApprovalList) > 0 || len(params.Body.RemoveGithubOrgApprovalList) > 0 ||
+		len(params.Body.AddGitlabUsernameApprovalList) > 0 || len(params.Body.RemoveGitlabUsernameApprovalList) > 0 ||
+		len(params.Body.AddGitlabOrgApprovalList) > 0 || len(params.Body.RemoveGitlabOrgApprovalList) > 0 {
 		return true
 	}
 
@@ -72,7 +74,7 @@ func entriesAreValid(params signatures.UpdateApprovalListParams) (string, bool) 
 		}
 	}
 
-	// Ensure the github usernames are valid
+	// Ensure the GitHub usernames are valid
 	for _, githubUsername := range params.Body.AddGithubUsernameApprovalList {
 		msg, valid := utils.ValidGitHubUsername(githubUsername)
 		if !valid {
@@ -88,7 +90,7 @@ func entriesAreValid(params signatures.UpdateApprovalListParams) (string, bool) 
 		}
 	}
 
-	// Ensure the github Organization values are valid
+	// Ensure the GitHub Organization values are valid
 	for _, githubOrg := range params.Body.AddGithubOrgApprovalList {
 		msg, valid := utils.ValidGitHubOrg(githubOrg)
 		if !valid {
@@ -101,6 +103,38 @@ func entriesAreValid(params signatures.UpdateApprovalListParams) (string, bool) 
 		if !valid {
 			isValid = false
 			listOfErrors = append(listOfErrors, fmt.Sprintf("invalid remove approval list GitHub Org %s - %s", githubOrg, msg))
+		}
+	}
+
+	// Ensure the Gitlab usernames are valid
+	for _, githubUsername := range params.Body.AddGitlabUsernameApprovalList {
+		msg, valid := utils.ValidGitlabUsername(githubUsername)
+		if !valid {
+			isValid = false
+			listOfErrors = append(listOfErrors, fmt.Sprintf("invalid add approval list Gitlab Username %s - %s", githubUsername, msg))
+		}
+	}
+	for _, githubUsername := range params.Body.RemoveGitlabUsernameApprovalList {
+		msg, valid := utils.ValidGitlabUsername(githubUsername)
+		if !valid {
+			isValid = false
+			listOfErrors = append(listOfErrors, fmt.Sprintf("invalid remove approval list Gitlab Username %s - %s", githubUsername, msg))
+		}
+	}
+
+	// Ensure the Gitlab Organization values are valid
+	for _, githubOrg := range params.Body.AddGitlabOrgApprovalList {
+		msg, valid := utils.ValidGitlabOrg(githubOrg)
+		if !valid {
+			isValid = false
+			listOfErrors = append(listOfErrors, fmt.Sprintf("invalid add approval list Gitlab Org %s - %s", githubOrg, msg))
+		}
+	}
+	for _, githubOrg := range params.Body.RemoveGitlabOrgApprovalList {
+		msg, valid := utils.ValidGitlabOrg(githubOrg)
+		if !valid {
+			isValid = false
+			listOfErrors = append(listOfErrors, fmt.Sprintf("invalid remove approval list Gitlab Org %s - %s", githubOrg, msg))
 		}
 	}
 

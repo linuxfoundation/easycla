@@ -20,7 +20,10 @@ type Service interface {
 	GetUserByLFUserName(lfUserName string) (*models.User, error)
 	GetUserByUserName(userName string, fullMatch bool) (*models.User, error)
 	GetUserByEmail(userEmail string) (*models.User, error)
-	GetUserByGitHubUsername(gitHubUsername string) (*models.User, error)
+	GetUserByGitHubID(gitHubID string) (*models.User, error)
+	GetUserByGitHubUsername(gitlabUsername string) (*models.User, error)
+	GetUserByGitlabID(gitHubID string) (*models.User, error)
+	GetUserByGitlabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(field string, searchTerm string, fullMatch bool) (*models.Users, error)
 }
 
@@ -109,7 +112,7 @@ func (s service) GetUser(userID string) (*models.User, error) {
 	return s.repo.GetUser(userID)
 }
 
-// GetuserByLFUserName returns the user record associated with the LF Username value
+// GetUserByLFUserName returns the user record associated with the LF Username value
 func (s service) GetUserByLFUserName(lfUserName string) (*models.User, error) {
 	if lfUserName == "" {
 		return nil, errors.New("username is empty")
@@ -133,12 +136,36 @@ func (s service) GetUserByEmail(userEmail string) (*models.User, error) {
 	return s.repo.GetUserByEmail(userEmail)
 }
 
+// GetUserByGitHubID fetches the user by GitHub ID
+func (s service) GetUserByGitHubID(gitHubID string) (*models.User, error) {
+	if gitHubID == "" {
+		return nil, errors.New("gitHubID is empty")
+	}
+	return s.repo.GetUserByGitHubID(gitHubID)
+}
+
 // GetUserByGitHubUsername fetches the user by GitHub username
 func (s service) GetUserByGitHubUsername(gitHubUsername string) (*models.User, error) {
 	if gitHubUsername == "" {
 		return nil, errors.New("gitHubUsername is empty")
 	}
 	return s.repo.GetUserByGitHubUsername(gitHubUsername)
+}
+
+// GetUserByGitlabID fetches the user by Gitlab ID
+func (s service) GetUserByGitlabID(gitlabID string) (*models.User, error) {
+	if gitlabID == "" {
+		return nil, errors.New("gitlabID is empty")
+	}
+	return s.repo.GetUserByGitlabID(gitlabID)
+}
+
+// GetUserByGitlabUsername fetches the user by Gitlab username
+func (s service) GetUserByGitlabUsername(gitlabUsername string) (*models.User, error) {
+	if gitlabUsername == "" {
+		return nil, errors.New("gitlabUsername is empty")
+	}
+	return s.repo.GetUserByGitHubUsername(gitlabUsername)
 }
 
 // SearchUsers attempts to locate the user by the searchField and searchTerm fields

@@ -24,13 +24,14 @@ func buildProjection() expression.ProjectionBuilder {
 		expression.Name("signature_signed"),               // T/F
 		expression.Name("signature_type"),                 // ccla or cla
 		expression.Name("signature_user_ccla_company_id"), // reference to the company
-		expression.Name("email_whitelist"),
-		expression.Name("domain_whitelist"),
-		expression.Name("github_whitelist"),
-		expression.Name("github_org_whitelist"),
-		expression.Name("gitlab_username_approval_list"), // added for GitLab support
-		expression.Name("gitlab_project_approval_list"),  // added for GitLab support
-		expression.Name("user_github_username"),
+		expression.Name(SignatureEmailApprovalListColumn),
+		expression.Name(SignatureDomainApprovalListColumn),
+		expression.Name(SignatureGitHubUsernameApprovalListColumn),
+		expression.Name(SignatureGitHubOrgApprovalListColumn),
+		expression.Name(SignatureGitlabUsernameApprovalListColumn), // added for GitLab support
+		expression.Name(SignatureGitlabOrgApprovalListColumn),      // added for GitLab support
+		expression.Name(SignatureUserGitHubUsername),
+		expression.Name(SignatureUserGitlabUsername),
 		expression.Name("user_lf_username"),
 		expression.Name("user_name"),
 		expression.Name("user_email"),
