@@ -322,7 +322,8 @@ class GitHub(repository_service_interface.RepositoryService):
             raise ValueError("missing comment body, ignoring the message")
 
         if "/easycla" not in comment_str.split():
-            raise ValueError("unsupported comment supplied, currently only /easycla command is supported")
+            raise ValueError(f'unsupported comment supplied: {comment_str.split()}, '
+                             'currently only the \'/easycla\' command is supported')
 
         github_repository_id = data.get('repository', {}).get('id', None)
         if not github_repository_id:
