@@ -95,7 +95,7 @@ class GitHubUserIndex(GlobalSecondaryIndex):
     class Meta:
         """Meta class for GitHub User index."""
 
-        index_name = "github-user-index"
+        index_name = "github-username-index"
         write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
         read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
         # All attributes are projected - not sure if this is necessary.
