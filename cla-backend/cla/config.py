@@ -52,6 +52,9 @@ DEBUG = False  #: Debug off in production
 # The linux foundation is the parent for many SF projects
 THE_LINUX_FOUNDATION = 'The Linux Foundation'
 
+# LF Projects LLC is the parent for many SF projects
+LF_PROJECTS_LLC = 'LF Projects, LLC'
+
 # Base URL used for callbacks and OAuth2 redirects.
 API_BASE_URL = os.environ.get('CLA_API_BASE', '')
 

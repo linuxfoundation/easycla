@@ -3,12 +3,13 @@
 import datetime
 import json
 import os
+from typing import Optional
 
 import requests
 
 import cla
 from cla import log
-from cla.config import THE_LINUX_FOUNDATION
+from cla.config import THE_LINUX_FOUNDATION, LF_PROJECTS_LLC
 
 STAGE = os.environ.get('STAGE', '')
 REGION = 'us-east-1'
@@ -35,9 +36,12 @@ class ProjectServiceInstance:
         """
         project = self.get_project_by_id(project_sfid)
         if project:
-            parent_sf_id = project.get('Parent', None)
-            if not self.has_parent(project) and (parent_sf_id is None or parent_sf_id == THE_LINUX_FOUNDATION):
+            parent_name = self.get_parent_name(project)
+            if parent_name is None or (parent_name == THE_LINUX_FOUNDATION or parent_name == LF_PROJECTS_LLC) \
+                    and not project.get('Projects'):
                 return True
+            else:
+                return False
         return False
 
     def is_lf_supported(self, project_sfid) -> bool:
@@ -50,9 +54,10 @@ class ProjectServiceInstance:
         """
         project = self.get_project_by_id(project_sfid)
         if project:
+            parent_name = self.get_parent_name(project)
             return (project.get('Funding', None) == 'Unfunded' or
                     project.get('Funding', None) == 'Supported By Parent') and \
-                   project.get('Parent', None) == THE_LINUX_FOUNDATION
+                   (parent_name == THE_LINUX_FOUNDATION or parent_name == LF_PROJECTS_LLC)
         return False
 
     def has_parent(self, project) -> bool:
@@ -60,13 +65,24 @@ class ProjectServiceInstance:
         fn = 'project_service.has_parent'
         try:
             log.info(f"{fn} - Checking if {project['Name']} has parent project")
-            parent = project['Parent']
-            if parent:
+            if project and project['Foundation']['ID'] != '' and project['Foundation']['Name'] != '':
                 return True
         except KeyError as err:
-            log.debug(f"{fn} - Failed to find parent for {project['Name']} , error: {err}")
+            log.debug(f"{fn} - Failed to find parent for {project['Name']}, error: {err}")
             return False
         return False
+
+    def get_parent_name(self, project) -> Optional[str]:
+        """ returns the project parent name if exists, otherwise returns None """
+        fn = 'project_service.get_parent_name'
+        try:
+            log.info(f"{fn} - Checking if {project['Name']} has parent project")
+            if project and project['Foundation']['ID'] != '' and project['Foundation']['Name'] != '':
+                return project['Foundation']['Name']
+        except KeyError as err:
+            log.debug(f"{fn} - Failed to find parent for {project['Name']}, error: {err}")
+            return None
+        return None
 
     def is_parent(self, project) -> bool:
         """ 
