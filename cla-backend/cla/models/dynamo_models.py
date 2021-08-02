@@ -1735,13 +1735,13 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         else:
             return None
 
-    def get_user_by_github_id(self, user_github_id) -> Optional[List[User]]:
+    def get_user_by_github_id(self, user_github_id: int) -> Optional[List[User]]:
         if user_github_id is None:
             cla.log.warning("Unable to lookup user by github id - id is empty")
             return None
 
         users = []
-        for user_model in self.model.user_github_id_index.query(user_github_id):
+        for user_model in self.model.user_github_id_index.query(int(user_github_id)):
             user = User()
             user.model = user_model
             users.append(user)

@@ -45,7 +45,9 @@ require (
 	github.com/mattn/go-isatty v0.0.13 // indirect
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/mozillazg/request v0.8.0 // indirect
+	github.com/myitcv/gobin v0.0.14 // indirect
 	github.com/pdfcpu/pdfcpu v0.3.5-0.20200802160406-be1e0eb55afc
+	github.com/rogpeppe/go-internal v1.8.0 // indirect
 	github.com/rs/cors v1.7.0
 	github.com/savaki/dynastore v0.0.0-20171109173440-28d8558bb429
 	github.com/shurcooL/githubv4 v0.0.0-20201206200315-234843c633fa

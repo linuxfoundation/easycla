@@ -22,7 +22,7 @@ type Service interface {
 	GetUserByEmail(userEmail string) (*models.User, error)
 	GetUserByGitHubID(gitHubID string) (*models.User, error)
 	GetUserByGitHubUsername(gitlabUsername string) (*models.User, error)
-	GetUserByGitlabID(gitHubID string) (*models.User, error)
+	GetUserByGitlabID(gitHubID int) (*models.User, error)
 	GetUserByGitlabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(field string, searchTerm string, fullMatch bool) (*models.Users, error)
 }
@@ -153,10 +153,7 @@ func (s service) GetUserByGitHubUsername(gitHubUsername string) (*models.User, e
 }
 
 // GetUserByGitlabID fetches the user by Gitlab ID
-func (s service) GetUserByGitlabID(gitlabID string) (*models.User, error) {
-	if gitlabID == "" {
-		return nil, errors.New("gitlabID is empty")
-	}
+func (s service) GetUserByGitlabID(gitlabID int) (*models.User, error) {
 	return s.repo.GetUserByGitlabID(gitlabID)
 }
 
