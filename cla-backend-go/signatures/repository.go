@@ -3462,11 +3462,21 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 			}
 
 			signatureVersion := fmt.Sprintf("v%s.%s", sig.SignatureDocumentMajorVersion, sig.SignatureDocumentMinorVersion)
+
+			sigName := sig.UserName
+			user, userErr := repo.usersRepo.GetUser(sig.SignatureReferenceID)
+			if userErr != nil {
+				log.WithFields(f).Warnf("unable to get user for id: %s, error: %v ", sig.SignatureReferenceID, userErr)
+			}
+			if user != nil && sigName == "" {
+				sigName = user.Username
+			}
+
 			out.List = append(out.List, &models.CorporateContributor{
 				SignatureID:            sig.SignatureID,
 				GithubID:               sig.UserGithubUsername,
 				LinuxFoundationID:      sig.UserLFUsername,
-				Name:                   sig.UserName,
+				Name:                   sigName,
 				SignatureVersion:       signatureVersion,
 				Email:                  sig.UserEmail,
 				Timestamp:              sigCreatedTime,

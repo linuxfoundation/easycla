@@ -72,5 +72,6 @@ func (dc Client) CreatePDF(html string, claType string) (io.ReadCloser, error) {
 		log.WithFields(f).WithError(err).Warn("problem with API call to docraptor")
 		return nil, err
 	}
+	defer resp.Body.Close()
 	return resp.Body, nil
 }
