@@ -162,10 +162,10 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		if updateErr != nil || updatedSig == nil {
 			msg := fmt.Sprintf("unable to update signature approval list using CLA Group ID: %s", params.ClaGroupID)
 			log.WithFields(f).Warn(msg)
-			if err, ok := err.(*signatureService.ForbiddenError); ok {
-				return signatures.NewUpdateApprovalListForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbiddenWithError(reqID, msg, err))
+			if _, ok := err.(*signatureService.ForbiddenError); ok {
+				return signatures.NewUpdateApprovalListForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbiddenWithError(reqID, msg, updateErr))
 			}
-			return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
+			return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, updateErr))
 		}
 
 		// Convert the v1 output model to a v2 response model
