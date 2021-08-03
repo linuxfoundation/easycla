@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -37,6 +38,8 @@ type Client struct {
 
 var (
 	projectServiceClient *Client
+	// mutex is an object to allow us to lock access to the shared project service map while used by multiple go routines
+	mutex = &sync.Mutex{}
 	// Short term cache - only for the lifetime of this lambda
 	projectServiceModels = make(map[string]*models.ProjectOutputDetailed)
 	apiGWHost            string
@@ -78,7 +81,10 @@ func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed
 	}
 
 	// Lookup in cache first
+	mutex.Lock() // exclusive lock to the shared project service model map
 	existingModel, exists := projectServiceModels[projectSFID]
+	mutex.Lock()
+
 	if exists {
 		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
 		return existingModel, nil
@@ -100,8 +106,10 @@ func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed
 	}
 
 	// Update our cache for next time
+	mutex.Lock() // exclusive lock to the shared project service model map
 	projectServiceModels[projectSFID] = projectModel
 	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
+	mutex.Unlock()
 
 	return projectModel, nil
 }
@@ -169,7 +177,9 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	var existingParentModel *models.ProjectOutputDetailed
 
 	// Current project in the cache?
+	mutex.Lock() // exclusive lock to the shared project service model map
 	existingModel, exists = projectServiceModels[projectSFID]
+	mutex.Unlock()
 	if exists {
 		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
 
@@ -187,7 +197,9 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 		projectParentSFID := utils.GetProjectParentSFID(existingModel)
 
 		// Parent SFID in the cache?
+		mutex.Lock() // exclusive lock to the shared project service model map
 		existingParentModel, exists = projectServiceModels[projectParentSFID]
+		mutex.Unlock()
 		if exists {
 			return existingParentModel, nil
 		}
@@ -200,8 +212,10 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 		}
 
 		// Save/Update our cache for next time
+		mutex.Lock() // exclusive lock to the shared project service model map
 		projectServiceModels[projectParentSFID] = parentProjectModel
 		log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
+		mutex.Unlock()
 
 		return parentProjectModel, nil
 	}
@@ -217,8 +231,10 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	}
 
 	// Save/Update our cache for next time
+	mutex.Lock() // exclusive lock to the shared project service model map
 	projectServiceModels[projectSFID] = projectModel
 	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
+	mutex.Unlock()
 
 	// No parent
 	if !utils.IsProjectHaveParent(projectModel) {
@@ -235,7 +251,9 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	projectParentSFID := utils.GetProjectParentSFID(projectModel)
 
 	// Parent in the cache?
+	mutex.Lock() // exclusive lock to the shared project service model map
 	existingParentModel, exists = projectServiceModels[projectParentSFID]
+	mutex.Unlock() // exclusive lock to the shared project service model map
 	if exists {
 		return existingParentModel, nil
 	}
@@ -248,8 +266,10 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	}
 
 	// Save/Update our cache for next time
+	mutex.Lock() // exclusive lock to the shared project service model map
 	projectServiceModels[projectParentSFID] = parentProjectModel
 	log.WithFields(f).Debugf("added project model to cache - cache size: %d", len(projectServiceModels))
+	mutex.Unlock() // exclusive lock to the shared project service model map
 
 	return parentProjectModel, nil
 }
