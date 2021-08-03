@@ -83,7 +83,7 @@ func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed
 	// Lookup in cache first
 	mutex.Lock() // exclusive lock to the shared project service model map
 	existingModel, exists := projectServiceModels[projectSFID]
-	mutex.Lock()
+	mutex.Unlock()
 
 	if exists {
 		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
