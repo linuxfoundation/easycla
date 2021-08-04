@@ -51,6 +51,8 @@ func (dc Client) CreatePDF(html string, claType string) (io.ReadCloser, error) {
 	f := logrus.Fields{
 		"functionName": "v1.docraptor.client.CreatePDF",
 		"claType":      claType,
+		"testMode":     dc.testMode,
+		"url":          dc.url,
 	}
 
 	document := map[string]interface{}{
@@ -69,9 +71,22 @@ func (dc Client) CreatePDF(html string, claType string) (io.ReadCloser, error) {
 	log.WithFields(f).Debug("Generating PDF using docraptor...")
 	resp, err := http.Post(dc.url, "application/json", bytes.NewBuffer(documentBytes))
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem with API call to docraptor")
+		log.WithFields(f).WithError(err).Warnf("problem with API call to docraptor url: %s", dc.url)
 		return nil, err
 	}
-	defer resp.Body.Close()
+	// Do not close - rely on the caller to close the reader otherwise we will get the read from Response.Body after Close error
+	//defer func() {
+	//	closeErr := resp.Body.Close()
+	//	if closeErr != nil {
+	//		log.WithFields(f).WithError(closeErr).Warn("problem closing docraptor response")
+	//	}
+	//}()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		msg := fmt.Sprintf("unexpected http response code from docraptor url: %s, status code: %d", dc.url, resp.StatusCode)
+		log.WithFields(f).Warn(msg)
+		return nil, errors.New(msg)
+	}
+	log.WithFields(f).Debugf("successful response from docraptor url: %s, status code: %d", dc.url, resp.StatusCode)
+
 	return resp.Body, nil
 }

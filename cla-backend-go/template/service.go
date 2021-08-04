@@ -142,17 +142,25 @@ func (s Service) CreateTemplatePreview(ctx context.Context, claGroupFields *mode
 		return nil, errors.New("invalid value of template_for")
 	}
 
-	pdf, err := s.docRaptorClient.CreatePDF(templateHTML, templateFor)
+	ioReader, err := s.docRaptorClient.CreatePDF(templateHTML, templateFor)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem with API call to docraptor service")
 		return nil, err
 	}
 	defer func() {
-		closeErr := pdf.Close()
+		closeErr := ioReader.Close()
 		if closeErr != nil {
 			log.WithFields(f).WithError(closeErr).Warn("error closing PDF")
 		}
 	}()
-	return ioutil.ReadAll(pdf)
+
+	bytes, err := ioutil.ReadAll(ioReader)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error reading PDF bytes from the generated template")
+		return nil, err
+	}
+
+	return bytes, err
 }
 
 // CreateCLAGroupTemplate service method
@@ -201,19 +209,19 @@ func (s Service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, 
 		// Invoke the go routine - any errors will be handled below
 		eg.Go(func() error {
 			log.WithFields(f).Debugf("Creating PDF for %s", claTypeICLA)
-			iclaPdf, iclaErr := s.docRaptorClient.CreatePDF(iclaTemplateHTML, claTypeICLA)
+			ioReader, iclaErr := s.docRaptorClient.CreatePDF(iclaTemplateHTML, claTypeICLA)
 			if iclaErr != nil {
 				log.WithFields(f).WithError(iclaErr).Warn("Problem generating ICLA template via docraptor client - returning empty template PDFs")
 				return err
 			}
 			defer func() {
-				closeErr := iclaPdf.Close()
+				closeErr := ioReader.Close()
 				if closeErr != nil {
 					log.WithFields(f).WithError(closeErr).Warn("error closing ICLA PDF")
 				}
 			}()
 			iclaFileName := s.generateTemplateS3FilePath(claGroupID, claTypeICLA)
-			iclaFileURL, err = s.SaveTemplateToS3(bucket, iclaFileName, iclaPdf)
+			iclaFileURL, err = s.SaveTemplateToS3(bucket, iclaFileName, ioReader)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warnf("Problem uploading ICLA PDF: %s to s3 - returning empty template PDFs", iclaFileName)
 				return err
@@ -228,19 +236,19 @@ func (s Service) CreateCLAGroupTemplate(ctx context.Context, claGroupID string, 
 		// Invoke the go routine - any errors will be handled below
 		eg.Go(func() error {
 			log.WithFields(f).Debugf("Creating PDF for %s", claTypeCCLA)
-			cclaPdf, cclaErr := s.docRaptorClient.CreatePDF(cclaTemplateHTML, claTypeCCLA)
+			ioReader, cclaErr := s.docRaptorClient.CreatePDF(cclaTemplateHTML, claTypeCCLA)
 			if cclaErr != nil {
 				log.WithFields(f).WithError(cclaErr).Warn("Problem generating CCLA template via docraptor client - returning empty template PDFs")
 				return err
 			}
 			defer func() {
-				closeErr := cclaPdf.Close()
+				closeErr := ioReader.Close()
 				if closeErr != nil {
 					log.WithFields(f).WithError(closeErr).Warn("error closing CCLA PDF")
 				}
 			}()
 			cclaFileName := s.generateTemplateS3FilePath(claGroupID, claTypeCCLA)
-			cclaFileURL, err = s.SaveTemplateToS3(bucket, cclaFileName, cclaPdf)
+			cclaFileURL, err = s.SaveTemplateToS3(bucket, cclaFileName, ioReader)
 			if err != nil {
 				log.WithFields(f).Warnf("Problem uploading CCLA PDF: %s to s3, error: %v - returning empty template PDFs", cclaFileName, err)
 				return err
