@@ -1,0 +1,44 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+description: GitLab Project Organization
+properties:
+  auto_enabled:
+    type: boolean
+    description: Flag to indicate if auto-enabled flag should be enabled. Organizations with auto-enable turned on will automatically include any new repositories to the EasyCLA configuration.
+    x-omitempty: false
+  autoEnableCLAGroupID:
+    type: string
+    description: The CLA Group ID which is attached to the auto-enabled flag
+  autoEnabledCLAGroupName:
+    type: string
+    description: The CLA Group name which is attached to the auto-enabled flag
+  branchProtectionEnabled:
+    type: boolean
+    description: Flag to indicate if this GitHub Organization is configured to automatically setup branch protection on CLA enabled repositories.
+    x-omitempty: false
+  installationURL:
+    type: string
+    x-nullable: true
+    format: uri
+  gitlab_organization_name:
+    type: string
+    description: The Gitlab Organization name
+    example: "kubernetes"
+    # Pattern aligns with UI and other platform services including Org Service
+    # \w Any word character (alphanumeric & underscore), dashes, periods
+    pattern: '^([\w\-\.]+){2,255}$'
+    minLength: 2
+    maxLength: 255
+  connection_status:
+    type: string
+    enum:
+      - connected
+      - partial_connection
+      - connection_failure
+      - no_connection
+  repositories:
+    type: array
+    items:
+      $ref: '#/definitions/gitlab-project-repository'

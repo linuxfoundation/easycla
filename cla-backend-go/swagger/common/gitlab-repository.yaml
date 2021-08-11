@@ -3,7 +3,7 @@
 
 type: object
 properties:
-  repository_id:
+  repositoryID:
     description: The internal repository ID
     $ref: './common/properties/internal-id.yaml'
   repository_external_id:
@@ -11,12 +11,12 @@ properties:
     description: The repository ID from the external service, such as GitHub or GitLab
     minimum: 1
     example: 7
+  repository_cla_group_id:
+    type: string
+    description: The CLA Group ID associated with this repository
   repository_project_sfid:
     description: Project SFID
     $ref: './common/properties/external-id.yaml'
-  repository_cla_group_id:
-    description: CLA Group ID
-    $ref: './common/properties/internal-id.yaml'
   repository_name:
     type: string
     description: The repository name

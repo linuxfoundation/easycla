@@ -209,8 +209,8 @@ func (s *service) ProjectUnenrolledDisableRepositoryHandler(event events.DynamoD
 
 		// For each GitHub repository...
 		for _, gitHubRepo := range gitHubRepos.List {
-			log.WithFields(f).Debugf("disabling github repository: %s with id: %s for project with sfid: %s",
-				gitHubRepo.RepositoryName, gitHubRepo.RepositoryID, gitHubRepo.ProjectSFID)
+			log.WithFields(f).Debugf("disabling github repository: %s with id: %s for project with sfid: %s for CLA Group: %s",
+				gitHubRepo.RepositoryName, gitHubRepo.RepositoryID, gitHubRepo.RepositoryProjectSfid, gitHubRepo.RepositoryClaGroupID)
 			disableErr := s.repositoryService.DisableRepository(ctx, gitHubRepo.RepositoryID)
 			if disableErr != nil {
 				log.WithFields(f).WithError(disableErr).Warnf("problem disabling github repository: %s with id: %s", gitHubRepo.RepositoryName, gitHubRepo.RepositoryID)

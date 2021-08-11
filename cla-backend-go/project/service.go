@@ -43,14 +43,14 @@ type Service interface {
 // service
 type service struct {
 	repo                ProjectRepository
-	repositoriesRepo    repositories.Repository
+	repositoriesRepo    repositories.RepositoryInterface
 	gerritRepo          gerrits.Repository
 	projectCLAGroupRepo projects_cla_groups.Repository
 	usersRepo           users.UserRepository
 }
 
 // NewService returns an instance of the project service
-func NewService(projectRepo ProjectRepository, repositoriesRepo repositories.Repository, gerritRepo gerrits.Repository, projectCLAGroupRepo projects_cla_groups.Repository, usersRepo users.UserRepository) Service {
+func NewService(projectRepo ProjectRepository, repositoriesRepo repositories.RepositoryInterface, gerritRepo gerrits.Repository, projectCLAGroupRepo projects_cla_groups.Repository, usersRepo users.UserRepository) Service {
 	return service{
 		repo:                projectRepo,
 		repositoriesRepo:    repositoriesRepo,

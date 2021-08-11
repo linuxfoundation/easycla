@@ -41,7 +41,7 @@ func (s *service) GithubRepoModifyAddEvent(event events.DynamoDBEventRecord) err
 			log.WithFields(f).Warnf("problem unmarshalling old repository model event, error: %+v", err)
 			return err
 		}
-		claGroupID = oldRepoModel.RepositoryProjectID
+		claGroupID = oldRepoModel.RepositoryCLAGroupID
 		projectSFID = oldRepoModel.ProjectSFID
 		parentProjectSFID = oldRepoModel.RepositorySfdcID
 	} else {
@@ -51,7 +51,7 @@ func (s *service) GithubRepoModifyAddEvent(event events.DynamoDBEventRecord) err
 			log.WithFields(f).Warnf("problem unmarshalling the new repository model event, error: %+v", err)
 			return err
 		}
-		claGroupID = newRepoModel.RepositoryProjectID
+		claGroupID = newRepoModel.RepositoryCLAGroupID
 		projectSFID = newRepoModel.ProjectSFID
 		parentProjectSFID = newRepoModel.RepositorySfdcID
 	}

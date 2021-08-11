@@ -242,14 +242,15 @@ func server(localMode bool) http.Handler {
 	// Our backend repository handlers
 	userRepo := user.NewDynamoRepository(awsSession, stage)
 	usersRepo := users.NewRepository(awsSession, stage)
-	repositoriesRepo := repositories.NewRepository(awsSession, stage)
+	gitV1Repository := repositories.NewRepository(awsSession, stage)
+	gitV2Repository := v2Repositories.NewRepository(awsSession, stage)
 	gerritRepo := gerrits.NewRepository(awsSession, stage)
 	templateRepo := template.NewRepository(awsSession, stage)
 	approvalListRepo := approval_list.NewRepository(awsSession, stage)
 	v1CompanyRepo := v1Company.NewRepository(awsSession, stage)
 	eventsRepo := events.NewRepository(awsSession, stage)
 	v1ProjectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
-	v1CLAGroupRepo := project.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, v1ProjectClaGroupRepo)
+	v1CLAGroupRepo := project.NewRepository(awsSession, stage, gitV1Repository, gerritRepo, v1ProjectClaGroupRepo)
 	metricsRepo := metrics.NewRepository(awsSession, stage, configFile.APIGatewayURL, v1ProjectClaGroupRepo)
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
 	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
@@ -272,7 +273,7 @@ func server(localMode bool) http.Handler {
 	})
 
 	// Signature repository handler
-	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService, repositoriesRepo, githubOrganizationsRepo, gerritService)
+	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService, gitV1Repository, githubOrganizationsRepo, gerritService)
 
 	// Initialize the external platform services - these are external APIs that
 	// we download the swagger specification, generate the models, and have
@@ -286,7 +287,7 @@ func server(localMode bool) http.Handler {
 	usersService := users.NewService(usersRepo, eventsService)
 	healthService := health.New(Version, Commit, Branch, BuildDate)
 	templateService := template.NewService(stage, templateRepo, docraptorClient, awsSession)
-	v1ProjectService := project.NewService(v1CLAGroupRepo, repositoriesRepo, gerritRepo, v1ProjectClaGroupRepo, usersRepo)
+	v1ProjectService := project.NewService(v1CLAGroupRepo, gitV1Repository, gerritRepo, v1ProjectClaGroupRepo, usersRepo)
 	emailTemplateService := emails.NewEmailTemplateService(v1CLAGroupRepo, v1ProjectClaGroupRepo, v1ProjectService, configFile.CorporateConsoleV1URL, configFile.CorporateConsoleV2URL)
 	emailService := emails.NewService(emailTemplateService, v1ProjectService)
 	v2ProjectService := v2Project.NewService(v1ProjectService, v1CLAGroupRepo, v1ProjectClaGroupRepo)
@@ -296,18 +297,18 @@ func server(localMode bool) http.Handler {
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation)
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService)
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV1URL)
-	v1RepositoriesService := repositories.NewService(repositoriesRepo, githubOrganizationsRepo, v1ProjectClaGroupRepo)
-	v2RepositoriesService := v2Repositories.NewService(repositoriesRepo, v1ProjectClaGroupRepo, githubOrganizationsRepo)
+	v1RepositoriesService := repositories.NewService(gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo)
+	v2RepositoriesService := v2Repositories.NewService(gitV1Repository, gitV2Repository, v1ProjectClaGroupRepo, githubOrganizationsRepo)
 	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
 	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
 	authorizer := auth.NewAuthorizer(authValidator, userRepo)
 	v2MetricsService := metrics.NewService(metricsRepo, v1ProjectClaGroupRepo)
-	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, repositoriesRepo, v1ProjectClaGroupRepo)
+	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo)
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v1ProjectClaGroupRepo)
-	gitlabActivityService := gitlab_activity.NewService(gitlabOrganizationRepo, repositoriesRepo, usersRepo, signaturesRepo, v1ProjectClaGroupRepo, v1CompanyRepo, signaturesRepo)
-	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, repositoriesRepo, v1ProjectClaGroupRepo, githubOrganizationsService)
-	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, repositoriesRepo, githubOrganizationsRepo, v1ProjectClaGroupRepo, v1ProjectService)
-	v2GithubActivityService := v2GithubActivity.NewService(repositoriesRepo, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
+	gitlabActivityService := gitlab_activity.NewService(gitlabOrganizationRepo, gitV1Repository, gitV2Repository, usersRepo, signaturesRepo, v1ProjectClaGroupRepo, v1CompanyRepo, signaturesRepo)
+	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo, githubOrganizationsService)
+	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo, v1ProjectService)
+	v2GithubActivityService := v2GithubActivity.NewService(gitV1Repository, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
 
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 

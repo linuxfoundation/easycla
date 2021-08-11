@@ -29,7 +29,7 @@ func GetRepositoryByExternalID(ctx context.Context, installationID, id int64) (*
 	}
 	org, resp, err := client.Repositories.GetByID(ctx, id)
 	if err != nil {
-		logging.Warnf("GetRepository %v failed. error = %s", id, err.Error())
+		logging.Warnf("GitHubGetRepository %v failed. error = %s", id, err.Error())
 		if resp.StatusCode == 404 {
 			return nil, ErrGithubRepositoryNotFound
 		}

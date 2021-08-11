@@ -1,0 +1,17 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+required:
+  - autoEnabled
+properties:
+  autoEnabled:
+    type: boolean
+    description: Flag to indicate if auto-enabled flag should be enabled. Group/Organizations with auto-enable turned on will automatically include any new repositories to the EasyCLA configuration.
+  autoEnabledClaGroupID:
+    type: string
+    description: Specifies which Cla group ID to be used when autoEnabled flag in enabled for the GitLab Group/Organization. If autoEnabled is on this field needs to be set as well.
+  branchProtectionEnabled:
+    type: boolean
+    description: Flag to indicate if this Group/Organization is configured to automatically setup branch protection on CLA enabled repositories.
+    x-omitempty: true

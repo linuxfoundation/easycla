@@ -42,7 +42,7 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 // AddGithubRepository mocks base method
 func (m *MockService) AddGithubRepository(ctx context.Context, externalProjectID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddGithubRepository", ctx, externalProjectID, input)
+	ret := m.ctrl.Call(m, "GitHubAddRepository", ctx, externalProjectID, input)
 	ret0, _ := ret[0].(*models.GithubRepository)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -51,13 +51,13 @@ func (m *MockService) AddGithubRepository(ctx context.Context, externalProjectID
 // AddGithubRepository indicates an expected call of AddGithubRepository
 func (mr *MockServiceMockRecorder) AddGithubRepository(ctx, externalProjectID, input interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGithubRepository", reflect.TypeOf((*MockService)(nil).AddGithubRepository), ctx, externalProjectID, input)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubAddRepository", reflect.TypeOf((*MockService)(nil).AddGithubRepository), ctx, externalProjectID, input)
 }
 
 // EnableRepository mocks base method
 func (m *MockService) EnableRepository(ctx context.Context, repositoryID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnableRepository", ctx, repositoryID)
+	ret := m.ctrl.Call(m, "GitHubEnableRepository", ctx, repositoryID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
@@ -65,13 +65,13 @@ func (m *MockService) EnableRepository(ctx context.Context, repositoryID string)
 // EnableRepository indicates an expected call of EnableRepository
 func (mr *MockServiceMockRecorder) EnableRepository(ctx, repositoryID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnableRepository", reflect.TypeOf((*MockService)(nil).EnableRepository), ctx, repositoryID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubEnableRepository", reflect.TypeOf((*MockService)(nil).EnableRepository), ctx, repositoryID)
 }
 
 // EnableRepositoryWithCLAGroupID mocks base method
 func (m *MockService) EnableRepositoryWithCLAGroupID(ctx context.Context, repositoryID, claGroupID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnableRepositoryWithCLAGroupID", ctx, repositoryID, claGroupID)
+	ret := m.ctrl.Call(m, "GitHubEnableRepositoryWithCLAGroupID", ctx, repositoryID, claGroupID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
@@ -79,13 +79,13 @@ func (m *MockService) EnableRepositoryWithCLAGroupID(ctx context.Context, reposi
 // EnableRepositoryWithCLAGroupID indicates an expected call of EnableRepositoryWithCLAGroupID
 func (mr *MockServiceMockRecorder) EnableRepositoryWithCLAGroupID(ctx, repositoryID, claGroupID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnableRepositoryWithCLAGroupID", reflect.TypeOf((*MockService)(nil).EnableRepositoryWithCLAGroupID), ctx, repositoryID, claGroupID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubEnableRepositoryWithCLAGroupID", reflect.TypeOf((*MockService)(nil).EnableRepositoryWithCLAGroupID), ctx, repositoryID, claGroupID)
 }
 
 // DisableRepository mocks base method
 func (m *MockService) DisableRepository(ctx context.Context, repositoryID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DisableRepository", ctx, repositoryID)
+	ret := m.ctrl.Call(m, "GitHubDisableRepository", ctx, repositoryID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
@@ -93,13 +93,13 @@ func (m *MockService) DisableRepository(ctx context.Context, repositoryID string
 // DisableRepository indicates an expected call of DisableRepository
 func (mr *MockServiceMockRecorder) DisableRepository(ctx, repositoryID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DisableRepository", reflect.TypeOf((*MockService)(nil).DisableRepository), ctx, repositoryID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubDisableRepository", reflect.TypeOf((*MockService)(nil).DisableRepository), ctx, repositoryID)
 }
 
 // UpdateClaGroupID mocks base method
 func (m *MockService) UpdateClaGroupID(ctx context.Context, repositoryID, claGroupID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateClaGroupID", ctx, repositoryID, claGroupID)
+	ret := m.ctrl.Call(m, "GitHubUpdateClaGroupID", ctx, repositoryID, claGroupID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
@@ -107,14 +107,14 @@ func (m *MockService) UpdateClaGroupID(ctx context.Context, repositoryID, claGro
 // UpdateClaGroupID indicates an expected call of UpdateClaGroupID
 func (mr *MockServiceMockRecorder) UpdateClaGroupID(ctx, repositoryID, claGroupID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateClaGroupID", reflect.TypeOf((*MockService)(nil).UpdateClaGroupID), ctx, repositoryID, claGroupID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubUpdateClaGroupID", reflect.TypeOf((*MockService)(nil).UpdateClaGroupID), ctx, repositoryID, claGroupID)
 }
 
 // ListProjectRepositories mocks base method
-func (m *MockService) ListProjectRepositories(ctx context.Context, externalProjectID string, enabled *bool) (*models.ListGithubRepositories, error) {
+func (m *MockService) ListProjectRepositories(ctx context.Context, externalProjectID string, enabled *bool) (*models.GithubListRepositories, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListProjectRepositories", ctx, externalProjectID, enabled)
-	ret0, _ := ret[0].(*models.ListGithubRepositories)
+	ret := m.ctrl.Call(m, "GitHubListProjectRepositories", ctx, externalProjectID, enabled)
+	ret0, _ := ret[0].(*models.GithubListRepositories)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -122,13 +122,13 @@ func (m *MockService) ListProjectRepositories(ctx context.Context, externalProje
 // ListProjectRepositories indicates an expected call of ListProjectRepositories
 func (mr *MockServiceMockRecorder) ListProjectRepositories(ctx, externalProjectID, enabled interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProjectRepositories", reflect.TypeOf((*MockService)(nil).ListProjectRepositories), ctx, externalProjectID, enabled)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubListProjectRepositories", reflect.TypeOf((*MockService)(nil).ListProjectRepositories), ctx, externalProjectID, enabled)
 }
 
 // GetRepository mocks base method
 func (m *MockService) GetRepository(ctx context.Context, repositoryID string) (*models.GithubRepository, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRepository", ctx, repositoryID)
+	ret := m.ctrl.Call(m, "GitHubGetRepository", ctx, repositoryID)
 	ret0, _ := ret[0].(*models.GithubRepository)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -137,14 +137,14 @@ func (m *MockService) GetRepository(ctx context.Context, repositoryID string) (*
 // GetRepository indicates an expected call of GetRepository
 func (mr *MockServiceMockRecorder) GetRepository(ctx, repositoryID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRepository", reflect.TypeOf((*MockService)(nil).GetRepository), ctx, repositoryID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubGetRepository", reflect.TypeOf((*MockService)(nil).GetRepository), ctx, repositoryID)
 }
 
 // GetRepositoryByProjectSFID mocks base method
-func (m *MockService) GetRepositoryByProjectSFID(ctx context.Context, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error) {
+func (m *MockService) GetRepositoryByProjectSFID(ctx context.Context, projectSFID string, enabled *bool) (*models.GithubListRepositories, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRepositoryByProjectSFID", ctx, projectSFID, enabled)
-	ret0, _ := ret[0].(*models.ListGithubRepositories)
+	ret0, _ := ret[0].(*models.GithubListRepositories)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -158,7 +158,7 @@ func (mr *MockServiceMockRecorder) GetRepositoryByProjectSFID(ctx, projectSFID, 
 // GetRepositoryByName mocks base method
 func (m *MockService) GetRepositoryByName(ctx context.Context, repositoryName string) (*models.GithubRepository, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRepositoryByName", ctx, repositoryName)
+	ret := m.ctrl.Call(m, "GitHubGetRepositoryByName", ctx, repositoryName)
 	ret0, _ := ret[0].(*models.GithubRepository)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -167,13 +167,13 @@ func (m *MockService) GetRepositoryByName(ctx context.Context, repositoryName st
 // GetRepositoryByName indicates an expected call of GetRepositoryByName
 func (mr *MockServiceMockRecorder) GetRepositoryByName(ctx, repositoryName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRepositoryByName", reflect.TypeOf((*MockService)(nil).GetRepositoryByName), ctx, repositoryName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubGetRepositoryByName", reflect.TypeOf((*MockService)(nil).GetRepositoryByName), ctx, repositoryName)
 }
 
 // DisableRepositoriesByProjectID mocks base method
 func (m *MockService) DisableRepositoriesByProjectID(ctx context.Context, projectID string) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DisableRepositoriesByProjectID", ctx, projectID)
+	ret := m.ctrl.Call(m, "GitHubDisableRepositoriesByProjectID", ctx, projectID)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -182,13 +182,13 @@ func (m *MockService) DisableRepositoriesByProjectID(ctx context.Context, projec
 // DisableRepositoriesByProjectID indicates an expected call of DisableRepositoriesByProjectID
 func (mr *MockServiceMockRecorder) DisableRepositoriesByProjectID(ctx, projectID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DisableRepositoriesByProjectID", reflect.TypeOf((*MockService)(nil).DisableRepositoriesByProjectID), ctx, projectID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubDisableRepositoriesByProjectID", reflect.TypeOf((*MockService)(nil).DisableRepositoriesByProjectID), ctx, projectID)
 }
 
 // GetRepositoriesByCLAGroup mocks base method
 func (m *MockService) GetRepositoriesByCLAGroup(ctx context.Context, claGroupID string) ([]*models.GithubRepository, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRepositoriesByCLAGroup", ctx, claGroupID)
+	ret := m.ctrl.Call(m, "GitHubGetRepositoriesByCLAGroup", ctx, claGroupID)
 	ret0, _ := ret[0].([]*models.GithubRepository)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -197,13 +197,13 @@ func (m *MockService) GetRepositoriesByCLAGroup(ctx context.Context, claGroupID 
 // GetRepositoriesByCLAGroup indicates an expected call of GetRepositoriesByCLAGroup
 func (mr *MockServiceMockRecorder) GetRepositoriesByCLAGroup(ctx, claGroupID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRepositoriesByCLAGroup", reflect.TypeOf((*MockService)(nil).GetRepositoriesByCLAGroup), ctx, claGroupID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubGetRepositoriesByCLAGroup", reflect.TypeOf((*MockService)(nil).GetRepositoriesByCLAGroup), ctx, claGroupID)
 }
 
 // GetRepositoriesByOrganizationName mocks base method
 func (m *MockService) GetRepositoriesByOrganizationName(ctx context.Context, gitHubOrgName string) ([]*models.GithubRepository, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRepositoriesByOrganizationName", ctx, gitHubOrgName)
+	ret := m.ctrl.Call(m, "GitHubGetRepositoriesByOrganizationName", ctx, gitHubOrgName)
 	ret0, _ := ret[0].([]*models.GithubRepository)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -212,7 +212,7 @@ func (m *MockService) GetRepositoriesByOrganizationName(ctx context.Context, git
 // GetRepositoriesByOrganizationName indicates an expected call of GetRepositoriesByOrganizationName
 func (mr *MockServiceMockRecorder) GetRepositoriesByOrganizationName(ctx, gitHubOrgName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRepositoriesByOrganizationName", reflect.TypeOf((*MockService)(nil).GetRepositoriesByOrganizationName), ctx, gitHubOrgName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubGetRepositoriesByOrganizationName", reflect.TypeOf((*MockService)(nil).GetRepositoriesByOrganizationName), ctx, gitHubOrgName)
 }
 
 // MockGithubOrgRepo is a mock of GithubOrgRepo interface

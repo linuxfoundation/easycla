@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 type: object
+required:
+  - repository_external_id
+  - repository_project_sfid
+  - repository_cla_group_id
+  - repository_name
+  - repository_organization_name
+  - repository_url
 properties:
-  repository_id:
-    description: The internal repository ID
-    $ref: './common/properties/internal-id.yaml'
   repository_external_id:
     type: integer
     description: The repository ID from the external service, such as GitHub or GitLab
@@ -29,29 +33,10 @@ properties:
     type: string
     description: The external repository URL
     example: 'https://gitlab.com/linuxfoundation/product/easycla/easycla-test-repo-4'
-  repository_type:
-    type: string
-    description: the repository type
-    example: 'gitlab'
   enabled:
     type: boolean
     description: Flag to indicate if this repository is enabled or not. Repositories may become disabled if they have been moved or deleted from GitHub or GitLab.
     x-omitempty: false
-  date_created:
-    type: string
-    example: "2020-02-06T09:31:49.245630+0000"
-    minLength: 18
-    maxLength: 64
-  date_modified:
-    type: string
-    example: "2020-02-06T09:31:49.245646+0000"
-    minLength: 18
-    maxLength: 64
   note:
+    description: optional note added to the record
     type: string
-    description: An optional note field to store any additional information about this record.  Helpful for auditing.
-    example: 'optional note about the repository - migrated on MM/DD/YYYY'
-  version:
-    type: string
-    description: The version identifier for this repository record
-    example: 'v1'

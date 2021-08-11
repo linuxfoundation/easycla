@@ -27,9 +27,9 @@ type Service interface {
 	EnableRepositoryWithCLAGroupID(ctx context.Context, repositoryID, claGroupID string) error
 	DisableRepository(ctx context.Context, repositoryID string) error
 	UpdateClaGroupID(ctx context.Context, repositoryID, claGroupID string) error
-	ListProjectRepositories(ctx context.Context, externalProjectID string, enabled *bool) (*models.ListGithubRepositories, error)
+	ListProjectRepositories(ctx context.Context, externalProjectID string, enabled *bool) (*models.GithubListRepositories, error)
 	GetRepository(ctx context.Context, repositoryID string) (*models.GithubRepository, error)
-	GetRepositoryByProjectSFID(ctx context.Context, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error)
+	GetRepositoryByProjectSFID(ctx context.Context, projectSFID string, enabled *bool) (*models.GithubListRepositories, error)
 	GetRepositoryByName(ctx context.Context, repositoryName string) (*models.GithubRepository, error)
 	DisableRepositoriesByProjectID(ctx context.Context, projectID string) (int, error)
 	GetRepositoriesByCLAGroup(ctx context.Context, claGroupID string) ([]*models.GithubRepository, error)
@@ -44,13 +44,13 @@ type GithubOrgRepo interface {
 }
 
 type service struct {
-	repo                  Repository
+	repo                  RepositoryInterface
 	ghOrgRepo             GithubOrgRepo
 	projectsClaGroupsRepo projects_cla_groups.Repository
 }
 
 // NewService creates a new githubOrganizations service
-func NewService(repo Repository, ghOrgRepo GithubOrgRepo, pcgRepo projects_cla_groups.Repository) Service {
+func NewService(repo RepositoryInterface, ghOrgRepo GithubOrgRepo, pcgRepo projects_cla_groups.Repository) Service {
 	return &service{
 		repo:                  repo,
 		ghOrgRepo:             ghOrgRepo,
@@ -60,7 +60,7 @@ func NewService(repo Repository, ghOrgRepo GithubOrgRepo, pcgRepo projects_cla_g
 
 // UpdateClaGroupID updates the claGroupID
 func (s *service) UpdateClaGroupID(ctx context.Context, repositoryID, claGroupID string) error {
-	return s.repo.UpdateClaGroupID(ctx, repositoryID, claGroupID)
+	return s.repo.GitHubUpdateClaGroupID(ctx, repositoryID, claGroupID)
 }
 
 func (s *service) AddGithubRepository(ctx context.Context, externalProjectID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
@@ -132,36 +132,36 @@ func (s *service) AddGithubRepository(ctx context.Context, externalProjectID str
 			return nil, enableErr
 		}
 
-		return s.repo.GetRepository(ctx, existingModel.RepositoryID)
+		return s.repo.GitHubGetRepository(ctx, existingModel.RepositoryID)
 	}
 
 	// Doesn't exist - create it
-	return s.repo.AddGithubRepository(ctx, externalProjectID, projectSFID, input)
+	return s.repo.GitHubAddRepository(ctx, externalProjectID, projectSFID, input)
 }
 
 func (s *service) EnableRepository(ctx context.Context, repositoryID string) error {
-	return s.repo.EnableRepository(ctx, repositoryID)
+	return s.repo.GitHubEnableRepository(ctx, repositoryID)
 }
 
 func (s *service) EnableRepositoryWithCLAGroupID(ctx context.Context, repositoryID, claGroupID string) error {
-	return s.repo.EnableRepositoryWithCLAGroupID(ctx, repositoryID, claGroupID)
+	return s.repo.GitHubEnableRepositoryWithCLAGroupID(ctx, repositoryID, claGroupID)
 }
 
 func (s *service) DisableRepository(ctx context.Context, repositoryID string) error {
-	return s.repo.DisableRepository(ctx, repositoryID)
+	return s.repo.GitHubDisableRepository(ctx, repositoryID)
 }
 
-func (s *service) ListProjectRepositories(ctx context.Context, externalProjectID string, enabled *bool) (*models.ListGithubRepositories, error) {
-	return s.repo.ListProjectRepositories(ctx, externalProjectID, enabled)
+func (s *service) ListProjectRepositories(ctx context.Context, externalProjectID string, enabled *bool) (*models.GithubListRepositories, error) {
+	return s.repo.GitHubListProjectRepositories(ctx, externalProjectID, enabled)
 }
 
 func (s *service) GetRepository(ctx context.Context, repositoryID string) (*models.GithubRepository, error) {
 	f := logrus.Fields{
-		"functionName": "v1.repository.GetRepository",
+		"functionName": "v1.repository.GitHubGetRepository",
 		"repositoryID": repositoryID,
 	}
 	log.WithFields(f).Debug("Searching for repository...")
-	ghRepo, err := s.repo.GetRepository(ctx, repositoryID)
+	ghRepo, err := s.repo.GitHubGetRepository(ctx, repositoryID)
 	if err != nil || ghRepo != nil {
 		log.WithFields(f).WithError(err).Debug("unable to get repository")
 		return nil, err
@@ -172,20 +172,20 @@ func (s *service) GetRepository(ctx context.Context, repositoryID string) (*mode
 	return ghRepo, nil
 }
 
-func (s *service) GetRepositoryByProjectSFID(ctx context.Context, projectSFID string, enabled *bool) (*models.ListGithubRepositories, error) {
-	return s.repo.ListProjectRepositories(ctx, projectSFID, enabled)
+func (s *service) GetRepositoryByProjectSFID(ctx context.Context, projectSFID string, enabled *bool) (*models.GithubListRepositories, error) {
+	return s.repo.GitHubListProjectRepositories(ctx, projectSFID, enabled)
 }
 
 // GetRepositoryByName returns the repository by name: project-level/cla-project
 func (s *service) GetRepositoryByName(ctx context.Context, repositoryName string) (*models.GithubRepository, error) {
-	return s.repo.GetRepositoryByName(ctx, repositoryName)
+	return s.repo.GitHubGetRepositoryByName(ctx, repositoryName)
 }
 
 // DisableRepositoriesByProjectID disables the repositories by project ID
 func (s *service) DisableRepositoriesByProjectID(ctx context.Context, projectID string) (int, error) {
 	var deleteErr error
 	// Return the list of GitHub repositories by CLA Group for those that are currently enabled
-	ghOrgs, err := s.repo.GetCLAGroupRepositoriesGroupByOrgs(ctx, projectID, true)
+	ghOrgs, err := s.repo.GitHubGetCLAGroupRepositoriesGroupByOrgs(ctx, projectID, true)
 	if err != nil {
 		return 0, err
 	}
@@ -193,7 +193,7 @@ func (s *service) DisableRepositoriesByProjectID(ctx context.Context, projectID 
 		log.Debugf("Deleting repositories for project :%s", projectID)
 		for _, ghOrg := range ghOrgs {
 			for _, item := range ghOrg.List {
-				deleteErr = s.repo.DisableRepository(ctx, item.RepositoryID)
+				deleteErr = s.repo.GitHubDisableRepository(ctx, item.RepositoryID)
 				if deleteErr != nil {
 					log.Warnf("Unable to remove repository: %s for project :%s error :%v", item.RepositoryID, projectID, deleteErr)
 				}
@@ -207,10 +207,10 @@ func (s *service) DisableRepositoriesByProjectID(ctx context.Context, projectID 
 // GetRepositoriesByCLAGroup returns the list of repositories for the specified CLA Group
 func (s *service) GetRepositoriesByCLAGroup(ctx context.Context, claGroupID string) ([]*models.GithubRepository, error) {
 	// Return the list of github repositories that are enabled
-	return s.repo.GetRepositoriesByCLAGroup(ctx, claGroupID, true)
+	return s.repo.GitHubGetRepositoriesByCLAGroup(ctx, claGroupID, true)
 }
 
 // GetRepositoriesByOrganizationName get repositories by organization name
 func (s *service) GetRepositoriesByOrganizationName(ctx context.Context, gitHubOrgName string) ([]*models.GithubRepository, error) {
-	return s.repo.GetRepositoriesByOrganizationName(ctx, gitHubOrgName)
+	return s.repo.GitHubGetRepositoriesByOrganizationName(ctx, gitHubOrgName)
 }

@@ -1253,7 +1253,9 @@ paths:
       tags:
         - template
 
-
+  # ---------------------------------------------------------------------------
+  # GitHub Endpoint Definitions
+  # ---------------------------------------------------------------------------
   /project/{projectSFID}/github/organizations:
     post:
       summary: Add new GitHub Oranization in the project
@@ -1271,7 +1273,7 @@ paths:
         - in: body
           name: body
           schema:
-            $ref: '#/definitions/create-github-organization'
+            $ref: '#/definitions/github-create-organization'
           required: true
       responses:
         '200':
@@ -1350,7 +1352,7 @@ paths:
         - in: body
           name: body
           schema:
-            $ref: '#/definitions/update-github-organization'
+            $ref: '#/definitions/github-update-organization'
           required: true
       responses:
         '200':
@@ -1433,7 +1435,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/list-github-repositories'
+            $ref: '#/definitions/github-list-repositories'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -1467,7 +1469,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/list-github-repositories'
+            $ref: '#/definitions/github-list-repositories'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -1604,6 +1606,9 @@ paths:
       tags:
         - github-repositories
 
+  # ---------------------------------------------------------------------------
+  # GitLab Endpoint Definitions
+  # ---------------------------------------------------------------------------
   /project/{projectSFID}/gitlab/organizations:
     post:
       summary: Add new Gitlab Organization in the project
@@ -1621,7 +1626,7 @@ paths:
         - in: body
           name: body
           schema:
-            $ref: '#/definitions/create-gitlab-organization'
+            $ref: '#/definitions/gitlab-create-organization'
           required: true
       responses:
         '200':
@@ -1631,7 +1636,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/gitlab-organization'
+            $ref: '#/definitions/gitlab-project-organizations'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -1665,7 +1670,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/project-gitlab-organizations'
+            $ref: '#/definitions/gitlab-project-organizations'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -1700,7 +1705,7 @@ paths:
         - in: body
           name: body
           schema:
-            $ref: '#/definitions/update-gitlab-organization'
+            $ref: '#/definitions/gitlab-update-organization'
           required: true
       responses:
         '200':
@@ -1754,6 +1759,117 @@ paths:
           $ref: '#/responses/not-found'
       tags:
         - gitlab-organizations
+
+  /project/{projectSFID}/gitlab/repositories:
+    post:
+      summary: Add a GitLab repository to the project
+      description: Endpoint to add a GitLab repository for the project
+      operationId: addProjectGitLabRepository
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: projectSFID
+          in: path
+          type: string
+          required: true
+        - in: body
+          name: gitlab-add-repository
+          schema:
+            $ref: '#/definitions/gitlab-add-repository'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/gitlab-repository'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gitlab-repositories
+    get:
+      summary: Get the GitLab repositories of the project
+      description: Endpoint to fetch the list of GitLab repositories for the project
+      operationId: getProjectGitLabRepositories
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: projectSFID
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/gitlab-list-repositories'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gitlab-repositories
+
+  /project/{projectSFID}/gitlab/repositories/{repositoryID}:
+    delete:
+      summary: Remove the GitLab repository from the project
+      description: Endpoint to remove a GitLab repository from a project
+      operationId: deleteProjectGitLabRepository
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: projectSFID
+          in: path
+          type: string
+          required: true
+        - name: repositoryID
+          in: path
+          type: string
+          required: true
+      responses:
+        '204':
+          description: 'Resource Deleted'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - gitlab-repositories
 
   /cla-group/{claGroupID}/icla/signatures:
     get:
@@ -4224,6 +4340,9 @@ definitions:
   event:
     $ref: './common/event.yaml'
 
+  # ---------------------------------------------------------------------------
+  # GitHub Definitions
+  # ---------------------------------------------------------------------------
   github-activity-input:
     type: object
     required:
@@ -4310,12 +4429,45 @@ definitions:
         items:
           $ref: '#/definitions/github-repository-branch-protection-status-checks'
 
+  github-organization:
+    $ref: './common/github-organization.yaml'
+
   github-repository:
     $ref: './common/github-repository.yaml'
 
-  list-github-repositories:
-    $ref: './common/list-github-repositories.yaml'
+  github-create-organization:
+    $ref: './common/github-create-organization.yaml'
 
+  github-update-organization:
+    $ref: './common/github-update-organization.yaml'
+
+  github-list-repositories:
+    $ref: './common/github-list-repositories.yaml'
+
+  # ---------------------------------------------------------------------------
+  # GitLab Definitions
+  # ---------------------------------------------------------------------------
+  gitlab-organization:
+    $ref: './common/gitlab-organization.yaml'
+
+  gitlab-repository:
+    $ref: './common/github-repository.yaml'
+
+  gitlab-create-organization:
+    $ref: './common/gitlab-create-organization.yaml'
+
+  gitlab-update-organization:
+    $ref: './common/github-update-organization.yaml'
+
+  gitlab-list-repositories:
+    $ref: './common/gitlab-list-repositories.yaml'
+
+  gitlab-add-repository:
+    $ref: './common/gitlab-add-repository.yaml'
+
+  # ---------------------------------------------------------------------------
+  # CLA Group Definitions
+  # ---------------------------------------------------------------------------
   cla-groups:
     $ref: './common/cla-groups.yaml'
 
@@ -4325,6 +4477,9 @@ definitions:
   sf-project-summary:
     $ref: './common/sf-project-summary.yaml'
 
+  # ---------------------------------------------------------------------------
+  # CLA Template Definitions
+  # ---------------------------------------------------------------------------
   template:
     $ref: './common/template.yaml'
 
@@ -4333,24 +4488,6 @@ definitions:
 
   template-pdfs:
     $ref: './common/template-pdfs.yaml'
-
-  github-organization:
-    $ref: './common/github-organization.yaml'
-
-  create-github-organization:
-    $ref: './common/create-github-organization.yaml'
-
-  update-github-organization:
-    $ref: './common/update-github-organization.yaml'
-
-  gitlab-organization:
-    $ref: './common/gitlab-organization.yaml'
-
-  create-gitlab-organization:
-    $ref: './common/create-github-organization.yaml'
-
-  update-gitlab-organization:
-    $ref: './common/update-github-organization.yaml'
 
   user:
     $ref: './common/user.yaml'
@@ -5426,56 +5563,6 @@ definitions:
         items:
           $ref: '#/definitions/project-github-repository'
 
-  project-gitlab-organizations:
-    type: object
-    properties:
-      list:
-        type: array
-        items:
-          $ref: '#/definitions/project-gitlab-organization'
-
-  project-gitlab-organization:
-    type: object
-    properties:
-      auto_enabled:
-        type: boolean
-        description: Flag to indicate if auto-enabled flag should be enabled. Organizations with auto-enable turned on will automatically include any new repositories to the EasyCLA configuration.
-        x-omitempty: false
-      autoEnableCLAGroupID:
-        type: string
-        description: The CLA Group ID which is attached to the auto-enabled flag
-      autoEnabledCLAGroupName:
-        type: string
-        description: The CLA Group name which is attached to the auto-enabled flag
-      branchProtectionEnabled:
-        type: boolean
-        description: Flag to indicate if this GitHub Organization is configured to automatically setup branch protection on CLA enabled repositories.
-        x-omitempty: false
-      installationURL:
-        type: string
-        x-nullable: true
-        format: uri
-      gitlab_organization_name:
-        type: string
-        description: The Gitlab Organization name
-        example: "kubernetes"
-        # Pattern aligns with UI and other platform services including Org Service
-        # \w Any word character (alphanumeric & underscore), dashes, periods
-        pattern: '^([\w\-\.]+){2,255}$'
-        minLength: 2
-        maxLength: 255
-      connection_status:
-        type: string
-        enum:
-          - connected
-          - partial_connection
-          - connection_failure
-          - no_connection
-      repositories:
-        type: array
-        items:
-          $ref: '#/definitions/project-github-repository'
-
   project-github-repository:
     type: object
     properties:
@@ -5504,6 +5591,15 @@ definitions:
         enum:
           - connected
           - connection_failure
+
+  gitlab-project-organizations:
+    $ref: './common/gitlab-project-organizations.yaml'
+
+  gitlab-project-organization:
+    $ref: './common/gitlab-project-organization.yaml'
+
+  gitlab-project-repository:
+    $ref: './common/gitlab-project-repository.yaml'
 
   url-object:
     type: object

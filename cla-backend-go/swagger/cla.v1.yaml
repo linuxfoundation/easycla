@@ -2068,7 +2068,7 @@ paths:
         - in: body
           name: body
           schema:
-            $ref: '#/definitions/create-github-organization'
+            $ref: '#/definitions/github-create-organization'
           required: true
       responses:
         200:
@@ -2198,7 +2198,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/list-github-repositories'
+            $ref: '#/definitions/github-list-repositories'
         400:
           $ref: '#/responses/invalid-request'
         401:
@@ -2857,7 +2857,7 @@ definitions:
     $ref: './common/create-cla-group-template.yaml'
 
   update-github-organization:
-    $ref: './common/update-github-organization.yaml'
+    $ref: './common/github-update-organization.yaml'
 
   template-pdfs:
     $ref: './common/template-pdfs.yaml'
@@ -3103,8 +3103,8 @@ definitions:
   github-organizations:
     $ref: './common/github-organizations.yaml'
 
-  create-github-organization:
-    $ref: './common/create-github-organization.yaml'
+  github-create-organization:
+    $ref: './common/github-create-organization.yaml'
 
   github-organization:
     $ref: './common/github-organization.yaml'
@@ -3112,8 +3112,8 @@ definitions:
   github-repository-info:
     $ref: './common/github-repository-info.yaml'
 
-  list-github-repositories:
-    $ref: './common/list-github-repositories.yaml'
+  github-list-repositories:
+    $ref: './common/github-list-repositories.yaml'
 
   org-list:
     $ref: './common/org-list.yaml'

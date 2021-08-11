@@ -25,7 +25,6 @@ type configLookupResponse struct {
 
 // getSSMString is a generic routine to fetch the specified key value
 func getSSMString(ssmClient *ssm.SSM, key string) (string, error) {
-	// log.Debugf("Loading SSM parameter: %s", key)
 	value, err := ssmClient.GetParameter(&ssm.GetParameterInput{
 		Name:           aws.String(key),
 		WithDecryption: aws.Bool(false),

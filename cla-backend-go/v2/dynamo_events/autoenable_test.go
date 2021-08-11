@@ -58,7 +58,7 @@ func TestAutoEnableServiceProvider_AutoEnabledForGithubOrg(t *testing.T) {
 				m.
 					EXPECT().
 					ListProjectRepositories(gomock.Any(), externalProjectID, &enabled).
-					Return(&models.ListGithubRepositories{}, nil)
+					Return(&models.GithubListRepositories{}, nil)
 			},
 		},
 		{
@@ -71,15 +71,15 @@ func TestAutoEnableServiceProvider_AutoEnabledForGithubOrg(t *testing.T) {
 				m.
 					EXPECT().
 					ListProjectRepositories(gomock.Any(), externalProjectID, &enabled).
-					Return(&models.ListGithubRepositories{
+					Return(&models.GithubListRepositories{
 						List: []*models.GithubRepository{
 							{
-								RepositoryID: "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
-								ProjectSFID:  externalProjectID,
+								RepositoryID:          "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
+								RepositoryProjectSfid: externalProjectID,
 							},
 							{
-								RepositoryID: "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
-								ProjectSFID:  externalProjectID,
+								RepositoryID:          "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
+								RepositoryProjectSfid: externalProjectID,
 							},
 						},
 					}, nil)
@@ -96,17 +96,17 @@ func TestAutoEnableServiceProvider_AutoEnabledForGithubOrg(t *testing.T) {
 				m.
 					EXPECT().
 					ListProjectRepositories(gomock.Any(), externalProjectID, &enabled).
-					Return(&models.ListGithubRepositories{
+					Return(&models.GithubListRepositories{
 						List: []*models.GithubRepository{
 							{
-								RepositoryID:        "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
-								RepositoryProjectID: claGroupID,
-								ProjectSFID:         externalProjectID,
+								RepositoryID:          "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
+								RepositoryClaGroupID:  claGroupID,
+								RepositoryProjectSfid: externalProjectID,
 							},
 							{
-								RepositoryID:        "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
-								RepositoryProjectID: "anotherclagroup",
-								ProjectSFID:         externalProjectID,
+								RepositoryID:          "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
+								RepositoryClaGroupID:  "anotherclagroup",
+								RepositoryProjectSfid: externalProjectID,
 							},
 						},
 					}, nil)
@@ -124,15 +124,15 @@ func TestAutoEnableServiceProvider_AutoEnabledForGithubOrg(t *testing.T) {
 				m.
 					EXPECT().
 					ListProjectRepositories(gomock.Any(), externalProjectID, &enabled).
-					Return(&models.ListGithubRepositories{
+					Return(&models.GithubListRepositories{
 						List: []*models.GithubRepository{
 							{
-								RepositoryID: "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
-								ProjectSFID:  externalProjectID,
+								RepositoryID:          "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
+								RepositoryProjectSfid: externalProjectID,
 							},
 							{
-								RepositoryID: "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
-								ProjectSFID:  externalProjectID,
+								RepositoryID:          "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
+								RepositoryProjectSfid: externalProjectID,
 							},
 						},
 					}, nil)
@@ -156,17 +156,17 @@ func TestAutoEnableServiceProvider_AutoEnabledForGithubOrg(t *testing.T) {
 				m.
 					EXPECT().
 					ListProjectRepositories(gomock.Any(), externalProjectID, &enabled).
-					Return(&models.ListGithubRepositories{
+					Return(&models.GithubListRepositories{
 						List: []*models.GithubRepository{
 							{
-								RepositoryID:        "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
-								ProjectSFID:         externalProjectID,
-								RepositoryProjectID: claGroupID,
+								RepositoryID:          "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
+								RepositoryProjectSfid: externalProjectID,
+								RepositoryClaGroupID:  claGroupID,
 							},
 							{
-								RepositoryID:        "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
-								ProjectSFID:         externalProjectID,
-								RepositoryProjectID: claGroupID,
+								RepositoryID:          "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
+								RepositoryProjectSfid: externalProjectID,
+								RepositoryClaGroupID:  claGroupID,
 							},
 						},
 					}, nil)
@@ -182,16 +182,16 @@ func TestAutoEnableServiceProvider_AutoEnabledForGithubOrg(t *testing.T) {
 				m.
 					EXPECT().
 					ListProjectRepositories(gomock.Any(), externalProjectID, &enabled).
-					Return(&models.ListGithubRepositories{
+					Return(&models.GithubListRepositories{
 						List: []*models.GithubRepository{
 							{
-								RepositoryID: "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
-								ProjectSFID:  externalProjectID,
+								RepositoryID:          "d7c1050b-2f32-44ea-bad2-3c8ff980ccd4",
+								RepositoryProjectSfid: externalProjectID,
 							},
 							{
-								RepositoryID:        "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
-								ProjectSFID:         externalProjectID,
-								RepositoryProjectID: claGroupID,
+								RepositoryID:          "b42216b4-8f6d-41c0-8cde-7b2acbf0656a",
+								RepositoryProjectSfid: externalProjectID,
+								RepositoryClaGroupID:  claGroupID,
 							},
 						},
 					}, nil)

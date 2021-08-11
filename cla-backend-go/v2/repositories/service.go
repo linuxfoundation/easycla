@@ -29,28 +29,44 @@ import (
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 )
 
-// Service contains functions of GitHub V3Repositories service
-type Service interface {
-	AddGithubRepositories(ctx context.Context, projectSFID string, input *models.GithubRepositoryInput) ([]*v1Models.GithubRepository, error)
-	EnableRepository(ctx context.Context, repositoryID string) error
-	DisableRepository(ctx context.Context, repositoryID string) error
-	ListProjectRepositories(ctx context.Context, projectSFID string) (*v1Models.ListGithubRepositories, error)
-	GetRepository(ctx context.Context, repositoryID string) (*v1Models.GithubRepository, error)
-	GetRepositoryByName(ctx context.Context, repositoryName string) (*v1Models.GithubRepository, error)
-	DisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
-	GetProtectedBranch(ctx context.Context, projectSFID, repositoryID, branchName string) (*v2Models.GithubRepositoryBranchProtection, error)
-	UpdateProtectedBranch(ctx context.Context, projectSFID, repositoryID string, input *v2Models.GithubRepositoryBranchProtectionInput) (*v2Models.GithubRepositoryBranchProtection, error)
+// ServiceInterface contains functions of the repositories service
+type ServiceInterface interface {
+	// GitHub
+
+	GitHubAddRepositories(ctx context.Context, projectSFID string, input *models.GithubRepositoryInput) ([]*v1Models.GithubRepository, error)
+	GitHubEnableRepository(ctx context.Context, repositoryID string) error
+	GitHubDisableRepository(ctx context.Context, repositoryID string) error
+	GitHubListProjectRepositories(ctx context.Context, projectSFID string) (*v1Models.GithubListRepositories, error)
+	GitHubGetRepository(ctx context.Context, repositoryID string) (*v1Models.GithubRepository, error)
+	GitHubGetRepositoryByName(ctx context.Context, repositoryName string) (*v1Models.GithubRepository, error)
+	GitHubDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
+	GitHubGetProtectedBranch(ctx context.Context, projectSFID, repositoryID, branchName string) (*v2Models.GithubRepositoryBranchProtection, error)
+	GitHubUpdateProtectedBranch(ctx context.Context, projectSFID, repositoryID string, input *v2Models.GithubRepositoryBranchProtectionInput) (*v2Models.GithubRepositoryBranchProtection, error)
+
+	// GitLab
+
+	GitLabGetRepository(ctx context.Context, repositoryID string) (*v2Models.GitlabRepository, error)
+	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*v2Models.GitlabRepository, error)
+	//GitLabGetRepositoriesByGitLabID(ctx context.Context, gitLabID int64) (*v2Models.GitlabRepository, error)
+	GitLabGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabListRepositories, error)
+	GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string, enabled bool) (*v2Models.GitlabListRepositories, error)
+	GitLabAddRepository(ctx context.Context, projectSFID string, input *v2Models.GitlabAddRepository) (*v2Models.GitlabRepository, error)
+	GitLabEnableRepository(ctx context.Context, repositoryID string) error
+	GitLabDisableRepository(ctx context.Context, repositoryID string) error
+	GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
 }
 
-// GithubOrgRepo provide method to get github organization by name
+// GithubOrgRepo provide method to get GitHub organization by name
 type GithubOrgRepo interface {
 	GetGitHubOrganizationByName(ctx context.Context, githubOrganizationName string) (*v1Models.GithubOrganizations, error)
 	GetGitHubOrganization(ctx context.Context, githubOrganizationName string) (*v1Models.GithubOrganization, error)
 	GetGitHubOrganizations(ctx context.Context, projectSFID string) (*v1Models.GithubOrganizations, error)
 }
 
-type service struct {
-	repo                  v1Repositories.Repository
+// Service is the service model/structure
+type Service struct {
+	gitV1Repository       v1Repositories.RepositoryInterface
+	gitV2Repository       RepositoryInterface
 	projectsClaGroupsRepo projects_cla_groups.Repository
 	ghOrgRepo             GithubOrgRepo
 }
@@ -62,17 +78,19 @@ var (
 )
 
 // NewService creates a new githubOrganizations service
-func NewService(repo v1Repositories.Repository, pcgRepo projects_cla_groups.Repository, ghOrgRepo GithubOrgRepo) Service {
-	return &service{
-		repo:                  repo,
+func NewService(gitV1Repository *v1Repositories.Repository, gitV2Repository RepositoryInterface, pcgRepo projects_cla_groups.Repository, ghOrgRepo GithubOrgRepo) ServiceInterface {
+	return &Service{
+		gitV1Repository:       gitV1Repository,
+		gitV2Repository:       gitV2Repository,
 		projectsClaGroupsRepo: pcgRepo,
 		ghOrgRepo:             ghOrgRepo,
 	}
 }
 
-func (s *service) AddGithubRepositories(ctx context.Context, projectSFID string, input *models.GithubRepositoryInput) ([]*v1Models.GithubRepository, error) {
+// GitHubAddRepositories adds the specified GitHub repository to the specified project
+func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string, input *models.GithubRepositoryInput) ([]*v1Models.GithubRepository, error) {
 	f := logrus.Fields{
-		"functionName":           "v2.repositories.service.AddGithubRepositories",
+		"functionName":           "v2.repositories.service.GitHubAddRepositories",
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
 		"projectSFID":            projectSFID,
 		"claGroupID":             utils.StringValue(input.ClaGroupID),
@@ -155,7 +173,7 @@ func (s *service) AddGithubRepositories(ctx context.Context, projectSFID string,
 
 		// Check if this repository exists in our database
 		log.WithFields(f).Debugf("checking if GitHub repository by name: %s exists...", utils.StringValue(ghRepo.FullName))
-		existingRepositoryModel, lookupErr := s.GetRepositoryByName(ctx, utils.StringValue(ghRepo.FullName))
+		existingRepositoryModel, lookupErr := s.GitHubGetRepositoryByName(ctx, utils.StringValue(ghRepo.FullName))
 		if lookupErr != nil {
 			// If we have the repository not found error - this is ok - we are expecting this
 			if notFoundErr, ok := lookupErr.(*utils.GitHubRepositoryNotFound); ok {
@@ -186,7 +204,7 @@ func (s *service) AddGithubRepositories(ctx context.Context, projectSFID string,
 				}
 
 				// Update Repo details in case of any changes
-				updatedRepository, updateErr := s.repo.UpdateGithubRepository(ctx, existingRepositoryModel.RepositoryID, v1Input)
+				updatedRepository, updateErr := s.gitV1Repository.GitHubUpdateRepository(ctx, existingRepositoryModel.RepositoryID, v1Input)
 				if updateErr != nil {
 					log.WithFields(f).WithError(updateErr).Warnf("unable to update GitHub repository with name: %s, id: %s, using input: %+v", utils.StringValue(ghRepo.FullName), existingRepositoryModel.RepositoryID, v1Input)
 					return nil, updateErr
@@ -210,7 +228,7 @@ func (s *service) AddGithubRepositories(ctx context.Context, projectSFID string,
 				RepositoryURL:              ghRepo.HTMLURL,
 			}
 
-			addedModel, addErr := s.repo.AddGithubRepository(ctx, parentProjectSFID, projectSFID, in)
+			addedModel, addErr := s.gitV1Repository.GitHubAddRepository(ctx, parentProjectSFID, projectSFID, in)
 			if addErr != nil {
 				log.WithFields(f).WithError(addErr).Warnf("unable to add github repository: %s for project: %s", *ghRepo.FullName, projectSFID)
 				return nil, addErr
@@ -224,17 +242,20 @@ func (s *service) AddGithubRepositories(ctx context.Context, projectSFID string,
 	return response, nil
 }
 
-func (s *service) EnableRepository(ctx context.Context, repositoryID string) error {
-	return s.repo.EnableRepository(ctx, repositoryID)
+// GitHubEnableRepository service function
+func (s *Service) GitHubEnableRepository(ctx context.Context, repositoryID string) error {
+	return s.gitV1Repository.GitHubEnableRepository(ctx, repositoryID)
 }
 
-func (s *service) DisableRepository(ctx context.Context, repositoryID string) error {
-	return s.repo.DisableRepository(ctx, repositoryID)
+// GitHubDisableRepository service function
+func (s *Service) GitHubDisableRepository(ctx context.Context, repositoryID string) error {
+	return s.gitV1Repository.GitHubDisableRepository(ctx, repositoryID)
 }
 
-func (s *service) ListProjectRepositories(ctx context.Context, projectSFID string) (*v1Models.ListGithubRepositories, error) {
+// GitHubListProjectRepositories service function
+func (s *Service) GitHubListProjectRepositories(ctx context.Context, projectSFID string) (*v1Models.GithubListRepositories, error) {
 	f := logrus.Fields{
-		"functionName":   "v2.repositories.service.ListProjectRepositories",
+		"functionName":   "v2.repositories.service.GitHubListProjectRepositories",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 	}
@@ -256,7 +277,7 @@ func (s *service) ListProjectRepositories(ctx context.Context, projectSFID strin
 	}
 	log.WithFields(f).Debug("loaded project from the project service")
 	enabled := true
-	return s.repo.ListProjectRepositories(ctx, projectSFID, &enabled)
+	return s.gitV1Repository.GitHubListProjectRepositories(ctx, projectSFID, &enabled)
 
 	//// Lookup orgs via projectSFID
 	//log.WithFields(f).Debug("querying EasyCLA for organizations by project id...")
@@ -276,7 +297,7 @@ func (s *service) ListProjectRepositories(ctx context.Context, projectSFID strin
 	//}
 	//
 	//// Our response - empty to start with
-	//response := &v1Models.ListGithubRepositories{
+	//response := &v1Models.GithubListRepositories{
 	//	List: []*v1Models.GithubRepository{},
 	//}
 	//
@@ -313,7 +334,7 @@ func (s *service) ListProjectRepositories(ctx context.Context, projectSFID strin
 	//}
 	//
 	//// Now, query our DB....
-	//listOurGitHubRepos, err := s.repo.ListProjectRepositories(ctx, "", projectSFID, true)
+	//listOurGitHubRepos, err := s.gitV1Repository.GitHubListProjectRepositories(ctx, "", projectSFID, true)
 	//if err != nil {
 	//	log.WithFields(f).WithError(err).Warn("unable to lookup repository records by id in our repositories table ")
 	//	return response, err
@@ -323,7 +344,7 @@ func (s *service) ListProjectRepositories(ctx context.Context, projectSFID strin
 	//	return response, err
 	//}
 	//
-	//// For each repo that we have...
+	//// For each gitV1Repository that we have...
 	//for _, ourGitHubRepo := range listOurGitHubRepos.List {
 	//	// Inefficient, but ok if the number of repos is relatively small
 	//	for _, r := range response.List {
@@ -343,17 +364,20 @@ func (s *service) ListProjectRepositories(ctx context.Context, projectSFID strin
 	//return response, nil
 }
 
-func (s *service) GetRepository(ctx context.Context, repositoryID string) (*v1Models.GithubRepository, error) {
-	return s.repo.GetRepository(ctx, repositoryID)
+// GitHubGetRepository service function
+func (s *Service) GitHubGetRepository(ctx context.Context, repositoryID string) (*v1Models.GithubRepository, error) {
+	return s.gitV1Repository.GitHubGetRepository(ctx, repositoryID)
 }
 
-func (s *service) GetRepositoryByName(ctx context.Context, repositoryName string) (*v1Models.GithubRepository, error) {
-	return s.repo.GetRepositoryByName(ctx, repositoryName)
+// GitHubGetRepositoryByName service function
+func (s *Service) GitHubGetRepositoryByName(ctx context.Context, repositoryName string) (*v1Models.GithubRepository, error) {
+	return s.gitV1Repository.GitHubGetRepositoryByName(ctx, repositoryName)
 }
 
-func (s *service) GetProtectedBranch(ctx context.Context, projectSFID, repositoryID, branchName string) (*v2Models.GithubRepositoryBranchProtection, error) {
+// GitHubGetProtectedBranch service function
+func (s *Service) GitHubGetProtectedBranch(ctx context.Context, projectSFID, repositoryID, branchName string) (*v2Models.GithubRepositoryBranchProtection, error) {
 	f := logrus.Fields{
-		"functionName":   "v2.repositories.service.GetProtectedBranch",
+		"functionName":   "v2.repositories.service.GitHubGetProtectedBranch",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 		"repositoryID":   repositoryID,
@@ -389,7 +413,7 @@ func (s *service) GetProtectedBranch(ctx context.Context, projectSFID, repositor
 		if errors.Is(err, branch_protection.ErrBranchNotProtected) {
 			return result, nil
 		}
-		log.WithFields(f).WithError(err).Warnf("getting the github protected branch for owner : %s, repo : %s and branch : %s failed : %v", owner, githubRepoName, branchName, err)
+		log.WithFields(f).WithError(err).Warnf("getting the github protected branch for owner : %s, gitV1Repository : %s and branch : %s failed : %v", owner, githubRepoName, branchName, err)
 		return nil, err
 	}
 
@@ -405,9 +429,10 @@ func (s *service) GetProtectedBranch(ctx context.Context, projectSFID, repositor
 	return result, nil
 }
 
-func (s *service) UpdateProtectedBranch(ctx context.Context, projectSFID, repositoryID string, input *v2Models.GithubRepositoryBranchProtectionInput) (*v2Models.GithubRepositoryBranchProtection, error) {
+// GitHubUpdateProtectedBranch service function
+func (s *Service) GitHubUpdateProtectedBranch(ctx context.Context, projectSFID, repositoryID string, input *v2Models.GithubRepositoryBranchProtectionInput) (*v2Models.GithubRepositoryBranchProtection, error) {
 	f := logrus.Fields{
-		"functionName":   "v2.repositories.service.UpdateProtectedBranch",
+		"functionName":   "v2.repositories.service.GitHubUpdateProtectedBranch",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 		"repositoryID":   repositoryID,
@@ -477,10 +502,11 @@ func (s *service) UpdateProtectedBranch(ctx context.Context, projectSFID, reposi
 		return nil, err
 	}
 
-	return s.GetProtectedBranch(ctx, projectSFID, repositoryID, branchName)
+	return s.GitHubGetProtectedBranch(ctx, projectSFID, repositoryID, branchName)
 }
 
-func (s *service) getGithubRepo(ctx context.Context, projectSFID, repositoryID string) (*v1Models.GithubRepository, error) {
+// getGithubRepo service function
+func (s *Service) getGithubRepo(ctx context.Context, projectSFID, repositoryID string) (*v1Models.GithubRepository, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.repositories.service.getGitHubRepo",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -493,14 +519,14 @@ func (s *service) getGithubRepo(ctx context.Context, projectSFID, repositoryID s
 	if err != nil {
 		return nil, err
 	}
-	githubRepository, err := s.GetRepository(ctx, repositoryID)
+	githubRepository, err := s.GitHubGetRepository(ctx, repositoryID)
 	if err != nil {
 		log.WithFields(f).Warnf("fetching repository failed : %s : %v", repositoryID, err)
 		return nil, err
 	}
 
-	// check if project and repo are actually associated
-	if githubRepository.ProjectSFID != projectSFID {
+	// check if project and gitV1Repository are actually associated
+	if githubRepository.RepositoryProjectSfid != projectSFID {
 		msg := fmt.Sprintf("github repository %s doesn't belong to project : %s", repositoryID, projectSFID)
 		log.WithFields(f).Warn(msg)
 		return nil, errors.New(msg)
@@ -509,7 +535,8 @@ func (s *service) getGithubRepo(ctx context.Context, projectSFID, repositoryID s
 	return githubRepository, nil
 }
 
-func (s *service) getBranchProtectionRepositoryForOrgName(ctx context.Context, githubOrgName string) (*branch_protection.BranchProtectionRepository, error) {
+// getBranchProtectionRepositoryForOrgName service function
+func (s *Service) getBranchProtectionRepositoryForOrgName(ctx context.Context, githubOrgName string) (*branch_protection.BranchProtectionRepository, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.repositories.service.getGitHubClientForOrgName",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -529,22 +556,23 @@ func (s *service) getBranchProtectionRepositoryForOrgName(ctx context.Context, g
 	return branchProtectionRepo, nil
 }
 
-func (s *service) getGithubOwner(ctx context.Context, branchProtectionRepository *branch_protection.BranchProtectionRepository, githubOrgName, githubRepoName string) (string, error) {
+// getGithubOwner service function
+func (s *Service) getGithubOwner(ctx context.Context, branchProtectionRepository *branch_protection.BranchProtectionRepository, githubOrgName, githubRepoName string) (string, error) {
 	owner, err := branchProtectionRepository.GetOwnerName(ctx, githubOrgName, githubRepoName)
 	if err != nil {
-		log.Warnf("getting the owner name for org : %s and repo : %s failed : %v", githubOrgName, githubRepoName, err)
+		log.Warnf("getting the owner name for org : %s and gitV1Repository : %s failed : %v", githubOrgName, githubRepoName, err)
 		return "", err
 	}
 
 	if owner == "" {
-		log.Warnf("GitHub returned empty owner name for org : %s and repo : %s", githubOrgName, githubRepoName)
+		log.Warnf("GitHub returned empty owner name for org : %s and gitV1Repository : %s", githubOrgName, githubRepoName)
 		return "", fmt.Errorf("empty owner name")
 	}
 	return owner, nil
 }
 
-// getRequiredProtectedBranchCheckStatus
-func (s *service) getRequiredProtectedBranchCheckStatus(branchProtectionRule *branch_protection.BranchProtectionRule, requiredChecks []string) []*v2Models.GithubRepositoryBranchProtectionStatusChecks {
+// getRequiredProtectedBranchCheckStatus service function to get the required protected branch check status
+func (s *Service) getRequiredProtectedBranchCheckStatus(branchProtectionRule *branch_protection.BranchProtectionRule, requiredChecks []string) []*v2Models.GithubRepositoryBranchProtectionStatusChecks {
 	f := logrus.Fields{
 		"functionName": "v2.repositories.service.getRequiredProtectedBranchCheckStatus",
 	}
@@ -578,15 +606,16 @@ func (s *service) getRequiredProtectedBranchCheckStatus(branchProtectionRule *br
 	return result
 }
 
-func (s *service) DisableCLAGroupRepositories(ctx context.Context, claGroupID string) error {
+// GitHubDisableCLAGroupRepositories service function to disable CLA group repositories
+func (s *Service) GitHubDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error {
 	f := logrus.Fields{
-		"functionName":   "v2.repositories.service.DisableCLAGroupRepositories",
+		"functionName":   "v2.repositories.service.GitHubDisableCLAGroupRepositories",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 	}
 
 	var deleteErr error
-	ghOrgs, err := s.repo.GetCLAGroupRepositoriesGroupByOrgs(ctx, claGroupID, true)
+	ghOrgs, err := s.gitV1Repository.GitHubGetCLAGroupRepositoriesGroupByOrgs(ctx, claGroupID, true)
 	if err != nil {
 		return err
 	}
@@ -594,7 +623,7 @@ func (s *service) DisableCLAGroupRepositories(ctx context.Context, claGroupID st
 		log.WithFields(f).Debugf("Deleting repositories for cla-group :%s", claGroupID)
 		for _, ghOrg := range ghOrgs {
 			for _, item := range ghOrg.List {
-				deleteErr = s.repo.DisableRepository(ctx, item.RepositoryID)
+				deleteErr = s.gitV1Repository.GitHubDisableRepository(ctx, item.RepositoryID)
 				if deleteErr != nil {
 					log.WithFields(f).Warnf("Unable to remove repository: %s for project :%s error :%v", item.RepositoryID, claGroupID, deleteErr)
 				}

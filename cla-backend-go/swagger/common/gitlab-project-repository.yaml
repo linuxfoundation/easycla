@@ -1,0 +1,41 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+description: GitLab Project Repository
+properties:
+  repository_id:
+    description: Repository Internal ID
+    $ref: './common/properties/internal-id.yaml'
+    x-omitempty: false
+  repository_gitlab_id:
+    type: integer
+    description: 'Repository GitLab ID value'
+    minimum: 1
+    example: 2292
+  repository_name:
+    type: string
+    description: 'GitLab Repository/Project name'
+    x-omitempty: false
+  cla_group_id:
+    description: CLA Group ID
+    $ref: './common/properties/internal-id.yaml'
+    x-omitempty: false
+  project_id:
+    description: Project SFID
+    $ref: './common/properties/external-id.yaml'
+    x-omitempty: false
+  parent_project_id:
+    description: Parent Project SFID
+    $ref: './common/properties/external-id.yaml'
+    x-omitempty: false
+  enabled:
+    type: boolean
+    description: 'Enabled flag'
+    x-omitempty: false
+  connection_status:
+    type: string
+    description: 'Connection status for the repository, one of the supported values connected or connection_failure'
+    enum:
+      - connected
+      - connection_failure

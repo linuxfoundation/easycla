@@ -268,6 +268,34 @@ func (e *CompanyNotFound) Unwrap() error {
 	return e.Err
 }
 
+// InvalidRepositoryTypeError is an error model for an invalid repository type
+type InvalidRepositoryTypeError struct {
+	RepositoryType string
+	RepositoryName string
+	Err            error
+}
+
+// Error is an error string function for the InvalidRepositoryTypeError model
+func (e *InvalidRepositoryTypeError) Error() string {
+	msg := "Invalid repository type"
+	if e.RepositoryType != "" {
+		msg = fmt.Sprintf("%s - type: %s ", msg, e.RepositoryType)
+	}
+	if e.RepositoryName != "" {
+		msg = fmt.Sprintf("%s - repository: %s ", msg, e.RepositoryName)
+	}
+	if e.Err != nil {
+		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())
+	}
+
+	return strings.TrimSpace(msg)
+}
+
+// Unwrap method returns its contained error
+func (e *InvalidRepositoryTypeError) Unwrap() error {
+	return e.Err
+}
+
 // GitHubRepositoryNotFound is an error model for a GitHub repository not found
 type GitHubRepositoryNotFound struct {
 	Message        string
@@ -321,6 +349,98 @@ func (e *GitHubRepositoryExists) Error() string {
 
 // Unwrap method returns its contained error
 func (e *GitHubRepositoryExists) Unwrap() error {
+	return e.Err
+}
+
+// GitLabRepositoryNotFound is an error model for a GitLab repository not found
+type GitLabRepositoryNotFound struct {
+	Message        string
+	RepositoryName string
+	ProjectSFID    string
+	CLAGroupID     string
+	Err            error
+}
+
+// Error is an error string function for the GitHubRepositoryNotFound model
+func (e *GitLabRepositoryNotFound) Error() string {
+	msg := GitLabRepoNotFound
+	if e.Message != "" {
+		msg = e.Message
+	}
+	if e.RepositoryName != "" {
+		msg = fmt.Sprintf("%s - repository: %s ", msg, e.RepositoryName)
+	}
+	if e.ProjectSFID != "" {
+		msg = fmt.Sprintf("%s - project SFID: %s ", msg, e.ProjectSFID)
+	}
+	if e.CLAGroupID != "" {
+		msg = fmt.Sprintf("%s - CLA Group ID: %s ", msg, e.CLAGroupID)
+	}
+	if e.Err != nil {
+		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())
+	}
+
+	return strings.TrimSpace(msg)
+}
+
+// Unwrap method returns its contained error
+func (e *GitLabRepositoryNotFound) Unwrap() error {
+	return e.Err
+}
+
+// GitLabDuplicateRepositoriesFound is an error model for a GitLab duplicate repositories found
+type GitLabDuplicateRepositoriesFound struct {
+	Message        string
+	RepositoryName string
+	Err            error
+}
+
+// Error is an error string function for the GitLabDuplicateRepositoriesFound model
+func (e *GitLabDuplicateRepositoriesFound) Error() string {
+	msg := GitLabDuplicateRepoFound
+	if e.Message != "" {
+		msg = e.Message
+	}
+	if e.RepositoryName != "" {
+		msg = fmt.Sprintf("%s - repository: %s ", msg, e.RepositoryName)
+	}
+	if e.Err != nil {
+		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())
+	}
+
+	return strings.TrimSpace(msg)
+}
+
+// Unwrap method returns its contained error
+func (e *GitLabDuplicateRepositoriesFound) Unwrap() error {
+	return e.Err
+}
+
+// GitLabRepositoryExists is an error model for when a GitHub repository already exists
+type GitLabRepositoryExists struct {
+	Message        string
+	RepositoryName string
+	Err            error
+}
+
+// Error is an error string function for the GitLabRepositoryExists model
+func (e *GitLabRepositoryExists) Error() string {
+	msg := GitLabRepoNotFound
+	if e.Message != "" {
+		msg = e.Message
+	}
+	if e.RepositoryName != "" {
+		msg = fmt.Sprintf("%s - repository: %s ", msg, e.RepositoryName)
+	}
+	if e.Err != nil {
+		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())
+	}
+
+	return strings.TrimSpace(msg)
+}
+
+// Unwrap method returns its contained error
+func (e *GitLabRepositoryExists) Unwrap() error {
 	return e.Err
 }
 

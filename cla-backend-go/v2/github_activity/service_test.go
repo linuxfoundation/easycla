@@ -30,7 +30,7 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryRenamedActio
 		GetRepositoryByGithubID(gomock.Any(), "1", true).
 		Return(&models.GithubRepository{
 			Enabled:                    true,
-			RepositoryExternalID:       "1",
+			RepositoryExternalID:       1,
 			RepositoryID:               repoID,
 			RepositoryName:             repoName,
 			RepositoryOrganizationName: "org1",
@@ -109,7 +109,7 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryTransferredA
 				GetRepositoryByGithubID(gomock.Any(), "1", true).
 				Return(&models.GithubRepository{
 					Enabled:                    true,
-					RepositoryExternalID:       "1",
+					RepositoryExternalID:       1,
 					RepositoryID:               repoID,
 					RepositoryName:             repoName,
 					RepositoryOrganizationName: oldOrgName,

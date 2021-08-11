@@ -32,10 +32,10 @@ const (
 
 // RepositoryInterface is interface for gitlab org data model
 type RepositoryInterface interface {
-	AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models2.CreateGitlabOrganization) (*models2.GitlabOrganization, error)
+	AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models2.GitlabCreateOrganization) (*models2.GitlabOrganization, error)
 	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error)
 	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*GitlabOrganization, error)
-	GetGitlabOrganizationByName(ctx context.Context, githubOrganizationName string) (*models2.GitlabOrganizations, error)
+	GetGitlabOrganizationByName(ctx context.Context, githubOrganizationName string) (*models2.GitlabOrganization, error)
 	UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID, authInfo string) error
 	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error
 	DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
@@ -57,13 +57,14 @@ func NewRepository(awsSession *session.Session, stage string) RepositoryInterfac
 	}
 }
 
-func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models2.CreateGitlabOrganization) (*models2.GitlabOrganization, error) {
+func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models2.GitlabCreateOrganization) (*models2.GitlabOrganization, error) {
+	gitLabOrganizationName := utils.StringValue(input.OrganizationName)
 	f := logrus.Fields{
 		"functionName":            "v2.gitlab_organizations.repository.AddGitlabOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
 		"parentProjectSFID":       parentProjectSFID,
 		"projectSFID":             projectSFID,
-		"organizationName":        utils.StringValue(input.OrganizationName),
+		"organizationName":        gitLabOrganizationName,
 		"autoEnabled":             utils.BoolValue(input.AutoEnabled),
 		"branchProtectionEnabled": utils.BoolValue(input.BranchProtectionEnabled),
 	}
@@ -71,19 +72,26 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 	// First, let's check to see if we have an existing gitlab organization with the same name
 	existingRecord, getErr := repo.GetGitlabOrganizationByName(ctx, utils.StringValue(input.OrganizationName))
 	if getErr != nil {
-		log.WithFields(f).WithError(getErr).Debug("unable to locate existing github organization by name")
+		log.WithFields(f).WithError(getErr).Debugf("unable to locate existing GitLab organization by name %s - ok to create a new record", gitLabOrganizationName)
 	}
 
-	if existingRecord != nil && len(existingRecord.List) > 0 {
-		log.WithFields(f).Debugf("Existing github organization exists in our database, count: %d", len(existingRecord.List))
-		if len(existingRecord.List) > 1 {
-			log.WithFields(f).Warning("more than one github organization with the same name in the database")
+	if existingRecord != nil {
+		log.WithFields(f).Debugf("An existing GitLab organization with name %s exists in our database", gitLabOrganizationName)
+		// If everything matches...
+		if projectSFID == existingRecord.ProjectSFID {
+			log.WithFields(f).Debug("Existing github organization with same SFID - should be able to update it")
+			enabledFlag := true
+			updateErr := repo.UpdateGitlabOrganization(ctx, projectSFID, gitLabOrganizationName,
+				utils.BoolValue(input.AutoEnabled), input.AutoEnabledClaGroupID, utils.BoolValue(input.BranchProtectionEnabled), &enabledFlag)
+			if updateErr != nil {
+				return nil, updateErr
+			}
+
+			// Return the updated record
+			return repo.GetGitlabOrganizationByName(ctx, gitLabOrganizationName)
 		}
-		if parentProjectSFID == existingRecord.List[0].OrganizationSfid {
-			log.WithFields(f).Debug("Existing github organization with same parent SFID - should be able to update it")
-		} else {
-			log.WithFields(f).Debug("Existing github organization with different parent SFID - won't be able to update it - will return conflict")
-		}
+
+		log.WithFields(f).Debug("Existing github organization with different project SFID - won't be able to update it - will return conflict")
 		return nil, fmt.Errorf("record already exists")
 	}
 
@@ -146,7 +154,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 	return ToModel(gitlabOrg), nil
 }
 
-// GetGitlabOrganizations get github organizations based on the project SFID
+// GetGitlabOrganizations get GitLab organizations based on the project SFID
 func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.gitlab_organizations.repository.GetGitHubOrganizations",
@@ -202,8 +210,8 @@ func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID s
 	return &models2.GitlabOrganizations{List: gitlabOrgList}, nil
 }
 
-// GetGitlabOrganizationByName get github organization by name
-func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, githubOrganizationName string) (*models2.GitlabOrganizations, error) {
+// GetGitlabOrganizationByName get GitLab organization by name
+func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, githubOrganizationName string) (*models2.GitlabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":           "v1.github_organizations.repository.GetGitHubOrganizationByName",
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
@@ -238,10 +246,9 @@ func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, githubOr
 	}
 	if len(results.Items) == 0 {
 		log.WithFields(f).Debug("Unable to find github organization by name - no results")
-		return &models2.GitlabOrganizations{
-			List: []*models2.GitlabOrganization{},
-		}, nil
+		return nil, nil
 	}
+
 	var resultOutput []*GitlabOrganization
 	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &resultOutput)
 	if err != nil {
@@ -249,8 +256,9 @@ func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, githubOr
 		return nil, err
 	}
 
-	ghOrgList := buildGitlabOrganizationListModels(ctx, resultOutput)
-	return &models2.GitlabOrganizations{List: ghOrgList}, nil
+	log.WithFields(f).Debug("building response model...")
+	gitlabOrgList := buildGitlabOrganizationListModels(ctx, resultOutput)
+	return gitlabOrgList[0], nil
 }
 
 // GetGitlabOrganization by organization name
@@ -357,18 +365,15 @@ func (repo Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID
 	}
 
 	_, currentTime := utils.CurrentTime()
-	gitlabOrgs, lookupErr := repo.GetGitlabOrganizationByName(ctx, organizationName)
+	gitlabOrg, lookupErr := repo.GetGitlabOrganizationByName(ctx, organizationName)
 	if lookupErr != nil {
 		log.WithFields(f).Warnf("error looking up Gitlab organization by name, error: %+v", lookupErr)
 		return lookupErr
 	}
-	if gitlabOrgs == nil || len(gitlabOrgs.List) == 0 {
-		lookupErr := errors.New("unable to lookup Gitlab organization by name")
-		log.WithFields(f).Warnf("error looking up Gitlab organization, error: %+v", lookupErr)
-		return lookupErr
+	if gitlabOrg == nil {
+		log.WithFields(f).Warn("error looking up Gitlab organization - no results")
+		return errors.New("unable to lookup Gitlab organization by name")
 	}
-
-	gitlabOrg := gitlabOrgs.List[0]
 
 	expressionAttributeNames := map[string]*string{
 		"#A": aws.String("auto_enabled"),

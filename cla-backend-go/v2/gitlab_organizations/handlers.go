@@ -37,7 +37,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
 			f := logrus.Fields{
-				"functionName":   "gitlab_organizations.handlers.GitlabOrganizationsGetProjectGitlabOrganizationsHandler",
+				"functionName":   "v2.gitlab_organizations.handlers.GitlabOrganizationsGetProjectGitlabOrganizationsHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"authUser":       authUser.UserName,
 				"authEmail":      authUser.Email,
@@ -77,7 +77,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
 
 			f := logrus.Fields{
-				"functionName":   "Gitlab_organization.handlers.GitlabOrganizationsAddProjectGitlabOrganizationHandler",
+				"functionName":   "v2.gitlab_organizations.handlers.GitlabOrganizationsAddProjectGitlabOrganizationHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"authUser":       authUser.UserName,
 				"authEmail":      authUser.Email,
@@ -183,7 +183,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		f := logrus.Fields{
-			"functionName":   "github_organization.handlers.GithubOrganizationsDeleteProjectGithubOrganizationHandler",
+			"functionName":   "v2.gitlab_organizations.handlers.GithubOrganizationsDeleteProjectGithubOrganizationHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSFID,
 			"orgName":        params.OrgName,

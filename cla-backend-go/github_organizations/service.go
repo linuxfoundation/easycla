@@ -21,7 +21,7 @@ import (
 
 // ServiceInterface contains functions of GithubOrganizations service
 type ServiceInterface interface {
-	AddGitHubOrganization(ctx context.Context, projectSFID string, input *models.CreateGithubOrganization) (*models.GithubOrganization, error)
+	AddGitHubOrganization(ctx context.Context, projectSFID string, input *models.GithubCreateOrganization) (*models.GithubOrganization, error)
 	GetGitHubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error)
 	GetGitHubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error)
 	GetGitHubOrganizationByName(ctx context.Context, githubOrgName string) (*models.GithubOrganization, error)
@@ -33,12 +33,12 @@ type ServiceInterface interface {
 // Service object/struct
 type Service struct {
 	repo          RepositoryInterface
-	ghRepository  repositories.Repository
+	ghRepository  repositories.RepositoryInterface
 	claRepository projects_cla_groups.Repository
 }
 
 // NewService creates a new githubOrganizations service
-func NewService(repo RepositoryInterface, ghRepository repositories.Repository, claRepository projects_cla_groups.Repository) Service {
+func NewService(repo RepositoryInterface, ghRepository repositories.RepositoryInterface, claRepository projects_cla_groups.Repository) Service {
 	return Service{
 		repo:          repo,
 		ghRepository:  ghRepository,
@@ -46,8 +46,8 @@ func NewService(repo RepositoryInterface, ghRepository repositories.Repository, 
 	}
 }
 
-// AddGitHubOrganization adds the github organization for the specified project
-func (s Service) AddGitHubOrganization(ctx context.Context, projectSFID string, input *models.CreateGithubOrganization) (*models.GithubOrganization, error) {
+// AddGitHubOrganization adds the GitHub organization for the specified project
+func (s Service) AddGitHubOrganization(ctx context.Context, projectSFID string, input *models.GithubCreateOrganization) (*models.GithubOrganization, error) {
 	f := logrus.Fields{
 		"functionName":            "AddGitHubOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
@@ -190,7 +190,7 @@ func (s Service) DeleteGitHubOrganization(ctx context.Context, projectSFID strin
 		return projErr
 	}
 
-	err := s.ghRepository.DisableRepositoriesOfGithubOrganization(ctx, parentProjectSFID, githubOrgName)
+	err := s.ghRepository.GitHubDisableRepositoriesOfOrganization(ctx, parentProjectSFID, githubOrgName)
 	if err != nil {
 		log.WithFields(f).Warnf("problem disabling repositories for github organizations, error: %+v", projErr)
 		return err

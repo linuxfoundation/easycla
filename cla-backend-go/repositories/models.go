@@ -3,7 +3,12 @@
 
 package repositories
 
-import "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+import (
+	"strconv"
+
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+)
 
 // RepositoryDBModel represent repositories table
 type RepositoryDBModel struct {
@@ -13,7 +18,7 @@ type RepositoryDBModel struct {
 	RepositoryID               string `dynamodbav:"repository_id" json:"repository_id,omitempty"`
 	RepositoryName             string `dynamodbav:"repository_name" json:"repository_name,omitempty"`
 	RepositoryOrganizationName string `dynamodbav:"repository_organization_name" json:"repository_organization_name,omitempty"`
-	RepositoryProjectID        string `dynamodbav:"repository_project_id" json:"repository_project_id,omitempty"`
+	RepositoryCLAGroupID       string `dynamodbav:"repository_project_id" json:"repository_project_id,omitempty"`
 	RepositorySfdcID           string `dynamodbav:"repository_sfdc_id" json:"repository_sfdc_id,omitempty"`
 	RepositoryType             string `dynamodbav:"repository_type" json:"repository_type,omitempty"`
 	RepositoryURL              string `dynamodbav:"repository_url" json:"repository_url,omitempty"`
@@ -26,25 +31,31 @@ type RepositoryDBModel struct {
 func convertModels(dbModels []*RepositoryDBModel) []*models.GithubRepository {
 	var responseModels []*models.GithubRepository
 	for _, dbModel := range dbModels {
-		responseModels = append(responseModels, dbModel.toModel())
+		responseModels = append(responseModels, dbModel.ToGitHubModel())
 
 	}
 	return responseModels
 }
 
-func (gr *RepositoryDBModel) toModel() *models.GithubRepository {
+// ToGitHubModel returns the database model to a GitHub repository model suitable for marshalling to the client
+func (gr *RepositoryDBModel) ToGitHubModel() *models.GithubRepository {
+	gitLabExternalID, err := strconv.ParseInt(gr.RepositoryExternalID, 10, 64)
+	if err != nil {
+		log.WithError(err).Warnf("unable to convert repository external ID to an int64 value: %s", gr.RepositoryExternalID)
+		return nil
+	}
+
 	return &models.GithubRepository{
 		DateCreated:                gr.DateCreated,
 		DateModified:               gr.DateModified,
-		RepositoryExternalID:       gr.RepositoryExternalID,
+		RepositoryExternalID:       gitLabExternalID,
 		RepositoryID:               gr.RepositoryID,
 		RepositoryName:             gr.RepositoryName,
 		RepositoryOrganizationName: gr.RepositoryOrganizationName,
-		RepositoryProjectID:        gr.RepositoryProjectID,
-		RepositorySfdcID:           gr.RepositorySfdcID,
+		RepositoryProjectSfid:      gr.RepositorySfdcID,
 		RepositoryType:             gr.RepositoryType,
 		RepositoryURL:              gr.RepositoryURL,
-		ProjectSFID:                gr.ProjectSFID,
+		RepositoryClaGroupID:       gr.RepositoryCLAGroupID,
 		Enabled:                    gr.Enabled,
 		Note:                       gr.Note,
 		Version:                    gr.Version,

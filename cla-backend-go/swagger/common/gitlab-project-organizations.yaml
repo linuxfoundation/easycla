@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 type: object
-description: GitLab Organizations
+description: GitLab Project Organizations
 properties:
   list:
     type: array
     items:
-      $ref: '#/definitions/gitlab-organization'
+      $ref: '#/definitions/gitlab-project-organization'

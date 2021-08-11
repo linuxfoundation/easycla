@@ -60,7 +60,7 @@ type ProjectRepository interface { //nolint
 }
 
 // NewRepository creates instance of project repository
-func NewRepository(awsSession *session.Session, stage string, ghRepo repositories.Repository, gerritRepo gerrits.Repository, projectClaGroupRepo projects_cla_groups.Repository) ProjectRepository {
+func NewRepository(awsSession *session.Session, stage string, ghRepo repositories.RepositoryInterface, gerritRepo gerrits.Repository, projectClaGroupRepo projects_cla_groups.Repository) ProjectRepository {
 	return &repo{
 		dynamoDBClient:      dynamodb.New(awsSession),
 		stage:               stage,
@@ -74,7 +74,7 @@ func NewRepository(awsSession *session.Session, stage string, ghRepo repositorie
 type repo struct {
 	stage               string
 	dynamoDBClient      *dynamodb.DynamoDB
-	ghRepo              repositories.Repository
+	ghRepo              repositories.RepositoryInterface
 	gerritRepo          gerrits.Repository
 	projectClaGroupRepo projects_cla_groups.Repository
 	claGroupTable       string
@@ -856,7 +856,7 @@ func (repo *repo) buildCLAGroupModel(ctx context.Context, dbModel DBProjectModel
 			go func() {
 				defer wg.Done()
 				var err error
-				ghOrgs, err = repo.ghRepo.GetCLAGroupRepositoriesGroupByOrgs(ctx, dbModel.ProjectID, true)
+				ghOrgs, err = repo.ghRepo.GitHubGetCLAGroupRepositoriesGroupByOrgs(ctx, dbModel.ProjectID, true)
 				if err != nil {
 					log.Warnf("buildPCLAGroupModel - unable to load GH organizations by project ID: %s, error: %+v",
 						dbModel.ProjectID, err)

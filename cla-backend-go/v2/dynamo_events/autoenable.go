@@ -40,14 +40,14 @@ type AutoEnableService interface {
 
 // NewAutoEnableService creates a new AutoEnableService
 func NewAutoEnableService(repositoryService repositories.Service,
-	githubRepo repositories.Repository,
+	githubRepo repositories.RepositoryInterface,
 	githubOrgRepo github_organizations.RepositoryInterface,
 	claRepository projects_cla_groups.Repository,
 	claService project.Service,
 ) AutoEnableService {
 	return &autoEnableServiceProvider{
 		repositoryService: repositoryService,
-		githubRepo:        githubRepo,
+		gitV1Repository:   githubRepo,
 		githubOrgRepo:     githubOrgRepo,
 		claRepository:     claRepository,
 		claService:        claService,
@@ -58,7 +58,7 @@ func NewAutoEnableService(repositoryService repositories.Service,
 // having it separated in its own struct makes testing easier.
 type autoEnableServiceProvider struct {
 	repositoryService repositories.Service
-	githubRepo        repositories.Repository
+	gitV1Repository   repositories.RepositoryInterface
 	githubOrgRepo     github_organizations.RepositoryInterface
 	claRepository     projects_cla_groups.Repository
 	claService        project.Service
@@ -119,7 +119,7 @@ func (a *autoEnableServiceProvider) CreateAutoEnabledRepository(repo *github.Rep
 
 	externalProjectID := claGroupModel.ProjectExternalID
 
-	repoModel, err := a.githubRepo.AddGithubRepository(ctx, externalProjectID, projectSFID, &models.GithubRepositoryInput{
+	repoModel, err := a.gitV1Repository.GitHubAddRepository(ctx, externalProjectID, projectSFID, &models.GithubRepositoryInput{
 		RepositoryProjectID:        swag.String(claGroupID),
 		RepositoryName:             swag.String(repositoryFullName),
 		RepositoryType:             swag.String("github"),
@@ -161,11 +161,11 @@ func (a *autoEnableServiceProvider) AutoEnabledForGithubOrg(f logrus.Fields, git
 	}
 
 	for _, repo := range repos.List {
-		if repo.RepositoryProjectID == claGroupID {
+		if repo.RepositoryClaGroupID == claGroupID {
 			continue
 		}
 
-		repo.RepositoryProjectID = claGroupID
+		repo.RepositoryClaGroupID = claGroupID
 		if err := a.repositoryService.UpdateClaGroupID(context.Background(), repo.RepositoryID, claGroupID); err != nil {
 			log.WithFields(f).Warnf("updating claGroupID for repository : %s failed : %v", repo.RepositoryID, err)
 			return err
@@ -278,7 +278,7 @@ See: GitHub CombinedRepository -> Settings -> Branches -> Branch Protection Rule
 
 // DetermineClaGroupID checks if AutoEnabledClaGroupID is set then returns it (high precedence) otherwise tries to determine
 // the autoEnabled claGroupID by guessing from existing repos
-func DetermineClaGroupID(f logrus.Fields, gitHubOrg *models.GithubOrganization, repos *models.ListGithubRepositories) (string, error) {
+func DetermineClaGroupID(f logrus.Fields, gitHubOrg *models.GithubOrganization, repos *models.GithubListRepositories) (string, error) {
 	if gitHubOrg.AutoEnabledClaGroupID != "" {
 		return gitHubOrg.AutoEnabledClaGroupID, nil
 	}
@@ -289,12 +289,12 @@ func DetermineClaGroupID(f logrus.Fields, gitHubOrg *models.GithubOrganization, 
 	// check if any of the repos is member to more than one cla group, in general shouldn't happen
 	var claGroupID string
 	for _, repo := range repos.List {
-		if repo.RepositoryProjectID == "" || repo.ProjectSFID == "" {
+		if repo.RepositoryClaGroupID == "" || repo.RepositoryProjectSfid == "" {
 			continue
 		}
-		claGroupSet[repo.RepositoryProjectID] = true
-		sfidSet[repo.ProjectSFID] = true
-		claGroupID = repo.RepositoryProjectID
+		claGroupID = repo.RepositoryClaGroupID
+		claGroupSet[repo.RepositoryClaGroupID] = true
+		sfidSet[repo.RepositoryProjectSfid] = true
 	}
 
 	if len(claGroupSet) == 0 && len(sfidSet) == 0 {

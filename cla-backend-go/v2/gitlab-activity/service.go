@@ -7,11 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	signatures1 "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/communitybridge/easycla/cla-backend-go/company"
+	signatures1 "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
@@ -21,6 +22,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
+	gitV2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -35,19 +37,21 @@ type Service interface {
 type service struct {
 	usersRepository             users.UserRepository
 	gitlabRepository            gitlab_organizations.RepositoryInterface
-	githubRepositories          repositories.Repository
+	gitRepository               repositories.RepositoryInterface
+	gitV2Repository             gitV2Repositories.RepositoryInterface
 	signaturesRepository        signatures.SignatureRepository
 	projectsCLAGroupsRepository projects_cla_groups.Repository
 	companyRepository           company.IRepository
 	signatureRepository         signatures.SignatureRepository
 }
 
-func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, githubRepositories repositories.Repository, usersRepository users.UserRepository, signaturesRepository signatures.SignatureRepository, projectsCLAGroupsRepository projects_cla_groups.Repository,
+func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRepository repositories.RepositoryInterface, gitV2Repository gitV2Repositories.RepositoryInterface, usersRepository users.UserRepository, signaturesRepository signatures.SignatureRepository, projectsCLAGroupsRepository projects_cla_groups.Repository,
 	companyRepository company.IRepository, signatureRepository signatures.SignatureRepository) Service {
 	return &service{
-		usersRepository:             usersRepository,
 		gitlabRepository:            gitlabRepository,
-		githubRepositories:          githubRepositories,
+		gitRepository:               gitRepository,
+		gitV2Repository:             gitV2Repository,
+		usersRepository:             usersRepository,
 		signaturesRepository:        signaturesRepository,
 		projectsCLAGroupsRepository: projectsCLAGroupsRepository,
 		companyRepository:           companyRepository,
@@ -156,42 +160,32 @@ func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeE
 	repositoryPath := mergeEvent.Project.PathWithNamespace
 	parts := strings.Split(repositoryPath, "/")
 	organizationName := parts[0]
+
 	gitlabOrgs, err := s.gitlabRepository.GetGitlabOrganizationByName(ctx, organizationName)
-	if err != nil || len(gitlabOrgs.List) == 0 {
+	if err != nil || gitlabOrgs == nil {
 		// try getting it with project name as well
 		gitlabOrgs, err = s.gitlabRepository.GetGitlabOrganizationByName(ctx, mergeEvent.Project.Namespace)
-		if err != nil {
+		if err != nil || gitlabOrgs == nil {
 			return nil, fmt.Errorf("gitlab org : %s doesn't exist : %v", organizationName, err)
 		}
 	}
 
-	if len(gitlabOrgs.List) == 0 {
-		return nil, fmt.Errorf("gitlab org : %s doesn't exist", organizationName)
-	}
-
-	orgID := gitlabOrgs.List[0].OrganizationID
-	gitlabOrg, err := s.gitlabRepository.GetGitlabOrganization(ctx, orgID)
+	gitlabOrg, err := s.gitlabRepository.GetGitlabOrganization(ctx, gitlabOrgs.OrganizationID)
 	if err != nil {
-		return nil, fmt.Errorf("fetching gitlab org : %s failed : %v", orgID, err)
+		return nil, fmt.Errorf("fetching gitlab org : %s failed : %v", gitlabOrgs.OrganizationID, err)
 	}
 
 	return gitlabOrg, nil
 }
 
 func (s service) getGitlabRepoByExternalID(ctx context.Context, orgName, gitlabRepoID string) (*models.GithubRepository, error) {
-	gitlabRepos, err := s.githubRepositories.GetRepositoriesByOrganizationName(ctx, orgName)
-	if err != nil {
-		return nil, fmt.Errorf("fetching gitlab repo for external id : %s, orgName : %s, failed : %v", gitlabRepoID, orgName, err)
+	gitlabRepo, err := s.gitV2Repository.GitLabGetRepositoryByName(ctx, orgName)
+	if err != nil || gitlabRepo == nil {
+		return nil, fmt.Errorf("unable to locate GitLab repo for external id : %s, orgName : %s, failed : %v", gitlabRepoID, orgName, err)
 	}
 
-	if len(gitlabRepos) == 0 {
-		return nil, fmt.Errorf("no repositories found for orgName : %s", orgName)
-	}
-
-	for _, gitlabRepo := range gitlabRepos {
-		if gitlabRepo.RepositoryExternalID == gitlabRepoID && gitlabRepo.RepositoryType == "gitlab" {
-			return gitlabRepo, nil
-		}
+	if gitlabRepo.RepositoryExternalID == gitlabRepoID && gitlabRepo.RepositoryType == "gitlab" {
+		return gitlabRepo.ToGitHubModel(), nil
 	}
 
 	return nil, fmt.Errorf("no repositories found for orgName : %s and gitlab external id : %s", orgName, gitlabRepoID)

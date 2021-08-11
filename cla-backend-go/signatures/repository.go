@@ -107,14 +107,14 @@ type repository struct {
 	companyRepo        company.IRepository
 	usersRepo          users.UserRepository
 	eventsService      events.Service
-	repositoriesRepo   repositories.Repository
+	repositoriesRepo   repositories.RepositoryInterface
 	ghOrgRepo          github_organizations.RepositoryInterface
 	gerritService      gerrits.Service
 	signatureTableName string
 }
 
 // NewRepository creates a new instance of the signature repository service
-func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service, repositoriesRepo repositories.Repository, ghOrgRepo github_organizations.RepositoryInterface, gerritService gerrits.Service) SignatureRepository {
+func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service, repositoriesRepo repositories.RepositoryInterface, ghOrgRepo github_organizations.RepositoryInterface, gerritService gerrits.Service) SignatureRepository {
 	return repository{
 		stage:              stage,
 		dynamoDBClient:     dynamodb.New(awsSession),
@@ -2457,7 +2457,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			approvalList.Action = utils.RemoveApprovals
 			approvalList.Version = claGroupModel.Version
 			// Get repositories by CLAGroup
-			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GetRepositoriesByCLAGroup(ctx, projectID, true)
+			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GitHubGetRepositoriesByCLAGroup(ctx, projectID, true)
 			if getRepoByCLAGroupErr != nil {
 				msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
 				log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)
@@ -2609,7 +2609,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			approvalList.Action = utils.RemoveApprovals
 			approvalList.Version = claGroupModel.Version
 			// Get repositories by CLAGroup
-			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GetRepositoriesByCLAGroup(ctx, projectID, true)
+			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GitHubGetRepositoriesByCLAGroup(ctx, projectID, true)
 			if getRepoByCLAGroupErr != nil {
 				msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
 				log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)

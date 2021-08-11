@@ -81,7 +81,7 @@ func (s service) fillRepoInfo(ctx context.Context, project *models.ClaGroup) {
 	go func() {
 		defer wg.Done()
 		var err error
-		ghrepos, err = s.repositoriesRepo.GetCLAGroupRepositoriesGroupByOrgs(ctx, project.ProjectID, true)
+		ghrepos, err = s.repositoriesRepo.GitHubGetCLAGroupRepositoriesGroupByOrgs(ctx, project.ProjectID, true)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get github repositories for cla group ID: %s", project.ProjectID)
 			return

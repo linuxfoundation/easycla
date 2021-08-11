@@ -144,6 +144,27 @@ const GitHubEmailLabel = "GitHub Email Address"
 //GitHubUserLabel represents the GH username Label used for email
 const GitHubUserLabel = "GitHub Username"
 
+// GitLab is the GitLab spelled out with the proper case
+const GitLab = "GitLab"
+
+// GitLabLower is the GitLab spelled out in lower case
+const GitLabLower = "gitlab"
+
+//GitLabRepoNotFound is a string that indicates the GitLab repository is not found
+const GitLabRepoNotFound = "GitLab repository not found"
+
+//GitLabDuplicateRepoFound is a string that indicates that duplicate GitLab repositories were found
+const GitLabDuplicateRepoFound = "Duplicate GitLab repositories were found"
+
+//GitLabRepoExists  is a string that indicates the GitLab repository already exists
+const GitLabRepoExists = "GitLab repository exists"
+
+//GitLabEmailLabel represents the GitLab Email label used for email
+const GitLabEmailLabel = "GitLab Email Address"
+
+//GitLabUserLabel represents the GitLab username Label used for email
+const GitLabUserLabel = "GitLab Username"
+
 //EmailLabel represents LF/EasyCLA Email address
 const EmailLabel = "Email Address"
 

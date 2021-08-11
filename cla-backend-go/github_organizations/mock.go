@@ -40,7 +40,7 @@ func (m *MockRepository) EXPECT() *MockRepositoryMockRecorder {
 }
 
 // AddGitHubOrganization mocks base method
-func (m *MockRepository) AddGitHubOrganization(arg0 context.Context, arg1, arg2 string, arg3 *models.CreateGithubOrganization) (*models.GithubOrganization, error) {
+func (m *MockRepository) AddGitHubOrganization(arg0 context.Context, arg1, arg2 string, arg3 *models.GithubCreateOrganization) (*models.GithubOrganization, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddGitHubOrganization", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*models.GithubOrganization)

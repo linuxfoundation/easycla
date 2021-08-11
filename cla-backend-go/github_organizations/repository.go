@@ -37,7 +37,7 @@ var (
 
 // RepositoryInterface interface defines the functions for the github organizations data model
 type RepositoryInterface interface {
-	AddGitHubOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models.CreateGithubOrganization) (*models.GithubOrganization, error)
+	AddGitHubOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models.GithubCreateOrganization) (*models.GithubOrganization, error)
 	GetGitHubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error)
 	GetGitHubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error)
 	GetGitHubOrganization(ctx context.Context, githubOrganizationName string) (*models.GithubOrganization, error)
@@ -64,7 +64,7 @@ func NewRepository(awsSession *session.Session, stage string) Repository {
 }
 
 // AddGitHubOrganization add github organization logic
-func (repo Repository) AddGitHubOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models.CreateGithubOrganization) (*models.GithubOrganization, error) {
+func (repo Repository) AddGitHubOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models.GithubCreateOrganization) (*models.GithubOrganization, error) {
 	f := logrus.Fields{
 		"functionName":            "v1.github_organizations.repository.AddGitHubOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
