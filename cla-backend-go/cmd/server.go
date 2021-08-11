@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 
+	gitlab_activity "github.com/communitybridge/easycla/cla-backend-go/v2/gitlab-activity"
+
 	"github.com/go-openapi/strfmt"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
@@ -302,6 +304,7 @@ func server(localMode bool) http.Handler {
 	v2MetricsService := metrics.NewService(metricsRepo, v1ProjectClaGroupRepo)
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, repositoriesRepo, v1ProjectClaGroupRepo)
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v1ProjectClaGroupRepo)
+	gitlabActivityService := gitlab_activity.NewService(gitlabOrganizationRepo, repositoriesRepo, usersRepo, signaturesRepo, v1ProjectClaGroupRepo, v1CompanyRepo, signaturesRepo)
 	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, repositoriesRepo, v1ProjectClaGroupRepo, githubOrganizationsService)
 	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, repositoriesRepo, githubOrganizationsRepo, v1ProjectClaGroupRepo, v1ProjectService)
 	v2GithubActivityService := v2GithubActivity.NewService(repositoriesRepo, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
@@ -342,6 +345,7 @@ func server(localMode bool) http.Handler {
 	github_organizations.Configure(api, githubOrganizationsService, eventsService)
 	v2GithubOrganizations.Configure(v2API, v2GithubOrganizationsService, eventsService)
 	gitlab_organizations.Configure(v2API, gitlabOrganizationsService, eventsService)
+	gitlab_activity.Configure(v2API, gitlabActivityService, eventsService)
 	repositories.Configure(api, v1RepositoriesService, eventsService)
 	v2Repositories.Configure(v2API, v2RepositoriesService, eventsService)
 	gerrits.Configure(api, gerritService, v1ProjectService, eventsService)

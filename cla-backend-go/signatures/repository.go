@@ -1516,6 +1516,11 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		filter = addAndCondition(filter, expression.Name(SignatureUserGitHubUsername).Equal(expression.Value(criteria.GitHubUsername)), &filterAdded)
 	}
 
+	if criteria != nil && criteria.GitHubUsername != "" {
+		log.WithFields(f).Debugf("adding Gitlabusername criteria filter for :%s ", criteria.GitlabUsername)
+		filter = addAndCondition(filter, expression.Name(SignatureUserGitlabUsername).Equal(expression.Value(criteria.GitlabUsername)), &filterAdded)
+	}
+
 	if criteria != nil && criteria.UserEmail != "" {
 		log.WithFields(f).Debugf("adding useremail criteria filter for : %s ", criteria.UserEmail)
 		filter = addAndCondition(filter, expression.Name("user_email").Equal(expression.Value(criteria.UserEmail)), &filterAdded)

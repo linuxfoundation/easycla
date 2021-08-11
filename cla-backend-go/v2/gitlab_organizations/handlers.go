@@ -9,13 +9,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
 	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
 	"github.com/gofrs/uuid"
 
+	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/sirupsen/logrus"
 
@@ -289,4 +289,5 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			XRequestID: reqID,
 		})
 	})
+
 }
