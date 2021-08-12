@@ -55,7 +55,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Get Project GitHub Organizations for Project '%s' with scope of %s",
+				msg := fmt.Sprintf("user %s does not have access to Get Project GitLab Organizations for Project '%s' with scope of %s",
 					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return gitlab_organizations.NewGetProjectGitlabOrganizationsForbidden().WithPayload(
@@ -103,7 +103,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Add Project GitHub Organizations for Project '%s' with scope of %s",
+				msg := fmt.Sprintf("user %s does not have access to Add Project GitLab Organizations for Project '%s' with scope of %s",
 					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
@@ -138,7 +138,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 			result, err := service.AddGitlabOrganization(ctx, params.ProjectSFID, params.Body)
 			if err != nil {
-				msg := fmt.Sprintf("unable to add github organization, error: %+v", err)
+				msg := fmt.Sprintf("unable to add GitLab organization, error: %+v", err)
 				log.WithFields(f).WithError(err).Warn(msg)
 				return gitlab_organizations.NewAddProjectGitlabOrganizationBadRequest().WithPayload(
 					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
@@ -201,7 +201,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		f := logrus.Fields{
-			"functionName":   "v2.gitlab_organizations.handlers.GithubOrganizationsDeleteProjectGithubOrganizationHandler",
+			"functionName":   "v2.gitlab_organizations.handlers.GitlabOrganizationsDeleteProjectGitlabOrganizationHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"projectSFID":    params.ProjectSFID,
 			"orgName":        params.OrgName,
@@ -218,7 +218,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 		}
 
 		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-			msg := fmt.Sprintf("user %s does not have access to Delete Project GitHub Organizations for Project '%s' with scope of %s",
+			msg := fmt.Sprintf("user %s does not have access to Delete Project GitLab Organizations for Project '%s' with scope of %s",
 				authUser.UserName, projectModel.Name, params.ProjectSFID)
 			log.WithFields(f).Debug(msg)
 			return gitlab_organizations.NewDeleteProjectGitlabOrganizationForbidden().WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -238,7 +238,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 		eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 			LfUsername:  authUser.UserName,
-			EventType:   events.GitHubOrganizationDeleted,
+			EventType:   events.GitlabOrganizationDeleted,
 			ProjectSFID: params.ProjectSFID,
 			EventData: &events.GitlabOrganizationDeletedEventData{
 				GitlabOrganizationName: params.OrgName,

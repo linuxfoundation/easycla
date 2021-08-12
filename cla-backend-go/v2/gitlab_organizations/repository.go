@@ -35,7 +35,7 @@ type RepositoryInterface interface {
 	AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models2.GitlabCreateOrganization) (*models2.GitlabOrganization, error)
 	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error)
 	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*GitlabOrganization, error)
-	GetGitlabOrganizationByName(ctx context.Context, githubOrganizationName string) (*models2.GitlabOrganization, error)
+	GetGitlabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*models2.GitlabOrganization, error)
 	UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID, authInfo string) error
 	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error
 	DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
@@ -79,7 +79,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 		log.WithFields(f).Debugf("An existing GitLab organization with name %s exists in our database", gitLabOrganizationName)
 		// If everything matches...
 		if projectSFID == existingRecord.ProjectSFID {
-			log.WithFields(f).Debug("Existing github organization with same SFID - should be able to update it")
+			log.WithFields(f).Debug("Existing GitLab organization with same SFID - should be able to update it")
 			enabledFlag := true
 			updateErr := repo.UpdateGitlabOrganization(ctx, projectSFID, gitLabOrganizationName,
 				utils.BoolValue(input.AutoEnabled), input.AutoEnabledClaGroupID, utils.BoolValue(input.BranchProtectionEnabled), &enabledFlag)
@@ -91,7 +91,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 			return repo.GetGitlabOrganizationByName(ctx, gitLabOrganizationName)
 		}
 
-		log.WithFields(f).Debug("Existing github organization with different project SFID - won't be able to update it - will return conflict")
+		log.WithFields(f).Debug("Existing GitLab organization with different project SFID - won't be able to update it - will return conflict")
 		return nil, fmt.Errorf("record already exists")
 	}
 
@@ -126,7 +126,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 		Version:                 "v1",
 	}
 
-	log.WithFields(f).Debug("Encoding github organization record for adding to the database...")
+	log.WithFields(f).Debug("Encoding GitLab organization record for adding to the database...")
 	av, err := dynamodbattribute.MarshalMap(gitlabOrg)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to marshall request for query")
@@ -157,7 +157,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 // GetGitlabOrganizations get GitLab organizations based on the project SFID
 func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error) {
 	f := logrus.Fields{
-		"functionName":   "v2.gitlab_organizations.repository.GetGitHubOrganizations",
+		"functionName":   "v2.gitlab_organizations.repository.GetGitlabOrganizations",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 	}
@@ -188,7 +188,7 @@ func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID s
 
 	results, err := repo.dynamoDBClient.Query(queryInput)
 	if err != nil {
-		log.WithFields(f).Warnf("error retrieving github_organizations using project_sfid = %s. error = %s", projectSFID, err.Error())
+		log.WithFields(f).Warnf("error retrieving gitlab_organizations using project_sfid = %s. error = %s", projectSFID, err.Error())
 		return nil, err
 	}
 
@@ -211,16 +211,16 @@ func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID s
 }
 
 // GetGitlabOrganizationByName get GitLab organization by name
-func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, githubOrganizationName string) (*models2.GitlabOrganization, error) {
+func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*models2.GitlabOrganization, error) {
 	f := logrus.Fields{
-		"functionName":           "v1.github_organizations.repository.GetGitHubOrganizationByName",
+		"functionName":           "v1.gitlab_organizations.repository.GetGitlabOrganizationByName",
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
-		"githubOrganizationName": githubOrganizationName,
+		"gitLabOrganizationName": gitLabOrganizationName,
 	}
 
-	githubOrganizationName = strings.ToLower(githubOrganizationName)
+	gitLabOrganizationName = strings.ToLower(gitLabOrganizationName)
 
-	condition := expression.Key("organization_name_lower").Equal(expression.Value(strings.ToLower(githubOrganizationName)))
+	condition := expression.Key("organization_name_lower").Equal(expression.Value(strings.ToLower(gitLabOrganizationName)))
 	builder := expression.NewBuilder().WithKeyCondition(condition)
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
@@ -238,14 +238,14 @@ func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, githubOr
 		IndexName:                 aws.String(GitlabOrgLowerNameIndex),
 	}
 
-	log.WithFields(f).Debugf("querying for github organization by name using organization_name_lower=%s...", strings.ToLower(githubOrganizationName))
+	log.WithFields(f).Debugf("querying for GitLab organization by name using organization_name_lower=%s...", strings.ToLower(gitLabOrganizationName))
 	results, err := repo.dynamoDBClient.Query(queryInput)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("error retrieving github_organizations using githubOrganizationName = %s", githubOrganizationName)
+		log.WithFields(f).WithError(err).Warnf("error retrieving gitlab_organizations using gitLabOrganizationName = %s", gitLabOrganizationName)
 		return nil, err
 	}
 	if len(results.Items) == 0 {
-		log.WithFields(f).Debug("Unable to find github organization by name - no results")
+		log.WithFields(f).Debug("Unable to find GitLab organization by name - no results")
 		return nil, nil
 	}
 
@@ -269,7 +269,7 @@ func (repo Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganiza
 		"gitlabOrganizationID": gitlabOrganizationID,
 	}
 
-	log.WithFields(f).Debug("Querying for github organization by name...")
+	log.WithFields(f).Debug("Querying for GitLab organization by name...")
 	result, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"organization_id": {
@@ -282,7 +282,7 @@ func (repo Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganiza
 		return nil, err
 	}
 	if len(result.Item) == 0 {
-		log.WithFields(f).Debug("Unable to find github organization by name - no results")
+		log.WithFields(f).Debug("Unable to find GitLab organization by name - no results")
 		return nil, nil
 	}
 
@@ -429,10 +429,10 @@ func (repo Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID
 
 func (repo Repository) DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error {
 	f := logrus.Fields{
-		"functionName":   "v1.github_organizations.repository.DeleteGitHubOrganization",
+		"functionName":   "v1.gitlab_organizations.repository.DeleteGitlabOrganization",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
-		"githubOrgName":  gitlabOrgName,
+		"gitlabOrgName":  gitlabOrgName,
 	}
 
 	var gitlabOrganizationID string
@@ -443,14 +443,14 @@ func (repo Repository) DeleteGitlabOrganization(ctx context.Context, projectSFID
 		return errors.New(errMsg)
 	}
 
-	for _, githubOrg := range orgs.List {
-		if strings.EqualFold(githubOrg.OrganizationName, gitlabOrgName) {
-			gitlabOrganizationID = githubOrg.OrganizationID
+	for _, gitLabOrg := range orgs.List {
+		if strings.EqualFold(gitLabOrg.OrganizationName, gitlabOrgName) {
+			gitlabOrganizationID = gitLabOrg.OrganizationID
 			break
 		}
 	}
 
-	log.WithFields(f).Debug("Deleting GitHub organization...")
+	log.WithFields(f).Debug("Deleting GitLab organization...")
 	// Update enabled flag as false
 	_, currentTime := utils.CurrentTime()
 	note := fmt.Sprintf("Enabled set to false due to org deletion at %s ", currentTime)

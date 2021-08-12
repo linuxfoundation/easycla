@@ -263,7 +263,7 @@ func (s service) GetGitlabOrganizations(ctx context.Context, projectSFID string)
 
 func (s service) DeleteGitlabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error {
 	f := logrus.Fields{
-		"functionName":   "DeleteGitHubOrganization",
+		"functionName":   "DeleteGitlabOrganization",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 		"gitlabOrgName":  gitlabOrgName,
