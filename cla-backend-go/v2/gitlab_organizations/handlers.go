@@ -10,6 +10,8 @@ import (
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	"strings"
 
+	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
 	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
 	"github.com/gofrs/uuid"

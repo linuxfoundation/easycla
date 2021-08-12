@@ -299,9 +299,8 @@ func buildInstallationURL(gitlabOrgID string, authStateNonce string) *strfmt.URI
 	//params.Add("redirect_uri", "http://localhost:8080/v4/gitlab/oauth/callback")
 	params.Add("response_type", "code")
 	params.Add("state", state)
-	params.Add("scope", "read_user read_api read_repository write_repository api")
+	params.Add("scope", "api read_user read_api read_repository write_repository email")
 
 	installationURL := strfmt.URI(base + "?" + params.Encode())
 	return &installationURL
-
 }
