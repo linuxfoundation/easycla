@@ -15,22 +15,32 @@ import (
 
 // FetchOauthCredentials is responsible for fetching the credentials from gitlab for alredy started Oauth process (access_token, refresh_token)
 func FetchOauthCredentials(code string) (*OauthSuccessResponse, error) {
+	gitLabConfig := config.GetConfig().Gitlab
 	f := logrus.Fields{
-		"functionName":       "gitlab.auth.FetchOauthCredentials",
-		"code":               code,
-		"redirectURI":        config.GetConfig().Gitlab.RedirectURI,
-		"gitLabClientID":     fmt.Sprintf("%s...", config.GetConfig().Gitlab.AppID[0:6]),
-		"gitLabClientSecret": fmt.Sprintf("%s...", config.GetConfig().Gitlab.ClientSecret[0:6]),
+		"functionName": "gitlab.auth.FetchOauthCredentials",
+		"code":         code,
+		"redirectURI":  config.GetConfig().Gitlab.RedirectURI,
+	}
+
+	if len(gitLabConfig.AppID) > 4 {
+		f["gitLabClientID"] = fmt.Sprintf("%s...%s", gitLabConfig.AppID[0:4], gitLabConfig.AppID[len(gitLabConfig.AppID)-4:])
+	} else {
+		return nil, errors.New("gitlab application client ID value is not set - value is empty or malformed")
+	}
+	if len(gitLabConfig.ClientSecret) > 4 {
+		f["gitLabClientSecret"] = fmt.Sprintf("%s...%s", gitLabConfig.ClientSecret[0:4], gitLabConfig.ClientSecret[len(gitLabConfig.ClientSecret)-4:])
+	} else {
+		return nil, errors.New("gitlab application client secret value is not set - value is empty or malformed")
 	}
 
 	// For info on this authorization flow, see: https://docs.gitlab.com/ee/api/oauth2.html#authorization-code-flow
 	client := resty.New()
 	params := map[string]string{
-		"client_id":     config.GetConfig().Gitlab.AppID,
-		"client_secret": config.GetConfig().Gitlab.ClientSecret,
+		"client_id":     gitLabConfig.AppID,
+		"client_secret": gitLabConfig.ClientSecret,
 		"code":          code,
 		"grant_type":    "authorization_code",
-		"redirect_uri":  config.GetConfig().Gitlab.RedirectURI,
+		"redirect_uri":  gitLabConfig.RedirectURI,
 		//"redirect_uri": "http://localhost:8080/v4/gitlab/oauth/callback",
 	}
 
