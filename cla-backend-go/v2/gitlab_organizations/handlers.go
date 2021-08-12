@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
@@ -44,9 +45,17 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				"projectSFID":    params.ProjectSFID,
 			}
 
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return gitlab_organizations.NewGetProjectGitlabOrganizationsNotFound().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+			}
+
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Get Project GitHub Organizations with Project scope of %s",
-					authUser.UserName, params.ProjectSFID)
+				msg := fmt.Sprintf("user %s does not have access to Get Project GitHub Organizations for Project '%s' with scope of %s",
+					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return gitlab_organizations.NewGetProjectGitlabOrganizationsForbidden().WithPayload(
 					utils.ErrorResponseForbidden(reqID, msg))
@@ -84,9 +93,17 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				"projectSFID":    params.ProjectSFID,
 			}
 
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+			}
+
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Add Project Gitlab Organizations with Project scope of %s",
-					authUser.UserName, params.ProjectSFID)
+				msg := fmt.Sprintf("user %s does not have access to Add Project GitHub Organizations for Project '%s' with scope of %s",
+					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
 					utils.ErrorResponseForbidden(reqID, msg))
@@ -191,14 +208,22 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 			"authEmail":      authUser.Email,
 		}
 
+		// Load the project
+		psc := project_service.GetClient()
+		projectModel, err := psc.GetProject(params.ProjectSFID)
+		if err != nil || projectModel == nil {
+			return gitlab_organizations.NewDeleteProjectGitlabOrganizationNotFound().WithPayload(
+				utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+		}
+
 		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-			msg := fmt.Sprintf("authUser %s does not have access to Delete Project GitHub Organizations with Project scope of %s",
-				authUser.UserName, params.ProjectSFID)
+			msg := fmt.Sprintf("user %s does not have access to Delete Project GitHub Organizations for Project '%s' with scope of %s",
+				authUser.UserName, projectModel.Name, params.ProjectSFID)
 			log.WithFields(f).Debug(msg)
 			return gitlab_organizations.NewDeleteProjectGitlabOrganizationForbidden().WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		err := service.DeleteGitlabOrganization(ctx, params.ProjectSFID, params.OrgName)
+		err = service.DeleteGitlabOrganization(ctx, params.ProjectSFID, params.OrgName)
 		if err != nil {
 			if strings.Contains(err.Error(), "getProjectNotFound") {
 				msg := fmt.Sprintf("project not found with given SFID: %s", params.ProjectSFID)
