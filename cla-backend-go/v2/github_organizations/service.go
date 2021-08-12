@@ -191,10 +191,10 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		}
 		key := fmt.Sprintf("%s#%v", repo.RepositoryOrganizationName, repo.RepositoryExternalID)
 
+		parentProjectSFID = repo.RepositoryProjectSfid
 		parentProjectModel, projectModelErr := v2ProjectService.GetClient().GetParentProjectModel(repo.RepositoryProjectSfid)
-		if projectModelErr != nil || parentProjectModel == nil {
-			log.WithFields(f).Warnf("unable to load parent for project: %s", repo.RepositoryProjectSfid)
-			return nil, projectModelErr
+		if projectModelErr == nil && parentProjectModel != nil {
+			parentProjectSFID = parentProjectModel.ID
 		}
 
 		if _, ok := connectedRepo[key]; ok {
@@ -207,7 +207,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 				RepositoryGithubID: repo.RepositoryExternalID,
 				ClaGroupID:         repo.RepositoryClaGroupID,
 				ProjectID:          repo.RepositoryProjectSfid,
-				ParentProjectID:    parentProjectModel.ID,
+				ParentProjectID:    parentProjectSFID,
 			})
 
 			// delete it from connectedRepo array since we have processed it
