@@ -3,13 +3,19 @@
 
 package gitlab
 
-var gitlabAppPrivateKey string
+var gitLabAppPrivateKey string
+var gitLabAppID string
 
 // Init initializes the required gitlab variables
 func Init(glAppID string, glAppPrivateKey string) {
-	gitlabAppPrivateKey = glAppPrivateKey
+	gitLabAppID = glAppID
+	gitLabAppPrivateKey = glAppPrivateKey
 }
 
-func getGitlabAppPrivateKey() string {
-	return gitlabAppPrivateKey
+func getGitLabAppID() string {
+	return gitLabAppID
+}
+
+func getGitLabAppPrivateKey() string {
+	return gitLabAppPrivateKey
 }

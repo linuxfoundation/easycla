@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	"strings"
 
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"

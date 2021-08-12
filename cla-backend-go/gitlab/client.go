@@ -40,15 +40,15 @@ func NewGitlabOauthClient(authInfo string) (*gitlab.Client, error) {
 
 // EncryptAuthInfo encrypts the oauth response into a string
 func EncryptAuthInfo(oauthResp *OauthSuccessResponse) (string, error) {
-	key := getGitlabAppPrivateKey()
+	key := getGitLabAppPrivateKey()
 	keyDecoded, err := base64.StdEncoding.DecodeString(key)
 	if err != nil {
-		return "", fmt.Errorf("decode key : %v", err)
+		return "", fmt.Errorf("problem decoding GitLab private glClientKey, error: %v", err)
 	}
 
 	b, err := json.Marshal(oauthResp)
 	if err != nil {
-		return "", fmt.Errorf("oauth resp json marshall : %v", err)
+		return "", fmt.Errorf("problem marshalling oauth resp json, error: %v", err)
 	}
 	authInfo := string(b)
 	//log.Infof("auth info before encrypting : %s", authInfo)
@@ -61,7 +61,7 @@ func EncryptAuthInfo(oauthResp *OauthSuccessResponse) (string, error) {
 	return hex.EncodeToString(encrypted), nil
 }
 
-// DecryptAuthInfo decrytps the authinfo into OauthSuccessResponse data structure
+// DecryptAuthInfo decrytps the auth info into OauthSuccessResponse data structure
 func DecryptAuthInfo(authInfoEncoded string) (*OauthSuccessResponse, error) {
 	ciphertext, err := hex.DecodeString(authInfoEncoded)
 	if err != nil {
@@ -70,10 +70,10 @@ func DecryptAuthInfo(authInfoEncoded string) (*OauthSuccessResponse, error) {
 
 	//log.Infof("auth info decoded : %s", ciphertext)
 
-	key := getGitlabAppPrivateKey()
+	key := getGitLabAppPrivateKey()
 	keyDecoded, err := base64.StdEncoding.DecodeString(key)
 	if err != nil {
-		return nil, fmt.Errorf("decode key : %v", err)
+		return nil, fmt.Errorf("decode glClientKey : %v", err)
 	}
 
 	//log.Debugf("before decrypt : keyDecoded : %s, cipherText : %s", keyDecoded, ciphertext)
