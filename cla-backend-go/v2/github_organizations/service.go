@@ -222,7 +222,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 				RepositoryName:   repo.RepositoryName,
 				ClaGroupID:       repo.RepositoryClaGroupID,
 				ProjectID:        repo.RepositoryProjectSfid,
-				ParentProjectID:  parentProjectModel.ID,
+				ParentProjectID:  parentProjectSFID,
 			})
 
 			if rorg.ConnectionStatus == utils.Connected {
