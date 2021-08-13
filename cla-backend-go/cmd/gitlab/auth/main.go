@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	REDIRECT_URI       = "http://localhost:8080/gitlab/oauth/callback"
-	APPLICATION_ID     = "18718b478096e6a257eda51414d0d446ad28866c15187aa765f602fe906d0b17"
-	APPLICATION_SECRET = "8dd14ace0eb0e4674b849b6fed4ce51bbcc456fc62d9149aff15353c1dda6327"
+	clientRedirectURI = "http://localhost:8080/gitlab/oauth/callback"
+	clientAppID       = "18718b478096e6a257eda51414d0d446ad28866c15187aa765f602fe906d0b17"
+	clientAppSecret   = "8dd14ace0eb0e4674b849b6fed4ce51bbcc456fc62d9149aff15353c1dda6327"
 )
 
 const (
@@ -168,11 +168,11 @@ func main() {
 
 		client := resty.New()
 		params := map[string]string{
-			"client_id":     APPLICATION_ID,
-			"client_secret": APPLICATION_SECRET,
+			"client_id":     clientAppID,
+			"client_secret": clientAppSecret,
 			"code":          code,
 			"grant_type":    "authorization_code",
-			"redirect_uri":  REDIRECT_URI,
+			"redirect_uri":  clientRedirectURI,
 		}
 
 		resp, err := client.R().

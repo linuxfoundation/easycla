@@ -159,8 +159,10 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 			config.Gitlab.ClientSecret = resp.value
 		case fmt.Sprintf("cla-gitlab-app-id-%s", stage):
 			config.Gitlab.AppID = resp.value
+			log.WithFields(f).Debugf("CLA GitLab App ID: %s...%s", resp.value[0:4], resp.value[len(resp.value)-4:])
 		case fmt.Sprintf("cla-gitlab-app-private-key-%s", stage):
 			config.Gitlab.AppPrivateKey = resp.value
+			log.WithFields(f).Debugf("CLA GitLab App Private Key: %s...%s", resp.value[0:4], resp.value[len(resp.value)-4:])
 		case fmt.Sprintf("cla-gitlab-app-redirect-uri-%s", stage):
 			config.Gitlab.RedirectURI = resp.value
 		case fmt.Sprintf("cla-gitlab-app-web-hook-uri-%s", stage):
