@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
@@ -160,7 +162,7 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 	return err
 }
 
-func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeEvent *gitlab.MergeEvent) (*gitlab_organizations.GitlabOrganization, error) {
+func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeEvent *gitlab.MergeEvent) (*common.GitlabOrganization, error) {
 	repositoryPath := mergeEvent.Project.PathWithNamespace
 	parts := strings.Split(repositoryPath, "/")
 	organizationName := parts[0]

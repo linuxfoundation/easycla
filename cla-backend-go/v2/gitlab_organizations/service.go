@@ -10,10 +10,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+
 	"github.com/communitybridge/easycla/cla-backend-go/config"
+	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
 	"github.com/go-openapi/strfmt"
 
-	//v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -23,97 +25,36 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Service contains functions of GitlabOrganizations service
-type Service interface {
-	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error)
+// ServiceInterface contains functions of GitlabOrganizations service
+type ServiceInterface interface {
 	AddGitlabOrganization(ctx context.Context, projectSFID string, input *models.GitlabCreateOrganization) (*models.GitlabProjectOrganizations, error)
 	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*models.GitlabOrganization, error)
+	GetGitlabOrganizationByID(ctx context.Context, gitlabOrganizationID string) (*common.GitlabOrganization, error)
+	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error)
 	GetGitlabOrganizationByState(ctx context.Context, gitlabOrganizationID, authState string) (*models.GitlabOrganization, error)
 	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
 	UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, oauthResp *gitlab.OauthSuccessResponse) error
 	DeleteGitlabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error
 }
 
-type service struct {
+// Service data model
+type Service struct {
 	repo               RepositoryInterface
 	claGroupRepository projects_cla_groups.Repository
 	gitLabApp          *gitlab.App
 }
 
 // NewService creates a new gitlab organization service
-func NewService(repo RepositoryInterface, claGroupRepository projects_cla_groups.Repository) Service {
-	return service{
+func NewService(repo RepositoryInterface, claGroupRepository projects_cla_groups.Repository) *Service {
+	return &Service{
 		repo:               repo,
 		claGroupRepository: claGroupRepository,
 		gitLabApp:          gitlab.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 
-func (s service) GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*models.GitlabOrganization, error) {
-	f := logrus.Fields{
-		"functionName":         "v2.gitlab_organizations.service.GetGitlabOrganization",
-		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
-		"gitlabOrganizationID": gitlabOrganizationID,
-	}
-
-	log.WithFields(f).Debugf("fetching gitlab organization for gitlab org id : %s", gitlabOrganizationID)
-	dbModel, err := s.repo.GetGitlabOrganization(ctx, gitlabOrganizationID)
-	if err != nil {
-		return nil, err
-	}
-
-	return ToModel(dbModel), nil
-}
-
-func (s service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, oauthResp *gitlab.OauthSuccessResponse) error {
-	f := logrus.Fields{
-		"functionName":         "v2.gitlab_organizations.service.UpdateGitlabOrganizationAuth",
-		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
-		"gitlabOrganizationID": gitlabOrganizationID,
-	}
-
-	log.WithFields(f).Debugf("updating gitlab org auth")
-	authInfoEncrypted, err := gitlab.EncryptAuthInfo(oauthResp, s.gitLabApp)
-	if err != nil {
-		return fmt.Errorf("encrypt failed : %v", err)
-	}
-
-	return s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, authInfoEncrypted)
-}
-
-func (s service) UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
-	// check if valid cla group id is passed
-	if autoEnabledClaGroupID != "" {
-		if _, err := s.claGroupRepository.GetCLAGroupNameByID(ctx, autoEnabledClaGroupID); err != nil {
-			return err
-		}
-	}
-
-	return s.repo.UpdateGitlabOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, nil)
-}
-
-func (s service) GetGitlabOrganizationByState(ctx context.Context, gitlabOrganizationID, authState string) (*models.GitlabOrganization, error) {
-	f := logrus.Fields{
-		"functionName":         "v2.gitlab_organizations.service.GetGitlabOrganization",
-		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
-		"gitlabOrganizationID": gitlabOrganizationID,
-		"authState":            authState,
-	}
-
-	log.WithFields(f).Debugf("fetching gitlab organization for gitlab org id : %s", gitlabOrganizationID)
-	dbModel, err := s.repo.GetGitlabOrganization(ctx, gitlabOrganizationID)
-	if err != nil {
-		return nil, err
-	}
-
-	if dbModel.AuthState != authState {
-		return nil, fmt.Errorf("auth state doesn't match")
-	}
-
-	return ToModel(dbModel), nil
-}
-
-func (s service) AddGitlabOrganization(ctx context.Context, projectSFID string, input *models.GitlabCreateOrganization) (*models.GitlabProjectOrganizations, error) {
+// AddGitlabOrganization adds the specified GitLab organization
+func (s *Service) AddGitlabOrganization(ctx context.Context, projectSFID string, input *models.GitlabCreateOrganization) (*models.GitlabProjectOrganizations, error) {
 	f := logrus.Fields{
 		"functionName":            "v2.gitlab_organizations.service.AddGitlabOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
@@ -151,7 +92,39 @@ func (s service) AddGitlabOrganization(ctx context.Context, projectSFID string, 
 	return s.GetGitlabOrganizations(ctx, projectSFID)
 }
 
-func (s service) GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error) {
+// GetGitlabOrganization returns the GitLab organization based on the specified GitLab Organization ID
+func (s *Service) GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*models.GitlabOrganization, error) {
+	dbModel, err := s.GetGitlabOrganizationByID(ctx, gitlabOrganizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	if dbModel == nil {
+		return nil, nil
+	}
+
+	return common.ToModel(dbModel), err
+}
+
+// GetGitlabOrganizationByID returns the record associated with the GitLab Organization ID
+func (s *Service) GetGitlabOrganizationByID(ctx context.Context, gitlabOrganizationID string) (*common.GitlabOrganization, error) {
+	f := logrus.Fields{
+		"functionName":         "v2.gitlab_organizations.service.GetGitlabOrganizationByID",
+		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
+		"gitlabOrganizationID": gitlabOrganizationID,
+	}
+
+	log.WithFields(f).Debugf("fetching gitlab organization for gitlab org id : %s", gitlabOrganizationID)
+	dbModel, err := s.repo.GetGitlabOrganization(ctx, gitlabOrganizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	return dbModel, nil
+}
+
+// GetGitlabOrganizations returns a collection of GitLab organizations based on the specified project SFID value
+func (s *Service) GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.gitlab_organizations.service.GetGitlabOrganizations",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -262,7 +235,82 @@ func (s service) GetGitlabOrganizations(ctx context.Context, projectSFID string)
 	return out, nil
 }
 
-func (s service) DeleteGitlabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error {
+// GetGitlabOrganizationByState returns the GitLab organization by the auth state
+func (s *Service) GetGitlabOrganizationByState(ctx context.Context, gitlabOrganizationID, authState string) (*models.GitlabOrganization, error) {
+	f := logrus.Fields{
+		"functionName":         "v2.gitlab_organizations.service.GetGitlabOrganization",
+		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
+		"gitlabOrganizationID": gitlabOrganizationID,
+		"authState":            authState,
+	}
+
+	log.WithFields(f).Debugf("fetching gitlab organization for gitlab org id : %s", gitlabOrganizationID)
+	dbModel, err := s.repo.GetGitlabOrganization(ctx, gitlabOrganizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	if dbModel.AuthState != authState {
+		return nil, fmt.Errorf("auth state doesn't match")
+	}
+
+	return common.ToModel(dbModel), nil
+}
+
+// UpdateGitlabOrganizationAuth updates the GitLab organization authentication information
+func (s *Service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, oauthResp *gitlab.OauthSuccessResponse) error {
+	f := logrus.Fields{
+		"functionName":         "v2.gitlab_organizations.service.UpdateGitlabOrganizationAuth",
+		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
+		"gitlabOrganizationID": gitlabOrganizationID,
+	}
+
+	log.WithFields(f).Debugf("updating gitlab org auth")
+	authInfoEncrypted, err := gitlab.EncryptAuthInfo(oauthResp, s.gitLabApp)
+	if err != nil {
+		return fmt.Errorf("encrypt failed : %v", err)
+	}
+
+	gitLabOrgModel, err := s.GetGitlabOrganizationByID(ctx, gitlabOrganizationID)
+	if err != nil {
+		return fmt.Errorf("gitlab organization lookup error: %+v", err)
+	}
+
+	// Get the client
+	gitLabClient, err := gitlab2.NewGitlabOauthClientFromAccessToken(oauthResp.AccessToken)
+	if err != nil {
+		return fmt.Errorf("initializing gitlab client : %v", err)
+	}
+
+	// Need to lookup the GitLab Group/Organization to obtain the ID
+	groups, resp, searchErr := gitLabClient.Groups.SearchGroup(gitLabOrgModel.OrganizationName)
+	if searchErr != nil {
+		return fmt.Errorf("GitLab search error while locating Group by name: %s, error: %v", gitLabOrgModel.OrganizationName, searchErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("unable to locate GitLab group by name: %s, status code: %d", gitLabOrgModel.OrganizationName, resp.StatusCode)
+	}
+	if len(groups) != 1 {
+		return fmt.Errorf("expecting 1 result for GitLab group name '%s' search, found: %d", gitLabOrgModel.OrganizationName, len(groups))
+	}
+
+	return s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, groups[0].ID, authInfoEncrypted)
+}
+
+// UpdateGitlabOrganization updates the GitLab organization
+func (s *Service) UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
+	// check if valid cla group id is passed
+	if autoEnabledClaGroupID != "" {
+		if _, err := s.claGroupRepository.GetCLAGroupNameByID(ctx, autoEnabledClaGroupID); err != nil {
+			return err
+		}
+	}
+
+	return s.repo.UpdateGitlabOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, nil)
+}
+
+// DeleteGitlabOrganization deletes the specified GitLab organization
+func (s *Service) DeleteGitlabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error {
 	f := logrus.Fields{
 		"functionName":   "DeleteGitlabOrganization",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),

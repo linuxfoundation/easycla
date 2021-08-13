@@ -9,6 +9,11 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+
+	"github.com/communitybridge/easycla/cla-backend-go/config"
+	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
+
 	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
 
 	"github.com/sirupsen/logrus"
@@ -47,10 +52,10 @@ type ServiceInterface interface {
 
 	GitLabGetRepository(ctx context.Context, repositoryID string) (*v2Models.GitlabRepository, error)
 	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*v2Models.GitlabRepository, error)
-	//GitLabGetRepositoriesByGitLabID(ctx context.Context, gitLabID int64) (*v2Models.GitlabRepository, error)
 	GitLabGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabListRepositories, error)
 	GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string, enabled bool) (*v2Models.GitlabListRepositories, error)
 	GitLabAddRepository(ctx context.Context, projectSFID string, input *v2Models.GitlabAddRepository) (*v2Models.GitlabRepository, error)
+	GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel *common.GitlabOrganization) ([]*v2Models.GitlabRepository, error)
 	GitLabEnableRepository(ctx context.Context, repositoryID string) error
 	GitLabDisableRepository(ctx context.Context, repositoryID string) error
 	GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
@@ -69,6 +74,7 @@ type Service struct {
 	gitV2Repository       RepositoryInterface
 	projectsClaGroupsRepo projects_cla_groups.Repository
 	ghOrgRepo             GithubOrgRepo
+	gitLabApp             *gitlab2.App
 }
 
 var (
@@ -84,6 +90,7 @@ func NewService(gitV1Repository *v1Repositories.Repository, gitV2Repository Repo
 		gitV2Repository:       gitV2Repository,
 		projectsClaGroupsRepo: pcgRepo,
 		ghOrgRepo:             ghOrgRepo,
+		gitLabApp:             gitlab2.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 

@@ -7,7 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+
+	"github.com/go-openapi/runtime"
 
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
@@ -26,11 +29,12 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	v2GitRepo "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, service Service, eventService events.Service) {
+func Configure(api *operations.EasyclaAPI, service ServiceInterface, gitV2Service v2GitRepo.ServiceInterface, eventService events.Service) {
 
 	api.GitlabOrganizationsGetProjectGitlabOrganizationsHandler = gitlab_organizations.GetProjectGitlabOrganizationsHandlerFunc(
 		func(params gitlab_organizations.GetProjectGitlabOrganizationsParams, authUser *auth.User) middleware.Responder {
@@ -283,37 +287,134 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 		stateVar := codeParts[1]
 
 		ctx := context.Background()
-		_, err := service.GetGitlabOrganizationByState(ctx, gitlabOrganizationID, stateVar)
+		gitLabOrg, err := service.GetGitlabOrganizationByState(ctx, gitlabOrganizationID, stateVar)
 		if err != nil {
-			msg := fmt.Sprintf("fetching gitlab model failed : %s : %v", gitlabOrganizationID, err)
-			log.WithFields(f).Errorf(msg)
 			return gitlab_activity.NewGitlabOauthCallbackBadRequest().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("fetching gitlab model failed : %s : %v", gitlabOrganizationID, err)))
 		}
 
 		// now fetch the oauth credentials and store to db
 		oauthResp, err := gitlab.FetchOauthCredentials(params.Code)
 		if err != nil {
-			msg := fmt.Sprintf("fetching gitlab credentials failed : %s : %v", gitlabOrganizationID, err)
-			log.WithFields(f).Errorf(msg)
 			return gitlab_activity.NewGitlabOauthCallbackInternalServerError().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("fetching gitlab credentials failed : %s : %v", gitlabOrganizationID, err)))
 		}
-		log.Infof("oauth resp is like : %+v", oauthResp)
+		log.WithFields(f).Debugf("oauth resp is like : %+v", oauthResp)
 
 		err = service.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, oauthResp)
 		if err != nil {
-			msg := fmt.Sprintf("updating gitlab credentials failed : %s : %v", gitlabOrganizationID, err)
-			log.WithFields(f).Errorf(msg)
 			return gitlab_activity.NewGitlabOauthCallbackInternalServerError().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("updating gitlab credentials failed : %s : %v", gitlabOrganizationID, err)))
 		}
 
-		return gitlab_activity.NewGitlabOauthCallbackOK().WithPayload(&models.SuccessResponse{
-			Code:       "200",
-			Message:    "oauth credentials stored successfully",
-			XRequestID: reqID,
-		})
+		// Reload the GitLab organization - will have additional details now...
+		updatedGitLabOrgDBModel, err := service.GetGitlabOrganizationByID(ctx, gitLabOrg.OrganizationID)
+		if err != nil {
+			return gitlab_activity.NewGitlabOauthCallbackInternalServerError().WithPayload(
+				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("problem loading updated gitlab organization by ID: %s : %v", gitlabOrganizationID, err)))
+		}
+
+		_, err = gitV2Service.GitLabAddRepositoriesByApp(ctx, updatedGitLabOrgDBModel)
+		if err != nil {
+			return NewRedirectServerError(reqID, updatedGitLabOrgDBModel.OrganizationName, err)
+		}
+
+		return NewRedirectOK(reqID, updatedGitLabOrgDBModel.ProjectSFID, updatedGitLabOrgDBModel.OrganizationName)
 	})
 
+}
+
+// GetRedirectOK Success
+type GetRedirectOK struct {
+	ReqID           string
+	ProjectSFID     string
+	GitLabGroupName string
+}
+
+// NewRedirectOK creates a new redirect handler
+func NewRedirectOK(reqID, projectSFID, gitLabGroupName string) *GetRedirectOK {
+	return &GetRedirectOK{reqID, projectSFID, gitLabGroupName}
+}
+
+// WriteResponse to the client
+func (o *GetRedirectOK) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {
+	configPage := "https://gitlab.com/-/profile/applications"
+
+	html := fmt.Sprintf(`<!DOCTYPE html>
+    <html lang="en">
+	  <head>
+			<title>LFX EasyCLA Service GitLab App Installation Status</title>
+			<!-- Required meta tags -->
+			<meta charset="utf-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+			<link rel="shortcut icon" href="https://www.linuxfoundation.org/wp-content/uploads/2017/08/favicon.png">
+			<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous"/>
+			<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+			<style>h1 { text-align:center;}</style>
+		</head>
+		<body style='margin-top:20;margin-left:0;margin-right:0;'>
+			<div class="text-center">
+				<img width=300px" src="https://cla-project-logo-prod.s3.amazonaws.com/lf-horizontal-color.svg" alt="lf logo"/>
+			</div> 
+ 			<h2 class="text-center">LFx EasyCLA Service GitLab App - Installation Successful</h2> 
+			<p class="text-center">Thank you for installing the LFX EasyCLA GitLab Application/Bot.  Your GitLab Group and repositories are now onboarded.</p>
+			<p class="text-center">To review the configuration or revoke the application, navigate to <a href="%s" target="_blank">the GitLab Applications under your User Settings.</a></p>
+			<p class="text-center">You may now close this window and return to the LFX Project Control Center and select the repositories for EasyCLA.</p>
+		</body>
+	</html>`, configPage)
+
+	rw.Header().Set("Content-Type", "text/html")
+	rw.Header().Set(utils.XREQUESTID, o.ReqID)
+	rw.WriteHeader(http.StatusOK)
+	_, err := rw.Write([]byte(html))
+	if err != nil {
+		panic(err)
+	}
+}
+
+// GetRedirectServerError Success
+type GetRedirectServerError struct {
+	ReqID           string
+	GitLabGroupName string
+	Error           error
+}
+
+// NewRedirectServerError creates a new redirect handler
+func NewRedirectServerError(reqID string, gitLabGroupName string, theError error) *GetRedirectServerError {
+	return &GetRedirectServerError{
+		ReqID:           reqID,
+		GitLabGroupName: gitLabGroupName,
+		Error:           theError,
+	}
+}
+
+// WriteResponse to the client
+func (o *GetRedirectServerError) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {
+	html := fmt.Sprintf(`<!DOCTYPE html>
+    <html lang="en">
+		<head>
+			<title>LFX EasyCLA Service GitLab App Installation Status</title>
+			<!-- Required meta tags -->
+			<meta charset="utf-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+			<link rel="shortcut icon" href="https://www.linuxfoundation.org/wp-content/uploads/2017/08/favicon.png">
+			<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous"/>
+			<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+			<style>h1 { text-align:center;}</style>
+		</head>
+		<body style='margin-top:20;margin-left:0;margin-right:0;'>
+			<div class="text-center">
+				<img width=300px" src="https://cla-project-logo-prod.s3.amazonaws.com/lf-horizontal-color.svg" alt="lf logo"/>
+			</div> 
+ 			<h2 class="text-center">LFx EasyCLA Service GitLab App - Installation Issue</h2> 
+			<p class="text-center">Unable to install the GitLab Group %s due to the following error: %s.</p>
+		</body>
+	</html>`, o.GitLabGroupName, o.Error.Error())
+
+	rw.Header().Set("Content-Type", "text/html")
+	rw.Header().Set(utils.XREQUESTID, o.ReqID)
+	_, err := rw.Write([]byte(html))
+	if err != nil {
+		panic(err)
+	}
 }

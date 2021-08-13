@@ -38,6 +38,11 @@ func NewGitlabOauthClient(authInfo string, gitLabApp *App) (*gitlab.Client, erro
 	return gitlab.NewOAuthClient(oauthResp.AccessToken)
 }
 
+// NewGitlabOauthClientFromAccessToken creates a new gitlab client from the given access token
+func NewGitlabOauthClientFromAccessToken(accessToken string) (*gitlab.Client, error) {
+	return gitlab.NewOAuthClient(accessToken)
+}
+
 // EncryptAuthInfo encrypts the oauth response into a string
 func EncryptAuthInfo(oauthResp *OauthSuccessResponse, gitLabApp *App) (string, error) {
 	keyDecoded, err := base64.StdEncoding.DecodeString(gitLabApp.GetAppPrivateKey())

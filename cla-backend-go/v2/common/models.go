@@ -1,4 +1,4 @@
-package gitlab_organizations
+package common
 
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
@@ -10,6 +10,7 @@ import (
 // GitlabOrganization is data model for gitlab organizations
 type GitlabOrganization struct {
 	OrganizationID          string `json:"organization_id"`
+	ExternalGroupID         int    `json:"external_gitlab_group_id"`
 	DateCreated             string `json:"date_created,omitempty"`
 	DateModified            string `json:"date_modified,omitempty"`
 	OrganizationName        string `json:"organization_name,omitempty"`
@@ -38,10 +39,12 @@ func ToModel(in *GitlabOrganization) *models2.GitlabOrganization {
 		AutoEnabled:           in.AutoEnabled,
 		AutoEnabledClaGroupID: in.AutoEnabledClaGroupID,
 		ProjectSFID:           in.ProjectSFID,
+		// Not exposing ExternalGroupID
 	}
 }
 
-func toModels(input []*GitlabOrganization) []*models2.GitlabOrganization {
+// ToModels converts a list of GitLab organizations to a list of external GitLab organization response models
+func ToModels(input []*GitlabOrganization) []*models2.GitlabOrganization {
 	out := make([]*models2.GitlabOrganization, 0)
 	for _, in := range input {
 		out = append(out, ToModel(in))
