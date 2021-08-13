@@ -28,8 +28,8 @@ type OauthSuccessResponse struct {
 }
 
 // NewGitlabOauthClient creates a new gitlab client from the given oauth info, authInfo is encrypted
-func NewGitlabOauthClient(authInfo string) (*gitlab.Client, error) {
-	oauthResp, err := DecryptAuthInfo(authInfo)
+func NewGitlabOauthClient(authInfo string, gitLabApp *App) (*gitlab.Client, error) {
+	oauthResp, err := DecryptAuthInfo(authInfo, gitLabApp)
 	if err != nil {
 		return nil, err
 	}
@@ -39,9 +39,8 @@ func NewGitlabOauthClient(authInfo string) (*gitlab.Client, error) {
 }
 
 // EncryptAuthInfo encrypts the oauth response into a string
-func EncryptAuthInfo(oauthResp *OauthSuccessResponse) (string, error) {
-	key := getGitLabAppPrivateKey()
-	keyDecoded, err := base64.StdEncoding.DecodeString(key)
+func EncryptAuthInfo(oauthResp *OauthSuccessResponse, gitLabApp *App) (string, error) {
+	keyDecoded, err := base64.StdEncoding.DecodeString(gitLabApp.GetAppPrivateKey())
 	if err != nil {
 		return "", fmt.Errorf("problem decoding GitLab private glClientKey, error: %v", err)
 	}
@@ -61,8 +60,8 @@ func EncryptAuthInfo(oauthResp *OauthSuccessResponse) (string, error) {
 	return hex.EncodeToString(encrypted), nil
 }
 
-// DecryptAuthInfo decrytps the auth info into OauthSuccessResponse data structure
-func DecryptAuthInfo(authInfoEncoded string) (*OauthSuccessResponse, error) {
+// DecryptAuthInfo decrypts the auth info into OauthSuccessResponse data structure
+func DecryptAuthInfo(authInfoEncoded string, gitLabApp *App) (*OauthSuccessResponse, error) {
 	ciphertext, err := hex.DecodeString(authInfoEncoded)
 	if err != nil {
 		return nil, fmt.Errorf("decode auth info %s : %v", authInfoEncoded, err)
@@ -70,8 +69,7 @@ func DecryptAuthInfo(authInfoEncoded string) (*OauthSuccessResponse, error) {
 
 	//log.Infof("auth info decoded : %s", ciphertext)
 
-	key := getGitLabAppPrivateKey()
-	keyDecoded, err := base64.StdEncoding.DecodeString(key)
+	keyDecoded, err := base64.StdEncoding.DecodeString(gitLabApp.GetAppPrivateKey())
 	if err != nil {
 		return nil, fmt.Errorf("decode glClientKey : %v", err)
 	}

@@ -237,7 +237,7 @@ func server(localMode bool) http.Handler {
 	// initialize github
 	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
 	// initialize gitlab
-	gitlab.Init(configFile.Gitlab.AppID, configFile.Gitlab.AppPrivateKey)
+	_ = gitlab.Init(configFile.Gitlab.AppID, configFile.Gitlab.AppPrivateKey)
 
 	// Our backend repository handlers
 	userRepo := user.NewDynamoRepository(awsSession, stage)

@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/config"
+
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	signatures1 "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 
@@ -43,6 +45,7 @@ type service struct {
 	projectsCLAGroupsRepository projects_cla_groups.Repository
 	companyRepository           company.IRepository
 	signatureRepository         signatures.SignatureRepository
+	gitLabApp                   *gitlab2.App
 }
 
 func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRepository repositories.RepositoryInterface, gitV2Repository gitV2Repositories.RepositoryInterface, usersRepository users.UserRepository, signaturesRepository signatures.SignatureRepository, projectsCLAGroupsRepository projects_cla_groups.Repository,
@@ -56,6 +59,7 @@ func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRe
 		projectsCLAGroupsRepository: projectsCLAGroupsRepository,
 		companyRepository:           companyRepository,
 		signatureRepository:         signatureRepository,
+		gitLabApp:                   gitlab2.Init(config.GetConfig().Gitlab.AppID, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 
@@ -85,7 +89,7 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 
 	log.WithFields(f).Debugf("internal gitlab org : %s:%s is associated with external path : %s", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName, repositoryPath)
 
-	gitlabClient, err := gitlab2.NewGitlabOauthClient(gitlabOrg.AuthInfo)
+	gitlabClient, err := gitlab2.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing gitlab client : %v", err)
 	}

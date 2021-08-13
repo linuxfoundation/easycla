@@ -37,6 +37,7 @@ type Service interface {
 type service struct {
 	repo               RepositoryInterface
 	claGroupRepository projects_cla_groups.Repository
+	gitLabApp          *gitlab.App
 }
 
 // NewService creates a new gitlab organization service
@@ -44,6 +45,7 @@ func NewService(repo RepositoryInterface, claGroupRepository projects_cla_groups
 	return service{
 		repo:               repo,
 		claGroupRepository: claGroupRepository,
+		gitLabApp:          gitlab.Init(config.GetConfig().Gitlab.AppID, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 
@@ -71,7 +73,7 @@ func (s service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganiz
 	}
 
 	log.WithFields(f).Debugf("updating gitlab org auth")
-	authInfoEncrypted, err := gitlab.EncryptAuthInfo(oauthResp)
+	authInfoEncrypted, err := gitlab.EncryptAuthInfo(oauthResp, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("encrypt failed : %v", err)
 	}
@@ -228,7 +230,7 @@ func (s service) GetGitlabOrganizations(ctx context.Context, projectSFID string)
 		if orgDetailed.AuthInfo == "" {
 			rorg.ConnectionStatus = utils.NoConnection
 		} else {
-			glClient, err := gitlab.NewGitlabOauthClient(orgDetailed.AuthInfo)
+			glClient, err := gitlab.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
 			if err != nil {
 				log.WithFields(f).Errorf("initializing gitlab client for gitlab org : %s failed : %v", org.OrganizationID, err)
 				rorg.ConnectionStatus = utils.ConnectionFailure
