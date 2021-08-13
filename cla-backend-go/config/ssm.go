@@ -69,8 +69,9 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-gh-test-organization-installation-id-%s", stage),
 		fmt.Sprintf("cla-gh-test-repository-%s", stage),
 		fmt.Sprintf("cla-gh-test-repository-id-%s", stage),
-		fmt.Sprintf("cla-gitlab-oauth-secret-go-backend-%s", stage),
+		//fmt.Sprintf("cla-gitlab-oauth-secret-go-backend-%s", stage),
 		fmt.Sprintf("cla-gitlab-app-id-%s", stage),
+		fmt.Sprintf("cla-gitlab-app-secret-%s", stage),
 		fmt.Sprintf("cla-gitlab-app-private-key-%s", stage),
 		fmt.Sprintf("cla-gitlab-app-redirect-uri-%s", stage),
 		fmt.Sprintf("cla-gitlab-app-web-hook-uri-%s", stage),
@@ -155,14 +156,17 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 			config.GitHub.TestRepositoryID = resp.value
 
 		//	gitlab ssm
-		//case fmt.Sprintf("cla-gitlab-oauth-secret-go-backend-%s", stage):
-		//	config.Gitlab.ClientSecret = resp.value
 		case fmt.Sprintf("cla-gitlab-app-id-%s", stage):
-			config.Gitlab.AppID = resp.value
+			config.Gitlab.AppClientID = resp.value
+			// DEBUG
 			log.WithFields(f).Debugf("CLA GitLab App ID: %s...%s", resp.value[0:4], resp.value[len(resp.value)-4:])
+		case fmt.Sprintf("cla-gitlab-app-secret-%s", stage):
+			config.Gitlab.AppClientSecret = resp.value
+			// DEBUG
+			log.WithFields(f).Debugf("CLA GitLab App Secret: %s...%s", resp.value[0:4], resp.value[len(resp.value)-4:])
 		case fmt.Sprintf("cla-gitlab-app-private-key-%s", stage):
 			config.Gitlab.AppPrivateKey = resp.value
-			config.Gitlab.ClientSecret = resp.value
+			// DEBUG
 			log.WithFields(f).Debugf("CLA GitLab App Private Key: %s...%s", resp.value[0:4], resp.value[len(resp.value)-4:])
 		case fmt.Sprintf("cla-gitlab-app-redirect-uri-%s", stage):
 			config.Gitlab.RedirectURI = resp.value

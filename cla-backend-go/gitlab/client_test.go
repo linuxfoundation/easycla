@@ -11,11 +11,12 @@ import (
 )
 
 var glClientID = "124453345"
+var glClientSecret = "124453345"
 var glClientKey = "0WqnDWHnZKo2cmQ8m93EtY9ZBpfzQW4UnnEuRmgtJKM="
 var oauthRespStr = `{"access_token":"a30671b8749ba5d48925712344377f11a5aba43ec630f099e464b9843796e6a6","token_type":"Bearer","expires_in":0,"refresh_token":"0838a31d0d796973eacefdf513523e6e47aa06fac9d26622964da1e473509458","created_at":1626435922}`
 
 func TestNewGitlabOauthClient(t *testing.T) {
-	gitLabApp := Init(glClientID, glClientKey)
+	gitLabApp := Init(glClientID, glClientSecret, glClientKey)
 
 	t.Logf("app private ID is : %s", gitLabApp.GetAppID())
 	t.Logf("app private key is : %s", gitLabApp.GetAppPrivateKey())
@@ -33,7 +34,7 @@ func TestNewGitlabOauthClient(t *testing.T) {
 }
 
 func TestEncryptDecryptAuthInfo(t *testing.T) {
-	gitLabApp := Init(glClientID, glClientKey)
+	gitLabApp := Init(glClientID, glClientSecret, glClientKey)
 
 	t.Logf("app private ID is : %s", gitLabApp.GetAppID())
 	t.Logf("app private key is : %s", gitLabApp.GetAppPrivateKey())

@@ -11,8 +11,9 @@ import (
 
 // App is a wrapper for the GitLab configuration items
 type App struct {
-	gitLabAppPrivateKey string
 	gitLabAppID         string
+	gitLabAppSecret     string
+	gitLabAppPrivateKey string
 }
 
 var gitLabAppSingleton *App
@@ -20,13 +21,14 @@ var gitLabAppSingleton *App
 var once sync.Once
 
 // Init initializes the required gitlab variables
-func Init(glAppID string, glAppPrivateKey string) *App {
+func Init(glAppID, glAppSecret, glAppPrivateKey string) *App {
 	if gitLabAppSingleton == nil {
 		once.Do(
 			func() {
 				log.Debug("Creating object single instance...")
 				gitLabAppSingleton = &App{
 					gitLabAppID:         glAppID,
+					gitLabAppSecret:     glAppSecret,
 					gitLabAppPrivateKey: glAppPrivateKey,
 				}
 			})
@@ -39,6 +41,11 @@ func Init(glAppID string, glAppPrivateKey string) *App {
 // GetAppID returns the GitLab application ID
 func (app *App) GetAppID() string {
 	return app.gitLabAppID
+}
+
+// GetAppSecret returns the GitLab application secret
+func (app *App) GetAppSecret() string {
+	return app.gitLabAppSecret
 }
 
 // GetAppPrivateKey returns the GitLab application private key

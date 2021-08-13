@@ -137,13 +137,13 @@ type GitHub struct {
 	TestRepositoryID               string `json:"test_repository_id"`
 }
 
-// Gitlab model
+// Gitlab config data model
 type Gitlab struct {
-	ClientSecret  string `json:"clientSecret"`
-	AppID         string `json:"app_id"`
-	AppPrivateKey string `json:"app_private_key"`
-	RedirectURI   string `json:"redirect_uri"`
-	WebHookURI    string `json:"web_hook_uri"`
+	AppClientID     string `json:"app_client_id"`
+	AppClientSecret string `json:"app_client_secret"`
+	AppPrivateKey   string `json:"app_client_private_key"`
+	RedirectURI     string `json:"app_redirect_uri"`
+	WebHookURI      string `json:"app_web_hook_uri"`
 }
 
 // MetricsReport keeps the config needed to send the metrics data report

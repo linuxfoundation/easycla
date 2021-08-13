@@ -59,7 +59,7 @@ func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRe
 		projectsCLAGroupsRepository: projectsCLAGroupsRepository,
 		companyRepository:           companyRepository,
 		signatureRepository:         signatureRepository,
-		gitLabApp:                   gitlab2.Init(config.GetConfig().Gitlab.AppID, config.GetConfig().Gitlab.AppPrivateKey),
+		gitLabApp:                   gitlab2.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 

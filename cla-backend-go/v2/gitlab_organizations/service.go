@@ -45,7 +45,7 @@ func NewService(repo RepositoryInterface, claGroupRepository projects_cla_groups
 	return service{
 		repo:               repo,
 		claGroupRepository: claGroupRepository,
-		gitLabApp:          gitlab.Init(config.GetConfig().Gitlab.AppID, config.GetConfig().Gitlab.AppPrivateKey),
+		gitLabApp:          gitlab.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 
@@ -79,7 +79,6 @@ func (s service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganiz
 	}
 
 	return s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, authInfoEncrypted)
-
 }
 
 func (s service) UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
@@ -296,7 +295,7 @@ func buildInstallationURL(gitlabOrgID string, authStateNonce string) *strfmt.URI
 	state := fmt.Sprintf("%s:%s", gitlabOrgID, authStateNonce)
 
 	params := url.Values{}
-	params.Add("client_id", c.Gitlab.AppID)
+	params.Add("client_id", c.Gitlab.AppClientID)
 	params.Add("redirect_uri", c.Gitlab.RedirectURI)
 	//params.Add("redirect_uri", "http://localhost:8080/v4/gitlab/oauth/callback")
 	params.Add("response_type", "code")

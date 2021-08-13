@@ -22,13 +22,13 @@ func FetchOauthCredentials(code string) (*OauthSuccessResponse, error) {
 		"redirectURI":  config.GetConfig().Gitlab.RedirectURI,
 	}
 
-	if len(gitLabConfig.AppID) > 4 {
-		f["gitLabClientID"] = fmt.Sprintf("%s...%s", gitLabConfig.AppID[0:4], gitLabConfig.AppID[len(gitLabConfig.AppID)-4:])
+	if len(gitLabConfig.AppClientID) > 4 {
+		f["gitLabClientID"] = fmt.Sprintf("%s...%s", gitLabConfig.AppClientID[0:4], gitLabConfig.AppClientID[len(gitLabConfig.AppClientID)-4:])
 	} else {
 		return nil, errors.New("gitlab application client ID value is not set - value is empty or malformed")
 	}
-	if len(gitLabConfig.ClientSecret) > 4 {
-		f["gitLabClientSecret"] = fmt.Sprintf("%s...%s", gitLabConfig.ClientSecret[0:4], gitLabConfig.ClientSecret[len(gitLabConfig.ClientSecret)-4:])
+	if len(gitLabConfig.AppClientSecret) > 4 {
+		f["gitLabClientSecret"] = fmt.Sprintf("%s...%s", gitLabConfig.AppClientSecret[0:4], gitLabConfig.AppClientSecret[len(gitLabConfig.AppClientSecret)-4:])
 	} else {
 		return nil, errors.New("gitlab application client secret value is not set - value is empty or malformed")
 	}
@@ -36,8 +36,8 @@ func FetchOauthCredentials(code string) (*OauthSuccessResponse, error) {
 	// For info on this authorization flow, see: https://docs.gitlab.com/ee/api/oauth2.html#authorization-code-flow
 	client := resty.New()
 	params := map[string]string{
-		"client_id":     gitLabConfig.AppID,
-		"client_secret": gitLabConfig.ClientSecret,
+		"client_id":     gitLabConfig.AppClientID,
+		"client_secret": gitLabConfig.AppClientSecret,
 		"code":          code,
 		"grant_type":    "authorization_code",
 		"redirect_uri":  gitLabConfig.RedirectURI,
