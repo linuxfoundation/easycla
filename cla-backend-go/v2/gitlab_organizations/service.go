@@ -23,6 +23,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	"github.com/sirupsen/logrus"
+	goGitLab "github.com/xanzy/go-gitlab"
 )
 
 // ServiceInterface contains functions of GitlabOrganizations service
@@ -282,19 +283,29 @@ func (s *Service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrgani
 		return fmt.Errorf("initializing gitlab client : %v", err)
 	}
 
-	// Need to lookup the GitLab Group/Organization to obtain the ID
-	groups, resp, searchErr := gitLabClient.Groups.SearchGroup(gitLabOrgModel.OrganizationName)
+	// Need to look up the GitLab Group/Organization to obtain the ID
+	//groups, resp, searchErr := gitLabClient.Groups.SearchGroup(gitLabOrgModel.OrganizationName)
+	// Need to look up the GitLab Group/Organization to obtain the ID
+	opts := &goGitLab.ListGroupsOptions{
+		ListOptions: goGitLab.ListOptions{
+			Page:    1,
+			PerPage: 100,
+		},
+	}
+	groups, resp, searchErr := gitLabClient.Groups.ListGroups(opts)
 	if searchErr != nil {
 		return fmt.Errorf("GitLab search error while locating Group by name: %s, error: %v", gitLabOrgModel.OrganizationName, searchErr)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("unable to locate GitLab group by name: %s, status code: %d", gitLabOrgModel.OrganizationName, resp.StatusCode)
 	}
-	if len(groups) != 1 {
-		return fmt.Errorf("expecting 1 result for GitLab group name '%s' search, found: %d", gitLabOrgModel.OrganizationName, len(groups))
+	for _, g := range groups {
+		if g.Name == gitLabOrgModel.OrganizationName {
+			return s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, g.ID, authInfoEncrypted)
+		}
 	}
 
-	return s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, groups[0].ID, authInfoEncrypted)
+	return fmt.Errorf("unable to locate GitLab group name '%s' using search, found: %d", gitLabOrgModel.OrganizationName, len(groups))
 }
 
 // UpdateGitlabOrganization updates the GitLab organization

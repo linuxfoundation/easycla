@@ -264,23 +264,20 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, gitV2Servic
 		if params.Code == "" {
 			msg := "missing code parameter"
 			log.WithFields(f).Errorf(msg)
-			return gitlab_activity.NewGitlabOauthCallbackBadRequest().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+			return NewServerError(reqID, "", errors.New(msg))
 		}
 
 		if params.State == "" {
 			msg := "missing state parameter"
 			log.WithFields(f).Errorf(msg)
-			return gitlab_activity.NewGitlabOauthCallbackBadRequest().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+			return NewServerError(reqID, "", errors.New(msg))
 		}
 
 		codeParts := strings.Split(params.State, ":")
 		if len(codeParts) != 2 {
 			msg := fmt.Sprintf("invalid state variable passed : %s", params.State)
 			log.WithFields(f).Errorf(msg)
-			return gitlab_activity.NewGitlabOauthCallbackBadRequest().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+			return NewServerError(reqID, "", errors.New(msg))
 		}
 
 		gitlabOrganizationID := codeParts[0]
@@ -289,55 +286,58 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, gitV2Servic
 		ctx := context.Background()
 		gitLabOrg, err := service.GetGitlabOrganizationByState(ctx, gitlabOrganizationID, stateVar)
 		if err != nil {
-			return gitlab_activity.NewGitlabOauthCallbackBadRequest().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("fetching gitlab model failed : %s : %v", gitlabOrganizationID, err)))
+			msg := fmt.Sprintf("fetching gitlab model failed : %s : %v", gitlabOrganizationID, err)
+			log.WithFields(f).Errorf(msg)
+			return NewServerError(reqID, "", errors.New(msg))
 		}
 
 		// now fetch the oauth credentials and store to db
 		oauthResp, err := gitlab.FetchOauthCredentials(params.Code)
 		if err != nil {
-			return gitlab_activity.NewGitlabOauthCallbackInternalServerError().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("fetching gitlab credentials failed : %s : %v", gitlabOrganizationID, err)))
+			msg := fmt.Sprintf("fetching gitlab credentials failed : %s : %v", gitlabOrganizationID, err)
+			log.WithFields(f).Errorf(msg)
+			return NewServerError(reqID, "", errors.New(msg))
 		}
 		log.WithFields(f).Debugf("oauth resp is like : %+v", oauthResp)
 
 		err = service.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, oauthResp)
 		if err != nil {
-			return gitlab_activity.NewGitlabOauthCallbackInternalServerError().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("updating gitlab credentials failed : %s : %v", gitlabOrganizationID, err)))
+			msg := fmt.Sprintf("updating gitlab credentials failed : %s : %v", gitlabOrganizationID, err)
+			log.WithFields(f).Errorf(msg)
+			return NewServerError(reqID, "", errors.New(msg))
 		}
 
 		// Reload the GitLab organization - will have additional details now...
 		updatedGitLabOrgDBModel, err := service.GetGitlabOrganizationByID(ctx, gitLabOrg.OrganizationID)
 		if err != nil {
-			return gitlab_activity.NewGitlabOauthCallbackInternalServerError().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, fmt.Sprintf("problem loading updated gitlab organization by ID: %s : %v", gitlabOrganizationID, err)))
+			msg := fmt.Sprintf("problem loading updated gitlab organization by ID: %s : %v", gitlabOrganizationID, err)
+			log.WithFields(f).Errorf(msg)
+			return NewServerError(reqID, "", errors.New(msg))
 		}
 
 		_, err = gitV2Service.GitLabAddRepositoriesByApp(ctx, updatedGitLabOrgDBModel)
 		if err != nil {
-			return NewRedirectServerError(reqID, updatedGitLabOrgDBModel.OrganizationName, err)
+			return NewServerError(reqID, updatedGitLabOrgDBModel.OrganizationName, err)
 		}
 
-		return NewRedirectOK(reqID, updatedGitLabOrgDBModel.ProjectSFID, updatedGitLabOrgDBModel.OrganizationName)
+		return NewSuccessResponse(reqID, updatedGitLabOrgDBModel.ProjectSFID, updatedGitLabOrgDBModel.OrganizationName)
 	})
-
 }
 
-// GetRedirectOK Success
-type GetRedirectOK struct {
+// SuccessResponse Success
+type SuccessResponse struct {
 	ReqID           string
 	ProjectSFID     string
 	GitLabGroupName string
 }
 
-// NewRedirectOK creates a new redirect handler
-func NewRedirectOK(reqID, projectSFID, gitLabGroupName string) *GetRedirectOK {
-	return &GetRedirectOK{reqID, projectSFID, gitLabGroupName}
+// NewSuccessResponse creates a new redirect handler
+func NewSuccessResponse(reqID, projectSFID, gitLabGroupName string) *SuccessResponse {
+	return &SuccessResponse{reqID, projectSFID, gitLabGroupName}
 }
 
 // WriteResponse to the client
-func (o *GetRedirectOK) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {
+func (o *SuccessResponse) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {
 	configPage := "https://gitlab.com/-/profile/applications"
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
@@ -372,16 +372,16 @@ func (o *GetRedirectOK) WriteResponse(rw http.ResponseWriter, producer runtime.P
 	}
 }
 
-// GetRedirectServerError Success
-type GetRedirectServerError struct {
+// ServerError Success
+type ServerError struct {
 	ReqID           string
 	GitLabGroupName string
 	Error           error
 }
 
-// NewRedirectServerError creates a new redirect handler
-func NewRedirectServerError(reqID string, gitLabGroupName string, theError error) *GetRedirectServerError {
-	return &GetRedirectServerError{
+// NewServerError creates a new redirect handler
+func NewServerError(reqID string, gitLabGroupName string, theError error) *ServerError {
+	return &ServerError{
 		ReqID:           reqID,
 		GitLabGroupName: gitLabGroupName,
 		Error:           theError,
@@ -389,7 +389,7 @@ func NewRedirectServerError(reqID string, gitLabGroupName string, theError error
 }
 
 // WriteResponse to the client
-func (o *GetRedirectServerError) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {
+func (o *ServerError) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {
 	html := fmt.Sprintf(`<!DOCTYPE html>
     <html lang="en">
 		<head>
