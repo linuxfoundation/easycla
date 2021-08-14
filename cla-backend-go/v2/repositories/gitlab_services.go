@@ -64,6 +64,12 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 		return nil, fmt.Errorf("unable to locate GitLab repositories group ID: %d, status code: %d", gitLabOrgModel.ExternalGroupID, resp.StatusCode)
 	}
 
+	// lookup CLA Group for this project SFID
+	projectCLAGroupModel, projectCLAGroupLookupErr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, gitLabOrgModel.ProjectSFID)
+	if projectCLAGroupLookupErr != nil || projectCLAGroupModel == nil {
+		return nil, fmt.Errorf("unable to locate Project CLAGroup using projectSFID: %s for GitLab repositories group ID: %d, error: %+v", gitLabOrgModel.ProjectSFID, gitLabOrgModel.ExternalGroupID, listTreeErr)
+	}
+
 	// Add repos to table
 	for _, tr := range tree {
 		log.WithFields(f).Debugf("Repository: %s, path: %s, id: %s", tr.Name, tr.Path, tr.ID)
@@ -80,7 +86,7 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 			RepositoryOrganizationName: utils.StringRef(gitLabOrgModel.OrganizationName),
 			RepositoryProjectSfid:      utils.StringRef(gitLabOrgModel.ProjectSFID),
 			RepositoryURL:              utils.StringRef(tr.Path),
-			//RepositoryClaGroupID:       utils.StringRef(gitLabOrgModel.),
+			RepositoryClaGroupID:       utils.StringRef(projectCLAGroupModel.ClaGroupID),
 		})
 		if addRepoErr != nil {
 			return nil, addRepoErr

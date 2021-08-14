@@ -131,7 +131,7 @@ jobs:
   # Builds
   buildBackend: &buildBackendAnchor
     docker:
-      - image: circleci/python:3.7.9-node
+      - image: circleci/python:3.7.11-node
     steps:
       - checkout
       - add_ssh_keys:
