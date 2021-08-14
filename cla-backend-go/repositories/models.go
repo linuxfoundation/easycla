@@ -14,7 +14,8 @@ import (
 type RepositoryDBModel struct {
 	DateCreated                string `dynamodbav:"date_created" json:"date_created,omitempty"`
 	DateModified               string `dynamodbav:"date_modified" json:"date_modified,omitempty"`
-	RepositoryExternalID       string `dynamodbav:"repository_external_id" json:"repository_external_id,omitempty"`
+	RepositoryExternalID       string `dynamodbav:"repository_external_id" json:"repository_external_id,omitempty"`               // Integer value from GitHub
+	RepositoryGitLabExternalID string `dynamodbav:"repository_gitlab_external_id" json:"repository_gitlab_external_id,omitempty"` // String  value from GitLab
 	RepositoryID               string `dynamodbav:"repository_id" json:"repository_id,omitempty"`
 	RepositoryName             string `dynamodbav:"repository_name" json:"repository_name,omitempty"`
 	RepositoryOrganizationName string `dynamodbav:"repository_organization_name" json:"repository_organization_name,omitempty"`

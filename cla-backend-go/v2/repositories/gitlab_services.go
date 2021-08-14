@@ -67,15 +67,15 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 	// Add repos to table
 	for _, tr := range tree {
 		log.WithFields(f).Debugf("Repository: %s, path: %s, id: %s", tr.Name, tr.Path, tr.ID)
-		externalID, convertErr := strconv.ParseInt(tr.ID, 10, 64)
-		if convertErr != nil {
-			return nil, convertErr
-		}
+		//externalID, convertErr := strconv.ParseInt(tr.ID, 10, 64)
+		//if convertErr != nil {
+		//	return nil, convertErr
+		//}
 
 		_, addRepoErr := s.GitLabAddRepository(ctx, gitLabOrgModel.ProjectSFID, &v2Models.GitlabAddRepository{
 			Enabled:                    true,
 			Note:                       fmt.Sprintf("Added during onboarding of organization: %s", gitLabOrgModel.OrganizationName),
-			RepositoryExternalID:       utils.Int64(externalID),
+			RepositoryGitlabExternalID: utils.StringRef(tr.ID), // utils.Int64(externalID),
 			RepositoryName:             utils.StringRef(tr.Name),
 			RepositoryOrganizationName: utils.StringRef(gitLabOrgModel.OrganizationName),
 			RepositoryProjectSfid:      utils.StringRef(gitLabOrgModel.ProjectSFID),

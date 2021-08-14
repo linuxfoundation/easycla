@@ -6,11 +6,10 @@ properties:
   repositoryID:
     description: The internal repository ID
     $ref: './common/properties/internal-id.yaml'
-  repository_external_id:
-    type: integer
-    description: The repository ID from the external service, such as GitHub or GitLab
-    minimum: 1
-    example: 7
+  repository_gitlab_external_id:
+    type: string
+    description: The GitLab repository ID from the external service
+    exampe: '0ab0e8f6cc4f8fff75cc1586f98a7d2362709ee0'
   repository_cla_group_id:
     type: string
     description: The CLA Group ID associated with this repository

@@ -253,10 +253,12 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, gitV2Servic
 	})
 
 	api.GitlabActivityGitlabOauthCallbackHandler = gitlab_activity.GitlabOauthCallbackHandlerFunc(func(params gitlab_activity.GitlabOauthCallbackParams) middleware.Responder {
+		ctx := utils.NewContext()
 		f := logrus.Fields{
-			"functionName": "gitlab_organization.handlers.GitlabActivityGitlabOauthCallbackHandler",
-			"code":         params.Code,
-			"state":        params.State,
+			"functionName":   "gitlab_organization.handlers.GitlabActivityGitlabOauthCallbackHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"code":           params.Code,
+			"state":          params.State,
 		}
 
 		requestID, _ := uuid.NewV4()
@@ -283,7 +285,6 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, gitV2Servic
 		gitlabOrganizationID := codeParts[0]
 		stateVar := codeParts[1]
 
-		ctx := context.Background()
 		gitLabOrg, err := service.GetGitlabOrganizationByState(ctx, gitlabOrganizationID, stateVar)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab model failed : %s : %v", gitlabOrganizationID, err)

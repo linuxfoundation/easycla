@@ -6,7 +6,6 @@ package repositories
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -208,7 +207,7 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		"functionName":               "v2.repositories.repositories.GitHubAddRepositories",
 		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
 		"projectSFID":                projectSFID,
-		"repositoryExternalID":       utils.Int64Value(input.RepositoryExternalID),
+		"repositoryGitLabExternalID": utils.StringValue(input.RepositoryGitlabExternalID),
 		"repositoryURL":              utils.StringValue(input.RepositoryURL),
 		"repositoryName":             utils.StringValue(input.RepositoryName),
 		"repositoryType":             utils.GitLabLower,
@@ -244,7 +243,7 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		ProjectSFID:                projectSFID,
 		DateCreated:                currentTime,
 		DateModified:               currentTime,
-		RepositoryExternalID:       strconv.FormatInt(utils.Int64Value(input.RepositoryExternalID), 10),
+		RepositoryExternalID:       utils.StringValue(input.RepositoryGitlabExternalID),
 		RepositoryName:             utils.StringValue(input.RepositoryName),
 		RepositoryURL:              utils.StringValue(input.RepositoryURL),
 		RepositoryOrganizationName: utils.StringValue(input.RepositoryOrganizationName), // gitlab group/organization

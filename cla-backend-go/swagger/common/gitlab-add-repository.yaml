@@ -3,18 +3,16 @@
 
 type: object
 required:
-  - repository_external_id
+  - repository_gitlab_external_id
   - repository_project_sfid
   - repository_cla_group_id
   - repository_name
   - repository_organization_name
   - repository_url
 properties:
-  repository_external_id:
-    type: integer
-    description: The repository ID from the external service, such as GitHub or GitLab
-    minimum: 1
-    example: 7
+  repository_gitlab_external_id:
+    type: string
+    description: The GitLab repository ID from the external service
   repository_project_sfid:
     description: Project SFID
     $ref: './common/properties/external-id.yaml'
