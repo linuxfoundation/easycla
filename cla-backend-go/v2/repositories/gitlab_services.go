@@ -92,14 +92,20 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 		log.WithFields(f).Debugf("Repository: %s, path: %s, id: %d", proj.Name, proj.Path, proj.ID)
 
 		// TODO - make sure we don't have duplicates?
+		/*
+		  Name: "easycla-test-repo-demo-1",
+		  NameWithNamespace: "The Linux Foundation / product / EasyCLA / Demo / easycla-test-repo-demo-1",
+		  Path: "easycla-test-repo-demo-1",
+		  PathWithNamespace: "linuxfoundation/product/easycla/demo/easycla-test-repo-demo-1",
+		*/
 		_, addRepoErr := s.GitLabAddRepository(ctx, gitLabOrgModel.ProjectSFID, &v2Models.GitlabAddRepository{
 			Enabled:                    true,
 			Note:                       fmt.Sprintf("Added during onboarding of organization: %s", gitLabOrgModel.OrganizationName),
 			RepositoryExternalID:       utils.Int64(int64(proj.ID)),
-			RepositoryName:             utils.StringRef(proj.Name),
+			RepositoryName:             utils.StringRef(proj.PathWithNamespace),
 			RepositoryOrganizationName: utils.StringRef(gitLabOrgModel.OrganizationName),
 			RepositoryProjectSfid:      utils.StringRef(gitLabOrgModel.ProjectSFID),
-			RepositoryURL:              utils.StringRef(proj.Path),
+			RepositoryURL:              utils.StringRef(proj.WebURL),
 			RepositoryClaGroupID:       utils.StringRef(projectCLAGroupModel.ClaGroupID),
 		})
 		if addRepoErr != nil {

@@ -4,6 +4,7 @@
 package tests
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -16,12 +17,12 @@ import (
 
 const enabled = false // nolint
 const group = "The Linux Foundation/product/EasyCLA"
+const accessToken = ""
 
 func TestGitLabSearchGroup(t *testing.T) { // no lint
 
 	if enabled { // nolint
 		// Get the client
-		accessToken := "" //update to run this test
 		gitLabClient, err := gitlab2.NewGitlabOauthClientFromAccessToken(accessToken)
 		assert.Nil(t, err, "GitLab OAuth Client")
 
@@ -48,7 +49,6 @@ func TestGitLabListProjects(t *testing.T) { // no lint
 
 	if enabled { // nolint
 		// Get the client
-		accessToken := "" //update to run this test
 		gitLabClient, err := gitlab2.NewGitlabOauthClientFromAccessToken(accessToken)
 		assert.Nil(t, err, "GitLab OAuth Client")
 
@@ -90,10 +90,20 @@ func TestGitLabListProjects(t *testing.T) { // no lint
 			assert.Fail(t, "unable to locate GitLab group by name: %s, status code: %d", group, resp.StatusCode)
 		}
 
+		// DEBUG
 		t.Logf("Recevied %d projects", len(projects))
 		for _, p := range projects {
 			t.Logf("project name: %s, ID: %d, path: %s", p.Name, p.ID, p.PathWithNamespace)
 		}
+
+		// DEBUG
+		t.Log("projects:")
+		for _, p := range projects {
+			byteArr, err := json.Marshal(p)
+			assert.Nil(t, err)
+			t.Logf("project: %s", byteArr)
+		}
+
 		if len(projects) > 1 {
 			assert.Fail(t, fmt.Sprintf("expecting > 1 result for GitLab list projects, found: %d - %+v", len(projects), projects))
 		}
