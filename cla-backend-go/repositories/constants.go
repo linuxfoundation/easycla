@@ -15,6 +15,9 @@ const RepositoryProjectIDColumn = "project_sfid"
 // RepositoryCLAGroupIDColumn constant
 const RepositoryCLAGroupIDColumn = "repository_project_id"
 
+// RepositoryOrganizationNameColumn constant
+const RepositoryOrganizationNameColumn = "repository_organization_name"
+
 // RepositoryEnabledColumn constant
 const RepositoryEnabledColumn = "enabled"
 

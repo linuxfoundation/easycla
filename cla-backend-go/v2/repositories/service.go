@@ -54,6 +54,7 @@ type ServiceInterface interface {
 	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*v2Models.GitlabRepository, error)
 	GitLabGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabListRepositories, error)
 	GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string, enabled bool) (*v2Models.GitlabListRepositories, error)
+	GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabListRepositories, error)
 	GitLabAddRepository(ctx context.Context, projectSFID string, input *v2Models.GitlabAddRepository) (*v2Models.GitlabRepository, error)
 	GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel *common.GitlabOrganization) ([]*v2Models.GitlabRepository, error)
 	GitLabEnableRepository(ctx context.Context, repositoryID string) error

@@ -17,6 +17,10 @@ properties:
     type: string
     description: 'GitLab Repository/Project name'
     x-omitempty: false
+  repository_url:
+    type: string
+    description: 'GitLab Repository/Project URL'
+    x-omitempty: false
   cla_group_id:
     description: CLA Group ID
     $ref: './common/properties/internal-id.yaml'

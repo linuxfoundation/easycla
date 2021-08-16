@@ -30,6 +30,7 @@ type RepositoryInterface interface {
 	GitHubGetRepositoriesByCLAGroupEnabled(ctx context.Context, claGroupID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByCLAGroupDisabled(ctx context.Context, claGroupID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) ([]*repoModels.RepositoryDBModel, error)
+	GitHubGetRepositoriesByOrganizationName(ctx context.Context, orgName string) ([]*repoModels.RepositoryDBModel, error)
 	GitLabAddRepository(ctx context.Context, projectSFID string, input *v2Models.GitlabAddRepository) (*repoModels.RepositoryDBModel, error)
 	GitLabEnableRepositoryByID(ctx context.Context, repositoryID string) error
 	GitLabDisableRepositoryByID(ctx context.Context, repositoryID string) error
@@ -202,6 +203,27 @@ func (r *Repository) GitHubGetRepositoriesByProjectSFID(ctx context.Context, pro
 	return records, nil
 }
 
+// GitHubGetRepositoriesByOrganizationName returns a list of repositories associated with the specified organization name
+func (r *Repository) GitHubGetRepositoriesByOrganizationName(ctx context.Context, orgName string) ([]*repoModels.RepositoryDBModel, error) {
+	condition := expression.Key(repoModels.RepositoryOrganizationNameColumn).Equal(expression.Value(orgName))
+	filter := expression.Name(repoModels.RepositoryTypeColumn).Equal(expression.Value(utils.GitLabLower))
+
+	records, err := r.getRepositoriesWithConditionFilter(ctx, condition, filter, repoModels.RepositoryOrganizationNameIndex)
+	if err != nil {
+		// Catch the error - return the same error with the appropriate details
+		if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
+			return nil, &utils.GitLabRepositoryNotFound{
+				OrganizationName: orgName,
+			}
+		}
+
+		// Some other error
+		return nil, err
+	}
+
+	return records, nil
+}
+
 // GitLabAddRepository creates a new entry in the repositories table using the specified input parameters
 func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string, input *v2Models.GitlabAddRepository) (*repoModels.RepositoryDBModel, error) {
 	f := logrus.Fields{
@@ -253,7 +275,7 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		RepositoryOrganizationName: utils.StringValue(input.RepositoryOrganizationName), // gitlab group/organization
 		RepositoryCLAGroupID:       utils.StringValue(input.RepositoryClaGroupID),
 		RepositoryType:             utils.GitLabLower, // should always be gitlab
-		Enabled:                    true,              // default is enabled
+		Enabled:                    input.Enabled,     // default is enabled
 		Note:                       fmt.Sprintf("created on %s", currentTime),
 		Version:                    "v1",
 	}

@@ -354,11 +354,12 @@ func (e *GitHubRepositoryExists) Unwrap() error {
 
 // GitLabRepositoryNotFound is an error model for a GitLab repository not found
 type GitLabRepositoryNotFound struct {
-	Message        string
-	RepositoryName string
-	ProjectSFID    string
-	CLAGroupID     string
-	Err            error
+	Message          string
+	OrganizationName string
+	RepositoryName   string
+	ProjectSFID      string
+	CLAGroupID       string
+	Err              error
 }
 
 // Error is an error string function for the GitHubRepositoryNotFound model
@@ -366,6 +367,9 @@ func (e *GitLabRepositoryNotFound) Error() string {
 	msg := GitLabRepoNotFound
 	if e.Message != "" {
 		msg = e.Message
+	}
+	if e.OrganizationName != "" {
+		msg = fmt.Sprintf("%s - organization: %s ", msg, e.OrganizationName)
 	}
 	if e.RepositoryName != "" {
 		msg = fmt.Sprintf("%s - repository: %s ", msg, e.RepositoryName)

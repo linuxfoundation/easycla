@@ -73,7 +73,7 @@ func (s Service) AddGitHubOrganization(ctx context.Context, projectSFID string, 
 	return s.repo.AddGitHubOrganization(ctx, parentProjectSFID, projectSFID, input)
 }
 
-// GetGitHubOrganizations returns the github organization for the specified project
+// GetGitHubOrganizations returns the GitHub organization for the specified project
 func (s Service) GetGitHubOrganizations(ctx context.Context, projectSFID string) (*models.GithubOrganizations, error) {
 	f := logrus.Fields{
 		"functionName":   "GetGitHubOrganizations",
@@ -133,12 +133,12 @@ func (s Service) GetGitHubOrganizations(ctx context.Context, projectSFID string)
 	return &gitHubOrgModels, err
 }
 
-// GetGitHubOrganizationsByParent returns the github organizations for the specified parent project SFID
+// GetGitHubOrganizationsByParent returns the GitHub organizations for the specified parent project SFID
 func (s Service) GetGitHubOrganizationsByParent(ctx context.Context, parentProjectSFID string) (*models.GithubOrganizations, error) {
 	return s.repo.GetGitHubOrganizationsByParent(ctx, parentProjectSFID)
 }
 
-// GetGitHubOrganizationByName returns the github organizations for the specified github organization name
+// GetGitHubOrganizationByName returns the GitHub organizations for the specified GitHub organization name
 func (s Service) GetGitHubOrganizationByName(ctx context.Context, githubOrgName string) (*models.GithubOrganization, error) {
 	f := logrus.Fields{
 		"functionName":   "GetGitHubOrganizationByName",

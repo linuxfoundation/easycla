@@ -5,16 +5,22 @@ package gitlab_organizations
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
 	"github.com/go-openapi/strfmt"
+
+	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
@@ -41,14 +47,16 @@ type ServiceInterface interface {
 // Service data model
 type Service struct {
 	repo               RepositoryInterface
+	v2GitRepoService   repositories.ServiceInterface
 	claGroupRepository projects_cla_groups.Repository
 	gitLabApp          *gitlab.App
 }
 
 // NewService creates a new gitlab organization service
-func NewService(repo RepositoryInterface, claGroupRepository projects_cla_groups.Repository) *Service {
+func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceInterface, claGroupRepository projects_cla_groups.Repository) *Service {
 	return &Service{
 		repo:               repo,
+		v2GitRepoService:   v2GitRepoService,
 		claGroupRepository: claGroupRepository,
 		gitLabApp:          gitlab.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
@@ -184,26 +192,33 @@ func (s *Service) GetGitlabOrganizations(ctx context.Context, projectSFID string
 			}
 		}
 
-		orgDetailed, err := s.repo.GetGitlabOrganization(ctx, org.OrganizationID)
-		if err != nil {
-			log.WithFields(f).Errorf("fetching gitlab org failed : %s : %v", org.OrganizationID, err)
+		orgDetailed, orgErr := s.repo.GetGitlabOrganization(ctx, org.OrganizationID)
+		if orgErr != nil {
+			log.WithFields(f).Errorf("fetching gitlab org failed : %s : %v", org.OrganizationID, orgErr)
 			continue
 		}
 
-		installationURL := buildInstallationURL(org.OrganizationID, orgDetailed.AuthState)
+		reposFromOrg, repoErr := s.v2GitRepoService.GitLabGetRepositoriesByOrganizationName(ctx, org.OrganizationName)
+		if repoErr != nil {
+			log.WithFields(f).Errorf("fetching gitlab org repositories for GitLab Org: %s : %v", org.OrganizationName, repoErr)
+			continue
+		}
+
+		glClient, err := gitlab.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
+
 		rorg := &models.GitlabProjectOrganization{
 			AutoEnabled:             org.AutoEnabled,
 			AutoEnableCLAGroupID:    org.AutoEnabledClaGroupID,
 			AutoEnabledCLAGroupName: autoEnabledCLAGroupName,
 			GitlabOrganizationName:  org.OrganizationName,
-			Repositories:            make([]*models.GitlabProjectRepository, 0),
-			InstallationURL:         installationURL,
+			Repositories:            s.updateRepositoryStatus(glClient, toGitLabProjectResponse(reposFromOrg)),
+			InstallationURL:         buildInstallationURL(org.OrganizationID, orgDetailed.AuthState),
+			ConnectionStatus:        "", // updated below
 		}
 
 		if orgDetailed.AuthInfo == "" {
 			rorg.ConnectionStatus = utils.NoConnection
 		} else {
-			glClient, err := gitlab.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
 			if err != nil {
 				log.WithFields(f).Errorf("initializing gitlab client for gitlab org : %s failed : %v", org.OrganizationID, err)
 				rorg.ConnectionStatus = utils.ConnectionFailure
@@ -323,7 +338,7 @@ func (s *Service) UpdateGitlabOrganization(ctx context.Context, projectSFID stri
 // DeleteGitlabOrganization deletes the specified GitLab organization
 func (s *Service) DeleteGitlabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error {
 	f := logrus.Fields{
-		"functionName":   "DeleteGitlabOrganization",
+		"functionName":   "v2.gitlab_organizations.service.DeleteGitlabOrganization",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 		"gitlabOrgName":  gitlabOrgName,
@@ -363,4 +378,115 @@ func buildInstallationURL(gitlabOrgID string, authStateNonce string) *strfmt.URI
 
 	installationURL := strfmt.URI(base + "?" + params.Encode())
 	return &installationURL
+}
+
+func toGitLabProjectResponse(gitLabListRepos *models.GitlabListRepositories) []*models.GitlabProjectRepository {
+	f := logrus.Fields{
+		"functionName": "v2.gitlab_organizations.service.toGitLabProjectResponse",
+	}
+
+	if gitLabListRepos == nil {
+		return []*models.GitlabProjectRepository{}
+	}
+
+	var repoList []*models.GitlabProjectRepository
+	for _, repo := range gitLabListRepos.List {
+		parentProjectSFID, err := project_service.GetClient().GetParentProject(repo.RepositoryProjectSfid)
+		if err != nil {
+			log.WithFields(f).Warnf("unable to lookup project parent SFID using SFID: %s", repo.RepositoryProjectSfid)
+		}
+
+		repoList = append(repoList, &models.GitlabProjectRepository{
+			ClaGroupID: repo.RepositoryClaGroupID,
+			//ConnectionStatus:   "", // set via another function
+			Enabled:            repo.Enabled,
+			ParentProjectID:    parentProjectSFID,
+			ProjectID:          repo.RepositoryProjectSfid,
+			RepositoryGitlabID: repo.RepositoryExternalID,
+			RepositoryID:       repo.RepositoryID,
+			RepositoryName:     repo.RepositoryName,
+			RepositoryURL:      repo.RepositoryURL,
+		})
+	}
+
+	return repoList
+}
+
+// updateRepositoryStatus is a helper function to set/add the repository connection status
+func (s *Service) updateRepositoryStatus(glClient *goGitLab.Client, gitLabProjectRepos []*models.GitlabProjectRepository) []*models.GitlabProjectRepository {
+	f := logrus.Fields{
+		"functionName": "v2.gitlab_organizations.service.updateRepositoryStatus",
+	}
+
+	if gitLabProjectRepos == nil {
+		return []*models.GitlabProjectRepository{}
+	}
+
+	type responseChannelModel struct {
+		RepositoryExternalID int64
+		ConnectionStatus     string
+		Error                error
+	}
+	// A channel for the responses from the go routines
+	responseChannel := make(chan responseChannelModel)
+
+	opts := &goGitLab.GetProjectOptions{}
+	for _, repo := range gitLabProjectRepos {
+		// Create a go routine to this concurrently
+		go func(glClient *goGitLab.Client, repo *models.GitlabProjectRepository) {
+			projectModel, resp, lookupErr := glClient.Projects.GetProject(int(repo.RepositoryGitlabID), opts) // OK to convert int64 to int as it is the ID and probably should be typed as a int anyway
+			if lookupErr != nil {
+				log.WithFields(f).WithError(lookupErr).Warnf("problem loading GitLab project by external ID: %d, error: %v", repo.RepositoryGitlabID, lookupErr)
+				repo.ConnectionStatus = utils.ConnectionFailure
+				responseChannel <- responseChannelModel{
+					RepositoryExternalID: repo.RepositoryGitlabID,
+					ConnectionStatus:     utils.ConnectionFailure,
+					Error:                lookupErr,
+				}
+				return
+			}
+			if resp.StatusCode < 200 || resp.StatusCode > 299 {
+				responseBody, readErr := io.ReadAll(resp.Body)
+				if readErr != nil {
+					log.WithFields(f).WithError(lookupErr).Warnf("problem loading GitLab project by external ID: %d, error: %v", repo.RepositoryGitlabID, readErr)
+					responseChannel <- responseChannelModel{
+						RepositoryExternalID: repo.RepositoryGitlabID,
+						ConnectionStatus:     utils.ConnectionFailure,
+						Error:                readErr,
+					}
+					return
+				}
+				msg := fmt.Sprintf("problem loading GitLab project by external ID: %d, response code: %d, body: %s", repo.RepositoryGitlabID, resp.StatusCode, responseBody)
+				log.WithFields(f).Warnf(msg)
+				responseChannel <- responseChannelModel{
+					RepositoryExternalID: repo.RepositoryGitlabID,
+					ConnectionStatus:     utils.ConnectionFailure,
+					Error:                errors.New(msg),
+				}
+				return
+			}
+
+			log.WithFields(f).Debugf("connected to project/repo: %s", projectModel.PathWithNamespace)
+			responseChannel <- responseChannelModel{
+				RepositoryExternalID: repo.RepositoryGitlabID,
+				ConnectionStatus:     utils.Connected,
+				Error:                nil,
+			}
+		}(glClient, repo)
+	}
+
+	for i := 0; i < len(gitLabProjectRepos); i++ {
+		resp := <-responseChannel
+		// Find the matching repo for this response
+		for _, repo := range gitLabProjectRepos {
+			if repo.RepositoryGitlabID == resp.RepositoryExternalID {
+				repo.ConnectionStatus = resp.ConnectionStatus
+			}
+		}
+		if resp.Error != nil {
+			log.WithFields(f).Warnf("problem connecting to GitLab repoistory, error: %+v", resp.Error)
+		}
+	}
+
+	return gitLabProjectRepos
 }

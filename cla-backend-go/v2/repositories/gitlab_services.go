@@ -69,8 +69,6 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 		},
 		Search:           utils.StringRef(gitLabOrgModel.OrganizationName), // filter by our organization
 		SearchNamespaces: utils.Bool(true),
-		Simple:           nil,
-		Owned:            nil,
 		Membership:       utils.Bool(true),
 		MinAccessLevel:   gitlab.AccessLevel(gitlab.MaintainerPermissions),
 	}
@@ -99,7 +97,7 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 		  PathWithNamespace: "linuxfoundation/product/easycla/demo/easycla-test-repo-demo-1",
 		*/
 		_, addRepoErr := s.GitLabAddRepository(ctx, gitLabOrgModel.ProjectSFID, &v2Models.GitlabAddRepository{
-			Enabled:                    true,
+			Enabled:                    false, // default is false
 			Note:                       fmt.Sprintf("Added during onboarding of organization: %s", gitLabOrgModel.OrganizationName),
 			RepositoryExternalID:       utils.Int64(int64(proj.ID)),
 			RepositoryName:             utils.StringRef(proj.PathWithNamespace),
@@ -167,6 +165,23 @@ func (s *Service) GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupI
 	} else {
 		dbModels, err = s.gitV2Repository.GitHubGetRepositoriesByCLAGroupDisabled(ctx, claGroupID)
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	responses, err := dbModelsToGitLabRepositories(dbModels)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v2Models.GitlabListRepositories{
+		List: responses,
+	}, nil
+}
+
+// GitLabGetRepositoriesByOrganizationName returns the list of repositories associated with the Organization/Group name
+func (s *Service) GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabListRepositories, error) {
+	dbModels, err := s.gitV2Repository.GitHubGetRepositoriesByOrganizationName(ctx, orgName)
 	if err != nil {
 		return nil, err
 	}
