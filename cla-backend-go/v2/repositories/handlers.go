@@ -418,7 +418,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"authUser":                   authUser.UserName,
 				"authEmail":                  authUser.Email,
 				"projectSFID":                params.ProjectSFID,
-				"repositoryGitLabID":         utils.StringValue(params.GitlabAddRepository.RepositoryGitlabExternalID),
+				"repositoryExternalID":       utils.Int64Value(params.GitlabAddRepository.RepositoryExternalID),
 				"repositoryName":             utils.StringValue(params.GitlabAddRepository.RepositoryName),
 				"repositoryURL":              utils.StringValue(params.GitlabAddRepository.RepositoryURL),
 				"repositoryOrganizationName": utils.StringValue(params.GitlabAddRepository.RepositoryOrganizationName),
@@ -436,7 +436,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			// If no repository GitLab ID values provided...
 			// RepositoryGitlabID - provided by the older retool UI which provides only one value
 			// RepositoryGitlabIds - provided by new PCC which passes multiple values
-			if params.GitlabAddRepository.RepositoryGitlabExternalID == nil {
+			if params.GitlabAddRepository.RepositoryExternalID == nil {
 				msg := "missing repository GitLab ID value"
 				return gitlab_repositories.NewAddProjectGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}

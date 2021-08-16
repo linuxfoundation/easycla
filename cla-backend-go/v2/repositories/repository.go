@@ -6,6 +6,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -207,7 +208,7 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		"functionName":               "v2.repositories.repositories.GitHubAddRepositories",
 		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
 		"projectSFID":                projectSFID,
-		"repositoryGitLabExternalID": utils.StringValue(input.RepositoryGitlabExternalID),
+		"repositoryExternalID":       utils.Int64Value(input.RepositoryExternalID),
 		"repositoryURL":              utils.StringValue(input.RepositoryURL),
 		"repositoryName":             utils.StringValue(input.RepositoryName),
 		"repositoryType":             utils.GitLabLower,
@@ -237,13 +238,16 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		return nil, err
 	}
 
+	// Convert int64* to string
+	repositoryExternalIDString := strconv.FormatInt(utils.Int64Value(input.RepositoryExternalID), 10)
+
 	repository := &repoModels.RepositoryDBModel{
 		RepositoryID:               repoID.String(), // internal ID that we assign
 		RepositorySfdcID:           projectSFID,
 		ProjectSFID:                projectSFID,
 		DateCreated:                currentTime,
 		DateModified:               currentTime,
-		RepositoryExternalID:       utils.StringValue(input.RepositoryGitlabExternalID),
+		RepositoryExternalID:       repositoryExternalIDString,
 		RepositoryName:             utils.StringValue(input.RepositoryName),
 		RepositoryURL:              utils.StringValue(input.RepositoryURL),
 		RepositoryOrganizationName: utils.StringValue(input.RepositoryOrganizationName), // gitlab group/organization

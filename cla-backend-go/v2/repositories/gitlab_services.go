@@ -45,47 +45,61 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 		return nil, fmt.Errorf("initializing gitlab client : %v", err)
 	}
 
-	// Query GitLab for repos - fetch the list of repositories available to the GitLab App
-	opt := &gitlab.ListTreeOptions{
-		ListOptions: gitlab.ListOptions{
-			Page:    1, // starts with one: https://docs.gitlab.com/ee/api/#offset-based-pagination
-			PerPage: 100,
-		},
-		//Path      *string `url:"path,omitempty" json:"path,omitempty"`
-		//Ref       *string `url:"ref,omitempty" json:"ref,omitempty"`
-		Recursive: utils.Bool(true),
-	}
-
-	tree, resp, listTreeErr := gitlabClient.Repositories.ListTree(gitLabOrgModel.ExternalGroupID, opt)
-	if listTreeErr != nil {
-		return nil, fmt.Errorf("unable to locate GitLab repositories group ID: %d, error: %+v", gitLabOrgModel.ExternalGroupID, listTreeErr)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("unable to locate GitLab repositories group ID: %d, status code: %d", gitLabOrgModel.ExternalGroupID, resp.StatusCode)
-	}
-
 	// lookup CLA Group for this project SFID
 	projectCLAGroupModel, projectCLAGroupLookupErr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, gitLabOrgModel.ProjectSFID)
 	if projectCLAGroupLookupErr != nil || projectCLAGroupModel == nil {
-		return nil, fmt.Errorf("unable to locate Project CLAGroup using projectSFID: %s for GitLab repositories group ID: %d, error: %+v", gitLabOrgModel.ProjectSFID, gitLabOrgModel.ExternalGroupID, listTreeErr)
+		return nil, fmt.Errorf("unable to locate Project CLAGroup using projectSFID: %s for GitLab repositories group ID: %d, error: %+v", gitLabOrgModel.ProjectSFID, gitLabOrgModel.ExternalGroupID, projectCLAGroupLookupErr)
+	}
+
+	user, resp, userErr := gitlabClient.Users.CurrentUser()
+	if userErr != nil {
+		return nil, fmt.Errorf("unable to locate current user, error: %+v", userErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("unable to locate current user, status code: %d", resp.StatusCode)
+	}
+
+	log.WithFields(f).Debugf("fetched current username: %s with name: %s with email: %s", user.Username, user.Name, user.PublicEmail)
+
+	// Query GitLab for repos - fetch the list of repositories available to the GitLab App
+	listProjectsOpts := &gitlab.ListProjectsOptions{
+		ListOptions: gitlab.ListOptions{
+			Page:    1,   // starts with one: https://docs.gitlab.com/ee/api/#offset-based-pagination
+			PerPage: 100, // max is 100
+		},
+		Search:           utils.StringRef(gitLabOrgModel.OrganizationName), // filter by our organization
+		SearchNamespaces: utils.Bool(true),
+		Simple:           nil,
+		Owned:            nil,
+		Membership:       utils.Bool(true),
+		MinAccessLevel:   gitlab.AccessLevel(gitlab.MaintainerPermissions),
+	}
+
+	// TODO - DAD - loop until no more repos, could be more than 100
+	log.WithFields(f).Debugf("searching for GitLab projects based on the search critera: %s", gitLabOrgModel.OrganizationName)
+	// Need to use this func to get the list of projects the user has access to, see: https://gitlab.com/gitlab-org/gitlab-foss/-/issues/63811
+	projects, resp, listProjectsErr := gitlabClient.Projects.ListProjects(listProjectsOpts)
+	//projects, resp, listProjectsErr := gitlabClient.Projects.ListUserProjects(user.ID, listProjectsOpts)
+	if listProjectsErr != nil {
+		return nil, fmt.Errorf("unable to list projects for current user, error: %+v", listProjectsErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("unable to list projects for current user, status code: %d", resp.StatusCode)
 	}
 
 	// Add repos to table
-	for _, tr := range tree {
-		log.WithFields(f).Debugf("Repository: %s, path: %s, id: %s", tr.Name, tr.Path, tr.ID)
-		//externalID, convertErr := strconv.ParseInt(tr.ID, 10, 64)
-		//if convertErr != nil {
-		//	return nil, convertErr
-		//}
+	for _, proj := range projects {
+		log.WithFields(f).Debugf("Repository: %s, path: %s, id: %d", proj.Name, proj.Path, proj.ID)
 
+		// TODO - make sure we don't have duplicates?
 		_, addRepoErr := s.GitLabAddRepository(ctx, gitLabOrgModel.ProjectSFID, &v2Models.GitlabAddRepository{
 			Enabled:                    true,
 			Note:                       fmt.Sprintf("Added during onboarding of organization: %s", gitLabOrgModel.OrganizationName),
-			RepositoryGitlabExternalID: utils.StringRef(tr.ID), // utils.Int64(externalID),
-			RepositoryName:             utils.StringRef(tr.Name),
+			RepositoryExternalID:       utils.Int64(int64(proj.ID)),
+			RepositoryName:             utils.StringRef(proj.Name),
 			RepositoryOrganizationName: utils.StringRef(gitLabOrgModel.OrganizationName),
 			RepositoryProjectSfid:      utils.StringRef(gitLabOrgModel.ProjectSFID),
-			RepositoryURL:              utils.StringRef(tr.Path),
+			RepositoryURL:              utils.StringRef(proj.Path),
 			RepositoryClaGroupID:       utils.StringRef(projectCLAGroupModel.ClaGroupID),
 		})
 		if addRepoErr != nil {
