@@ -372,7 +372,7 @@ func (r *Repository) getRepositoryWithConditionFilter(ctx context.Context, condi
 	}
 
 	if len(results.Items) == 0 {
-		log.WithFields(f).Warnf("no repositories found matching filter critera: %+v", queryInput)
+		log.WithFields(f).Debugf("no repositories found matching filter critera: %+v", queryInput)
 		// Generic - no details as we don't know what filter content was provided
 		return nil, &utils.GitLabRepositoryNotFound{}
 	}
@@ -425,7 +425,7 @@ func (r *Repository) getRepositoriesWithConditionFilter(ctx context.Context, con
 	}
 
 	if len(results.Items) == 0 {
-		log.WithFields(f).Warnf("no repositories found matching filter critera: %+v", queryInput)
+		log.WithFields(f).Debugf("no repositories found matching filter critera: %+v", queryInput)
 		// Generic - no details as we don't know what filter content was provided
 		return nil, &utils.GitLabRepositoryNotFound{}
 	}

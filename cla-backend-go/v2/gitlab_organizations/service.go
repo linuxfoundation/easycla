@@ -170,14 +170,6 @@ func (s *Service) GetGitlabOrganizations(ctx context.Context, projectSFID string
 		List: make([]*models.GitlabProjectOrganization, 0),
 	}
 
-	// Next, we need to load a bunch of additional data for the response including the GitLab status (if it's still connected/live, not renamed/moved), the CLA Group details, etc.
-
-	//// A temp data model for holding the intermediate results
-	//type gitlabRepoInfo struct {
-	//	orgName  string
-	//	repoInfo *v1Models.GitLabRepositoryInfo
-	//}
-
 	orgmap := make(map[string]*models.GitlabProjectOrganization)
 	for _, org := range orgs.List {
 		autoEnabledCLAGroupName := ""
@@ -200,20 +192,21 @@ func (s *Service) GetGitlabOrganizations(ctx context.Context, projectSFID string
 
 		reposFromOrg, repoErr := s.v2GitRepoService.GitLabGetRepositoriesByOrganizationName(ctx, org.OrganizationName)
 		if repoErr != nil {
-			log.WithFields(f).Errorf("fetching gitlab org repositories for GitLab Org: %s : %v", org.OrganizationName, repoErr)
-			continue
+			if errors.Is(repoErr, &utils.GitLabRepositoryNotFound{}) {
+				log.WithFields(f).Debugf("no repositories onboarded for GitLab Org: %s", org.OrganizationName)
+			} else {
+				log.WithFields(f).Debugf("unexpected error while fetching gitlab org repositories for GitLab Org: %s : %v", org.OrganizationName, repoErr)
+			}
 		}
-
-		glClient, err := gitlab.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
 
 		rorg := &models.GitlabProjectOrganization{
 			AutoEnabled:             org.AutoEnabled,
 			AutoEnableCLAGroupID:    org.AutoEnabledClaGroupID,
-			AutoEnabledCLAGroupName: autoEnabledCLAGroupName,
+			AutoEnabledCLAGroupName: strings.TrimSpace(autoEnabledCLAGroupName),
 			GitlabOrganizationName:  org.OrganizationName,
-			Repositories:            s.updateRepositoryStatus(glClient, toGitLabProjectResponse(reposFromOrg)),
 			InstallationURL:         buildInstallationURL(org.OrganizationID, orgDetailed.AuthState),
 			ConnectionStatus:        "", // updated below
+			Repositories:            []*models.GitlabProjectRepository{},
 		}
 
 		if orgDetailed.AuthInfo == "" {
@@ -223,13 +216,22 @@ func (s *Service) GetGitlabOrganizations(ctx context.Context, projectSFID string
 				log.WithFields(f).Errorf("initializing gitlab client for gitlab org : %s failed : %v", org.OrganizationID, err)
 				rorg.ConnectionStatus = utils.ConnectionFailure
 			} else {
-				user, _, err := glClient.Users.CurrentUser()
-				if err != nil {
-					log.WithFields(f).Errorf("using gitlab client for gitlab org : %s failed : %v", org.OrganizationID, err)
+				// We've been authenticated by the user - great, see if we can determine the list of repos...
+				glClient, clientErr := gitlab.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
+				if clientErr != nil {
+					log.WithFields(f).Errorf("using gitlab client for gitlab org : %s failed : %v", org.OrganizationID, clientErr)
 					rorg.ConnectionStatus = utils.ConnectionFailure
 				} else {
-					log.WithFields(f).Debugf("connected to user : %s for gitlab org : %s", user.Name, org.OrganizationID)
-					rorg.ConnectionStatus = utils.Connected
+					rorg.Repositories = s.updateRepositoryStatus(glClient, toGitLabProjectResponse(reposFromOrg))
+
+					user, _, userErr := glClient.Users.CurrentUser()
+					if userErr != nil {
+						log.WithFields(f).Errorf("using gitlab client for gitlab org : %s failed : %v", org.OrganizationID, userErr)
+						rorg.ConnectionStatus = utils.ConnectionFailure
+					} else {
+						log.WithFields(f).Debugf("connected to user : %s for gitlab org : %s", user.Name, org.OrganizationID)
+						rorg.ConnectionStatus = utils.Connected
+					}
 				}
 			}
 		}
