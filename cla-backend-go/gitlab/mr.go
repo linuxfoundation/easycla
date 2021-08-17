@@ -72,15 +72,15 @@ func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int, uniq
 }
 
 // SetCommitStatus is responsible for setting the MR status for commit sha
-func SetCommitStatus(client *gitlab.Client, projectID int, commitSha string, state gitlab.BuildStateValue, message string) error {
+func SetCommitStatus(client *gitlab.Client, projectID int, commitSha string, state gitlab.BuildStateValue, message string, targetURL string) error {
 	options := &gitlab.SetCommitStatusOptions{
 		State:       state,
-		Name:        gitlab.String("easyCLA Bot"),
+		Name:        gitlab.String("EasyCLA Bot"),
 		Description: gitlab.String(message),
 	}
 
-	if state == gitlab.Failed {
-		options.TargetURL = gitlab.String("http://localhost:8080/gitlab/sign")
+	if targetURL != "" {
+		options.TargetURL = gitlab.String(targetURL)
 	}
 
 	_, _, err := client.Commits.SetCommitStatus(projectID, commitSha, options)
@@ -92,17 +92,21 @@ func SetCommitStatus(client *gitlab.Client, projectID int, commitSha string, sta
 }
 
 // SetMrComment is responsible for setting the comment body for project and merge id
-func SetMrComment(client *gitlab.Client, projectID int, mergeID int, state gitlab.BuildStateValue, message string) error {
-	covered := `<a href="http://localhost:8080">
-	<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-signed.svg" alt="covered" align="left" height="28" width="328" ></a><br/>`
-	failed := `<a href="http://localhost:8080">
-<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-not-signed.svg" alt="covered" align="left" height="28" width="328" ></a><br/>`
+func SetMrComment(client *gitlab.Client, projectID int, mergeID int, state gitlab.BuildStateValue, message string, targetURL string) error {
+	covered := fmt.Sprintf(`<a href="%s">
+	<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-signed.svg" alt="covered" align="left" height="28" width="328" ></a><br/>`, targetURL)
+	failed := fmt.Sprintf(`<a href="%s">
+<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-not-signed.svg" alt="covered" align="left" height="28" width="328" ></a><br/>`, targetURL)
 
 	var body string
 	if state == gitlab.Failed {
 		body = failed
 	} else {
 		body = covered
+	}
+
+	if message != "" {
+		body += "<br/><br/>" + message
 	}
 
 	notes, _, err := client.Notes.ListMergeRequestNotes(projectID, mergeID, &gitlab.ListMergeRequestNotesOptions{})

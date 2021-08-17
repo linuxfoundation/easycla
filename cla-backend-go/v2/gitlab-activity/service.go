@@ -34,6 +34,17 @@ import (
 	"github.com/xanzy/go-gitlab"
 )
 
+var (
+	missingID                 = errors.New("user missing in easyCLA records")
+	missingCompanyAffiliation = errors.New("must confirm affiliation with their company")
+	missingCompanyApproval    = errors.New("missing in company approval lists")
+)
+
+type gatedGitlabUser struct {
+	*gitlab.User
+	err error
+}
+
 type Service interface {
 	ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *gitlab.MergeEvent) error
 }
@@ -102,7 +113,7 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 	}
 
 	// try to find the repository via the external id
-	gitlabRepo, err := s.getGitlabRepoByExternalID(ctx, gitlabOrg.OrganizationName, strconv.Itoa(projectID))
+	gitlabRepo, err := s.getGitlabRepoByName(ctx, repositoryPath)
 	if err != nil {
 		return fmt.Errorf("finding internal repository for gitlab org name failed : %v", err)
 	}
@@ -125,41 +136,116 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 	log.WithFields(f).Debugf("gitlabOrg : %s is associated with cla group id : %s", gitlabOrg.OrganizationName, claGroupID)
 
 	log.WithFields(f).Debugf("found following participants for the MR : %d", len(participants))
-	missingUsersMsg := "missing users : "
-	var missingUsers []string
+	missingCLAMsg := "Missing CLA Authorization"
+	signedCLAMsg := "EasyCLA check passed. You are authorized to contribute."
+
+	var missingUsers []*gatedGitlabUser
+	var signedUsers []*gitlab.User
 	for _, gitlabUser := range participants {
 		if ok, err := s.hasUserSigned(ctx, claGroupID, gitlabUser); ok {
 			log.WithFields(f).Infof("gitlabUser : %d:%s has signed", gitlabUser.ID, gitlabUser.Username)
+			signedUsers = append(signedUsers, gitlabUser)
 		} else {
-			missingUsers = append(missingUsers, fmt.Sprintf("gitlabUser : %d:%s hasn't signed", gitlabUser.ID, gitlabUser.Username))
+			missingUsers = append(missingUsers, &gatedGitlabUser{
+				User: gitlabUser,
+				err:  err,
+			})
 			log.WithFields(f).Errorf("gitlabUser : %d:%s hasn't signed, err : %v", gitlabUser.ID, gitlabUser.Username, err)
 		}
 	}
 
+	signURL := GetFullSignURL(gitlabOrg.OrganizationID, strconv.Itoa(int(gitlabRepo.RepositoryExternalID)), strconv.Itoa(mergeID))
+	mrCommentContent := PrepareMrCommentContent(missingUsers, signedUsers, signURL)
 	if len(missingUsers) > 0 {
-		for _, missing := range missingUsers {
-			missingUsersMsg += missing
-		}
-		log.WithFields(f).Errorf("mr faild with following users : %s", missingUsersMsg)
-		if err := gitlab2.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Failed, missingUsersMsg); err != nil {
+		log.WithFields(f).Errorf("mr faild with following users : %s", mrCommentContent)
+		if err := gitlab2.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Failed, missingCLAMsg, signURL); err != nil {
 			return fmt.Errorf("setting commit status failed : %v", err)
 		}
 
-		if err := gitlab2.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Failed, missingUsersMsg); err != nil {
+		if err := gitlab2.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Failed, mrCommentContent, signURL); err != nil {
 			return fmt.Errorf("setting comment failed : %v", err)
 		}
 
 		return nil
 	}
-	err = gitlab2.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Success, "all signed passing")
+	err = gitlab2.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Success, signedCLAMsg, "")
 	if err != nil {
 		return fmt.Errorf("setting commit status failed : %v", err)
 	}
 
-	if err := gitlab2.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Success, missingUsersMsg); err != nil {
+	if err := gitlab2.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Success, mrCommentContent, signURL); err != nil {
 		return fmt.Errorf("setting comment failed : %v", err)
 	}
 	return err
+}
+
+func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*gitlab.User, signURL string) string {
+	var result string
+	failed := ":x:"
+	success := ":white_check_mark:"
+
+	if len(signedUsers) > 0 {
+		result = "<ul>"
+		for _, signed := range signedUsers {
+			authorInfo := getAuthorInfo(signed)
+			result += fmt.Sprintf("<li>%s %s</li>", success, authorInfo)
+		}
+		result += "</ul>"
+	}
+
+	gitlabSupportURL := "https://about.gitlab.com/support"
+	easyCLASupportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
+	if len(missingUsers) > 0 {
+		result += "<ul>"
+		for _, missingUser := range missingUsers {
+			authorInfo := getAuthorInfo(missingUser.User)
+			if errors.Is(missingUser.err, missingID) {
+				msg := fmt.Sprintf(`<li> %s The commit associated with %s is missing the User's ID, preventing the EasyCLA check. 
+                        <a href='%s' target='_blank'>Consult GitLab Help</a> to resolve.
+                        For further assistance with EasyCLA, 
+                        <a href='%s' target='_blank'>please submit a support request ticket</a>.
+                        </li>`, failed, authorInfo, gitlabSupportURL, easyCLASupportURL)
+				result += msg
+			} else if errors.Is(missingUser.err, missingCompanyAffiliation) {
+				msg := fmt.Sprintf(`<li>%s is authorized, but they must confirm their affiliation with their company.
+                            Start the authorization process 
+                            <a href='%s' target='_blank'> by clicking here</a>, click "Corporate",
+                            select the appropriate company from the list, then confirm
+                            your affiliation on the page that appears.
+                            For further assistance with EasyCLA,
+                            <a href='%s' target='_blank'>please submit a support request ticket</a>.
+                            </li>`, authorInfo, signURL, easyCLASupportURL)
+				result += msg
+
+			} else {
+				msg := fmt.Sprintf(`<li><a href='%s' target='_blank'>%s</a> - 
+							%s's commit is not authorized under a signed CLA. 
+                            <a href='%s' target='_blank'>Please click here to be authorized</a>.
+                            For further assistance with EasyCLA,
+                            <a href='%s' target='_blank'>please submit a support request ticket</a>.
+                            </li>`, signURL, failed, authorInfo, signURL, easyCLASupportURL)
+				result += msg
+
+			}
+		}
+		result += "</ul>"
+	}
+
+	return result
+}
+
+func GetFullSignURL(gitlabOrganizationID string, gitlabRepositoryID string, mrID string) string {
+	return fmt.Sprintf("%s/v2/repository-provider/%s/sign/%s/%s/%s/#/",
+		config.GetConfig().APIGatewayURL,
+		utils.GitLabLower,
+		gitlabOrganizationID,
+		gitlabRepositoryID,
+		mrID,
+	)
+}
+
+func getAuthorInfo(gitlabUser *gitlab.User) string {
+	return fmt.Sprintf("%d:%s", gitlabUser.ID, gitlabUser.Username)
 }
 
 func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeEvent *gitlab.MergeEvent) (*common.GitlabOrganization, error) {
@@ -184,17 +270,13 @@ func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeE
 	return gitlabOrg, nil
 }
 
-func (s service) getGitlabRepoByExternalID(ctx context.Context, orgName, gitlabRepoID string) (*models.GithubRepository, error) {
-	gitlabRepo, err := s.gitV2Repository.GitLabGetRepositoryByName(ctx, orgName)
+func (s service) getGitlabRepoByName(ctx context.Context, repoNameWithPath string) (*models.GithubRepository, error) {
+	gitlabRepo, err := s.gitV2Repository.GitLabGetRepositoryByName(ctx, repoNameWithPath)
 	if err != nil || gitlabRepo == nil {
-		return nil, fmt.Errorf("unable to locate GitLab repo for external id : %s, orgName : %s, failed : %v", gitlabRepoID, orgName, err)
+		return nil, fmt.Errorf("unable to locate GitLab repo for repoNameWithPath : %s, failed : %v", repoNameWithPath, err)
 	}
 
-	if gitlabRepo.RepositoryExternalID == gitlabRepoID && gitlabRepo.RepositoryType == "gitlab" {
-		return gitlabRepo.ToGitHubModel(), nil
-	}
-
-	return nil, fmt.Errorf("no repositories found for orgName : %s and gitlab external id : %s", orgName, gitlabRepoID)
+	return gitlabRepo.ToGitHubModel(), nil
 }
 
 func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error) {
@@ -214,7 +296,7 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 	if userModel == nil {
 		msg := fmt.Sprintf("gitlab user : %d:%s not found in easycla records", gitlabUser.ID, gitlabUser.Username)
 		log.WithFields(f).Error(msg)
-		return false, fmt.Errorf(msg)
+		return false, missingID
 	}
 	log.WithFields(f).Debugf("found following easyCLA user for gitlab record, userID: %s, lfusername : %s", userModel.UserID, userModel.LfUsername)
 
@@ -260,6 +342,11 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 		return false, fmt.Errorf(msg)
 	}
 
+	if !IsUserApprovedForSignature(f, corporateSignature, userModel, gitlabUser) {
+		log.WithFields(f).Debugf("user is not approved in signature : %s", corporateSignature.SignatureID)
+		return false, missingCompanyApproval
+	}
+
 	employeeSignatures, err := s.signaturesRepository.GetProjectCompanyEmployeeSignatures(ctx, signatures1.GetProjectCompanyEmployeeSignaturesParams{
 		CompanyID: companyID,
 		ProjectID: claGroupID,
@@ -274,16 +361,11 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 	if len(employeeSignatures.Signatures) == 0 {
 		msg := fmt.Sprintf("no employee signature records found for company : %s user : %s association", companyID, userModel.UserID)
 		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		return false, missingCompanyAffiliation
 	}
 
-	if IsUserApprovedForSignature(f, corporateSignature, userModel, gitlabUser) {
-		log.WithFields(f).Debugf("user is approved in signature : %s", corporateSignature.SignatureID)
-		return true, nil
-	}
-
-	log.WithFields(f).Warnf("user not in one of the approval lists")
-	return false, fmt.Errorf("not signed")
+	log.WithFields(f).Warnf("is in signature approval list : %s and has employee signature", corporateSignature.SignatureID)
+	return true, nil
 }
 
 func (s service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.User) (*models.User, bool, error) {

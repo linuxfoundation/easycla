@@ -54,8 +54,8 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
 
-		if mergeEvent.ObjectAttributes.State != "opened" {
-			msg := fmt.Sprintf("parsing gitlab merge event failed, only opened accepted")
+		if mergeEvent.ObjectAttributes.State != "opened" && mergeEvent.ObjectAttributes.State != "update" && mergeEvent.ObjectAttributes.State != "reopen" {
+			msg := fmt.Sprintf("parsing gitlab merge event : %s failed, only [open, update, reopen] accepted", mergeEvent.ObjectAttributes.State)
 			log.WithFields(f).Errorf(msg)
 			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
 				utils.ErrorResponseBadRequest(reqID, msg))
@@ -70,12 +70,6 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 		}
 
 		return gitlab_activity.NewGitlabActivityOK()
-		//return gitlab_activity.NewGitlabActivityOK().WithPayload(&models.SuccessResponse{
-		//	Code:       "200",
-		//	Message:    "oauth credentials stored successfully",
-		//	XRequestID: reqID,
-		//})
-
 	})
 
 }

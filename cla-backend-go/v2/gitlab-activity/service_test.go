@@ -4,6 +4,8 @@
 package gitlab_activity
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
@@ -101,4 +103,86 @@ func TestIsUserApprovedForSignature(t *testing.T) {
 		})
 	}
 
+}
+
+func TestPrepareMrCommentContent(t *testing.T) {
+
+	signedContains := ":white_check_mark: %s"
+	missingUserContains := ":x: The commit associated with %s is missing the User's ID"
+	missingAffiliationContains := "%s is authorized, but they must confirm their affiliation"
+	missingApprovalContains := "%s's commit is not authorized under a signed CLA"
+
+	testCases := []struct {
+		name         string
+		signed       []*gitlab.User
+		missing      []*gatedGitlabUser
+		expectedMsgs []string
+	}{
+		{
+			name: "all signed",
+			signed: []*gitlab.User{
+				{ID: 1, Username: "neo"},
+				{ID: 2, Username: "oracle"},
+			},
+			expectedMsgs: []string{signedContains, signedContains},
+		},
+		{
+			name: "missing id",
+			signed: []*gitlab.User{
+				{ID: 1, Username: "neo"},
+			},
+			missing: []*gatedGitlabUser{
+				{err: missingID, User: &gitlab.User{ID: 3, Username: "missing"}},
+			},
+			expectedMsgs: []string{signedContains, missingUserContains},
+		},
+		{
+			name: "missing affiliation",
+			signed: []*gitlab.User{
+				{ID: 1, Username: "neo"},
+			},
+			missing: []*gatedGitlabUser{
+				{err: missingCompanyAffiliation, User: &gitlab.User{ID: 4, Username: "affiliationUser"}},
+			},
+			expectedMsgs: []string{signedContains, missingAffiliationContains},
+		},
+		{
+			name: "missing approval",
+			signed: []*gitlab.User{
+				{ID: 1, Username: "neo"},
+			},
+			missing: []*gatedGitlabUser{
+				{err: missingCompanyApproval, User: &gitlab.User{ID: 5, Username: "approvalUser"}},
+			},
+			expectedMsgs: []string{signedContains, missingApprovalContains},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(tt *testing.T) {
+			result := PrepareMrCommentContent(tc.missing, tc.signed, "https://sign.com")
+			tt.Logf("the result is : %s", result)
+			parts := strings.Split(result, "<li>")
+			assert.Len(tt, parts, len(tc.expectedMsgs)+1)
+
+			var allUsers []*gitlab.User
+
+			if len(tc.signed) > 0 {
+				for _, s := range tc.signed {
+					allUsers = append(allUsers, s)
+				}
+			}
+
+			if len(tc.missing) > 0 {
+				for _, m := range tc.missing {
+					allUsers = append(allUsers, m.User)
+				}
+			}
+
+			for i, p := range parts[1:] {
+				expected := fmt.Sprintf(tc.expectedMsgs[i], getAuthorInfo(allUsers[i]))
+				assert.Contains(tt, p, expected)
+			}
+		})
+	}
 }
