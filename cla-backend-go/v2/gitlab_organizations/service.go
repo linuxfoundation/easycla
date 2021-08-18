@@ -410,6 +410,7 @@ func toGitLabProjectResponse(gitLabListRepos *models.GitlabListRepositories) []*
 			RepositoryGitlabID: repo.RepositoryExternalID,
 			RepositoryID:       repo.RepositoryID,
 			RepositoryName:     repo.RepositoryName,
+			RepositoryFullPath: repo.RepositoryFullPath,
 			RepositoryURL:      repo.RepositoryURL,
 		})
 	}
