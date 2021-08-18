@@ -4000,7 +4000,27 @@ paths:
           $ref: '#/responses/internal-server-error'
       tags:
         - gitlab-activity
-
+  
+  /repository-provider/gitlab/sign/{organizationID}/{gitlabRepositoryID}/{mergeRequestID}:
+    get:
+      summary: Gitlab sign request handler
+      description: Endpoint that will initiate a CLA Signature for the User
+      security: [ ]
+      operationId: signRequest
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/path-gitlabOrganizationID"
+        - $ref: "#/parameters/path-gitlabRepositoryID"
+        - $ref: "#/parameters/path-mergeRequestID"
+      responses:
+        '200':
+          description: 'Success'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gitlab-sign
 
 responses:
   unauthorized:
@@ -4276,6 +4296,24 @@ parameters:
     pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
     minLength: 5
     maxLength: 255
+  path-gitlabOrganizationID:
+    name: organizationID
+    description: GitLab organization ID
+    type: string
+    in: path
+    required: true
+  path-mergeRequestID:
+    name: mergeRequestID
+    description: GitLab Merge Request identifier
+    type: string
+    in: path
+    required: true
+  path-gitlabRepositoryID:
+    name: gitlabRepositoryID
+    type: string
+    description: GitLab Repository/Project identifier
+    in: path
+    required: true
   gerritHost:
     name: gerritHost
     description: host of the gerrit server

@@ -21,6 +21,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_sign"
 
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 
@@ -92,6 +93,7 @@ import (
 	v2ClaManager "github.com/communitybridge/easycla/cla-backend-go/v2/cla_manager"
 	v2Company "github.com/communitybridge/easycla/cla-backend-go/v2/company"
 	v2Health "github.com/communitybridge/easycla/cla-backend-go/v2/health"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
 	v2Template "github.com/communitybridge/easycla/cla-backend-go/v2/template"
 
 	"github.com/go-openapi/loads"
@@ -255,6 +257,7 @@ func server(localMode bool) http.Handler {
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
 	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
 	claManagerReqRepo := cla_manager.NewRepository(awsSession, stage)
+	storeRepository := store.NewRepository(awsSession, stage)
 
 	// Our service layer handlers
 	eventsService := events.NewService(eventsRepo, combinedRepo{
@@ -306,6 +309,7 @@ func server(localMode bool) http.Handler {
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo)
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo)
 	gitlabActivityService := gitlab_activity.NewService(gitlabOrganizationRepo, gitV1Repository, gitV2Repository, usersRepo, signaturesRepo, v1ProjectClaGroupRepo, v1CompanyRepo, signaturesRepo)
+	gitlabSignService := gitlab_sign.NewService(v2RepositoriesService, gitlabOrganizationRepo, usersService, storeRepository)
 	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo, githubOrganizationsService)
 	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo, v1ProjectService)
 	v2GithubActivityService := v2GithubActivity.NewService(gitV1Repository, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
@@ -345,6 +349,9 @@ func server(localMode bool) http.Handler {
 	v2Metrics.Configure(v2API, v2MetricsService, v1CompanyRepo)
 	github_organizations.Configure(api, githubOrganizationsService, eventsService)
 	v2GithubOrganizations.Configure(v2API, v2GithubOrganizationsService, eventsService)
+	gitlab_organizations.Configure(v2API, gitlabOrganizationsService, v2RepositoriesService, eventsService)
+	gitlab_sign.Configure(v2API, gitlabSignService, eventsService, configFile.CLAContributorv2Base)
+	gitlab_activity.Configure(v2API, gitlabActivityService, eventsService)
 	repositories.Configure(api, v1RepositoriesService, eventsService)
 	v2Repositories.Configure(v2API, v2RepositoriesService, eventsService)
 	gitlab_organizations.Configure(v2API, gitlabOrganizationsService, v2RepositoriesService, eventsService)

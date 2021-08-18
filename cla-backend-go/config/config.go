@@ -67,6 +67,8 @@ type Config struct {
 	CorporateConsoleV1URL string `json:"corporateConsoleV1URL"`
 	CorporateConsoleV2URL string `json:"corporateConsoleV2URL"`
 
+	CLAContributorv2Base string `json:"cla-contributor-v2-base"`
+
 	// SNSEventTopic the topic ARN for events
 	SNSEventTopicARN string `json:"snsEventTopicARN"`
 

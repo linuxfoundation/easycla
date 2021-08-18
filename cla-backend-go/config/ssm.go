@@ -78,6 +78,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-corporate-base-%s", stage),
 		fmt.Sprintf("cla-corporate-v1-base-%s", stage),
 		fmt.Sprintf("cla-corporate-v2-base-%s", stage),
+		fmt.Sprintf("cla-contributor-v2-base-%s", stage),
 		fmt.Sprintf("cla-doc-raptor-api-key-%s", stage),
 		fmt.Sprintf("cla-session-store-table-%s", stage),
 		fmt.Sprintf("cla-ses-sender-email-address-%s", stage),
@@ -172,6 +173,8 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 			config.Gitlab.RedirectURI = resp.value
 		case fmt.Sprintf("cla-gitlab-app-web-hook-uri-%s", stage):
 			config.Gitlab.WebHookURI = resp.value
+		case fmt.Sprintf("cla-contributor-v2-base-%s", stage):
+			config.CLAContributorv2Base = resp.value
 
 		case fmt.Sprintf("cla-corporate-base-%s", stage):
 			config.CorporateConsoleURL = resp.value
