@@ -36,7 +36,7 @@ import (
 type ServiceInterface interface {
 	AddGitlabOrganization(ctx context.Context, projectSFID string, input *models.GitlabCreateOrganization) (*models.GitlabProjectOrganizations, error)
 	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*models.GitlabOrganization, error)
-	GetGitlabOrganizationByID(ctx context.Context, gitlabOrganizationID string) (*common.GitlabOrganization, error)
+	GetGitlabOrganizationByID(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error)
 	GetGitlabOrganizationByState(ctx context.Context, gitlabOrganizationID, authState string) (*models.GitlabOrganization, error)
 	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
@@ -116,7 +116,7 @@ func (s *Service) GetGitlabOrganization(ctx context.Context, gitlabOrganizationI
 }
 
 // GetGitlabOrganizationByID returns the record associated with the GitLab Organization ID
-func (s *Service) GetGitlabOrganizationByID(ctx context.Context, gitlabOrganizationID string) (*common.GitlabOrganization, error) {
+func (s *Service) GetGitlabOrganizationByID(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":         "v2.gitlab_organizations.service.GetGitlabOrganizationByID",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -203,8 +203,11 @@ func (s *Service) GetGitlabOrganizations(ctx context.Context, projectSFID string
 			AutoEnabled:             org.AutoEnabled,
 			AutoEnableCLAGroupID:    org.AutoEnabledClaGroupID,
 			AutoEnabledCLAGroupName: strings.TrimSpace(autoEnabledCLAGroupName),
-			GitlabOrganizationName:  org.OrganizationName,
+			OrganizationName:        org.OrganizationName,
+			OrganizationURL:         org.OrganizationURL,
+			OrganizationFullPath:    org.OrganizationFullPath,
 			InstallationURL:         buildInstallationURL(org.OrganizationID, orgDetailed.AuthState),
+			BranchProtectionEnabled: false,
 			ConnectionStatus:        "", // updated below
 			Repositories:            []*models.GitlabProjectRepository{},
 		}
@@ -242,7 +245,7 @@ func (s *Service) GetGitlabOrganizations(ctx context.Context, projectSFID string
 
 	// Sort everything nicely
 	sort.Slice(out.List, func(i, j int) bool {
-		return strings.ToLower(out.List[i].GitlabOrganizationName) < strings.ToLower(out.List[j].GitlabOrganizationName)
+		return strings.ToLower(out.List[i].OrganizationName) < strings.ToLower(out.List[j].OrganizationName)
 	})
 	for _, orgList := range out.List {
 		sort.Slice(orgList.Repositories, func(i, j int) bool {
@@ -318,7 +321,7 @@ func (s *Service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrgani
 	}
 	for _, g := range groups {
 		if g.Name == gitLabOrgModel.OrganizationName {
-			return s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, g.ID, authInfoEncrypted)
+			return s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, g.ID, authInfoEncrypted, g.FullPath, g.WebURL)
 		}
 	}
 

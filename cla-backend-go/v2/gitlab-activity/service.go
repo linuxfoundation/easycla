@@ -248,7 +248,7 @@ func getAuthorInfo(gitlabUser *gitlab.User) string {
 	return fmt.Sprintf("%d:%s", gitlabUser.ID, gitlabUser.Username)
 }
 
-func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeEvent *gitlab.MergeEvent) (*common.GitlabOrganization, error) {
+func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeEvent *gitlab.MergeEvent) (*common.GitLabOrganization, error) {
 	repositoryPath := mergeEvent.Project.PathWithNamespace
 	parts := strings.Split(repositoryPath, "/")
 	organizationName := parts[0]

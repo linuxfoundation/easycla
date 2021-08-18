@@ -32,7 +32,7 @@ func (s *Service) GitLabAddRepository(ctx context.Context, projectSFID string, i
 }
 
 // GitLabAddRepositoriesByApp adds the GitLab repositories based on the application credentials
-func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel *v2GitLabOrg.GitlabOrganization) ([]*v2Models.GitlabRepository, error) {
+func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel *v2GitLabOrg.GitLabOrganization) ([]*v2Models.GitlabRepository, error) {
 	f := logrus.Fields{
 		"functionName":     "v2.repositories.gitlab_services.GitLabAddRepositoriesByApp",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),

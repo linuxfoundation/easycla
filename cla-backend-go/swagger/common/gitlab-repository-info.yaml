@@ -1,0 +1,17 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+properties:
+  repository_gitlab_id:
+    type: integer
+    example: 250509778
+  repository_name:
+    type: string
+    example: "communitybridge/easycla"
+  repository_type:
+    type: string
+    example: "github"
+  repository_url:
+    type: string
+    example: "https://github.com/communitybridge/easycla"

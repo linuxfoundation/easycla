@@ -4556,8 +4556,8 @@ definitions:
   github-repository-info:
     $ref: './common/github-repository-info.yaml'
 
-  #company:
-  #  $ref: './common/company.yaml'
+  gitlab-repository-info:
+    $ref: './common/gitlab-repository-info.yaml'
 
   total-count-metrics:
     type: object

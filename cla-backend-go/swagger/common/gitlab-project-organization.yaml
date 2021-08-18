@@ -22,7 +22,7 @@ properties:
     type: string
     x-nullable: true
     format: uri
-  gitlab_organization_name:
+  organization_name:
     type: string
     description: The Gitlab Organization name
     example: "kubernetes"
@@ -31,6 +31,14 @@ properties:
     pattern: '^([\w\-\.]+){2,255}$'
     minLength: 2
     maxLength: 255
+  organization_url:
+    type: string
+    description: The Gitlab Group/Organization url
+    example: "github.com/Linux Foundation/product/EasyCLA"
+  organization_full_path:
+    type: string
+    description: The Gitlab Group/Organization full path
+    example: "linuxfoundation/product/easycla"
   connection_status:
     type: string
     enum:

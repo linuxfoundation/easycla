@@ -6,7 +6,13 @@ package tests
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/url"
+	"os"
 	"testing"
+
+	ini "github.com/communitybridge/easycla/cla-backend-go/init"
+	"github.com/spf13/viper"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
@@ -17,30 +23,102 @@ import (
 
 const enabled = false // nolint
 const group = "The Linux Foundation/product/EasyCLA"
-const accessToken = ""
+const accessInfo = ""
 
-func TestGitLabSearchGroup(t *testing.T) { // no lint
+const easyCLAGroupName = "linuxfoundation/product/easycla"
+
+func TestGitLabGetGroup(t *testing.T) { // no lint
 
 	if enabled { // nolint
-		// Get the client
-		gitLabClient, err := gitlab2.NewGitlabOauthClientFromAccessToken(accessToken)
-		assert.Nil(t, err, "GitLab OAuth Client")
+		// Need to initialize the system to load the configuration which contains a number of SSM parameters
+		stage := os.Getenv("STAGE")
+		if stage == "" {
+			assert.Fail(t, "set STAGE environment variable to run unit and functional tests.")
+		}
+		dynamodbRegion := os.Getenv("DYNAMODB_AWS_REGION")
+		if dynamodbRegion == "" {
+			assert.Fail(t, "set DYNAMODB_AWS_REGION environment variable to run unit and functional tests.")
+		}
+
+		viper.Set("STAGE", stage)
+		viper.Set("DYNAMODB_AWS_REGION", dynamodbRegion)
+		ini.Init()
+		_, err := ini.GetAWSSession()
+		if err != nil {
+			assert.Fail(t, "unable to load AWS session", err)
+		}
+		ini.ConfigVariable()
+		config := ini.GetConfig()
+
+		// Create a new GitLab App client instance
+		gitLabApp := gitlab2.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
+
+		// Create a new client
+		gitLabClient, err := gitlab2.NewGitlabOauthClient(accessInfo, gitLabApp)
+		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
+		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
+
+		// Need to look up the GitLab Group/Organization to obtain the ID
+		groupModel, resp, getError := gitLabClient.Groups.GetGroup(url.QueryEscape(easyCLAGroupName))
+		assert.Nil(t, getError, "GitLab GetGroup Error is Nil")
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			assert.Fail(t, fmt.Sprintf("unable to locate GitLab group by value: %s, status code: %d", easyCLAGroupName, resp.StatusCode))
+		}
+		assert.NotNil(t, groupModel, "Group Model is not nil")
+		t.Logf("group name: %s, ID: %d, path: %s", groupModel.Name, groupModel.ID, groupModel.Path)
+	}
+}
+
+func TestGitLabListGroups(t *testing.T) { // no lint
+
+	if enabled { // nolint
+		// Need to initialize the system to load the configuration which contains a number of SSM parameters
+		stage := os.Getenv("STAGE")
+		if stage == "" {
+			assert.Fail(t, "set STAGE environment variable to run unit and functional tests.")
+		}
+		dynamodbRegion := os.Getenv("DYNAMODB_AWS_REGION")
+		if dynamodbRegion == "" {
+			assert.Fail(t, "set DYNAMODB_AWS_REGION environment variable to run unit and functional tests.")
+		}
+
+		viper.Set("STAGE", stage)
+		viper.Set("DYNAMODB_AWS_REGION", dynamodbRegion)
+		ini.Init()
+		_, err := ini.GetAWSSession()
+		if err != nil {
+			assert.Fail(t, "unable to load AWS session", err)
+		}
+		ini.ConfigVariable()
+		config := ini.GetConfig()
+
+		// Create a new GitLab App client instance
+		gitLabApp := gitlab2.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
+
+		// Create a new client
+		gitLabClient, err := gitlab2.NewGitlabOauthClient(accessInfo, gitLabApp)
+		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
+		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
 
 		// Need to look up the GitLab Group/Organization to obtain the ID
 		opts := &gitlab.ListGroupsOptions{
-			ListOptions: gitlab.ListOptions{},
+			ListOptions: gitlab.ListOptions{
+				Page:    1,
+				PerPage: 100,
+			},
 		}
 		groups, resp, searchErr := gitLabClient.Groups.ListGroups(opts)
-		assert.Nil(t, searchErr, "GitLab OAuth Client")
+		assert.Nil(t, searchErr, "GitLab List Groups Error is Nil")
+		if searchErr != nil {
+			t.Logf("list groups error: %+v", searchErr)
+		}
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			assert.Fail(t, "unable to locate GitLab group by name: %s, status code: %d", group, resp.StatusCode)
+			respBody, readErr := io.ReadAll(resp.Body)
+			assert.Nil(t, readErr, "GitLab Response Body Read is Nil")
+			assert.Fail(t, fmt.Sprintf("unable to list GitLab groups, status code: %d, body: %s", resp.StatusCode, respBody))
 		}
 		for _, g := range groups {
-			t.Logf("group name: %s, ID: %d, path: %s", g.Name, g.ID, g.Path)
-		}
-		if len(groups) != 1 {
-
-			assert.Fail(t, fmt.Sprintf("expecting 1 result for GitLab group name '%s' search, found: %d - %+v", group, len(groups), groups))
+			t.Logf("name: %s, id: %d, web url: %s, path: %s, full path: %s", g.Name, g.ID, g.WebURL, g.Path, g.FullPath)
 		}
 	}
 }
@@ -48,9 +126,33 @@ func TestGitLabSearchGroup(t *testing.T) { // no lint
 func TestGitLabListProjects(t *testing.T) { // no lint
 
 	if enabled { // nolint
-		// Get the client
-		gitLabClient, err := gitlab2.NewGitlabOauthClientFromAccessToken(accessToken)
-		assert.Nil(t, err, "GitLab OAuth Client")
+		// Need to initialize the system to load the configuration which contains a number of SSM parameters
+		stage := os.Getenv("STAGE")
+		if stage == "" {
+			assert.Fail(t, "set STAGE environment variable to run unit and functional tests.")
+		}
+		dynamodbRegion := os.Getenv("DYNAMODB_AWS_REGION")
+		if dynamodbRegion == "" {
+			assert.Fail(t, "set DYNAMODB_AWS_REGION environment variable to run unit and functional tests.")
+		}
+
+		viper.Set("STAGE", stage)
+		viper.Set("DYNAMODB_AWS_REGION", dynamodbRegion)
+		ini.Init()
+		_, err := ini.GetAWSSession()
+		if err != nil {
+			assert.Fail(t, "unable to load AWS session", err)
+		}
+		ini.ConfigVariable()
+		config := ini.GetConfig()
+
+		// Create a new GitLab App client instance
+		gitLabApp := gitlab2.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
+
+		// Create a new client
+		gitLabClient, err := gitlab2.NewGitlabOauthClient(accessInfo, gitLabApp)
+		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
+		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
 
 		// Query GitLab for repos - fetch the list of repositories available to the GitLab App
 		listProjectsOpts := &gitlab.ListProjectsOptions{

@@ -3,29 +3,37 @@
 
 type: object
 properties:
-  organizationID:
+  organization_id:
     type: string
     description: internal id of the gitlab organization
-  dateCreated:
+  date_created:
     type: string
     example: "2020-02-06T09:31:49.245630+0000"
     minLength: 18
     maxLength: 64
-  dateModified:
+  date_modified:
     type: string
     example: "2020-02-06T09:31:49.245646+0000"
     minLength: 18
     maxLength: 64
-  organizationName:
+  organization_name:
     type: string
     example: "communitybridge"
-  organizationSfid:
+  organization_url:
+    type: string
+    description: The Gitlab Group/Organization url
+    example: "github.com/Linux Foundation/product/EasyCLA"
+  organization_full_path:
+    type: string
+    description: The Gitlab Group/Organization full path
+    example: "linuxfoundation/product/easycla"
+  organization_sfid:
     type: string
     example: "a0941000002wBz4AAA"
   version:
     type: string
     example: "v1"
-  projectSFID:
+  project_sfid:
     type: string
     example: "a0941000002wBz4AAA"
   enabled:
@@ -36,14 +44,14 @@ properties:
     type: boolean
     description: Flag that indicates whether this Gitlab Organization is authorized with Gitlab, if false it might mean that Gitlab Oauth process is not compeleted yet or the token was revoked and user needs to go through the auth process again
     x-omitempty: false
-  autoEnabled:
+  auto_enabled:
     type: boolean
     description: Flag to indicate if this Gitlab Organization is configured to allow new repositories to be auto-enabled/auto-enrolled in EasyCLA.
     x-omitempty: false
-  autoEnabledClaGroupID:
+  auto_enabled_cla_group_id:
     type: string
     description: Specifies which Cla group ID to be used when autoEnabled flag in enabled for the Github Organization. If autoEnabled is on this field needs to be set as well.
-  gitlabInfo:
+  gitlab_info:
     type: object
     properties:
       error:
@@ -59,17 +67,16 @@ properties:
           bio:
             type: string
             x-nullable: true
-          htmlUrl:
+          html_url:
             type: string
             x-nullable: true
             example: "https://github.com/communitybridge"
             format: uri
-          installationURL:
+          installation_url:
             type: string
             x-nullable: true
             description: "if the Gitlab Organization is not connected yet can use this url to go through the process of authorizing the easyCLA bot"
             format: uri
-
   repositories:
     type: object
     properties:
@@ -79,4 +86,4 @@ properties:
       list:
         type: array
         items:
-          $ref: '#/definitions/github-repository-info'
+          $ref: '#/definitions/gitlab-repository-info'

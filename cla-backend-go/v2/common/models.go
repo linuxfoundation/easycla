@@ -1,20 +1,22 @@
-package common
-
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
+
+package common
 
 import (
 	models2 "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 )
 
-// GitlabOrganization is data model for gitlab organizations
-type GitlabOrganization struct {
+// GitLabOrganization is data model for gitlab organizations
+type GitLabOrganization struct {
 	OrganizationID          string `json:"organization_id"`
 	ExternalGroupID         int    `json:"external_gitlab_group_id"`
 	DateCreated             string `json:"date_created,omitempty"`
 	DateModified            string `json:"date_modified,omitempty"`
 	OrganizationName        string `json:"organization_name,omitempty"`
 	OrganizationNameLower   string `json:"organization_name_lower,omitempty"`
+	OrganizationFullPath    string `json:"organization_full_path,omitempty"`
+	OrganizationURL         string `json:"organization_url,omitempty"`
 	OrganizationSFID        string `json:"organization_sfid,omitempty"`
 	ProjectSFID             string `json:"project_sfid"`
 	Enabled                 bool   `json:"enabled"`
@@ -27,27 +29,49 @@ type GitlabOrganization struct {
 }
 
 // ToModel converts to models.GitlabOrganization
-func ToModel(in *GitlabOrganization) *models2.GitlabOrganization {
+func ToModel(in *GitLabOrganization) *models2.GitlabOrganization {
 	return &models2.GitlabOrganization{
 		OrganizationID:        in.OrganizationID,
 		DateCreated:           in.DateCreated,
 		DateModified:          in.DateModified,
 		OrganizationName:      in.OrganizationName,
+		OrganizationFullPath:  in.OrganizationFullPath,
+		OrganizationURL:       in.OrganizationURL,
 		OrganizationSfid:      in.OrganizationSFID,
 		Version:               in.Version,
 		Enabled:               in.Enabled,
 		AutoEnabled:           in.AutoEnabled,
 		AutoEnabledClaGroupID: in.AutoEnabledClaGroupID,
-		ProjectSFID:           in.ProjectSFID,
+		ProjectSfid:           in.ProjectSFID,
 		// Not exposing ExternalGroupID
 	}
 }
 
 // ToModels converts a list of GitLab organizations to a list of external GitLab organization response models
-func ToModels(input []*GitlabOrganization) []*models2.GitlabOrganization {
+func ToModels(input []*GitLabOrganization) []*models2.GitlabOrganization {
 	out := make([]*models2.GitlabOrganization, 0)
 	for _, in := range input {
 		out = append(out, ToModel(in))
 	}
 	return out
+}
+
+// GitLabAddOrganization is data model for GitLab add organization requests
+type GitLabAddOrganization struct {
+	OrganizationID          string `json:"organization_id"`
+	ExternalGroupID         int    `json:"external_gitlab_group_id"`
+	DateCreated             string `json:"date_created,omitempty"`
+	DateModified            string `json:"date_modified,omitempty"`
+	OrganizationName        string `json:"organization_name,omitempty"`
+	OrganizationNameLower   string `json:"organization_name_lower,omitempty"`
+	OrganizationURL         string `json:"organization_url,omitempty"`
+	OrganizationSFID        string `json:"organization_sfid,omitempty"`
+	ProjectSFID             string `json:"project_sfid"`
+	Enabled                 bool   `json:"enabled"`
+	AutoEnabled             bool   `json:"auto_enabled"`
+	BranchProtectionEnabled bool   `json:"branch_protection_enabled"`
+	AutoEnabledClaGroupID   string `json:"auto_enabled_cla_group_id,omitempty"`
+	AuthInfo                string `json:"auth_info"`
+	AuthState               string `json:"auth_state"`
+	Version                 string `json:"version,omitempty"`
 }

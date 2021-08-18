@@ -37,9 +37,9 @@ const (
 type RepositoryInterface interface {
 	AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models2.GitlabCreateOrganization) (*models2.GitlabOrganization, error)
 	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error)
-	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitlabOrganization, error)
+	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitlabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*models2.GitlabOrganization, error)
-	UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, gitLabGroupID int, authInfo string) error
+	UpdateGitlabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error
 	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error
 	DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
 }
@@ -81,7 +81,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 	if existingRecord != nil {
 		log.WithFields(f).Debugf("An existing GitLab organization with name %s exists in our database", gitLabOrganizationName)
 		// If everything matches...
-		if projectSFID == existingRecord.ProjectSFID {
+		if projectSFID == existingRecord.ProjectSfid {
 			log.WithFields(f).Debug("Existing GitLab organization with same SFID - should be able to update it")
 			enabledFlag := true
 			updateErr := repo.UpdateGitlabOrganization(ctx, projectSFID, gitLabOrganizationName,
@@ -113,7 +113,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 	}
 
 	enabled := true
-	gitlabOrg := &common.GitlabOrganization{
+	gitlabOrg := &common.GitLabOrganization{
 		OrganizationID:          organizationID.String(),
 		DateCreated:             currentTime,
 		DateModified:            currentTime,
@@ -127,6 +127,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 		BranchProtectionEnabled: aws.BoolValue(input.BranchProtectionEnabled),
 		AuthState:               authStateNonce.String(),
 		Version:                 "v1",
+		// OrganizationURL:         set later when we can authenticate to the API
 	}
 
 	log.WithFields(f).Debug("Encoding GitLab organization record for adding to the database...")
@@ -165,7 +166,7 @@ func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID s
 		"projectSFID":    projectSFID,
 	}
 
-	condition := expression.Key("organization_sfid").Equal(expression.Value(projectSFID))
+	condition := expression.Key(GitLabOrganizationsOrganizationSFIDColumn).Equal(expression.Value(projectSFID))
 	builder := expression.NewBuilder().WithKeyCondition(condition)
 
 	filter := expression.Name("enabled").Equal(expression.Value(true))
@@ -202,7 +203,7 @@ func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID s
 		}, nil
 	}
 
-	var resultOutput []*common.GitlabOrganization
+	var resultOutput []*common.GitLabOrganization
 	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &resultOutput)
 	if err != nil {
 		return nil, err
@@ -223,7 +224,7 @@ func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, gitLabOr
 
 	gitLabOrganizationName = strings.ToLower(gitLabOrganizationName)
 
-	condition := expression.Key("organization_name_lower").Equal(expression.Value(strings.ToLower(gitLabOrganizationName)))
+	condition := expression.Key(GitLabOrganizationsOrganizationNameLowerColumn).Equal(expression.Value(strings.ToLower(gitLabOrganizationName)))
 	builder := expression.NewBuilder().WithKeyCondition(condition)
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
@@ -252,7 +253,7 @@ func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, gitLabOr
 		return nil, nil
 	}
 
-	var resultOutput []*common.GitlabOrganization
+	var resultOutput []*common.GitLabOrganization
 	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &resultOutput)
 	if err != nil {
 		log.WithFields(f).Warnf("problem decoding database results, error: %+v", err)
@@ -265,7 +266,7 @@ func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, gitLabOr
 }
 
 // GetGitlabOrganization by organization name
-func (repo Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitlabOrganization, error) {
+func (repo Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":         "gitlab_organizations.repository.GetGitlabOrganization",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -275,7 +276,7 @@ func (repo Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganiza
 	log.WithFields(f).Debug("Querying for GitLab organization by name...")
 	result, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
-			"organization_id": {
+			GitLabOrganizationsOrganizationIDColumn: {
 				S: aws.String(gitlabOrganizationID),
 			},
 		},
@@ -289,7 +290,7 @@ func (repo Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganiza
 		return nil, nil
 	}
 
-	var org common.GitlabOrganization
+	var org common.GitLabOrganization
 	err = dynamodbattribute.UnmarshalMap(result.Item, &org)
 	if err != nil {
 		log.WithFields(f).Warnf("error unmarshalling organization table data, error: %v", err)
@@ -299,34 +300,39 @@ func (repo Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganiza
 }
 
 // UpdateGitlabOrganizationAuth updates the specified Gitlab organization oauth info
-func (repo Repository) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, gitLabGroupID int, authInfo string) error {
+func (repo Repository) UpdateGitlabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error {
 	f := logrus.Fields{
 		"functionName":         "gitlab_organizations.repository.UpdateGitlabOrganizationAuth",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
-		"gitlabOrganizationID": gitlabOrganizationID,
+		"organizationID":       organizationID,
+		"organizationFullPath": organizationFullPath,
+		"organizationURL":      organizationURL,
 		"tableName":            repo.gitlabOrgTableName,
 	}
 
 	_, currentTime := utils.CurrentTime()
-	gitlabOrg, lookupErr := repo.GetGitlabOrganization(ctx, gitlabOrganizationID)
-	if lookupErr != nil {
-		log.WithFields(f).Warnf("error looking up Gitlab organization by id, error: %+v", lookupErr)
-		return lookupErr
-	}
-	if gitlabOrg == nil {
-		lookupErr := errors.New("unable to lookup Gitlab organization by id")
-		log.WithFields(f).Warnf("error looking up Gitlab organization, error: %+v", lookupErr)
+	gitlabOrg, lookupErr := repo.GetGitlabOrganization(ctx, organizationID)
+	if lookupErr != nil || gitlabOrg == nil {
+		log.WithFields(f).Warnf("error looking up Gitlab organization by id: %s, error: %+v", organizationID, lookupErr)
 		return lookupErr
 	}
 
 	expressionAttributeNames := map[string]*string{
-		"#A": aws.String("auth_info"),
-		"#M": aws.String("date_modified"),
-		"#P": aws.String("external_gitlab_group_id"),
+		"#A":  aws.String(GitLabOrganizationsAuthInfoColumn),
+		"#U":  aws.String(GitLabOrganizationsOrganizationURLColumn),
+		"#FP": aws.String(GitLabOrganizationsOrganizationFullPathColumn),
+		"#M":  aws.String(GitLabOrganizationsDateModifiedColumn),
+		"#P":  aws.String(GitLabOrganizationsExternalGitLabGroupIDColumn),
 	}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
 		":a": {
 			S: aws.String(authInfo),
+		},
+		":u": {
+			S: aws.String(organizationURL),
+		},
+		":fp": {
+			S: aws.String(organizationFullPath),
 		},
 		":m": {
 			S: aws.String(currentTime),
@@ -336,11 +342,11 @@ func (repo Repository) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabO
 		},
 	}
 
-	updateExpression := "SET #A = :a, #M = :m, #P = :p"
+	updateExpression := "SET #A = :a, #U = :u, #FP = :fp, #M = :m, #P = :p"
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
-			"organization_id": {
+			GitLabOrganizationsOrganizationIDColumn: {
 				S: aws.String(gitlabOrg.OrganizationID),
 			},
 		},
@@ -384,10 +390,10 @@ func (repo Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID
 	}
 
 	expressionAttributeNames := map[string]*string{
-		"#A": aws.String("auto_enabled"),
-		"#C": aws.String("auto_enabled_cla_group_id"),
-		"#B": aws.String("branch_protection_enabled"),
-		"#M": aws.String("date_modified"),
+		"#A": aws.String(GitLabOrganizationsAutoEnabledColumn),
+		"#C": aws.String(GitLabOrganizationsAutoEnabledCLAGroupIDColumn),
+		"#B": aws.String(GitLabOrganizationsBranchProtectionEnabledColumn),
+		"#M": aws.String(GitLabOrganizationsDateModifiedColumn),
 	}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
 		":a": {
@@ -415,7 +421,7 @@ func (repo Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
-			"organization_id": {
+			GitLabOrganizationsOrganizationIDColumn: {
 				S: aws.String(gitlabOrg.OrganizationID),
 			},
 		},
@@ -465,14 +471,14 @@ func (repo Repository) DeleteGitlabOrganization(ctx context.Context, projectSFID
 	_, err := repo.dynamoDBClient.UpdateItem(
 		&dynamodb.UpdateItemInput{
 			Key: map[string]*dynamodb.AttributeValue{
-				"organization_id": {
+				GitLabOrganizationsOrganizationIDColumn: {
 					S: aws.String(gitlabOrganizationID),
 				},
 			},
 			ExpressionAttributeNames: map[string]*string{
-				"#E": aws.String("enabled"),
-				"#N": aws.String("note"),
-				"#D": aws.String("date_modified"),
+				"#E": aws.String(GitLabOrganizationsEnabledColumn),
+				"#N": aws.String(GitLabOrganizationsNoteColumn),
+				"#D": aws.String(GitLabOrganizationsDateModifiedColumn),
 			},
 			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 				":e": {
@@ -498,7 +504,7 @@ func (repo Repository) DeleteGitlabOrganization(ctx context.Context, projectSFID
 	return nil
 }
 
-func buildGitlabOrganizationListModels(ctx context.Context, gitlabOrganizations []*common.GitlabOrganization) []*models2.GitlabOrganization {
+func buildGitlabOrganizationListModels(ctx context.Context, gitlabOrganizations []*common.GitLabOrganization) []*models2.GitlabOrganization {
 	f := logrus.Fields{
 		"functionName":   "buildGitlabOrganizationListModels",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
