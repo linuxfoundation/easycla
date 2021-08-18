@@ -7,6 +7,7 @@ required:
   - repository_project_sfid
   - repository_cla_group_id
   - repository_name
+  - repository_full_path
   - repository_organization_name
   - repository_url
 properties:
@@ -24,14 +25,22 @@ properties:
   repository_name:
     type: string
     description: The repository name
+    minLength: 3
     example: 'easycla-test-repo-4'
+  repository_full_path:
+    type: string
+    description: The repository full path
+    minLength: 3
+    example: 'linuxfoundation/product/easycla/easycla-test-repo-4'
   repository_organization_name:
     type: string
     description: The organization name associated with this repository
+    minLength: 3
     example: 'The Linux Foundation/product/EasyCLA'
   repository_url:
     type: string
     description: The external repository URL
+    minLength: 8
     example: 'https://gitlab.com/linuxfoundation/product/easycla/easycla-test-repo-4'
   enabled:
     type: boolean

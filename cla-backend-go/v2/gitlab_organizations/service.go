@@ -201,8 +201,8 @@ func (s *Service) GetGitlabOrganizations(ctx context.Context, projectSFID string
 
 		rorg := &models.GitlabProjectOrganization{
 			AutoEnabled:             org.AutoEnabled,
-			AutoEnableCLAGroupID:    org.AutoEnabledClaGroupID,
-			AutoEnabledCLAGroupName: strings.TrimSpace(autoEnabledCLAGroupName),
+			AutoEnableClaGroupID:    org.AutoEnabledClaGroupID,
+			AutoEnabledClaGroupName: strings.TrimSpace(autoEnabledCLAGroupName),
 			OrganizationName:        org.OrganizationName,
 			OrganizationURL:         org.OrganizationURL,
 			OrganizationFullPath:    org.OrganizationFullPath,

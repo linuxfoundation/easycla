@@ -100,7 +100,8 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 			Enabled:                    false, // default is false
 			Note:                       fmt.Sprintf("Added during onboarding of organization: %s", gitLabOrgModel.OrganizationName),
 			RepositoryExternalID:       utils.Int64(int64(proj.ID)),
-			RepositoryName:             utils.StringRef(proj.PathWithNamespace),
+			RepositoryName:             utils.StringRef(proj.Name),
+			RepositoryFullPath:         utils.StringRef(proj.PathWithNamespace),
 			RepositoryOrganizationName: utils.StringRef(gitLabOrgModel.OrganizationName),
 			RepositoryProjectSfid:      utils.StringRef(gitLabOrgModel.ProjectSFID),
 			RepositoryURL:              utils.StringRef(proj.WebURL),
@@ -225,6 +226,7 @@ func dbModelToGitLabRepository(dbModel *repoModels.RepositoryDBModel) (*v2Models
 		RepositoryClaGroupID:       dbModel.RepositoryCLAGroupID,       // CLA Group ID
 		RepositoryExternalID:       gitLabExternalID,                   // GitLab unique gitV1Repository ID
 		RepositoryName:             dbModel.RepositoryName,             // Short repository name
+		RepositoryFullPath:         dbModel.RepositoryFullPath,         // Full repository path
 		RepositoryOrganizationName: dbModel.RepositoryOrganizationName, // Group/Organization name
 		RepositoryURL:              dbModel.RepositoryURL,              // full url
 		RepositoryType:             dbModel.RepositoryType,             // gitlab

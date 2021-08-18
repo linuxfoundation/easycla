@@ -21,6 +21,10 @@ properties:
     type: string
     description: The repository name
     example: 'easycla-test-repo-4'
+  repository_full_path:
+    type: string
+    description: The repository full path
+    example: 'linuxfoundation/product/easycla/easycla-test-repo-4'
   repository_organization_name:
     type: string
     description: The organization name associated with this repository

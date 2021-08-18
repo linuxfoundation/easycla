@@ -4455,7 +4455,7 @@ definitions:
     $ref: './common/gitlab-organization.yaml'
 
   gitlab-repository:
-    $ref: './common/github-repository.yaml'
+    $ref: './common/gitlab-repository.yaml'
 
   gitlab-create-organization:
     $ref: './common/gitlab-create-organization.yaml'

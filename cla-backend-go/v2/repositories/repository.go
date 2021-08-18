@@ -233,6 +233,7 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		"repositoryExternalID":       utils.Int64Value(input.RepositoryExternalID),
 		"repositoryURL":              utils.StringValue(input.RepositoryURL),
 		"repositoryName":             utils.StringValue(input.RepositoryName),
+		"repositoryFullPath":         utils.StringValue(input.RepositoryFullPath),
 		"repositoryType":             utils.GitLabLower,
 		"repositoryCLAGroupID":       utils.StringValue(input.RepositoryClaGroupID),
 		"repositoryProjectSFID":      utils.StringValue(input.RepositoryProjectSfid),
@@ -271,6 +272,7 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		DateModified:               currentTime,
 		RepositoryExternalID:       repositoryExternalIDString,
 		RepositoryName:             utils.StringValue(input.RepositoryName),
+		RepositoryFullPath:         utils.StringValue(input.RepositoryFullPath),
 		RepositoryURL:              utils.StringValue(input.RepositoryURL),
 		RepositoryOrganizationName: utils.StringValue(input.RepositoryOrganizationName), // gitlab group/organization
 		RepositoryCLAGroupID:       utils.StringValue(input.RepositoryClaGroupID),

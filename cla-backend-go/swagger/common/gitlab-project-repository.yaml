@@ -16,10 +16,19 @@ properties:
   repository_name:
     type: string
     description: 'GitLab Repository/Project name'
+    example: 'easycla-test-repo-4'
+    x-omitempty: false
+  repository_full_path:
+    type: string
+    description: The repository full path
+    example: 'linuxfoundation/product/easycla/easycla-test-repo-4'
+    minLength: 3
     x-omitempty: false
   repository_url:
     type: string
     description: 'GitLab Repository/Project URL'
+    minLength: 8
+    example: 'https://gitlab.com/linuxfoundation/product/easycla/easycla-test-repo-4'
     x-omitempty: false
   cla_group_id:
     description: CLA Group ID

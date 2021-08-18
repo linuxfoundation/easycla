@@ -17,6 +17,7 @@ type RepositoryDBModel struct {
 	RepositoryExternalID       string `dynamodbav:"repository_external_id" json:"repository_external_id,omitempty"` // Integer value from GitHub
 	RepositoryID               string `dynamodbav:"repository_id" json:"repository_id,omitempty"`
 	RepositoryName             string `dynamodbav:"repository_name" json:"repository_name,omitempty"`
+	RepositoryFullPath         string `dynamodbav:"repository_full_path" json:"repository_full_path,omitempty"`
 	RepositoryOrganizationName string `dynamodbav:"repository_organization_name" json:"repository_organization_name,omitempty"`
 	RepositoryCLAGroupID       string `dynamodbav:"repository_project_id" json:"repository_project_id,omitempty"`
 	RepositorySfdcID           string `dynamodbav:"repository_sfdc_id" json:"repository_sfdc_id,omitempty"`
