@@ -37,6 +37,7 @@ type ServiceInterface interface {
 	AddGitlabOrganization(ctx context.Context, projectSFID string, input *models.GitlabCreateOrganization) (*models.GitlabProjectOrganizations, error)
 	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*models.GitlabOrganization, error)
 	GetGitlabOrganizationByID(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
+	GetGitlabOrganizationByName(ctx context.Context, gitlabOrganizationName string) (*models.GitlabOrganization, error)
 	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error)
 	GetGitlabOrganizationByState(ctx context.Context, gitlabOrganizationID, authState string) (*models.GitlabOrganization, error)
 	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
@@ -130,6 +131,23 @@ func (s *Service) GetGitlabOrganizationByID(ctx context.Context, gitlabOrganizat
 	}
 
 	return dbModel, nil
+}
+
+func (s *Service) GetGitlabOrganizationByName(ctx context.Context, gitlabOrganizationName string) (*models.GitlabOrganization, error) {
+	f := logrus.Fields{
+		"functionName":         "v2.gitlab_organizations.service.GetGitlabOrganizationByName",
+		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
+		"gitlabOrganizationID": gitlabOrganizationName,
+	}
+
+	log.WithFields(f).Debugf("fetching gitlab organization for gitlab org id : %s", gitlabOrganizationName)
+	dbModel, err := s.repo.GetGitlabOrganizationByName(ctx, gitlabOrganizationName)
+	if err != nil {
+		return nil, err
+	}
+
+	return common.ToModel(dbModel), nil
+
 }
 
 // GetGitlabOrganizations returns a collection of GitLab organizations based on the specified project SFID value

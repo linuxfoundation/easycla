@@ -113,7 +113,7 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 	}
 
 	// try to find the repository via the external id
-	gitlabRepo, err := s.getGitlabRepoByName(ctx, repositoryPath)
+	gitlabRepo, err := s.getGitlabRepoByName(ctx, repositoryName)
 	if err != nil {
 		return fmt.Errorf("finding internal repository for gitlab org name failed : %v", err)
 	}
@@ -253,18 +253,18 @@ func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeE
 	parts := strings.Split(repositoryPath, "/")
 	organizationName := parts[0]
 
-	gitlabOrgs, err := s.gitlabRepository.GetGitlabOrganizationByName(ctx, organizationName)
-	if err != nil || gitlabOrgs == nil {
+	gitlabOrg, err := s.gitlabRepository.GetGitlabOrganizationByName(ctx, organizationName)
+	if err != nil || gitlabOrg == nil {
 		// try getting it with project name as well
-		gitlabOrgs, err = s.gitlabRepository.GetGitlabOrganizationByName(ctx, mergeEvent.Project.Namespace)
-		if err != nil || gitlabOrgs == nil {
+		gitlabOrg, err = s.gitlabRepository.GetGitlabOrganizationByName(ctx, mergeEvent.Project.Namespace)
+		if err != nil || gitlabOrg == nil {
 			return nil, fmt.Errorf("gitlab org : %s doesn't exist : %v", organizationName, err)
 		}
 	}
 
-	gitlabOrg, err := s.gitlabRepository.GetGitlabOrganization(ctx, gitlabOrgs.OrganizationID)
+	gitlabOrg, err = s.gitlabRepository.GetGitlabOrganization(ctx, gitlabOrg.OrganizationID)
 	if err != nil {
-		return nil, fmt.Errorf("fetching gitlab org : %s failed : %v", gitlabOrgs.OrganizationID, err)
+		return nil, fmt.Errorf("fetching gitlab org : %s failed : %v", gitlabOrg.OrganizationID, err)
 	}
 
 	return gitlabOrg, nil

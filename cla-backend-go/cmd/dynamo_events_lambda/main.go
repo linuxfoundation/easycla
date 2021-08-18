@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"os"
 
+	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
 
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
@@ -90,11 +92,12 @@ func init() {
 	claManagerRequestsRepo := cla_manager.NewRepository(awsSession, stage)
 	approvalListRequestsRepo := approval_list.NewRepository(awsSession, stage)
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
+	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
 
 	token.Init(configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret, configFile.Auth0Platform.URL, configFile.Auth0Platform.Audience)
 	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
 	// initialize gitlab
-	_ = gitlab.Init(configFile.Gitlab.AppClientID, configFile.Gitlab.AppClientSecret, configFile.Gitlab.AppPrivateKey)
+	gitlabApp := gitlab.Init(configFile.Gitlab.AppClientID, configFile.Gitlab.AppClientSecret, configFile.Gitlab.AppPrivateKey)
 
 	user_service.InitClient(configFile.APIGatewayURL, configFile.AcsAPIKey)
 	project_service.InitClient(configFile.APIGatewayURL)
@@ -138,12 +141,14 @@ func init() {
 		projectClaGroupRepo,
 		eventsRepo,
 		projectRepo,
+		gitlabOrganizationRepo,
 		projectService,
 		githubOrganizationsService,
 		repositoriesService,
 		gerritService,
 		claManagerRequestsRepo,
-		approvalListRequestsRepo)
+		approvalListRequestsRepo,
+		gitlabApp)
 }
 
 func handler(ctx context.Context, event events.DynamoDBEvent) {

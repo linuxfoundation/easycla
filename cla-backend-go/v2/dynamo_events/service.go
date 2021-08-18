@@ -11,6 +11,9 @@ import (
 	"strings"
 	"sync"
 
+	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
 
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
@@ -56,6 +59,7 @@ type service struct {
 	companyService           v2Company.Service
 	projectsClaGroupRepo     projects_cla_groups.Repository
 	eventsRepo               claevent.Repository
+	gitLabOrgRepo            gitlab_organizations.RepositoryInterface
 	projectRepo              project.ProjectRepository
 	projectService           project.Service
 	githubOrgService         github_organizations.ServiceInterface
@@ -64,6 +68,7 @@ type service struct {
 	autoEnableService        *autoEnableServiceProvider
 	claManagerRequestsRepo   cla_manager.IRepository
 	approvalListRequestsRepo approval_list.IRepository
+	gitLabApp                *gitlab2.App
 }
 
 // Service implements DynamoDB stream event handler service
@@ -79,12 +84,14 @@ func NewService(stage string,
 	pcgRepo projects_cla_groups.Repository,
 	eventsRepo claevent.Repository,
 	projectRepo project.ProjectRepository,
+	gitLabOrgRepo gitlab_organizations.RepositoryInterface,
 	projService project.Service,
 	githubOrgService github_organizations.ServiceInterface,
 	repositoryService repositories.Service,
 	gerritService gerrits.Service,
 	claManagerRequestsRepo cla_manager.IRepository,
-	approvalListRequestsRepo approval_list.IRepository) Service {
+	approvalListRequestsRepo approval_list.IRepository,
+	gitLabApp *gitlab2.App) Service {
 
 	signaturesTable := fmt.Sprintf("cla-%s-signatures", stage)
 	eventsTable := fmt.Sprintf("cla-%s-events", stage)
@@ -102,6 +109,7 @@ func NewService(stage string,
 		projectsClaGroupRepo:     pcgRepo,
 		eventsRepo:               eventsRepo,
 		projectRepo:              projectRepo,
+		gitLabOrgRepo:            gitLabOrgRepo,
 		projectService:           projService,
 		githubOrgService:         githubOrgService,
 		repositoryService:        repositoryService,
@@ -109,6 +117,7 @@ func NewService(stage string,
 		autoEnableService:        &autoEnableServiceProvider{repositoryService: repositoryService},
 		claManagerRequestsRepo:   claManagerRequestsRepo,
 		approvalListRequestsRepo: approvalListRequestsRepo,
+		gitLabApp:                gitLabApp,
 	}
 
 	s.registerCallback(signaturesTable, Modify, s.SignatureSignedEvent)
@@ -140,6 +149,10 @@ func NewService(stage string,
 	s.registerCallback(repositoryTableName, Modify, s.GithubRepoModifyAddEvent)
 	s.registerCallback(repositoryTableName, Remove, s.GithubRepoModifyAddEvent)
 
+	s.registerCallback(repositoryTableName, Insert, s.GitLabRepoAddedWebhookEventHandler)
+	s.registerCallback(repositoryTableName, Modify, s.GitlabRepoModifiedWebhookEventHandler)
+	s.registerCallback(repositoryTableName, Remove, s.GitLabRepoRemovedWebhookEventHandler)
+
 	// Check and enable/disable the branch protection when a project
 	s.registerCallback(repositoryTableName, Insert, s.EnableBranchProtectionServiceHandler)
 	s.registerCallback(repositoryTableName, Remove, s.DisableBranchProtectionServiceHandler)
@@ -168,9 +181,7 @@ func (s *service) ProcessEvents(dynamoDBEvents events.DynamoDBEvent) {
 			// Dumping the event is super verbose
 			// "event":      event,
 		}
-		// Generates a ton of output
-		// b, _ := json.Marshal(events) // nolint
-		//fields["events_data"] = string(b)
+
 		log.WithFields(fields).Debug("processing event record")
 		key := fmt.Sprintf("%s:%s", tableName, event.EventName)
 
