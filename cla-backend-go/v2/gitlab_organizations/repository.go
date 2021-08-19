@@ -31,6 +31,8 @@ const (
 	GitlabOrgSFIDIndex                     = "gitlab-org-sfid-index"
 	GitlabOrgLowerNameIndex                = "gitlab-organization-name-lower-search-index"
 	GitlabProjectSFIDOrganizationNameIndex = "gitlab-project-sfid-organization-name-index"
+	// GitLabExternalIDIndex the index for the external ID
+	GitLabExternalIDIndex = "github-user-external-id-index"
 )
 
 // RepositoryInterface is interface for gitlab org data model
@@ -293,7 +295,7 @@ func (repo *Repository) GetGitlabOrganizationByExternalID(ctx context.Context, g
 		ProjectionExpression:      expr.Projection(),
 		FilterExpression:          expr.Filter(),
 		TableName:                 aws.String(repo.gitlabOrgTableName),
-		IndexName:                 aws.String(GitlabOrgLowerNameIndex),
+		IndexName:                 aws.String(GitLabExternalIDIndex),
 	}
 
 	log.WithFields(f).Debugf("querying for GitLab organization by external group ID: %d...", gitLabGroupID)
@@ -318,18 +320,18 @@ func (repo *Repository) GetGitlabOrganizationByExternalID(ctx context.Context, g
 }
 
 // GetGitlabOrganization by organization name
-func (repo *Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error) {
+func (repo *Repository) GetGitlabOrganization(ctx context.Context, gitLabOrganizationID string) (*common.GitLabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":         "gitlab_organizations.repository.GetGitlabOrganization",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
-		"gitlabOrganizationID": gitlabOrganizationID,
+		"gitLabOrganizationID": gitLabOrganizationID,
 	}
 
-	log.WithFields(f).Debug("Querying for GitLab organization by name...")
+	log.WithFields(f).Debugf("Querying for GitLab organization by ID: %s", gitLabOrganizationID)
 	result, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			GitLabOrganizationsOrganizationIDColumn: {
-				S: aws.String(gitlabOrganizationID),
+				S: aws.String(gitLabOrganizationID),
 			},
 		},
 		TableName: aws.String(repo.gitlabOrgTableName),
@@ -338,7 +340,7 @@ func (repo *Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganiz
 		return nil, err
 	}
 	if len(result.Item) == 0 {
-		log.WithFields(f).Debug("Unable to find GitLab organization by name - no results")
+		log.WithFields(f).Debugf("Unable to find GitLab organization by ID: %s - no results", gitLabOrganizationID)
 		return nil, nil
 	}
 

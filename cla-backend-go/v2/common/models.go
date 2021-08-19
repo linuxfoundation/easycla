@@ -31,19 +31,19 @@ type GitLabOrganization struct {
 // ToModel converts to models.GitlabOrganization
 func ToModel(in *GitLabOrganization) *models2.GitlabOrganization {
 	return &models2.GitlabOrganization{
-		OrganizationID:        in.OrganizationID,
-		DateCreated:           in.DateCreated,
-		DateModified:          in.DateModified,
-		OrganizationName:      in.OrganizationName,
-		OrganizationFullPath:  in.OrganizationFullPath,
-		OrganizationURL:       in.OrganizationURL,
-		OrganizationSfid:      in.OrganizationSFID,
-		Version:               in.Version,
-		Enabled:               in.Enabled,
-		AutoEnabled:           in.AutoEnabled,
-		AutoEnabledClaGroupID: in.AutoEnabledClaGroupID,
-		ProjectSfid:           in.ProjectSFID,
-		// Not exposing ExternalGroupID
+		OrganizationID:         in.OrganizationID,
+		DateCreated:            in.DateCreated,
+		DateModified:           in.DateModified,
+		OrganizationName:       in.OrganizationName,
+		OrganizationFullPath:   in.OrganizationFullPath,
+		OrganizationURL:        in.OrganizationURL,
+		OrganizationSfid:       in.OrganizationSFID,
+		Version:                in.Version,
+		Enabled:                in.Enabled,
+		AutoEnabled:            in.AutoEnabled,
+		AutoEnabledClaGroupID:  in.AutoEnabledClaGroupID,
+		ProjectSfid:            in.ProjectSFID,
+		OrganizationExternalID: int64(in.ExternalGroupID),
 	}
 }
 

@@ -268,20 +268,20 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		reqID := requestID.String()
 		if params.Code == "" {
 			msg := "missing code parameter"
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Warn(msg)
 			return NewServerError(reqID, "", errors.New(msg))
 		}
 
 		if params.State == "" {
 			msg := "missing state parameter"
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Warn(msg)
 			return NewServerError(reqID, "", errors.New(msg))
 		}
 
 		codeParts := strings.Split(params.State, ":")
 		if len(codeParts) != 2 {
 			msg := fmt.Sprintf("invalid state variable passed : %s", params.State)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Warn(msg)
 			return NewServerError(reqID, "", errors.New(msg))
 		}
 
@@ -291,7 +291,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		gitLabOrg, err := service.GetGitlabOrganizationByState(ctx, gitlabOrganizationID, stateVar)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab model failed : %s : %v", gitlabOrganizationID, err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).WithError(err).Warn(msg)
 			return NewServerError(reqID, "", errors.New(msg))
 		}
 
@@ -299,15 +299,15 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		oauthResp, err := gitlab_api.FetchOauthCredentials(params.Code)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab credentials failed : %s : %v", gitlabOrganizationID, err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).WithError(err).Warn(msg)
 			return NewServerError(reqID, "", errors.New(msg))
 		}
 		log.WithFields(f).Debugf("oauth resp is like : %+v", oauthResp)
 
-		err = service.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, oauthResp)
-		if err != nil {
-			msg := fmt.Sprintf("updating gitlab credentials failed : %s : %v", gitlabOrganizationID, err)
-			log.WithFields(f).Errorf(msg)
+		updateErr := service.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, oauthResp)
+		if updateErr != nil {
+			msg := fmt.Sprintf("installation of GitLab Group and Repositories, error: %v", updateErr)
+			log.WithFields(f).WithError(updateErr).Warn(msg)
 			return NewServerError(reqID, "", errors.New(msg))
 		}
 

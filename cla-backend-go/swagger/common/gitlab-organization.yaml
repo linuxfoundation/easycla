@@ -6,6 +6,11 @@ properties:
   organization_id:
     type: string
     description: internal id of the gitlab organization
+  organization_external_id:
+    type: integer
+    description: The Gitlab Group/Organization external ID used by GitLab
+    example: 13050017
+    minimum: 1
   date_created:
     type: string
     example: "2020-02-06T09:31:49.245630+0000"
