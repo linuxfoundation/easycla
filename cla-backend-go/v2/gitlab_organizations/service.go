@@ -337,7 +337,7 @@ func (s *Service) UpdateGitlabOrganizationAuth(ctx context.Context, gitLabOrgani
 	}
 
 	for _, g := range groups {
-		if g.FullPath == gitLabOrgModel.OrganizationFullPath {
+		if g.ID == gitLabOrgModel.ExternalGroupID {
 			updateGitLabOrgErr := s.repo.UpdateGitlabOrganizationAuth(ctx, gitLabOrganizationID, g.ID, authInfoEncrypted, g.FullPath, g.WebURL)
 			if updateGitLabOrgErr != nil {
 				return updateGitLabOrgErr
@@ -359,7 +359,7 @@ func (s *Service) UpdateGitlabOrganizationAuth(ctx context.Context, gitLabOrgani
 		}
 	}
 
-	return fmt.Errorf("unable to locate GitLab group name '%s' using search, found: %d", gitLabOrgModel.OrganizationName, len(groups))
+	return fmt.Errorf("unable to locate GitLab group by using external ID: %d, found: %d", gitLabOrgModel.ExternalGroupID, len(groups))
 }
 
 // UpdateGitlabOrganization updates the GitLab organization
