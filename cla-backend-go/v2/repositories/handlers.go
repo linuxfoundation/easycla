@@ -396,7 +396,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				return gitlab_repositories.NewGetProjectGitLabRepositoriesBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			response := &models.GitlabListRepositories{}
+			response := &models.GitlabRepositoriesList{}
 			err = copier.Copy(response, result)
 			if err != nil {
 				msg := fmt.Sprintf("problem converting response for projectSFID: %s", params.ProjectSFID)
@@ -411,19 +411,15 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		func(params gitlab_repositories.AddProjectGitLabRepositoryParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
+			ctx := context.WithValue(context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID), "authUser", authUser) // nolint
 			f := logrus.Fields{
-				"functionName":               "v2.repositories.handlers.GitlabRepositoriesAddProjectGitLabRepositoryHandler",
-				utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
-				"authUser":                   authUser.UserName,
-				"authEmail":                  authUser.Email,
-				"projectSFID":                params.ProjectSFID,
-				"repositoryExternalID":       utils.Int64Value(params.GitlabAddRepository.RepositoryExternalID),
-				"repositoryName":             utils.StringValue(params.GitlabAddRepository.RepositoryName),
-				"repositoryURL":              utils.StringValue(params.GitlabAddRepository.RepositoryURL),
-				"repositoryOrganizationName": utils.StringValue(params.GitlabAddRepository.RepositoryOrganizationName),
-				"repositoryCLAGroupID":       utils.StringValue(params.GitlabAddRepository.RepositoryClaGroupID),
-				"repositoryProjectSFID":      utils.StringValue(params.GitlabAddRepository.RepositoryProjectSfid),
+				"functionName":     "v2.repositories.handlers.GitlabRepositoriesAddProjectGitLabRepositoryHandler",
+				utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+				"authUser":         authUser.UserName,
+				"authEmail":        authUser.Email,
+				"projectSFID":      params.ProjectSFID,
+				"organizationName": utils.StringValue(params.GitlabRepositoriesAdd.GitlabOrganizationName),
+				"claGroupID":       utils.StringValue(params.GitlabRepositoriesAdd.ClaGroupID),
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
@@ -433,19 +429,16 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				return gitlab_repositories.NewAddProjectGitLabRepositoryForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			// If no repository GitLab ID values provided...
-			// RepositoryGitlabID - provided by the older retool UI which provides only one value
-			// RepositoryGitlabIds - provided by new PCC which passes multiple values
-			if params.GitlabAddRepository.RepositoryExternalID == nil {
-				msg := "missing repository GitLab ID value"
+			if len(params.GitlabRepositoriesAdd.RepositoryGitlabIds) == 0 {
+				msg := "missing repository GitLab ID values"
 				return gitlab_repositories.NewAddProjectGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
 			log.WithFields(f).Debugf("Adding GitLab repository for project: %s", params.ProjectSFID)
-			result, err := service.GitLabAddRepository(ctx, params.ProjectSFID, params.GitlabAddRepository)
+			result, err := service.GitLabAddRepositories(ctx, params.ProjectSFID, params.GitlabRepositoriesAdd)
 			if err != nil {
 				if _, ok := err.(*utils.GitLabRepositoryExists); ok {
-					msg := fmt.Sprintf("unable to add repository - repository with name: %s already exists for projectSFID: %s", utils.StringValue(params.GitlabAddRepository.RepositoryName), params.ProjectSFID)
+					msg := fmt.Sprintf("unable to add repository - repository already exists for projectSFID: %s, err: %+v", params.ProjectSFID, err)
 					log.WithFields(f).WithError(err).Warn(msg)
 					return gitlab_repositories.NewAddProjectGitLabRepositoryConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
 				}
@@ -453,17 +446,6 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				log.WithFields(f).WithError(err).Warn(msg)
 				return gitlab_repositories.NewAddProjectGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
-
-			// Log the event
-			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				EventType:   events.RepositoryAdded,
-				ProjectSFID: params.ProjectSFID,
-				CLAGroupID:  utils.StringValue(params.GitlabAddRepository.RepositoryClaGroupID),
-				LfUsername:  authUser.UserName,
-				EventData: &events.RepositoryAddedEventData{
-					RepositoryName: utils.StringValue(params.GitlabAddRepository.RepositoryName),
-				},
-			})
 
 			return gitlab_repositories.NewAddProjectGitLabRepositoryOK().WithPayload(result)
 		})

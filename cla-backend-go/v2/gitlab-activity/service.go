@@ -20,7 +20,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
@@ -58,7 +58,7 @@ type service struct {
 	projectsCLAGroupsRepository projects_cla_groups.Repository
 	companyRepository           company.IRepository
 	signatureRepository         signatures.SignatureRepository
-	gitLabApp                   *gitlab2.App
+	gitLabApp                   *gitlab_api.App
 }
 
 func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRepository repositories.RepositoryInterface, gitV2Repository gitV2Repositories.RepositoryInterface, usersRepository users.UserRepository, signaturesRepository signatures.SignatureRepository, projectsCLAGroupsRepository projects_cla_groups.Repository,
@@ -72,7 +72,7 @@ func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRe
 		projectsCLAGroupsRepository: projectsCLAGroupsRepository,
 		companyRepository:           companyRepository,
 		signatureRepository:         signatureRepository,
-		gitLabApp:                   gitlab2.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
+		gitLabApp:                   gitlab_api.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 
@@ -102,12 +102,12 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 
 	log.WithFields(f).Debugf("internal gitlab org : %s:%s is associated with external path : %s", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName, repositoryPath)
 
-	gitlabClient, err := gitlab2.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+	gitlabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing gitlab client : %v", err)
 	}
 
-	_, err = gitlab2.FetchMrInfo(gitlabClient, projectID, mergeID)
+	_, err = gitlab_api.FetchMrInfo(gitlabClient, projectID, mergeID)
 	if err != nil {
 		return fmt.Errorf("fetching info for mr : %d and project : %d: %s, failed : %v", mergeID, projectID, projectName, err)
 	}
@@ -119,7 +119,7 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 	}
 
 	log.WithFields(f).Debugf("internal gitlab repository found with id : %s", gitlabRepo.RepositoryID)
-	participants, err := gitlab2.FetchMrParticipants(gitlabClient, projectID, mergeID, true)
+	participants, err := gitlab_api.FetchMrParticipants(gitlabClient, projectID, mergeID, true)
 	if err != nil {
 		return fmt.Errorf("fetching mr participants : %v", err)
 	}
@@ -158,22 +158,22 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 	mrCommentContent := PrepareMrCommentContent(missingUsers, signedUsers, signURL)
 	if len(missingUsers) > 0 {
 		log.WithFields(f).Errorf("mr faild with following users : %s", mrCommentContent)
-		if err := gitlab2.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Failed, missingCLAMsg, signURL); err != nil {
+		if err := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Failed, missingCLAMsg, signURL); err != nil {
 			return fmt.Errorf("setting commit status failed : %v", err)
 		}
 
-		if err := gitlab2.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Failed, mrCommentContent, signURL); err != nil {
+		if err := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Failed, mrCommentContent, signURL); err != nil {
 			return fmt.Errorf("setting comment failed : %v", err)
 		}
 
 		return nil
 	}
-	err = gitlab2.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Success, signedCLAMsg, "")
+	err = gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Success, signedCLAMsg, "")
 	if err != nil {
 		return fmt.Errorf("setting commit status failed : %v", err)
 	}
 
-	if err := gitlab2.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Success, mrCommentContent, signURL); err != nil {
+	if err := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Success, mrCommentContent, signURL); err != nil {
 		return fmt.Errorf("setting comment failed : %v", err)
 	}
 	return err

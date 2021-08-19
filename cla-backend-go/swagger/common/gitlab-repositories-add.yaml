@@ -1,0 +1,22 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+required:
+  - gitlab_organization_name
+  - cla_group_id
+properties:
+  repository_gitlab_ids:
+    type: array
+    items:
+      description: the repository external identifier, such as the GitLab ID of the repository
+      type: integer
+      minimum: 1
+      example: 7
+  gitlab_organization_name:
+    type: string
+    description: The organization name associated with this repository
+    example: 'The Linux Foundation/product/EasyCLA'
+  cla_group_id:
+    description: CLA Group ID
+    $ref: './common/properties/internal-id.yaml'

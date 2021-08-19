@@ -9,7 +9,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/config"
-	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -55,7 +55,7 @@ func (s *service) GitLabRepoAddedWebhookEventHandler(event events.DynamoDBEventR
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", newRepoModel.RepositoryOrganizationName, err)
 	}
 
-	gitLabClient, err := gitlab.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing GitLab client failed : %v", err)
 	}
@@ -66,7 +66,7 @@ func (s *service) GitLabRepoAddedWebhookEventHandler(event events.DynamoDBEventR
 	}
 
 	conf := config.GetConfig()
-	if err := gitlab.SetWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt, gitlabOrg.AuthState); err != nil {
+	if err := gitlab_api.SetWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt, gitlabOrg.AuthState); err != nil {
 		log.WithFields(f).Errorf("adding gitlab webhook failed : %v", err)
 	}
 
@@ -124,7 +124,7 @@ func (s *service) GitlabRepoModifiedWebhookEventHandler(event events.DynamoDBEve
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", oldRepoModel.RepositoryOrganizationName, err)
 	}
 
-	gitLabClient, err := gitlab.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing GitLab client failed : %v", err)
 	}
@@ -137,11 +137,11 @@ func (s *service) GitlabRepoModifiedWebhookEventHandler(event events.DynamoDBEve
 	conf := config.GetConfig()
 
 	if newRepoModel.Enabled {
-		if err := gitlab.SetWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt, gitlabOrg.AuthState); err != nil {
+		if err := gitlab_api.SetWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt, gitlabOrg.AuthState); err != nil {
 			log.WithFields(f).Errorf("adding gitlab webhook failed : %v", err)
 		}
 	} else {
-		if err := gitlab.RemoveWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt); err != nil {
+		if err := gitlab_api.RemoveWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt); err != nil {
 			log.WithFields(f).Errorf("removing gitlab webhook failed : %v", err)
 		}
 	}
@@ -184,7 +184,7 @@ func (s *service) GitLabRepoRemovedWebhookEventHandler(event events.DynamoDBEven
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", oldRepoModel.RepositoryOrganizationName, err)
 	}
 
-	gitLabClient, err := gitlab.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing GitLab client failed : %v", err)
 	}
@@ -195,7 +195,7 @@ func (s *service) GitLabRepoRemovedWebhookEventHandler(event events.DynamoDBEven
 	}
 
 	conf := config.GetConfig()
-	if err := gitlab.RemoveWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt); err != nil {
+	if err := gitlab_api.RemoveWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt); err != nil {
 		log.WithFields(f).Errorf("removing gitlab webhook failed : %v", err)
 	}
 

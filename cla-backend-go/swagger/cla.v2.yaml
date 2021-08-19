@@ -1707,7 +1707,7 @@ paths:
         - in: body
           name: body
           schema:
-            $ref: '#/definitions/gitlab-update-organization'
+            $ref: '#/definitions/gitlab-organization-update'
           required: true
       responses:
         '200':
@@ -1777,9 +1777,9 @@ paths:
           type: string
           required: true
         - in: body
-          name: gitlab-add-repository
+          name: gitlab-repositories-add
           schema:
-            $ref: '#/definitions/gitlab-add-repository'
+            $ref: '#/definitions/gitlab-repositories-add'
           required: true
       responses:
         '200':
@@ -1789,7 +1789,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/gitlab-repository'
+            $ref: '#/definitions/gitlab-repositories-list'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -1825,7 +1825,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/gitlab-list-repositories'
+            $ref: '#/definitions/gitlab-repositories-list'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -4000,7 +4000,7 @@ paths:
           $ref: '#/responses/internal-server-error'
       tags:
         - gitlab-activity
-  
+
   /repository-provider/gitlab/sign/{organizationID}/{gitlabRepositoryID}/{mergeRequestID}:
     get:
       summary: Gitlab sign request handler
@@ -4478,13 +4478,13 @@ definitions:
     $ref: './common/github-repository.yaml'
 
   github-create-organization:
-    $ref: './common/github-create-organization.yaml'
+    $ref: './common/github-organization-create.yaml'
 
   github-update-organization:
-    $ref: './common/github-update-organization.yaml'
+    $ref: './common/github-organization-update.yaml'
 
   github-list-repositories:
-    $ref: './common/github-list-repositories.yaml'
+    $ref: './common/github-repositories-list.yaml'
 
   # ---------------------------------------------------------------------------
   # GitLab Definitions
@@ -4492,20 +4492,20 @@ definitions:
   gitlab-organization:
     $ref: './common/gitlab-organization.yaml'
 
+  gitlab-create-organization:
+    $ref: './common/gitlab-organization-create.yaml'
+
+  gitlab-organization-update:
+    $ref: './common/gitlab-organization-update.yaml'
+
   gitlab-repository:
     $ref: './common/gitlab-repository.yaml'
 
-  gitlab-create-organization:
-    $ref: './common/gitlab-create-organization.yaml'
+  gitlab-repositories-list:
+    $ref: './common/gitlab-repositories-list.yaml'
 
-  gitlab-update-organization:
-    $ref: './common/github-update-organization.yaml'
-
-  gitlab-list-repositories:
-    $ref: './common/gitlab-list-repositories.yaml'
-
-  gitlab-add-repository:
-    $ref: './common/gitlab-add-repository.yaml'
+  gitlab-repositories-add:
+    $ref: './common/gitlab-repositories-add.yaml'
 
   # ---------------------------------------------------------------------------
   # CLA Group Definitions

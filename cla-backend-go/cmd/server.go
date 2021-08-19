@@ -20,7 +20,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_sign"
 
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
@@ -56,7 +56,7 @@ import (
 
 	lfxAuth "github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/communitybridge/easycla/cla-backend-go/docs"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	v1Repositories "github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	v2Docs "github.com/communitybridge/easycla/cla-backend-go/v2/docs"
 	v2Events "github.com/communitybridge/easycla/cla-backend-go/v2/events"
@@ -244,7 +244,7 @@ func server(localMode bool) http.Handler {
 	// Our backend repository handlers
 	userRepo := user.NewDynamoRepository(awsSession, stage)
 	usersRepo := users.NewRepository(awsSession, stage)
-	gitV1Repository := repositories.NewRepository(awsSession, stage)
+	gitV1Repository := v1Repositories.NewRepository(awsSession, stage)
 	gitV2Repository := v2Repositories.NewRepository(awsSession, stage)
 	gerritRepo := gerrits.NewRepository(awsSession, stage)
 	templateRepo := template.NewRepository(awsSession, stage)
@@ -300,8 +300,8 @@ func server(localMode bool) http.Handler {
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation)
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService)
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV1URL)
-	v1RepositoriesService := repositories.NewService(gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo)
-	v2RepositoriesService := v2Repositories.NewService(gitV1Repository, gitV2Repository, v1ProjectClaGroupRepo, githubOrganizationsRepo)
+	v1RepositoriesService := v1Repositories.NewService(gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo)
+	v2RepositoriesService := v2Repositories.NewService(gitV1Repository, gitV2Repository, v1ProjectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
 	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
 	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
 	authorizer := auth.NewAuthorizer(authValidator, userRepo)
@@ -349,13 +349,11 @@ func server(localMode bool) http.Handler {
 	v2Metrics.Configure(v2API, v2MetricsService, v1CompanyRepo)
 	github_organizations.Configure(api, githubOrganizationsService, eventsService)
 	v2GithubOrganizations.Configure(v2API, v2GithubOrganizationsService, eventsService)
-	gitlab_organizations.Configure(v2API, gitlabOrganizationsService, v2RepositoriesService, eventsService)
+	gitlab_organizations.Configure(v2API, gitlabOrganizationsService, eventsService)
 	gitlab_sign.Configure(v2API, gitlabSignService, eventsService, configFile.CLAContributorv2Base)
 	gitlab_activity.Configure(v2API, gitlabActivityService, eventsService)
-	repositories.Configure(api, v1RepositoriesService, eventsService)
+	v1Repositories.Configure(api, v1RepositoriesService, eventsService)
 	v2Repositories.Configure(v2API, v2RepositoriesService, eventsService)
-	gitlab_organizations.Configure(v2API, gitlabOrganizationsService, v2RepositoriesService, eventsService)
-	gitlab_activity.Configure(v2API, gitlabActivityService, eventsService)
 	gerrits.Configure(api, gerritService, v1ProjectService, eventsService)
 	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, v1ProjectClaGroupRepo)
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL, configFile.CorporateConsoleV1URL)

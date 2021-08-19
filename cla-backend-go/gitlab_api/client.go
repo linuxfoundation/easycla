@@ -15,7 +15,7 @@ import (
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
-	"github.com/xanzy/go-gitlab"
+	goGitLab "github.com/xanzy/go-gitlab"
 )
 
 // OauthSuccessResponse is success response from Gitlab
@@ -28,19 +28,19 @@ type OauthSuccessResponse struct {
 }
 
 // NewGitlabOauthClient creates a new gitlab client from the given oauth info, authInfo is encrypted
-func NewGitlabOauthClient(authInfo string, gitLabApp *App) (*gitlab.Client, error) {
+func NewGitlabOauthClient(authInfo string, gitLabApp *App) (*goGitLab.Client, error) {
 	oauthResp, err := DecryptAuthInfo(authInfo, gitLabApp)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Infof("creating oauth client with access token : %s", oauthResp.AccessToken)
-	return gitlab.NewOAuthClient(oauthResp.AccessToken)
+	return goGitLab.NewOAuthClient(oauthResp.AccessToken)
 }
 
 // NewGitlabOauthClientFromAccessToken creates a new gitlab client from the given access token
-func NewGitlabOauthClientFromAccessToken(accessToken string) (*gitlab.Client, error) {
-	return gitlab.NewOAuthClient(accessToken)
+func NewGitlabOauthClientFromAccessToken(accessToken string) (*goGitLab.Client, error) {
+	return goGitLab.NewOAuthClient(accessToken)
 }
 
 // EncryptAuthInfo encrypts the oauth response into a string

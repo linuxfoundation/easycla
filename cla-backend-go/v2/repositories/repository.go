@@ -6,7 +6,6 @@ package repositories
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -14,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	repoModels "github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -31,7 +29,7 @@ type RepositoryInterface interface {
 	GitHubGetRepositoriesByCLAGroupDisabled(ctx context.Context, claGroupID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByOrganizationName(ctx context.Context, orgName string) ([]*repoModels.RepositoryDBModel, error)
-	GitLabAddRepository(ctx context.Context, projectSFID string, input *v2Models.GitlabAddRepository) (*repoModels.RepositoryDBModel, error)
+	GitLabAddRepository(ctx context.Context, projectSFID string, input *repoModels.RepositoryDBModel) (*repoModels.RepositoryDBModel, error)
 	GitLabEnableRepositoryByID(ctx context.Context, repositoryID string) error
 	GitLabDisableRepositoryByID(ctx context.Context, repositoryID string) error
 	GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
@@ -225,23 +223,23 @@ func (r *Repository) GitHubGetRepositoriesByOrganizationName(ctx context.Context
 }
 
 // GitLabAddRepository creates a new entry in the repositories table using the specified input parameters
-func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string, input *v2Models.GitlabAddRepository) (*repoModels.RepositoryDBModel, error) {
+func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string, input *repoModels.RepositoryDBModel) (*repoModels.RepositoryDBModel, error) {
 	f := logrus.Fields{
 		"functionName":               "v2.repositories.repositories.GitHubAddRepositories",
 		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
 		"projectSFID":                projectSFID,
-		"repositoryExternalID":       utils.Int64Value(input.RepositoryExternalID),
-		"repositoryURL":              utils.StringValue(input.RepositoryURL),
-		"repositoryName":             utils.StringValue(input.RepositoryName),
-		"repositoryFullPath":         utils.StringValue(input.RepositoryFullPath),
+		"repositoryExternalID":       input.RepositoryExternalID,
+		"repositoryURL":              input.RepositoryURL,
+		"repositoryName":             input.RepositoryName,
+		"repositoryFullPath":         input.RepositoryFullPath,
 		"repositoryType":             utils.GitLabLower,
-		"repositoryCLAGroupID":       utils.StringValue(input.RepositoryClaGroupID),
-		"repositoryProjectSFID":      utils.StringValue(input.RepositoryProjectSfid),
-		"repositoryOrganizationName": utils.StringValue(input.RepositoryOrganizationName),
+		"repositoryCLAGroupID":       input.RepositoryCLAGroupID,
+		"repositoryProjectSFID":      input.RepositorySfdcID,
+		"repositoryOrganizationName": input.RepositoryOrganizationName,
 	}
 
 	// Check first to see if the repository already exists
-	_, err := r.GitLabGetRepositoryByName(ctx, utils.StringValue(input.RepositoryName))
+	_, err := r.GitLabGetRepositoryByName(ctx, input.RepositoryName)
 	if err != nil {
 		// Expecting Not found - no issue if not found - all other error we throw
 		if _, ok := err.(*utils.GitLabRepositoryNotFound); !ok {
@@ -249,7 +247,7 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		}
 	} else {
 		return nil, &utils.GitLabRepositoryExists{
-			Message:        fmt.Sprintf("GitLab repository with name: %s has alerady been registered", utils.StringValue(input.RepositoryName)),
+			Message:        fmt.Sprintf("GitLab repository with name: %s has alerady been registered", input.RepositoryName),
 			RepositoryName: "",
 			Err:            nil,
 		}
@@ -261,27 +259,13 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		return nil, err
 	}
 
-	// Convert int64* to string
-	repositoryExternalIDString := strconv.FormatInt(utils.Int64Value(input.RepositoryExternalID), 10)
+	input.RepositoryID = repoID.String()
+	input.DateCreated = currentTime
+	input.DateModified = currentTime
+	input.Note = fmt.Sprintf("created on %s", currentTime)
+	input.Version = "v1"
 
-	repository := &repoModels.RepositoryDBModel{
-		RepositoryID:               repoID.String(), // internal ID that we assign
-		RepositorySfdcID:           projectSFID,
-		ProjectSFID:                projectSFID,
-		DateCreated:                currentTime,
-		DateModified:               currentTime,
-		RepositoryExternalID:       repositoryExternalIDString,
-		RepositoryName:             utils.StringValue(input.RepositoryName),
-		RepositoryFullPath:         utils.StringValue(input.RepositoryFullPath),
-		RepositoryURL:              utils.StringValue(input.RepositoryURL),
-		RepositoryOrganizationName: utils.StringValue(input.RepositoryOrganizationName), // gitlab group/organization
-		RepositoryCLAGroupID:       utils.StringValue(input.RepositoryClaGroupID),
-		RepositoryType:             utils.GitLabLower, // should always be gitlab
-		Enabled:                    input.Enabled,     // default is enabled
-		Note:                       fmt.Sprintf("created on %s", currentTime),
-		Version:                    "v1",
-	}
-	av, err := dynamodbattribute.MarshalMap(repository)
+	av, err := dynamodbattribute.MarshalMap(input)
 	if err != nil {
 		log.WithFields(f).Warnf("problem marshalling the input, error: %+v", err)
 		return nil, err
@@ -296,7 +280,7 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		return nil, err
 	}
 
-	return repository, nil
+	return input, nil
 }
 
 // GitLabEnableRepositoryByID enables the specified repository

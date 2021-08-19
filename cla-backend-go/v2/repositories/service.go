@@ -9,10 +9,13 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/communitybridge/easycla/cla-backend-go/events"
+	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
+
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
-	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 
 	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
 
@@ -52,21 +55,25 @@ type ServiceInterface interface {
 
 	GitLabGetRepository(ctx context.Context, repositoryID string) (*v2Models.GitlabRepository, error)
 	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*v2Models.GitlabRepository, error)
-	GitLabGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabListRepositories, error)
-	GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string, enabled bool) (*v2Models.GitlabListRepositories, error)
-	GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabListRepositories, error)
-	GitLabAddRepository(ctx context.Context, projectSFID string, input *v2Models.GitlabAddRepository) (*v2Models.GitlabRepository, error)
+	GitLabGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabRepositoriesList, error)
+	GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string, enabled bool) (*v2Models.GitlabRepositoriesList, error)
+	GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabRepositoriesList, error)
+	GitLabAddRepositories(ctx context.Context, projectSFID string, input *v2Models.GitlabRepositoriesAdd) (*v2Models.GitlabRepositoriesList, error)
 	GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel *common.GitLabOrganization) ([]*v2Models.GitlabRepository, error)
 	GitLabEnableRepository(ctx context.Context, repositoryID string) error
 	GitLabDisableRepository(ctx context.Context, repositoryID string) error
 	GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
 }
 
-// GithubOrgRepo provide method to get GitHub organization by name
+// GithubOrgRepo redefine the interface here to avoid circular dependency issues
 type GithubOrgRepo interface {
-	GetGitHubOrganizationByName(ctx context.Context, githubOrganizationName string) (*v1Models.GithubOrganizations, error)
-	GetGitHubOrganization(ctx context.Context, githubOrganizationName string) (*v1Models.GithubOrganization, error)
-	GetGitHubOrganizations(ctx context.Context, projectSFID string) (*v1Models.GithubOrganizations, error)
+	AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *v2Models.GitlabCreateOrganization) (*v2Models.GitlabOrganization, error)
+	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
+	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
+	GetGitlabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
+	UpdateGitlabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error
+	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error
+	DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
 }
 
 // Service is the service model/structure
@@ -74,8 +81,10 @@ type Service struct {
 	gitV1Repository       v1Repositories.RepositoryInterface
 	gitV2Repository       RepositoryInterface
 	projectsClaGroupsRepo projects_cla_groups.Repository
-	ghOrgRepo             GithubOrgRepo
-	gitLabApp             *gitlab2.App
+	ghOrgRepo             github_organizations.RepositoryInterface
+	glOrgRepo             GithubOrgRepo
+	gitLabApp             *gitlab_api.App
+	eventService          events.Service
 }
 
 var (
@@ -85,13 +94,15 @@ var (
 )
 
 // NewService creates a new githubOrganizations service
-func NewService(gitV1Repository *v1Repositories.Repository, gitV2Repository RepositoryInterface, pcgRepo projects_cla_groups.Repository, ghOrgRepo GithubOrgRepo) ServiceInterface {
+func NewService(gitV1Repository *v1Repositories.Repository, gitV2Repository RepositoryInterface, pcgRepo projects_cla_groups.Repository, ghOrgRepo github_organizations.RepositoryInterface, glOrgRepo GithubOrgRepo, eventService events.Service) ServiceInterface {
 	return &Service{
 		gitV1Repository:       gitV1Repository,
 		gitV2Repository:       gitV2Repository,
 		projectsClaGroupsRepo: pcgRepo,
 		ghOrgRepo:             ghOrgRepo,
-		gitLabApp:             gitlab2.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
+		glOrgRepo:             glOrgRepo,
+		eventService:          eventService,
+		gitLabApp:             gitlab_api.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 
@@ -142,9 +153,6 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to get organization by name")
 		return nil, err
-	}
-	if len(org.List) == 0 {
-		return nil, errors.New("github app not installed on github organization")
 	}
 
 	// Updated to process a list of repository IDs - take the list (may be empty) and add the single repository GH ID if it was set
@@ -551,13 +559,16 @@ func (s *Service) getBranchProtectionRepositoryForOrgName(ctx context.Context, g
 		"githubOrgName":  githubOrgName,
 	}
 
-	githubOrg, err := s.ghOrgRepo.GetGitHubOrganization(ctx, githubOrgName)
+	githubOrg, err := s.ghOrgRepo.GetGitHubOrganizationByName(ctx, githubOrgName)
 	if err != nil {
 		log.WithFields(f).Warnf("fetching githubOrg %s failed, error: %v", githubOrgName, err)
 		return nil, err
 	}
+	if len(githubOrg.List) == 0 {
+		return nil, errors.New("github app not installed on github organization")
+	}
 
-	branchProtectionRepo, err := branch_protection.NewBranchProtectionRepository(githubOrg.OrganizationInstallationID, branch_protection.EnableNonBlockingLimiter())
+	branchProtectionRepo, err := branch_protection.NewBranchProtectionRepository(githubOrg.List[0].OrganizationInstallationID, branch_protection.EnableNonBlockingLimiter())
 	if err != nil {
 		return nil, err
 	}

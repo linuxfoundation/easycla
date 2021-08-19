@@ -16,7 +16,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
-	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/stretchr/testify/assert"
 	"github.com/xanzy/go-gitlab"
 )
@@ -51,10 +51,10 @@ func TestGitLabGetGroup(t *testing.T) { // no lint
 		config := ini.GetConfig()
 
 		// Create a new GitLab App client instance
-		gitLabApp := gitlab2.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
+		gitLabApp := gitlab_api.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
 
 		// Create a new client
-		gitLabClient, err := gitlab2.NewGitlabOauthClient(accessInfo, gitLabApp)
+		gitLabClient, err := gitlab_api.NewGitlabOauthClient(accessInfo, gitLabApp)
 		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
 		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
 
@@ -93,10 +93,10 @@ func TestGitLabListGroups(t *testing.T) { // no lint
 		config := ini.GetConfig()
 
 		// Create a new GitLab App client instance
-		gitLabApp := gitlab2.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
+		gitLabApp := gitlab_api.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
 
 		// Create a new client
-		gitLabClient, err := gitlab2.NewGitlabOauthClient(accessInfo, gitLabApp)
+		gitLabClient, err := gitlab_api.NewGitlabOauthClient(accessInfo, gitLabApp)
 		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
 		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
 
@@ -147,10 +147,10 @@ func TestGitLabListProjects(t *testing.T) { // no lint
 		config := ini.GetConfig()
 
 		// Create a new GitLab App client instance
-		gitLabApp := gitlab2.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
+		gitLabApp := gitlab_api.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
 
 		// Create a new client
-		gitLabClient, err := gitlab2.NewGitlabOauthClient(accessInfo, gitLabApp)
+		gitLabClient, err := gitlab_api.NewGitlabOauthClient(accessInfo, gitLabApp)
 		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
 		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
 

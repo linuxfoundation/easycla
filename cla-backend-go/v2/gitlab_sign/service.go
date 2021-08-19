@@ -16,7 +16,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	v2Gitlab "github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
@@ -29,7 +29,7 @@ type service struct {
 	repoService   repositories.ServiceInterface
 	gitlabOrgRepo gitlab_organizations.RepositoryInterface
 	userService   users.Service
-	gitlabApp     v2Gitlab.App
+	gitlabApp     gitlab_api.App
 	storeRepo     store.Repository
 }
 
@@ -65,7 +65,7 @@ func (s service) GitlabSignRequest(ctx context.Context, req *http.Request, organ
 		log.WithFields(f).Debug(msg)
 		return nil
 	}
-	gitlabClient, err := v2Gitlab.NewGitlabOauthClient(organization.AuthInfo, &s.gitlabApp)
+	gitlabClient, err := gitlab_api.NewGitlabOauthClient(organization.AuthInfo, &s.gitlabApp)
 	if err != nil {
 		log.WithFields(f).Debugf("initializaing gitlab client for gitlab org: %s failed: %v", organizationID, err)
 		return nil

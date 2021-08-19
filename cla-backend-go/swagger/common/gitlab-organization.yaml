@@ -51,6 +51,9 @@ properties:
   auto_enabled_cla_group_id:
     type: string
     description: Specifies which Cla group ID to be used when autoEnabled flag in enabled for the Github Organization. If autoEnabled is on this field needs to be set as well.
+  auth_info:
+    type: string
+    description: auth info
   gitlab_info:
     type: object
     properties:

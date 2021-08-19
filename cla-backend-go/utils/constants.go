@@ -60,6 +60,9 @@ const ProjectFundedSupportedByParent = "Supported by Parent Project"
 // XREQUESTID is the client request id - used to trace a client request through the system/logs
 const XREQUESTID = "x-request-id"
 
+// CtxAuthUser the key for the authenticated user in the context
+const CtxAuthUser = "authUser"
+
 // CLAProjectManagerRole CLA project manager role identifier
 const CLAProjectManagerRole = "project-manager"
 

@@ -17,13 +17,12 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
-	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/go-openapi/strfmt"
 
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -41,7 +40,7 @@ type ServiceInterface interface {
 	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error)
 	GetGitlabOrganizationByState(ctx context.Context, gitlabOrganizationID, authState string) (*models.GitlabOrganization, error)
 	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
-	UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, oauthResp *gitlab.OauthSuccessResponse) error
+	UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, oauthResp *gitlab_api.OauthSuccessResponse) error
 	DeleteGitlabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error
 }
 
@@ -50,7 +49,7 @@ type Service struct {
 	repo               RepositoryInterface
 	v2GitRepoService   repositories.ServiceInterface
 	claGroupRepository projects_cla_groups.Repository
-	gitLabApp          *gitlab.App
+	gitLabApp          *gitlab_api.App
 }
 
 // NewService creates a new gitlab organization service
@@ -59,7 +58,7 @@ func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceI
 		repo:               repo,
 		v2GitRepoService:   v2GitRepoService,
 		claGroupRepository: claGroupRepository,
-		gitLabApp:          gitlab.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
+		gitLabApp:          gitlab_api.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 
@@ -238,7 +237,7 @@ func (s *Service) GetGitlabOrganizations(ctx context.Context, projectSFID string
 				rorg.ConnectionStatus = utils.ConnectionFailure
 			} else {
 				// We've been authenticated by the user - great, see if we can determine the list of repos...
-				glClient, clientErr := gitlab.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
+				glClient, clientErr := gitlab_api.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
 				if clientErr != nil {
 					log.WithFields(f).Errorf("using gitlab client for gitlab org : %s failed : %v", org.OrganizationID, clientErr)
 					rorg.ConnectionStatus = utils.ConnectionFailure
@@ -297,7 +296,7 @@ func (s *Service) GetGitlabOrganizationByState(ctx context.Context, gitlabOrgani
 }
 
 // UpdateGitlabOrganizationAuth updates the GitLab organization authentication information
-func (s *Service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, oauthResp *gitlab.OauthSuccessResponse) error {
+func (s *Service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrganizationID string, oauthResp *gitlab_api.OauthSuccessResponse) error {
 	f := logrus.Fields{
 		"functionName":         "v2.gitlab_organizations.service.UpdateGitlabOrganizationAuth",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -305,7 +304,7 @@ func (s *Service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrgani
 	}
 
 	log.WithFields(f).Debugf("updating gitlab org auth")
-	authInfoEncrypted, err := gitlab.EncryptAuthInfo(oauthResp, s.gitLabApp)
+	authInfoEncrypted, err := gitlab_api.EncryptAuthInfo(oauthResp, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("encrypt failed : %v", err)
 	}
@@ -316,30 +315,37 @@ func (s *Service) UpdateGitlabOrganizationAuth(ctx context.Context, gitlabOrgani
 	}
 
 	// Get the client
-	gitLabClient, err := gitlab2.NewGitlabOauthClientFromAccessToken(oauthResp.AccessToken)
+	gitLabClient, err := gitlab_api.NewGitlabOauthClientFromAccessToken(oauthResp.AccessToken)
 	if err != nil {
 		return fmt.Errorf("initializing gitlab client : %v", err)
 	}
 
-	// Need to look up the GitLab Group/Organization to obtain the ID
-	//groups, resp, searchErr := gitLabClient.Groups.SearchGroup(gitLabOrgModel.OrganizationName)
-	// Need to look up the GitLab Group/Organization to obtain the ID
-	opts := &goGitLab.ListGroupsOptions{
-		ListOptions: goGitLab.ListOptions{
-			Page:    1,
-			PerPage: 100,
-		},
+	// Query the groups list
+	groups, groupListErr := gitlab_api.GetGroupsListAll(ctx, gitLabClient)
+	if groupListErr != nil {
+		return groupListErr
 	}
-	groups, resp, searchErr := gitLabClient.Groups.ListGroups(opts)
-	if searchErr != nil {
-		return fmt.Errorf("GitLab search error while locating Group by name: %s, error: %v", gitLabOrgModel.OrganizationName, searchErr)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("unable to locate GitLab group by name: %s, status code: %d", gitLabOrgModel.OrganizationName, resp.StatusCode)
-	}
+
 	for _, g := range groups {
 		if g.Name == gitLabOrgModel.OrganizationName {
-			return s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, g.ID, authInfoEncrypted, g.FullPath, g.WebURL)
+			updateGitLabOrgErr := s.repo.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, g.ID, authInfoEncrypted, g.FullPath, g.WebURL)
+			if updateGitLabOrgErr != nil {
+				return updateGitLabOrgErr
+			}
+
+			log.WithFields(f).Debugf("fetching updated GitLab group/organization record")
+			updatedDBModel, getErr := s.repo.GetGitlabOrganization(ctx, gitlabOrganizationID)
+			if getErr != nil {
+				return getErr
+			}
+
+			log.WithFields(f).Debugf("adding GitLab repositories for this group/organization")
+			_, err = s.v2GitRepoService.GitLabAddRepositoriesByApp(ctx, updatedDBModel)
+			if err != nil {
+				return err
+			}
+
+			return nil
 		}
 	}
 
@@ -403,7 +409,7 @@ func buildInstallationURL(gitlabOrgID string, authStateNonce string) *strfmt.URI
 	return &installationURL
 }
 
-func toGitLabProjectResponse(gitLabListRepos *models.GitlabListRepositories) []*models.GitlabProjectRepository {
+func toGitLabProjectResponse(gitLabListRepos *models.GitlabRepositoriesList) []*models.GitlabProjectRepository {
 	f := logrus.Fields{
 		"functionName": "v2.gitlab_organizations.service.toGitLabProjectResponse",
 	}

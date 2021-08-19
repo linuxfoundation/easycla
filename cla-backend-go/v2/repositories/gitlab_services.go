@@ -5,30 +5,88 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
+	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/communitybridge/easycla/cla-backend-go/events"
+
 	v2GitLabOrg "github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
-	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	"github.com/xanzy/go-gitlab"
-
 	"github.com/sirupsen/logrus"
 
 	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	repoModels "github.com/communitybridge/easycla/cla-backend-go/repositories"
 )
 
-// GitLabAddRepository service function
-func (s *Service) GitLabAddRepository(ctx context.Context, projectSFID string, input *v2Models.GitlabAddRepository) (*v2Models.GitlabRepository, error) {
-	dbModel, err := s.gitV2Repository.GitLabAddRepository(ctx, projectSFID, input)
-	if err != nil {
-		return nil, err
+// GitLabAddRepositories service function
+func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string, input *v2Models.GitlabRepositoriesAdd) (*v2Models.GitlabRepositoriesList, error) {
+	f := logrus.Fields{
+		"functionName":     "v2.repositories.gitlab_services.GitLabAddRepositories",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+		"projectSFID":      projectSFID,
+		"organizationName": utils.StringValue(input.GitlabOrganizationName),
+		"claGroupID":       utils.StringValue(input.ClaGroupID),
 	}
 
-	return dbModelToGitLabRepository(dbModel)
+	gitLabOrgModel, orgErr := s.glOrgRepo.GetGitlabOrganizationByName(ctx, utils.StringValue(input.GitlabOrganizationName))
+	if orgErr != nil {
+		msg := fmt.Sprintf("problem loading gitlab organization by name: %s, error: %v", utils.StringValue(input.GitlabOrganizationName), orgErr)
+		log.WithFields(f).WithError(orgErr).Warn(msg)
+		return nil, errors.New(msg)
+	}
+
+	// Get the client
+	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitLabOrgModel.AuthInfo, s.gitLabApp)
+	if err != nil {
+		return nil, fmt.Errorf("initializing gitlab client : %v", err)
+	}
+
+	for _, gitLabProjectID := range input.RepositoryGitlabIds {
+		project, getProjectErr := gitlab_api.GetProjectByID(ctx, gitLabClient, int(gitLabProjectID)) // ok to down-cast as the IDs are not 64 bit
+		if getProjectErr != nil {
+			return nil, fmt.Errorf("unable to load project by ID: %d, error: %v", int(gitLabProjectID), getProjectErr)
+		}
+
+		// Convert int to string
+		repositoryExternalIDString := strconv.Itoa(project.ID)
+
+		inputDBModel := &repoModels.RepositoryDBModel{
+			RepositorySfdcID:           projectSFID,
+			ProjectSFID:                projectSFID,
+			RepositoryExternalID:       repositoryExternalIDString,
+			RepositoryName:             project.Name,
+			RepositoryFullPath:         project.PathWithNamespace,
+			RepositoryURL:              project.WebURL,
+			RepositoryOrganizationName: utils.StringValue(input.GitlabOrganizationName), // gitlab group/organization
+			RepositoryCLAGroupID:       utils.StringValue(input.ClaGroupID),
+			RepositoryType:             utils.GitLabLower, // should always be gitlab
+			Enabled:                    true,
+		}
+
+		_, addErr := s.gitV2Repository.GitLabAddRepository(ctx, projectSFID, inputDBModel)
+		if addErr != nil {
+			log.WithFields(f).WithError(addErr).Warnf("problem adding GitLab repository with name: %s, error: %+v", project.PathWithNamespace, addErr)
+			return nil, addErr
+		}
+
+		// Log the event
+		s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+			EventType:   events.RepositoryAdded,
+			ProjectSFID: projectSFID,
+			CLAGroupID:  utils.StringValue(input.ClaGroupID),
+			LfUsername:  ctx.Value(utils.CtxAuthUser).(*auth.User).UserName,
+			EventData: &events.RepositoryAddedEventData{
+				RepositoryName: project.PathWithNamespace, // give the full path/name
+			},
+		})
+	}
+
+	return s.GitLabGetRepositoriesByOrganizationName(ctx, utils.StringValue(input.GitlabOrganizationName))
 }
 
 // GitLabAddRepositoriesByApp adds the GitLab repositories based on the application credentials
@@ -39,8 +97,9 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 		"projectSFID":      gitLabOrgModel.ProjectSFID,
 		"organizationName": gitLabOrgModel.OrganizationName,
 	}
+
 	// Get the client
-	gitlabClient, err := gitlab2.NewGitlabOauthClient(gitLabOrgModel.AuthInfo, s.gitLabApp)
+	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitLabOrgModel.AuthInfo, s.gitLabApp)
 	if err != nil {
 		return nil, fmt.Errorf("initializing gitlab client : %v", err)
 	}
@@ -51,65 +110,29 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 		return nil, fmt.Errorf("unable to locate Project CLAGroup using projectSFID: %s for GitLab repositories group ID: %d, error: %+v", gitLabOrgModel.ProjectSFID, gitLabOrgModel.ExternalGroupID, projectCLAGroupLookupErr)
 	}
 
-	user, resp, userErr := gitlabClient.Users.CurrentUser()
-	if userErr != nil {
-		return nil, fmt.Errorf("unable to locate current user, error: %+v", userErr)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("unable to locate current user, status code: %d", resp.StatusCode)
+	// Query the project list by organization name
+	projectList, projectListErr := gitlab_api.GetProjectListByOrgName(ctx, gitLabClient, gitLabOrgModel.OrganizationName)
+	if projectListErr != nil {
+		return nil, projectListErr
 	}
 
-	log.WithFields(f).Debugf("fetched current username: %s with name: %s with email: %s", user.Username, user.Name, user.PublicEmail)
+	var listProjectIDs []int64
 
-	// Query GitLab for repos - fetch the list of repositories available to the GitLab App
-	listProjectsOpts := &gitlab.ListProjectsOptions{
-		ListOptions: gitlab.ListOptions{
-			Page:    1,   // starts with one: https://docs.gitlab.com/ee/api/#offset-based-pagination
-			PerPage: 100, // max is 100
-		},
-		Search:           utils.StringRef(gitLabOrgModel.OrganizationName), // filter by our organization
-		SearchNamespaces: utils.Bool(true),
-		Membership:       utils.Bool(true),
-		MinAccessLevel:   gitlab.AccessLevel(gitlab.MaintainerPermissions),
+	// Build a list of project IDs
+	for _, proj := range projectList {
+		log.WithFields(f).Debugf("repo: %s, path: %s, id: %d, weburl: %s", proj.Name, proj.Path, proj.ID, proj.WebURL)
+		listProjectIDs = append(listProjectIDs, int64(proj.ID))
 	}
 
-	// TODO - DAD - loop until no more repos, could be more than 100
-	log.WithFields(f).Debugf("searching for GitLab projects based on the search critera: %s", gitLabOrgModel.OrganizationName)
-	// Need to use this func to get the list of projects the user has access to, see: https://gitlab.com/gitlab-org/gitlab-foss/-/issues/63811
-	projects, resp, listProjectsErr := gitlabClient.Projects.ListProjects(listProjectsOpts)
-	//projects, resp, listProjectsErr := gitlabClient.Projects.ListUserProjects(user.ID, listProjectsOpts)
-	if listProjectsErr != nil {
-		return nil, fmt.Errorf("unable to list projects for current user, error: %+v", listProjectsErr)
+	// Build input to the add function
+	input := &v2Models.GitlabRepositoriesAdd{
+		ClaGroupID:             utils.StringRef(projectCLAGroupModel.ClaGroupID),
+		GitlabOrganizationName: utils.StringRef(gitLabOrgModel.OrganizationName),
+		RepositoryGitlabIds:    listProjectIDs,
 	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("unable to list projects for current user, status code: %d", resp.StatusCode)
-	}
-
-	// Add repos to table
-	for _, proj := range projects {
-		log.WithFields(f).Debugf("Repository: %s, path: %s, id: %d", proj.Name, proj.Path, proj.ID)
-
-		// TODO - make sure we don't have duplicates?
-		/*
-		  Name: "easycla-test-repo-demo-1",
-		  NameWithNamespace: "The Linux Foundation / product / EasyCLA / Demo / easycla-test-repo-demo-1",
-		  Path: "easycla-test-repo-demo-1",
-		  PathWithNamespace: "linuxfoundation/product/easycla/demo/easycla-test-repo-demo-1",
-		*/
-		_, addRepoErr := s.GitLabAddRepository(ctx, gitLabOrgModel.ProjectSFID, &v2Models.GitlabAddRepository{
-			Enabled:                    false, // default is false
-			Note:                       fmt.Sprintf("Added during onboarding of organization: %s", gitLabOrgModel.OrganizationName),
-			RepositoryExternalID:       utils.Int64(int64(proj.ID)),
-			RepositoryName:             utils.StringRef(proj.Name),
-			RepositoryFullPath:         utils.StringRef(proj.PathWithNamespace),
-			RepositoryOrganizationName: utils.StringRef(gitLabOrgModel.OrganizationName),
-			RepositoryProjectSfid:      utils.StringRef(gitLabOrgModel.ProjectSFID),
-			RepositoryURL:              utils.StringRef(proj.WebURL),
-			RepositoryClaGroupID:       utils.StringRef(projectCLAGroupModel.ClaGroupID),
-		})
-		if addRepoErr != nil {
-			return nil, addRepoErr
-		}
+	_, addRepoErr := s.GitLabAddRepositories(ctx, gitLabOrgModel.ProjectSFID, input)
+	if addRepoErr != nil {
+		return nil, addRepoErr
 	}
 
 	// Return the list of repos to caller
@@ -141,7 +164,7 @@ func (s *Service) GitLabGetRepositoryByName(ctx context.Context, repositoryName 
 }
 
 // GitLabGetRepositoriesByProjectSFID service function
-func (s *Service) GitLabGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabListRepositories, error) {
+func (s *Service) GitLabGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabRepositoriesList, error) {
 	dbModel, err := s.gitV2Repository.GitHubGetRepositoriesByProjectSFID(ctx, projectSFID)
 	if err != nil {
 		return nil, err
@@ -152,13 +175,13 @@ func (s *Service) GitLabGetRepositoriesByProjectSFID(ctx context.Context, projec
 		return nil, err
 	}
 
-	return &v2Models.GitlabListRepositories{
+	return &v2Models.GitlabRepositoriesList{
 		List: responses,
 	}, nil
 }
 
 // GitLabGetRepositoriesByCLAGroup service function
-func (s *Service) GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string, enabled bool) (*v2Models.GitlabListRepositories, error) {
+func (s *Service) GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string, enabled bool) (*v2Models.GitlabRepositoriesList, error) {
 	var dbModels []*repoModels.RepositoryDBModel
 	var err error
 	if enabled {
@@ -175,13 +198,13 @@ func (s *Service) GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupI
 		return nil, err
 	}
 
-	return &v2Models.GitlabListRepositories{
+	return &v2Models.GitlabRepositoriesList{
 		List: responses,
 	}, nil
 }
 
 // GitLabGetRepositoriesByOrganizationName returns the list of repositories associated with the Organization/Group name
-func (s *Service) GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabListRepositories, error) {
+func (s *Service) GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabRepositoriesList, error) {
 	dbModels, err := s.gitV2Repository.GitHubGetRepositoriesByOrganizationName(ctx, orgName)
 	if err != nil {
 		return nil, err
@@ -192,7 +215,7 @@ func (s *Service) GitLabGetRepositoriesByOrganizationName(ctx context.Context, o
 		return nil, err
 	}
 
-	return &v2Models.GitlabListRepositories{
+	return &v2Models.GitlabRepositoriesList{
 		List: responses,
 	}, nil
 }

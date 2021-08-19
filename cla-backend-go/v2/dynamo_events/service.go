@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	gitlab2 "github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
@@ -68,7 +68,7 @@ type service struct {
 	autoEnableService        *autoEnableServiceProvider
 	claManagerRequestsRepo   cla_manager.IRepository
 	approvalListRequestsRepo approval_list.IRepository
-	gitLabApp                *gitlab2.App
+	gitLabApp                *gitlab_api.App
 }
 
 // Service implements DynamoDB stream event handler service
@@ -91,7 +91,7 @@ func NewService(stage string,
 	gerritService gerrits.Service,
 	claManagerRequestsRepo cla_manager.IRepository,
 	approvalListRequestsRepo approval_list.IRepository,
-	gitLabApp *gitlab2.App) Service {
+	gitLabApp *gitlab_api.App) Service {
 
 	signaturesTable := fmt.Sprintf("cla-%s-signatures", stage)
 	eventsTable := fmt.Sprintf("cla-%s-events", stage)

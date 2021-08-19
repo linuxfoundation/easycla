@@ -10,7 +10,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 

@@ -15,7 +15,7 @@ import (
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
-	"github.com/communitybridge/easycla/cla-backend-go/gitlab"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/gofrs/uuid"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
@@ -29,12 +29,11 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	v2GitRepo "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, service ServiceInterface, gitV2Service v2GitRepo.ServiceInterface, eventService events.Service) {
+func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventService events.Service) {
 
 	api.GitlabOrganizationsGetProjectGitlabOrganizationsHandler = gitlab_organizations.GetProjectGitlabOrganizationsHandlerFunc(
 		func(params gitlab_organizations.GetProjectGitlabOrganizationsParams, authUser *auth.User) middleware.Responder {
@@ -293,7 +292,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, gitV2Servic
 		}
 
 		// now fetch the oauth credentials and store to db
-		oauthResp, err := gitlab.FetchOauthCredentials(params.Code)
+		oauthResp, err := gitlab_api.FetchOauthCredentials(params.Code)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab credentials failed : %s : %v", gitlabOrganizationID, err)
 			log.WithFields(f).Errorf(msg)
@@ -314,11 +313,6 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, gitV2Servic
 			msg := fmt.Sprintf("problem loading updated gitlab organization by ID: %s : %v", gitlabOrganizationID, err)
 			log.WithFields(f).Errorf(msg)
 			return NewServerError(reqID, "", errors.New(msg))
-		}
-
-		_, err = gitV2Service.GitLabAddRepositoriesByApp(ctx, updatedGitLabOrgDBModel)
-		if err != nil {
-			return NewServerError(reqID, updatedGitLabOrgDBModel.OrganizationName, err)
 		}
 
 		return NewSuccessResponse(reqID, updatedGitLabOrgDBModel.ProjectSFID, updatedGitLabOrgDBModel.OrganizationName)
