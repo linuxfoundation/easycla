@@ -53,7 +53,7 @@ func GetProjectListByOrgName(ctx context.Context, client *goGitLab.Client, organ
 // getProjectListWithOptions returns a list of GitLab projects using the specified filter
 func getProjectListWithOptions(ctx context.Context, client *goGitLab.Client, opts *goGitLab.ListProjectsOptions) ([]*goGitLab.Project, error) {
 	f := logrus.Fields{
-		"functionName":   "gitlab.client.getProjectListWithOptions",
+		"functionName":   "gitlab_api.client_projects.getProjectListWithOptions",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 

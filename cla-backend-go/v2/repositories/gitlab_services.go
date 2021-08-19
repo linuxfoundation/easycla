@@ -64,7 +64,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 			RepositoryOrganizationName: utils.StringValue(input.GitlabOrganizationName), // gitlab group/organization
 			RepositoryCLAGroupID:       utils.StringValue(input.ClaGroupID),
 			RepositoryType:             utils.GitLabLower, // should always be gitlab
-			Enabled:                    true,
+			Enabled:                    false,             // we don't enable by default
 		}
 
 		_, addErr := s.gitV2Repository.GitLabAddRepository(ctx, projectSFID, inputDBModel)
@@ -110,7 +110,7 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 	}
 
 	// Query the project list by organization name
-	projectList, projectListErr := gitlab_api.GetProjectListByOrgName(ctx, gitLabClient, gitLabOrgModel.OrganizationName)
+	projectList, projectListErr := gitlab_api.GetGroupProjectListByGroupID(ctx, gitLabClient, gitLabOrgModel.ExternalGroupID)
 	if projectListErr != nil {
 		return nil, projectListErr
 	}
@@ -119,7 +119,7 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 
 	// Build a list of project IDs
 	for _, proj := range projectList {
-		log.WithFields(f).Debugf("repo: %s, path: %s, id: %d, weburl: %s", proj.Name, proj.Path, proj.ID, proj.WebURL)
+		log.WithFields(f).Debugf("id: %d, repo: %s, path: %s, full path: %s, weburl: %s", proj.ID, proj.Name, proj.Path, proj.PathWithNamespace, proj.WebURL)
 		listProjectIDs = append(listProjectIDs, int64(proj.ID))
 	}
 

@@ -113,13 +113,13 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			}
 
 			// Quick check of the parameters
-			if params.Body == nil || params.Body.OrganizationName == nil {
-				msg := fmt.Sprintf("missing organization name in body: %+v", params.Body)
+			if params.Body == nil || params.Body.GroupID == nil {
+				msg := fmt.Sprintf("missing group ID in body: %+v", params.Body)
 				log.WithFields(f).Warn(msg)
 				return gitlab_organizations.NewAddProjectGitlabOrganizationBadRequest().WithPayload(
 					utils.ErrorResponseBadRequest(reqID, msg))
 			}
-			f["organizationName"] = utils.StringValue(params.Body.OrganizationName)
+			f["groupID"] = utils.Int64Value(params.Body.GroupID)
 
 			if params.Body.AutoEnabled == nil {
 				msg := fmt.Sprintf("missing autoEnabled name in body: %+v", params.Body)
@@ -146,15 +146,20 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			// Log the event
-			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-				LfUsername:  authUser.UserName,
-				EventType:   events.GitlabOrganizationAdded,
-				ProjectSFID: params.ProjectSFID,
-				EventData: &events.GitlabOrganizationAddedEventData{
-					GitlabOrganizationName: *params.Body.OrganizationName,
-				},
-			})
+			// Get the current group name for the event
+			for _, group := range result.List {
+				if group.OrganizationExternalID == *params.Body.GroupID {
+					// Log the event
+					eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+						LfUsername:  authUser.UserName,
+						EventType:   events.GitlabOrganizationAdded,
+						ProjectSFID: params.ProjectSFID,
+						EventData: &events.GitlabOrganizationAddedEventData{
+							GitlabOrganizationName: group.OrganizationName,
+						},
+					})
+				}
+			}
 
 			return gitlab_organizations.NewAddProjectGitlabOrganizationOK().WithPayload(result)
 		})

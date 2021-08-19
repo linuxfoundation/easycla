@@ -4,10 +4,8 @@
 package tests
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"testing"
 
@@ -21,14 +19,13 @@ import (
 	"github.com/xanzy/go-gitlab"
 )
 
-const enabled = false // nolint
-const group = "The Linux Foundation/product/EasyCLA"
+const enabled = false                                // nolint
+const group = "The Linux Foundation/product/EasyCLA" // nolint
 const accessInfo = ""
 
-const easyCLAGroupName = "linuxfoundation/product/easycla"
+const easyCLAGroupName = "linuxfoundation/product/easycla" // nolint
 
-func TestGitLabGetGroup(t *testing.T) { // no lint
-
+func TestGetGroupByName(t *testing.T) { // no lint
 	if enabled { // nolint
 		// Need to initialize the system to load the configuration which contains a number of SSM parameters
 		stage := os.Getenv("STAGE")
@@ -58,14 +55,93 @@ func TestGitLabGetGroup(t *testing.T) { // no lint
 		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
 		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
 
+		ctx := utils.NewContext()
 		// Need to look up the GitLab Group/Organization to obtain the ID
-		groupModel, resp, getError := gitLabClient.Groups.GetGroup(url.QueryEscape(easyCLAGroupName))
-		assert.Nil(t, getError, "GitLab GetGroup Error is Nil")
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			assert.Fail(t, fmt.Sprintf("unable to locate GitLab group by value: %s, status code: %d", easyCLAGroupName, resp.StatusCode))
+		//groupModel, getError := gitlab_api.GetGroupByName(ctx, gitLabClient, easyCLAGroupName)
+		//groupModel, getError := gitlab_api.GetGroupByName(ctx, gitLabClient, "EasyCLA")
+		groupModel, getError := gitlab_api.GetGroupByName(ctx, gitLabClient, "linuxfoundation/product/asitha")
+		assert.Nil(t, getError, "GitLab GetGroup Error should be nil", getError)
+		assert.NotNil(t, groupModel, "Group Model should not be nil")
+		t.Logf("group ID: %d, name: %s, path: %s, full path: %s", groupModel.ID, groupModel.Name, groupModel.Path, groupModel.FullPath)
+	}
+}
+
+func TestGetGroupByID(t *testing.T) { // no lint
+	if enabled { // nolint
+		// Need to initialize the system to load the configuration which contains a number of SSM parameters
+		stage := os.Getenv("STAGE")
+		if stage == "" {
+			assert.Fail(t, "set STAGE environment variable to run unit and functional tests.")
 		}
-		assert.NotNil(t, groupModel, "Group Model is not nil")
-		t.Logf("group name: %s, ID: %d, path: %s", groupModel.Name, groupModel.ID, groupModel.Path)
+		dynamodbRegion := os.Getenv("DYNAMODB_AWS_REGION")
+		if dynamodbRegion == "" {
+			assert.Fail(t, "set DYNAMODB_AWS_REGION environment variable to run unit and functional tests.")
+		}
+
+		viper.Set("STAGE", stage)
+		viper.Set("DYNAMODB_AWS_REGION", dynamodbRegion)
+		ini.Init()
+		_, err := ini.GetAWSSession()
+		if err != nil {
+			assert.Fail(t, "unable to load AWS session", err)
+		}
+		ini.ConfigVariable()
+		config := ini.GetConfig()
+
+		// Create a new GitLab App client instance
+		gitLabApp := gitlab_api.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
+
+		// Create a new client
+		gitLabClient, err := gitlab_api.NewGitlabOauthClient(accessInfo, gitLabApp)
+		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
+		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
+
+		ctx := utils.NewContext()
+		groupModel, getError := gitlab_api.GetGroupByID(ctx, gitLabClient, 13050017)
+		assert.Nil(t, getError, "GitLab GetGroup Error should be nil", getError)
+		assert.NotNil(t, groupModel, "Group Model should not be nil")
+		t.Logf("group ID: %d, name: %s, path: %s, full path: %s", groupModel.ID, groupModel.Name, groupModel.Path, groupModel.FullPath)
+	}
+}
+
+func TestGetGroupProjectListByGroupID(t *testing.T) { // no lint
+	if enabled { // nolint
+		// Need to initialize the system to load the configuration which contains a number of SSM parameters
+		stage := os.Getenv("STAGE")
+		if stage == "" {
+			assert.Fail(t, "set STAGE environment variable to run unit and functional tests.")
+		}
+		dynamodbRegion := os.Getenv("DYNAMODB_AWS_REGION")
+		if dynamodbRegion == "" {
+			assert.Fail(t, "set DYNAMODB_AWS_REGION environment variable to run unit and functional tests.")
+		}
+
+		viper.Set("STAGE", stage)
+		viper.Set("DYNAMODB_AWS_REGION", dynamodbRegion)
+		ini.Init()
+		_, err := ini.GetAWSSession()
+		if err != nil {
+			assert.Fail(t, "unable to load AWS session", err)
+		}
+		ini.ConfigVariable()
+		config := ini.GetConfig()
+
+		// Create a new GitLab App client instance
+		gitLabApp := gitlab_api.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
+
+		// Create a new client
+		gitLabClient, err := gitlab_api.NewGitlabOauthClient(accessInfo, gitLabApp)
+		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
+		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
+
+		ctx := utils.NewContext()
+		gitLabProjects, getError := gitlab_api.GetGroupProjectListByGroupID(ctx, gitLabClient, 13050017)
+		assert.Nil(t, getError, "Get Group Projects List by Group ID error should be nil", getError)
+		assert.NotNil(t, gitLabProjects, "Get Group Projects Array should not be nil")
+		assert.Greaterf(t, len(gitLabProjects), 0, "Get Group Projects Array greater than zero: %d", len(gitLabProjects))
+		for _, p := range gitLabProjects {
+			t.Logf("id: %d, name: %s, web url: %s, path: %s, full path: %s", p.ID, p.Name, p.WebURL, p.Path, p.PathWithNamespace)
+		}
 	}
 }
 
@@ -193,18 +269,18 @@ func TestGitLabListProjects(t *testing.T) { // no lint
 		}
 
 		// DEBUG
-		t.Logf("Recevied %d projects", len(projects))
-		for _, p := range projects {
-			t.Logf("project name: %s, ID: %d, path: %s", p.Name, p.ID, p.PathWithNamespace)
-		}
+		//t.Logf("Recevied %d projects", len(projects))
+		//for _, p := range projects {
+		//	t.Logf("project name: %s, ID: %d, path: %s", p.Name, p.ID, p.PathWithNamespace)
+		//}
 
 		// DEBUG
-		t.Log("projects:")
-		for _, p := range projects {
-			byteArr, err := json.Marshal(p)
-			assert.Nil(t, err)
-			t.Logf("project: %s", byteArr)
-		}
+		//t.Log("projects:")
+		//for _, p := range projects {
+		//byteArr, err := json.Marshal(p)
+		//assert.Nil(t, err)
+		//t.Logf("project: %s", byteArr)
+		//}
 
 		if len(projects) > 1 {
 			assert.Fail(t, fmt.Sprintf("expecting > 1 result for GitLab list projects, found: %d - %+v", len(projects), projects))

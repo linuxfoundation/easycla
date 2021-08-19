@@ -39,6 +39,11 @@ properties:
     type: string
     description: The Gitlab Group/Organization full path
     example: "linuxfoundation/product/easycla"
+  organization_external_id:
+    type: integer
+    description: The Gitlab Group/Organization external ID used by GitLab
+    example: 13050017
+    minimum: 1
   connection_status:
     type: string
     enum:

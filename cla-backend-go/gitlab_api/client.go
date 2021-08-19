@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -29,9 +30,20 @@ type OauthSuccessResponse struct {
 
 // NewGitlabOauthClient creates a new gitlab client from the given oauth info, authInfo is encrypted
 func NewGitlabOauthClient(authInfo string, gitLabApp *App) (*goGitLab.Client, error) {
+	if authInfo == "" {
+		return nil, errors.New("unable to decrypt auth info - authentication info input is nil")
+	}
+	if gitLabApp == nil || gitLabApp.gitLabAppID == "" || gitLabApp.gitLabAppPrivateKey == "" || gitLabApp.gitLabAppSecret == "" {
+		return nil, errors.New("unable to decrypt auth info - GitLab app structure is nil or empty")
+	}
+
 	oauthResp, err := DecryptAuthInfo(authInfo, gitLabApp)
 	if err != nil {
 		return nil, err
+	}
+
+	if oauthResp == nil {
+		return nil, errors.New("unable to decrypt auth info - value is nil")
 	}
 
 	log.Infof("creating oauth client with access token : %s", oauthResp.AccessToken)

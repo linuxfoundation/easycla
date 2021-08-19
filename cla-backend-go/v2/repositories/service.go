@@ -67,12 +67,14 @@ type ServiceInterface interface {
 
 // GithubOrgRepo redefine the interface here to avoid circular dependency issues
 type GithubOrgRepo interface {
-	AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *v2Models.GitlabCreateOrganization) (*v2Models.GitlabOrganization, error)
+	AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, groupID int64, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) (*v2Models.GitlabOrganization, error)
 	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
 	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitlabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
+	GetGitlabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
 	UpdateGitlabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error
-	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error
+	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
+	UpdateGitlabOrganizationByExternalID(ctx context.Context, projectSFID string, groupID int64, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
 	DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
 }
 

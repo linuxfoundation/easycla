@@ -35,12 +35,14 @@ const (
 
 // RepositoryInterface is interface for gitlab org data model
 type RepositoryInterface interface {
-	AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models2.GitlabCreateOrganization) (*models2.GitlabOrganization, error)
+	AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, groupID int64, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) (*models2.GitlabOrganization, error)
 	GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error)
 	GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitlabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
+	GetGitlabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
 	UpdateGitlabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error
-	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error
+	UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
+	UpdateGitlabOrganizationByExternalID(ctx context.Context, projectSFID string, groupID int64, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
 	DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
 }
 
@@ -53,45 +55,46 @@ type Repository struct {
 
 // NewRepository creates a new instance of the gitlabOrganizations repository
 func NewRepository(awsSession *session.Session, stage string) RepositoryInterface {
-	return Repository{
+	return &Repository{
 		stage:              stage,
 		dynamoDBClient:     dynamodb.New(awsSession),
 		gitlabOrgTableName: fmt.Sprintf("cla-%s-gitlab-orgs", stage),
 	}
 }
 
-func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, input *models2.GitlabCreateOrganization) (*models2.GitlabOrganization, error) {
-	gitLabOrganizationName := utils.StringValue(input.OrganizationName)
+func (repo *Repository) AddGitlabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, groupID int64, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) (*models2.GitlabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":            "v2.gitlab_organizations.repository.AddGitlabOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
 		"parentProjectSFID":       parentProjectSFID,
 		"projectSFID":             projectSFID,
-		"organizationName":        gitLabOrganizationName,
-		"autoEnabled":             utils.BoolValue(input.AutoEnabled),
-		"branchProtectionEnabled": utils.BoolValue(input.BranchProtectionEnabled),
+		"groupID":                 groupID,
+		"organizationName":        organizationName,
+		"autoEnabled":             autoEnabled,
+		"autoEnabledClaGroupID":   autoEnabledClaGroupID,
+		"branchProtectionEnabled": branchProtectionEnabled,
+		"enabled":                 enabled,
 	}
 
 	// First, let's check to see if we have an existing gitlab organization with the same name
-	existingRecord, getErr := repo.GetGitlabOrganizationByName(ctx, utils.StringValue(input.OrganizationName))
+	existingRecord, getErr := repo.GetGitlabOrganizationByExternalID(ctx, groupID)
 	if getErr != nil {
-		log.WithFields(f).WithError(getErr).Debugf("unable to locate existing GitLab organization by name %s - ok to create a new record", gitLabOrganizationName)
+		log.WithFields(f).WithError(getErr).Debugf("unable to locate existing GitLab organization by name %d - ok to create a new record", groupID)
 	}
 
 	if existingRecord != nil {
-		log.WithFields(f).Debugf("An existing GitLab organization with name %s exists in our database", gitLabOrganizationName)
+		log.WithFields(f).Debugf("An existing GitLab organization with name %d exists in our database", groupID)
 		// If everything matches...
 		if projectSFID == existingRecord.ProjectSFID {
 			log.WithFields(f).Debug("Existing GitLab organization with same SFID - should be able to update it")
-			enabledFlag := true
-			updateErr := repo.UpdateGitlabOrganization(ctx, projectSFID, gitLabOrganizationName,
-				utils.BoolValue(input.AutoEnabled), input.AutoEnabledClaGroupID, utils.BoolValue(input.BranchProtectionEnabled), &enabledFlag)
+			updateErr := repo.UpdateGitlabOrganizationByExternalID(ctx, projectSFID, groupID, organizationName,
+				autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, enabled)
 			if updateErr != nil {
 				return nil, updateErr
 			}
 
 			// Return the updated record
-			if gitlabOrg, err := repo.GetGitlabOrganizationByName(ctx, gitLabOrganizationName); err != nil {
+			if gitlabOrg, err := repo.GetGitlabOrganizationByExternalID(ctx, groupID); err != nil {
 				return nil, err
 			} else {
 				return common.ToModel(gitlabOrg), nil
@@ -116,19 +119,19 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 		return nil, err
 	}
 
-	enabled := true
 	gitlabOrg := &common.GitLabOrganization{
 		OrganizationID:          organizationID.String(),
 		DateCreated:             currentTime,
 		DateModified:            currentTime,
-		OrganizationName:        *input.OrganizationName,
-		OrganizationNameLower:   strings.ToLower(*input.OrganizationName),
+		OrganizationName:        organizationName,
+		OrganizationNameLower:   strings.ToLower(organizationName),
+		ExternalGroupID:         int(groupID),
 		OrganizationSFID:        parentProjectSFID,
 		ProjectSFID:             projectSFID,
-		Enabled:                 aws.BoolValue(&enabled),
-		AutoEnabled:             aws.BoolValue(input.AutoEnabled),
-		AutoEnabledClaGroupID:   input.AutoEnabledClaGroupID,
-		BranchProtectionEnabled: aws.BoolValue(input.BranchProtectionEnabled),
+		Enabled:                 enabled,
+		AutoEnabled:             autoEnabled,
+		AutoEnabledClaGroupID:   autoEnabledClaGroupID,
+		BranchProtectionEnabled: branchProtectionEnabled,
 		AuthState:               authStateNonce.String(),
 		Version:                 "v1",
 		// OrganizationURL:         set later when we can authenticate to the API
@@ -163,7 +166,7 @@ func (repo Repository) AddGitlabOrganization(ctx context.Context, parentProjectS
 }
 
 // GetGitlabOrganizations get GitLab organizations based on the project SFID
-func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error) {
+func (repo *Repository) GetGitlabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.gitlab_organizations.repository.GetGitlabOrganizations",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -219,7 +222,7 @@ func (repo Repository) GetGitlabOrganizations(ctx context.Context, projectSFID s
 }
 
 // GetGitlabOrganizationByName get GitLab organization by name
-func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error) {
+func (repo *Repository) GetGitlabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":           "v1.gitlab_organizations.repository.GetGitlabOrganizationByName",
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
@@ -267,8 +270,55 @@ func (repo Repository) GetGitlabOrganizationByName(ctx context.Context, gitLabOr
 	return resultOutput[0], nil
 }
 
+func (repo *Repository) GetGitlabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.gitlab_organizations.repository.GetGitlabOrganizationByExternalID",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"gitLabGroupID":  gitLabGroupID,
+	}
+
+	condition := expression.Key(GitLabOrganizationsExternalGitLabGroupIDColumn).Equal(expression.Value(gitLabGroupID))
+	builder := expression.NewBuilder().WithKeyCondition(condition)
+	// Use the nice builder to create the expression
+	expr, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		FilterExpression:          expr.Filter(),
+		TableName:                 aws.String(repo.gitlabOrgTableName),
+		IndexName:                 aws.String(GitlabOrgLowerNameIndex),
+	}
+
+	log.WithFields(f).Debugf("querying for GitLab organization by external group ID: %d...", gitLabGroupID)
+	results, err := repo.dynamoDBClient.Query(queryInput)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error retrieving gitlab_organizations using external ID = %d", gitLabGroupID)
+		return nil, err
+	}
+	if len(results.Items) == 0 {
+		log.WithFields(f).Debugf("Unable to find GitLab organization by group ID: %d - no results", gitLabGroupID)
+		return nil, nil
+	}
+
+	var resultOutput []*common.GitLabOrganization
+	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &resultOutput)
+	if err != nil {
+		log.WithFields(f).Warnf("problem decoding database results, error: %+v", err)
+		return nil, err
+	}
+
+	return resultOutput[0], nil
+}
+
 // GetGitlabOrganization by organization name
-func (repo Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error) {
+func (repo *Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":         "gitlab_organizations.repository.GetGitlabOrganization",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -302,7 +352,7 @@ func (repo Repository) GetGitlabOrganization(ctx context.Context, gitlabOrganiza
 }
 
 // UpdateGitlabOrganizationAuth updates the specified Gitlab organization oauth info
-func (repo Repository) UpdateGitlabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error {
+func (repo *Repository) UpdateGitlabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error {
 	f := logrus.Fields{
 		"functionName":         "gitlab_organizations.repository.UpdateGitlabOrganizationAuth",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -368,7 +418,8 @@ func (repo Repository) UpdateGitlabOrganizationAuth(ctx context.Context, organiz
 	return nil
 }
 
-func (repo Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error {
+// UpdateGitlabOrganization updates the GitLab group based on the specified values
+func (repo *Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error {
 	f := logrus.Fields{
 		"functionName":            "gitlab_organizations.repository.UpdateGitlabOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
@@ -396,6 +447,7 @@ func (repo Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID
 		"#C": aws.String(GitLabOrganizationsAutoEnabledCLAGroupIDColumn),
 		"#B": aws.String(GitLabOrganizationsBranchProtectionEnabledColumn),
 		"#M": aws.String(GitLabOrganizationsDateModifiedColumn),
+		"#E": aws.String(GitLabOrganizationsEnabledColumn),
 	}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
 		":a": {
@@ -410,16 +462,11 @@ func (repo Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID
 		":m": {
 			S: aws.String(currentTime),
 		},
+		":e": {
+			BOOL: aws.Bool(enabled),
+		},
 	}
-	updateExpression := "SET #A = :a, #C = :c, #B = :b, #M = :m"
-
-	if enabled != nil {
-		expressionAttributeNames["#E"] = aws.String("enabled")
-		expressionAttributeValues[":e"] = &dynamodb.AttributeValue{
-			BOOL: aws.Bool(*enabled),
-		}
-		updateExpression = updateExpression + ", #E = :e "
-	}
+	updateExpression := "SET #A = :a, #C = :c, #B = :b, #M = :m, #E = :e"
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
@@ -443,7 +490,89 @@ func (repo Repository) UpdateGitlabOrganization(ctx context.Context, projectSFID
 	return nil
 }
 
-func (repo Repository) DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error {
+// UpdateGitlabOrganizationByExternalID updates the GitLab group based on the specified values
+func (repo *Repository) UpdateGitlabOrganizationByExternalID(ctx context.Context, projectSFID string, groupID int64, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error {
+	f := logrus.Fields{
+		"functionName":            "gitlab_organizations.repository.UpdateGitlabOrganizationByExternalID",
+		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
+		"projectSFID":             projectSFID,
+		"groupID":                 groupID,
+		"organizationName":        organizationName,
+		"autoEnabled":             autoEnabled,
+		"autoEnabledClaGroupID":   autoEnabledClaGroupID,
+		"branchProtectionEnabled": branchProtectionEnabled,
+		"tableName":               repo.gitlabOrgTableName,
+	}
+
+	_, currentTime := utils.CurrentTime()
+	gitlabOrg, lookupErr := repo.GetGitlabOrganizationByExternalID(ctx, groupID)
+	if lookupErr != nil {
+		log.WithFields(f).Warnf("error looking up GitLab group by ID: %d, error: %+v", groupID, lookupErr)
+		return lookupErr
+	}
+	if gitlabOrg == nil {
+		log.WithFields(f).Warn("error looking up GitLab group - no results")
+		return errors.New("unable to lookup GitLab group by ID")
+	}
+
+	expressionAttributeNames := map[string]*string{
+		"#A":  aws.String(GitLabOrganizationsAutoEnabledColumn),
+		"#C":  aws.String(GitLabOrganizationsAutoEnabledCLAGroupIDColumn),
+		"#B":  aws.String(GitLabOrganizationsBranchProtectionEnabledColumn),
+		"#N":  aws.String(GitLabOrganizationsOrganizationNameColumn),
+		"#NL": aws.String(GitLabOrganizationsOrganizationNameLowerColumn),
+		"#M":  aws.String(GitLabOrganizationsDateModifiedColumn),
+		"#E":  aws.String(GitLabOrganizationsEnabledColumn),
+	}
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
+		":a": {
+			BOOL: aws.Bool(autoEnabled),
+		},
+		":c": {
+			S: aws.String(autoEnabledClaGroupID),
+		},
+		":b": {
+			BOOL: aws.Bool(branchProtectionEnabled),
+		},
+		":n": {
+			S: aws.String(organizationName),
+		},
+		":nl": {
+			S: aws.String(strings.ToLower(organizationName)),
+		},
+		":m": {
+			S: aws.String(currentTime),
+		},
+		":e": {
+			BOOL: aws.Bool(enabled),
+		},
+	}
+	updateExpression := "SET #A = :a, #C = :c, #B = :b, #N = :n, #NL = :nl, #M = :m, #E = :e "
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			GitLabOrganizationsOrganizationIDColumn: {
+				S: aws.String(gitlabOrg.OrganizationID),
+			},
+		},
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		UpdateExpression:          &updateExpression,
+		TableName:                 aws.String(repo.gitlabOrgTableName),
+	}
+
+	log.WithFields(f).Debugf("updating GitLab organization record: %+v", input)
+	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
+	if updateErr != nil {
+		log.WithFields(f).Warnf("unable to update GitLab organization record, error: %+v", updateErr)
+		return updateErr
+	}
+
+	return nil
+}
+
+// DeleteGitlabOrganization deletes the specified GitLab organization
+func (repo *Repository) DeleteGitlabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error {
 	f := logrus.Fields{
 		"functionName":   "v1.gitlab_organizations.repository.DeleteGitlabOrganization",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
