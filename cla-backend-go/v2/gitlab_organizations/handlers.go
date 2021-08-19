@@ -4,7 +4,6 @@
 package gitlab_organizations
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -39,7 +38,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		func(params gitlab_organizations.GetProjectGitlabOrganizationsParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 
 			f := logrus.Fields{
 				"functionName":   "v2.gitlab_organizations.handlers.GitlabOrganizationsGetProjectGitlabOrganizationsHandler",
@@ -87,7 +86,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		func(params gitlab_organizations.AddProjectGitlabOrganizationParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
+			ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 
 			f := logrus.Fields{
 				"functionName":   "v2.gitlab_organizations.handlers.GitlabOrganizationsAddProjectGitlabOrganizationHandler",
@@ -162,7 +161,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 	api.GitlabOrganizationsUpdateProjectGitlabOrganizationConfigHandler = gitlab_organizations.UpdateProjectGitlabOrganizationConfigHandlerFunc(func(params gitlab_organizations.UpdateProjectGitlabOrganizationConfigParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
-		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 		if params.Body.AutoEnabled == nil {
 			return gitlab_organizations.NewUpdateProjectGitlabOrganizationConfigBadRequest().WithPayload(&models.ErrorResponse{
 				Code:    "400",
@@ -202,7 +201,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 	api.GitlabOrganizationsDeleteProjectGitlabOrganizationHandler = gitlab_organizations.DeleteProjectGitlabOrganizationHandlerFunc(func(params gitlab_organizations.DeleteProjectGitlabOrganizationParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 		f := logrus.Fields{
 			"functionName":   "v2.gitlab_organizations.handlers.GitlabOrganizationsDeleteProjectGitlabOrganizationHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),

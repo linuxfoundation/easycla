@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 
 	v2GitLabOrg "github.com/communitybridge/easycla/cla-backend-go/v2/common"
@@ -79,7 +78,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 			EventType:   events.RepositoryAdded,
 			ProjectSFID: projectSFID,
 			CLAGroupID:  utils.StringValue(input.ClaGroupID),
-			LfUsername:  ctx.Value(utils.CtxAuthUser).(*auth.User).UserName,
+			LfUsername:  utils.GetUserNameFromContext(ctx),
 			EventData: &events.RepositoryAddedEventData{
 				RepositoryName: project.PathWithNamespace, // give the full path/name
 			},
