@@ -68,6 +68,7 @@ func NewRepository(awsSession *session.Session, stage string) RepositoryInterfac
 	}
 }
 
+// AddGitLabOrganization adds the specified values to the GitLab Group/Org table
 func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) (*models2.GitlabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":            "v2.gitlab_organizations.repository.AddGitLabOrganization",
@@ -89,7 +90,7 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProject
 		// First, let's check to see if we have an existing gitlab organization with the same name
 		existingRecord, getErr = repo.GetGitLabOrganizationByExternalID(ctx, groupID)
 		if getErr != nil {
-			log.WithFields(f).WithError(getErr).Debugf("unable to locate existing GitLab group by name %d - ok to create a new record", groupID)
+			log.WithFields(f).WithError(getErr).Debugf("unable to locate existing GitLab group by ID: %d - ok to create a new record", groupID)
 		}
 	} else if groupFullPath != "" {
 		// First, let's check to see if we have an existing gitlab organization with the same name
@@ -100,7 +101,7 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProject
 	}
 
 	if existingRecord != nil {
-		log.WithFields(f).Debugf("An existing GitLab organization with name %d exists in our database", groupID)
+		log.WithFields(f).Debugf("An existing GitLab organization with ID %d exists in our database", groupID)
 		// If everything matches...
 		if projectSFID == existingRecord.ProjectSFID {
 			log.WithFields(f).Debug("Existing GitLab organization with same SFID - should be able to update it")
@@ -142,6 +143,7 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProject
 		DateModified:            currentTime,
 		OrganizationName:        organizationName,
 		OrganizationNameLower:   strings.ToLower(organizationName),
+		OrganizationFullPath:    groupFullPath,
 		ExternalGroupID:         int(groupID),
 		OrganizationSFID:        parentProjectSFID,
 		ProjectSFID:             projectSFID,
@@ -287,6 +289,7 @@ func (repo *Repository) GetGitLabOrganizationByName(ctx context.Context, gitLabO
 	return resultOutput[0], nil
 }
 
+// GetGitLabOrganizationByExternalID returns the GitLab Group/Org based on the external GitLab Group ID value
 func (repo *Repository) GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.gitlab_organizations.repository.GetGitLabOrganizationByExternalID",
@@ -334,7 +337,7 @@ func (repo *Repository) GetGitLabOrganizationByExternalID(ctx context.Context, g
 	return resultOutput[0], nil
 }
 
-// GetGitlabOrganizationByFullPath loads the organization based on the full path value
+// GetGitLabOrganizationByFullPath loads the organization based on the full path value
 func (repo *Repository) GetGitLabOrganizationByFullPath(ctx context.Context, groupFullPath string) (*common.GitLabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.gitlab_organizations.repository.GetGitLabOrganizationByFullPath",
