@@ -138,8 +138,7 @@ func TestV2CLAManagerDesigneeCorporateTemplate(t *testing.T) {
 	assert.Contains(t, result, "SenderNameValue SenderEmailValue has identified you")
 	assert.Contains(t, result, "Corporate CLA for the organization JohnsCompany")
 	assert.Contains(t, result, "<li>JohnsProject</li>")
-	assert.Contains(t, result, "can login to this portal (http://CorporateConsole.com)")
-	assert.Contains(t, result, `sign the CLA for this project <a href="http://CorporateConsole.com/foundation/FoundationSFIDValue/project/ProjectSFIDValue/cla" target="_blank">JohnsProject</a>`)
+	assert.Contains(t, result, "can login and <b>sign the CLA for this project <a href=\"http://CorporateConsole.com/foundation/FoundationSFIDValue/project/ProjectSFIDValue/cla\" target=\"_blank\">JohnsProject</a>")
 }
 
 func TestV2ToCLAManagerDesigneeTemplate(t *testing.T) {
