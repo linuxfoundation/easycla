@@ -104,6 +104,44 @@ func TestGetGroupByID(t *testing.T) { // no lint
 	}
 }
 
+func TestGetGroupByFullPath(t *testing.T) { // no lint
+	if enabled { // nolint
+		// Need to initialize the system to load the configuration which contains a number of SSM parameters
+		stage := os.Getenv("STAGE")
+		if stage == "" {
+			assert.Fail(t, "set STAGE environment variable to run unit and functional tests.")
+		}
+		dynamodbRegion := os.Getenv("DYNAMODB_AWS_REGION")
+		if dynamodbRegion == "" {
+			assert.Fail(t, "set DYNAMODB_AWS_REGION environment variable to run unit and functional tests.")
+		}
+
+		viper.Set("STAGE", stage)
+		viper.Set("DYNAMODB_AWS_REGION", dynamodbRegion)
+		ini.Init()
+		_, err := ini.GetAWSSession()
+		if err != nil {
+			assert.Fail(t, "unable to load AWS session", err)
+		}
+		ini.ConfigVariable()
+		config := ini.GetConfig()
+
+		// Create a new GitLab App client instance
+		gitLabApp := gitlab_api.Init(config.Gitlab.AppClientID, config.Gitlab.AppClientSecret, config.Gitlab.AppPrivateKey)
+
+		// Create a new client
+		gitLabClient, err := gitlab_api.NewGitlabOauthClient(accessInfo, gitLabApp)
+		assert.Nil(t, err, "GitLab OAuth Client Error is Nil")
+		assert.NotNil(t, gitLabClient, "GitLab OAuth Client is Not Nil")
+
+		ctx := utils.NewContext()
+		groupModel, getError := gitlab_api.GetGroupByFullPath(ctx, gitLabClient, "linuxfoundation/product/asitha")
+		assert.Nil(t, getError, "GitLab GetGroup Error should be nil", getError)
+		assert.NotNil(t, groupModel, "Group Model should not be nil")
+		t.Logf("group ID: %d, name: %s, path: %s, full path: %s", groupModel.ID, groupModel.Name, groupModel.Path, groupModel.FullPath)
+	}
+}
+
 func TestGetGroupProjectListByGroupID(t *testing.T) { // no lint
 	if enabled { // nolint
 		// Need to initialize the system to load the configuration which contains a number of SSM parameters

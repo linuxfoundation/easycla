@@ -199,6 +199,8 @@ provider:
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-org-sfid-index"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-organization-name-lower-search-index"
         - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-project-sfid-organization-name-index"
+        - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-full-path-index"
+        - "arn:aws:dynamodb:${self:custom.dynamodb.region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-external-id-index"
 
   environment:
     STAGE: ${self:provider.stage}

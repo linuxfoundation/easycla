@@ -54,7 +54,7 @@ func (s service) GitlabSignRequest(ctx context.Context, req *http.Request, organ
 		"mergeRequestID": mergeRequestID,
 	}
 
-	organization, err := s.gitlabOrgRepo.GetGitlabOrganization(ctx, organizationID)
+	organization, err := s.gitlabOrgRepo.GetGitLabOrganization(ctx, organizationID)
 	if err != nil {
 		log.WithFields(f).Debugf("unable to get gitlab organiztion by ID: %s, error: %+v ", organizationID, err)
 		return nil

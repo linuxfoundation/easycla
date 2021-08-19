@@ -64,7 +64,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			result, err := service.GetGitlabOrganizations(ctx, params.ProjectSFID)
+			result, err := service.GetGitLabOrganizations(ctx, params.ProjectSFID)
 			if err != nil {
 				if strings.ContainsAny(err.Error(), "getProjectNotFound") {
 					msg := fmt.Sprintf("Gitlab organization with project SFID not found: %s", params.ProjectSFID)
@@ -94,6 +94,8 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"authUser":       authUser.UserName,
 				"authEmail":      authUser.Email,
 				"projectSFID":    params.ProjectSFID,
+				"groupID":        params.Body.GroupID,
+				"groupFullPath":  params.Body.GroupFullPath,
 			}
 
 			// Load the project
@@ -113,13 +115,12 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			}
 
 			// Quick check of the parameters
-			if params.Body == nil || params.Body.GroupID == nil {
-				msg := fmt.Sprintf("missing group ID in body: %+v", params.Body)
+			if params.Body == nil || (params.Body.GroupID == 0 && params.Body.GroupFullPath == "") {
+				msg := fmt.Sprintf("missing group ID or group full path in the body: %+v", params.Body)
 				log.WithFields(f).Warn(msg)
 				return gitlab_organizations.NewAddProjectGitlabOrganizationBadRequest().WithPayload(
 					utils.ErrorResponseBadRequest(reqID, msg))
 			}
-			f["groupID"] = utils.Int64Value(params.Body.GroupID)
 
 			if params.Body.AutoEnabled == nil {
 				msg := fmt.Sprintf("missing autoEnabled name in body: %+v", params.Body)
@@ -138,7 +139,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			result, err := service.AddGitlabOrganization(ctx, params.ProjectSFID, params.Body)
+			result, err := service.AddGitLabOrganization(ctx, params.ProjectSFID, params.Body)
 			if err != nil {
 				msg := fmt.Sprintf("unable to add GitLab organization, error: %+v", err)
 				log.WithFields(f).WithError(err).Warn(msg)
@@ -148,7 +149,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 			// Get the current group name for the event
 			for _, group := range result.List {
-				if group.OrganizationExternalID == *params.Body.GroupID {
+				if group.OrganizationExternalID == params.Body.GroupID || group.OrganizationFullPath == params.Body.GroupFullPath {
 					// Log the event
 					eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 						LfUsername:  authUser.UserName,
@@ -181,7 +182,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			})
 		}
 
-		err := service.UpdateGitlabOrganization(ctx, params.ProjectSFID, params.OrgName, *params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
+		err := service.UpdateGitLabOrganization(ctx, params.ProjectSFID, params.OrgName, *params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
 		if err != nil {
 			if errors.Is(err, projects_cla_groups.ErrCLAGroupDoesNotExist) {
 				return gitlab_organizations.NewUpdateProjectGitlabOrganizationConfigNotFound().WithPayload(utils.ErrorResponseNotFound(reqID, err.Error()))
@@ -231,7 +232,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			return gitlab_organizations.NewDeleteProjectGitlabOrganizationForbidden().WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		err = service.DeleteGitlabOrganization(ctx, params.ProjectSFID, params.OrgName)
+		err = service.DeleteGitLabOrganization(ctx, params.ProjectSFID, params.OrgName)
 		if err != nil {
 			if strings.Contains(err.Error(), "getProjectNotFound") {
 				msg := fmt.Sprintf("project not found with given SFID: %s", params.ProjectSFID)
@@ -288,7 +289,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		gitlabOrganizationID := codeParts[0]
 		stateVar := codeParts[1]
 
-		gitLabOrg, err := service.GetGitlabOrganizationByState(ctx, gitlabOrganizationID, stateVar)
+		gitLabOrg, err := service.GetGitLabOrganizationByState(ctx, gitlabOrganizationID, stateVar)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab model failed : %s : %v", gitlabOrganizationID, err)
 			log.WithFields(f).WithError(err).Warn(msg)
@@ -304,7 +305,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		}
 		log.WithFields(f).Debugf("oauth resp is like : %+v", oauthResp)
 
-		updateErr := service.UpdateGitlabOrganizationAuth(ctx, gitlabOrganizationID, oauthResp)
+		updateErr := service.UpdateGitLabOrganizationAuth(ctx, gitlabOrganizationID, oauthResp)
 		if updateErr != nil {
 			msg := fmt.Sprintf("installation of GitLab Group and Repositories, error: %v", updateErr)
 			log.WithFields(f).WithError(updateErr).Warn(msg)
@@ -312,7 +313,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		}
 
 		// Reload the GitLab organization - will have additional details now...
-		updatedGitLabOrgDBModel, err := service.GetGitlabOrganizationByID(ctx, gitLabOrg.OrganizationID)
+		updatedGitLabOrgDBModel, err := service.GetGitLabOrganizationByID(ctx, gitLabOrg.OrganizationID)
 		if err != nil {
 			msg := fmt.Sprintf("problem loading updated gitlab organization by ID: %s : %v", gitlabOrganizationID, err)
 			log.WithFields(f).Errorf(msg)

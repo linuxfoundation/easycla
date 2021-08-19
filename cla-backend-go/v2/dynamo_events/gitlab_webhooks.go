@@ -50,7 +50,7 @@ func (s *service) GitLabRepoAddedWebhookEventHandler(event events.DynamoDBEventR
 
 	log.WithFields(f).Debugf("adding webhook for repository : %s:%s with external id : %s", repositoryID, repositoryName, repositoryExternalID)
 
-	gitlabOrg, err := s.gitLabOrgRepo.GetGitlabOrganizationByName(ctx, newRepoModel.RepositoryOrganizationName)
+	gitlabOrg, err := s.gitLabOrgRepo.GetGitLabOrganizationByName(ctx, newRepoModel.RepositoryOrganizationName)
 	if err != nil {
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", newRepoModel.RepositoryOrganizationName, err)
 	}
@@ -119,7 +119,7 @@ func (s *service) GitlabRepoModifiedWebhookEventHandler(event events.DynamoDBEve
 		log.WithFields(f).Debugf("removing webhook for repository : %s:%s with external id : %s", repositoryID, repositoryName, repositoryExternalID)
 	}
 
-	gitlabOrg, err := s.gitLabOrgRepo.GetGitlabOrganizationByName(ctx, oldRepoModel.RepositoryOrganizationName)
+	gitlabOrg, err := s.gitLabOrgRepo.GetGitLabOrganizationByName(ctx, oldRepoModel.RepositoryOrganizationName)
 	if err != nil {
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", oldRepoModel.RepositoryOrganizationName, err)
 	}
@@ -179,7 +179,7 @@ func (s *service) GitLabRepoRemovedWebhookEventHandler(event events.DynamoDBEven
 
 	log.WithFields(f).Debugf("removing webhook for repository : %s:%s with external id : %s", repositoryID, repositoryName, repositoryExternalID)
 
-	gitlabOrg, err := s.gitLabOrgRepo.GetGitlabOrganizationByName(ctx, oldRepoModel.RepositoryOrganizationName)
+	gitlabOrg, err := s.gitLabOrgRepo.GetGitLabOrganizationByName(ctx, oldRepoModel.RepositoryOrganizationName)
 	if err != nil {
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", oldRepoModel.RepositoryOrganizationName, err)
 	}

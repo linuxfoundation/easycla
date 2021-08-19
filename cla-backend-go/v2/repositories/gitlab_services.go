@@ -32,7 +32,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 		"claGroupID":       utils.StringValue(input.ClaGroupID),
 	}
 
-	gitLabOrgModel, orgErr := s.glOrgRepo.GetGitlabOrganizationByName(ctx, utils.StringValue(input.GitlabOrganizationName))
+	gitLabOrgModel, orgErr := s.glOrgRepo.GetGitLabOrganizationByName(ctx, utils.StringValue(input.GitlabOrganizationName))
 	if orgErr != nil {
 		msg := fmt.Sprintf("problem loading gitlab organization by name: %s, error: %v", utils.StringValue(input.GitlabOrganizationName), orgErr)
 		log.WithFields(f).WithError(orgErr).Warn(msg)

@@ -121,6 +121,31 @@ func GetGroupByID(ctx context.Context, client *goGitLab.Client, groupID int) (*g
 	return group, nil
 }
 
+// GetGroupByFullPath gets a gitlab Group by the given full path
+func GetGroupByFullPath(ctx context.Context, client *goGitLab.Client, fullPath string) (*goGitLab.Group, error) {
+	f := logrus.Fields{
+		"functionName":   "gitlab_api.client_groups.GetGroupByName",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	groups, err := GetGroupsListAll(ctx, client)
+	//groups, _, err := client.Groups.ListGroups(&goGitLab.ListGroupsOptions{})
+	if err != nil {
+		msg := fmt.Sprintf("problem fetching groups, error: %+v", err)
+		log.WithFields(f).WithError(err).Warn(msg)
+		return nil, errors.New(msg)
+	}
+
+	for _, group := range groups {
+		log.WithFields(f).Debugf("testing %s == %s", fullPath, group.FullPath)
+		if group.FullPath == fullPath {
+			return group, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // GetGroupProjectListByGroupID returns a list of GitLab projects under the specified Organization
 func GetGroupProjectListByGroupID(ctx context.Context, client *goGitLab.Client, groupID int) ([]*goGitLab.Project, error) {
 	f := logrus.Fields{

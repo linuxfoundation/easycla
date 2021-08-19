@@ -253,16 +253,16 @@ func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeE
 	parts := strings.Split(repositoryPath, "/")
 	organizationName := parts[0]
 
-	gitlabOrg, err := s.gitlabRepository.GetGitlabOrganizationByName(ctx, organizationName)
+	gitlabOrg, err := s.gitlabRepository.GetGitLabOrganizationByName(ctx, organizationName)
 	if err != nil || gitlabOrg == nil {
 		// try getting it with project name as well
-		gitlabOrg, err = s.gitlabRepository.GetGitlabOrganizationByName(ctx, mergeEvent.Project.Namespace)
+		gitlabOrg, err = s.gitlabRepository.GetGitLabOrganizationByName(ctx, mergeEvent.Project.Namespace)
 		if err != nil || gitlabOrg == nil {
 			return nil, fmt.Errorf("gitlab org : %s doesn't exist : %v", organizationName, err)
 		}
 	}
 
-	gitlabOrg, err = s.gitlabRepository.GetGitlabOrganization(ctx, gitlabOrg.OrganizationID)
+	gitlabOrg, err = s.gitlabRepository.GetGitLabOrganization(ctx, gitlabOrg.OrganizationID)
 	if err != nil {
 		return nil, fmt.Errorf("fetching gitlab org : %s failed : %v", gitlabOrg.OrganizationID, err)
 	}

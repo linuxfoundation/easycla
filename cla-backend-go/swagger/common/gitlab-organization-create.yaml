@@ -2,23 +2,26 @@
 # SPDX-License-Identifier: MIT
 
 type: object
-required:
-  - group_id
 properties:
-#  organization_name:
-#    type: string
-#    description: The GitLab Group/Organization name
-#    example: "kubernetes"
-#    # Pattern aligns with UI and other platform services including Org Service
-#    # \w Any word character (alphanumeric & underscore), dashes, periods
-#    pattern: '^([\w\-\.]+){2,255}$'
-#    minLength: 2
-#    maxLength: 255
+  #  organization_name:
+  #    type: string
+  #    description: The GitLab Group/Organization name
+  #    example: "kubernetes"
+  #    # Pattern aligns with UI and other platform services including Org Service
+  #    # \w Any word character (alphanumeric & underscore), dashes, periods
+  #    pattern: '^([\w\-\.]+){2,255}$'
+  #    minLength: 2
+  #    maxLength: 255
   group_id:
     type: integer
     description: The GitLab Group ID
     example: 13050017
     minimum: 1
+  group_full_path:
+    type: string
+    description: The GitLab Group full path
+    example: 'linuxfoundation/product/easycla'
+    minLength: 3
   auto_enabled:
     type: boolean
     description: Flag to indicate if auto-enabled flag should be enabled. Organizations with auto-enable turned on will automatically include any new repositories to the EasyCLA configuration.
