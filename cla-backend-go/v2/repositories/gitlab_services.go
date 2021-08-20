@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 
 	v2GitLabOrg "github.com/communitybridge/easycla/cla-backend-go/v2/common"
@@ -34,57 +36,119 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 		"groupID":          input.OrganizationExternalID,
 	}
 
-	gitLabOrgModel, orgErr := s.glOrgRepo.GetGitLabOrganizationByName(ctx, input.GitlabOrganizationName)
-	if orgErr != nil {
-		msg := fmt.Sprintf("problem loading gitlab organization by name: %s, error: %v", input.GitlabOrganizationName, orgErr)
-		log.WithFields(f).WithError(orgErr).Warn(msg)
+	var gitLabOrgModel *common.GitLabOrganization
+	var getOrgErr error
+	if input.GitlabOrganizationName != "" {
+		gitLabOrgModel, getOrgErr = s.glOrgRepo.GetGitLabOrganizationByName(ctx, input.GitlabOrganizationName)
+		if getOrgErr != nil {
+			msg := fmt.Sprintf("problem loading GitLab organization by name: %s, error: %v", input.GitlabOrganizationName, getOrgErr)
+			log.WithFields(f).WithError(getOrgErr).Warn(msg)
+			return nil, errors.New(msg)
+		}
+	} else if input.OrganizationFullPath != "" {
+		gitLabOrgModel, getOrgErr = s.glOrgRepo.GetGitLabOrganizationByFullPath(ctx, input.OrganizationFullPath)
+		if getOrgErr != nil {
+			msg := fmt.Sprintf("problem loading GitLab organization by full path: %s, error: %v", input.OrganizationFullPath, getOrgErr)
+			log.WithFields(f).WithError(getOrgErr).Warn(msg)
+			return nil, errors.New(msg)
+		}
+	}
+	if gitLabOrgModel == nil {
+		msg := fmt.Sprintf("problem loading GitLab organization by name '%s' or full path '%s'", input.GitlabOrganizationName, input.OrganizationFullPath)
+		log.WithFields(f).Warn(msg)
 		return nil, errors.New(msg)
 	}
+	log.WithFields(f).Debugf("successfully loading GitLab group/organization")
 
 	// Get the client
 	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitLabOrgModel.AuthInfo, s.gitLabApp)
 	if err != nil {
-		return nil, fmt.Errorf("initializing gitlab client : %v", err)
+		return nil, fmt.Errorf("initializing GitLab client : %v", err)
 	}
 
+	type GitLabAddRepositoryResponse struct {
+		RepositoryName     string
+		RepositoryFullPath string
+		Error              error
+	}
+	addRepoRespChan := make(chan *GitLabAddRepositoryResponse, len(input.RepositoryGitlabIds))
+
+	// Add each repo - could be a lot of repos, so we run this in a go routine
 	for _, gitLabProjectID := range input.RepositoryGitlabIds {
-		project, getProjectErr := gitlab_api.GetProjectByID(ctx, gitLabClient, int(gitLabProjectID)) // ok to down-cast as the IDs are not 64 bit
-		if getProjectErr != nil {
-			return nil, fmt.Errorf("unable to load project by ID: %d, error: %v", int(gitLabProjectID), getProjectErr)
+		go func(gitLabProjectID int) {
+			project, getProjectErr := gitlab_api.GetProjectByID(ctx, gitLabClient, gitLabProjectID)
+			if getProjectErr != nil {
+				newErr := fmt.Errorf("unable to load GitLab project using ID: %d, error: %v", gitLabProjectID, getProjectErr)
+				log.WithFields(f).WithError(newErr)
+				addRepoRespChan <- &GitLabAddRepositoryResponse{
+					Error: newErr,
+				}
+				return
+			}
+
+			// Convert int to string
+			repositoryExternalIDString := strconv.Itoa(project.ID)
+
+			inputDBModel := &repoModels.RepositoryDBModel{
+				RepositorySfdcID:           projectSFID,
+				ProjectSFID:                projectSFID,
+				RepositoryExternalID:       repositoryExternalIDString,
+				RepositoryName:             project.Name,
+				RepositoryFullPath:         project.PathWithNamespace,
+				RepositoryURL:              project.WebURL,
+				RepositoryOrganizationName: input.GitlabOrganizationName,
+				RepositoryCLAGroupID:       input.ClaGroupID,
+				RepositoryType:             utils.GitLabLower, // should always be gitlab
+				Enabled:                    false,             // we don't enable by default
+			}
+
+			repoModel, addErr := s.gitV2Repository.GitLabAddRepository(ctx, projectSFID, inputDBModel)
+			if addErr != nil || repoModel == nil {
+				log.WithFields(f).WithError(addErr).Warnf("problem adding GitLab repository with name: %s, error: %+v", project.PathWithNamespace, addErr)
+				addRepoRespChan <- &GitLabAddRepositoryResponse{
+					Error: addErr,
+				}
+				return
+			}
+
+			// Log the event
+			s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+				EventType:   events.RepositoryAdded,
+				ProjectSFID: projectSFID,
+				CLAGroupID:  input.ClaGroupID,
+				LfUsername:  utils.GetUserNameFromContext(ctx),
+				EventData: &events.RepositoryAddedEventData{
+					RepositoryName: project.PathWithNamespace, // give the full path/name
+				},
+			})
+			addRepoRespChan <- &GitLabAddRepositoryResponse{
+				RepositoryName:     repoModel.RepositoryName,
+				RepositoryFullPath: repoModel.RepositoryFullPath,
+				Error:              nil,
+			}
+		}(int(gitLabProjectID)) // ok to down cast
+	}
+
+	// Wait for the go routines to finish and load up the results
+	log.WithFields(f).Debug("waiting for add repos to finish...")
+	var lastErr error
+	for range input.RepositoryGitlabIds {
+		select {
+		case response := <-addRepoRespChan:
+			if response.Error != nil {
+				log.WithFields(f).WithError(response.Error).Warn(response.Error.Error())
+				lastErr = response.Error
+			} else {
+				log.WithFields(f).Debugf("added repo: %s with full path: %s", response.RepositoryName, response.RepositoryFullPath)
+			}
+		case <-ctx.Done():
+			log.WithFields(f).WithError(ctx.Err()).Warnf("waiting for CLA Groups to load timeouted")
+			lastErr = fmt.Errorf("cla group laoding failed : %v", ctx.Err())
 		}
+	}
 
-		// Convert int to string
-		repositoryExternalIDString := strconv.Itoa(project.ID)
-
-		inputDBModel := &repoModels.RepositoryDBModel{
-			RepositorySfdcID:           projectSFID,
-			ProjectSFID:                projectSFID,
-			RepositoryExternalID:       repositoryExternalIDString,
-			RepositoryName:             project.Name,
-			RepositoryFullPath:         project.PathWithNamespace,
-			RepositoryURL:              project.WebURL,
-			RepositoryOrganizationName: input.GitlabOrganizationName,
-			RepositoryCLAGroupID:       input.ClaGroupID,
-			RepositoryType:             utils.GitLabLower, // should always be gitlab
-			Enabled:                    false,             // we don't enable by default
-		}
-
-		_, addErr := s.gitV2Repository.GitLabAddRepository(ctx, projectSFID, inputDBModel)
-		if addErr != nil {
-			log.WithFields(f).WithError(addErr).Warnf("problem adding GitLab repository with name: %s, error: %+v", project.PathWithNamespace, addErr)
-			return nil, addErr
-		}
-
-		// Log the event
-		s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:   events.RepositoryAdded,
-			ProjectSFID: projectSFID,
-			CLAGroupID:  input.ClaGroupID,
-			LfUsername:  utils.GetUserNameFromContext(ctx),
-			EventData: &events.RepositoryAddedEventData{
-				RepositoryName: project.PathWithNamespace, // give the full path/name
-			},
-		})
+	if lastErr != nil {
+		return nil, lastErr
 	}
 
 	return s.GitLabGetRepositoriesByProjectSFID(ctx, projectSFID)
@@ -135,16 +199,21 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 		OrganizationFullPath:   gitLabOrgModel.OrganizationFullPath,
 		RepositoryGitlabIds:    listProjectIDs,
 	}
+	log.WithFields(f).Debugf("adding %d GitLab repositories", len(listProjectIDs))
 	_, addRepoErr := s.GitLabAddRepositories(ctx, gitLabOrgModel.ProjectSFID, input)
 	if addRepoErr != nil {
+		log.WithFields(f).WithError(addRepoErr).Warnf("problem adding %d GitLab repositories", len(listProjectIDs))
 		return nil, addRepoErr
 	}
 
 	// Return the list of repos to caller
+	log.WithFields(f).Debugf("fetching complete repository list by project SFID: %s", gitLabOrgModel.ProjectSFID)
 	dbModels, getRepoErr := s.gitV2Repository.GitHubGetRepositoriesByProjectSFID(ctx, gitLabOrgModel.ProjectSFID)
 	if getRepoErr != nil {
+		log.WithFields(f).WithError(getRepoErr).Warnf("problem fetching repositories by project SFID: %s", gitLabOrgModel.ProjectSFID)
 		return nil, getRepoErr
 	}
+
 	return dbModelsToGitLabRepositories(dbModels)
 }
 
