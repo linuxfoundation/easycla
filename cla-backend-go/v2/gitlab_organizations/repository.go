@@ -129,8 +129,9 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProject
 			}
 		}
 
-		log.WithFields(f).Debug("Existing GitLab organization with different project SFID - won't be able to update it - will return conflict")
-		return nil, fmt.Errorf("record already exists")
+		msg := fmt.Sprintf("record already exists - existing GitLab group with a different project SFID - won't be able to update it")
+		log.WithFields(f).Debug(msg)
+		return nil, errors.New(msg)
 	}
 
 	// No existing records - create one

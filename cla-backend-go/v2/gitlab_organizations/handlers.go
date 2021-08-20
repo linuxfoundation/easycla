@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/go-openapi/runtime"
@@ -120,6 +122,33 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				log.WithFields(f).Warn(msg)
 				return gitlab_organizations.NewAddProjectGitlabOrganizationBadRequest().WithPayload(
 					utils.ErrorResponseBadRequest(reqID, msg))
+			}
+
+			// Clean up/filter the Group Full Path, if needed
+			if params.Body.GroupFullPath != "" {
+				r, regexErr := regexp.Compile(`^http(s)?://`)
+				if regexErr != nil {
+					msg := fmt.Sprintf("invalid regex for group full path, error: %+v", regexErr)
+					log.WithFields(f).WithError(regexErr).Warn(msg)
+					return gitlab_organizations.NewAddProjectGitlabOrganizationInternalServerError().WithPayload(
+						utils.ErrorResponseInternalServerErrorWithError(reqID, msg, regexErr))
+				}
+				if r.MatchString(params.Body.GroupFullPath) {
+					groupWithUrl, urlParseErr := url.Parse(params.Body.GroupFullPath)
+					if urlParseErr != nil {
+						msg := fmt.Sprintf("invalid group full path provided, error: %+v", urlParseErr)
+						log.WithFields(f).WithError(urlParseErr).Warn(msg)
+						return gitlab_organizations.NewAddProjectGitlabOrganizationBadRequest().WithPayload(
+							utils.ErrorResponseBadRequestWithError(reqID, msg, urlParseErr))
+					}
+					// Update the group full path value - just include the path and not the https://... part
+					params.Body.GroupFullPath = groupWithUrl.Path
+				}
+
+				// Remove leading slash
+				if strings.HasPrefix(params.Body.GroupFullPath, "/") {
+					params.Body.GroupFullPath = params.Body.GroupFullPath[1:]
+				}
 			}
 
 			if params.Body.AutoEnabled == nil {

@@ -168,14 +168,6 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 		"projectSFID":    projectSFID,
 	}
 
-	// Load the GitLab Organization and Repository details - result will be missing CLA Group info and ProjectSFID details
-	log.WithFields(f).Debugf("loading Gitlab organizations for projectSFID: %s", projectSFID)
-	orgs, err := s.repo.GetGitLabOrganizations(ctx, projectSFID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem loading gitlab organizations from the project service")
-		return nil, err
-	}
-
 	psc := v2ProjectService.GetClient()
 	log.WithFields(f).Debug("loading project details from the project service...")
 	projectServiceRecord, err := psc.GetProject(projectSFID)
@@ -193,16 +185,25 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 	f["parentProjectSFID"] = parentProjectSFID
 	log.WithFields(f).Debug("located parentProjectID...")
 
+	// Load the GitLab Organization and Repository details - result will be missing CLA Group info and ProjectSFID details
+	log.WithFields(f).Debugf("loading Gitlab organizations for projectSFID: %s", projectSFID)
+	orgList, err := s.repo.GetGitLabOrganizations(ctx, projectSFID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem loading gitlab organizations from the project service")
+		return nil, err
+	}
+	log.WithFields(f).Debugf("loaded %d Gitlab organizations for projectSFID: %s", len(orgList.List), projectSFID)
+
 	// Our response model
 	out := &models.GitlabProjectOrganizations{
 		List: make([]*models.GitlabProjectOrganization, 0),
 	}
 
-	orgmap := make(map[string]*models.GitlabProjectOrganization)
-	for _, org := range orgs.List {
+	orgMap := make(map[string]*models.GitlabProjectOrganization)
+	for _, org := range orgList.List {
 		autoEnabledCLAGroupName := ""
 		if org.AutoEnabledClaGroupID != "" {
-			log.WithFields(f).Debugf("Loading CLA Group by ID: %s to obtain the name for GitLab auth enabled CLA Group response", org.AutoEnabledClaGroupID)
+			log.WithFields(f).Debugf("loading CLA Group by ID: %s to obtain the name for GitLab auth enabled CLA Group response", org.AutoEnabledClaGroupID)
 			claGroupMode, claGroupLookupErr := s.claGroupRepository.GetCLAGroup(ctx, org.AutoEnabledClaGroupID)
 			if claGroupLookupErr != nil {
 				log.WithFields(f).WithError(claGroupLookupErr).Warnf("Unable to lookup CLA Group by ID: %s", org.AutoEnabledClaGroupID)
@@ -212,18 +213,19 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 			}
 		}
 
+		log.WithFields(f).Debugf("loading GitLab organization by organization ID: %s", org.OrganizationID)
 		orgDetailed, orgErr := s.repo.GetGitLabOrganization(ctx, org.OrganizationID)
 		if orgErr != nil {
 			log.WithFields(f).Errorf("fetching gitlab org failed : %s : %v", org.OrganizationID, orgErr)
 			continue
 		}
 
-		reposFromOrg, repoErr := s.v2GitRepoService.GitLabGetRepositoriesByOrganizationName(ctx, org.OrganizationName)
+		repoList, repoErr := s.v2GitRepoService.GitLabGetRepositoriesByProjectSFID(ctx, projectSFID)
 		if repoErr != nil {
-			if errors.Is(repoErr, &utils.GitLabRepositoryNotFound{}) {
-				log.WithFields(f).Debugf("no repositories onboarded for GitLab Org: %s", org.OrganizationName)
+			if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
+				log.WithFields(f).WithError(repoErr).Debugf("no GitLab repositories onboarded for project : %s", projectSFID)
 			} else {
-				log.WithFields(f).Debugf("unexpected error while fetching gitlab org repositories for GitLab Org: %s : %v", org.OrganizationName, repoErr)
+				log.WithFields(f).WithError(repoErr).Debugf("unexpected error while fetching GitLab group repositories for project: %s, error: %v", projectSFID, repoErr)
 			}
 		}
 
@@ -236,9 +238,9 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 			OrganizationFullPath:    org.OrganizationFullPath,
 			OrganizationExternalID:  org.OrganizationExternalID,
 			InstallationURL:         buildInstallationURL(org.OrganizationID, orgDetailed.AuthState),
-			BranchProtectionEnabled: false,
-			ConnectionStatus:        "", // updated below
-			Repositories:            []*models.GitlabProjectRepository{},
+			BranchProtectionEnabled: false,                               // TODO review this - why not modeled?
+			ConnectionStatus:        "",                                  // updated below
+			Repositories:            []*models.GitlabProjectRepository{}, // updated below
 		}
 
 		if orgDetailed.AuthInfo == "" {
@@ -254,7 +256,7 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 					log.WithFields(f).Errorf("using gitlab client for gitlab org : %s failed : %v", org.OrganizationID, clientErr)
 					rorg.ConnectionStatus = utils.ConnectionFailure
 				} else {
-					rorg.Repositories = s.updateRepositoryStatus(glClient, toGitLabProjectResponse(reposFromOrg))
+					rorg.Repositories = s.updateRepositoryStatus(glClient, toGitLabProjectResponse(repoList))
 
 					user, _, userErr := glClient.Users.CurrentUser()
 					if userErr != nil {
@@ -268,7 +270,7 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 			}
 		}
 
-		orgmap[org.OrganizationName] = rorg
+		orgMap[org.OrganizationName] = rorg
 		out.List = append(out.List, rorg)
 	}
 
