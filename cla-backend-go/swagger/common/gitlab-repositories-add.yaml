@@ -2,9 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 type: object
-required:
-  - gitlab_organization_name
-  - cla_group_id
+description: 'GitLab repositories add model'
 properties:
   repository_gitlab_ids:
     type: array
@@ -17,6 +15,15 @@ properties:
     type: string
     description: The organization name associated with this repository
     example: 'The Linux Foundation/product/EasyCLA'
+  organization_external_id:
+    type: integer
+    description: The Gitlab Group/Organization external ID used by GitLab
+    example: 13050017
+    minimum: 1
+  organization_full_path:
+    type: string
+    description: The Gitlab Group/Organization full path
+    example: "linuxfoundation/product/easycla"
   cla_group_id:
     description: CLA Group ID
     $ref: './common/properties/internal-id.yaml'

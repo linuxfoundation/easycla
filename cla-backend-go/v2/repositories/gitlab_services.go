@@ -28,13 +28,15 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 		"functionName":     "v2.repositories.gitlab_services.GitLabAddRepositories",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
 		"projectSFID":      projectSFID,
-		"organizationName": utils.StringValue(input.GitlabOrganizationName),
-		"claGroupID":       utils.StringValue(input.ClaGroupID),
+		"organizationName": input.GitlabOrganizationName,
+		"claGroupID":       input.ClaGroupID,
+		"groupFullPath":    input.OrganizationFullPath,
+		"groupID":          input.OrganizationExternalID,
 	}
 
-	gitLabOrgModel, orgErr := s.glOrgRepo.GetGitLabOrganizationByName(ctx, utils.StringValue(input.GitlabOrganizationName))
+	gitLabOrgModel, orgErr := s.glOrgRepo.GetGitLabOrganizationByName(ctx, input.GitlabOrganizationName)
 	if orgErr != nil {
-		msg := fmt.Sprintf("problem loading gitlab organization by name: %s, error: %v", utils.StringValue(input.GitlabOrganizationName), orgErr)
+		msg := fmt.Sprintf("problem loading gitlab organization by name: %s, error: %v", input.GitlabOrganizationName, orgErr)
 		log.WithFields(f).WithError(orgErr).Warn(msg)
 		return nil, errors.New(msg)
 	}
@@ -61,8 +63,8 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 			RepositoryName:             project.Name,
 			RepositoryFullPath:         project.PathWithNamespace,
 			RepositoryURL:              project.WebURL,
-			RepositoryOrganizationName: utils.StringValue(input.GitlabOrganizationName), // gitlab group/organization
-			RepositoryCLAGroupID:       utils.StringValue(input.ClaGroupID),
+			RepositoryOrganizationName: input.GitlabOrganizationName,
+			RepositoryCLAGroupID:       input.ClaGroupID,
 			RepositoryType:             utils.GitLabLower, // should always be gitlab
 			Enabled:                    false,             // we don't enable by default
 		}
@@ -77,7 +79,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 		s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:   events.RepositoryAdded,
 			ProjectSFID: projectSFID,
-			CLAGroupID:  utils.StringValue(input.ClaGroupID),
+			CLAGroupID:  input.ClaGroupID,
 			LfUsername:  utils.GetUserNameFromContext(ctx),
 			EventData: &events.RepositoryAddedEventData{
 				RepositoryName: project.PathWithNamespace, // give the full path/name
@@ -85,7 +87,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 		})
 	}
 
-	return s.GitLabGetRepositoriesByOrganizationName(ctx, utils.StringValue(input.GitlabOrganizationName))
+	return s.GitLabGetRepositoriesByProjectSFID(ctx, projectSFID)
 }
 
 // GitLabAddRepositoriesByApp adds the GitLab repositories based on the application credentials
@@ -95,6 +97,8 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
 		"projectSFID":      gitLabOrgModel.ProjectSFID,
 		"organizationName": gitLabOrgModel.OrganizationName,
+		"groupFullPath":    gitLabOrgModel.OrganizationFullPath,
+		"groupID":          gitLabOrgModel.ExternalGroupID,
 	}
 
 	// Get the client
@@ -125,8 +129,10 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 
 	// Build input to the add function
 	input := &v2Models.GitlabRepositoriesAdd{
-		ClaGroupID:             utils.StringRef(projectCLAGroupModel.ClaGroupID),
-		GitlabOrganizationName: utils.StringRef(gitLabOrgModel.OrganizationName),
+		ClaGroupID:             projectCLAGroupModel.ClaGroupID,
+		GitlabOrganizationName: gitLabOrgModel.OrganizationName,
+		OrganizationExternalID: int64(gitLabOrgModel.ExternalGroupID),
+		OrganizationFullPath:   gitLabOrgModel.OrganizationFullPath,
 		RepositoryGitlabIds:    listProjectIDs,
 	}
 	_, addRepoErr := s.GitLabAddRepositories(ctx, gitLabOrgModel.ProjectSFID, input)

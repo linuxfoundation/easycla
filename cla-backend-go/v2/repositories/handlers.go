@@ -417,8 +417,10 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"authUser":         authUser.UserName,
 				"authEmail":        authUser.Email,
 				"projectSFID":      params.ProjectSFID,
-				"organizationName": utils.StringValue(params.GitlabRepositoriesAdd.GitlabOrganizationName),
-				"claGroupID":       utils.StringValue(params.GitlabRepositoriesAdd.ClaGroupID),
+				"organizationName": params.GitlabRepositoriesAdd.GitlabOrganizationName,
+				"claGroupID":       params.GitlabRepositoriesAdd.ClaGroupID,
+				"groupFullPath":    params.GitlabRepositoriesAdd.OrganizationFullPath,
+				"groupID":          params.GitlabRepositoriesAdd.OrganizationExternalID,
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
