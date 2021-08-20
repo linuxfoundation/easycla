@@ -39,6 +39,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 	var gitLabOrgModel *common.GitLabOrganization
 	var getOrgErr error
 	if input.GitlabOrganizationName != "" {
+		log.WithFields(f).Debugf("fetching GitLab organization by name: %s", input.GitlabOrganizationName)
 		gitLabOrgModel, getOrgErr = s.glOrgRepo.GetGitLabOrganizationByName(ctx, input.GitlabOrganizationName)
 		if getOrgErr != nil {
 			msg := fmt.Sprintf("problem loading GitLab organization by name: %s, error: %v", input.GitlabOrganizationName, getOrgErr)
@@ -46,6 +47,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 			return nil, errors.New(msg)
 		}
 	} else if input.OrganizationFullPath != "" {
+		log.WithFields(f).Debugf("fetching GitLab organization by full path: %s", input.OrganizationFullPath)
 		gitLabOrgModel, getOrgErr = s.glOrgRepo.GetGitLabOrganizationByFullPath(ctx, input.OrganizationFullPath)
 		if getOrgErr != nil {
 			msg := fmt.Sprintf("problem loading GitLab organization by full path: %s, error: %v", input.OrganizationFullPath, getOrgErr)
@@ -58,7 +60,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 		log.WithFields(f).Warn(msg)
 		return nil, errors.New(msg)
 	}
-	log.WithFields(f).Debugf("successfully loading GitLab group/organization")
+	log.WithFields(f).Debugf("successfully loaded GitLab group/organization")
 
 	// Get the client
 	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitLabOrgModel.AuthInfo, s.gitLabApp)
@@ -76,6 +78,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 	// Add each repo - could be a lot of repos, so we run this in a go routine
 	for _, gitLabProjectID := range input.RepositoryGitlabIds {
 		go func(gitLabProjectID int) {
+			log.WithFields(f).Debugf("loading GitLab project from GitLab using projectID: %d...", gitLabProjectID)
 			project, getProjectErr := gitlab_api.GetProjectByID(ctx, gitLabClient, gitLabProjectID)
 			if getProjectErr != nil {
 				newErr := fmt.Errorf("unable to load GitLab project using ID: %d, error: %v", gitLabProjectID, getProjectErr)
@@ -85,6 +88,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 				}
 				return
 			}
+			log.WithFields(f).Debugf("loaded GitLab project from GitLab using projectID: %d", gitLabProjectID)
 
 			// Convert int to string
 			repositoryExternalIDString := strconv.Itoa(project.ID)

@@ -345,7 +345,7 @@ func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrgani
 		if (gitLabOrgModel.ExternalGroupID > 0 && g.ID == gitLabOrgModel.ExternalGroupID) ||
 			(gitLabOrgModel.OrganizationFullPath != "" && g.FullPath == gitLabOrgModel.OrganizationFullPath) {
 
-			updateGitLabOrgErr := s.repo.UpdateGitLabOrganizationAuth(ctx, gitLabOrganizationID, g.ID, authInfoEncrypted, g.FullPath, g.WebURL)
+			updateGitLabOrgErr := s.repo.UpdateGitLabOrganizationAuth(ctx, gitLabOrganizationID, g.ID, authInfoEncrypted, g.Name, g.FullPath, g.WebURL)
 			if updateGitLabOrgErr != nil {
 				return updateGitLabOrgErr
 			}

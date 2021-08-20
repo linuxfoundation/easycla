@@ -20,7 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	models2 "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
@@ -40,13 +40,13 @@ const (
 
 // RepositoryInterface is interface for gitlab org data model
 type RepositoryInterface interface {
-	AddGitLabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) (*models2.GitlabOrganization, error)
-	GetGitLabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error)
+	AddGitLabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, groupID int64, groupName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) (*v2Models.GitlabOrganization, error)
+	GetGitLabOrganizations(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByFullPath(ctx context.Context, groupFullPath string) (*common.GitLabOrganization, error)
-	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error
+	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, groupName, groupFullPath, organizationURL string) error
 	UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
 	DeleteGitLabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
 }
@@ -68,7 +68,7 @@ func NewRepository(awsSession *session.Session, stage string) RepositoryInterfac
 }
 
 // AddGitLabOrganization adds the specified values to the GitLab Group/Org table
-func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) (*models2.GitlabOrganization, error) {
+func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) (*v2Models.GitlabOrganization, error) {
 	f := logrus.Fields{
 		"functionName":            "v2.gitlab_organizations.repository.AddGitLabOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
@@ -138,13 +138,13 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProject
 	_, currentTime := utils.CurrentTime()
 	organizationID, err := uuid.NewV4()
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("Unable to generate a UUID for gitlab org, error: %v", err)
+		log.WithFields(f).WithError(err).Warnf("Unable to generate a UUID for gitlab org, error: %v2Models", err)
 		return nil, err
 	}
 
 	authStateNonce, err := uuid.NewV4()
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("Unable to generate a auth nonce UUID for gitlab org, error: %v", err)
+		log.WithFields(f).WithError(err).Warnf("Unable to generate a auth nonce UUID for gitlab org, error: %v2Models", err)
 		return nil, err
 	}
 
@@ -196,7 +196,7 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProject
 }
 
 // GetGitLabOrganizations get GitLab organizations based on the project SFID
-func (repo *Repository) GetGitLabOrganizations(ctx context.Context, projectSFID string) (*models2.GitlabOrganizations, error) {
+func (repo *Repository) GetGitLabOrganizations(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.gitlab_organizations.repository.GetGitLabOrganizations",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -212,7 +212,7 @@ func (repo *Repository) GetGitLabOrganizations(ctx context.Context, projectSFID 
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
 	if err != nil {
-		log.WithFields(f).Warnf("problem building query expression, error: %+v", err)
+		log.WithFields(f).Warnf("problem building query expression, error: %+v2Models", err)
 		return nil, err
 	}
 
@@ -235,8 +235,8 @@ func (repo *Repository) GetGitLabOrganizations(ctx context.Context, projectSFID 
 
 	if len(results.Items) == 0 {
 		log.WithFields(f).Debug("no results from query")
-		return &models2.GitlabOrganizations{
-			List: []*models2.GitlabOrganization{},
+		return &v2Models.GitlabOrganizations{
+			List: []*v2Models.GitlabOrganization{},
 		}, nil
 	}
 
@@ -248,7 +248,7 @@ func (repo *Repository) GetGitLabOrganizations(ctx context.Context, projectSFID 
 
 	log.WithFields(f).Debug("building response model...")
 	gitlabOrgList := buildGitlabOrganizationListModels(ctx, resultOutput)
-	return &models2.GitlabOrganizations{List: gitlabOrgList}, nil
+	return &v2Models.GitlabOrganizations{List: gitlabOrgList}, nil
 }
 
 // GetGitLabOrganizationByName get GitLab organization by name
@@ -293,7 +293,7 @@ func (repo *Repository) GetGitLabOrganizationByName(ctx context.Context, gitLabO
 	var resultOutput []*common.GitLabOrganization
 	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &resultOutput)
 	if err != nil {
-		log.WithFields(f).Warnf("problem decoding database results, error: %+v", err)
+		log.WithFields(f).Warnf("problem decoding database results, error: %+v2Models", err)
 		return nil, err
 	}
 
@@ -341,7 +341,7 @@ func (repo *Repository) GetGitLabOrganizationByExternalID(ctx context.Context, g
 	var resultOutput []*common.GitLabOrganization
 	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &resultOutput)
 	if err != nil {
-		log.WithFields(f).Warnf("problem decoding database results, error: %+v", err)
+		log.WithFields(f).Warnf("problem decoding database results, error: %+v2Models", err)
 		return nil, err
 	}
 
@@ -389,7 +389,7 @@ func (repo *Repository) GetGitLabOrganizationByFullPath(ctx context.Context, gro
 	var resultOutput []*common.GitLabOrganization
 	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &resultOutput)
 	if err != nil {
-		log.WithFields(f).Warnf("problem decoding database results, error: %+v", err)
+		log.WithFields(f).Warnf("problem decoding database results, error: %+v2Models", err)
 		return nil, err
 	}
 
@@ -424,27 +424,28 @@ func (repo *Repository) GetGitLabOrganization(ctx context.Context, gitLabOrganiz
 	var org common.GitLabOrganization
 	err = dynamodbattribute.UnmarshalMap(result.Item, &org)
 	if err != nil {
-		log.WithFields(f).Warnf("error unmarshalling organization table data, error: %v", err)
+		log.WithFields(f).Warnf("error unmarshalling organization table data, error: %v2Models", err)
 		return nil, err
 	}
 	return &org, nil
 }
 
 // UpdateGitLabOrganizationAuth updates the specified Gitlab organization oauth info
-func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error {
+func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, groupName, groupFullPath, organizationURL string) error {
 	f := logrus.Fields{
-		"functionName":         "gitlab_organizations.repository.UpdateGitLabOrganizationAuth",
-		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
-		"organizationID":       organizationID,
-		"organizationFullPath": organizationFullPath,
-		"organizationURL":      organizationURL,
-		"tableName":            repo.gitlabOrgTableName,
+		"functionName":    "gitlab_organizations.repository.UpdateGitLabOrganizationAuth",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"organizationID":  organizationID,
+		"groupName":       groupName,
+		"groupFullPath":   groupFullPath,
+		"organizationURL": organizationURL,
+		"tableName":       repo.gitlabOrgTableName,
 	}
 
 	_, currentTime := utils.CurrentTime()
 	gitlabOrg, lookupErr := repo.GetGitLabOrganization(ctx, organizationID)
 	if lookupErr != nil || gitlabOrg == nil {
-		log.WithFields(f).Warnf("error looking up Gitlab organization by id: %s, error: %+v", organizationID, lookupErr)
+		log.WithFields(f).Warnf("error looking up Gitlab organization by id: %s, error: %+v2Models", organizationID, lookupErr)
 		return lookupErr
 	}
 
@@ -463,7 +464,7 @@ func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organi
 			S: aws.String(organizationURL),
 		},
 		":fp": {
-			S: aws.String(organizationFullPath),
+			S: aws.String(groupFullPath),
 		},
 		":m": {
 			S: aws.String(currentTime),
@@ -472,8 +473,17 @@ func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organi
 			N: aws.String(strconv.Itoa(gitLabGroupID)),
 		},
 	}
-
 	updateExpression := "SET #A = :a, #U = :u, #FP = :fp, #M = :m, #P = :p"
+
+	if groupName != "" {
+		expressionAttributeNames["#N"] = aws.String(GitLabOrganizationsOrganizationNameColumn)
+		expressionAttributeValues[":n"] = &dynamodb.AttributeValue{S: aws.String(groupName)}
+		updateExpression = fmt.Sprintf("%s, #N = :n ", updateExpression)
+
+		expressionAttributeNames["#NL"] = aws.String(GitLabOrganizationsOrganizationNameColumn)
+		expressionAttributeValues[":nl"] = &dynamodb.AttributeValue{S: aws.String(strings.ToLower(groupName))}
+		updateExpression = fmt.Sprintf("%s, #NL = :nl ", updateExpression)
+	}
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
@@ -490,7 +500,7 @@ func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organi
 	log.WithFields(f).Debug("updating gitlab organization record...")
 	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
 	if updateErr != nil {
-		log.WithFields(f).Warnf("unable to update Gitlab organization record, error: %+v", updateErr)
+		log.WithFields(f).Warnf("unable to update Gitlab organization record, error: %+v2Models", updateErr)
 		return updateErr
 	}
 
@@ -518,7 +528,7 @@ func (repo *Repository) UpdateGitLabOrganization(ctx context.Context, projectSFI
 		log.WithFields(f).Debugf("checking to see if we have an existing GitLab organization with ID: %d", groupID)
 		existingRecord, getErr = repo.GetGitLabOrganizationByExternalID(ctx, groupID)
 		if getErr != nil {
-			msg := fmt.Sprintf("unable to locate existing GitLab group by ID: %d, error: %+v", groupID, groupFullPath)
+			msg := fmt.Sprintf("unable to locate existing GitLab group by ID: %d, error: %+v2Models", groupID, groupFullPath)
 			log.WithFields(f).WithError(getErr).Warn(msg)
 			return errors.New(msg)
 		}
@@ -526,7 +536,7 @@ func (repo *Repository) UpdateGitLabOrganization(ctx context.Context, projectSFI
 		log.WithFields(f).Debugf("checking to see if we have an existing GitLab group full path with value: %s", groupFullPath)
 		existingRecord, getErr = repo.GetGitLabOrganizationByFullPath(ctx, groupFullPath)
 		if getErr != nil {
-			msg := fmt.Sprintf("unable to locate existing GitLab group by full path: %s, error: %+v", groupFullPath, getErr)
+			msg := fmt.Sprintf("unable to locate existing GitLab group by full path: %s, error: %+v2Models", groupFullPath, getErr)
 			log.WithFields(f).WithError(getErr).Warn(msg)
 			return errors.New(msg)
 		}
@@ -587,10 +597,10 @@ func (repo *Repository) UpdateGitLabOrganization(ctx context.Context, projectSFI
 		TableName:                 aws.String(repo.gitlabOrgTableName),
 	}
 
-	log.WithFields(f).Debugf("updating GitLab organization record: %+v", input)
+	log.WithFields(f).Debugf("updating GitLab organization record: %+v2Models", input)
 	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
 	if updateErr != nil {
-		log.WithFields(f).Warnf("unable to update GitLab organization record, error: %+v", updateErr)
+		log.WithFields(f).Warnf("unable to update GitLab organization record, error: %+v2Models", updateErr)
 		return updateErr
 	}
 
@@ -609,7 +619,7 @@ func (repo *Repository) DeleteGitLabOrganization(ctx context.Context, projectSFI
 	var gitlabOrganizationID string
 	orgs, orgErr := repo.GetGitLabOrganizations(ctx, projectSFID)
 	if orgErr != nil {
-		errMsg := fmt.Sprintf("gitlab organization is not found using projectSFID: %s, error: %+v", projectSFID, orgErr)
+		errMsg := fmt.Sprintf("gitlab organization is not found using projectSFID: %s, error: %+v2Models", projectSFID, orgErr)
 		log.WithFields(f).Warn(errMsg)
 		return errors.New(errMsg)
 	}
@@ -653,7 +663,7 @@ func (repo *Repository) DeleteGitLabOrganization(ctx context.Context, projectSFI
 		},
 	)
 	if err != nil {
-		errMsg := fmt.Sprintf("error deleting gitlab organization: %s - %+v", gitlabOrgName, err)
+		errMsg := fmt.Sprintf("error deleting gitlab organization: %s - %+v2Models", gitlabOrgName, err)
 		log.WithFields(f).Warnf(errMsg)
 		return errors.New(errMsg)
 	}
@@ -661,7 +671,7 @@ func (repo *Repository) DeleteGitLabOrganization(ctx context.Context, projectSFI
 	return nil
 }
 
-func buildGitlabOrganizationListModels(ctx context.Context, gitlabOrganizations []*common.GitLabOrganization) []*models2.GitlabOrganization {
+func buildGitlabOrganizationListModels(ctx context.Context, gitlabOrganizations []*common.GitLabOrganization) []*v2Models.GitlabOrganization {
 	f := logrus.Fields{
 		"functionName":   "buildGitlabOrganizationListModels",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
