@@ -39,7 +39,7 @@ type ServiceInterface interface {
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*models.GitlabOrganization, error)
 	GetGitLabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error)
 	GetGitLabOrganizationByState(ctx context.Context, gitLabOrganizationID, authState string) (*models.GitlabOrganization, error)
-	UpdateGitLabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
+	UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
 	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlab_api.OauthSuccessResponse) error
 	DeleteGitLabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error
 }
@@ -368,7 +368,7 @@ func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrgani
 }
 
 // UpdateGitLabOrganization updates the GitLab organization
-func (s *Service) UpdateGitLabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
+func (s *Service) UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
 	// check if valid cla group id is passed
 	if autoEnabledClaGroupID != "" {
 		if _, err := s.claGroupRepository.GetCLAGroupNameByID(ctx, autoEnabledClaGroupID); err != nil {
@@ -376,7 +376,7 @@ func (s *Service) UpdateGitLabOrganization(ctx context.Context, projectSFID stri
 		}
 	}
 
-	return s.repo.UpdateGitLabOrganization(ctx, projectSFID, organizationName, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, true)
+	return s.repo.UpdateGitLabOrganization(ctx, projectSFID, groupID, organizationName, groupFullPath, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, true)
 }
 
 // DeleteGitLabOrganization deletes the specified GitLab organization

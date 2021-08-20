@@ -47,8 +47,7 @@ type RepositoryInterface interface {
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByFullPath(ctx context.Context, groupFullPath string) (*common.GitLabOrganization, error)
 	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, organizationFullPath, organizationURL string) error
-	UpdateGitLabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
-	UpdateGitLabOrganizationByExternalID(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
+	UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
 	DeleteGitLabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
 }
 
@@ -87,12 +86,14 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProject
 	var existingRecord *common.GitLabOrganization
 	var getErr error
 	if groupID != 0 {
+		log.WithFields(f).Debugf("checking to see if we have an existing GitLab organization with ID: %d", groupID)
 		// First, let's check to see if we have an existing gitlab organization with the same name
 		existingRecord, getErr = repo.GetGitLabOrganizationByExternalID(ctx, groupID)
 		if getErr != nil {
 			log.WithFields(f).WithError(getErr).Debugf("unable to locate existing GitLab group by ID: %d - ok to create a new record", groupID)
 		}
 	} else if groupFullPath != "" {
+		log.WithFields(f).Debugf("checking to see if we have an existing GitLab group full path with value: %s", groupFullPath)
 		// First, let's check to see if we have an existing gitlab organization with the same name
 		existingRecord, getErr = repo.GetGitLabOrganizationByFullPath(ctx, groupFullPath)
 		if getErr != nil {
@@ -101,21 +102,30 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, parentProject
 	}
 
 	if existingRecord != nil {
-		log.WithFields(f).Debugf("An existing GitLab organization with ID %d exists in our database", groupID)
+		log.WithFields(f).Debugf("An existing GitLab organization with ID %d or full path: %s exists in our database", groupID, groupFullPath)
 		// If everything matches...
 		if projectSFID == existingRecord.ProjectSFID {
-			log.WithFields(f).Debug("Existing GitLab organization with same SFID - should be able to update it")
-			updateErr := repo.UpdateGitLabOrganizationByExternalID(ctx, projectSFID, groupID, organizationName, groupFullPath,
+			log.WithFields(f).Debug("existing GitLab organization with same SFID - should be able to update it")
+			updateErr := repo.UpdateGitLabOrganization(ctx, projectSFID, groupID, organizationName, groupFullPath,
 				autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, enabled)
 			if updateErr != nil {
 				return nil, updateErr
 			}
 
-			// Return the updated record
-			if gitlabOrg, err := repo.GetGitLabOrganizationByExternalID(ctx, groupID); err != nil {
-				return nil, err
-			} else {
-				return common.ToModel(gitlabOrg), nil
+			if groupID > 0 {
+				// Return the updated record
+				if gitlabOrg, err := repo.GetGitLabOrganizationByExternalID(ctx, groupID); err != nil {
+					return nil, err
+				} else {
+					return common.ToModel(gitlabOrg), nil
+				}
+			} else if groupFullPath != "" {
+				// Return the updated record
+				if gitlabOrg, err := repo.GetGitLabOrganizationByFullPath(ctx, groupFullPath); err != nil {
+					return nil, err
+				} else {
+					return common.ToModel(gitlabOrg), nil
+				}
 			}
 		}
 
@@ -487,11 +497,13 @@ func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organi
 }
 
 // UpdateGitLabOrganization updates the GitLab group based on the specified values
-func (repo *Repository) UpdateGitLabOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error {
+func (repo *Repository) UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error {
 	f := logrus.Fields{
-		"functionName":            "gitlab_organizations.repository.UpdateGitLabOrganization",
+		"functionName":            "gitlab_organizations.repository.UpdateGitLabOrganizationByExternalID",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
 		"projectSFID":             projectSFID,
+		"groupID":                 groupID,
+		"groupFullPath":           groupFullPath,
 		"organizationName":        organizationName,
 		"autoEnabled":             autoEnabled,
 		"autoEnabledClaGroupID":   autoEnabledClaGroupID,
@@ -499,17 +511,33 @@ func (repo *Repository) UpdateGitLabOrganization(ctx context.Context, projectSFI
 		"tableName":               repo.gitlabOrgTableName,
 	}
 
-	_, currentTime := utils.CurrentTime()
-	gitlabOrg, lookupErr := repo.GetGitLabOrganizationByName(ctx, organizationName)
-	if lookupErr != nil {
-		log.WithFields(f).Warnf("error looking up Gitlab organization by name, error: %+v", lookupErr)
-		return lookupErr
-	}
-	if gitlabOrg == nil {
-		log.WithFields(f).Warn("error looking up Gitlab organization - no results")
-		return errors.New("unable to lookup Gitlab organization by name")
+	var existingRecord *common.GitLabOrganization
+	var getErr error
+	if groupID > 0 {
+		log.WithFields(f).Debugf("checking to see if we have an existing GitLab organization with ID: %d", groupID)
+		existingRecord, getErr = repo.GetGitLabOrganizationByExternalID(ctx, groupID)
+		if getErr != nil {
+			msg := fmt.Sprintf("unable to locate existing GitLab group by ID: %d, error: %+v", groupID, groupFullPath)
+			log.WithFields(f).WithError(getErr).Warn(msg)
+			return errors.New(msg)
+		}
+	} else if groupFullPath != "" {
+		log.WithFields(f).Debugf("checking to see if we have an existing GitLab group full path with value: %s", groupFullPath)
+		existingRecord, getErr = repo.GetGitLabOrganizationByFullPath(ctx, groupFullPath)
+		if getErr != nil {
+			msg := fmt.Sprintf("unable to locate existing GitLab group by full path: %s, error: %+v", groupFullPath, getErr)
+			log.WithFields(f).WithError(getErr).Warn(msg)
+			return errors.New(msg)
+		}
 	}
 
+	if existingRecord == nil {
+		msg := fmt.Sprintf("error looking up GitLab group using group ID: %d or full path: %s - no results", groupID, groupFullPath)
+		log.WithFields(f).Warn(msg)
+		return errors.New(msg)
+	}
+
+	_, currentTime := utils.CurrentTime()
 	expressionAttributeNames := map[string]*string{
 		"#A": aws.String(GitLabOrganizationsAutoEnabledColumn),
 		"#C": aws.String(GitLabOrganizationsAutoEnabledCLAGroupIDColumn),
@@ -534,93 +562,22 @@ func (repo *Repository) UpdateGitLabOrganization(ctx context.Context, projectSFI
 			BOOL: aws.Bool(enabled),
 		},
 	}
-	updateExpression := "SET #A = :a, #C = :c, #B = :b, #M = :m, #E = :e"
+	updateExpression := "SET #A = :a, #C = :c, #B = :b, #M = :m, #E = :e "
+
+	if organizationName != "" {
+		expressionAttributeNames["#N"] = aws.String(GitLabOrganizationsOrganizationNameColumn)
+		expressionAttributeValues[":n"] = &dynamodb.AttributeValue{S: aws.String(organizationName)}
+		updateExpression = fmt.Sprintf("%s, #N = :n ", updateExpression)
+
+		expressionAttributeNames["#NL"] = aws.String(GitLabOrganizationsOrganizationNameColumn)
+		expressionAttributeValues[":nl"] = &dynamodb.AttributeValue{S: aws.String(strings.ToLower(organizationName))}
+		updateExpression = fmt.Sprintf("%s, #NL = :nl ", updateExpression)
+	}
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			GitLabOrganizationsOrganizationIDColumn: {
-				S: aws.String(gitlabOrg.OrganizationID),
-			},
-		},
-		ExpressionAttributeNames:  expressionAttributeNames,
-		ExpressionAttributeValues: expressionAttributeValues,
-		UpdateExpression:          &updateExpression,
-		TableName:                 aws.String(repo.gitlabOrgTableName),
-	}
-
-	log.WithFields(f).Debugf("updating gitlab organization record: %+v", input)
-	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
-	if updateErr != nil {
-		log.WithFields(f).Warnf("unable to update Gitlab organization record, error: %+v", updateErr)
-		return updateErr
-	}
-
-	return nil
-}
-
-// UpdateGitlabOrganizationByExternalID updates the GitLab group based on the specified values
-func (repo *Repository) UpdateGitLabOrganizationByExternalID(ctx context.Context, projectSFID string, groupID int64, organizationName, fullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error {
-	f := logrus.Fields{
-		"functionName":            "gitlab_organizations.repository.UpdateGitLabOrganizationByExternalID",
-		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
-		"projectSFID":             projectSFID,
-		"groupID":                 groupID,
-		"organizationName":        organizationName,
-		"autoEnabled":             autoEnabled,
-		"autoEnabledClaGroupID":   autoEnabledClaGroupID,
-		"branchProtectionEnabled": branchProtectionEnabled,
-		"tableName":               repo.gitlabOrgTableName,
-	}
-
-	_, currentTime := utils.CurrentTime()
-	gitlabOrg, lookupErr := repo.GetGitLabOrganizationByExternalID(ctx, groupID)
-	if lookupErr != nil {
-		log.WithFields(f).Warnf("error looking up GitLab group by ID: %d, error: %+v", groupID, lookupErr)
-		return lookupErr
-	}
-	if gitlabOrg == nil {
-		log.WithFields(f).Warn("error looking up GitLab group - no results")
-		return errors.New("unable to lookup GitLab group by ID")
-	}
-
-	expressionAttributeNames := map[string]*string{
-		"#A":  aws.String(GitLabOrganizationsAutoEnabledColumn),
-		"#C":  aws.String(GitLabOrganizationsAutoEnabledCLAGroupIDColumn),
-		"#B":  aws.String(GitLabOrganizationsBranchProtectionEnabledColumn),
-		"#N":  aws.String(GitLabOrganizationsOrganizationNameColumn),
-		"#NL": aws.String(GitLabOrganizationsOrganizationNameLowerColumn),
-		"#M":  aws.String(GitLabOrganizationsDateModifiedColumn),
-		"#E":  aws.String(GitLabOrganizationsEnabledColumn),
-	}
-	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
-		":a": {
-			BOOL: aws.Bool(autoEnabled),
-		},
-		":c": {
-			S: aws.String(autoEnabledClaGroupID),
-		},
-		":b": {
-			BOOL: aws.Bool(branchProtectionEnabled),
-		},
-		":n": {
-			S: aws.String(organizationName),
-		},
-		":nl": {
-			S: aws.String(strings.ToLower(organizationName)),
-		},
-		":m": {
-			S: aws.String(currentTime),
-		},
-		":e": {
-			BOOL: aws.Bool(enabled),
-		},
-	}
-	updateExpression := "SET #A = :a, #C = :c, #B = :b, #N = :n, #NL = :nl, #M = :m, #E = :e "
-
-	input := &dynamodb.UpdateItemInput{
-		Key: map[string]*dynamodb.AttributeValue{
-			GitLabOrganizationsOrganizationIDColumn: {
-				S: aws.String(gitlabOrg.OrganizationID),
+				S: aws.String(existingRecord.OrganizationID),
 			},
 		},
 		ExpressionAttributeNames:  expressionAttributeNames,

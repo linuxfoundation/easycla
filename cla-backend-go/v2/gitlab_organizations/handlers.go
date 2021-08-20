@@ -182,7 +182,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			})
 		}
 
-		err := service.UpdateGitLabOrganization(ctx, params.ProjectSFID, params.OrgName, *params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
+		err := service.UpdateGitLabOrganization(ctx, params.ProjectSFID, 0, params.OrgName, "", *params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
 		if err != nil {
 			if errors.Is(err, projects_cla_groups.ErrCLAGroupDoesNotExist) {
 				return gitlab_organizations.NewUpdateProjectGitlabOrganizationConfigNotFound().WithPayload(utils.ErrorResponseNotFound(reqID, err.Error()))
