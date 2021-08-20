@@ -480,7 +480,7 @@ func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organi
 		expressionAttributeValues[":n"] = &dynamodb.AttributeValue{S: aws.String(groupName)}
 		updateExpression = fmt.Sprintf("%s, #N = :n ", updateExpression)
 
-		expressionAttributeNames["#NL"] = aws.String(GitLabOrganizationsOrganizationNameColumn)
+		expressionAttributeNames["#NL"] = aws.String(GitLabOrganizationsOrganizationNameLowerColumn)
 		expressionAttributeValues[":nl"] = &dynamodb.AttributeValue{S: aws.String(strings.ToLower(groupName))}
 		updateExpression = fmt.Sprintf("%s, #NL = :nl ", updateExpression)
 	}
