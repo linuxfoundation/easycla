@@ -1763,10 +1763,10 @@ paths:
         - gitlab-organizations
 
   /project/{projectSFID}/gitlab/repositories:
-    post:
-      summary: Add a GitLab repository to the project
-      description: Endpoint to add a GitLab repository for the project
-      operationId: addProjectGitLabRepository
+    put:
+      summary: Enables GitLab repositories for the CLA Group
+      description: Endpoint to enable one or more GitLab repositories for the CLA Group
+      operationId: enableGitLabRepository
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -1777,9 +1777,9 @@ paths:
           type: string
           required: true
         - in: body
-          name: gitlab-repositories-add
+          name: gitlab-repositories-enable
           schema:
-            $ref: '#/definitions/gitlab-repositories-add'
+            $ref: '#/definitions/gitlab-repositories-enable'
           required: true
       responses:
         '200':
@@ -1798,8 +1798,6 @@ paths:
           $ref: '#/responses/forbidden'
         '404':
           $ref: '#/responses/not-found'
-        '409':
-          $ref: '#/responses/conflict'
         '500':
           $ref: '#/responses/internal-server-error'
       tags:
@@ -1839,11 +1837,11 @@ paths:
       tags:
         - gitlab-repositories
 
-  /project/{projectSFID}/gitlab/repositories/{repositoryID}:
+  /project/{projectSFID}/gitlab/repositories/{repositoryExternalID}:
     delete:
-      summary: Remove the GitLab repository from the project
-      description: Endpoint to remove a GitLab repository from a project
-      operationId: deleteProjectGitLabRepository
+      summary: Unenrolls the GitLab repository from the CLA Group
+      description: Endpoint to unenroll a GitLab repository from a CLA Group
+      operationId: unenrollGitLabRepository
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -1853,9 +1851,9 @@ paths:
           in: path
           type: string
           required: true
-        - name: repositoryID
+        - name: repositoryExternalID
           in: path
-          type: string
+          type: integer
           required: true
       responses:
         '204':
@@ -4504,8 +4502,8 @@ definitions:
   gitlab-repositories-list:
     $ref: './common/gitlab-repositories-list.yaml'
 
-  gitlab-repositories-add:
-    $ref: './common/gitlab-repositories-add.yaml'
+  gitlab-repositories-enable:
+    $ref: './common/gitlab-repositories-enable.yaml'
 
   # ---------------------------------------------------------------------------
   # CLA Group Definitions

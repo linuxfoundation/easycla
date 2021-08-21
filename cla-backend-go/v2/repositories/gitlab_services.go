@@ -25,7 +25,7 @@ import (
 )
 
 // GitLabAddRepositories service function
-func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string, input *v2Models.GitlabRepositoriesAdd) (*v2Models.GitlabRepositoriesList, error) {
+func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string, input *v2Models.GitlabRepositoriesEnable) (*v2Models.GitlabRepositoriesList, error) {
 	f := logrus.Fields{
 		"functionName":     "v2.repositories.gitlab_services.GitLabAddRepositories",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
@@ -146,8 +146,8 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 				log.WithFields(f).Debugf("added repo: %s with full path: %s", response.RepositoryName, response.RepositoryFullPath)
 			}
 		case <-ctx.Done():
-			log.WithFields(f).WithError(ctx.Err()).Warnf("waiting for CLA Groups to load timeouted")
-			lastErr = fmt.Errorf("cla group laoding failed : %v", ctx.Err())
+			log.WithFields(f).WithError(ctx.Err()).Warnf("waiting for add repositories timed out")
+			lastErr = fmt.Errorf("add repositories failed with timeout, error: %v", ctx.Err())
 		}
 	}
 
@@ -196,7 +196,7 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 	}
 
 	// Build input to the add function
-	input := &v2Models.GitlabRepositoriesAdd{
+	input := &v2Models.GitlabRepositoriesEnable{
 		ClaGroupID:             projectCLAGroupModel.ClaGroupID,
 		GitlabOrganizationName: gitLabOrgModel.OrganizationName,
 		OrganizationExternalID: int64(gitLabOrgModel.ExternalGroupID),
@@ -234,6 +234,16 @@ func (s *Service) GitLabGetRepository(ctx context.Context, repositoryID string) 
 // GitLabGetRepositoryByName service function
 func (s *Service) GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*v2Models.GitlabRepository, error) {
 	dbModel, err := s.gitV2Repository.GitLabGetRepositoryByName(ctx, repositoryName)
+	if err != nil {
+		return nil, err
+	}
+
+	return dbModelToGitLabRepository(dbModel)
+}
+
+// GitLabGetRepositoryByExternalID service function
+func (s *Service) GitLabGetRepositoryByExternalID(ctx context.Context, repositoryExternalID int64) (*v2Models.GitlabRepository, error) {
+	dbModel, err := s.gitV2Repository.GitLabGetRepositoryByExternalID(ctx, repositoryExternalID)
 	if err != nil {
 		return nil, err
 	}
@@ -298,14 +308,58 @@ func (s *Service) GitLabGetRepositoriesByOrganizationName(ctx context.Context, o
 	}, nil
 }
 
+// GitLabEnableRepositories assigns repos to
+func (s *Service) GitLabEnableRepositories(ctx context.Context, claGroupID string, repositoryIDList []int64) error {
+	f := logrus.Fields{
+		"functionName":   "v2.repositories.gitlab_services.GitLabEnableRepositories",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	type GitLabUpdateRepositoryResponse struct {
+		RepositoryID int64
+		Error        error
+	}
+	updateRepoChan := make(chan *GitLabUpdateRepositoryResponse, len(repositoryIDList))
+
+	for _, repoID := range repositoryIDList {
+		go func(claGroupID string, repoID int64) {
+			updateErr := s.GitLabEnableRepository(ctx, claGroupID, repoID)
+			updateRepoChan <- &GitLabUpdateRepositoryResponse{
+				RepositoryID: repoID,
+				Error:        updateErr,
+			}
+		}(claGroupID, repoID)
+	}
+
+	// Wait for the go routines to finish and load up the results
+	log.WithFields(f).Debug("waiting for update repos to finish...")
+	var lastErr error
+	for range repositoryIDList {
+		select {
+		case response := <-updateRepoChan:
+			if response.Error != nil {
+				log.WithFields(f).WithError(response.Error).Warn(response.Error.Error())
+				lastErr = response.Error
+			} else {
+				log.WithFields(f).Debugf("updated repo with ID: %d", response.RepositoryID)
+			}
+		case <-ctx.Done():
+			log.WithFields(f).WithError(ctx.Err()).Warnf("waiting for update GitLab repos timed out")
+			lastErr = fmt.Errorf("waiting for update GitLab repositories timed out, error: %v", ctx.Err())
+		}
+	}
+
+	return lastErr
+}
+
 // GitLabEnableRepository service function
-func (s *Service) GitLabEnableRepository(ctx context.Context, repositoryID string) error {
-	return s.gitV2Repository.GitLabEnableRepositoryByID(ctx, repositoryID)
+func (s *Service) GitLabEnableRepository(ctx context.Context, claGroupID string, repositoryExternalID int64) error {
+	return s.gitV2Repository.GitLabEnableRepositoryByID(ctx, claGroupID, repositoryExternalID)
 }
 
 // GitLabDisableRepository service function
-func (s *Service) GitLabDisableRepository(ctx context.Context, repositoryID string) error {
-	return s.gitV2Repository.GitLabDisableRepositoryByID(ctx, repositoryID)
+func (s *Service) GitLabDisableRepository(ctx context.Context, claGroupID string, repositoryExternalID int64) error {
+	return s.gitV2Repository.GitLabDisableRepositoryByID(ctx, claGroupID, repositoryExternalID)
 }
 
 // GitLabDisableCLAGroupRepositories service function

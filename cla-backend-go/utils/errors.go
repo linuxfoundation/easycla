@@ -354,12 +354,13 @@ func (e *GitHubRepositoryExists) Unwrap() error {
 
 // GitLabRepositoryNotFound is an error model for a GitLab repository not found
 type GitLabRepositoryNotFound struct {
-	Message          string
-	OrganizationName string
-	RepositoryName   string
-	ProjectSFID      string
-	CLAGroupID       string
-	Err              error
+	Message              string
+	OrganizationName     string
+	RepositoryName       string
+	RepositoryExternalID int64
+	ProjectSFID          string
+	CLAGroupID           string
+	Err                  error
 }
 
 // Error is an error string function for the GitHubRepositoryNotFound model
@@ -373,6 +374,9 @@ func (e *GitLabRepositoryNotFound) Error() string {
 	}
 	if e.RepositoryName != "" {
 		msg = fmt.Sprintf("%s - repository: %s ", msg, e.RepositoryName)
+	}
+	if e.RepositoryExternalID > 0 {
+		msg = fmt.Sprintf("%s - repository external ID: %d ", msg, e.RepositoryExternalID)
 	}
 	if e.ProjectSFID != "" {
 		msg = fmt.Sprintf("%s - project SFID: %s ", msg, e.ProjectSFID)
@@ -394,9 +398,10 @@ func (e *GitLabRepositoryNotFound) Unwrap() error {
 
 // GitLabDuplicateRepositoriesFound is an error model for a GitLab duplicate repositories found
 type GitLabDuplicateRepositoriesFound struct {
-	Message        string
-	RepositoryName string
-	Err            error
+	Message              string
+	RepositoryName       string
+	RepositoryExternalID int64
+	Err                  error
 }
 
 // Error is an error string function for the GitLabDuplicateRepositoriesFound model
@@ -407,6 +412,9 @@ func (e *GitLabDuplicateRepositoriesFound) Error() string {
 	}
 	if e.RepositoryName != "" {
 		msg = fmt.Sprintf("%s - repository: %s ", msg, e.RepositoryName)
+	}
+	if e.RepositoryExternalID > 0 {
+		msg = fmt.Sprintf("%s - repository external ID: %d ", msg, e.RepositoryExternalID)
 	}
 	if e.Err != nil {
 		msg = fmt.Sprintf("%s - error: %+v ", msg, e.Err.Error())

@@ -55,13 +55,15 @@ type ServiceInterface interface {
 
 	GitLabGetRepository(ctx context.Context, repositoryID string) (*v2Models.GitlabRepository, error)
 	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*v2Models.GitlabRepository, error)
+	GitLabGetRepositoryByExternalID(ctx context.Context, repositoryExternalID int64) (*v2Models.GitlabRepository, error)
 	GitLabGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabRepositoriesList, error)
 	GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string, enabled bool) (*v2Models.GitlabRepositoriesList, error)
 	GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabRepositoriesList, error)
-	GitLabAddRepositories(ctx context.Context, projectSFID string, input *v2Models.GitlabRepositoriesAdd) (*v2Models.GitlabRepositoriesList, error)
+	GitLabAddRepositories(ctx context.Context, projectSFID string, input *v2Models.GitlabRepositoriesEnable) (*v2Models.GitlabRepositoriesList, error)
 	GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel *common.GitLabOrganization) ([]*v2Models.GitlabRepository, error)
-	GitLabEnableRepository(ctx context.Context, repositoryID string) error
-	GitLabDisableRepository(ctx context.Context, repositoryID string) error
+	GitLabEnableRepositories(ctx context.Context, claGroupID string, repositoryIDList []int64) error
+	GitLabEnableRepository(ctx context.Context, claGroupID string, repositoryExternalID int64) error
+	GitLabDisableRepository(ctx context.Context, claGroupID string, repositoryExternalID int64) error
 	GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
 }
 

@@ -44,7 +44,8 @@ type RepositoryAddedEventData struct {
 
 // RepositoryDisabledEventData event data model
 type RepositoryDisabledEventData struct {
-	RepositoryName string
+	RepositoryName       string
+	RepositoryExternalID int64
 }
 
 // RepositoryRenamedEventData event data model
@@ -482,7 +483,20 @@ func (ed *RepositoryAddedEventData) GetEventDetailsString(args *LogEventArgs) (s
 
 // GetEventDetailsString returns the details string for this event
 func (ed *RepositoryDisabledEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository %s was deleted for the project %s", ed.RepositoryName, args.ProjectName)
+	data := "The GitHub repository " // nolint
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if ed.RepositoryName != "" {
+		data = data + fmt.Sprintf(" with repository name %s", ed.RepositoryName)
+	}
+	if ed.RepositoryExternalID > 0 {
+		data = data + fmt.Sprintf(" with repository external ID %d", ed.RepositoryExternalID)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectSFID)
+	}
+	data = data + " was disabled"
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -1452,13 +1466,20 @@ func (ed *RepositoryAddedEventData) GetEventSummaryString(args *LogEventArgs) (s
 
 // GetEventSummaryString returns the summary string for this event
 func (ed *RepositoryDisabledEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository %s was deleted", ed.RepositoryName)
+	data := "The GitHub repository " // nolint
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
-	if args.ProjectName != "" {
-		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	if ed.RepositoryName != "" {
+		data = data + fmt.Sprintf(" with repository name %s", ed.RepositoryName)
 	}
+	if ed.RepositoryExternalID > 0 {
+		data = data + fmt.Sprintf(" with repository external ID %d", ed.RepositoryExternalID)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectSFID)
+	}
+	data = data + " was disabled"
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
 	}

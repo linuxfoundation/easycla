@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_organizations"
+	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_repositories"
 
 	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
@@ -406,102 +409,112 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			return gitlab_repositories.NewGetProjectGitLabRepositoriesOK().WithPayload(response)
 		})
 
-	api.GitlabRepositoriesAddProjectGitLabRepositoryHandler = gitlab_repositories.AddProjectGitLabRepositoryHandlerFunc(
-		func(params gitlab_repositories.AddProjectGitLabRepositoryParams, authUser *auth.User) middleware.Responder {
+	api.GitlabRepositoriesEnableGitLabRepositoryHandler = gitlab_repositories.EnableGitLabRepositoryHandlerFunc(
+		func(params gitlab_repositories.EnableGitLabRepositoryParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 			f := logrus.Fields{
-				"functionName":     "v2.repositories.handlers.GitlabRepositoriesAddProjectGitLabRepositoryHandler",
+				"functionName":     "v2.repositories.handlers.GitlabRepositoriesEnableGitLabRepositoryHandler",
 				utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
 				"authUser":         authUser.UserName,
 				"authEmail":        authUser.Email,
 				"projectSFID":      params.ProjectSFID,
-				"organizationName": params.GitlabRepositoriesAdd.GitlabOrganizationName,
-				"claGroupID":       params.GitlabRepositoriesAdd.ClaGroupID,
-				"groupFullPath":    params.GitlabRepositoriesAdd.OrganizationFullPath,
-				"groupID":          params.GitlabRepositoriesAdd.OrganizationExternalID,
+				"organizationName": params.GitlabRepositoriesEnable.GitlabOrganizationName,
+				"claGroupID":       params.GitlabRepositoriesEnable.ClaGroupID,
+				"groupFullPath":    params.GitlabRepositoriesEnable.OrganizationFullPath,
+				"groupID":          params.GitlabRepositoriesEnable.OrganizationExternalID,
+			}
+
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Add GitLab Repositories with Project scope of %s",
-					authUser.UserName, params.ProjectSFID)
+				msg := fmt.Sprintf("user %s does not have access to Add GitLab Repositories for Project '%s' with scope of %s",
+					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
-				return gitlab_repositories.NewAddProjectGitLabRepositoryForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+				return gitlab_repositories.NewEnableGitLabRepositoryForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			if len(params.GitlabRepositoriesAdd.RepositoryGitlabIds) == 0 {
+			if len(params.GitlabRepositoriesEnable.RepositoryGitlabIds) == 0 {
 				msg := "missing repository GitLab ID values"
-				return gitlab_repositories.NewAddProjectGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
+				return gitlab_repositories.NewEnableGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
-			log.WithFields(f).Debugf("Adding GitLab repository for project: %s", params.ProjectSFID)
-			result, err := service.GitLabAddRepositories(ctx, params.ProjectSFID, params.GitlabRepositoriesAdd)
-			if err != nil {
-				if _, ok := err.(*utils.GitLabRepositoryExists); ok {
-					msg := fmt.Sprintf("unable to add repository - repository already exists for projectSFID: %s, err: %+v", params.ProjectSFID, err)
-					log.WithFields(f).WithError(err).Warn(msg)
-					return gitlab_repositories.NewAddProjectGitLabRepositoryConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
-				}
+			log.WithFields(f).Debugf("assigning GitLab repository for project: %s and CLA Group: %s", params.ProjectSFID, params.GitlabRepositoriesEnable.ClaGroupID)
+			enableErr := service.GitLabEnableRepositories(ctx, params.GitlabRepositoriesEnable.ClaGroupID, params.GitlabRepositoriesEnable.RepositoryGitlabIds)
+			if enableErr != nil {
 				msg := fmt.Sprintf("problem adding GitLab repositories for projectSFID: %s", params.ProjectSFID)
-				log.WithFields(f).WithError(err).Warn(msg)
-				return gitlab_repositories.NewAddProjectGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+				log.WithFields(f).WithError(enableErr).Warn(msg)
+				return gitlab_repositories.NewEnableGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, enableErr))
 			}
 
-			return gitlab_repositories.NewAddProjectGitLabRepositoryOK().WithPayload(result)
+			repoList, getErr := service.GitLabGetRepositoriesByProjectSFID(ctx, params.ProjectSFID)
+			if getErr != nil {
+				msg := fmt.Sprintf("problem fetching GitLab repositories for projectSFID: %s", params.ProjectSFID)
+				log.WithFields(f).WithError(getErr).Warn(msg)
+				return gitlab_repositories.NewEnableGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, getErr))
+			}
+
+			return gitlab_repositories.NewEnableGitLabRepositoryOK().WithPayload(repoList)
 		})
 
-	api.GitlabRepositoriesDeleteProjectGitLabRepositoryHandler = gitlab_repositories.DeleteProjectGitLabRepositoryHandlerFunc(
-		func(params gitlab_repositories.DeleteProjectGitLabRepositoryParams, authUser *auth.User) middleware.Responder {
+	api.GitlabRepositoriesUnenrollGitLabRepositoryHandler = gitlab_repositories.UnenrollGitLabRepositoryHandlerFunc(
+		func(params gitlab_repositories.UnenrollGitLabRepositoryParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 			f := logrus.Fields{
-				"functionName":   "v2.repositories.handlers.GitlabRepositoriesDeleteProjectGitLabRepositoryHandler",
-				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-				"authUser":       authUser.UserName,
-				"authEmail":      authUser.Email,
-				"projectSFID":    params.ProjectSFID,
-				"repositoryID":   params.RepositoryID,
+				"functionName":         "v2.repositories.handlers.GitlabRepositoriesDeleteProjectGitLabRepositoryHandler",
+				utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
+				"authUser":             authUser.UserName,
+				"authEmail":            authUser.Email,
+				"projectSFID":          params.ProjectSFID,
+				"repositoryExternalID": params.RepositoryExternalID,
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Delete Gitlab Repositories with Project scope of %s",
+				msg := fmt.Sprintf("user %s does not have access to Unenroll Gitlab Repositories with Project scope of %s",
 					authUser.UserName, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
-				return gitlab_repositories.NewDeleteProjectGitLabRepositoryForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+				return gitlab_repositories.NewUnenrollGitLabRepositoryForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			ghRepo, err := service.GitLabGetRepository(ctx, params.RepositoryID)
+			ghRepo, err := service.GitLabGetRepositoryByExternalID(ctx, params.RepositoryExternalID)
 			if err != nil {
 				if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
-					msg := fmt.Sprintf("repository not found for projectSFID: %s", params.ProjectSFID)
+					msg := fmt.Sprintf("repository not found for repository external ID: %d", params.RepositoryExternalID)
 					log.WithFields(f).WithError(err).Warn(msg)
-					return gitlab_repositories.NewDeleteProjectGitLabRepositoryNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+					return gitlab_repositories.NewUnenrollGitLabRepositoryNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
 				}
 
-				msg := fmt.Sprintf("problem looking up repository for projectSFID: %s", params.ProjectSFID)
+				msg := fmt.Sprintf("problem looking up repository using the repostiory external ID: %d", params.RepositoryExternalID)
 				log.WithFields(f).WithError(err).Warn(msg)
-				return gitlab_repositories.NewDeleteProjectGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+				return gitlab_repositories.NewUnenrollGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			err = service.GitLabDisableRepository(ctx, params.RepositoryID)
+			err = service.GitLabDisableRepository(ctx, "", params.RepositoryExternalID)
 			if err != nil {
 				msg := fmt.Sprintf("problem disabling repository for projectSFID: %s, error: %+v", params.ProjectSFID, err)
 				log.WithFields(f).WithError(err).Warn(msg)
-				return gitlab_repositories.NewDeleteProjectGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+				return gitlab_repositories.NewUnenrollGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 				EventType:   events.RepositoryDisabled,
 				ProjectSFID: params.ProjectSFID,
-				CLAGroupID:  ghRepo.RepositoryClaGroupID,
 				LfUsername:  authUser.UserName,
 				EventData: &events.RepositoryDisabledEventData{
-					RepositoryName: ghRepo.RepositoryName,
+					RepositoryName:       ghRepo.RepositoryName,
+					RepositoryExternalID: ghRepo.RepositoryExternalID,
 				},
 			})
 
-			return gitlab_repositories.NewDeleteProjectGitLabRepositoryNoContent().WithXRequestID(reqID)
+			return gitlab_repositories.NewUnenrollGitLabRepositoryNoContent().WithXRequestID(reqID)
 		})
 }

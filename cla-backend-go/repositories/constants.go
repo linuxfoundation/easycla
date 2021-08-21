@@ -3,11 +3,17 @@
 
 package repositories
 
+// RepositoryIDColumn constant
+const RepositoryIDColumn = "repository_id"
+
 // RepositoryNameColumn constant
 const RepositoryNameColumn = "repository_name"
 
 // RepositoryTypeColumn constant
 const RepositoryTypeColumn = "repository_type"
+
+// RepositoryExternalIDColumn constant
+const RepositoryExternalIDColumn = "repository_external_id"
 
 // RepositoryProjectIDColumn constant
 const RepositoryProjectIDColumn = "project_sfid"

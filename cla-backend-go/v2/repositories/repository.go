@@ -6,6 +6,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -22,16 +23,18 @@ import (
 
 // RepositoryInterface interface defines the functions for the GitLab repository data model
 type RepositoryInterface interface {
-	GitLabGetRepository(ctx context.Context, repositoryID string) (*repoModels.RepositoryDBModel, error)
-	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByCLAGroupEnabled(ctx context.Context, claGroupID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByCLAGroupDisabled(ctx context.Context, claGroupID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByOrganizationName(ctx context.Context, orgName string) ([]*repoModels.RepositoryDBModel, error)
+
+	GitLabGetRepository(ctx context.Context, repositoryID string) (*repoModels.RepositoryDBModel, error)
+	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*repoModels.RepositoryDBModel, error)
+	GitLabGetRepositoryByExternalID(ctx context.Context, repositoryExternalID int64) (*repoModels.RepositoryDBModel, error)
 	GitLabAddRepository(ctx context.Context, projectSFID string, input *repoModels.RepositoryDBModel) (*repoModels.RepositoryDBModel, error)
-	GitLabEnableRepositoryByID(ctx context.Context, repositoryID string) error
-	GitLabDisableRepositoryByID(ctx context.Context, repositoryID string) error
+	GitLabEnableRepositoryByID(ctx context.Context, claGroupID string, repositoryID int64) error
+	GitLabDisableRepositoryByID(ctx context.Context, claGroupID string, repositoryID int64) error
 	GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
 }
 
@@ -109,6 +112,32 @@ func (r *Repository) GitLabGetRepositoryByName(ctx context.Context, repositoryNa
 		if _, ok := err.(*utils.GitLabDuplicateRepositoriesFound); ok {
 			return nil, &utils.GitLabDuplicateRepositoriesFound{
 				RepositoryName: repositoryName,
+			}
+		}
+		// Some other error
+		return nil, err
+	}
+
+	return record, nil
+}
+
+// GitLabGetRepositoryByExternalID returns the database model for the specified repository by external ID
+func (r *Repository) GitLabGetRepositoryByExternalID(ctx context.Context, repositoryExternalID int64) (*repoModels.RepositoryDBModel, error) {
+	str := strconv.FormatInt(repositoryExternalID, 10)
+	condition := expression.Key(repoModels.RepositoryExternalIDColumn).Equal(expression.Value(str))
+	filter := expression.Name(repoModels.RepositoryTypeColumn).Equal(expression.Value(utils.GitLabLower))
+	record, err := r.getRepositoryWithConditionFilter(ctx, condition, filter, repoModels.RepositoryExternalIDIndex)
+	if err != nil {
+		// Catch the error - return the same error with the appropriate details
+		if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
+			return nil, &utils.GitLabRepositoryNotFound{
+				RepositoryExternalID: repositoryExternalID,
+			}
+		}
+		// Catch the error - return the same error with the appropriate details
+		if _, ok := err.(*utils.GitLabDuplicateRepositoriesFound); ok {
+			return nil, &utils.GitLabDuplicateRepositoriesFound{
+				RepositoryExternalID: repositoryExternalID,
 			}
 		}
 		// Some other error
@@ -284,13 +313,13 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 }
 
 // GitLabEnableRepositoryByID enables the specified repository
-func (r *Repository) GitLabEnableRepositoryByID(ctx context.Context, repositoryID string) error {
-	return r.setRepositoryEnabledValue(ctx, repositoryID, true)
+func (r *Repository) GitLabEnableRepositoryByID(ctx context.Context, claGroupID string, repositoryExternalID int64) error {
+	return r.setRepositoryEnabledValue(ctx, claGroupID, repositoryExternalID, true)
 }
 
 // GitLabDisableRepositoryByID disables the specified repository
-func (r *Repository) GitLabDisableRepositoryByID(ctx context.Context, repositoryID string) error {
-	return r.setRepositoryEnabledValue(ctx, repositoryID, false)
+func (r *Repository) GitLabDisableRepositoryByID(ctx context.Context, claGroupID string, repositoryExternalID int64) error {
+	return r.setRepositoryEnabledValue(ctx, claGroupID, repositoryExternalID, false)
 }
 
 // GitLabEnableCLAGroupRepositories enables the specified CLA Group repositories
@@ -301,7 +330,12 @@ func (r *Repository) GitLabEnableCLAGroupRepositories(ctx context.Context, claGr
 	}
 
 	for _, repo := range repositories {
-		enableErr := r.GitLabEnableRepositoryByID(ctx, repo.RepositoryID)
+		int64I, parseErr := strconv.ParseInt(repo.RepositoryExternalID, 10, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		enableErr := r.GitLabEnableRepositoryByID(ctx, claGroupID, int64I)
 		if enableErr != nil {
 			return enableErr
 		}
@@ -318,7 +352,12 @@ func (r *Repository) GitLabDisableCLAGroupRepositories(ctx context.Context, claG
 	}
 
 	for _, repo := range repositories {
-		enableErr := r.GitLabDisableRepositoryByID(ctx, repo.RepositoryID)
+		int64I, parseErr := strconv.ParseInt(repo.RepositoryExternalID, 10, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		enableErr := r.GitLabDisableRepositoryByID(ctx, claGroupID, int64I)
 		if enableErr != nil {
 			return enableErr
 		}
@@ -427,14 +466,22 @@ func (r *Repository) getRepositoriesWithConditionFilter(ctx context.Context, con
 }
 
 // setRepositoryEnabledValue sets the specified repository to the specified enabled value
-func (r *Repository) setRepositoryEnabledValue(ctx context.Context, repositoryID string, enabledValue bool) error {
+func (r *Repository) setRepositoryEnabledValue(ctx context.Context, claGroupID string, repositoryExternalID int64, enabledValue bool) error {
+	f := logrus.Fields{
+		"functionName":         "v2.repositories.repository.setRepositoryEnabledValue",
+		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
+		"claGroupID":           claGroupID,
+		"repositoryExternalID": repositoryExternalID,
+		"enabledValue":         enabledValue,
+	}
+
 	// Load the existing model - need to fetch the old values, if available
-	existingModel, getErr := r.GitLabGetRepository(ctx, repositoryID)
+	existingModel, getErr := r.GitLabGetRepositoryByExternalID(ctx, repositoryExternalID)
 	if getErr != nil {
 		return getErr
 	}
 	if existingModel == nil {
-		return fmt.Errorf("unable to locate existing repository entry by ID: %s", repositoryID)
+		return fmt.Errorf("unable to locate existing repository entry by external ID: %d", repositoryExternalID)
 	}
 
 	// If we have an old note - grab it/save it
@@ -448,10 +495,7 @@ func (r *Repository) setRepositoryEnabledValue(ctx context.Context, repositoryID
 	}
 
 	_, now := utils.CurrentTime()
-	_, err := r.dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
-		Key: map[string]*dynamodb.AttributeValue{
-			"repository_id": {S: aws.String(repositoryID)},
-		},
+	updateInput := &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]*string{
 			"#enabled":      aws.String(repoModels.RepositoryEnabledColumn),
 			"#note":         aws.String(repoModels.RepositoryNoteColumn),
@@ -468,9 +512,24 @@ func (r *Repository) setRepositoryEnabledValue(ctx context.Context, repositoryID
 				S: aws.String(now),
 			},
 		},
-		UpdateExpression: aws.String("SET #enabled = :enabledValue, #note = :noteValue, #dateModified = :dateModifiedValue"),
+		Key: map[string]*dynamodb.AttributeValue{
+			repoModels.RepositoryIDColumn: {S: aws.String(existingModel.RepositoryID)},
+		},
 		TableName:        aws.String(r.repositoryTableName),
-	})
+		UpdateExpression: aws.String("SET #enabled = :enabledValue, #note = :noteValue, #dateModified = :dateModifiedValue"),
+	}
+
+	if claGroupID != "" {
+		updateInput.ExpressionAttributeNames["#claGroupID"] = aws.String(repoModels.RepositoryCLAGroupIDColumn)
+		updateInput.ExpressionAttributeValues[":claGroupIDValue"] = &dynamodb.AttributeValue{S: aws.String(claGroupID)}
+		updateExpression := fmt.Sprintf("%s, #claGroupID = :claGroupIDValue ", *updateInput.UpdateExpression)
+		updateInput.UpdateExpression = aws.String(updateExpression)
+	}
+
+	_, err := r.dynamoDBClient.UpdateItem(updateInput)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem with update, error: %+v", err.Error())
+	}
 
 	return err
 }
