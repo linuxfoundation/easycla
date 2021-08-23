@@ -97,7 +97,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"authEmail":      authUser.Email,
 				"projectSFID":    params.ProjectSFID,
 				"groupID":        params.Body.GroupID,
-				"groupFullPath":  params.Body.GroupFullPath,
+				"groupFullPath":  params.Body.OrganizationFullPath,
 			}
 
 			// Load the project
@@ -117,7 +117,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			}
 
 			// Quick check of the parameters
-			if params.Body == nil || (params.Body.GroupID == 0 && params.Body.GroupFullPath == "") {
+			if params.Body == nil || (params.Body.GroupID == 0 && params.Body.OrganizationFullPath == "") {
 				msg := fmt.Sprintf("missing group ID or group full path in the body: %+v", params.Body)
 				log.WithFields(f).Warn(msg)
 				return gitlab_organizations.NewAddProjectGitlabOrganizationBadRequest().WithPayload(
@@ -125,16 +125,16 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			}
 
 			// Clean up/filter the Group Full Path, if needed
-			if params.Body.GroupFullPath != "" {
+			if params.Body.OrganizationFullPath != "" {
 				r, regexErr := regexp.Compile(`^http(s)?://`)
 				if regexErr != nil {
-					msg := fmt.Sprintf("invalid regex for group full path, error: %+v", regexErr)
+					msg := fmt.Sprintf("invalid regex for group/organization full path, error: %+v", regexErr)
 					log.WithFields(f).WithError(regexErr).Warn(msg)
 					return gitlab_organizations.NewAddProjectGitlabOrganizationInternalServerError().WithPayload(
 						utils.ErrorResponseInternalServerErrorWithError(reqID, msg, regexErr))
 				}
-				if r.MatchString(params.Body.GroupFullPath) {
-					groupWithUrl, urlParseErr := url.Parse(params.Body.GroupFullPath)
+				if r.MatchString(params.Body.OrganizationFullPath) {
+					groupWithUrl, urlParseErr := url.Parse(params.Body.OrganizationFullPath)
 					if urlParseErr != nil {
 						msg := fmt.Sprintf("invalid group full path provided, error: %+v", urlParseErr)
 						log.WithFields(f).WithError(urlParseErr).Warn(msg)
@@ -142,12 +142,12 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 							utils.ErrorResponseBadRequestWithError(reqID, msg, urlParseErr))
 					}
 					// Update the group full path value - just include the path and not the https://... part
-					params.Body.GroupFullPath = groupWithUrl.Path
+					params.Body.OrganizationFullPath = groupWithUrl.Path
 				}
 
 				// Remove leading slash
-				if strings.HasPrefix(params.Body.GroupFullPath, "/") {
-					params.Body.GroupFullPath = params.Body.GroupFullPath[1:]
+				if strings.HasPrefix(params.Body.OrganizationFullPath, "/") {
+					params.Body.OrganizationFullPath = params.Body.OrganizationFullPath[1:]
 				}
 			}
 
@@ -178,7 +178,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 			// Get the current group name for the event
 			for _, group := range result.List {
-				if group.OrganizationExternalID == params.Body.GroupID || group.OrganizationFullPath == params.Body.GroupFullPath {
+				if group.OrganizationExternalID == params.Body.GroupID || group.OrganizationFullPath == params.Body.OrganizationFullPath {
 					// Log the event
 					eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 						LfUsername:  authUser.UserName,

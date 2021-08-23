@@ -17,9 +17,9 @@ properties:
     description: The GitLab Group ID
     example: 13050017
     minimum: 1
-  group_full_path:
+  organization_full_path:
     type: string
-    description: The GitLab Group full path
+    description: The GitLab Group/Organization full path
     example: 'linuxfoundation/product/easycla'
     minLength: 3
   auto_enabled:

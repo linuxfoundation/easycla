@@ -71,7 +71,7 @@ func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string,
 		"autoEnabled":             utils.BoolValue(input.AutoEnabled),
 		"branchProtectionEnabled": utils.BoolValue(input.BranchProtectionEnabled),
 		"groupID":                 input.GroupID,
-		"groupFullPath":           input.GroupFullPath,
+		"groupFullPath":           input.OrganizationFullPath,
 	}
 
 	psc := v2ProjectService.GetClient()
@@ -101,7 +101,7 @@ func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string,
 		branchProtectionEnabled = utils.BoolValue(input.BranchProtectionEnabled)
 	}
 
-	resp, err := s.repo.AddGitLabOrganization(ctx, parentProjectSFID, projectSFID, input.GroupID, "", input.GroupFullPath, autoEnabled, input.AutoEnabledClaGroupID, branchProtectionEnabled, true)
+	resp, err := s.repo.AddGitLabOrganization(ctx, parentProjectSFID, projectSFID, input.GroupID, "", input.OrganizationFullPath, autoEnabled, input.AutoEnabledClaGroupID, branchProtectionEnabled, true)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem adding gitlab organization for project")
 		return nil, err

@@ -157,7 +157,7 @@ func (s *Service) GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID st
 // GetProjectCclaSignaturesCsv returns the ICLA signatures as a CSV file for the specified CLA Group and search term filters
 func (s *Service) GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error) {
 	f := logrus.Fields{
-		"functionName":   "GetProjectCclaSignaturesCsv",
+		"functionName":   "v2.signatures.service.GetProjectCclaSignaturesCsv",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 	}
@@ -289,7 +289,7 @@ func (s *Service) IsZipPresentOnS3(zipFilePath string) (bool, error) {
 // GetClaGroupCorporateContributors returns the list of corporate contributors for the specified CLA Group and company
 func (s *Service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID string, searchTerm *string) (*models.CorporateContributorList, error) {
 	f := logrus.Fields{
-		"functionName": "GetClaGroupCorporateContributors",
+		"functionName": "v2.signatures.service.GetClaGroupCorporateContributors",
 		"claGroupID":   claGroupID,
 		"companyID":    companyID,
 	}
@@ -302,6 +302,7 @@ func (s *Service) GetClaGroupCorporateContributors(ctx context.Context, claGroup
 	if err != nil {
 		return nil, err
 	}
+	log.WithFields(f).Debugf("discovered %d CLA corporate contributors...", len(result.List))
 
 	log.WithFields(f).Debug("converting to v2 response model...")
 	var resp models.CorporateContributorList

@@ -889,30 +889,6 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 			"companyID":      params.CompanyID,
 		}
 
-		// Make sure the user has provided the companyID
-		if params.CompanyID == nil {
-			msg := "missing companyID as input"
-			log.WithFields(f).Warn(msg)
-			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
-		}
-
-		companyModel, err := companyService.GetCompany(ctx, *params.CompanyID)
-		if err != nil {
-			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", *params.CompanyID, err)
-			log.Warn(msg)
-			if _, ok := err.(*utils.CompanyNotFound); ok {
-				return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-					Message: "EasyCLA - 404 Not Found - error getting company - " + msg,
-					Code:    "404",
-				})
-			}
-			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Message: "EasyCLA - 400 Bad Request - error getting company - " + msg,
-				Code:    "400",
-			})
-		}
-
 		// Lookup the CLA Group by ID - make sure it's valid
 		claGroupModel, err := projectRepo.GetCLAGroupByID(ctx, params.ClaGroupID, project.DontLoadRepoDetails)
 		if err != nil {
@@ -926,19 +902,31 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 				utils.ErrorResponseBadRequest(reqID, problemLoadingCLAGroupByID))
 		}
 
+		// Make sure the user has provided the companyID
+		if params.CompanyID == nil {
+			msg := "missing companyID as input"
+			log.WithFields(f).Warn(msg)
+			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequest(reqID, msg))
+		}
+
+		companyModel, err := companyService.GetCompany(ctx, *params.CompanyID)
+		if err != nil {
+			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", *params.CompanyID, err)
+			log.Warn(msg)
+			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
 		// Make sure CCLA is enabled for this CLA Group
 		if !claGroupModel.ProjectCCLAEnabled {
-			msg := "cla group does not support corporate contribution"
+			msg := fmt.Sprintf("CLA Group with ID '%s' does not support corporate contribution", params.ClaGroupID)
 			log.WithFields(f).Warn(msg)
-			// Return 200 as the retool UI can't handle 400's
-			return signatures.NewListClaGroupCorporateContributorsOK().WithXRequestID(reqID).WithPayload(&models.CorporateContributorList{
-				List: []*models.CorporateContributor{}, // empty list
-			})
+			return signatures.NewListClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, errors.New(msg)))
 		}
 
 		// Lookup the Project to CLA Group mapping table entries - this will have the correct details
 		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, params.ClaGroupID)
-		// Should have at least one entry if we're setup correctly - it will have the foundation (parent project/project group) and project details set
+		// Should have at least one entry if we're set up correctly - it will have the foundation (parent project/project group) and project details set
 		if projectCLAGroupErr != nil || len(projectCLAGroupEntries) == 0 {
 			msg := fmt.Sprintf("unable to load project CLA Group mappings for CLA Group: %s - has this project been migrated to v2?", params.ClaGroupID)
 			log.WithFields(f).Warn(msg)
