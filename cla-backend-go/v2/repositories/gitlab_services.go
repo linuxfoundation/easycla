@@ -97,8 +97,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 				RepositorySfdcID:           projectSFID,
 				ProjectSFID:                projectSFID,
 				RepositoryExternalID:       repositoryExternalIDString,
-				RepositoryName:             project.Name,
-				RepositoryFullPath:         project.PathWithNamespace,
+				RepositoryName:             project.PathWithNamespace, // Name column is actually the full path for both GitHub and GitLab
 				RepositoryURL:              project.WebURL,
 				RepositoryOrganizationName: input.GitlabOrganizationName,
 				RepositoryCLAGroupID:       input.ClaGroupID,
@@ -381,7 +380,6 @@ func dbModelToGitLabRepository(dbModel *repoModels.RepositoryDBModel) (*v2Models
 		RepositoryClaGroupID:       dbModel.RepositoryCLAGroupID,       // CLA Group ID
 		RepositoryExternalID:       gitLabExternalID,                   // GitLab unique gitV1Repository ID
 		RepositoryName:             dbModel.RepositoryName,             // Short repository name
-		RepositoryFullPath:         dbModel.RepositoryFullPath,         // Full repository path
 		RepositoryOrganizationName: dbModel.RepositoryOrganizationName, // Group/Organization name
 		RepositoryURL:              dbModel.RepositoryURL,              // full url
 		RepositoryType:             dbModel.RepositoryType,             // gitlab

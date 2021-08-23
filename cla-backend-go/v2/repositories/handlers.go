@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_organizations"
 	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_repositories"
@@ -47,9 +46,17 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"projectSFID":    params.ProjectSFID,
 			}
 
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return github_repositories.NewGetProjectGithubRepositoriesNotFound().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+			}
+
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Get GitHub V3Repositories with Project scope of %s",
-					authUser.UserName, params.ProjectSFID)
+				msg := fmt.Sprintf("user %s does not have access to Get GitHub repositories for Project %s with scope of %s",
+					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewGetProjectGithubRepositoriesForbidden().WithPayload(
 					utils.ErrorResponseForbidden(reqID, msg))
@@ -99,9 +106,17 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"repositoryGitHubIDs":    strings.Join(params.GithubRepositoryInput.RepositoryGithubIds, ","),
 			}
 
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return github_repositories.NewAddProjectGithubRepositoryNotFound().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+			}
+
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Add GitHub V3Repositories with Project scope of %s",
-					authUser.UserName, params.ProjectSFID)
+				msg := fmt.Sprintf("user %s does not have access to add GitHub repositories for Project %s with scope of %s",
+					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewAddProjectGithubRepositoryForbidden().WithPayload(
 					utils.ErrorResponseForbidden(reqID, msg))
@@ -178,9 +193,17 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"repositoryID":   params.RepositoryID,
 			}
 
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return github_repositories.NewDeleteProjectGithubRepositoryNotFound().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+			}
+
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Delete GitHub V3Repositories with Project scope of %s",
-					authUser.UserName, params.ProjectSFID)
+				msg := fmt.Sprintf("user %s does not have access to Get GitHub repositories for Project %s with scope of %s",
+					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewDeleteProjectGithubRepositoryForbidden().WithPayload(
 					utils.ErrorResponseForbidden(reqID, msg))
@@ -236,9 +259,17 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"repositoryID":   params.RepositoryID,
 			}
 
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return github_repositories.NewGetProjectGithubRepositoryBranchProtectionNotFound().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+			}
+
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Query Protected Branch GitHub V3Repositories with Project scope of %s",
-					authUser.UserName, params.ProjectSFID)
+				msg := fmt.Sprintf("user %s does not have access to Query Protected Branch GitHub Repositories for Project %s with scope of %s",
+					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewGetProjectGithubRepositoryBranchProtectionForbidden().WithPayload(
 					utils.ErrorResponseForbidden(reqID, msg))
@@ -297,9 +328,17 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"repositoryID":   params.RepositoryID,
 			}
 
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return github_repositories.NewUpdateProjectGithubRepositoryBranchProtectionNotFound().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+			}
+
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Update Protected Branch GitHub V3Repositories with Project scope of %s",
-					authUser.UserName, params.ProjectSFID)
+				msg := fmt.Sprintf("user %s does not have access to Update Protected Branch GitHub Repositories for Project %s with scope of %s",
+					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return github_repositories.NewUpdateProjectGithubRepositoryBranchProtectionForbidden().WithPayload(
 					utils.ErrorResponseForbidden(reqID, msg))
@@ -378,9 +417,17 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"projectSFID":    params.ProjectSFID,
 			}
 
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return gitlab_repositories.NewGetProjectGitLabRepositoriesNotFound().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+			}
+
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-				msg := fmt.Sprintf("user %s does not have access to Get GitLab Repositories with Project scope of %s",
-					authUser.UserName, params.ProjectSFID)
+				msg := fmt.Sprintf("user %s does not have access to Get GitLab Repositories for Project %s with scope of %s",
+					authUser.UserName, projectModel.Name, params.ProjectSFID)
 				log.WithFields(f).Debug(msg)
 				return gitlab_repositories.NewGetProjectGitLabRepositoriesForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
@@ -430,7 +477,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			psc := project_service.GetClient()
 			projectModel, err := psc.GetProject(params.ProjectSFID)
 			if err != nil || projectModel == nil {
-				return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
+				return gitlab_repositories.NewEnableGitLabRepositoryNotFound().WithPayload(
 					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
 			}
 
@@ -476,6 +523,14 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				"authEmail":            authUser.Email,
 				"projectSFID":          params.ProjectSFID,
 				"repositoryExternalID": params.RepositoryExternalID,
+			}
+
+			// Load the project
+			psc := project_service.GetClient()
+			projectModel, err := psc.GetProject(params.ProjectSFID)
+			if err != nil || projectModel == nil {
+				return gitlab_repositories.NewUnenrollGitLabRepositoryNotFound().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
