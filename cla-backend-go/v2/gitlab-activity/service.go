@@ -235,8 +235,8 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 }
 
 func GetFullSignURL(gitlabOrganizationID string, gitlabRepositoryID string, mrID string) string {
-	return fmt.Sprintf("%s/v2/repository-provider/%s/sign/%s/%s/%s/#/",
-		config.GetConfig().APIGatewayURL,
+	return fmt.Sprintf("%s/v4/repository-provider/%s/sign/%s/%s/%s/#/",
+		config.GetConfig().ClaAPIV4Base,
 		utils.GitLabLower,
 		gitlabOrganizationID,
 		gitlabRepositoryID,
