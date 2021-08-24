@@ -1,0 +1,25 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+description: 'GitLab repositories enable model'
+properties:
+  cla_group_id:
+    description: CLA Group ID
+    $ref: './common/properties/internal-id.yaml'
+  enroll:
+    type: array
+    description: a list of GitLab repositories to enroll
+    items:
+      description: the GitLab repository external identifier, such as the GitLab ID of the repository
+      type: integer
+      minimum: 1
+      example: 7
+  unenroll:
+    type: array
+    description: a list of GitLab repositories to unenroll
+    items:
+      description: the GitLab repository external identifier, such as the GitLab ID of the repository
+      type: integer
+      minimum: 1
+      example: 7

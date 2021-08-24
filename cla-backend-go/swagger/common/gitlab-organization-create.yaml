@@ -27,8 +27,8 @@ properties:
     description: Flag to indicate if auto-enabled flag should be enabled. Organizations with auto-enable turned on will automatically include any new repositories to the EasyCLA configuration.
     default: false
   auto_enabled_cla_group_id:
-    type: string
-    description: Specifies which Cla group ID to be used when autoEnabled flag in enabled for the Github Organization. If autoEnabled is on this field needs to be set as well.
+    $ref: './common/properties/internal-id.yaml'
+    description: Specifies which CLA Group ID to be used when the auto enabled flag in enabled for the GitLab Group/Organization. When the auto enabled flag is set to true, this field needs to be set to a valid CLA Group ID value.
   branch_protection_enabled:
     type: boolean
     description: Flag to indicate if this GitLab Group/Organization is configured to automatically setup branch protection on CLA enabled repositories.

@@ -182,9 +182,9 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 	landingPage += "/#/?version=2"
 
 	var badgeHyperlink string
-	if len(missingUsers) > 0{
+	if len(missingUsers) > 0 {
 		badgeHyperlink = signURL
-	}else{
+	} else {
 		badgeHyperlink = landingPage
 	}
 
@@ -252,7 +252,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 		result += "</ul>"
 	}
 
-	if result != ""{
+	if result != "" {
 		body += "<br/><br/>" + result
 	}
 

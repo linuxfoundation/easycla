@@ -125,7 +125,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				{ID: 1, Username: "neo"},
 				{ID: 2, Username: "oracle"},
 			},
-			expectedMsgs: []string{signedContains, signedContains},
+			expectedMsgs:  []string{signedContains, signedContains},
 			expectedBadge: "cla-signed.svg",
 		},
 		{
@@ -136,7 +136,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 			missing: []*gatedGitlabUser{
 				{err: missingID, User: &gitlab.User{ID: 3, Username: "missing"}},
 			},
-			expectedMsgs: []string{signedContains, missingUserContains},
+			expectedMsgs:  []string{signedContains, missingUserContains},
 			expectedBadge: "cla-missing-id.svg",
 		},
 		{
@@ -147,7 +147,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 			missing: []*gatedGitlabUser{
 				{err: missingCompanyAffiliation, User: &gitlab.User{ID: 4, Username: "affiliationUser"}},
 			},
-			expectedMsgs: []string{signedContains, missingAffiliationContains},
+			expectedMsgs:  []string{signedContains, missingAffiliationContains},
 			expectedBadge: "cla-confirmation-needed.svg",
 		},
 		{
@@ -158,7 +158,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 			missing: []*gatedGitlabUser{
 				{err: missingCompanyApproval, User: &gitlab.User{ID: 5, Username: "approvalUser"}},
 			},
-			expectedMsgs: []string{signedContains, missingApprovalContains},
+			expectedMsgs:  []string{signedContains, missingApprovalContains},
 			expectedBadge: "cla-not-signed.svg",
 		},
 	}

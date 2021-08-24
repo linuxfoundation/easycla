@@ -31,11 +31,12 @@ type RepositoryInterface interface {
 
 	GitLabGetRepository(ctx context.Context, repositoryID string) (*repoModels.RepositoryDBModel, error)
 	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*repoModels.RepositoryDBModel, error)
+	GitLabGetRepositoriesByNamePrefix(ctx context.Context, repositoryNamePrefix string) ([]*repoModels.RepositoryDBModel, error)
 	GitLabGetRepositoryByExternalID(ctx context.Context, repositoryExternalID int64) (*repoModels.RepositoryDBModel, error)
 	GitLabAddRepository(ctx context.Context, projectSFID string, input *repoModels.RepositoryDBModel) (*repoModels.RepositoryDBModel, error)
-	GitLabEnableRepositoryByID(ctx context.Context, claGroupID string, repositoryID int64) error
-	GitLabDisableRepositoryByID(ctx context.Context, claGroupID string, repositoryID int64) error
-	GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
+	GitLabEnrollRepositoryByID(ctx context.Context, claGroupID string, repositoryID int64, enrollValue bool) error
+	GitLabEnableCLAGroupRepositories(ctx context.Context, claGroupID string, enrollValue bool) error
+	GitLabDeleteRepositories(ctx context.Context, gitLabGroupPath string) error
 }
 
 // Repository object/struct
@@ -119,6 +120,31 @@ func (r *Repository) GitLabGetRepositoryByName(ctx context.Context, repositoryNa
 	}
 
 	return record, nil
+}
+
+// GitLabGetRepositoriesByNamePrefix returns a list of repositories matching the specified name prefix
+func (r *Repository) GitLabGetRepositoriesByNamePrefix(ctx context.Context, repositoryNamePrefix string) ([]*repoModels.RepositoryDBModel, error) {
+	condition := expression.Key(repoModels.RepositoryTypeColumn).Equal(expression.Value(utils.GitLabLower))
+	filter := expression.Name(repoModels.RepositoryNameColumn).BeginsWith(repositoryNamePrefix)
+	records, err := r.getRepositoriesWithConditionFilter(ctx, condition, filter, repoModels.RepositoryTypeIndex)
+	if err != nil {
+		// Catch the error - return the same error with the appropriate details
+		if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
+			return nil, &utils.GitLabRepositoryNotFound{
+				RepositoryName: repositoryNamePrefix,
+			}
+		}
+		// Catch the error - return the same error with the appropriate details
+		if _, ok := err.(*utils.GitLabDuplicateRepositoriesFound); ok {
+			return nil, &utils.GitLabDuplicateRepositoriesFound{
+				RepositoryName: repositoryNamePrefix,
+			}
+		}
+		// Some other error
+		return nil, err
+	}
+
+	return records, nil
 }
 
 // GitLabGetRepositoryByExternalID returns the database model for the specified repository by external ID
@@ -312,18 +338,13 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 	return input, nil
 }
 
-// GitLabEnableRepositoryByID enables the specified repository
-func (r *Repository) GitLabEnableRepositoryByID(ctx context.Context, claGroupID string, repositoryExternalID int64) error {
-	return r.setRepositoryEnabledValue(ctx, claGroupID, repositoryExternalID, true)
-}
-
-// GitLabDisableRepositoryByID disables the specified repository
-func (r *Repository) GitLabDisableRepositoryByID(ctx context.Context, claGroupID string, repositoryExternalID int64) error {
-	return r.setRepositoryEnabledValue(ctx, claGroupID, repositoryExternalID, false)
+// GitLabEnrollRepositoryByID enables the specified repository
+func (r *Repository) GitLabEnrollRepositoryByID(ctx context.Context, claGroupID string, repositoryExternalID int64, enrollValue bool) error {
+	return r.setRepositoryEnabledValue(ctx, claGroupID, repositoryExternalID, enrollValue)
 }
 
 // GitLabEnableCLAGroupRepositories enables the specified CLA Group repositories
-func (r *Repository) GitLabEnableCLAGroupRepositories(ctx context.Context, claGroupID string) error {
+func (r *Repository) GitLabEnableCLAGroupRepositories(ctx context.Context, claGroupID string, enrollValue bool) error {
 	repositories, err := r.GitHubGetRepositoriesByCLAGroup(ctx, claGroupID)
 	if err != nil {
 		return err
@@ -335,7 +356,7 @@ func (r *Repository) GitLabEnableCLAGroupRepositories(ctx context.Context, claGr
 			return parseErr
 		}
 
-		enableErr := r.GitLabEnableRepositoryByID(ctx, claGroupID, int64I)
+		enableErr := r.GitLabEnrollRepositoryByID(ctx, claGroupID, int64I, enrollValue)
 		if enableErr != nil {
 			return enableErr
 		}
@@ -344,26 +365,74 @@ func (r *Repository) GitLabEnableCLAGroupRepositories(ctx context.Context, claGr
 	return nil
 }
 
-// GitLabDisableCLAGroupRepositories disables the GitLab repositories by the specified CLA Group
-func (r *Repository) GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error {
-	repositories, err := r.GitHubGetRepositoriesByCLAGroup(ctx, claGroupID)
+// GitLabDeleteRepositories deletes the specified repositories under the GitLap group path
+func (r *Repository) GitLabDeleteRepositories(ctx context.Context, gitLabGroupPath string) error {
+	f := logrus.Fields{
+		"functionName":    "v2.repositories.repository.GitLabDeleteRepositories",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"gitLabGroupPath": gitLabGroupPath,
+	}
+
+	log.WithFields(f).Debugf("loading repositories with name prefix: %s", gitLabGroupPath)
+	repositories, err := r.GitLabGetRepositoriesByNamePrefix(ctx, gitLabGroupPath)
 	if err != nil {
+		// If nothing to delete...
+		if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
+			return nil
+		}
+		log.WithFields(f).WithError(err).Warnf("problem loading repositories with name prefix: %s", gitLabGroupPath)
 		return err
 	}
+	log.WithFields(f).Debugf("processing repository delete request for %d repositories", len(repositories))
+
+	type GitLabDeleteRepositoryResponse struct {
+		RepositoryID       string
+		RepositoryName     string
+		RepositoryFullPath string
+		Error              error
+	}
+	deleteRepoRespChan := make(chan *GitLabDeleteRepositoryResponse, len(repositories))
 
 	for _, repo := range repositories {
-		int64I, parseErr := strconv.ParseInt(repo.RepositoryExternalID, 10, 64)
-		if parseErr != nil {
-			return parseErr
-		}
+		go func(repo *repoModels.RepositoryDBModel) {
+			_, err = r.dynamoDBClient.DeleteItem(&dynamodb.DeleteItemInput{
+				Key: map[string]*dynamodb.AttributeValue{
+					repoModels.RepositoryIDColumn: {S: aws.String(repo.RepositoryID)},
+				},
+				TableName: aws.String(r.repositoryTableName),
+			})
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("error deleting repository with ID:%s", repo.RepositoryID)
+			}
+			deleteRepoRespChan <- &GitLabDeleteRepositoryResponse{
+				RepositoryID:       repo.RepositoryID,
+				RepositoryName:     repo.RepositoryName,
+				RepositoryFullPath: repo.RepositoryFullPath,
+				Error:              err,
+			}
+		}(repo)
+	}
 
-		enableErr := r.GitLabDisableRepositoryByID(ctx, claGroupID, int64I)
-		if enableErr != nil {
-			return enableErr
+	// Wait for the go routines to finish and load up the results
+	log.WithFields(f).Debug("waiting for delete repos to finish...")
+	var lastErr error
+	for range repositories {
+		select {
+		case response := <-deleteRepoRespChan:
+			if response.Error != nil {
+				log.WithFields(f).WithError(response.Error).Warn(response.Error.Error())
+				lastErr = response.Error
+			} else {
+				log.WithFields(f).Debugf("delete repo: %s with ID: %s with full path: %s", response.RepositoryName, response.RepositoryID, response.RepositoryFullPath)
+			}
+		case <-ctx.Done():
+			log.WithFields(f).WithError(ctx.Err()).Warnf("waiting for delete repositories timed out")
+			lastErr = fmt.Errorf("delete repositories failed with timeout, error: %v", ctx.Err())
 		}
 	}
 
-	return nil
+	// Return the last error, hopefully nil if no error occurred...
+	return lastErr
 }
 
 // getRepositoryWithConditionFilter fetches the repository entry based on the specified condition and filter criteria using the provided index
@@ -397,7 +466,6 @@ func (r *Repository) getRepositoryWithConditionFilter(ctx context.Context, condi
 	}
 
 	if len(results.Items) == 0 {
-		log.WithFields(f).Debugf("no repositories found matching filter critera: %+v", queryInput)
 		// Generic - no details as we don't know what filter content was provided
 		return nil, &utils.GitLabRepositoryNotFound{}
 	}
@@ -493,6 +561,11 @@ func (r *Repository) setRepositoryEnabledValue(ctx context.Context, claGroupID s
 			existingNote = strings.TrimSpace(existingModel.Note) + " "
 		}
 	}
+	userNameFromCtx := utils.GetUserNameFromContext(ctx)
+	byUserStr := ""
+	if userNameFromCtx != "" {
+		byUserStr = fmt.Sprintf("by user: %s", userNameFromCtx)
+	}
 
 	_, now := utils.CurrentTime()
 	updateInput := &dynamodb.UpdateItemInput{
@@ -506,7 +579,7 @@ func (r *Repository) setRepositoryEnabledValue(ctx context.Context, claGroupID s
 				BOOL: aws.Bool(enabledValue),
 			},
 			":noteValue": {
-				S: aws.String(fmt.Sprintf("%s Updated enabled flag to %t on %s.", existingNote, enabledValue, now)),
+				S: aws.String(fmt.Sprintf("%s Updated enabled flag to %t on %s %s.", existingNote, enabledValue, now, byUserStr)),
 			},
 			":dateModifiedValue": {
 				S: aws.String(now),

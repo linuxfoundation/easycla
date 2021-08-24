@@ -53,7 +53,7 @@ func Configure(api *operations.ClaAPI, service ServiceInterface, eventService ev
 				})
 			}
 
-			if !utils.ValidateAutoEnabledClaGroupID(params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
+			if !utils.ValidateAutoEnabledClaGroupID(*params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
 				return github_organizations.NewAddProjectGithubOrganizationBadRequest().WithPayload(&models.ErrorResponse{
 					Code:    "400",
 					Message: "EasyCLA - 400 Bad Request - AutoEnabledClaGroupID can't be empty when AutoEnabled",
@@ -148,7 +148,7 @@ func Configure(api *operations.ClaAPI, service ServiceInterface, eventService ev
 				})
 			}
 
-			if !utils.ValidateAutoEnabledClaGroupID(params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
+			if !utils.ValidateAutoEnabledClaGroupID(*params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
 				return github_organizations.NewUpdateProjectGithubOrganizationConfigBadRequest().WithPayload(&models.ErrorResponse{
 					Code:    "400",
 					Message: "EasyCLA - 400 Bad Request - AutoEnabledClaGroupID can't be empty when AutoEnabled",

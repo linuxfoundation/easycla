@@ -59,12 +59,12 @@ type ServiceInterface interface {
 	GitLabGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabRepositoriesList, error)
 	GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupID string, enabled bool) (*v2Models.GitlabRepositoriesList, error)
 	GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabRepositoriesList, error)
-	GitLabAddRepositories(ctx context.Context, projectSFID string, input *v2Models.GitlabRepositoriesEnable) (*v2Models.GitlabRepositoriesList, error)
+	GitLabAddRepositories(ctx context.Context, projectSFID string, input *GitLabAddRepoModel) (*v2Models.GitlabRepositoriesList, error)
 	GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel *common.GitLabOrganization) ([]*v2Models.GitlabRepository, error)
-	GitLabEnableRepositories(ctx context.Context, claGroupID string, repositoryIDList []int64) error
-	GitLabEnableRepository(ctx context.Context, claGroupID string, repositoryExternalID int64) error
-	GitLabDisableRepository(ctx context.Context, claGroupID string, repositoryExternalID int64) error
-	GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
+	GitLabEnrollRepositories(ctx context.Context, claGroupID string, repositoryIDList []int64, enrollValue bool) error
+	GitLabEnrollRepository(ctx context.Context, claGroupID string, repositoryExternalID int64, enrollValue bool) error
+	GitLabEnrollCLAGroupRepositories(ctx context.Context, claGroupID string, enrollValue bool) error
+	GitLabDeleteRepositories(ctx context.Context, gitLabGroupPath string) error
 }
 
 // GithubOrgRepo redefine the interface here to avoid circular dependency issues
@@ -77,7 +77,7 @@ type GithubOrgRepo interface {
 	GetGitLabOrganizationByFullPath(ctx context.Context, groupFullPath string) (*common.GitLabOrganization, error)
 	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, groupName, groupFullPath, organizationURL string) error
 	UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
-	DeleteGitLabOrganization(ctx context.Context, projectSFID, gitlabOrgName string) error
+	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID, gitlabOrgName string) error
 }
 
 // Service is the service model/structure

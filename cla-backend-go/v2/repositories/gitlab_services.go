@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
@@ -25,38 +26,38 @@ import (
 )
 
 // GitLabAddRepositories service function
-func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string, input *v2Models.GitlabRepositoriesEnable) (*v2Models.GitlabRepositoriesList, error) {
+func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string, input *GitLabAddRepoModel) (*v2Models.GitlabRepositoriesList, error) {
 	f := logrus.Fields{
-		"functionName":     "v2.repositories.gitlab_services.GitLabAddRepositories",
-		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
-		"projectSFID":      projectSFID,
-		"organizationName": input.GitlabOrganizationName,
-		"claGroupID":       input.ClaGroupID,
-		"groupFullPath":    input.OrganizationFullPath,
-		"groupID":          input.OrganizationExternalID,
+		"functionName":   "v2.repositories.gitlab_services.GitLabAddRepositories",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectSFID":    projectSFID,
+		"groupName":      input.GroupName,
+		"claGroupID":     input.ClaGroupID,
+		"groupFullPath":  input.GroupFullPath,
+		"groupID":        input.ExternalID,
 	}
 
 	var gitLabOrgModel *common.GitLabOrganization
 	var getOrgErr error
-	if input.GitlabOrganizationName != "" {
-		log.WithFields(f).Debugf("fetching GitLab organization by name: %s", input.GitlabOrganizationName)
-		gitLabOrgModel, getOrgErr = s.glOrgRepo.GetGitLabOrganizationByName(ctx, input.GitlabOrganizationName)
+	if input.GroupName != "" {
+		log.WithFields(f).Debugf("fetching GitLab group/organization by name: %s", input.GroupName)
+		gitLabOrgModel, getOrgErr = s.glOrgRepo.GetGitLabOrganizationByName(ctx, input.GroupName)
 		if getOrgErr != nil {
-			msg := fmt.Sprintf("problem loading GitLab organization by name: %s, error: %v", input.GitlabOrganizationName, getOrgErr)
+			msg := fmt.Sprintf("problem loading GitLab group/organization by name: %s, error: %v", input.GroupName, getOrgErr)
 			log.WithFields(f).WithError(getOrgErr).Warn(msg)
 			return nil, errors.New(msg)
 		}
-	} else if input.OrganizationFullPath != "" {
-		log.WithFields(f).Debugf("fetching GitLab organization by full path: %s", input.OrganizationFullPath)
-		gitLabOrgModel, getOrgErr = s.glOrgRepo.GetGitLabOrganizationByFullPath(ctx, input.OrganizationFullPath)
+	} else if input.GroupFullPath != "" {
+		log.WithFields(f).Debugf("fetching GitLab group/organization by full path: %s", input.GroupFullPath)
+		gitLabOrgModel, getOrgErr = s.glOrgRepo.GetGitLabOrganizationByFullPath(ctx, input.GroupFullPath)
 		if getOrgErr != nil {
-			msg := fmt.Sprintf("problem loading GitLab organization by full path: %s, error: %v", input.OrganizationFullPath, getOrgErr)
+			msg := fmt.Sprintf("problem loading GitLab group/organization by full path: %s, error: %v", input.GroupFullPath, getOrgErr)
 			log.WithFields(f).WithError(getOrgErr).Warn(msg)
 			return nil, errors.New(msg)
 		}
 	}
 	if gitLabOrgModel == nil {
-		msg := fmt.Sprintf("problem loading GitLab organization by name '%s' or full path '%s'", input.GitlabOrganizationName, input.OrganizationFullPath)
+		msg := fmt.Sprintf("problem loading GitLab group/organization by name '%s' or full path '%s'", input.GroupName, input.GroupFullPath)
 		log.WithFields(f).Warn(msg)
 		return nil, errors.New(msg)
 	}
@@ -73,10 +74,10 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 		RepositoryFullPath string
 		Error              error
 	}
-	addRepoRespChan := make(chan *GitLabAddRepositoryResponse, len(input.RepositoryGitlabIds))
+	addRepoRespChan := make(chan *GitLabAddRepositoryResponse, len(input.ProjectIDList))
 
 	// Add each repo - could be a lot of repos, so we run this in a go routine
-	for _, gitLabProjectID := range input.RepositoryGitlabIds {
+	for _, gitLabProjectID := range input.ProjectIDList {
 		go func(gitLabProjectID int) {
 			log.WithFields(f).Debugf("loading GitLab project from GitLab using projectID: %d...", gitLabProjectID)
 			project, getProjectErr := gitlab_api.GetProjectByID(ctx, gitLabClient, gitLabProjectID)
@@ -99,7 +100,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 				RepositoryExternalID:       repositoryExternalIDString,
 				RepositoryName:             project.PathWithNamespace, // Name column is actually the full path for both GitHub and GitLab
 				RepositoryURL:              project.WebURL,
-				RepositoryOrganizationName: input.GitlabOrganizationName,
+				RepositoryOrganizationName: input.GroupName,
 				RepositoryCLAGroupID:       input.ClaGroupID,
 				RepositoryType:             utils.GitLabLower, // should always be gitlab
 				Enabled:                    false,             // we don't enable by default
@@ -135,7 +136,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 	// Wait for the go routines to finish and load up the results
 	log.WithFields(f).Debug("waiting for add repos to finish...")
 	var lastErr error
-	for range input.RepositoryGitlabIds {
+	for range input.ProjectIDList {
 		select {
 		case response := <-addRepoRespChan:
 			if response.Error != nil {
@@ -195,12 +196,12 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 	}
 
 	// Build input to the add function
-	input := &v2Models.GitlabRepositoriesEnable{
-		ClaGroupID:             projectCLAGroupModel.ClaGroupID,
-		GitlabOrganizationName: gitLabOrgModel.OrganizationName,
-		OrganizationExternalID: int64(gitLabOrgModel.ExternalGroupID),
-		OrganizationFullPath:   gitLabOrgModel.OrganizationFullPath,
-		RepositoryGitlabIds:    listProjectIDs,
+	input := &GitLabAddRepoModel{
+		ClaGroupID:    projectCLAGroupModel.ClaGroupID,
+		GroupName:     gitLabOrgModel.OrganizationName,
+		GroupFullPath: gitLabOrgModel.OrganizationFullPath,
+		ExternalID:    int64(gitLabOrgModel.ExternalGroupID),
+		ProjectIDList: listProjectIDs,
 	}
 	log.WithFields(f).Debugf("adding %d GitLab repositories", len(listProjectIDs))
 	_, addRepoErr := s.GitLabAddRepositories(ctx, gitLabOrgModel.ProjectSFID, input)
@@ -262,6 +263,11 @@ func (s *Service) GitLabGetRepositoriesByProjectSFID(ctx context.Context, projec
 		return nil, err
 	}
 
+	// sort result by name
+	sort.Slice(responses, func(i, j int) bool {
+		return responses[i].RepositoryName < responses[j].RepositoryName
+	})
+
 	return &v2Models.GitlabRepositoriesList{
 		List: responses,
 	}, nil
@@ -307,11 +313,13 @@ func (s *Service) GitLabGetRepositoriesByOrganizationName(ctx context.Context, o
 	}, nil
 }
 
-// GitLabEnableRepositories assigns repos to
-func (s *Service) GitLabEnableRepositories(ctx context.Context, claGroupID string, repositoryIDList []int64) error {
+// GitLabEnrollRepositories assigns repos to a CLA Group
+func (s *Service) GitLabEnrollRepositories(ctx context.Context, claGroupID string, repositoryIDList []int64, enrollValue bool) error {
 	f := logrus.Fields{
-		"functionName":   "v2.repositories.gitlab_services.GitLabEnableRepositories",
+		"functionName":   "v2.repositories.gitlab_services.GitLabEnrollRepositories",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"enrollValue":    enrollValue,
 	}
 
 	type GitLabUpdateRepositoryResponse struct {
@@ -322,7 +330,7 @@ func (s *Service) GitLabEnableRepositories(ctx context.Context, claGroupID strin
 
 	for _, repoID := range repositoryIDList {
 		go func(claGroupID string, repoID int64) {
-			updateErr := s.GitLabEnableRepository(ctx, claGroupID, repoID)
+			updateErr := s.GitLabEnrollRepository(ctx, claGroupID, repoID, enrollValue)
 			updateRepoChan <- &GitLabUpdateRepositoryResponse{
 				RepositoryID: repoID,
 				Error:        updateErr,
@@ -351,19 +359,19 @@ func (s *Service) GitLabEnableRepositories(ctx context.Context, claGroupID strin
 	return lastErr
 }
 
-// GitLabEnableRepository service function
-func (s *Service) GitLabEnableRepository(ctx context.Context, claGroupID string, repositoryExternalID int64) error {
-	return s.gitV2Repository.GitLabEnableRepositoryByID(ctx, claGroupID, repositoryExternalID)
+// GitLabEnrollRepository service function enrolls a single GitLab repository to the specified CLA Group
+func (s *Service) GitLabEnrollRepository(ctx context.Context, claGroupID string, repositoryExternalID int64, enrollValue bool) error {
+	return s.gitV2Repository.GitLabEnrollRepositoryByID(ctx, claGroupID, repositoryExternalID, enrollValue)
 }
 
-// GitLabDisableRepository service function
-func (s *Service) GitLabDisableRepository(ctx context.Context, claGroupID string, repositoryExternalID int64) error {
-	return s.gitV2Repository.GitLabDisableRepositoryByID(ctx, claGroupID, repositoryExternalID)
+// GitLabEnrollCLAGroupRepositories service function
+func (s *Service) GitLabEnrollCLAGroupRepositories(ctx context.Context, claGroupID string, enrollValue bool) error {
+	return s.gitV2Repository.GitLabEnableCLAGroupRepositories(ctx, claGroupID, enrollValue)
 }
 
-// GitLabDisableCLAGroupRepositories service function
-func (s *Service) GitLabDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error {
-	return s.gitV2Repository.GitLabDisableCLAGroupRepositories(ctx, claGroupID)
+// GitLabDeleteRepositories deletes the repositories under the specified path
+func (s *Service) GitLabDeleteRepositories(ctx context.Context, gitLabGroupPath string) error {
+	return s.gitV2Repository.GitLabDeleteRepositories(ctx, gitLabGroupPath)
 }
 
 // dbModelToGitLabRepository converts the database model to a v2 response model

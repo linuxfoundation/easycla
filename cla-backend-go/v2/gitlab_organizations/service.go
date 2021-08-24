@@ -37,11 +37,13 @@ type ServiceInterface interface {
 	GetGitLabOrganization(ctx context.Context, gitLabOrganizationID string) (*models.GitlabOrganization, error)
 	GetGitLabOrganizationByID(ctx context.Context, gitLabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*models.GitlabOrganization, error)
+	GetGitLabOrganizationByFullPath(ctx context.Context, gitLabOrganizationFullPath string) (*models.GitlabOrganization, error)
+	GetGitLabOrganizationByGroupID(ctx context.Context, gitLabGroupID int64) (*models.GitlabOrganization, error)
 	GetGitLabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error)
 	GetGitLabOrganizationByState(ctx context.Context, gitLabOrganizationID, authState string) (*models.GitlabOrganization, error)
 	UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
 	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlab_api.OauthSuccessResponse) error
-	DeleteGitLabOrganization(ctx context.Context, projectSFID string, gitlabOrgName string) error
+	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID string, gitlabOrgFullPath string) error
 }
 
 // Service data model
@@ -72,6 +74,32 @@ func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string,
 		"branchProtectionEnabled": utils.BoolValue(input.BranchProtectionEnabled),
 		"groupID":                 input.GroupID,
 		"groupFullPath":           input.OrganizationFullPath,
+	}
+
+	var existingModel *models.GitlabOrganization
+	var getErr error
+	if input.OrganizationFullPath != "" {
+		existingModel, getErr = s.GetGitLabOrganizationByFullPath(ctx, input.OrganizationFullPath)
+		if getErr != nil {
+			log.WithFields(f).WithError(getErr).Warnf("problem querying GitLab group/organization using full path: %s", input.OrganizationFullPath)
+			return nil, getErr
+		}
+	}
+	if input.GroupID > 0 {
+		existingModel, getErr = s.GetGitLabOrganizationByGroupID(ctx, input.GroupID)
+		if getErr != nil {
+			log.WithFields(f).WithError(getErr).Warnf("problem querying GitLab group/organization using group ID: %d", input.GroupID)
+			return nil, getErr
+		}
+	}
+
+	if existingModel != nil {
+		updateErr := s.UpdateGitLabOrganization(ctx, projectSFID, input.GroupID, "", input.OrganizationFullPath, utils.BoolValue(input.AutoEnabled), input.AutoEnabledClaGroupID, utils.BoolValue(input.BranchProtectionEnabled))
+		if updateErr != nil {
+			log.WithFields(f).WithError(updateErr).Warnf("problem updating GitLab group/organization, error: %+v", updateErr)
+			return nil, getErr
+		}
+		return s.GetGitLabOrganizations(ctx, projectSFID)
 	}
 
 	psc := v2ProjectService.GetClient()
@@ -157,7 +185,40 @@ func (s *Service) GetGitLabOrganizationByName(ctx context.Context, gitLabOrganiz
 	}
 
 	return common.ToModel(dbModel), nil
+}
 
+// GetGitLabOrganizationByFullPath returns the GitLab group/organization using the specified full path
+func (s *Service) GetGitLabOrganizationByFullPath(ctx context.Context, gitLabOrganizationFullPath string) (*models.GitlabOrganization, error) {
+	f := logrus.Fields{
+		"functionName":               "v2.gitlab_organizations.service.GetGitLabOrganizationByFullPath",
+		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
+		"gitLabOrganizationFullPath": gitLabOrganizationFullPath,
+	}
+
+	log.WithFields(f).Debugf("fetching gitlab group/organization using full path: %s", gitLabOrganizationFullPath)
+	dbModel, err := s.repo.GetGitLabOrganizationByFullPath(ctx, gitLabOrganizationFullPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return common.ToModel(dbModel), nil
+}
+
+// GetGitLabOrganizationByGroupID returns the GitLab group/organization using the specified group ID
+func (s *Service) GetGitLabOrganizationByGroupID(ctx context.Context, gitLabGroupID int64) (*models.GitlabOrganization, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.gitlab_organizations.service.GetGitLabOrganizationByGroupID",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"gitLabGroupID":  gitLabGroupID,
+	}
+
+	log.WithFields(f).Debugf("fetching gitlab group/organization using group ID: %d", gitLabGroupID)
+	dbModel, err := s.repo.GetGitLabOrganizationByExternalID(ctx, gitLabGroupID)
+	if err != nil {
+		return nil, err
+	}
+
+	return common.ToModel(dbModel), nil
 }
 
 // GetGitLabOrganizations returns a collection of GitLab organizations based on the specified project SFID value
@@ -225,7 +286,7 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 			if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
 				log.WithFields(f).WithError(repoErr).Debugf("no GitLab repositories onboarded for project : %s", projectSFID)
 			} else {
-				log.WithFields(f).WithError(repoErr).Debugf("unexpected error while fetching GitLab group repositories for project: %s, error: %v", projectSFID, repoErr)
+				log.WithFields(f).WithError(repoErr).Debugf("unexpected error while fetching GitLab group repositories for project: %s, error type: %T, error: %v", projectSFID, repoErr, repoErr)
 			}
 		}
 
@@ -389,32 +450,49 @@ func (s *Service) UpdateGitLabOrganization(ctx context.Context, projectSFID stri
 	return s.repo.UpdateGitLabOrganization(ctx, projectSFID, groupID, organizationName, groupFullPath, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, true)
 }
 
-// DeleteGitLabOrganization deletes the specified GitLab organization
-func (s *Service) DeleteGitLabOrganization(ctx context.Context, projectSFID string, gitLabOrgName string) error {
+// DeleteGitLabOrganizationByFullPath deletes the specified GitLab organization by full path
+func (s *Service) DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID string, gitLabOrgFullPath string) error {
 	f := logrus.Fields{
-		"functionName":   "v2.gitlab_organizations.service.DeleteGitLabOrganization",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"projectSFID":    projectSFID,
-		"gitLabOrgName":  gitLabOrgName,
+		"functionName":      "v2.gitlab_organizations.service.DeleteGitLabOrganizationByFullPath",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"projectSFID":       projectSFID,
+		"gitLabOrgFullPath": gitLabOrgFullPath,
 	}
 
-	// Lookup the parent
-	parentProjectSFID, projErr := v2ProjectService.GetClient().GetParentProject(projectSFID)
-	if projErr != nil {
-		log.WithFields(f).Warnf("problem fetching project parent SFID, error: %+v", projErr)
-		return projErr
+	// Check for enabled repos...
+	repoList, getRepListErr := s.v2GitRepoService.GitLabGetRepositoriesByProjectSFID(ctx, projectSFID)
+	if getRepListErr != nil {
+		// If nothing to delete...
+		if _, ok := getRepListErr.(*utils.GitLabRepositoryNotFound); ok {
+			log.WithFields(f).Debugf("no repositories found under GitLab group/organization: %s", gitLabOrgFullPath)
+		} else {
+			return getRepListErr
+		}
 	}
 
-	log.WithFields(f).Debugf("retrieved parent of project sfid : %s -> %s", projectSFID, parentProjectSFID)
+	// Check to see if we still have enabled repos belonging to this GitLab organization/group
+	var enabledRepoList []string
+	if repoList != nil && len(repoList.List) > 0 {
+		for _, repo := range repoList.List {
+			if strings.HasPrefix(repo.RepositoryName, gitLabOrgFullPath) && repo.Enabled {
+				enabledRepoList = append(enabledRepoList, repo.RepositoryName)
+			}
+		}
+	}
 
-	// Todo: Enable this when the repositories are implemented
-	//err := s.ghRepository.GitHubDisableRepositoriesOfOrganization(ctx, parentProjectSFID, gitLabOrgName)
-	//if err != nil {
-	//	log.WithFields(f).Warnf("problem disabling repositories for github organizations, error: %+v", projErr)
-	//	return err
-	//}
+	if len(enabledRepoList) > 0 {
+		return fmt.Errorf("the following repositories are still enabled under the GitLab Group/Organization: %s - %s", gitLabOrgFullPath, strings.Join(enabledRepoList, ","))
+	}
 
-	return s.repo.DeleteGitLabOrganization(ctx, projectSFID, gitLabOrgName)
+	// First delete the GitLab project/repos
+	log.WithFields(f).Debugf("deleting GitLab repos under group: %s", gitLabOrgFullPath)
+	repoDeleteErr := s.v2GitRepoService.GitLabDeleteRepositories(ctx, gitLabOrgFullPath)
+	if repoDeleteErr != nil {
+		log.WithFields(f).WithError(repoDeleteErr).Warnf("problem deleting GitLab repos under group: %s", gitLabOrgFullPath)
+		return repoDeleteErr
+	}
+
+	return s.repo.DeleteGitLabOrganizationByFullPath(ctx, projectSFID, gitLabOrgFullPath)
 }
 
 func buildInstallationURL(gitlabOrgID string, authStateNonce string) *strfmt.URI {

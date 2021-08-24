@@ -1688,11 +1688,11 @@ paths:
       tags:
         - gitlab-organizations
 
-  /project/{projectSFID}/gitlab/organizations/{orgName}/config:
+  /project/{projectSFID}/gitlab/group/{gitLabGroupID}/config:
     put:
-      summary: Update Gitlab Organization Configuration
-      description: Endpoint to adjust the Gitlab Organization Configuration, such as toggling the auto-enable flag
-      operationId: updateProjectGitlabOrganizationConfig
+      summary: Update Gitlab Group/Organization Configuration
+      description: Endpoint to adjust the Gitlab Group/Organization Configuration by GitLab Group ID
+      operationId: updateProjectGitlabGroupConfig
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -1702,9 +1702,9 @@ paths:
           in: path
           type: string
           required: true
-        - name: orgName
+        - name: gitLabGroupID
           in: path
-          type: string
+          type: integer
           required: true
         - in: body
           name: body
@@ -1729,10 +1729,12 @@ paths:
       tags:
         - gitlab-organizations
 
+  # /project/{projectSFID}/gitlab/organization?organization_full_path=linuxfoundation/product/test:
+  /project/{projectSFID}/gitlab/organization:
     delete:
-      summary: Delete Gitlab organization in the project
-      description: Endpoint to delete the Gitlab organization for the project
-      operationId: deleteProjectGitlabOrganization
+      summary: Delete Gitlab Group/Organization Configuration
+      description: Endpoint to delete the Gitlab Group/Organization by Group ID
+      operationId: deleteProjectGitlabGroupConfig
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -1742,8 +1744,8 @@ paths:
           in: path
           type: string
           required: true
-        - name: orgName
-          in: path
+        - name: organization_full_path
+          in: query
           type: string
           required: true
       responses:
@@ -1766,9 +1768,9 @@ paths:
 
   /project/{projectSFID}/gitlab/repositories:
     put:
-      summary: Enables GitLab repositories for the CLA Group
-      description: Endpoint to enable one or more GitLab repositories for the CLA Group
-      operationId: enableGitLabRepository
+      summary: Enrolls/Unenrolls GitLab repositories for the CLA Group
+      description: Endpoint to enroll or unenroll GitLab repositories for the CLA Group
+      operationId: enrollGitLabRepository
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -1779,9 +1781,9 @@ paths:
           type: string
           required: true
         - in: body
-          name: gitlab-repositories-enable
+          name: gitlab-repositories-enroll
           schema:
-            $ref: '#/definitions/gitlab-repositories-enable'
+            $ref: '#/definitions/gitlab-repositories-enroll'
           required: true
       responses:
         '200':
@@ -1836,42 +1838,6 @@ paths:
           $ref: '#/responses/not-found'
         '500':
           $ref: '#/responses/internal-server-error'
-      tags:
-        - gitlab-repositories
-
-  /project/{projectSFID}/gitlab/repositories/{repositoryExternalID}:
-    delete:
-      summary: Unenrolls the GitLab repository from the CLA Group
-      description: Endpoint to unenroll a GitLab repository from a CLA Group
-      operationId: unenrollGitLabRepository
-      parameters:
-        - $ref: "#/parameters/x-request-id"
-        - $ref: "#/parameters/x-acl"
-        - $ref: "#/parameters/x-username"
-        - $ref: "#/parameters/x-email"
-        - name: projectSFID
-          in: path
-          type: string
-          required: true
-        - name: repositoryExternalID
-          in: path
-          type: integer
-          required: true
-      responses:
-        '204':
-          description: 'Resource Deleted'
-          headers:
-            x-request-id:
-              type: string
-              description: The unique request ID value - assigned/set by the API Gateway based on the session
-        '400':
-          $ref: '#/responses/invalid-request'
-        '401':
-          $ref: '#/responses/unauthorized'
-        '403':
-          $ref: '#/responses/forbidden'
-        '404':
-          $ref: '#/responses/not-found'
       tags:
         - gitlab-repositories
 
@@ -4504,8 +4470,8 @@ definitions:
   gitlab-repositories-list:
     $ref: './common/gitlab-repositories-list.yaml'
 
-  gitlab-repositories-enable:
-    $ref: './common/gitlab-repositories-enable.yaml'
+  gitlab-repositories-enroll:
+    $ref: './common/gitlab-repositories-enroll.yaml'
 
   # ---------------------------------------------------------------------------
   # CLA Group Definitions

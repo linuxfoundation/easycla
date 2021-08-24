@@ -25,6 +25,7 @@ type GitLabOrganization struct {
 	AutoEnabledClaGroupID   string `json:"auto_enabled_cla_group_id,omitempty"`
 	AuthInfo                string `json:"auth_info"`
 	AuthState               string `json:"auth_state"`
+	Note                    string `json:"note,omitempty"`
 	Version                 string `json:"version,omitempty"`
 }
 

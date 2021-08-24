@@ -4,8 +4,8 @@
 package utils
 
 // ValidateAutoEnabledClaGroupID checks for validation if autoEnabled flag is on autoEnabledClaGroupID is enabled as well
-func ValidateAutoEnabledClaGroupID(autoEnabled *bool, autoEnabledClaGroupID string) bool {
-	if autoEnabled == nil || !*autoEnabled {
+func ValidateAutoEnabledClaGroupID(autoEnabled bool, autoEnabledClaGroupID string) bool {
+	if !autoEnabled {
 		return true
 	}
 

@@ -208,6 +208,7 @@ type GitlabOrganizationDeletedEventData struct {
 // GitlabOrganizationUpdatedEventData data model
 type GitlabOrganizationUpdatedEventData struct {
 	GitlabOrganizationName string
+	GitLabGroupID          int64
 	AutoEnabled            bool
 	AutoEnabledClaGroupID  string
 }
@@ -732,13 +733,25 @@ func (ed *GitlabOrganizationDeletedEventData) GetEventDetailsString(args *LogEve
 
 // GetEventDetailsString returns the details string for this event
 func (ed *GitlabOrganizationUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("GitHub Organization:%s was updated with auto-enabled: %t",
-		ed.GitlabOrganizationName, ed.AutoEnabled)
+	data := "GitHub Organization" // nolint
+	if ed.GitlabOrganizationName != "" {
+		data = fmt.Sprintf("%s with name: %s", data, ed.GitlabOrganizationName)
+	}
+	if ed.GitLabGroupID > 0 {
+		data = fmt.Sprintf("%s with group ID: %d", data, ed.GitLabGroupID)
+	}
+	data = fmt.Sprintf("%s was updated with auto-enabled: %t", data, ed.AutoEnabled)
 	if ed.AutoEnabledClaGroupID != "" {
-		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
+		data = fmt.Sprintf("%s with auto-enabled-cla-group: %s", data, ed.AutoEnabledClaGroupID)
+	}
+	if args.ProjectName != "" {
+		data = fmt.Sprintf("%s for the project %s", data, args.ProjectName)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
 	}
 	if args.UserName != "" {
-		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+		data = fmt.Sprintf("%s by the user %s", data, args.UserName)
 	}
 	data = data + "."
 	return data, true
@@ -1783,19 +1796,22 @@ func (ed *GitlabOrganizationDeletedEventData) GetEventSummaryString(args *LogEve
 
 // GetEventSummaryString returns the summary string for this event
 func (ed *GitlabOrganizationUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("Gitlab Organization: %s was updated with auto-enabled: %t",
-		ed.GitlabOrganizationName, ed.AutoEnabled)
-	if ed.AutoEnabledClaGroupID != "" {
-		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
+	data := "GitHub Organization" // nolint
+	if ed.GitlabOrganizationName != "" {
+		data = fmt.Sprintf("%s with name: %s", data, ed.GitlabOrganizationName)
 	}
-	if args.CLAGroupName != "" {
-		data = data + fmt.Sprintf(" for CLA Group %s", args.CLAGroupName)
+	if ed.GitLabGroupID > 0 {
+		data = fmt.Sprintf("%s with group ID: %d", data, ed.GitLabGroupID)
+	}
+	data = fmt.Sprintf("%s was updated with auto-enabled: %t", data, ed.AutoEnabled)
+	if ed.AutoEnabledClaGroupID != "" {
+		data = fmt.Sprintf("%s with auto-enabled-cla-group: %s", data, ed.AutoEnabledClaGroupID)
 	}
 	if args.ProjectName != "" {
-		data = data + fmt.Sprintf(" for project %s", args.ProjectName)
+		data = fmt.Sprintf("%s for the project %s", data, args.ProjectName)
 	}
 	if args.UserName != "" {
-		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+		data = fmt.Sprintf("%s by the user %s", data, args.UserName)
 	}
 	data = data + "."
 	return data, true

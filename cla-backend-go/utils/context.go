@@ -39,12 +39,12 @@ func NewContextWithUser(authUser *auth.User) context.Context {
 		return context.Background()
 	}
 
-	return context.WithValue(context.WithValue(context.Background(), XREQUESTID, requestID), "authUser", authUser) // nolint
+	return context.WithValue(context.WithValue(context.Background(), XREQUESTID, requestID), CtxAuthUser, authUser) // nolint
 }
 
 // ContextWithRequestAndUser returns a new context with the specified request ID and user
 func ContextWithRequestAndUser(ctx context.Context, reqID string, authUser *auth.User) context.Context {
-	return context.WithValue(context.WithValue(ctx, XREQUESTID, reqID), "authUser", authUser) // nolint
+	return context.WithValue(context.WithValue(ctx, XREQUESTID, reqID), CtxAuthUser, authUser) // nolint
 }
 
 // ContextWithUser returns a new context with the specified user

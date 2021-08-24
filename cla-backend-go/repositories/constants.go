@@ -42,6 +42,9 @@ const RepositoryDisabled = "disabled"
 // RepositoryProjectIndex constant
 const RepositoryProjectIndex = "project-repository-index"
 
+// RepositoryTypeIndex constant
+const RepositoryTypeIndex = "repository-type-index"
+
 // RepositoryExternalIDIndex constant
 const RepositoryExternalIDIndex = "external-repository-index"
 

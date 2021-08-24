@@ -112,7 +112,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			if !utils.ValidateAutoEnabledClaGroupID(params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
+			if !utils.ValidateAutoEnabledClaGroupID(*params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
 				msg := "AutoEnabledClaGroupID can't be empty when AutoEnabled"
 				log.WithFields(f).WithError(err).Warn(msg)
 				return github_organizations.NewAddProjectGithubOrganizationBadRequest().WithPayload(
@@ -213,7 +213,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				return github_organizations.NewUpdateProjectGithubOrganizationConfigBadRequest().WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
-			if !utils.ValidateAutoEnabledClaGroupID(params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
+			if !utils.ValidateAutoEnabledClaGroupID(*params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
 				msg := fmt.Sprintf("AutoEnabledClaGroupID can't be empty when AutoEnabled flag is set to true - issue in request body for project SFID: %s for organization: %s", params.ProjectSFID, params.OrgName)
 				log.WithFields(f).Debug(msg)
 				return github_organizations.NewUpdateProjectGithubOrganizationConfigBadRequest().WithPayload(utils.ErrorResponseBadRequest(reqID, msg))

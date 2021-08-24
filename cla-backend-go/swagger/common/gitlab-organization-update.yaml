@@ -2,15 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 type: object
-required:
-  - auto_enabled
+description: GitLab Organization Update model
 properties:
   auto_enabled:
     type: boolean
     description: Flag to indicate if auto-enabled flag should be enabled. Group/Organizations with auto-enable turned on will automatically include any new repositories to the EasyCLA configuration.
   auto_enabled_cla_group_id:
-    type: string
-    description: Specifies which Cla group ID to be used when autoEnabled flag in enabled for the GitLab Group/Organization. If autoEnabled is on this field needs to be set as well.
+    $ref: './common/properties/internal-id.yaml'
+    description: Specifies which CLA Group ID to be used when the auto enabled flag in enabled for the GitLab Group/Organization. When the auto enabled flag is set to true, this field needs to be set to a valid CLA Group ID value.
   branch_protection_enabled:
     type: boolean
     description: Flag to indicate if this Group/Organization is configured to automatically setup branch protection on CLA enabled repositories.
