@@ -6,11 +6,13 @@ package gitlab_sign
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_sign"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/sirupsen/logrus"
 
@@ -33,7 +35,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 			log.WithFields(f).Debugf("Initiating Gitlab sign request for : %+v ", srp)
 
-			err := service.GitlabSignRequest(ctx, srp.HTTPRequest, srp.OrganizationID, srp.GitlabRepositoryID, srp.MergeRequestID, contributorConsoleV2Base, eventService)
+			consoleURL, err := service.GitlabSignRequest(ctx, srp.HTTPRequest, srp.OrganizationID, srp.GitlabRepositoryID, srp.MergeRequestID, contributorConsoleV2Base, eventService)
 
 			if err != nil {
 				msg := fmt.Sprintf("problem initiating sign request for :%+v", srp)
@@ -42,6 +44,9 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			return gitlab_sign.NewSignRequestOK()
+			return middleware.ResponderFunc(func(rw http.ResponseWriter, pr runtime.Producer) {
+				http.Redirect(rw, srp.HTTPRequest, *consoleURL, http.StatusSeeOther)
+			})
+
 		})
 }

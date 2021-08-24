@@ -239,7 +239,7 @@ func server(localMode bool) http.Handler {
 	// initialize github
 	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
 	// initialize gitlab
-	_ = gitlab.Init(configFile.Gitlab.AppClientID, configFile.Gitlab.AppClientSecret, configFile.Gitlab.AppPrivateKey)
+	gitlabApp := gitlab.Init(configFile.Gitlab.AppClientID, configFile.Gitlab.AppClientSecret, configFile.Gitlab.AppPrivateKey)
 
 	// Our backend repository handlers
 	userRepo := user.NewDynamoRepository(awsSession, stage)
@@ -309,7 +309,7 @@ func server(localMode bool) http.Handler {
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo)
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo)
 	gitlabActivityService := gitlab_activity.NewService(gitlabOrganizationRepo, gitV1Repository, gitV2Repository, usersRepo, signaturesRepo, v1ProjectClaGroupRepo, v1CompanyRepo, signaturesRepo)
-	gitlabSignService := gitlab_sign.NewService(v2RepositoriesService, gitlabOrganizationRepo, usersService, storeRepository)
+	gitlabSignService := gitlab_sign.NewService(v2RepositoriesService, gitlabOrganizationRepo, usersService, storeRepository, gitlabApp)
 	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo, githubOrganizationsService)
 	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo, v1ProjectService)
 	v2GithubActivityService := v2GithubActivity.NewService(gitV1Repository, githubOrganizationsRepo, eventsService, autoEnableService, emailService)

@@ -19,14 +19,14 @@ import (
 
 //DBStore represents DB Model for the store table
 type DBStore struct {
-	Key    string
-	Value  []byte
-	Expire int64
+	Key    string `dynamodbav:"key"`
+	Value  string `dynamodbav:"value"`
+	Expire int64  `dynamodbav:"expire"`
 }
 
 // Repository interface
 type Repository interface {
-	SetActiveSignatureMetaData(ctx context.Context, key string, expire int64, value []byte) error
+	SetActiveSignatureMetaData(ctx context.Context, key string, expire int64, value string) error
 }
 
 type repo struct {
@@ -45,7 +45,7 @@ func NewRepository(awsSession *session.Session, stage string) Repository {
 }
 
 // SetActiveSignatureMetaData sets active signature meta data
-func (r repo) SetActiveSignatureMetaData(ctx context.Context, key string, expire int64, value []byte) error {
+func (r repo) SetActiveSignatureMetaData(ctx context.Context, key string, expire int64, value string) error {
 	f := logrus.Fields{
 		"functionName":   "v2.store.repository.SetActiveSignatureMetaData",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -60,11 +60,16 @@ func (r repo) SetActiveSignatureMetaData(ctx context.Context, key string, expire
 		Expire: expire,
 	}
 
+	log.WithFields(f).Debugf("key: %s ", store.Key)
+	log.WithFields(f).Debugf("value: %+s ", store.Value)
+
 	v, err := dynamodbattribute.MarshalMap(store)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem marshalling store record")
 		return err
 	}
+
+	log.WithFields(f).Debugf("Marshalled values: %+v", v)
 
 	_, err = r.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
 		Item:      v,

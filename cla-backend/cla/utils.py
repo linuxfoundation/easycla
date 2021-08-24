@@ -1201,6 +1201,10 @@ def get_active_signature_return_url(user_id, metadata=None):
     if metadata is None:
         cla.log.warning('Could not find active signature for user {}, return URL request failed'.format(user_id))
         return None
+    
+    # Factor in Gitlab flow process
+    if "merge_request_id" in metadata.keys():
+        return metadata['return_url']
 
     # Get Github ID from metadata
     github_repository_id = metadata['repository_id']

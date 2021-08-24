@@ -3561,9 +3561,13 @@ class Store(key_value_store_interface.KeyValueStore):
         model.save()
 
     def get(self, key):
+        import json
         model = StoreModel()
         try:
-            return model.get(key).value
+            val = model.get(key).value
+            if isinstance(val, dict):
+                val = json.dumps(val)
+            return val
         except StoreModel.DoesNotExist:
             raise cla.models.DoesNotExist("Key not found")
 
