@@ -82,6 +82,9 @@ type Config struct {
 	// CLAV1ApiURL is api url of v1. it is used in v2 sign service
 	ClaV1ApiURL string `json:"cla_v1_api_url"`
 
+	// CLALandingPage
+	CLALandingPage string `json:"cla_landing_page"`
+
 	// AcsAPIKey is api key of the acs
 	AcsAPIKey string `json:"acs_api_key"`
 

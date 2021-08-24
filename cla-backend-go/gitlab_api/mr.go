@@ -92,22 +92,7 @@ func SetCommitStatus(client *gitlab.Client, projectID int, commitSha string, sta
 }
 
 // SetMrComment is responsible for setting the comment body for project and merge id
-func SetMrComment(client *gitlab.Client, projectID int, mergeID int, state gitlab.BuildStateValue, message string, targetURL string) error {
-	covered := fmt.Sprintf(`<a href="%s">
-	<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-signed.svg" alt="covered" align="left" height="28" width="328" ></a><br/>`, targetURL)
-	failed := fmt.Sprintf(`<a href="%s">
-<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-not-signed.svg" alt="covered" align="left" height="28" width="328" ></a><br/>`, targetURL)
-
-	var body string
-	if state == gitlab.Failed {
-		body = failed
-	} else {
-		body = covered
-	}
-
-	if message != "" {
-		body += "<br/><br/>" + message
-	}
+func SetMrComment(client *gitlab.Client, projectID int, mergeID int, message string) error {
 
 	notes, _, err := client.Notes.ListMergeRequestNotes(projectID, mergeID, &gitlab.ListMergeRequestNotesOptions{})
 	if err != nil {
@@ -117,7 +102,7 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, state gitla
 	var previousNote *gitlab.Note
 	if len(notes) > 0 {
 		for _, n := range notes {
-			if strings.Contains(n.Body, "cla-signed.svg") || strings.Contains(n.Body, "cla-not-signed.svg") {
+			if strings.Contains(n.Body, "cla-signed.svg") || strings.Contains(n.Body, "cla-not-signed.svg") || strings.Contains(n.Body, "cla-missing-id.svg") || strings.Contains(n.Body, "cla-confirmation-needed.svg") {
 				previousNote = n
 				break
 			}
@@ -127,7 +112,7 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, state gitla
 	if previousNote == nil {
 		log.Debugf("no previous comments found for project id : %d and merge id : %d", projectID, mergeID)
 		_, _, err = client.Notes.CreateMergeRequestNote(projectID, mergeID, &gitlab.CreateMergeRequestNoteOptions{
-			Body: &body,
+			Body: &message,
 		})
 		if err != nil {
 			return fmt.Errorf("creating comment for project id : %d and merge id : %d : failed %v", projectID, mergeID, err)
@@ -135,7 +120,7 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, state gitla
 	} else {
 		log.Debugf("previous comments found for project id : %d and merge id : %d", projectID, mergeID)
 		_, _, err = client.Notes.UpdateMergeRequestNote(projectID, mergeID, previousNote.ID, &gitlab.UpdateMergeRequestNoteOptions{
-			Body: &body,
+			Body: &message,
 		})
 		if err != nil {
 			return fmt.Errorf("updtae comment for project id : %d and merge id : %d : failed %v", projectID, mergeID, err)

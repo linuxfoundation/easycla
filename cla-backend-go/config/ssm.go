@@ -104,6 +104,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-signature-query-default-%s", stage),
 		fmt.Sprintf("cla-platform-api-gw-%s", stage),
 		fmt.Sprintf("cla-api-v4-base-%s", stage),
+		fmt.Sprintf("cla-landing-page-%s", stage),
 	}
 
 	// For each key to lookup
@@ -178,6 +179,8 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 			config.CLAContributorv2Base = resp.value
 		case fmt.Sprintf("cla-api-v4-base-%s", stage):
 			config.ClaAPIV4Base = resp.value
+		case fmt.Sprintf("cla-landing-page-%s", stage):
+			config.CLALandingPage = resp.value
 
 		case fmt.Sprintf("cla-corporate-base-%s", stage):
 			config.CorporateConsoleURL = resp.value

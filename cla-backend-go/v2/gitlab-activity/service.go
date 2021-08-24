@@ -80,7 +80,6 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 	projectName := mergeEvent.Project.Name
 	projectID := mergeEvent.Project.ID
 	mergeID := mergeEvent.ObjectAttributes.IID
-	repositoryName := mergeEvent.Repository.Name
 	repositoryPath := mergeEvent.Project.PathWithNamespace
 	lastCommitSha := mergeEvent.ObjectAttributes.LastCommit.ID
 
@@ -89,8 +88,7 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"gitlabProjectName": projectName,
 		"gitlabProjectID":   projectID,
-		"repositoryName":    repositoryName,
-		"repositoryPath":    repositoryPath,
+		"repositoryName":    repositoryPath,
 		"mergeID":           mergeID,
 	}
 
@@ -113,7 +111,7 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 	}
 
 	// try to find the repository via the external id
-	gitlabRepo, err := s.getGitlabRepoByName(ctx, repositoryName)
+	gitlabRepo, err := s.getGitlabRepoByName(ctx, repositoryPath)
 	if err != nil {
 		return fmt.Errorf("finding internal repository for gitlab org name failed : %v", err)
 	}
@@ -162,7 +160,7 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 			return fmt.Errorf("setting commit status failed : %v", err)
 		}
 
-		if err := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Failed, mrCommentContent, signURL); err != nil {
+		if err := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, mrCommentContent); err != nil {
 			return fmt.Errorf("setting comment failed : %v", err)
 		}
 
@@ -173,13 +171,34 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 		return fmt.Errorf("setting commit status failed : %v", err)
 	}
 
-	if err := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, gitlab.Success, mrCommentContent, signURL); err != nil {
+	if err := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, mrCommentContent); err != nil {
 		return fmt.Errorf("setting comment failed : %v", err)
 	}
 	return err
 }
 
 func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*gitlab.User, signURL string) string {
+	landingPage := config.GetConfig().CLALandingPage
+	landingPage += "/#/?version=2"
+
+	var badgeHyperlink string
+	if len(missingUsers) > 0{
+		badgeHyperlink = signURL
+	}else{
+		badgeHyperlink = landingPage
+	}
+
+	coveredBadge := fmt.Sprintf(`<a href="%s">
+	<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-signed.svg" alt="CLA Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+	failedBadge := fmt.Sprintf(`<a href="%s">
+<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-not-signed.svg" alt="CLA Not Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+	missingUserIDBadge := fmt.Sprintf(`<a href="%s">
+<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-missing-id.svg" alt="CLA Missing ID" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+	confirmationNeededBadge := fmt.Sprintf(`<a href="%s">
+<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-confirmation-needed.svg" alt="CLA Confirmation Needed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+
+	var body string
+
 	var result string
 	failed := ":x:"
 	success := ":white_check_mark:"
@@ -191,6 +210,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 			result += fmt.Sprintf("<li>%s %s</li>", success, authorInfo)
 		}
 		result += "</ul>"
+		body = coveredBadge
 	}
 
 	gitlabSupportURL := "https://about.gitlab.com/support"
@@ -206,6 +226,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
                         <a href='%s' target='_blank'>please submit a support request ticket</a>.
                         </li>`, failed, authorInfo, gitlabSupportURL, easyCLASupportURL)
 				result += msg
+				body = missingUserIDBadge
 			} else if errors.Is(missingUser.err, missingCompanyAffiliation) {
 				msg := fmt.Sprintf(`<li>%s is authorized, but they must confirm their affiliation with their company.
                             Start the authorization process 
@@ -216,7 +237,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
                             <a href='%s' target='_blank'>please submit a support request ticket</a>.
                             </li>`, authorInfo, signURL, easyCLASupportURL)
 				result += msg
-
+				body = confirmationNeededBadge
 			} else {
 				msg := fmt.Sprintf(`<li><a href='%s' target='_blank'>%s</a> - 
 							%s's commit is not authorized under a signed CLA. 
@@ -225,13 +246,17 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
                             <a href='%s' target='_blank'>please submit a support request ticket</a>.
                             </li>`, signURL, failed, authorInfo, signURL, easyCLASupportURL)
 				result += msg
-
+				body = failedBadge
 			}
 		}
 		result += "</ul>"
 	}
 
-	return result
+	if result != ""{
+		body += "<br/><br/>" + result
+	}
+
+	return body
 }
 
 func GetFullSignURL(gitlabOrganizationID string, gitlabRepositoryID string, mrID string) string {

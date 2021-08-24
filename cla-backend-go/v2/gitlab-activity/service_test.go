@@ -113,10 +113,11 @@ func TestPrepareMrCommentContent(t *testing.T) {
 	missingApprovalContains := "%s's commit is not authorized under a signed CLA"
 
 	testCases := []struct {
-		name         string
-		signed       []*gitlab.User
-		missing      []*gatedGitlabUser
-		expectedMsgs []string
+		name          string
+		signed        []*gitlab.User
+		missing       []*gatedGitlabUser
+		expectedMsgs  []string
+		expectedBadge string
 	}{
 		{
 			name: "all signed",
@@ -125,6 +126,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				{ID: 2, Username: "oracle"},
 			},
 			expectedMsgs: []string{signedContains, signedContains},
+			expectedBadge: "cla-signed.svg",
 		},
 		{
 			name: "missing id",
@@ -135,6 +137,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				{err: missingID, User: &gitlab.User{ID: 3, Username: "missing"}},
 			},
 			expectedMsgs: []string{signedContains, missingUserContains},
+			expectedBadge: "cla-missing-id.svg",
 		},
 		{
 			name: "missing affiliation",
@@ -145,6 +148,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				{err: missingCompanyAffiliation, User: &gitlab.User{ID: 4, Username: "affiliationUser"}},
 			},
 			expectedMsgs: []string{signedContains, missingAffiliationContains},
+			expectedBadge: "cla-confirmation-needed.svg",
 		},
 		{
 			name: "missing approval",
@@ -155,6 +159,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				{err: missingCompanyApproval, User: &gitlab.User{ID: 5, Username: "approvalUser"}},
 			},
 			expectedMsgs: []string{signedContains, missingApprovalContains},
+			expectedBadge: "cla-not-signed.svg",
 		},
 	}
 
@@ -183,6 +188,8 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				expected := fmt.Sprintf(tc.expectedMsgs[i], getAuthorInfo(allUsers[i]))
 				assert.Contains(tt, p, expected)
 			}
+
+			assert.Contains(tt, result, tc.expectedBadge)
 		})
 	}
 }
