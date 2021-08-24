@@ -38,7 +38,6 @@ func GetGroupsListAll(ctx context.Context, client *goGitLab.Client, minAccessLev
 		},
 		AllAvailable:   utils.Bool(true),                     // Show all the groups you have access to (defaults to false for authenticated users, true for administrators); Attributes owned and min_access_level have precedence
 		MinAccessLevel: goGitLab.AccessLevel(minAccessLevel), // Limit by current user minimal access level.
-		//MinAccessLevel: goGitLab.AccessLevel(goGitLab.MaintainerPermissions), // Limit by current user minimal access level.
 	}
 
 	var groupList []*goGitLab.Group
