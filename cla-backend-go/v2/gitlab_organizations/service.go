@@ -335,12 +335,12 @@ func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrgani
 	}
 
 	// Query the groups list
-	groups, groupListErr := gitlab_api.GetGroupsListAll(ctx, gitLabClient)
+	groupsWithMaintainerPerms, groupListErr := gitlab_api.GetGroupsListAll(ctx, gitLabClient, goGitLab.MaintainerPermissions)
 	if groupListErr != nil {
 		return groupListErr
 	}
 
-	for _, g := range groups {
+	for _, g := range groupsWithMaintainerPerms {
 		// If we have an external group ID or a full path...
 		if (gitLabOrgModel.ExternalGroupID > 0 && g.ID == gitLabOrgModel.ExternalGroupID) ||
 			(gitLabOrgModel.OrganizationFullPath != "" && g.FullPath == gitLabOrgModel.OrganizationFullPath) {
@@ -366,7 +366,29 @@ func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrgani
 		}
 	}
 
-	return fmt.Errorf("unable to locate GitLab group by using external ID: %d or full path: %s, found: %d", gitLabOrgModel.ExternalGroupID, gitLabOrgModel.OrganizationFullPath, len(groups))
+	// Query the groups list to see if the user has minimal access permissions only
+	groupsWithMinimalAccessPerms, groupListErr := gitlab_api.GetGroupsListAll(ctx, gitLabClient, goGitLab.MinimalAccessPermissions)
+	if groupListErr != nil {
+		return groupListErr
+	}
+
+	// Loop through the responses - check to see if we have a match, if so, return a specific error message
+	for _, g := range groupsWithMinimalAccessPerms {
+		// If we have an external group ID or a full path...
+		if (gitLabOrgModel.ExternalGroupID > 0 && g.ID == gitLabOrgModel.ExternalGroupID) ||
+			(gitLabOrgModel.OrganizationFullPath != "" && g.FullPath == gitLabOrgModel.OrganizationFullPath) {
+			msg := ""
+			if gitLabOrgModel.ExternalGroupID > 0 {
+				msg = fmt.Sprintf("external ID: %d", g.ID)
+			} else if gitLabOrgModel.OrganizationFullPath != "" {
+				msg = fmt.Sprintf("full path: '%s'", g.FullPath)
+			}
+			return fmt.Errorf("found the GitLab group '%s' by using the %s filter - however the authenticated user does not have maintainer or above permissions for this GitLab group", g.FullPath, msg)
+		}
+	}
+
+	return fmt.Errorf("unable to locate GitLab group by using external ID: %d or full path: %s, found %d groups where user has maintainer or above permissions",
+		gitLabOrgModel.ExternalGroupID, gitLabOrgModel.OrganizationFullPath, len(groupsWithMaintainerPerms))
 }
 
 // UpdateGitLabOrganization updates the GitLab organization

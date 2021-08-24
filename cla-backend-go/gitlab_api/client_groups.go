@@ -23,7 +23,7 @@ type UserGroup struct {
 }
 
 // GetGroupsListAll returns a complete list of GitLab groups for which the client as authorization/visibility
-func GetGroupsListAll(ctx context.Context, client *goGitLab.Client) ([]*goGitLab.Group, error) {
+func GetGroupsListAll(ctx context.Context, client *goGitLab.Client, minAccessLevel goGitLab.AccessLevelValue) ([]*goGitLab.Group, error) {
 	f := logrus.Fields{
 		"functionName":   "gitlab_api.client_groups.GetGroupsListAll",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -36,8 +36,9 @@ func GetGroupsListAll(ctx context.Context, client *goGitLab.Client) ([]*goGitLab
 			Page:    1,   // starts with one: https://docs.gitlab.com/ee/api/#offset-based-pagination
 			PerPage: 100, // max is 100
 		},
-		AllAvailable:   utils.Bool(true),                                     // Show all the groups you have access to (defaults to false for authenticated users, true for administrators); Attributes owned and min_access_level have precedence
-		MinAccessLevel: goGitLab.AccessLevel(goGitLab.MaintainerPermissions), // Limit by current user minimal access level.
+		AllAvailable:   utils.Bool(true),                     // Show all the groups you have access to (defaults to false for authenticated users, true for administrators); Attributes owned and min_access_level have precedence
+		MinAccessLevel: goGitLab.AccessLevel(minAccessLevel), // Limit by current user minimal access level.
+		//MinAccessLevel: goGitLab.AccessLevel(goGitLab.MaintainerPermissions), // Limit by current user minimal access level.
 	}
 
 	var groupList []*goGitLab.Group
@@ -128,7 +129,7 @@ func GetGroupByFullPath(ctx context.Context, client *goGitLab.Client, fullPath s
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
-	groups, err := GetGroupsListAll(ctx, client)
+	groups, err := GetGroupsListAll(ctx, client, goGitLab.MaintainerPermissions)
 	//groups, _, err := client.Groups.ListGroups(&goGitLab.ListGroupsOptions{})
 	if err != nil {
 		msg := fmt.Sprintf("problem fetching groups, error: %+v", err)

@@ -221,6 +221,7 @@ func TestGitLabListGroups(t *testing.T) { // no lint
 				PerPage: 100,
 			},
 		}
+
 		groups, resp, searchErr := gitLabClient.Groups.ListGroups(opts)
 		assert.Nil(t, searchErr, "GitLab List Groups Error is Nil")
 		if searchErr != nil {
@@ -232,7 +233,7 @@ func TestGitLabListGroups(t *testing.T) { // no lint
 			assert.Fail(t, fmt.Sprintf("unable to list GitLab groups, status code: %d, body: %s", resp.StatusCode, respBody))
 		}
 		for _, g := range groups {
-			t.Logf("name: %s, id: %d, web url: %s, path: %s, full path: %s", g.Name, g.ID, g.WebURL, g.Path, g.FullPath)
+			t.Logf("name: %s, id: %d, path: %s, full path: %s, web url: %s", g.Name, g.ID, g.Path, g.FullPath, g.WebURL)
 		}
 	}
 }
