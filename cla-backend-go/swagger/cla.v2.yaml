@@ -3947,8 +3947,7 @@ paths:
       operationId: gitlabActivity
       parameters:
         - $ref: "#/parameters/x-request-id"
-        - $ref: "#/parameters/x-github-event"
-        - $ref: "#/parameters/x-hub-signature"
+        - $ref: "#/parameters/x-gitlab-token"
         - name: gitlabActivityInput
           in: body
           schema:
@@ -4329,6 +4328,12 @@ parameters:
     description: Github event signature which is used for validation of the request body
     in: header
     type: string
+  x-gitlab-token:
+    name: X-Gitlab-Token
+    description: Gitlab webhook secret token sent for futher verification
+    in: header
+    type: string
+    required: true
 
 definitions:
   # Common definitions

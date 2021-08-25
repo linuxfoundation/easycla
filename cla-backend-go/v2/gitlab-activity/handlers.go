@@ -5,6 +5,7 @@ package gitlab_activity
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
@@ -29,6 +30,11 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 		}
 		log.WithFields(f).Debugf("handling gitlab activity callback")
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID)
+
+		if params.XGitlabToken == ""{
+			return gitlab_activity.NewGitlabActivityUnauthorized().WithPayload(
+				utils.ErrorResponseUnauthorized(reqID, "missing webhook secret token"))
+		}
 
 		jsonData, err := params.GitlabActivityInput.MarshalJSON()
 		if err != nil {
@@ -61,10 +67,14 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
 
-		err = service.ProcessMergeOpenedActivity(ctx, mergeEvent)
+		err = service.ProcessMergeOpenedActivity(ctx, params.XGitlabToken, mergeEvent)
 		if err != nil {
 			msg := fmt.Sprintf("processing gitlab merge event failed : %v", err)
 			log.WithFields(f).Errorf(msg)
+			if errors.Is(err, secretTokenMismatch){
+				return gitlab_activity.NewGitlabActivityUnauthorized().WithPayload(
+					utils.ErrorResponseUnauthorized(reqID, msg))
+			}
 			return gitlab_activity.NewGitlabActivityInternalServerError().WithPayload(
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}

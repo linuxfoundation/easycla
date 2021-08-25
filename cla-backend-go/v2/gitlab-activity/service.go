@@ -38,6 +38,7 @@ var (
 	missingID                 = errors.New("user missing in easyCLA records")
 	missingCompanyAffiliation = errors.New("must confirm affiliation with their company")
 	missingCompanyApproval    = errors.New("missing in company approval lists")
+	secretTokenMismatch       = errors.New("secret token mismatch")
 )
 
 type gatedGitlabUser struct {
@@ -46,7 +47,7 @@ type gatedGitlabUser struct {
 }
 
 type Service interface {
-	ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *gitlab.MergeEvent) error
+	ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error
 }
 
 type service struct {
@@ -76,7 +77,7 @@ func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRe
 	}
 }
 
-func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *gitlab.MergeEvent) error {
+func (s service) ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error {
 	projectName := mergeEvent.Project.Name
 	projectID := mergeEvent.Project.ID
 	mergeID := mergeEvent.ObjectAttributes.IID
@@ -96,6 +97,11 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, mergeEvent *git
 	gitlabOrg, err := s.getGitlabOrganizationFromMergeEvent(ctx, mergeEvent)
 	if err != nil {
 		return fmt.Errorf("fetching internal gitlab org for following path : %s failed : %v", repositoryPath, err)
+	}
+
+	log.WithFields(f).Debugf("checking gitlab org : %s auth state agains the webhook secret token", gitlabOrg.OrganizationName)
+	if gitlabOrg.AuthState != secretToken {
+		return secretTokenMismatch
 	}
 
 	log.WithFields(f).Debugf("internal gitlab org : %s:%s is associated with external path : %s", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName, repositoryPath)

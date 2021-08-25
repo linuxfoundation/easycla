@@ -201,6 +201,9 @@ func (s *Service) GetGitLabOrganizationByFullPath(ctx context.Context, gitLabOrg
 		return nil, err
 	}
 
+	if dbModel == nil {
+		return nil, nil
+	}
 	return common.ToModel(dbModel), nil
 }
 
@@ -218,6 +221,10 @@ func (s *Service) GetGitLabOrganizationByGroupID(ctx context.Context, gitLabGrou
 		return nil, err
 	}
 
+	if dbModel == nil {
+		return nil, nil
+	}
+	
 	return common.ToModel(dbModel), nil
 }
 
