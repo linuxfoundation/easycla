@@ -305,7 +305,24 @@ func (s *Service) GitLabGetRepositoriesByCLAGroup(ctx context.Context, claGroupI
 
 // GitLabGetRepositoriesByOrganizationName returns the list of repositories associated with the Organization/Group name
 func (s *Service) GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabRepositoriesList, error) {
-	dbModels, err := s.gitV2Repository.GitHubGetRepositoriesByOrganizationName(ctx, orgName)
+	dbModels, err := s.gitV2Repository.GitLabGetRepositoriesByOrganizationName(ctx, orgName)
+	if err != nil {
+		return nil, err
+	}
+
+	responses, err := dbModelsToGitLabRepositories(dbModels)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v2Models.GitlabRepositoriesList{
+		List: responses,
+	}, nil
+}
+
+// GitLabGetRepositoriesByNamePrefix returns a list of repositories that match the name prefix
+func (s *Service) GitLabGetRepositoriesByNamePrefix(ctx context.Context, repositoryNamePrefix string) (*v2Models.GitlabRepositoriesList, error) {
+	dbModels, err := s.gitV2Repository.GitLabGetRepositoriesByNamePrefix(ctx, repositoryNamePrefix)
 	if err != nil {
 		return nil, err
 	}

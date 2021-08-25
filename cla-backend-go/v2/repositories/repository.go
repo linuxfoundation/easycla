@@ -31,6 +31,7 @@ type RepositoryInterface interface {
 
 	GitLabGetRepository(ctx context.Context, repositoryID string) (*repoModels.RepositoryDBModel, error)
 	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*repoModels.RepositoryDBModel, error)
+	GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) ([]*repoModels.RepositoryDBModel, error)
 	GitLabGetRepositoriesByNamePrefix(ctx context.Context, repositoryNamePrefix string) ([]*repoModels.RepositoryDBModel, error)
 	GitLabGetRepositoryByExternalID(ctx context.Context, repositoryExternalID int64) (*repoModels.RepositoryDBModel, error)
 	GitLabAddRepository(ctx context.Context, projectSFID string, input *repoModels.RepositoryDBModel) (*repoModels.RepositoryDBModel, error)
@@ -256,8 +257,29 @@ func (r *Repository) GitHubGetRepositoriesByProjectSFID(ctx context.Context, pro
 	return records, nil
 }
 
-// GitHubGetRepositoriesByOrganizationName returns a list of repositories associated with the specified organization name
+// GitHubGetRepositoriesByOrganizationName returns a list of GitHub repositories associated with the specified organization name
 func (r *Repository) GitHubGetRepositoriesByOrganizationName(ctx context.Context, orgName string) ([]*repoModels.RepositoryDBModel, error) {
+	condition := expression.Key(repoModels.RepositoryOrganizationNameColumn).Equal(expression.Value(orgName))
+	filter := expression.Name(repoModels.RepositoryTypeColumn).Equal(expression.Value(utils.GitHubType))
+
+	records, err := r.getRepositoriesWithConditionFilter(ctx, condition, filter, repoModels.RepositoryOrganizationNameIndex)
+	if err != nil {
+		// Catch the error - return the same error with the appropriate details
+		if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
+			return nil, &utils.GitLabRepositoryNotFound{
+				OrganizationName: orgName,
+			}
+		}
+
+		// Some other error
+		return nil, err
+	}
+
+	return records, nil
+}
+
+// GitLabGetRepositoriesByOrganizationName returns a list of GitLab repositories associated with the specified organization name
+func (r *Repository) GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) ([]*repoModels.RepositoryDBModel, error) {
 	condition := expression.Key(repoModels.RepositoryOrganizationNameColumn).Equal(expression.Value(orgName))
 	filter := expression.Name(repoModels.RepositoryTypeColumn).Equal(expression.Value(utils.GitLabLower))
 

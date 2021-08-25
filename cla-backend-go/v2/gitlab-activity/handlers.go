@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 
@@ -27,7 +28,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgRepo gitlab
 		requestID, _ := uuid.NewV4()
 		reqID := requestID.String()
 
-		if params.GitlabTriggerInput == nil || params.GitlabTriggerInput.GitlabOrganizationID == nil || params.GitlabTriggerInput.GitlabExternalRepositoryID == nil || params.GitlabTriggerInput.GitlabMrID == nil{
+		if params.GitlabTriggerInput == nil || params.GitlabTriggerInput.GitlabOrganizationID == nil || params.GitlabTriggerInput.GitlabExternalRepositoryID == nil || params.GitlabTriggerInput.GitlabMrID == nil {
 			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
 				utils.ErrorResponseBadRequest(reqID, "missing parameter"))
 		}
@@ -37,11 +38,11 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgRepo gitlab
 		gitlabMrID := *params.GitlabTriggerInput.GitlabMrID
 
 		f := logrus.Fields{
-			"functionName": "gitlab_activity.handlers.GitlabActivityGitlabTriggerHandler",
-			"requestID":    reqID,
-			"gitlabOrganizationID":gitlabOrganizationID,
-			"gitlabExternalRepositoryID":gitlabExternalRepositoryID,
-			"gitlabMrID":gitlabMrID,
+			"functionName":               "gitlab_activity.handlers.GitlabActivityGitlabTriggerHandler",
+			"requestID":                  reqID,
+			"gitlabOrganizationID":       gitlabOrganizationID,
+			"gitlabExternalRepositoryID": gitlabExternalRepositoryID,
+			"gitlabMrID":                 gitlabMrID,
 		}
 
 		log.WithFields(f).Debugf("handling gitlab trigger")

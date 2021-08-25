@@ -288,7 +288,8 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 			continue
 		}
 
-		repoList, repoErr := s.v2GitRepoService.GitLabGetRepositoriesByProjectSFID(ctx, projectSFID)
+		log.WithFields(f).Debugf("filtering repositories based on group path: %s", org.OrganizationFullPath)
+		repoList, repoErr := s.v2GitRepoService.GitLabGetRepositoriesByNamePrefix(ctx, fmt.Sprintf("%s/", org.OrganizationFullPath))
 		if repoErr != nil {
 			if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
 				log.WithFields(f).WithError(repoErr).Debugf("no GitLab repositories onboarded for project : %s", projectSFID)
@@ -306,7 +307,7 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 			OrganizationFullPath:    org.OrganizationFullPath,
 			OrganizationExternalID:  org.OrganizationExternalID,
 			InstallationURL:         buildInstallationURL(org.OrganizationID, orgDetailed.AuthState),
-			BranchProtectionEnabled: false,                               // TODO review this - why not modeled?
+			BranchProtectionEnabled: org.BranchProtectionEnabled,
 			ConnectionStatus:        "",                                  // updated below
 			Repositories:            []*models.GitlabProjectRepository{}, // updated below
 		}
