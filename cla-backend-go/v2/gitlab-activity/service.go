@@ -41,6 +41,17 @@ var (
 	secretTokenMismatch       = errors.New("secret token mismatch")
 )
 
+// ProcessMergeActivityInput is used to pass the data needed to trigger a gitlab mr check
+type ProcessMergeActivityInput struct {
+	ProjectName      string
+	ProjectPath      string
+	ProjectNamespace string
+	ProjectID        int
+	MergeID          int
+	RepositoryPath   string
+	LastCommitSha    string
+}
+
 type gatedGitlabUser struct {
 	*gitlab.User
 	err error
@@ -48,6 +59,7 @@ type gatedGitlabUser struct {
 
 type Service interface {
 	ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error
+	ProcessMergeActivity(ctx context.Context, secretToken string, input *ProcessMergeActivityInput) error
 }
 
 type service struct {
@@ -79,13 +91,38 @@ func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRe
 
 func (s service) ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error {
 	projectName := mergeEvent.Project.Name
+	projectPath := mergeEvent.Project.PathWithNamespace
+	projectNamespace := mergeEvent.Project.Namespace
 	projectID := mergeEvent.Project.ID
 	mergeID := mergeEvent.ObjectAttributes.IID
 	repositoryPath := mergeEvent.Project.PathWithNamespace
 	lastCommitSha := mergeEvent.ObjectAttributes.LastCommit.ID
 
+	input := &ProcessMergeActivityInput{
+		ProjectName:      projectName,
+		ProjectPath:      projectPath,
+		ProjectNamespace: projectNamespace,
+		ProjectID:        projectID,
+		MergeID:          mergeID,
+		RepositoryPath:   repositoryPath,
+		LastCommitSha:    lastCommitSha,
+	}
+
+	return s.ProcessMergeActivity(ctx, secretToken, input)
+
+}
+
+func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, input *ProcessMergeActivityInput) error {
+	projectName := input.ProjectName
+	projectPath := input.ProjectPath
+	projectNamespace := input.ProjectNamespace
+	projectID := input.ProjectID
+	mergeID := input.MergeID
+	repositoryPath := input.RepositoryPath
+	lastCommitSha := input.LastCommitSha
+
 	f := logrus.Fields{
-		"functionName":      "ProcessMergeOpenedActivity",
+		"functionName":      "ProcessMergeActivity",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"gitlabProjectName": projectName,
 		"gitlabProjectID":   projectID,
@@ -94,7 +131,7 @@ func (s service) ProcessMergeOpenedActivity(ctx context.Context, secretToken str
 	}
 
 	log.WithFields(f).Debugf("looking up for gitlab org in easycla records ...")
-	gitlabOrg, err := s.getGitlabOrganizationFromMergeEvent(ctx, mergeEvent)
+	gitlabOrg, err := s.getGitlabOrganizationFromProjectPath(ctx, projectPath, projectNamespace)
 	if err != nil {
 		return fmt.Errorf("fetching internal gitlab org for following path : %s failed : %v", repositoryPath, err)
 	}
@@ -279,15 +316,14 @@ func getAuthorInfo(gitlabUser *gitlab.User) string {
 	return fmt.Sprintf("%d:%s", gitlabUser.ID, gitlabUser.Username)
 }
 
-func (s service) getGitlabOrganizationFromMergeEvent(ctx context.Context, mergeEvent *gitlab.MergeEvent) (*common.GitLabOrganization, error) {
-	repositoryPath := mergeEvent.Project.PathWithNamespace
-	parts := strings.Split(repositoryPath, "/")
+func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*common.GitLabOrganization, error) {
+	parts := strings.Split(projectPath, "/")
 	organizationName := parts[0]
 
 	gitlabOrg, err := s.gitlabRepository.GetGitLabOrganizationByName(ctx, organizationName)
 	if err != nil || gitlabOrg == nil {
 		// try getting it with project name as well
-		gitlabOrg, err = s.gitlabRepository.GetGitLabOrganizationByName(ctx, mergeEvent.Project.Namespace)
+		gitlabOrg, err = s.gitlabRepository.GetGitLabOrganizationByName(ctx, projectNameSpace)
 		if err != nil || gitlabOrg == nil {
 			return nil, fmt.Errorf("gitlab org : %s doesn't exist : %v", organizationName, err)
 		}

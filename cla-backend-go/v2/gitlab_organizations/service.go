@@ -224,7 +224,7 @@ func (s *Service) GetGitLabOrganizationByGroupID(ctx context.Context, gitLabGrou
 	if dbModel == nil {
 		return nil, nil
 	}
-	
+
 	return common.ToModel(dbModel), nil
 }
 

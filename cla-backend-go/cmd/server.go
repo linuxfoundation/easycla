@@ -351,7 +351,7 @@ func server(localMode bool) http.Handler {
 	v2GithubOrganizations.Configure(v2API, v2GithubOrganizationsService, eventsService)
 	gitlab_organizations.Configure(v2API, gitlabOrganizationsService, eventsService)
 	gitlab_sign.Configure(v2API, gitlabSignService, eventsService, configFile.CLAContributorv2Base)
-	gitlab_activity.Configure(v2API, gitlabActivityService, eventsService)
+	gitlab_activity.Configure(v2API, gitlabActivityService, gitlabOrganizationRepo, eventsService, gitlabApp)
 	v1Repositories.Configure(api, v1RepositoriesService, eventsService)
 	v2Repositories.Configure(v2API, v2RepositoriesService, eventsService)
 	gerrits.Configure(api, gerritService, v1ProjectService, eventsService)

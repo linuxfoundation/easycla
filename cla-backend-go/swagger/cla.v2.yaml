@@ -3966,6 +3966,33 @@ paths:
       tags:
         - gitlab-activity
 
+  /gitlab/trigger:
+    post:
+      summary: Gitlab Activity MR Trigger
+      description: Endpoint is used to trigger specific MR for gitlab
+      security: [ ]
+      operationId: gitlabTrigger
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: gitlabTriggerInput
+          in: body
+          schema:
+            $ref: '#/definitions/gitlab-trigger-input'
+      responses:
+        '200':
+          description: 'Success'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gitlab-activity
+
+
   /repository-provider/gitlab/sign/{organizationID}/{gitlabRepositoryID}/{mergeRequestID}:
     get:
       summary: Gitlab sign request handler
@@ -4371,6 +4398,23 @@ definitions:
       object_kind:
         type: string
     additionalProperties: true
+
+  gitlab-trigger-input:
+    type: object
+    required:
+      - gitlab_organization_id
+      - gitlab_external_repository_id
+      - gitlab_mr_id
+    properties:
+      gitlab_organization_id:
+        type: string
+        description: the gitlab organization id to which mr belongs to
+      gitlab_external_repository_id:
+        type: integer
+        description: gitlab project identifier associated with mr
+      gitlab_mr_id:
+        type: integer
+        description: gitlab mr id
 
   github-repository-input:
     type: object
