@@ -42,6 +42,8 @@ def request_individual_signature(project_id, user_id, return_url_type, return_ur
         primary_user_email = github.get_primary_user_email(request)
         return signing_service.request_individual_signature(str(project_id), str(user_id), return_url,
                                                             preferred_email=primary_user_email)
+    elif return_url_type is not None and return_url_type.lower() == "gitlab":
+        return signing_service.request_individual_signature_gitlab(str(project_id), str(user_id), return_url)
 
 
 def request_corporate_signature(auth_user,
@@ -178,6 +180,17 @@ def post_individual_signed(content, installation_id, github_repository_id, chang
     :type change_request_id: string
     """
     get_signing_service().signed_individual_callback(content, installation_id, github_repository_id, change_request_id)
+
+def post_individual_signed_gitlab(content, user_id):
+    """
+    Handle the posted callback from the signing service after ICLA signature.
+    
+    :param content: The POST body from the signing service callback.
+    :type content: string
+    :param user_id: The ID of the user that signed. 
+    :type user_id: string
+    """
+    get_signing_service().signed_individual_callback_gitlab(content,user_id)
 
 
 def post_individual_signed_gerrit(content, user_id):

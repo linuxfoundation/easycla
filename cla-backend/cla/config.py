@@ -130,6 +130,7 @@ LOCAL_STORAGE_FOLDER = '/tmp/cla'  #: Local folder when using the LocalStorage s
 # PDF Generation.
 PDF_SERVICE = 'DocRaptor'
 
+
 AUTH0_PLATFORM_URL = os.getenv("AUTH0_PLATFORM_URL", "")
 AUTH0_PLATFORM_CLIENT_ID = os.getenv("AUTH0_PLATFORM_CLIENT_ID", "")
 AUTH0_PLATFORM_CLIENT_SECRET = os.getenv("AUTH0_PLATFORM_CLIENT_SECRET", "")

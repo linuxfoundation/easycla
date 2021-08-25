@@ -1198,7 +1198,7 @@ def request_individual_signature(
 
     DATA: {'project_id': 'some-project-id',
            'user_id': 'some-user-id',
-           'return_url_type': Gerrit/Github. Optional depending on presence of return_url
+           'return_url_type': Gerrit/Github/GitLab. Optional depending on presence of return_url
            'return_url': <optional>}
 
     Creates a new signature given project and user IDs. The user will be redirected to the
@@ -1346,6 +1346,23 @@ def post_individual_signed(
     content = body.read()
     return cla.controllers.signing.post_individual_signed(
         content, installation_id, github_repository_id, change_request_id
+    )
+
+@hug.post(
+    "/signed/gitlab/individual/{user_id}", versions=2,
+)
+def post_individual_signed_gitlab(
+        body,
+        user_id: hug.types.uuid
+):
+    """
+    POST: /signed/gerritindividual/{user_id}
+
+    Callback URL from signing service upon ICLA signature for a Gitlab user.
+    """
+    content = body.read()
+    return cla.controllers.signing.post_individual_signed_gitlab(
+        content, user_id
     )
 
 

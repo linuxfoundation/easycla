@@ -50,3 +50,13 @@ func GetNilSliceIfEmpty(slice []string) []string {
 
 	return slice
 }
+
+// ArrayStringPointer converts Array string to Array string pointer
+func ArrayStringPointer(input []string) []*string {
+	var conversion []*string
+	for _, v := range input {
+		v2 := v
+		conversion = append(conversion, &v2)
+	}
+	return conversion
+}

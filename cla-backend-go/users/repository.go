@@ -123,6 +123,12 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 		}
 	}
 
+	if len(user.Emails) > 0 {
+		attributes["user_emails"] = &dynamodb.AttributeValue{
+			SS: utils.ArrayStringPointer(user.Emails),
+		}
+	}
+
 	if user.LfUsername != "" {
 		attributes["lf_username"] = &dynamodb.AttributeValue{
 			S: aws.String(user.LfUsername),
