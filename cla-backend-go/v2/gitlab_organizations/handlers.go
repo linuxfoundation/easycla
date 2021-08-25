@@ -195,24 +195,57 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 	api.GitlabOrganizationsUpdateProjectGitlabGroupConfigHandler = gitlab_organizations.UpdateProjectGitlabGroupConfigHandlerFunc(func(params gitlab_organizations.UpdateProjectGitlabGroupConfigParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
+
+		f := logrus.Fields{
+			"functionName":            "v2.gitlab_organizations.handlers.GitlabOrganizationsAddProjectGitlabOrganizationHandler",
+			utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
+			"authUser":                authUser.UserName,
+			"authEmail":               authUser.Email,
+			"projectSFID":             params.ProjectSFID,
+			"gitLabGroupID":           params.GitLabGroupID,
+			"autoEnabled":             params.Body.AutoEnabled,
+			"autoEnabledCLAGroupID":   params.Body.AutoEnabledClaGroupID,
+			"branchProtectionEnabled": params.Body.BranchProtectionEnabled,
+		}
+
+		// Load the project
+		psc := project_service.GetClient()
+		projectModel, err := psc.GetProject(params.ProjectSFID)
+		if err != nil || projectModel == nil {
+			return gitlab_organizations.NewUpdateProjectGitlabGroupConfigNotFound().WithPayload(
+				utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+		}
+
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to Update Project GitLab Group/Organizations for Project '%s' with scope of %s",
+				authUser.UserName, projectModel.Name, params.ProjectSFID)
+			log.WithFields(f).Debug(msg)
+			return gitlab_organizations.NewUpdateProjectGitlabGroupConfigForbidden().WithPayload(
+				utils.ErrorResponseForbidden(reqID, msg))
+		}
 
 		if !utils.ValidateAutoEnabledClaGroupID(params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
 			msg := "AutoEnabledClaGroupID can't be empty when AutoEnabled is set to true"
 			return gitlab_organizations.NewUpdateProjectGitlabGroupConfigBadRequest().WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 		}
 
-		err := service.UpdateGitLabOrganization(ctx, params.ProjectSFID, params.GitLabGroupID, "", "", params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
-		if err != nil {
-			if errors.Is(err, projects_cla_groups.ErrCLAGroupDoesNotExist) {
-				return gitlab_organizations.NewUpdateProjectGitlabGroupConfigNotFound().WithPayload(utils.ErrorResponseNotFound(reqID, err.Error()))
+		updateErr := service.UpdateGitLabOrganization(ctx, params.ProjectSFID, params.GitLabGroupID, "", "", params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
+		if updateErr != nil {
+			if errors.Is(updateErr, projects_cla_groups.ErrCLAGroupDoesNotExist) {
+				msg := fmt.Sprintf("problem updating GitLab group/organization for project %s with SFID: %s - CLA Group wth ID: %s was not found, error: %+v", projectModel.Name, projectModel.ID, params.Body.AutoEnabledClaGroupID, updateErr)
+				return gitlab_organizations.NewUpdateProjectGitlabGroupConfigNotFound().WithPayload(utils.ErrorResponseNotFound(reqID, msg))
 			}
-			return gitlab_organizations.NewUpdateProjectGitlabGroupConfigBadRequest().WithPayload(utils.ErrorResponseBadRequestWithError(reqID, "updating  gitlab org", err))
+			msg := fmt.Sprintf("problem updating GitLab group/organization for project %s with SFID: %s, error: %+v", projectModel.Name, projectModel.ID, updateErr)
+			return gitlab_organizations.NewUpdateProjectGitlabGroupConfigBadRequest().WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, updateErr))
 		}
 
 		eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:   events.GitlabOrganizationUpdated,
 			ProjectSFID: params.ProjectSFID,
+			ProjectName: projectModel.Name,
+			CLAGroupID:  params.Body.AutoEnabledClaGroupID,
 			LfUsername:  authUser.UserName,
 			UserName:    authUser.UserName,
 			EventData: &events.GitlabOrganizationUpdatedEventData{
@@ -222,7 +255,20 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			},
 		})
 
-		return gitlab_organizations.NewUpdateProjectGitlabGroupConfigOK()
+		results, err := service.GetGitLabOrganizations(ctx, params.ProjectSFID)
+		if err != nil {
+			if strings.ContainsAny(err.Error(), "getProjectNotFound") {
+				msg := fmt.Sprintf("Gitlab organization with project SFID not found: %s", params.ProjectSFID)
+				log.WithFields(f).Debug(msg)
+				return gitlab_organizations.NewUpdateProjectGitlabGroupConfigNotFound().WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+			}
+
+			msg := fmt.Sprintf("failed to locate Gitlab organization by project SFID: %s, error: %+v", params.ProjectSFID, err)
+			log.WithFields(f).Debug(msg)
+			return gitlab_organizations.NewUpdateProjectGitlabGroupConfigBadRequest().WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		return gitlab_organizations.NewUpdateProjectGitlabGroupConfigOK().WithPayload(results)
 	})
 
 	api.GitlabOrganizationsDeleteProjectGitlabGroupConfigHandler = gitlab_organizations.DeleteProjectGitlabGroupConfigHandlerFunc(func(params gitlab_organizations.DeleteProjectGitlabGroupConfigParams, authUser *auth.User) middleware.Responder {

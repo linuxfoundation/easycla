@@ -549,21 +549,27 @@ func (repo *Repository) UpdateGitLabOrganization(ctx context.Context, projectSFI
 	}
 
 	_, currentTime := utils.CurrentTime()
+	note := fmt.Sprintf("Updated configuration on %s by %s.", currentTime, utils.GetUserNameFromContext(ctx))
+	if existingRecord.Note != "" {
+		note = fmt.Sprintf("%s. %s", existingRecord.Note, note)
+	}
+
 	expressionAttributeNames := map[string]*string{
-		"#A": aws.String(GitLabOrganizationsAutoEnabledColumn),
-		"#C": aws.String(GitLabOrganizationsAutoEnabledCLAGroupIDColumn),
-		"#B": aws.String(GitLabOrganizationsBranchProtectionEnabledColumn),
-		"#M": aws.String(GitLabOrganizationsDateModifiedColumn),
-		"#E": aws.String(GitLabOrganizationsEnabledColumn),
+		"#AE":    aws.String(GitLabOrganizationsAutoEnabledColumn),
+		"#AECLA": aws.String(GitLabOrganizationsAutoEnabledCLAGroupIDColumn),
+		"#BP":    aws.String(GitLabOrganizationsBranchProtectionEnabledColumn),
+		"#M":     aws.String(GitLabOrganizationsDateModifiedColumn),
+		"#E":     aws.String(GitLabOrganizationsEnabledColumn),
+		"#N":     aws.String(GitLabOrganizationsNoteColumn),
 	}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
-		":a": {
+		":ae": {
 			BOOL: aws.Bool(autoEnabled),
 		},
-		":c": {
+		":aecla": {
 			S: aws.String(autoEnabledClaGroupID),
 		},
-		":b": {
+		":bp": {
 			BOOL: aws.Bool(branchProtectionEnabled),
 		},
 		":m": {
@@ -572,8 +578,11 @@ func (repo *Repository) UpdateGitLabOrganization(ctx context.Context, projectSFI
 		":e": {
 			BOOL: aws.Bool(enabled),
 		},
+		":n": {
+			S: aws.String(note),
+		},
 	}
-	updateExpression := "SET #A = :a, #C = :c, #B = :b, #M = :m, #E = :e "
+	updateExpression := "SET #AE = :ae, #AECLA = :aecla, #BP = :bp, #M = :m, #E = :e, #N = :n "
 
 	if organizationName != "" {
 		expressionAttributeNames["#N"] = aws.String(GitLabOrganizationsOrganizationNameColumn)
@@ -633,7 +642,7 @@ func (repo *Repository) DeleteGitLabOrganizationByFullPath(ctx context.Context, 
 	_, currentTime := utils.CurrentTime()
 	note := fmt.Sprintf("Enabled set to false due to org deletion on %s by %s.", currentTime, utils.GetUserNameFromContext(ctx))
 	if org.Note != "" {
-		note = fmt.Sprintf("%s. %s.", org.Note, note)
+		note = fmt.Sprintf("%s. %s", org.Note, note)
 	}
 	_, err := repo.dynamoDBClient.UpdateItem(
 		&dynamodb.UpdateItemInput{

@@ -1718,6 +1718,8 @@ paths:
             x-request-id:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/gitlab-project-organizations'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
