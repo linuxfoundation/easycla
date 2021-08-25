@@ -267,6 +267,7 @@ provider:
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-repositories/index/sfdc-repository-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-repositories/index/project-sfid-repository-organization-name-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-repositories/index/project-sfid-repository-index"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-repositories/index/repository-type-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-github-orgs/index/github-org-sfid-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-github-orgs/index/project-sfid-organization-name-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-github-orgs/index/organization-name-lower-search-index"
