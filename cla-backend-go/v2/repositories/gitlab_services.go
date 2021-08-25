@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
@@ -191,8 +192,14 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 
 	// Build a list of project IDs
 	for _, proj := range projectList {
-		log.WithFields(f).Debugf("id: %d, repo: %s, path: %s, full path: %s, weburl: %s", proj.ID, proj.Name, proj.Path, proj.PathWithNamespace, proj.WebURL)
-		listProjectIDs = append(listProjectIDs, int64(proj.ID))
+		// Ensure we only add GitLab projects/repositories that are in the tree path of the GitLab group/organization - we don't want to reach over into a different tree if the user has access
+		// The GetGroupProjectListByGroupID call in some cases returns more than expected (need to investigate why)
+		if strings.HasPrefix(proj.PathWithNamespace, gitLabOrgModel.OrganizationFullPath) {
+			log.WithFields(f).Debugf("adding - id: %d, repo: %s, path: %s, full path: %s, weburl: %s", proj.ID, proj.Name, proj.Path, proj.PathWithNamespace, proj.WebURL)
+			listProjectIDs = append(listProjectIDs, int64(proj.ID))
+		} else {
+			log.WithFields(f).Debugf("skipping - id: %d, repo: %s, path: %s, full path: %s, weburl: %s", proj.ID, proj.Name, proj.Path, proj.PathWithNamespace, proj.WebURL)
+		}
 	}
 
 	// Build input to the add function
