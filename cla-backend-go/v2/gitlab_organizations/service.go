@@ -93,7 +93,39 @@ func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string,
 		}
 	}
 
+	// If we have an existing record/entry
 	if existingModel != nil {
+		// Check to make sure another project doesn't own this GitLab Group - only care about conflicts if it is enabled
+		if existingModel.ProjectSfid != projectSFID && existingModel.Enabled {
+			psc := project_service.GetClient()
+			requestedProjectModel, projectLookupErr := psc.GetProject(projectSFID)
+			if projectLookupErr != nil || requestedProjectModel == nil {
+				return nil, projectLookupErr
+			}
+			existingProjectModel, projectLookupErr := psc.GetProject(existingModel.ProjectSfid)
+			if projectLookupErr != nil || existingProjectModel == nil {
+				log.WithFields(f).WithError(projectLookupErr).Warnf("unable to lookup project with SFID: %s", existingModel.ProjectSfid)
+				return nil, projectLookupErr
+			}
+			msg := fmt.Sprintf("unable to add or update the GitLab Group/Organization - already taken by another project: %s (%s) - unable to add to this project: %s (%s)",
+				existingProjectModel.Name, existingModel.ProjectSfid,
+				requestedProjectModel.Name, projectSFID)
+			log.WithFields(f).Warn(msg)
+
+			// Return the error model
+			return nil, &utils.ProjectConflict{
+				Message: "unable to add or update the GitLab Group/Organization - already taken by another project",
+				ProjectA: utils.ProjectSummary{
+					Name: requestedProjectModel.Name,
+					ID:   projectSFID,
+				},
+				ProjectB: utils.ProjectSummary{
+					Name: existingProjectModel.Name,
+					ID:   existingModel.ProjectSfid,
+				},
+			}
+		}
+
 		updateErr := s.UpdateGitLabOrganization(ctx, projectSFID, input.GroupID, "", input.OrganizationFullPath, utils.BoolValue(input.AutoEnabled), input.AutoEnabledClaGroupID, utils.BoolValue(input.BranchProtectionEnabled))
 		if updateErr != nil {
 			log.WithFields(f).WithError(updateErr).Warnf("problem updating GitLab group/organization, error: %+v", updateErr)

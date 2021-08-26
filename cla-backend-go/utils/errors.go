@@ -66,6 +66,40 @@ func (e *CLAGroupNotFound) Unwrap() error {
 	return e.Err
 }
 
+// ProjectSummary is a quick data model for the project name and ID
+type ProjectSummary struct {
+	ID   string
+	Name string
+}
+
+// ProjectConflict is an error model for project conflict
+type ProjectConflict struct {
+	Message  string
+	ProjectA ProjectSummary
+	ProjectB ProjectSummary
+	Err      error
+}
+
+// Error is an error string function for CLA Group not found errors
+func (e *ProjectConflict) Error() string {
+	msg := fmt.Sprintf("%s - ", e.Message)
+	msg = fmt.Sprintf("%s conflict between project %s (%s) and project %s (%s)",
+		msg,
+		e.ProjectA.Name, e.ProjectA.ID,
+		e.ProjectB.Name, e.ProjectB.ID,
+	)
+	if e.Err == nil {
+		return strings.TrimSpace(msg)
+	}
+
+	return strings.TrimSpace(fmt.Sprintf("%s, error: %+v", msg, e.Err))
+}
+
+// Unwrap method returns its contained error
+func (e *ProjectConflict) Unwrap() error {
+	return e.Err
+}
+
 // CLAGroupNameConflict is an error model for CLA Group name conflicts
 type CLAGroupNameConflict struct {
 	CLAGroupID   string
