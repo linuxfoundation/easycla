@@ -181,7 +181,7 @@ def post_individual_signed(content, installation_id, github_repository_id, chang
     """
     get_signing_service().signed_individual_callback(content, installation_id, github_repository_id, change_request_id)
 
-def post_individual_signed_gitlab(content, user_id):
+def post_individual_signed_gitlab(content, user_id, organization_id, gitlab_repository_id, merge_request_id):
     """
     Handle the posted callback from the signing service after ICLA signature.
     
@@ -190,7 +190,7 @@ def post_individual_signed_gitlab(content, user_id):
     :param user_id: The ID of the user that signed. 
     :type user_id: string
     """
-    get_signing_service().signed_individual_callback_gitlab(content,user_id)
+    get_signing_service().signed_individual_callback_gitlab(content,user_id, organization_id, gitlab_repository_id, merge_request_id)
 
 
 def post_individual_signed_gerrit(content, user_id):

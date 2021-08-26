@@ -1349,20 +1349,23 @@ def post_individual_signed(
     )
 
 @hug.post(
-    "/signed/gitlab/individual/{user_id}", versions=2,
+    "/signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}", versions=2,
 )
 def post_individual_signed_gitlab(
         body,
-        user_id: hug.types.uuid
+        user_id: hug.types.uuid,
+        organization_id: hug.types.text,
+        gitlab_repository_id: hug.types.number,
+        merge_request_id: hug.types.number,
 ):
     """
-    POST: /signed/gerritindividual/{user_id}
+    POST: /signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}
 
     Callback URL from signing service upon ICLA signature for a Gitlab user.
     """
     content = body.read()
     return cla.controllers.signing.post_individual_signed_gitlab(
-        content, user_id
+        content, user_id, organization_id, gitlab_repository_id, merge_request_id
     )
 
 

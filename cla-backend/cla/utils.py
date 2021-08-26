@@ -24,7 +24,7 @@ from cla.middleware import CLALogMiddleware
 from cla.models import DoesNotExist
 from cla.models.dynamo_models import User, Signature, Repository, \
     Company, Project, Document, \
-    GitHubOrg, Gerrit, UserPermissions, Event, CompanyInvite, ProjectCLAGroup, CCLAWhitelistRequest, CLAManagerRequest
+    GitHubOrg, Gerrit, UserPermissions, Event, CompanyInvite, ProjectCLAGroup, CCLAWhitelistRequest, CLAManagerRequest, GitlabOrg
 from cla.models.event_types import EventType
 
 API_BASE_URL = os.environ.get('CLA_API_BASE', '')
@@ -1239,6 +1239,22 @@ def get_installation_id_from_github_repository(github_repository_id):
     # Get this organization's installation ID
     return organization.get_organization_installation_id()
 
+def get_organization_id_from_gitlab_repository(gitlab_repository_id):
+    # Get repository ID that references the gitlab ID.
+    try:
+        repository = Repository().get_repository_by_external_id(gitlab_repository_id, 'gitlab')
+    except DoesNotExist:
+        return None
+    # Get GitLabGroup from this repository
+    gitLabOrg = GitlabOrg()
+    try:
+        gitLabOrg.load(repository.get_repository_organization_name())
+    except DoesNotExist:
+        return None
+    
+    #return GitLab organization ID
+    return gitLabOrg.get_organization_id()
+
 
 def get_project_id_from_github_repository(github_repository_id):
     # Get repository ID that references the github ID.
@@ -1280,6 +1296,37 @@ def get_individual_signature_callback_url(user_id, metadata=None):
 
     return os.path.join(API_BASE_URL, 'v2/signed/individual', str(installation_id), str(metadata['repository_id']),
                         str(metadata['pull_request_id']))
+
+def get_individual_signature_callback_url_gitlab(user_id, metadata=None):
+    """
+    Helper function to get a user's active signature callback URL.
+
+    :param user_id: The user ID in question.
+    :type user_id: string
+    :param metadata: The signature metadata
+    :type metadata: dict
+    :return: The callback URL that will be hit by the signing service provider.
+    :rtype: string
+    """
+    if metadata is None:
+        metadata = get_active_signature_metadata(user_id)
+    if metadata is None:
+        cla.log.warning('Could not find active signature for user {}, callback URL request failed'.format(user_id))
+        return None
+
+    # Get GitLab ID from metadata
+    gitlab_repository_id = metadata['repository_id']
+
+    # Get organization id
+    organization_id = get_organization_id_from_gitlab_repository(gitlab_repository_id)
+
+    if organization_id is None:
+        cla.log.error('Could not find GitLab organization ID that is configured for this repository ID: %s',
+                      gitlab_repository_id)
+        return None
+
+    return os.path.join(API_BASE_URL, 'v2/signed/gitlab/individual',str(user_id), str(organization_id), str(metadata['repository_id']),
+                        str(metadata['merge_request_id']))
 
 
 def request_individual_signature(installation_id, github_repository_id, user, change_request_id, callback_url=None):

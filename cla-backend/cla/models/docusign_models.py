@@ -16,6 +16,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, Optional, List
 from urllib.parse import urlparse
+import requests
 
 import pydocusign  # type: ignore
 from attr import dataclass
@@ -178,7 +179,7 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.debug('Individual Signature - get active signature metadata: {}'.format(signature_metadata))
 
         cla.log.debug('Individual Signature - get individual signature callback url')
-        callback_url = self._generate_individual_signature_callback_url_gitlab(user_id)
+        callback_url = cla.utils.get_individual_signature_callback_url_gitlab(user_id, signature_metadata)
         cla.log.debug('Individual Signature - get individual signature callback url: {}'.format(callback_url))
 
         if latest_signature is not None and \
@@ -985,13 +986,7 @@ class DocuSign(signing_service_interface.SigningService):
 
         """
         return os.path.join(api_base_url, 'v2/signed/gerrit/individual', str(user_id))
-    
-    def _generate_individual_signature_callback_url_gitlab(self, user_id):
-        """
-        Helper function to get a user's active signature callback URL for GitLab
 
-        """
-        return os.path.join(api_base_url, 'v2/signed/gitlab/individual', str(user_id))
 
     def _get_corporate_signature_callback_url(self, project_id, company_id):
         """
@@ -1731,7 +1726,31 @@ class DocuSign(signing_service_interface.SigningService):
             self.send_to_s3(document_data, project_id, signature_id, 'icla', user_id)
             cla.log.debug(f'{fn} - uploaded ICLA document to s3')
     
-    def signed_individual_callback_gitlab(self, content, user_id):
+    def _update_gitlab_mr(self, organization_id: str , gitlab_repository_id: int, merge_request_id: int) -> None:
+        """
+        Helper function that updates mr upon a successful signing
+        param organization_id: Gitlab group id 
+        rtype organization_id: int
+        param gitlab_repository_id: Gitlab repository 
+        rtype: int
+        param merge_request_id: Gitlab MR
+        rtype: int
+        """
+        fn = 'models.docusign_models._update_gitlab_mr'
+        try:
+            url = f'{cla.config.PLATFORM_GATEWAY_URL}/cla-service/v4/gitlab/trigger'
+            payload = {
+                        "gitlab_external_repository_id": gitlab_repository_id,
+                        "gitlab_mr_id": merge_request_id,
+                        "gitlab_organization_id": organization_id
+                    }
+            requests.post(url, data=payload)
+            cla.log.debug(f'{fn} - Updating GitLab MR with payload: {payload}')
+        except requests.exceptions.HTTPError as err:
+            msg = f'{fn} - Unable to update GitLab MR: {merge_request_id}, error: {err}'
+            cla.log.warning(msg)
+    
+    def signed_individual_callback_gitlab(self, content, user_id, organization_id, gitlab_repository_id, merge_request_id):
         fn = 'models.docusign_models.signed_individual_callback_gitlab'
         cla.log.debug(f'{fn} - Docusign GitLab ICLA signed callback POST data: {content}')
         tree = ET.fromstring(content)
@@ -1760,6 +1779,9 @@ class DocuSign(signing_service_interface.SigningService):
             signature.set_signature_signed(True)
             populate_signature_from_icla_callback(content, tree, signature)
             signature.save()
+
+            #Update repository provider (GitLab)
+            self._update_gitlab_mr(organization_id, gitlab_repository_id, merge_request_id)
 
             # Load the Project by ID and send audit event
             project = Project()
