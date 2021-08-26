@@ -68,17 +68,17 @@ type ServiceInterface interface {
 	GitLabDeleteRepositories(ctx context.Context, gitLabGroupPath string) error
 }
 
-// GithubOrgRepo redefine the interface here to avoid circular dependency issues
-type GithubOrgRepo interface {
-	AddGitLabOrganization(ctx context.Context, parentProjectSFID string, projectSFID string, groupID int64, groupName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) (*v2Models.GitlabOrganization, error)
+// GitLabOrgRepo redefine the interface here to avoid circular dependency issues
+type GitLabOrgRepo interface {
+	AddGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization, enabled bool) (*v2Models.GitlabOrganization, error)
 	GetGitLabOrganizations(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByFullPath(ctx context.Context, groupFullPath string) (*common.GitLabOrganization, error)
 	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, groupName, groupFullPath, organizationURL string) error
-	UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled bool) error
-	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID, gitlabOrgName string) error
+	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization, enabled bool) error
+	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID, gitlabOrgFullPath string) error
 }
 
 // Service is the service model/structure
@@ -87,7 +87,7 @@ type Service struct {
 	gitV2Repository       RepositoryInterface
 	projectsClaGroupsRepo projects_cla_groups.Repository
 	ghOrgRepo             github_organizations.RepositoryInterface
-	glOrgRepo             GithubOrgRepo
+	glOrgRepo             GitLabOrgRepo
 	gitLabApp             *gitlab_api.App
 	eventService          events.Service
 }
@@ -99,7 +99,7 @@ var (
 )
 
 // NewService creates a new githubOrganizations service
-func NewService(gitV1Repository *v1Repositories.Repository, gitV2Repository RepositoryInterface, pcgRepo projects_cla_groups.Repository, ghOrgRepo github_organizations.RepositoryInterface, glOrgRepo GithubOrgRepo, eventService events.Service) ServiceInterface {
+func NewService(gitV1Repository *v1Repositories.Repository, gitV2Repository RepositoryInterface, pcgRepo projects_cla_groups.Repository, ghOrgRepo github_organizations.RepositoryInterface, glOrgRepo GitLabOrgRepo, eventService events.Service) ServiceInterface {
 	return &Service{
 		gitV1Repository:       gitV1Repository,
 		gitV2Repository:       gitV2Repository,

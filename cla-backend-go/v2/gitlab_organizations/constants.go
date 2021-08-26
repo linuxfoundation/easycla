@@ -4,6 +4,8 @@
 package gitlab_organizations
 
 const (
+	// GitLabOrganizationsProjectSFIDColumn constant
+	GitLabOrganizationsProjectSFIDColumn = "project_sfid"
 	// GitLabOrganizationsOrganizationIDColumn constant
 	GitLabOrganizationsOrganizationIDColumn = "organization_id"
 	// GitLabOrganizationsOrganizationSFIDColumn constant

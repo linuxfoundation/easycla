@@ -100,6 +100,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 				ProjectSFID:                projectSFID,
 				RepositoryExternalID:       repositoryExternalIDString,
 				RepositoryName:             project.PathWithNamespace, // Name column is actually the full path for both GitHub and GitLab
+				RepositoryFullPath:         project.PathWithNamespace,
 				RepositoryURL:              project.WebURL,
 				RepositoryOrganizationName: input.GroupName,
 				RepositoryCLAGroupID:       input.ClaGroupID,

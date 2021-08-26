@@ -4,6 +4,12 @@
 type: object
 description: GitLab Project Organization
 properties:
+  project_sfid:
+    description: The project SFID
+    $ref: './common/properties/external-id.yaml'
+  parent_project_sfid:
+    description: The parent project SFID
+    $ref: './common/properties/external-id.yaml'
   auto_enabled:
     type: boolean
     description: Flag to indicate if auto-enabled flag should be enabled. Organizations with auto-enable turned on will automatically include any new repositories to the EasyCLA configuration.
@@ -51,6 +57,11 @@ properties:
       - partial_connection
       - connection_failure
       - no_connection
+  connection_status_message:
+    type: string
+    description: An optional connection status message
+    example: 'Token was revoked. You have to re-authorize from the user.'
+    x-omitempty: true
   repositories:
     type: array
     items:

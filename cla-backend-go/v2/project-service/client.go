@@ -149,13 +149,9 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 		"apiGWHost":    apiGWHost,
 	}
 
-	// Use our helper function to lookup the parent, if it exists
+	// Use our helper function to find the parent, if it exists
 	parentModel, err := pmm.GetParentProjectModel(projectSFID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel using projectSFID: '%s'", projectSFID)
-		return projectSFID, err
-	}
-	if parentModel == nil {
+	if err != nil || parentModel == nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel using projectSFID: '%s'", projectSFID)
 		return projectSFID, err
 	}
@@ -187,11 +183,11 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 			return nil, nil
 		}
 
-		// Does this project they have a parent? projectModel.Parent is deprecated and no longer returned, use project.Foundation.ID/Name attribute instead
-		if existingModel.Foundation.Name == utils.TheLinuxFoundation || existingModel.Foundation.Name == utils.LFProjectsLLC {
-			log.WithFields(f).Debugf("no parent for projectSFID %s or %s or %s is the parent...", projectSFID, utils.TheLinuxFoundation, utils.LFProjectsLLC)
-			return nil, nil
-		}
+		//// Does this project they have a parent? projectModel.Parent is deprecated and no longer returned, use project.Foundation.ID/Name attribute instead
+		//if existingModel.Foundation.Name == utils.TheLinuxFoundation || existingModel.Foundation.Name == utils.LFProjectsLLC {
+		//	log.WithFields(f).Debugf("no parent for projectSFID %s or %s or %s is the parent...", projectSFID, utils.TheLinuxFoundation, utils.LFProjectsLLC)
+		//	return nil, nil
+		//}
 
 		// Grab the parent ID once
 		projectParentSFID := utils.GetProjectParentSFID(existingModel)

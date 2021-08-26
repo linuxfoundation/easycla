@@ -17,10 +17,10 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
+	gitlabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/go-openapi/strfmt"
 
-	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	projectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -33,7 +33,7 @@ import (
 
 // ServiceInterface contains functions of GitlabOrganizations service
 type ServiceInterface interface {
-	AddGitLabOrganization(ctx context.Context, projectSFID string, input *models.GitlabCreateOrganization) (*models.GitlabProjectOrganizations, error)
+	AddGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization) (*models.GitlabProjectOrganizations, error)
 	GetGitLabOrganization(ctx context.Context, gitLabOrganizationID string) (*models.GitlabOrganization, error)
 	GetGitLabOrganizationByID(ctx context.Context, gitLabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*models.GitlabOrganization, error)
@@ -41,8 +41,8 @@ type ServiceInterface interface {
 	GetGitLabOrganizationByGroupID(ctx context.Context, gitLabGroupID int64) (*models.GitlabOrganization, error)
 	GetGitLabOrganizations(ctx context.Context, projectSFID string) (*models.GitlabProjectOrganizations, error)
 	GetGitLabOrganizationByState(ctx context.Context, gitLabOrganizationID, authState string) (*models.GitlabOrganization, error)
-	UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error
-	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlab_api.OauthSuccessResponse) error
+	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization) error
+	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID string, gitlabOrgFullPath string) error
 }
 
@@ -51,7 +51,7 @@ type Service struct {
 	repo               RepositoryInterface
 	v2GitRepoService   repositories.ServiceInterface
 	claGroupRepository projects_cla_groups.Repository
-	gitLabApp          *gitlab_api.App
+	gitLabApp          *gitlabApi.App
 }
 
 // NewService creates a new gitlab organization service
@@ -60,19 +60,20 @@ func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceI
 		repo:               repo,
 		v2GitRepoService:   v2GitRepoService,
 		claGroupRepository: claGroupRepository,
-		gitLabApp:          gitlab_api.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
+		gitLabApp:          gitlabApi.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 
 // AddGitLabOrganization adds the specified GitLab organization
-func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string, input *models.GitlabCreateOrganization) (*models.GitlabProjectOrganizations, error) {
+func (s *Service) AddGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization) (*models.GitlabProjectOrganizations, error) {
 	f := logrus.Fields{
 		"functionName":            "v2.gitlab_organizations.service.AddGitLabOrganization",
 		utils.XREQUESTID:          ctx.Value(utils.XREQUESTID),
-		"projectSFID":             projectSFID,
-		"autoEnabled":             utils.BoolValue(input.AutoEnabled),
-		"branchProtectionEnabled": utils.BoolValue(input.BranchProtectionEnabled),
-		"groupID":                 input.GroupID,
+		"projectSFID":             input.ProjectSFID,
+		"parentProjectSFID":       input.ParentProjectSFID,
+		"autoEnabled":             input.AutoEnabled,
+		"branchProtectionEnabled": input.BranchProtectionEnabled,
+		"groupID":                 input.ExternalGroupID,
 		"groupFullPath":           input.OrganizationFullPath,
 	}
 
@@ -85,10 +86,10 @@ func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string,
 			return nil, getErr
 		}
 	}
-	if input.GroupID > 0 {
-		existingModel, getErr = s.GetGitLabOrganizationByGroupID(ctx, input.GroupID)
+	if input.ExternalGroupID > 0 {
+		existingModel, getErr = s.GetGitLabOrganizationByGroupID(ctx, input.ExternalGroupID)
 		if getErr != nil {
-			log.WithFields(f).WithError(getErr).Warnf("problem querying GitLab group/organization using group ID: %d", input.GroupID)
+			log.WithFields(f).WithError(getErr).Warnf("problem querying GitLab group/organization using group ID: %d", input.ExternalGroupID)
 			return nil, getErr
 		}
 	}
@@ -96,9 +97,9 @@ func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string,
 	// If we have an existing record/entry
 	if existingModel != nil {
 		// Check to make sure another project doesn't own this GitLab Group - only care about conflicts if it is enabled
-		if existingModel.ProjectSfid != projectSFID && existingModel.Enabled {
-			psc := project_service.GetClient()
-			requestedProjectModel, projectLookupErr := psc.GetProject(projectSFID)
+		if existingModel.ProjectSfid != input.ProjectSFID && existingModel.Enabled {
+			psc := projectService.GetClient()
+			requestedProjectModel, projectLookupErr := psc.GetProject(input.ProjectSFID)
 			if projectLookupErr != nil || requestedProjectModel == nil {
 				return nil, projectLookupErr
 			}
@@ -109,7 +110,7 @@ func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string,
 			}
 			msg := fmt.Sprintf("unable to add or update the GitLab Group/Organization - already taken by another project: %s (%s) - unable to add to this project: %s (%s)",
 				existingProjectModel.Name, existingModel.ProjectSfid,
-				requestedProjectModel.Name, projectSFID)
+				requestedProjectModel.Name, input.ProjectSFID)
 			log.WithFields(f).Warn(msg)
 
 			// Return the error model
@@ -117,7 +118,7 @@ func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string,
 				Message: "unable to add or update the GitLab Group/Organization - already taken by another project",
 				ProjectA: utils.ProjectSummary{
 					Name: requestedProjectModel.Name,
-					ID:   projectSFID,
+					ID:   input.ProjectSFID,
 				},
 				ProjectB: utils.ProjectSummary{
 					Name: existingProjectModel.Name,
@@ -126,49 +127,23 @@ func (s *Service) AddGitLabOrganization(ctx context.Context, projectSFID string,
 			}
 		}
 
-		updateErr := s.UpdateGitLabOrganization(ctx, projectSFID, input.GroupID, "", input.OrganizationFullPath, utils.BoolValue(input.AutoEnabled), input.AutoEnabledClaGroupID, utils.BoolValue(input.BranchProtectionEnabled))
+		updateErr := s.UpdateGitLabOrganization(ctx, input)
 		if updateErr != nil {
 			log.WithFields(f).WithError(updateErr).Warnf("problem updating GitLab group/organization, error: %+v", updateErr)
 			return nil, getErr
 		}
-		return s.GetGitLabOrganizations(ctx, projectSFID)
+		return s.GetGitLabOrganizations(ctx, input.ProjectSFID)
 	}
-
-	psc := v2ProjectService.GetClient()
-	project, err := psc.GetProject(projectSFID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem loading project details from the project service")
-		return nil, err
-	}
-
-	var parentProjectSFID string
-	if utils.StringValue(project.Parent) == "" || (project.Foundation != nil &&
-		(project.Foundation.Name == utils.TheLinuxFoundation || project.Foundation.Name == utils.LFProjectsLLC)) {
-		parentProjectSFID = projectSFID
-	} else {
-		parentProjectSFID = utils.StringValue(project.Parent)
-	}
-	f["parentProjectSFID"] = parentProjectSFID
-	log.WithFields(f).Debug("located parentProjectID...")
 
 	log.WithFields(f).Debug("adding GitLab organization...")
-	autoEnabled := false
-	if input.AutoEnabled != nil {
-		autoEnabled = utils.BoolValue(input.AutoEnabled)
-	}
-	branchProtectionEnabled := false
-	if input.BranchProtectionEnabled != nil {
-		branchProtectionEnabled = utils.BoolValue(input.BranchProtectionEnabled)
-	}
-
-	resp, err := s.repo.AddGitLabOrganization(ctx, parentProjectSFID, projectSFID, input.GroupID, "", input.OrganizationFullPath, autoEnabled, input.AutoEnabledClaGroupID, branchProtectionEnabled, true)
+	resp, err := s.repo.AddGitLabOrganization(ctx, input, true)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem adding gitlab organization for project")
 		return nil, err
 	}
 	log.WithFields(f).Debugf("created GitLab organization with ID: %s", resp.OrganizationID)
 
-	return s.GetGitLabOrganizations(ctx, projectSFID)
+	return s.GetGitLabOrganizations(ctx, input.ProjectSFID)
 }
 
 // GetGitLabOrganization returns the GitLab organization based on the specified GitLab Organization ID
@@ -334,6 +309,8 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 			AutoEnabled:             org.AutoEnabled,
 			AutoEnableClaGroupID:    org.AutoEnabledClaGroupID,
 			AutoEnabledClaGroupName: strings.TrimSpace(autoEnabledCLAGroupName),
+			ProjectSfid:             org.ProjectSfid,
+			ParentProjectSfid:       org.OrganizationSfid,
 			OrganizationName:        org.OrganizationName,
 			OrganizationURL:         org.OrganizationURL,
 			OrganizationFullPath:    org.OrganizationFullPath,
@@ -348,21 +325,24 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 			rorg.ConnectionStatus = utils.NoConnection
 		} else {
 			if err != nil {
-				log.WithFields(f).Errorf("initializing gitlab client for gitlab org : %s failed : %v", org.OrganizationID, err)
+				log.WithFields(f).Warnf("initializing gitlab client for gitlab org : %s failed : %v", org.OrganizationID, err)
 				rorg.ConnectionStatus = utils.ConnectionFailure
+				rorg.ConnectionStatusMessage = err.Error()
 			} else {
 				// We've been authenticated by the user - great, see if we can determine the list of repos...
-				glClient, clientErr := gitlab_api.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
+				glClient, clientErr := gitlabApi.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
 				if clientErr != nil {
-					log.WithFields(f).Errorf("using gitlab client for gitlab org : %s failed : %v", org.OrganizationID, clientErr)
+					log.WithFields(f).Warnf("using gitlab client for gitlab group id: %d, internal group/org ID: %s failed: %v", org.OrganizationExternalID, org.OrganizationID, clientErr)
 					rorg.ConnectionStatus = utils.ConnectionFailure
+					rorg.ConnectionStatusMessage = clientErr.Error()
 				} else {
 					rorg.Repositories = s.updateRepositoryStatus(glClient, toGitLabProjectResponse(repoList))
 
 					user, _, userErr := glClient.Users.CurrentUser()
 					if userErr != nil {
-						log.WithFields(f).Errorf("using gitlab client for gitlab org : %s failed : %v", org.OrganizationID, userErr)
+						log.WithFields(f).Warnf("using gitlab client for gitlab org: %s failed : %v", org.OrganizationID, userErr)
 						rorg.ConnectionStatus = utils.ConnectionFailure
+						rorg.ConnectionStatusMessage = userErr.Error()
 					} else {
 						log.WithFields(f).Debugf("connected to user : %s for gitlab org : %s", user.Name, org.OrganizationID)
 						rorg.ConnectionStatus = utils.Connected
@@ -379,9 +359,9 @@ func (s *Service) GetGitLabOrganizations(ctx context.Context, projectSFID string
 	sort.Slice(out.List, func(i, j int) bool {
 		return strings.ToLower(out.List[i].OrganizationName) < strings.ToLower(out.List[j].OrganizationName)
 	})
-	for _, orgList := range out.List {
-		sort.Slice(orgList.Repositories, func(i, j int) bool {
-			return strings.ToLower(orgList.Repositories[i].RepositoryName) < strings.ToLower(orgList.Repositories[j].RepositoryName)
+	for _, projectOrganization := range out.List {
+		sort.Slice(projectOrganization.Repositories, func(i, j int) bool {
+			return strings.ToLower(projectOrganization.Repositories[i].RepositoryName) < strings.ToLower(projectOrganization.Repositories[j].RepositoryName)
 		})
 	}
 
@@ -411,7 +391,7 @@ func (s *Service) GetGitLabOrganizationByState(ctx context.Context, gitLabOrgani
 }
 
 // UpdateGitLabOrganizationAuth updates the GitLab organization authentication information
-func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlab_api.OauthSuccessResponse) error {
+func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse) error {
 	f := logrus.Fields{
 		"functionName":         "v2.gitlab_organizations.service.UpdateGitLabOrganizationAuth",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -419,7 +399,7 @@ func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrgani
 	}
 
 	log.WithFields(f).Debugf("updating gitlab org auth")
-	authInfoEncrypted, err := gitlab_api.EncryptAuthInfo(oauthResp, s.gitLabApp)
+	authInfoEncrypted, err := gitlabApi.EncryptAuthInfo(oauthResp, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("encrypt failed : %v", err)
 	}
@@ -430,13 +410,13 @@ func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrgani
 	}
 
 	// Get a reference to the GItLab client
-	gitLabClient, err := gitlab_api.NewGitlabOauthClientFromAccessToken(oauthResp.AccessToken)
+	gitLabClient, err := gitlabApi.NewGitlabOauthClientFromAccessToken(oauthResp.AccessToken)
 	if err != nil {
 		return fmt.Errorf("initializing gitlab client : %v", err)
 	}
 
 	// Query the groups list
-	groupsWithMaintainerPerms, groupListErr := gitlab_api.GetGroupsListAll(ctx, gitLabClient, goGitLab.MaintainerPermissions)
+	groupsWithMaintainerPerms, groupListErr := gitlabApi.GetGroupsListAll(ctx, gitLabClient, goGitLab.MaintainerPermissions)
 	if groupListErr != nil {
 		return groupListErr
 	}
@@ -474,20 +454,20 @@ func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrgani
 		msg = fmt.Sprintf("full path: '%s'", gitLabOrgModel.OrganizationFullPath)
 	}
 
-	return fmt.Errorf("unable to locate the provided GitLab group by %s using the provided permissions - discovered %d groups where user has maintainer or above permissions.",
+	return fmt.Errorf("unable to locate the provided GitLab group by %s using the provided permissions - discovered %d groups where user has maintainer or above permissions",
 		msg, len(groupsWithMaintainerPerms))
 }
 
 // UpdateGitLabOrganization updates the GitLab organization
-func (s *Service) UpdateGitLabOrganization(ctx context.Context, projectSFID string, groupID int64, organizationName, groupFullPath string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool) error {
+func (s *Service) UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization) error {
 	// check if valid cla group id is passed
-	if autoEnabledClaGroupID != "" {
-		if _, err := s.claGroupRepository.GetCLAGroupNameByID(ctx, autoEnabledClaGroupID); err != nil {
+	if input.AutoEnabledClaGroupID != "" {
+		if _, err := s.claGroupRepository.GetCLAGroupNameByID(ctx, input.AutoEnabledClaGroupID); err != nil {
 			return err
 		}
 	}
 
-	return s.repo.UpdateGitLabOrganization(ctx, projectSFID, groupID, organizationName, groupFullPath, autoEnabled, autoEnabledClaGroupID, branchProtectionEnabled, true)
+	return s.repo.UpdateGitLabOrganization(ctx, input, true)
 }
 
 // DeleteGitLabOrganizationByFullPath deletes the specified GitLab organization by full path
@@ -563,7 +543,7 @@ func toGitLabProjectResponse(gitLabListRepos *models.GitlabRepositoriesList) []*
 
 	var repoList []*models.GitlabProjectRepository
 	for _, repo := range gitLabListRepos.List {
-		parentProjectSFID, err := project_service.GetClient().GetParentProject(repo.RepositoryProjectSfid)
+		parentProjectSFID, err := projectService.GetClient().GetParentProject(repo.RepositoryProjectSfid)
 		if err != nil {
 			log.WithFields(f).Warnf("unable to lookup project parent SFID using SFID: %s", repo.RepositoryProjectSfid)
 		}

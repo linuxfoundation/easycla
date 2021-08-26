@@ -289,6 +289,7 @@ provider:
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-projects-cla-groups/index/cla-group-id-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-projects-cla-groups/index/foundation-sfid-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-org-sfid-index"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-project-sfid-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-organization-name-lower-search-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-project-sfid-organization-name-index"
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-full-path-index"
@@ -609,7 +610,7 @@ resources:
     isProd: { "Fn::Equals": [ "${env:STAGE}", "prod" ] }
     isStaging: { "Fn::Equals": [ "${env:STAGE}", "staging" ] }
     isDev: { "Fn::Equals": [ "${env:STAGE}", "dev" ] }
-    isNotProd: {"Fn::Or": [{"Condition": "isDev"}, {"Condition": "isStaging" }]}
+    isNotProd: { "Fn::Or": [ { "Condition": "isDev" }, { "Condition": "isStaging" } ] }
     # true when a TSL certificate should be created by serverless (false created externally)
     ShouldGenerateCertificate:
       Fn::Not: [ Fn::Equals: [ "${env:STAGE}", "prod" ] ]

@@ -11,12 +11,14 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+
 	"github.com/go-openapi/runtime"
 
-	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	projectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
+	gitlabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/gofrs/uuid"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
@@ -50,7 +52,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			}
 
 			// Load the project
-			psc := project_service.GetClient()
+			psc := projectService.GetClient()
 			projectModel, err := psc.GetProject(params.ProjectSFID)
 			if err != nil || projectModel == nil {
 				return gitlab_organizations.NewGetProjectGitlabOrganizationsNotFound().WithPayload(
@@ -100,11 +102,18 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			}
 
 			// Load the project
-			psc := project_service.GetClient()
+			psc := projectService.GetClient()
 			projectModel, err := psc.GetProject(params.ProjectSFID)
 			if err != nil || projectModel == nil {
 				return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
 					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+			}
+
+			// Load the project parent
+			parentProjectModel, err := psc.GetParentProjectModel(params.ProjectSFID)
+			if err != nil || parentProjectModel == nil {
+				return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
+					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate parent project from project with ID: %s", params.ProjectSFID)))
 			}
 
 			if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
@@ -123,6 +132,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
+			orgURL := params.Body.OrganizationFullPath
 			// Clean up/filter the Group Full Path, if needed
 			if params.Body.OrganizationFullPath != "" {
 				r, regexErr := regexp.Compile(`^http(s)?://`)
@@ -167,7 +177,25 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
-			result, err := service.AddGitLabOrganization(ctx, params.ProjectSFID, params.Body)
+			// If the parent is TLF, then use the same project SFID value for the parent SFID value
+			parentProjectSFID := parentProjectModel.ID
+			if utils.IsProjectHasRootParent(projectModel) {
+				parentProjectSFID = params.ProjectSFID
+			}
+
+			// Convert the various input parameters and values to an add GitLab Group/Org model
+			inputModel := &common.GitLabAddOrganization{
+				ProjectSFID:             params.ProjectSFID,
+				ParentProjectSFID:       parentProjectSFID, // could be the same SFID as the project SFID if parent is TLF
+				AutoEnabled:             utils.BoolValue(params.Body.AutoEnabled),
+				AutoEnabledClaGroupID:   params.Body.AutoEnabledClaGroupID,
+				BranchProtectionEnabled: utils.BoolValue(params.Body.BranchProtectionEnabled),
+				ExternalGroupID:         params.Body.GroupID,
+				OrganizationURL:         orgURL,
+				OrganizationFullPath:    params.Body.OrganizationFullPath,
+			}
+
+			result, err := service.AddGitLabOrganization(ctx, inputModel)
 			if err != nil {
 				if _, ok := err.(*utils.ProjectConflict); ok {
 					return gitlab_organizations.NewAddProjectGitlabOrganizationConflict().WithPayload(
@@ -215,11 +243,18 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		}
 
 		// Load the project
-		psc := project_service.GetClient()
+		psc := projectService.GetClient()
 		projectModel, err := psc.GetProject(params.ProjectSFID)
 		if err != nil || projectModel == nil {
 			return gitlab_organizations.NewUpdateProjectGitlabGroupConfigNotFound().WithPayload(
 				utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate project with ID: %s", params.ProjectSFID)))
+		}
+
+		// Load the project parent
+		parentProjectModel, err := psc.GetParentProjectModel(params.ProjectSFID)
+		if err != nil || parentProjectModel == nil {
+			return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
+				utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate parent project from project with ID: %s", params.ProjectSFID)))
 		}
 
 		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
@@ -235,7 +270,17 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			return gitlab_organizations.NewUpdateProjectGitlabGroupConfigBadRequest().WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 		}
 
-		updateErr := service.UpdateGitLabOrganization(ctx, params.ProjectSFID, params.GitLabGroupID, "", "", params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID, params.Body.BranchProtectionEnabled)
+		inputModel := &common.GitLabAddOrganization{
+			ProjectSFID:             params.ProjectSFID,
+			ParentProjectSFID:       parentProjectModel.ID,
+			AutoEnabled:             params.Body.AutoEnabled,
+			AutoEnabledClaGroupID:   params.Body.AutoEnabledClaGroupID,
+			BranchProtectionEnabled: params.Body.BranchProtectionEnabled,
+			ExternalGroupID:         params.GitLabGroupID,
+			Enabled:                 true,
+		}
+
+		updateErr := service.UpdateGitLabOrganization(ctx, inputModel)
 		if updateErr != nil {
 			if errors.Is(updateErr, projects_cla_groups.ErrCLAGroupDoesNotExist) {
 				msg := fmt.Sprintf("problem updating GitLab group/organization for project %s with SFID: %s - CLA Group wth ID: %s was not found, error: %+v", projectModel.Name, projectModel.ID, params.Body.AutoEnabledClaGroupID, updateErr)
@@ -289,7 +334,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		}
 
 		// Load the project
-		psc := project_service.GetClient()
+		psc := projectService.GetClient()
 		projectModel, err := psc.GetProject(params.ProjectSFID)
 		if err != nil || projectModel == nil {
 			return gitlab_organizations.NewDeleteProjectGitlabGroupConfigNotFound().WithPayload(
@@ -368,7 +413,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		}
 
 		// now fetch the oauth credentials and store to db
-		oauthResp, err := gitlab_api.FetchOauthCredentials(params.Code)
+		oauthResp, err := gitlabApi.FetchOauthCredentials(params.Code)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab credentials failed : %s : %v", gitlabOrganizationID, err)
 			log.WithFields(f).WithError(err).Warn(msg)
