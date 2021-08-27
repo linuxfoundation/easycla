@@ -126,147 +126,8 @@ class DocuSign(signing_service_interface.SigningService):
                                                 integrator_key=integrator_key)
         self.s3storage = S3Storage()
         self.s3storage.initialize(None)
-    
-    def request_individual_signature_gitlab(self, project_id, user_id, return_url=None, callback_url=None):
-        request_info = 'project: {project_id}, user: {user_id} with return_url: {return_url}'.format(
-        project_id=project_id, user_id=user_id, return_url=return_url)
-        cla.log.debug('Individual Signature - creating new signature for: {}'.format(request_info))
 
-        # Ensure this is a valid user
-        user_id = str(user_id)
-        try:
-            user = User()
-            user.load(user_id)
-            cla.log.debug('Individual Signature - loaded user name: {}, '
-                          'user email: {}, gh user: {}, gh id: {}'.
-                          format(user.get_user_name(), user.get_user_email(), user.get_github_username(),
-                                 user.get_user_github_id()))
-        except DoesNotExist as err:
-            cla.log.warning('Individual Signature - user ID was NOT found for: {}'.format(request_info))
-            return {'errors': {'user_id': str(err)}}
-
-        # Ensure the project exists
-        try:
-            project = Project()
-            project.load(project_id)
-            cla.log.debug('Individual Signature - loaded project id: {}, name: {}, '.
-                          format(project.get_project_id(), project.get_project_name()))
-        except DoesNotExist as err:
-            cla.log.warning('Individual Signature - project ID NOT found for: {}'.format(request_info))
-            return {'errors': {'project_id': str(err)}}
-
-        # Check for active signature object with this project. If the user has
-        # signed the most recent major version, they do not need to sign again.
-        cla.log.debug('Individual Signature - loading latest user signature for user: {}, project: {}'.
-                      format(user, project))
-        latest_signature = user.get_latest_signature(str(project_id))
-        cla.log.debug('Individual Signature - loaded latest user signature for user: {}, project: {}'.
-                      format(user, project))
-
-        cla.log.debug('Individual Signature - loading latest individual document for project: {}'.
-                      format(project))
-        last_document = project.get_latest_individual_document()
-        cla.log.debug('Individual Signature - loaded latest individual document for project: {}'.
-                      format(project))
-
-        cla.log.debug('Individual Signature - creating default individual values for user: {}'.format(user))
-        default_cla_values = create_default_individual_values(user)
-        cla.log.debug('Individual Signature - created default individual values: {}'.format(default_cla_values))
-
-        # Generate signature callback url
-        cla.log.debug('Individual Signature - get active signature metadata')
-        signature_metadata = cla.utils.get_active_signature_metadata(user_id)
-        cla.log.debug('Individual Signature - get active signature metadata: {}'.format(signature_metadata))
-
-        cla.log.debug('Individual Signature - get individual signature callback url')
-        callback_url = cla.utils.get_individual_signature_callback_url_gitlab(user_id, signature_metadata)
-        cla.log.debug('Individual Signature - get individual signature callback url: {}'.format(callback_url))
-
-        if latest_signature is not None and \
-                last_document.get_document_major_version() == latest_signature.get_signature_document_major_version():
-            cla.log.debug('Individual Signature - user already has a signatures with this project: {}'.
-                          format(latest_signature.get_signature_id()))
-
-            # Re-generate and set the signing url - this will update the signature record
-            self.populate_sign_url(latest_signature, callback_url, default_values=default_cla_values,
-                                   preferred_email=user.get_user_email())
-
-            return {'user_id': user_id,
-                    'project_id': project_id,
-                    'signature_id': latest_signature.get_signature_id(),
-                    'sign_url': latest_signature.get_signature_sign_url()}
-        else:
-            cla.log.debug('Individual Signature - user does NOT have a signatures with this project: {}'.
-                          format(project))
-
-        # Get signature return URL
-        if return_url is None:
-            return_url = cla.utils.get_active_signature_return_url(user_id, signature_metadata)
-            cla.log.debug('Individual Signature - setting signature return_url to {}'.format(return_url))
-
-        if return_url is None:
-            cla.log.warning('No active signature found for user - cannot generate '
-                            'return_url without knowing where the user came from')
-            return {'user_id': str(user_id),
-                    'project_id': str(project_id),
-                    'signature_id': None,
-                    'sign_url': None,
-                    'error': 'No active signature found for user - cannot generate return_url without knowing where the user came from'}
-
-        # Get latest document
-        try:
-            cla.log.debug('Individual Signature - loading project latest individual document...')
-            document = project.get_latest_individual_document()
-            cla.log.debug('Individual Signature - loaded project latest individual document: {}'.format(document))
-        except DoesNotExist as err:
-            cla.log.warning('Individual Signature - project individual document does NOT exist for: {}'.
-                            format(request_info))
-            return {'errors': {'project_id': project_id, 'message': str(err)}}
-
-        # If the CCLA/ICLA template is missing (not created in the project console), we won't have a document
-        # return an error
-        if not document:
-            return {'errors': {'project_id': project_id, 'message': 'missing template document'}}
-
-        # Create new Signature object
-        cla.log.debug('Individual Signature - creating new signature document '
-                      'project_id: {}, user_id: {}, return_url: {}, callback_url: {}'.
-                      format(project_id, user_id, return_url, callback_url))
-        signature = Signature(signature_id=str(uuid.uuid4()),
-                              signature_project_id=project_id,
-                              signature_document_major_version=document.get_document_major_version(),
-                              signature_document_minor_version=document.get_document_minor_version(),
-                              signature_reference_id=user_id,
-                              signature_reference_type='user',
-                              signature_reference_name=user.get_user_name(),
-                              signature_type='cla',
-                              signature_return_url_type='Github',
-                              signature_signed=False,
-                              signature_approved=True,
-                              signature_return_url=return_url,
-                              signature_callback_url=callback_url)
-
-        # Set signature ACL
-        cla.log.debug('Individual Signature - setting ACL using user GH id: {}'.format(user.get_user_github_id()))
-        signature.set_signature_acl('github:{}'.format(user.get_user_github_id()))
-
-        # Populate sign url
-        self.populate_sign_url(signature, callback_url, default_values=default_cla_values,
-                               preferred_email=user.get_user_email())
-
-        # Save signature
-        signature.save()
-        cla.log.debug('Individual Signature - Saved signature for: {}'.format(request_info))
-
-        response = {'user_id': str(user_id),
-                    'project_id': project_id,
-                    'signature_id': signature.get_signature_id(),
-                    'sign_url': signature.get_signature_sign_url()}
-
-        cla.log.debug('Individual Signature - returning response: {}'.format(response))
-        return response
-
-    def request_individual_signature(self, project_id, user_id, return_url=None, callback_url=None,
+    def request_individual_signature(self, project_id, user_id, return_url=None, return_url_type="github", callback_url=None,
                                      preferred_email=None):
         request_info = 'project: {project_id}, user: {user_id} with return_url: {return_url}'.format(
             project_id=project_id, user_id=user_id, return_url=return_url)
@@ -319,7 +180,11 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.debug('Individual Signature - get active signature metadata: {}'.format(signature_metadata))
 
         cla.log.debug('Individual Signature - get individual signature callback url')
-        callback_url = cla.utils.get_individual_signature_callback_url(user_id, signature_metadata)
+        if return_url_type == "github":
+            callback_url = cla.utils.get_individual_signature_callback_url(user_id, signature_metadata)
+        elif return_url_type == "gitlab":
+            callback_url = cla.utils.get_individual_signature_callback_url_gitlab(user_id, signature_metadata)
+
         cla.log.debug('Individual Signature - get individual signature callback url: {}'.format(callback_url))
 
         if latest_signature is not None and \
@@ -387,8 +252,12 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_callback_url=callback_url)
 
         # Set signature ACL
-        cla.log.debug('Individual Signature - setting ACL using user GH id: {}'.format(user.get_user_github_id()))
-        signature.set_signature_acl('github:{}'.format(user.get_user_github_id()))
+        if return_url_type == "github":
+            acl = user.get_user_github_id()
+        elif return_url_type == "gitlab":
+            acl = user.get_user_github_id()
+        cla.log.debug('Individual Signature - setting ACL using user {} id: {}'.format(return_url_type, acl))
+        signature.set_signature_acl('github:{}'.format(acl))
 
         # Populate sign url
         self.populate_sign_url(signature, callback_url, default_values=default_cla_values,
@@ -769,7 +638,7 @@ class DocuSign(signing_service_interface.SigningService):
 
         return {'success': {'the employee is ready to sign the CCLA'}}
 
-    def request_employee_signature(self, project_id, company_id, user_id, return_url=None):
+    def request_employee_signature(self, project_id, company_id, user_id, return_url=None, return_url_type="github"):
 
         fn = 'docusign_models.check_and_prepare_employee_signature'
         request_info = f'cla group: {project_id}, company: {company_id}, user: {user_id} with return_url: {return_url}'
@@ -836,7 +705,10 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.info(f'{fn} - created new signature document for: {request_info} - signature: {new_signature}')
 
         # Set signature ACL
-        acl_value = f'github:{user.get_user_github_id()}'
+        if return_url_type == "github":
+            acl_value = f'github:{user.get_user_github_id()}'
+        elif return_url_type == "gitlab":
+            acl_value = f'gitlab:{user.get_user_gitlab_id()}'
         cla.log.info(f'{fn} - assigning signature acl with value: {acl_value} for: {request_info}')
         new_signature.set_signature_acl(acl_value)
 
@@ -867,12 +739,24 @@ class DocuSign(signing_service_interface.SigningService):
             github_repository_id = signature_metadata['repository_id']
             change_request_id = signature_metadata['pull_request_id']
 
-            # Get repository
-            installation_id = cla.utils.get_installation_id_from_github_repository(github_repository_id)
-            if installation_id is None:
-                return {'errors': {'github_repository_id': 'The given github repository ID does not exist. '}}
+            if return_url_type == "github":
+                # Get repository
+                installation_id = cla.utils.get_installation_id_from_github_repository(github_repository_id)
+                if installation_id is None:
+                    return {'errors': {'github_repository_id': 'The given github repository ID does not exist. '}}
 
-            update_repository_provider(installation_id, github_repository_id, change_request_id)
+                update_repository_provider(installation_id, github_repository_id, change_request_id)
+    
+            elif return_url_type == "gitlab":
+                gitlab_repository_id = signature_metadata['repository_id']
+                merge_request_id = signature_metadata['merge_request_id']
+                organization_id = cla.utils.get_organization_id_from_gitlab_repository(gitlab_repository_id)
+                self._update_gitlab_mr(organization_id, gitlab_repository_id, merge_request_id)
+
+                if organization_id is None:
+                    return {'errors': {'gitlab_repository_id': 'The given github repository ID does not exist. '}}
+                
+
             cla.utils.delete_active_signature_metadata(user_id)
         else:
             cla.log.info(f'{fn} - cla group requires ICLA signature from employee - PR has been left unchanged')
@@ -1807,6 +1691,8 @@ class DocuSign(signing_service_interface.SigningService):
                 cla.log.warning(msg)
                 return
 
+            # Remove the active signature metadata.
+            cla.utils.delete_active_signature_metadata(user.get_user_id())
 
             # Get signed document
             document_data = self.get_signed_document(envelope_id, user)

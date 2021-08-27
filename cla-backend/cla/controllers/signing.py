@@ -11,7 +11,7 @@ from jinja2 import Template
 
 import cla
 from cla.models import DoesNotExist
-from cla.models.dynamo_models import Signature
+from cla.models.dynamo_models import Signature, User
 from cla.user_service import UserService
 from cla.utils import get_signing_service, get_signature_instance, get_email_service, \
     get_repository_service, get_project_instance, get_company_instance
@@ -36,14 +36,22 @@ def request_individual_signature(project_id, user_id, return_url_type, return_ur
     signing_service = get_signing_service()
     if return_url_type is not None and return_url_type.lower() == "gerrit":
         return signing_service.request_individual_signature_gerrit(str(project_id), str(user_id), return_url)
-    elif return_url_type is not None and return_url_type.lower() == "github":
-        # fetching the primary for the account
-        github = get_repository_service("github")
-        primary_user_email = github.get_primary_user_email(request)
-        return signing_service.request_individual_signature(str(project_id), str(user_id), return_url,
+    elif return_url_type is not None and (return_url_type.lower() == "github" or return_url_type.lower == "gitlab"):
+        if return_url_type == "github":
+            # fetching the primary for the account
+            github = get_repository_service("github")
+            primary_user_email = github.get_primary_user_email(request)
+        elif return_url_type == "gitlab":
+            try:
+                cla.log.debug(f"Fetching user details for: {user_id}")
+                user = User()
+                user.load(user_id)
+            except DoesNotExist as err:
+                cla.log.warning('Individual Signature - user ID was NOT found for: {}'.format(user_id))
+                return {'errors': {'user_id': str(err)}}
+            primary_user_email = user.get_user_email()
+        return signing_service.request_individual_signature(str(project_id), str(user_id), return_url, return_url_type,
                                                             preferred_email=primary_user_email)
-    elif return_url_type is not None and return_url_type.lower() == "gitlab":
-        return signing_service.request_individual_signature_gitlab(str(project_id), str(user_id), return_url)
 
 
 def request_corporate_signature(auth_user,
@@ -113,9 +121,10 @@ def request_employee_signature(project_id, company_id, user_id, return_url_type,
         cla.log.error(f'{fn} - return type is gerrit - invoking: request_employee_signature_gerrit')
         return signing_service.request_employee_signature_gerrit(str(project_id), str(company_id), str(user_id),
                                                                  return_url)
-    elif return_url_type is not None and return_url_type.lower() == "github":
+    elif return_url_type is not None and (return_url_type.lower() == "github" or return_url_type.lower() == "gitlab"):
         cla.log.error(f'{fn} - return type is github - invoking: request_employee_signature')
         return signing_service.request_employee_signature(str(project_id), str(company_id), str(user_id), return_url)
+
     else:
         msg = (f'{fn} - unsupported return type {return_url_type} for '
                f'cla group: {project_id}, '

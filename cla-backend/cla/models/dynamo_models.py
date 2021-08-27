@@ -169,6 +169,34 @@ class GitHubUsernameIndex(GlobalSecondaryIndex):
     # This attribute is the hash key for the index.
     user_github_username = UnicodeAttribute(hash_key=True)
 
+class GitLabIDIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying users by github username.
+    """
+
+    class Meta:
+        index_name = "gitlab-id-index"
+        write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
+        read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
+        projection = AllProjection()
+
+    # This attribute is the hash key for the index.
+    user_gitlab_id = UnicodeAttribute(hash_key=True)
+
+class GitLabUsernameIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying users by github username.
+    """
+
+    class Meta:
+        index_name = "gitlab-username-index"
+        write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
+        read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
+        projection = AllProjection()
+
+    # This attribute is the hash key for the index.
+    user_gitlab_username = UnicodeAttribute(hash_key=True)
+
 
 class LFUsernameIndex(GlobalSecondaryIndex):
     """
@@ -1495,6 +1523,10 @@ class UserModel(BaseModel):
     user_github_id = NumberAttribute(null=True)
     user_github_username = UnicodeAttribute(null=True)
     user_github_username_index = GitHubUsernameIndex()
+    user_gitlab_id = NumberAttribute(null=True)
+    user_gitlab_username = UnicodeAttribute(null=True)
+    user_gitlab_id_index = GitLabIDIndex()
+    user_github_username_index = GitLabUsernameIndex()
     user_ldap_id = UnicodeAttribute(null=True)
     user_github_id_index = GitHubUserIndex()
     github_user_external_id_index = GithubUserExternalIndex()
@@ -1516,6 +1548,8 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             user_external_id=None,
             user_github_id=None,
             user_github_username=None,
+            user_gitlab_id=None,
+            user_gitlab_username=None,
             user_ldap_id=None,
             lf_username=None,
             lf_sub=None,
@@ -1539,12 +1573,14 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         self.model.user_company_id = user_company_id
         self.model.note = note
         self._preferred_email = preferred_email
+        self.model.user_gitlab_id = user_gitlab_id
+        self.model.user_gitlab_username = user_gitlab_username
 
     def __str__(self):
         return (
             "id: {}, username: {}, gh id: {}, gh username: {}, "
             "lf email: {}, emails: {}, ldap id: {}, lf username: {}, "
-            "user company id: {}, note: {}, user external id: {}"
+            "user company id: {}, note: {}, user external id: {}, user gitlab id: {}, user gitlab username: {}"
         ).format(
             self.model.user_id,
             self.model.user_github_username,
@@ -1556,7 +1592,9 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             self.model.lf_username,
             self.model.user_company_id,
             self.model.note,
-            self.model.user_external_id
+            self.model.user_external_id,
+            self.model.user_gitlab_id,
+            self.model.user_gitlab_username,
         )
 
     def to_dict(self):
@@ -1565,6 +1603,8 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             ret["user_github_id"] = None
         if ret["user_ldap_id"] == "null":
             ret["user_ldap_id"] = None
+        if ret["user_gitlab_id"] == "null":
+            ret["user_gitlab_id"] = None
         return ret
 
     def log_info(self, msg):
@@ -1661,6 +1701,12 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
 
     def get_github_username(self):
         return self.model.user_github_username
+    
+    def get_user_gitlab_id(self):
+        return self.model.user_gitlab_id
+    
+    def get_user_gitlab_username(self):
+        return self.model.user_gitlab_username
 
     def get_user_github_username(self):
         """
@@ -1716,6 +1762,12 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
 
     def set_user_github_username(self, user_github_username):
         self.model.user_github_username = user_github_username
+    
+    def set_user_gitlab_id(self, user_gitlab_id):
+        self.model.user_gitlab_id = user_gitlab_id 
+    
+    def set_user_gitlab_username(self, user_gitlab_username):
+        self.model.user_gitlab_username = user_gitlab_username
 
     def set_note(self, note):
         self.model.note = note
