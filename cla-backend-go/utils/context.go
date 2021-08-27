@@ -42,6 +42,20 @@ func NewContextWithUser(authUser *auth.User) context.Context {
 	return context.WithValue(context.WithValue(context.Background(), XREQUESTID, requestID), CtxAuthUser, authUser) // nolint
 }
 
+// NewContextFromParent returns a new context object with a new request ID based on the parent
+func NewContextFromParent(ctx context.Context) context.Context {
+	f := logrus.Fields{
+		"functionName": "utils.NewContext",
+	}
+	requestID, err := uuid.NewV4()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to generate a UUID for x-request-id")
+		return context.Background()
+	}
+
+	return context.WithValue(ctx, XREQUESTID, requestID.String()) // nolint
+}
+
 // ContextWithRequestAndUser returns a new context with the specified request ID and user
 func ContextWithRequestAndUser(ctx context.Context, reqID string, authUser *auth.User) context.Context {
 	return context.WithValue(context.WithValue(ctx, XREQUESTID, reqID), CtxAuthUser, authUser) // nolint

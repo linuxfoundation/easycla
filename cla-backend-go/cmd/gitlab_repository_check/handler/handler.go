@@ -1,0 +1,237 @@
+// Copyright The Linux Foundation and each contributor to CommunityBridge.
+// SPDX-License-Identifier: MIT
+
+package handler
+
+import (
+	"context"
+	"strconv"
+
+	v1Company "github.com/communitybridge/easycla/cla-backend-go/company"
+	"github.com/communitybridge/easycla/cla-backend-go/events"
+	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
+	"github.com/communitybridge/easycla/cla-backend-go/github"
+	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
+	gitLabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
+	gitlab "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
+	ini "github.com/communitybridge/easycla/cla-backend-go/init"
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/communitybridge/easycla/cla-backend-go/project"
+	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	v1Repositories "github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
+	v2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
+
+	"strings"
+
+	"github.com/sirupsen/logrus"
+	goGitLab "github.com/xanzy/go-gitlab"
+)
+
+// Init initializes the handler
+func Init() {
+	f := logrus.Fields{
+		"functionName": "cmd.gitlab_repository_check.handler.Init",
+	}
+	ctx := utils.NewContext()
+	f[utils.XREQUESTID] = ctx.Value(utils.XREQUESTID)
+	log.WithFields(f).Debug("initializing...")
+
+	// General initialization
+	ini.Init()
+	ini.GetConfig()
+}
+
+// Handler is invoked each time the lambda is triggered - https://docs.aws.amazon.com/lambda/latest/dg/golang-handler.html
+func Handler(ctx context.Context) error {
+	f := logrus.Fields{
+		"functionName": "cmd.update-project-statistics.Handler",
+	}
+
+	// Add the x-request-id to the context
+	ctx = utils.NewContextFromParent(ctx)
+	f[utils.XREQUESTID] = ctx.Value(utils.XREQUESTID)
+	stage := strings.ToLower(utils.GetProperty("STAGE"))
+	f["stage"] = stage
+
+	awsSession, err := ini.GetAWSSession()
+	if err != nil {
+		log.WithFields(f).WithError(err).Panic("Unable to load AWS session")
+	}
+
+	configFile := ini.GetConfig()
+
+	// initialize GitHub
+	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
+	// initialize GitLab
+	gitLabApp := gitlab.Init(configFile.Gitlab.AppClientID, configFile.Gitlab.AppClientSecret, configFile.Gitlab.AppPrivateKey)
+
+	// Repository Layer
+	usersRepo := users.NewRepository(awsSession, stage)
+	eventsRepo := events.NewRepository(awsSession, stage)
+	v1CompanyRepo := v1Company.NewRepository(awsSession, stage)
+	gerritRepo := gerrits.NewRepository(awsSession, stage)
+	v1ProjectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
+	gitV1Repository := v1Repositories.NewRepository(awsSession, stage)
+	gitV2Repository := v2Repositories.NewRepository(awsSession, stage)
+	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
+	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
+	v1CLAGroupRepo := project.NewRepository(awsSession, stage, gitV1Repository, gerritRepo, v1ProjectClaGroupRepo)
+
+	// Service Layer
+
+	type combinedRepo struct {
+		users.UserRepository
+		v1Company.IRepository
+		project.ProjectRepository
+		projects_cla_groups.Repository
+	}
+
+	// Our service layer handlers
+	eventsService := events.NewService(eventsRepo, combinedRepo{
+		usersRepo,
+		v1CompanyRepo,
+		v1CLAGroupRepo,
+		v1ProjectClaGroupRepo,
+	})
+
+	v2RepositoriesService := v2Repositories.NewService(gitV1Repository, gitV2Repository, v1ProjectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
+	//gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo)
+
+	// Query GitLab Groups
+	// for each group
+	//    if enabled and auto-enabled = true
+	//       load token and client
+	//       query for GitLab API repository list
+	//       query for GitLab repositories in DB for this group path
+	//       identify deltas
+	//       if new, add to DB, create event log
+	//       if deleted, remove from DB, create event log
+
+	gitLabGroups, err := gitlabOrganizationRepo.GetGitLabOrganizationsEnabledWithAutoEnabled(ctx)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem querying for GitLab group/organizations that are enabled with auto-enabled flag set to true")
+		return err
+	}
+
+	log.WithFields(f).Debugf("start - checking %d GitLab projects for add/delete events", len(gitLabGroups.List))
+	for _, gitLabGroup := range gitLabGroups.List {
+		gitLabClient, gitLabClientErr := gitLabApi.NewGitlabOauthClient(gitLabGroup.AuthInfo, gitLabApp)
+		if gitLabClientErr != nil {
+			log.WithFields(f).WithError(gitLabClientErr).Warnf("problem loading GitLab client for group/organization: %s", gitLabGroup.OrganizationURL)
+			return gitLabClientErr
+		}
+
+		gitLabProjects, getGitLabAPIError := gitLabApi.GetGroupProjectListByGroupID(ctx, gitLabClient, int(gitLabGroup.OrganizationExternalID))
+		if getGitLabAPIError != nil {
+			log.WithFields(f).WithError(getGitLabAPIError).Warnf("problem loading GitLab projects for group/organization: %s using the groupID: %d - skipping GitLab Group/Organziation", gitLabGroup.OrganizationFullPath, gitLabGroup.OrganizationExternalID)
+			continue
+		}
+		gitLabDBProjects, getProjectListDBErr := gitV2Repository.GitLabGetRepositoriesByNamePrefix(ctx, gitLabGroup.OrganizationFullPath)
+		if getProjectListDBErr != nil {
+			log.WithFields(f).WithError(getProjectListDBErr).Warnf("problem loading GitLab projects for group/organization: %s from the database - skipping GitLab Group/Organziation", gitLabGroup.OrganizationFullPath)
+			continue
+		}
+
+		newGitLabProjects := getNewProjects(gitLabProjects, gitLabDBProjects)
+		log.WithFields(f).Debugf("Found %d GitLab projects/repositories that were added for GitLab Group: %s", len(newGitLabProjects), gitLabGroup.OrganizationFullPath)
+		if len(newGitLabProjects) > 0 {
+			var gitLabProjectIDList []int64
+
+			// Build a quick list of the GitLab Project/repo ID values - the add repositories takes a list
+			for _, newGitLabProject := range newGitLabProjects {
+				gitLabProjectIDList = append(gitLabProjectIDList, int64(newGitLabProject.ID))
+			}
+
+			// Add the repositories - will generate a log event
+			_, addErr := v2RepositoriesService.GitLabAddRepositoriesWithEnabledFlag(ctx, gitLabGroup.ProjectSfid, &v2Repositories.GitLabAddRepoModel{
+				ClaGroupID:    gitLabGroup.AutoEnabledClaGroupID,
+				GroupName:     gitLabGroup.OrganizationName,
+				ExternalID:    gitLabGroup.OrganizationExternalID,
+				GroupFullPath: gitLabGroup.OrganizationFullPath,
+				ProjectIDList: gitLabProjectIDList,
+			}, true) // set to enabled when adding since this was added as a result of the auto-enable feature
+			if addErr != nil {
+				log.WithFields(f).WithError(addErr).Warnf("problem adding GitLab projects for group/organization: %s to the database", gitLabGroup.OrganizationFullPath)
+			} else {
+				log.WithFields(f).Debugf("added %d GitLab projects for group/organization: %s to the database", len(newGitLabProjects), gitLabGroup.OrganizationFullPath)
+			}
+		}
+
+		deletedGitLabProjects := getDeletedProjects(gitLabProjects, gitLabDBProjects)
+		log.WithFields(f).Debugf("Found %d GitLab projects/repositories that were removed from the GitLab Group: %s", len(newGitLabProjects), gitLabGroup.OrganizationFullPath)
+		if len(deletedGitLabProjects) > 0 {
+			for _, gitLabProjectDBRecord := range deletedGitLabProjects {
+				repositoryExternalID, parseIntErr := strconv.ParseInt(gitLabProjectDBRecord.RepositoryExternalID, 10, 64)
+				if parseIntErr != nil {
+					log.WithFields(f).WithError(parseIntErr).Warnf("problem converting repository %s external ID string value: %s to integer", gitLabProjectDBRecord.RepositoryFullPath, gitLabProjectDBRecord.RepositoryExternalID)
+				} else {
+					deleteErr := v2RepositoriesService.GitLabDeleteRepositoryByExternalID(ctx, repositoryExternalID)
+					if deleteErr != nil {
+						log.WithFields(f).WithError(deleteErr).Warnf("problem deleting repository %s external ID string value: %s to integer", gitLabProjectDBRecord.RepositoryFullPath, gitLabProjectDBRecord.RepositoryExternalID)
+					} else {
+						log.WithFields(f).Debugf("deleted GitLab project %s for group/organization: %s from the database", gitLabProjectDBRecord.RepositoryName, gitLabGroup.OrganizationFullPath)
+					}
+				}
+			}
+		}
+	}
+
+	log.WithFields(f).Debugf("done - checked %d GitLab projects for add/delete events", len(gitLabGroups.List))
+	return nil
+}
+
+// getNewProjects is a helper function to determine if we have any new GitLab projects that are not in our database
+func getNewProjects(gitLabProjects []*goGitLab.Project, gitLabDBProjects []*v1Repositories.RepositoryDBModel) []*goGitLab.Project {
+	var response []*goGitLab.Project
+	// For each GitLab Project/Repo
+	for _, gitLabProject := range gitLabProjects {
+		found := false
+
+		// For each GitLab Project/Repo in the database
+		for _, gitLabDBProject := range gitLabDBProjects {
+			// Compare the full name/path
+			if strings.ToLower(gitLabProject.PathWithNamespace) == strings.ToLower(gitLabDBProject.RepositoryFullPath) {
+				found = true
+				break
+			}
+		}
+
+		// Didn't find the GitLab Project Repo from GitLab defined in our database - must have been added!
+		if !found {
+			// Add to our list
+			response = append(response, gitLabProject)
+		}
+	}
+
+	return response
+}
+
+// getDeletedProjects is a helper function to determine if we have any new GitLab projects that were removed from GitLab but are still in our database
+func getDeletedProjects(gitLabProjects []*goGitLab.Project, gitLabDBProjects []*v1Repositories.RepositoryDBModel) []*v1Repositories.RepositoryDBModel {
+	var response []*v1Repositories.RepositoryDBModel
+	// For each GitLab Project/Repo in the database
+	for _, gitLabDBProject := range gitLabDBProjects {
+		found := false
+
+		// For each GitLab Project/Repo
+		for _, gitLabProject := range gitLabProjects {
+			// Compare the full name/path
+			if strings.ToLower(gitLabProject.PathWithNamespace) == strings.ToLower(gitLabDBProject.RepositoryFullPath) {
+				found = true
+				break
+			}
+
+		}
+
+		// Didn't find the GitLab Project Repo from the database defined in GitLab - must have been removed!
+		if !found {
+			// Add to our list
+			response = append(response, gitLabDBProject)
+		}
+	}
+
+	return response
+}

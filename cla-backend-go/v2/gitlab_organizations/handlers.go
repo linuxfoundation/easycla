@@ -67,7 +67,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			result, err := service.GetGitLabOrganizations(ctx, params.ProjectSFID)
+			result, err := service.GetGitLabOrganizationsByProjectSFID(ctx, params.ProjectSFID)
 			if err != nil {
 				if strings.ContainsAny(err.Error(), "getProjectNotFound") {
 					msg := fmt.Sprintf("Gitlab organization with project SFID not found: %s", params.ProjectSFID)
@@ -304,7 +304,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			},
 		})
 
-		results, err := service.GetGitLabOrganizations(ctx, params.ProjectSFID)
+		results, err := service.GetGitLabOrganizationsByProjectSFID(ctx, params.ProjectSFID)
 		if err != nil {
 			if strings.ContainsAny(err.Error(), "getProjectNotFound") {
 				msg := fmt.Sprintf("Gitlab organization with project SFID not found: %s", params.ProjectSFID)

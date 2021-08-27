@@ -48,6 +48,12 @@ type RepositoryDisabledEventData struct {
 	RepositoryExternalID int64
 }
 
+// RepositoryDeletedEventData event data model
+type RepositoryDeletedEventData struct {
+	RepositoryName       string
+	RepositoryExternalID int64
+}
+
 // RepositoryRenamedEventData event data model
 type RepositoryRenamedEventData struct {
 	NewRepositoryName string
@@ -498,6 +504,29 @@ func (ed *RepositoryDisabledEventData) GetEventDetailsString(args *LogEventArgs)
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectSFID)
 	}
 	data = data + " was disabled"
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *RepositoryDeletedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := "The GitHub repository " // nolint
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if ed.RepositoryName != "" {
+		data = data + fmt.Sprintf(" with repository name %s", ed.RepositoryName)
+	}
+	if ed.RepositoryExternalID > 0 {
+		data = data + fmt.Sprintf(" with repository external ID %d", ed.RepositoryExternalID)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectSFID)
+	}
+	data = data + " was deleted"
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -1493,6 +1522,32 @@ func (ed *RepositoryDisabledEventData) GetEventSummaryString(args *LogEventArgs)
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectSFID)
 	}
 	data = data + " was disabled"
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *RepositoryDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := "The GitHub repository " // nolint
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if ed.RepositoryName != "" {
+		data = data + fmt.Sprintf(" with repository name %s", ed.RepositoryName)
+	}
+	if ed.RepositoryExternalID > 0 {
+		data = data + fmt.Sprintf(" with repository external ID %d", ed.RepositoryExternalID)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectSFID)
+	}
+	data = data + " was deleted"
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
 	}

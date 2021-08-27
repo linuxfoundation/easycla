@@ -43,7 +43,10 @@ const (
 // RepositoryInterface is interface for gitlab org data model
 type RepositoryInterface interface {
 	AddGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization, enabled bool) (*v2Models.GitlabOrganization, error)
-	GetGitLabOrganizations(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
+	GetGitLabOrganizations(ctx context.Context) (*v2Models.GitlabOrganizations, error)
+	GetGitLabOrganizationsEnabled(ctx context.Context) (*v2Models.GitlabOrganizations, error)
+	GetGitLabOrganizationsEnabledWithAutoEnabled(ctx context.Context) (*v2Models.GitlabOrganizations, error)
+	GetGitLabOrganizationsByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
@@ -196,10 +199,31 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, input *common
 	return common.ToModel(gitlabOrg), nil
 }
 
-// GetGitLabOrganizations get GitLab organizations based on the project SFID or parent project SFID
-func (repo *Repository) GetGitLabOrganizations(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error) {
+// GetGitLabOrganizations returns the complete list of GitLab groups/organizations
+func (repo *Repository) GetGitLabOrganizations(ctx context.Context) (*v2Models.GitlabOrganizations, error) {
+	// No filter, return all
+	return repo.getScanResults(ctx, nil)
+}
+
+// GetGitLabOrganizationsEnabled returns the list of GitLab groups/organizations that are enabled
+func (repo *Repository) GetGitLabOrganizationsEnabled(ctx context.Context) (*v2Models.GitlabOrganizations, error) {
+	// Build the scan/query expression
+	filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true))
+	return repo.getScanResults(ctx, &filter)
+}
+
+// GetGitLabOrganizationsEnabledWithAutoEnabled returns the list of GitLab groups/organizations that are enabled with the auto enabled flag set to true
+func (repo *Repository) GetGitLabOrganizationsEnabledWithAutoEnabled(ctx context.Context) (*v2Models.GitlabOrganizations, error) {
+	// Build the scan/query expression
+	filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true)).
+		And(expression.Name(GitLabOrganizationsAutoEnabledColumn).Equal(expression.Value(true)))
+	return repo.getScanResults(ctx, &filter)
+}
+
+// GetGitLabOrganizationsByProjectSFID get GitLab organizations based on the project SFID or parent project SFID
+func (repo *Repository) GetGitLabOrganizationsByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error) {
 	f := logrus.Fields{
-		"functionName":   "v2.gitlab_organizations.repository.GetGitLabOrganizations",
+		"functionName":   "v2.gitlab_organizations.repository.GetGitLabOrganizationsByProjectSFID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 	}
@@ -214,7 +238,7 @@ func (repo *Repository) GetGitLabOrganizations(ctx context.Context, projectSFID 
 	// Search the project SFID column
 	go func(ctx context.Context, projectSFID string) {
 		condition := expression.Key(GitLabOrganizationsProjectSFIDColumn).Equal(expression.Value(projectSFID))
-		filter := expression.Name("enabled").Equal(expression.Value(true))
+		filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true))
 		response, err := repo.getOrganizationsWithConditionFilter(ctx, condition, filter, GitLabOrgProjectSFIDIndex)
 		responseChannel <- &getResponseChannelModel{
 			Response: response,
@@ -225,7 +249,7 @@ func (repo *Repository) GetGitLabOrganizations(ctx context.Context, projectSFID 
 	// Search the organization SFID (parent sfid) column
 	go func(ctx context.Context, projectSFID string) {
 		condition := expression.Key(GitLabOrganizationsOrganizationSFIDColumn).Equal(expression.Value(projectSFID))
-		filter := expression.Name("enabled").Equal(expression.Value(true))
+		filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true))
 		response, err := repo.getOrganizationsWithConditionFilter(ctx, condition, filter, GitLabOrgOrganizationSFIDIndex)
 		responseChannel <- &getResponseChannelModel{
 			Response: response,
@@ -791,4 +815,57 @@ func updateResponse(fullResponse, response *v2Models.GitlabOrganizations) {
 			}
 		}
 	}
+}
+
+func (repo *Repository) getScanResults(ctx context.Context, filter *expression.ConditionBuilder) (*v2Models.GitlabOrganizations, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.gitlab_organizations.repository.GetGitLabOrganizations",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	builder := expression.NewBuilder()
+
+	// Add the filter if provided
+	if filter != nil {
+		builder.WithFilter(*filter)
+	}
+
+	// Build the scan/query expression
+	expr, builderErr := builder.Build()
+	if builderErr != nil {
+		log.WithFields(f).Warnf("error building expression for %s scan, error: %v", repo.gitlabOrgTableName, builderErr)
+		return nil, builderErr
+	}
+
+	scanInput := &dynamodb.ScanInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		FilterExpression:          expr.Filter(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.gitlabOrgTableName),
+	}
+
+	var resultList []map[string]*dynamodb.AttributeValue
+	for {
+		results, scanErr := repo.dynamoDBClient.Scan(scanInput) //nolint
+		if scanErr != nil {
+			log.WithFields(f).Warnf("error retrieving scan results from table %s, error: %v", repo.gitlabOrgTableName, scanErr)
+			return nil, scanErr
+		}
+		resultList = append(resultList, results.Items...)
+		if len(results.LastEvaluatedKey) != 0 {
+			scanInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			break
+		}
+	}
+
+	var gitlabOrganizations *v2Models.GitlabOrganizations
+	unmarshalErr := dynamodbattribute.UnmarshalListOfMaps(resultList, &gitlabOrganizations)
+	if unmarshalErr != nil {
+		log.Warnf("error unmarshalling %s from database. error: %v", repo.gitlabOrgTableName, unmarshalErr)
+		return nil, unmarshalErr
+	}
+
+	return gitlabOrganizations, nil
 }

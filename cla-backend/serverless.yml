@@ -15,6 +15,7 @@ package:
     - ./dynamo-events-lambda
     - ./zipbuilder-scheduler-lambda
     - ./zipbuilder-lambda
+    - ./gitlab-repository-check-lambda
     - ./functional-tests
     - dev.sh
     - docs/**
@@ -533,6 +534,23 @@ functions:
       individually: true
       include:
         - ./zipbuilder-lambda
+
+  gitlab-repository-check-lambda:
+    handler: gitlab-repository-check-lambda
+    name: ${self:service}-${opt:stage, self:provider.stage, 'dev'}-gitlab-repository-check-lambda
+    description: "routine to periodically check the GitLab repository list for auto-enabled GitLab Groups"
+    runtime: go1.x
+    timeout: 900 # maximum time allowed
+    memorySize: 1024
+    events:
+      - schedule:
+          description: 'periodically check the GitLab repository list for auto-enabled GitLab Groups'
+          rate: rate(15 minutes)
+          enabled: true
+    package:
+      individually: true
+      include:
+        - ./gitlab-repository-check-lambda
 
   apiv1:
     handler: wsgi_handler.handler

@@ -38,6 +38,7 @@ type RepositoryInterface interface {
 	GitLabEnrollRepositoryByID(ctx context.Context, claGroupID string, repositoryID int64, enrollValue bool) error
 	GitLabEnableCLAGroupRepositories(ctx context.Context, claGroupID string, enrollValue bool) error
 	GitLabDeleteRepositories(ctx context.Context, gitLabGroupPath string) error
+	GitLabDeleteRepositoryByExternalID(ctx context.Context, gitLabExternalID int64) error
 }
 
 // Repository object/struct
@@ -455,6 +456,38 @@ func (r *Repository) GitLabDeleteRepositories(ctx context.Context, gitLabGroupPa
 
 	// Return the last error, hopefully nil if no error occurred...
 	return lastErr
+}
+
+// GitLabDeleteRepositoryByExternalID deletes the specified repository
+func (r *Repository) GitLabDeleteRepositoryByExternalID(ctx context.Context, gitLabExternalID int64) error {
+	f := logrus.Fields{
+		"functionName":     "v2.repositories.repository.GitLabDeleteRepositoryByExternalID",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+		"gitLabExternalID": gitLabExternalID,
+	}
+
+	repositoryRecord, err := r.GitLabGetRepositoryByExternalID(ctx, gitLabExternalID)
+	if err != nil {
+		// If nothing to delete...
+		if _, ok := err.(*utils.GitLabRepositoryNotFound); ok {
+			return nil
+		}
+		log.WithFields(f).WithError(err).Warnf("problem loading existing repository by external ID: %d", gitLabExternalID)
+		return err
+	}
+	if repositoryRecord == nil {
+		return nil
+	}
+
+	_, deleteErr := r.dynamoDBClient.DeleteItem(&dynamodb.DeleteItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			repoModels.RepositoryIDColumn: {S: aws.String(repositoryRecord.RepositoryID)},
+		},
+		TableName: aws.String(r.repositoryTableName),
+	})
+
+	// Return the error
+	return deleteErr
 }
 
 // getRepositoryWithConditionFilter fetches the repository entry based on the specified condition and filter criteria using the provided index

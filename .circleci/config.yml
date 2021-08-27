@@ -278,6 +278,7 @@ jobs:
             - cla-backend-go/dynamo-events-lambda
             - cla-backend-go/zipbuilder-scheduler-lambda
             - cla-backend-go/zipbuilder-lambda
+            - cla-backend-go/gitlab-repository-check-lambda
             - cla-backend-go/functional-tests
 
   buildGoBackendCommon:
@@ -353,6 +354,7 @@ jobs:
             cp ~/cla-backend-go/dynamo-events-lambda ~/project/cla-backend/
             cp ~/cla-backend-go/zipbuilder-scheduler-lambda ~/project/cla-backend/
             cp ~/cla-backend-go/zipbuilder-lambda ~/project/cla-backend/
+            cp ~/cla-backend-go/gitlab-repository-check-lambda ~/project/cla-backend/
 
             ls -alF ~/project/cla-backend/
             pushd ~/project/cla-backend
@@ -366,6 +368,7 @@ jobs:
             if [[ ! -f dynamo-events-lambda ]]; then echo "Missing dynamo-events-lambda binary file. Exiting..."; exit 1; fi
             if [[ ! -f zipbuilder-lambda ]]; then echo "Missing zipbuilder-lambda binary file. Exiting..."; exit 1; fi
             if [[ ! -f zipbuilder-scheduler-lambda ]]; then echo "Missing zipbuilder-scheduler-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f gitlab-repository-check-lambda ]]; then echo "Missing gitlab-repository-check-lambda binary file. Exiting..."; exit 1; fi
             if [[ ! -f serverless.yml ]]; then echo "Missing serverless.yml file. Exiting..."; exit 1; fi
             if [[ ! -f serverless-authorizer.yml ]]; then echo "Missing serverless-authorizer.yml file. Exiting..."; exit 1; fi
             yarn sls deploy --force --stage ${STAGE} --region us-east-1

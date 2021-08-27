@@ -17,7 +17,7 @@ import (
 
 	v2GitLabOrg "github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
+	gitLabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
@@ -26,8 +26,13 @@ import (
 	repoModels "github.com/communitybridge/easycla/cla-backend-go/repositories"
 )
 
-// GitLabAddRepositories service function
+// GitLabAddRepositories add a lst of GitLab repositories to the collection - default is not enabled/used/active by a CLA Group
 func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string, input *GitLabAddRepoModel) (*v2Models.GitlabRepositoriesList, error) {
+	return s.GitLabAddRepositoriesWithEnabledFlag(ctx, projectSFID, input, false)
+}
+
+// GitLabAddRepositoriesWithEnabledFlag add a lst of GitLab repositories to the collection
+func (s *Service) GitLabAddRepositoriesWithEnabledFlag(ctx context.Context, projectSFID string, input *GitLabAddRepoModel, enabled bool) (*v2Models.GitlabRepositoriesList, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.repositories.gitlab_services.GitLabAddRepositories",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -65,7 +70,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 	log.WithFields(f).Debugf("successfully loaded GitLab group/organization")
 
 	// Get the client
-	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitLabOrgModel.AuthInfo, s.gitLabApp)
+	gitLabClient, err := gitLabApi.NewGitlabOauthClient(gitLabOrgModel.AuthInfo, s.gitLabApp)
 	if err != nil {
 		return nil, fmt.Errorf("initializing GitLab client : %v", err)
 	}
@@ -81,7 +86,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 	for _, gitLabProjectID := range input.ProjectIDList {
 		go func(gitLabProjectID int) {
 			log.WithFields(f).Debugf("loading GitLab project from GitLab using projectID: %d...", gitLabProjectID)
-			project, getProjectErr := gitlab_api.GetProjectByID(ctx, gitLabClient, gitLabProjectID)
+			project, getProjectErr := gitLabApi.GetProjectByID(ctx, gitLabClient, gitLabProjectID)
 			if getProjectErr != nil {
 				newErr := fmt.Errorf("unable to load GitLab project using ID: %d, error: %v", gitLabProjectID, getProjectErr)
 				log.WithFields(f).WithError(newErr)
@@ -105,7 +110,7 @@ func (s *Service) GitLabAddRepositories(ctx context.Context, projectSFID string,
 				RepositoryOrganizationName: input.GroupName,
 				RepositoryCLAGroupID:       input.ClaGroupID,
 				RepositoryType:             utils.GitLabLower, // should always be gitlab
-				Enabled:                    false,             // we don't enable by default
+				Enabled:                    enabled,
 			}
 
 			repoModel, addErr := s.gitV2Repository.GitLabAddRepository(ctx, projectSFID, inputDBModel)
@@ -172,7 +177,7 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 	}
 
 	// Get the client
-	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitLabOrgModel.AuthInfo, s.gitLabApp)
+	gitLabClient, err := gitLabApi.NewGitlabOauthClient(gitLabOrgModel.AuthInfo, s.gitLabApp)
 	if err != nil {
 		return nil, fmt.Errorf("initializing gitlab client : %v", err)
 	}
@@ -184,7 +189,7 @@ func (s *Service) GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel
 	}
 
 	// Query the project list by organization name
-	projectList, projectListErr := gitlab_api.GetGroupProjectListByGroupID(ctx, gitLabClient, gitLabOrgModel.ExternalGroupID)
+	projectList, projectListErr := gitLabApi.GetGroupProjectListByGroupID(ctx, gitLabClient, gitLabOrgModel.ExternalGroupID)
 	if projectListErr != nil {
 		return nil, projectListErr
 	}
@@ -399,6 +404,40 @@ func (s *Service) GitLabDeleteRepositories(ctx context.Context, gitLabGroupPath 
 	return s.gitV2Repository.GitLabDeleteRepositories(ctx, gitLabGroupPath)
 }
 
+// GitLabDeleteRepositoryByExternalID deletes the specified repository
+func (s *Service) GitLabDeleteRepositoryByExternalID(ctx context.Context, gitLabExternalID int64) error {
+	// Load the record - needed for the event log after we delete
+	record, getErr := s.gitV2Repository.GitLabGetRepositoryByExternalID(ctx, gitLabExternalID)
+	if getErr != nil {
+		return getErr
+	}
+
+	// Delete the record
+	err := s.gitV2Repository.GitLabDeleteRepositoryByExternalID(ctx, gitLabExternalID)
+	if err != nil {
+		return err
+	}
+
+	// Convert the external ID value
+	repositoryExternalID, parseIntErr := strconv.ParseInt(record.RepositoryExternalID, 10, 64)
+	if err == nil {
+		return parseIntErr
+	}
+
+	// Log the event
+	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+		EventType:   events.RepositoryDeleted,
+		ProjectSFID: record.ProjectSFID,
+		CLAGroupID:  record.RepositoryCLAGroupID,
+		LfUsername:  utils.GetUserNameFromContext(ctx),
+		EventData: &events.RepositoryDeletedEventData{
+			RepositoryName:       record.RepositoryFullPath, // give the full path/name
+			RepositoryExternalID: repositoryExternalID,
+		},
+	})
+	return err
+}
+
 // dbModelToGitLabRepository converts the database model to a v2 response model
 func dbModelToGitLabRepository(dbModel *repoModels.RepositoryDBModel) (*v2Models.GitlabRepository, error) {
 
@@ -413,6 +452,7 @@ func dbModelToGitLabRepository(dbModel *repoModels.RepositoryDBModel) (*v2Models
 		RepositoryClaGroupID:       dbModel.RepositoryCLAGroupID,       // CLA Group ID
 		RepositoryExternalID:       gitLabExternalID,                   // GitLab unique gitV1Repository ID
 		RepositoryName:             dbModel.RepositoryName,             // Short repository name
+		RepositoryFullPath:         dbModel.RepositoryFullPath,         // Repository full path
 		RepositoryOrganizationName: dbModel.RepositoryOrganizationName, // Group/Organization name
 		RepositoryURL:              dbModel.RepositoryURL,              // full url
 		RepositoryType:             dbModel.RepositoryType,             // gitlab

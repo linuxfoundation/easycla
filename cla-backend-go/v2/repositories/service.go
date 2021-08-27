@@ -15,7 +15,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
+	gitLabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 
 	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
 
@@ -61,17 +61,19 @@ type ServiceInterface interface {
 	GitLabGetRepositoriesByOrganizationName(ctx context.Context, orgName string) (*v2Models.GitlabRepositoriesList, error)
 	GitLabGetRepositoriesByNamePrefix(ctx context.Context, repositoryNamePrefix string) (*v2Models.GitlabRepositoriesList, error)
 	GitLabAddRepositories(ctx context.Context, projectSFID string, input *GitLabAddRepoModel) (*v2Models.GitlabRepositoriesList, error)
+	GitLabAddRepositoriesWithEnabledFlag(ctx context.Context, projectSFID string, input *GitLabAddRepoModel, enabled bool) (*v2Models.GitlabRepositoriesList, error)
 	GitLabAddRepositoriesByApp(ctx context.Context, gitLabOrgModel *common.GitLabOrganization) ([]*v2Models.GitlabRepository, error)
 	GitLabEnrollRepositories(ctx context.Context, claGroupID string, repositoryIDList []int64, enrollValue bool) error
 	GitLabEnrollRepository(ctx context.Context, claGroupID string, repositoryExternalID int64, enrollValue bool) error
 	GitLabEnrollCLAGroupRepositories(ctx context.Context, claGroupID string, enrollValue bool) error
 	GitLabDeleteRepositories(ctx context.Context, gitLabGroupPath string) error
+	GitLabDeleteRepositoryByExternalID(ctx context.Context, gitLabExternalID int64) error
 }
 
 // GitLabOrgRepo redefine the interface here to avoid circular dependency issues
 type GitLabOrgRepo interface {
 	AddGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization, enabled bool) (*v2Models.GitlabOrganization, error)
-	GetGitLabOrganizations(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
+	GetGitLabOrganizationsByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
@@ -88,7 +90,7 @@ type Service struct {
 	projectsClaGroupsRepo projects_cla_groups.Repository
 	ghOrgRepo             github_organizations.RepositoryInterface
 	glOrgRepo             GitLabOrgRepo
-	gitLabApp             *gitlab_api.App
+	gitLabApp             *gitLabApi.App
 	eventService          events.Service
 }
 
@@ -107,7 +109,7 @@ func NewService(gitV1Repository *v1Repositories.Repository, gitV2Repository Repo
 		ghOrgRepo:             ghOrgRepo,
 		glOrgRepo:             glOrgRepo,
 		eventService:          eventService,
-		gitLabApp:             gitlab_api.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
+		gitLabApp:             gitLabApi.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 	}
 }
 

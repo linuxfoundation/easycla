@@ -8,6 +8,7 @@ METRICS_REPORT_BIN = metrics-report-lambda
 DYNAMO_EVENTS_BIN = dynamo-events-lambda
 ZIPBUILDER_SCHEDULER_BIN = zipbuilder-scheduler-lambda
 ZIPBUILDER_BIN = zipbuilder-lambda
+GITLAB_REPO_CHECK_BIN = gitlab-repository-check-lambda
 FUNCTIONAL_TESTS_BIN = functional-tests
 USER_SUBSCRIBE_BIN = user-subscribe-lambda
 MAKEFILE_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
@@ -27,12 +28,12 @@ GO_FILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')
 .PHONY: generate setup tool-setup setup-dev setup-deploy clean-all clean swagger up fmt test run deps build build-mac build-aws-lambda user-subscribe-lambda qc lint
 
 all: all-mac
-all-mac: clean swagger deps fmt build-mac build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac test lint
-all-linux: clean swagger deps fmt build-linux build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux test lint
+all-mac: clean swagger deps fmt build-mac build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac build-gitlab-repository-check-lambda-mac test lint
+all-linux: clean swagger deps fmt build-linux build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux build-gitlab-repository-check-lambda-linux test lint
 lambdas-mac: build-aws-lambda-mac
-build-lambdas-mac: build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-metrics-report-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac
+build-lambdas-mac: build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-metrics-report-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac build-gitlab-repository-check-lambda-mac
 lambdas: build-lambdas-linux
-build-lambdas-linux: build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-metrics-report-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux
+build-lambdas-linux: build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-metrics-report-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux build-gitlab-repository-check-lambda-linux
 
 generate: swagger
 
@@ -297,6 +298,16 @@ build-zipbuilder-lambda-mac: deps
 	@echo "Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(ZIPBUILDER_BIN)-mac cmd/zipbuilder_lambda/main.go
 	@chmod +x $(ZIPBUILDER_BIN)-mac
+
+build-gitlab-repository-check-lambda-linux: deps
+	@echo "Building a statically linked Linux OSX amd64 binary..."
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(GITLAB_REPO_CHECK_BIN) cmd/gitlab_repository_check/main.go
+	@chmod +x $(GITLAB_REPO_CHECK_BIN)
+
+build-gitlab-repository-check-lambda-mac: deps
+	@echo "Building a statically linked Mac OSX amd64 binary..."
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(GITLAB_REPO_CHECK_BIN)-mac cmd/gitlab_repository_check/main.go
+	@chmod +x $(GITLAB_REPO_CHECK_BIN)-mac
 
 build-functional-tests: build-functional-tests-linux
 build-functional-tests-linux: deps
