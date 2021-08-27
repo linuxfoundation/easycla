@@ -827,7 +827,7 @@ func (repo *Repository) getScanResults(ctx context.Context, filter *expression.C
 
 	// Add the filter if provided
 	if filter != nil {
-		builder.WithFilter(*filter)
+		builder = builder.WithFilter(*filter)
 	}
 
 	// Build the scan/query expression
@@ -860,12 +860,12 @@ func (repo *Repository) getScanResults(ctx context.Context, filter *expression.C
 		}
 	}
 
-	var gitlabOrganizations *v2Models.GitlabOrganizations
-	unmarshalErr := dynamodbattribute.UnmarshalListOfMaps(resultList, &gitlabOrganizations)
+	var resultOutput []*common.GitLabOrganization
+	unmarshalErr := dynamodbattribute.UnmarshalListOfMaps(resultList, &resultOutput)
 	if unmarshalErr != nil {
 		log.Warnf("error unmarshalling %s from database. error: %v", repo.gitlabOrgTableName, unmarshalErr)
 		return nil, unmarshalErr
 	}
 
-	return gitlabOrganizations, nil
+	return &v2Models.GitlabOrganizations{List: common.ToModels(resultOutput)}, nil
 }

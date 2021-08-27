@@ -5,12 +5,16 @@ package handler
 
 import (
 	"context"
+	"os"
 	"strconv"
+
+	"github.com/communitybridge/easycla/cla-backend-go/config"
+
+	"github.com/aws/aws-sdk-go/aws/session"
 
 	v1Company "github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
-	"github.com/communitybridge/easycla/cla-backend-go/github"
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 	gitLabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	gitlab "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
@@ -30,6 +34,13 @@ import (
 	goGitLab "github.com/xanzy/go-gitlab"
 )
 
+var (
+	awsSession *session.Session
+	stage      string
+	configFile config.Config
+	gitLabApp  *gitLabApi.App
+)
+
 // Init initializes the handler
 func Init() {
 	f := logrus.Fields{
@@ -41,7 +52,43 @@ func Init() {
 
 	// General initialization
 	ini.Init()
-	ini.GetConfig()
+
+	var awsErr error
+	awsSession, awsErr = ini.GetAWSSession()
+	if awsErr != nil {
+		log.WithFields(f).WithError(awsErr).Panic("unable to load AWS session")
+	}
+
+	// Need to initialize the system to load the configuration which contains a number of SSM parameters
+	stage = os.Getenv("STAGE")
+	if stage == "" {
+		log.WithFields(f).Panic("unable to determine STAGE - please set in the environment variable: 'STAGE' - expected one of [DEV, STAGING, PROD]")
+	}
+
+	dynamodbRegion := os.Getenv("DYNAMODB_AWS_REGION")
+	if dynamodbRegion == "" {
+		log.WithFields(f).Panic("unable to determine DYNAMODB_AWS_REGION - please set in the environment variable: 'DYNAMODB_AWS_REGION'")
+	}
+
+	var configErr error
+	configFile, configErr = config.LoadConfig("", awsSession, stage)
+	if configErr != nil {
+		log.WithFields(f).WithError(configErr).Panicf("Unable to load config - Error: %v", configErr)
+	}
+
+	if configFile.Gitlab.AppClientID == "" {
+		log.WithFields(f).Panic("unable to determine configFile.Gitlab.AppClientID value - please set the configuration")
+	}
+	if configFile.Gitlab.AppClientSecret == "" {
+		log.WithFields(f).Panic("unable to determine configFile.Gitlab.AppClientSecret value - please set the configuration")
+	}
+	if configFile.Gitlab.AppPrivateKey == "" {
+		log.WithFields(f).Panic("unable to determine configFile.Gitlab.AppPrivateKey value - please set the configuration")
+	}
+
+	// Create a new GitLab App client instance
+	gitLabApp = gitlab.Init(configFile.Gitlab.AppClientID, configFile.Gitlab.AppClientSecret, configFile.Gitlab.AppPrivateKey)
+
 }
 
 // Handler is invoked each time the lambda is triggered - https://docs.aws.amazon.com/lambda/latest/dg/golang-handler.html
@@ -53,20 +100,6 @@ func Handler(ctx context.Context) error {
 	// Add the x-request-id to the context
 	ctx = utils.NewContextFromParent(ctx)
 	f[utils.XREQUESTID] = ctx.Value(utils.XREQUESTID)
-	stage := strings.ToLower(utils.GetProperty("STAGE"))
-	f["stage"] = stage
-
-	awsSession, err := ini.GetAWSSession()
-	if err != nil {
-		log.WithFields(f).WithError(err).Panic("Unable to load AWS session")
-	}
-
-	configFile := ini.GetConfig()
-
-	// initialize GitHub
-	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
-	// initialize GitLab
-	gitLabApp := gitlab.Init(configFile.Gitlab.AppClientID, configFile.Gitlab.AppClientSecret, configFile.Gitlab.AppPrivateKey)
 
 	// Repository Layer
 	usersRepo := users.NewRepository(awsSession, stage)
@@ -118,20 +151,27 @@ func Handler(ctx context.Context) error {
 
 	log.WithFields(f).Debugf("start - checking %d GitLab projects for add/delete events", len(gitLabGroups.List))
 	for _, gitLabGroup := range gitLabGroups.List {
+		log.WithFields(f).Debugf("start - processing GitLab group/organization: %s with group ID: %d associated with project SFID: %s", gitLabGroup.OrganizationURL, gitLabGroup.OrganizationExternalID, gitLabGroup.ProjectSfid)
+
+		if gitLabGroup.AuthInfo == "" {
+			log.WithFields(f).Debugf("GitLab group/organization: %s not fully onboarded - missing authentication info - skipping", gitLabGroup.OrganizationURL)
+			continue
+		}
+
 		gitLabClient, gitLabClientErr := gitLabApi.NewGitlabOauthClient(gitLabGroup.AuthInfo, gitLabApp)
 		if gitLabClientErr != nil {
-			log.WithFields(f).WithError(gitLabClientErr).Warnf("problem loading GitLab client for group/organization: %s", gitLabGroup.OrganizationURL)
-			return gitLabClientErr
+			log.WithFields(f).WithError(gitLabClientErr).Warnf("problem loading GitLab client for group/organization: %s - skipping", gitLabGroup.OrganizationURL)
+			continue
 		}
 
 		gitLabProjects, getGitLabAPIError := gitLabApi.GetGroupProjectListByGroupID(ctx, gitLabClient, int(gitLabGroup.OrganizationExternalID))
 		if getGitLabAPIError != nil {
-			log.WithFields(f).WithError(getGitLabAPIError).Warnf("problem loading GitLab projects for group/organization: %s using the groupID: %d - skipping GitLab Group/Organziation", gitLabGroup.OrganizationFullPath, gitLabGroup.OrganizationExternalID)
+			log.WithFields(f).WithError(getGitLabAPIError).Warnf("problem loading GitLab projects for group/organization: %s using the groupID: %d - skipping GitLab Group/Organziation - skipping", gitLabGroup.OrganizationFullPath, gitLabGroup.OrganizationExternalID)
 			continue
 		}
 		gitLabDBProjects, getProjectListDBErr := gitV2Repository.GitLabGetRepositoriesByNamePrefix(ctx, gitLabGroup.OrganizationFullPath)
 		if getProjectListDBErr != nil {
-			log.WithFields(f).WithError(getProjectListDBErr).Warnf("problem loading GitLab projects for group/organization: %s from the database - skipping GitLab Group/Organziation", gitLabGroup.OrganizationFullPath)
+			log.WithFields(f).WithError(getProjectListDBErr).Warnf("problem loading GitLab projects for group/organization: %s from the database - skipping GitLab Group/Organziation - skipping", gitLabGroup.OrganizationFullPath)
 			continue
 		}
 
@@ -177,6 +217,8 @@ func Handler(ctx context.Context) error {
 				}
 			}
 		}
+
+		log.WithFields(f).Debugf("done - processed GitLab group/organization: %s with group ID: %d associated with project SFID: %s", gitLabGroup.OrganizationURL, gitLabGroup.OrganizationExternalID, gitLabGroup.ProjectSfid)
 	}
 
 	log.WithFields(f).Debugf("done - checked %d GitLab projects for add/delete events", len(gitLabGroups.List))

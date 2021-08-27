@@ -7,7 +7,7 @@ var githubAppPrivateKey string
 var githubAppID int
 var secretAccessToken string
 
-// Init initializes the required github variables
+// Init initializes the required GitHub variables
 func Init(ghAppID int, ghAppPrivateKey string, secAccessToken string) {
 	githubAppPrivateKey = ghAppPrivateKey
 	githubAppID = ghAppID

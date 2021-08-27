@@ -301,7 +301,7 @@ build-zipbuilder-lambda-mac: deps
 
 build-gitlab-repository-check-lambda-linux: deps
 	@echo "Building a statically linked Linux OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(GITLAB_REPO_CHECK_BIN) cmd/gitlab_repository_check/main.go
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(GITLAB_REPO_CHECK_BIN) cmd/gitlab_repository_check/main.go
 	@chmod +x $(GITLAB_REPO_CHECK_BIN)
 
 build-gitlab-repository-check-lambda-mac: deps

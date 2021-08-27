@@ -32,6 +32,7 @@ type GitLabOrganization struct {
 // ToModel converts to models.GitlabOrganization
 func ToModel(in *GitLabOrganization) *models2.GitlabOrganization {
 	return &models2.GitlabOrganization{
+		AuthInfo:                in.AuthInfo,
 		OrganizationID:          in.OrganizationID,
 		DateCreated:             in.DateCreated,
 		DateModified:            in.DateModified,

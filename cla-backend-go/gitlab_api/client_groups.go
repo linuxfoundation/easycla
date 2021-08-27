@@ -152,6 +152,10 @@ func GetGroupProjectListByGroupID(ctx context.Context, client *goGitLab.Client, 
 		"functionName":   "gitlab_api.client_groups.GetGroupProjectListByGroupID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
+	if groupID == 0 {
+		return nil, errors.New("invalid groupID value - 0")
+	}
+
 	opts := &goGitLab.ListGroupProjectsOptions{
 		ListOptions: goGitLab.ListOptions{
 			Page:    1,   // starts with one: https://docs.gitlab.com/ee/api/#offset-based-pagination
