@@ -180,9 +180,9 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.debug('Individual Signature - get active signature metadata: {}'.format(signature_metadata))
 
         cla.log.debug('Individual Signature - get individual signature callback url')
-        if return_url_type == "github":
+        if return_url_type.lower() == "github":
             callback_url = cla.utils.get_individual_signature_callback_url(user_id, signature_metadata)
-        elif return_url_type == "gitlab":
+        elif return_url_type.lower() == "gitlab":
             callback_url = cla.utils.get_individual_signature_callback_url_gitlab(user_id, signature_metadata)
 
         cla.log.debug('Individual Signature - get individual signature callback url: {}'.format(callback_url))
