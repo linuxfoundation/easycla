@@ -252,9 +252,9 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_callback_url=callback_url)
 
         # Set signature ACL
-        if return_url_type == "github":
+        if return_url_type.lower() == "github":
             acl = user.get_user_github_id()
-        elif return_url_type == "gitlab":
+        elif return_url_type.lower() == "gitlab":
             acl = user.get_user_github_id()
         cla.log.debug('Individual Signature - setting ACL using user {} id: {}'.format(return_url_type, acl))
         signature.set_signature_acl('github:{}'.format(acl))
@@ -705,9 +705,9 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.info(f'{fn} - created new signature document for: {request_info} - signature: {new_signature}')
 
         # Set signature ACL
-        if return_url_type == "github":
+        if return_url_type.lower() == "github":
             acl_value = f'github:{user.get_user_github_id()}'
-        elif return_url_type == "gitlab":
+        elif return_url_type.lower() == "gitlab":
             acl_value = f'gitlab:{user.get_user_gitlab_id()}'
         cla.log.info(f'{fn} - assigning signature acl with value: {acl_value} for: {request_info}')
         new_signature.set_signature_acl(acl_value)
