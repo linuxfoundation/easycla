@@ -245,7 +245,7 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_reference_type='user',
                               signature_reference_name=user.get_user_name(),
                               signature_type='cla',
-                              signature_return_url_type='Github',
+                              signature_return_url_type=return_url_type,
                               signature_signed=False,
                               signature_approved=True,
                               signature_return_url=return_url,

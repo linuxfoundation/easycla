@@ -1246,10 +1246,11 @@ def get_organization_id_from_gitlab_repository(gitlab_repository_id):
     except DoesNotExist:
         return None
     # Get GitLabGroup from this repository
-    gitLabOrg = GitlabOrg()
+    gitLabOrg = None
     try:
-        gitLabOrg.load(repository.get_repository_organization_name())
+        gitLabOrg = GitlabOrg().search_organization_by_lower_name(repository.get_repository_organization_name().lower())
     except DoesNotExist:
+        cla.log.debug(f"unable to get gitlab org by name: {repository.get_repository_organization_name()}")
         return None
     
     #return GitLab organization ID

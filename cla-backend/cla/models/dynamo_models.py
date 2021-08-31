@@ -3973,6 +3973,12 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
             org.model = org_model
             organizations.append(org)
         return organizations
+    
+    def search_organization_by_lower_name(self, organization_name):
+        organizations = list(filter(lambda org: org.get_organization_name_lower() == organization_name, self.all()))
+        if organizations:
+            return organizations[0]
+        raise cla.models.DoesNotExist("Gitlab Org does not exist")
 
     def get_organization_by_lower_name(self, organization_name):
         organization_name = organization_name.lower()

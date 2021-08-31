@@ -195,6 +195,7 @@ func (s service) getOrCreateUser(ctx context.Context, gitlabClient *gitlab.Clien
 			GitlabID:       fmt.Sprintf("%d", gitlabUser.ID),
 			GitlabUsername: gitlabUser.Username,
 			Emails:         []string{gitlabUser.Email},
+			Username:       gitlabUser.Name,
 		}
 		claUser, userErr := s.userService.CreateUser(user, nil)
 		if err != nil {
