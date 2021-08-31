@@ -111,7 +111,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 			// Load the project parent
 			parentProjectModel, err := psc.GetParentProjectModel(params.ProjectSFID)
-			if err != nil || parentProjectModel == nil {
+			if err != nil || (parentProjectModel == nil && !utils.IsProjectHasRootParent(projectModel)) {
 				return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
 					utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate parent project from project with ID: %s", params.ProjectSFID)))
 			}
@@ -178,7 +178,10 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			}
 
 			// If the parent is TLF, then use the same project SFID value for the parent SFID value
-			parentProjectSFID := parentProjectModel.ID
+			parentProjectSFID := ""
+			if parentProjectModel != nil {
+				parentProjectSFID = parentProjectModel.ID
+			}
 			if utils.IsProjectHasRootParent(projectModel) {
 				parentProjectSFID = params.ProjectSFID
 			}
