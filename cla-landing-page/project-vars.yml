@@ -1,0 +1,3 @@
+# Don't put secrets into this file
+projectIdentifier: lf-cla # Used for prefixing aws resources.	
+profile: lf-cla # Used for setting the AWS Profile with serverless.

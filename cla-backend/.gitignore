@@ -1,5 +1,6 @@
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
+bin/
 wsgi.py
 serverless_wsgi.py
 wsgi_handler.py
@@ -13,16 +14,4 @@ _env.json
 .mypy_cache
 .venv
 .vscode/
-
-# Golang binaries that may have been copied over for local deployment
-backend-aws-lambda
-dynamo-events-lambda
-functional-tests
-metrics-aws-lambda
-user-subscribe-lambda
-zipbuilder-lambda
-zipbuilder-scheduler-lambda
-zipbuilder-lambda-mac
-zipbuilder-scheduler-lambda-mac
-
 
