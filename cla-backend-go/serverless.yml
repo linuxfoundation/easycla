@@ -8,7 +8,7 @@ package:
   # Exclude all first - selectively add in lambda functions
   exclude:
     - auth/**
-    - ./backend-aws-lambda
+    - bin/
     - dev.sh
     - docs/**
     - helpers/**
@@ -309,7 +309,7 @@ functions:
     package:
       individually: true
       include:
-        - ./backend-aws-lambda
+        - ./bin/backend-aws-lambda
 
   # easyClaUserSubscribe:
   #   name: easy-cla-user-subscribe

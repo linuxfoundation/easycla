@@ -9,6 +9,8 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/communitybridge/easycla/cla-backend-go/cmd/user-subscribe-lambda/cmd"
+
 	"github.com/go-openapi/strfmt"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -23,7 +25,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/token"
-	"github.com/communitybridge/easycla/cla-backend-go/userSubscribeLambda/cmd"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	user_service "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
 	"github.com/mitchellh/mapstructure"

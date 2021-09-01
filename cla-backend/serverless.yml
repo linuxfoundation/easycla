@@ -8,15 +8,7 @@ package:
   # Exclude all first - selectively add in lambda functions
   exclude:
     - auth/**
-    - ./backend-aws-lambda
-    - ./user-subscribe-lambda
-    - ./metrics-aws-lambda
-    - ./metrics-report-lambda
-    - ./dynamo-events-lambda
-    - ./zipbuilder-scheduler-lambda
-    - ./zipbuilder-lambda
-    - ./gitlab-repository-check-lambda
-    - ./functional-tests
+    - bin/
     - dev.sh
     - docs/**
     - helpers/**
@@ -414,7 +406,7 @@ functions:
     package:
       individually: true
       include:
-        - ./backend-aws-lambda
+        - ./bin/backend-aws-lambda
 
   dynamo-projects-events-lambda:
     handler: dynamo-events-lambda
@@ -424,7 +416,7 @@ functions:
     package:
       individually: true
       include:
-        - ./dynamo-events-lambda
+        - ./bin/dynamo-events-lambda
 
   dynamo-signatures-events-lambda:
     handler: dynamo-events-lambda
@@ -434,7 +426,7 @@ functions:
     package:
       individually: true
       include:
-        - ./dynamo-events-lambda
+        - ./bin/dynamo-events-lambda
 
   dynamo-events-events-lambda:
     handler: dynamo-events-lambda
@@ -444,7 +436,7 @@ functions:
     package:
       individually: true
       include:
-        - ./dynamo-events-lambda
+        - ./bin/dynamo-events-lambda
 
   dynamo-repositories-events-lambda:
     handler: dynamo-events-lambda
@@ -454,7 +446,7 @@ functions:
     package:
       individually: true
       include:
-        - ./dynamo-events-lambda
+        - ./bin/dynamo-events-lambda
 
   dynamo-projects-cla-groups-events-lambda:
     handler: dynamo-events-lambda
@@ -464,7 +456,7 @@ functions:
     package:
       individually: true
       include:
-        - ./dynamo-events-lambda
+        - ./bin/dynamo-events-lambda
 
   dynamo-github-orgs-events-lambda:
     handler: dynamo-events-lambda
@@ -474,7 +466,7 @@ functions:
     package:
       individually: true
       include:
-        - ./dynamo-events-lambda
+        - ./bin/dynamo-events-lambda
 
   saveMetrics:
     description: "EasyCLA Save Metrics API handler"
@@ -489,7 +481,7 @@ functions:
     package:
       individually: true
       include:
-        - ./metrics-aws-lambda
+        - ./bin/metrics-aws-lambda
 
   reportMetrics:
     description: "EasyCLA Report Metrics API handler"
@@ -504,8 +496,7 @@ functions:
     package:
       individually: true
       include:
-        - ./metrics-report-lambda
-
+        - ./bin/metrics-report-lambda
 
   zipbuilder-scheduler-lambda:
     handler: zipbuilder-scheduler-lambda
@@ -521,7 +512,7 @@ functions:
     package:
       individually: true
       include:
-        - ./zipbuilder-scheduler-lambda
+        - ./bin/zipbuilder-scheduler-lambda
 
   zipbuilder-lambda:
     handler: zipbuilder-lambda
@@ -533,7 +524,7 @@ functions:
     package:
       individually: true
       include:
-        - ./zipbuilder-lambda
+        - ./bin/zipbuilder-lambda
 
   gitlab-repository-check-lambda:
     handler: gitlab-repository-check-lambda
@@ -550,7 +541,7 @@ functions:
     package:
       individually: true
       include:
-        - ./gitlab-repository-check-lambda
+        - ./bin/gitlab-repository-check-lambda
 
   apiv1:
     handler: wsgi_handler.handler
@@ -615,7 +606,7 @@ functions:
     package:
       individually: true
       include:
-        - ./user-subscribe-lambda
+        - ./bin/user-subscribe-lambda
     reservedConcurrency: 5
     events:
       - sns:

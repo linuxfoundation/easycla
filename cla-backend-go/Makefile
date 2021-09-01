@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 SERVICE = cla
 SHELL = bash
+BIN_DIR = bin
 LAMBDA_BIN = backend-aws-lambda
 METRICS_BIN = metrics-aws-lambda
 METRICS_REPORT_BIN = metrics-report-lambda
@@ -30,7 +31,7 @@ GO_FILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')
 all: all-mac
 all-mac: clean swagger deps fmt build-mac build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac build-gitlab-repository-check-lambda-mac test lint
 all-linux: clean swagger deps fmt build-linux build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux build-gitlab-repository-check-lambda-linux test lint
-lambdas-mac: build-aws-lambda-mac
+lambdas-mac: build-lambdas-mac
 build-lambdas-mac: build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-metrics-report-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac build-gitlab-repository-check-lambda-mac
 lambdas: build-lambdas-linux
 build-lambdas-linux: build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-metrics-report-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux build-gitlab-repository-check-lambda-linux
@@ -65,14 +66,16 @@ setup_deploy: setup-deploy
 setup-deploy:
 	@yarn add serverless && yarn install
 
-clean:
-	@rm -rf cla cla-mac* cla-linux \
-		./v2/project-service/client ./v2/project-service/models \
+clean: clean-models clean-lambdas
+	@rm -rf cla cla-mac* cla-linux
+
+clean-models:
+	@rm -rf ./v2/project-service/client ./v2/project-service/models \
 		./v2/organization-service/client ./v2/organization-service/models \
-		./v2/user-service/client ./v2/user-service/models \
-		backend-aws-lambda* dynamo-events-lambda* \
-		functional-tests* metrics-aws-lambda* metrics-report-lambda* \
-		user-subscribe-lambda* zipbuild-lambda* zipbuilder-scheduler-lambda*
+		./v2/user-service/client ./v2/user-service/models
+
+clean-lambdas:
+	@rm -rf $(BIN_DIR)
 
 swagger-clean: clean-swagger
 clean-swagger:
@@ -196,129 +199,128 @@ mock:
 	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -package=branch_protection -destination=github/branch_protection/mock.go -self_package=github.com/communitybridge/easycla/cla-backend-go/github/branch_protection github.com/communitybridge/easycla/cla-backend-go/github/branch_protection CombinedRepository
 
 
-run:
-	go run main.go
-
 deps:
 	go env -w GOPRIVATE=github.com/LF-Engineering/*
 	go mod download -x
 
+build-prep:
+	mkdir -p $(BIN_DIR)
+
 build: build-linux
-build-linux: deps
+build-linux: deps build-prep
 	@echo "Building Linux amd64 binary..."
-	env GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(SERVICE) main.go
-	@chmod +x $(SERVICE)
+	env GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVICE) main.go
+	@chmod +x $(BIN_DIR)/$(SERVICE)
 
-build-mac: deps
+build-mac: deps build-prep
 	@echo "Building Mac OSX amd64 binary..."
-	env GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(SERVICE)-mac main.go
-	@chmod +x $(SERVICE)-mac
+	env GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVICE)-mac main.go
+	@chmod +x $(BIN_DIR)/$(SERVICE)-mac
 
-build-mac-arm64: deps
+build-mac-arm64: deps build-prep
 	@echo "Building Mac OSX Arm64 binary..."
-	env GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(SERVICE)-mac-arm64 main.go
-	@chmod +x $(SERVICE)-mac-arm64
+	env GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVICE)-mac-arm64 main.go
+	@chmod +x $(BIN_DIR)/$(SERVICE)-mac-arm64
 
 rebuild-mac: clean fmt build-mac lint
-	./$(SERVICE)-mac
 
 build-aws-lambda: build-aws-lambda-linux
-build-aws-lambda-linux: deps
+build-aws-lambda-linux: deps build-prep
 	@echo "Building a statically linked Linux amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(LAMBDA_BIN) main.go
-	@chmod +x $(LAMBDA_BIN)
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(LAMBDA_BIN) main.go
+	@chmod +x $(BIN_DIR)/$(LAMBDA_BIN)
 
-build-aws-lambda-mac: deps
+build-aws-lambda-mac: deps build-prep
 	@echo "Building a statically linked Mac OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(LAMBDA_BIN)-mac main.go
-	@chmod +x $(LAMBDA_BIN)-mac
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(LAMBDA_BIN)-mac main.go
+	@chmod +x $(BIN_DIR)/$(LAMBDA_BIN)-mac
 
 build-user-subscribe-lambda: build-user-subscribe-lambda-linux
-build-user-subscribe-lambda-linux: deps
+build-user-subscribe-lambda-linux: deps build-prep
 	@echo "Building a statically linked Linux amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(USER_SUBSCRIBE_BIN) userSubscribeLambda/main.go
-	@chmod +x $(USER_SUBSCRIBE_BIN)
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(USER_SUBSCRIBE_BIN) cmd/user-subscribe-lambda/main.go
+	@chmod +x $(BIN_DIR)/$(USER_SUBSCRIBE_BIN)
 
-build-user-subscribe-lambda-mac: deps
+build-user-subscribe-lambda-mac: deps build-prep
 	@echo "Building a statically linked Mac OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(USER_SUBSCRIBE_BIN)-mac userSubscribeLambda/main.go
-	@chmod +x $(USER_SUBSCRIBE_BIN)-mac
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(USER_SUBSCRIBE_BIN)-mac cmd/user-subscribe-lambda/main.go
+	@chmod +x $(BIN_DIR)/$(USER_SUBSCRIBE_BIN)-mac
 
 build-metrics-lambda: build-metrics-lambda-linux
-build-metrics-lambda-linux: deps
+build-metrics-lambda-linux: deps build-prep
 	@echo "Building a statically linked Linux amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(METRICS_BIN) cmd/metrics_lambda/main.go
-	@chmod +x $(METRICS_BIN)
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(METRICS_BIN) cmd/metrics_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(METRICS_BIN)
 
-build-metrics-lambda-mac: deps
+build-metrics-lambda-mac: deps build-prep
 	@echo "Building a statically linked Mac OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(METRICS_BIN)-mac cmd/metrics_lambda/main.go
-	@chmod +x $(METRICS_BIN)-mac
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(METRICS_BIN)-mac cmd/metrics_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(METRICS_BIN)-mac
 
 build-metrics-report-lambda: build-metrics-report-lambda-linux
-build-metrics-report-lambda-linux: deps
+build-metrics-report-lambda-linux: deps build-prep
 	@echo "Building a statically linked Linux amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(METRICS_REPORT_BIN) cmd/metrics_report_lambda/main.go
-	@chmod +x $(METRICS_REPORT_BIN)
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(METRICS_REPORT_BIN) cmd/metrics_report_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(METRICS_REPORT_BIN)
 
-build-metrics-report-lambda-mac: deps
+build-metrics-report-lambda-mac: deps build-prep
 	@echo "Building a statically linked Mac OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(METRICS_REPORT_BIN)-mac cmd/metrics_report_lambda/main.go
-	@chmod +x $(METRICS_REPORT_BIN)-mac
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(METRICS_REPORT_BIN)-mac cmd/metrics_report_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(METRICS_REPORT_BIN)-mac
 
 build-dynamo-events-lambda: build-dynamo-events-lambda-linux
-build-dynamo-events-lambda-linux: deps
+build-dynamo-events-lambda-linux: deps build-prep
 	@echo "Building a statically linked Linux amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(DYNAMO_EVENTS_BIN) cmd/dynamo_events_lambda/main.go
-	@chmod +x $(DYNAMO_EVENTS_BIN)
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(DYNAMO_EVENTS_BIN) cmd/dynamo_events_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(DYNAMO_EVENTS_BIN)
 
-build-dynamo-events-lambda-mac: deps
+build-dynamo-events-lambda-mac: deps build-prep
 	@echo "Building a statically linked Mac OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(DYNAMO_EVENTS_BIN)-mac cmd/dynamo_events_lambda/main.go
-	@chmod +x $(DYNAMO_EVENTS_BIN)-mac
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(DYNAMO_EVENTS_BIN)-mac cmd/dynamo_events_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(DYNAMO_EVENTS_BIN)-mac
 
 build-zipbuilder-scheduler-lambda: build-zipbuilder-scheduler-lambda-linux
-build-zipbuilder-scheduler-lambda-linux: deps
+build-zipbuilder-scheduler-lambda-linux: deps build-prep
 	@echo "Building a statically linked Linux amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(ZIPBUILDER_SCHEDULER_BIN) cmd/zipbuilder_scheduler_lambda/main.go
-	@chmod +x $(ZIPBUILDER_SCHEDULER_BIN)
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(ZIPBUILDER_SCHEDULER_BIN) cmd/zipbuilder_scheduler_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(ZIPBUILDER_SCHEDULER_BIN)
 
-build-zipbuilder-scheduler-lambda-mac: deps
+build-zipbuilder-scheduler-lambda-mac: deps build-prep
 	@echo "Building a statically linked Mac OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(ZIPBUILDER_SCHEDULER_BIN)-mac cmd/zipbuilder_scheduler_lambda/main.go
-	@chmod +x $(ZIPBUILDER_SCHEDULER_BIN)-mac
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(ZIPBUILDER_SCHEDULER_BIN)-mac cmd/zipbuilder_scheduler_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(ZIPBUILDER_SCHEDULER_BIN)-mac
 
 build-zipbuilder-lambda: build-zipbuilder-lambda-linux
-build-zipbuilder-lambda-linux: deps
+build-zipbuilder-lambda-linux: deps build-prep
 	@echo "Building a statically linked Linux amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(ZIPBUILDER_BIN) cmd/zipbuilder_lambda/main.go
-	@chmod +x $(ZIPBUILDER_BIN)
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(ZIPBUILDER_BIN) cmd/zipbuilder_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(ZIPBUILDER_BIN)
 
-build-zipbuilder-lambda-mac: deps
+build-zipbuilder-lambda-mac: deps build-prep
 	@echo "Building a statically linked Mac OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(ZIPBUILDER_BIN)-mac cmd/zipbuilder_lambda/main.go
-	@chmod +x $(ZIPBUILDER_BIN)-mac
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(ZIPBUILDER_BIN)-mac cmd/zipbuilder_lambda/main.go
+	@chmod +x $(BIN_DIR)/$(ZIPBUILDER_BIN)-mac
 
-build-gitlab-repository-check-lambda-linux: deps
+build-gitlab-repository-check-lambda-linux: deps build-prep
 	@echo "Building a statically linked Linux OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(GITLAB_REPO_CHECK_BIN) cmd/gitlab_repository_check/main.go
-	@chmod +x $(GITLAB_REPO_CHECK_BIN)
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN) cmd/gitlab_repository_check/main.go
+	@chmod +x $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN)
 
-build-gitlab-repository-check-lambda-mac: deps
+build-gitlab-repository-check-lambda-mac: deps build-prep
 	@echo "Building a statically linked Mac OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(GITLAB_REPO_CHECK_BIN)-mac cmd/gitlab_repository_check/main.go
-	@chmod +x $(GITLAB_REPO_CHECK_BIN)-mac
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN)-mac cmd/gitlab_repository_check/main.go
+	@chmod +x $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN)-mac
 
 build-functional-tests: build-functional-tests-linux
-build-functional-tests-linux: deps
+build-functional-tests-linux: deps build-prep
 	@echo "Building Functional Tests for Linux amd64 binary..."
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(FUNCTIONAL_TESTS_BIN) cmd/functional_tests/main.go
-	@chmod +x $(FUNCTIONAL_TESTS_BIN)
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN) cmd/functional_tests/main.go
+	@chmod +x $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN)
 
-build-functional-tests-mac: deps
+build-functional-tests-mac: deps build-prep
 	@echo "Building Functional Tests for OSX amd64 binary..."
-	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(FUNCTIONAL_TESTS_BIN)-mac cmd/functional_tests/main.go
-	@chmod +x $(FUNCTIONAL_TESTS_BIN)-mac
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN)-mac cmd/functional_tests/main.go
+	@chmod +x $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN)-mac
 
 lint:
 	@cd $(MAKEFILE_DIR) && echo "Running lint..." && $(LINT_TOOL) --version && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "Lint check passed."

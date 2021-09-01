@@ -271,15 +271,7 @@ jobs:
       - persist_to_workspace:
           root: ~/
           paths:
-            - cla-backend-go/backend-aws-lambda
-            - cla-backend-go/user-subscribe-lambda
-            - cla-backend-go/metrics-aws-lambda
-            - cla-backend-go/metrics-report-lambda
-            - cla-backend-go/dynamo-events-lambda
-            - cla-backend-go/zipbuilder-scheduler-lambda
-            - cla-backend-go/zipbuilder-lambda
-            - cla-backend-go/gitlab-repository-check-lambda
-            - cla-backend-go/functional-tests
+            - cla-backend-go/bin/*
 
   buildGoBackendCommon:
     <<: *buildGoBackendAnchor
@@ -290,26 +282,6 @@ jobs:
       AWS_PROFILE: lf-cla
       AWS_REGION: us-east-1
       DYNAMODB_AWS_REGION: us-east-1
-
-#  buildGoBackendStaging:
-#    <<: *buildGoBackendAnchor
-#    environment:
-#      STAGE: staging
-#      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
-#      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
-#      AWS_PROFILE: lf-cla
-#      AWS_REGION: us-east-1
-#      DYNAMODB_AWS_REGION: us-east-1
-#
-#  buildGoBackendProd:
-#    <<: *buildGoBackendAnchor
-#    environment:
-#      STAGE: prod
-#      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_PROD
-#      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_PROD
-#      AWS_PROFILE: lf-cla
-#      AWS_REGION: us-east-1
-#      DYNAMODB_AWS_REGION: us-east-1
 
   # Deploys
   deployBackend: &deployBackendAnchor
@@ -347,28 +319,29 @@ jobs:
             # --------------------------------------------------------------
 
             # Copy over the go backend binary to the common cla-backend folder (they share a single serverless.yml config)
-            cp ~/cla-backend-go/backend-aws-lambda ~/project/cla-backend/
-            cp ~/cla-backend-go/user-subscribe-lambda ~/project/cla-backend/
-            cp ~/cla-backend-go/metrics-aws-lambda ~/project/cla-backend/
-            cp ~/cla-backend-go/metrics-report-lambda ~/project/cla-backend/
-            cp ~/cla-backend-go/dynamo-events-lambda ~/project/cla-backend/
-            cp ~/cla-backend-go/zipbuilder-scheduler-lambda ~/project/cla-backend/
-            cp ~/cla-backend-go/zipbuilder-lambda ~/project/cla-backend/
-            cp ~/cla-backend-go/gitlab-repository-check-lambda ~/project/cla-backend/
+            mkdir -p ~/project/cla-backend/bin
+            cp ~/cla-backend-go/bin/backend-aws-lambda ~/project/cla-backend/bin/
+            cp ~/cla-backend-go/bin/user-subscribe-lambda ~/project/cla-backend/bin/
+            cp ~/cla-backend-go/bin/metrics-aws-lambda ~/project/cla-backend/bin/
+            cp ~/cla-backend-go/bin/metrics-report-lambda ~/project/cla-backend/bin/
+            cp ~/cla-backend-go/bin/dynamo-events-lambda ~/project/cla-backend/bin/
+            cp ~/cla-backend-go/bin/zipbuilder-scheduler-lambda ~/project/cla-backend/bin/
+            cp ~/cla-backend-go/bin/zipbuilder-lambda ~/project/cla-backend/bin/
+            cp ~/cla-backend-go/bin/gitlab-repository-check-lambda ~/project/cla-backend/bin/
 
             ls -alF ~/project/cla-backend/
             pushd ~/project/cla-backend
             echo "Directory: $(pwd)"
             yarn install
 
-            if [[ ! -f backend-aws-lambda ]]; then echo "Missing backend-aws-lambda binary file. Exiting..."; exit 1; fi
-            if [[ ! -f user-subscribe-lambda ]]; then echo "Missing user-subscribe-lambda binary file. Exiting..."; exit 1; fi
-            if [[ ! -f metrics-aws-lambda ]]; then echo "Missing metrics-aws-lambda binary file. Exiting..."; exit 1; fi
-            if [[ ! -f metrics-report-lambda ]]; then echo "Missing metrics-report-lambda binary file. Exiting..."; exit 1; fi
-            if [[ ! -f dynamo-events-lambda ]]; then echo "Missing dynamo-events-lambda binary file. Exiting..."; exit 1; fi
-            if [[ ! -f zipbuilder-lambda ]]; then echo "Missing zipbuilder-lambda binary file. Exiting..."; exit 1; fi
-            if [[ ! -f zipbuilder-scheduler-lambda ]]; then echo "Missing zipbuilder-scheduler-lambda binary file. Exiting..."; exit 1; fi
-            if [[ ! -f gitlab-repository-check-lambda ]]; then echo "Missing gitlab-repository-check-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/backend-aws-lambda ]]; then echo "Missing bin/backend-aws-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/user-subscribe-lambda ]]; then echo "Missing bin/user-subscribe-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/metrics-aws-lambda ]]; then echo "Missing bin/metrics-aws-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/metrics-report-lambda ]]; then echo "Missing bin/metrics-report-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/dynamo-events-lambda ]]; then echo "Missing bin/dynamo-events-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/zipbuilder-lambda ]]; then echo "Missing bin/zipbuilder-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/zipbuilder-scheduler-lambda ]]; then echo "Missing bin/zipbuilder-scheduler-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/gitlab-repository-check-lambda ]]; then echo "Missing bin/gitlab-repository-check-lambda binary file. Exiting..."; exit 1; fi
             if [[ ! -f serverless.yml ]]; then echo "Missing serverless.yml file. Exiting..."; exit 1; fi
             if [[ ! -f serverless-authorizer.yml ]]; then echo "Missing serverless-authorizer.yml file. Exiting..."; exit 1; fi
             yarn sls deploy --force --stage ${STAGE} --region us-east-1
@@ -387,14 +360,15 @@ jobs:
             ## End Debug
             # --------------------------------------------------------------
 
-            cp ~/cla-backend-go/backend-aws-lambda ~/project/cla-backend-go/
-            cp ~/cla-backend-go/user-subscribe-lambda ~/project/cla-backend-go/
-            echo "Directory: ~/project/cla-backend-go/"
-            ls -alF ~/project/cla-backend-go/
+            mkdir -p ~/project/cla-backend-go/bin
+            cp ~/cla-backend-go/bin/backend-aws-lambda ~/project/cla-backend-go/bin/
+            cp ~/cla-backend-go/bin/user-subscribe-lambda ~/project/cla-backend-go/bin/
+            echo "Directory: ~/project/cla-backend-go/bin/"
+            ls -alF ~/project/cla-backend-go/bin/
             pushd ~/project/cla-backend-go
             echo "Directory: $(pwd)"
-            if [[ ! -f backend-aws-lambda ]]; then echo "Missing backend-aws-lambda binary file. Exiting..."; exit 1; fi
-            if [[ ! -f user-subscribe-lambda ]]; then echo "Missing user-subscribe-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/backend-aws-lambda ]]; then echo "Missing bin/backend-aws-lambda binary file. Exiting..."; exit 1; fi
+            if [[ ! -f bin/user-subscribe-lambda ]]; then echo "Missing bin/user-subscribe-lambda binary file. Exiting..."; exit 1; fi
             yarn install
 
             # Deploy to us-east-2
@@ -619,13 +593,6 @@ jobs:
             popd
       - *install-node-12
       - *install_aws_cli
-#      - run:
-#          name: Publish Console to S3
-#          command: |
-#            pushd ${PROJECT_DIR}/src
-#            aws s3 rm s3://${BUCKET_NAME} --recursive
-#            aws s3 sync www/ s3://${BUCKET_NAME}/ --acl public-read
-#            popd
       - run:
           name: Deploy Cloudfront and LambdaEdge
           command: |

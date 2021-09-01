@@ -1,19 +1,7 @@
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
 # Project specific ignores
-cla-backend-go
-cla
-cla-mac*
-backend-aws-lambda*
-user-subscribe-lambda*
-build-user-subscribe-lambda*
-metrics-aws-lambda*
-metrics-report-lambda*
-functional-tests*
-dynamo-events-lambda*
-zipbuilder-lambda*
-zipbuilder-scheduler-lambda*
-gitlab-repository-check-lambda*
+bin/
 *env.json
 db/schema.sql
 
