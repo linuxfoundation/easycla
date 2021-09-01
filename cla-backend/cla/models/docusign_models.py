@@ -10,29 +10,28 @@ https://developers.docusign.com/esign-rest-api/guides/post-go-live
 """
 
 import io
+import json
 import os
 import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
-import requests
-
-import pydocusign  # type: ignore
-from attr import dataclass
-from pydocusign.exceptions import DocuSignException  # type: ignore
 
 import cla
+import pydocusign  # type: ignore
+import requests
+from attr import dataclass
 from cla.controllers.lf_group import LFGroup
-from cla.models import signing_service_interface, DoesNotExist
-from cla.models.dynamo_models import Signature, User, \
-    Project, Company, Gerrit, \
-    Document, Event
+from cla.models import DoesNotExist, signing_service_interface
+from cla.models.dynamo_models import (Company, Document, Event, Gerrit,
+                                      Project, Signature, User)
 from cla.models.event_types import EventType
 from cla.models.s3_storage import S3Storage
 from cla.user_service import UserService
-from cla.utils import get_email_help_content, append_email_help_sign_off_content, get_corporate_url, \
-    get_project_cla_group_instance
+from cla.utils import (append_email_help_sign_off_content, get_corporate_url,
+                       get_email_help_content, get_project_cla_group_instance)
+from pydocusign.exceptions import DocuSignException  # type: ignore
 
 api_base_url = os.environ.get('CLA_API_BASE', '')
 root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
@@ -255,9 +254,9 @@ class DocuSign(signing_service_interface.SigningService):
         if return_url_type.lower() == "github":
             acl = user.get_user_github_id()
         elif return_url_type.lower() == "gitlab":
-            acl = user.get_user_github_id()
+            acl = user.get_user_gitlab_id()
         cla.log.debug('Individual Signature - setting ACL using user {} id: {}'.format(return_url_type, acl))
-        signature.set_signature_acl('github:{}'.format(acl))
+        signature.set_signature_acl('{}:{}'.format(return_url_type.lower(),acl))
 
         # Populate sign url
         self.populate_sign_url(signature, callback_url, default_values=default_cla_values,
@@ -1622,13 +1621,17 @@ class DocuSign(signing_service_interface.SigningService):
         """
         fn = 'models.docusign_models._update_gitlab_mr'
         try:
+            headers = {
+                        'Content-type': 'application/json',
+                        'Accept': 'application/json'
+                    }
             url = f'{cla.config.PLATFORM_GATEWAY_URL}/cla-service/v4/gitlab/trigger'
             payload = {
                         "gitlab_external_repository_id": gitlab_repository_id,
                         "gitlab_mr_id": merge_request_id,
                         "gitlab_organization_id": organization_id
                     }
-            requests.post(url, data=payload)
+            requests.post(url, data=json.dumps(payload), headers=headers)
             cla.log.debug(f'{fn} - Updating GitLab MR with payload: {payload}')
         except requests.exceptions.HTTPError as err:
             msg = f'{fn} - Unable to update GitLab MR: {merge_request_id}, error: {err}'
