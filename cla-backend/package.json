@@ -35,14 +35,13 @@
     "request": "^2.88.0",
     "serverless": "^2.57.0",
     "serverless-domain-manager": "^5.1.0",
-    "serverless-finch": "^2.3.2",
-    "serverless-layers": "^1.4.3",
-    "serverless-offline": "^6.1.5",
+    "serverless-finch": "^2.6.0",
+    "serverless-layers": "^2.5.1",
+    "serverless-offline": "^8.0.0",
     "serverless-plugin-tracing": "^2.0.0",
-    "serverless-prune-plugin": "^1.4.2",
-    "serverless-pseudo-parameters": "^2.5.0",
-    "serverless-python-requirements": "^4.2.5",
-    "serverless-wsgi": "^1.5.2"
+    "serverless-prune-plugin": "^1.5.1",
+    "serverless-python-requirements": "^5.1.1",
+    "serverless-wsgi": "^2.0.1"
   },
   "resolutions": {
     "axios": "^0.21.1",
