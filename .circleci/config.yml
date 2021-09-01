@@ -859,7 +859,7 @@ jobs:
             echo "Running golang functional tests for stage: ${STAGE}"
             echo "Home directory            : $(ls ${HOME})"
             echo "${HOME}/cla-backend-go directory: $(ls ${HOME}/cla-backend-go)"
-            ${HOME}/cla-backend-go/functional-tests
+            ${HOME}/cla-backend-go/bin/functional-tests
 
   functionalTestsTavernDev:
     <<: *functionalTestsTavern
