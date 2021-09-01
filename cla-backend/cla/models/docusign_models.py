@@ -738,7 +738,7 @@ class DocuSign(signing_service_interface.SigningService):
             github_repository_id = signature_metadata['repository_id']
             change_request_id = signature_metadata['pull_request_id']
 
-            if return_url_type == "github":
+            if return_url_type.lower() == "github":
                 # Get repository
                 installation_id = cla.utils.get_installation_id_from_github_repository(github_repository_id)
                 if installation_id is None:
@@ -746,7 +746,7 @@ class DocuSign(signing_service_interface.SigningService):
 
                 update_repository_provider(installation_id, github_repository_id, change_request_id)
     
-            elif return_url_type == "gitlab":
+            elif return_url_type.lower() == "gitlab":
                 gitlab_repository_id = signature_metadata['repository_id']
                 merge_request_id = signature_metadata['merge_request_id']
                 organization_id = cla.utils.get_organization_id_from_gitlab_repository(gitlab_repository_id)
