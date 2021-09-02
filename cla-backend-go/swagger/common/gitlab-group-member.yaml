@@ -1,0 +1,36 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+properties:
+  id:
+    type: string
+    description: user id of the gitlab member
+  username:
+    type: string
+    description: username of the gitlab member
+  name:
+    type: string
+    description: name of the gitlab member
+  state:
+    type: string
+    description: state of the gitlab member
+  avatar_url:
+    type: string
+    description: avatar_url of the gitlab member
+  web_url:
+    type: string
+    description: web_url of gitlab member
+  expired_at:
+    type: string
+    description: user expiry time
+  created_at:
+    type: string
+    description: created_at user date
+  access_level:
+    type: string
+    description: access level for user
+  group_saml_identity:
+    type: string
+    description: group saml identity 
+  

@@ -1842,7 +1842,35 @@ paths:
           $ref: '#/responses/internal-server-error'
       tags:
         - gitlab-repositories
-
+  
+  /gitlab/group/{gitLabGroupID}/members:
+    get:
+      summary: List members of a given GitLab group
+      description: Endpoint that returs the list of GitLab organization members
+      operationId: getGitLabGroupMembers
+      security: []
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: gitLabGroupID
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/gitlab-group-members-list'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - gitlab-organizations
+          
   /cla-group/{claGroupID}/icla/signatures:
     get:
       summary: List individual signatures for CLA Group
@@ -4523,6 +4551,12 @@ definitions:
 
   gitlab-repositories-enroll:
     $ref: './common/gitlab-repositories-enroll.yaml'
+  
+  gitlab-group-member:
+    $ref: './common/gitlab-group-member.yaml'
+  
+  gitlab-group-members-list:
+    $ref: './common/gitlab-group-members-list.yaml'
 
   # ---------------------------------------------------------------------------
   # CLA Group Definitions

@@ -176,6 +176,7 @@ func Configure(api *operations.ClaAPI, service ServiceInterface, eventService ev
 
 			return github_organizations.NewUpdateProjectGithubOrganizationConfigOK()
 		})
+
 }
 
 type codedResponse interface {

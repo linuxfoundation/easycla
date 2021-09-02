@@ -228,6 +228,23 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			return gitlab_organizations.NewAddProjectGitlabOrganizationOK().WithPayload(result)
 		})
 
+	api.GitlabOrganizationsGetGitLabGroupMembersHandler = gitlab_organizations.GetGitLabGroupMembersHandlerFunc(func(params gitlab_organizations.GetGitLabGroupMembersParams) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := utils.NewContext()
+		f := logrus.Fields{
+			"functionName":   "v2.gitlab_organizations.handlers.GitlabOrganizationsGetGitLabGroupMembersHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"gitLabGroupID":  params.GitLabGroupID,
+		}
+		log.WithFields(f).Debug("fetching gitlab group member details")
+		memberList, err := service.GetGitLabGroupMembers(ctx, params.GitLabGroupID)
+		if err != nil {
+			msg := fmt.Sprintf("unable to get groupID: %s  member list: %+v ", params.GitLabGroupID, err)
+			return gitlab_organizations.NewGetGitLabGroupMembersBadRequest().WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
+		}
+		return gitlab_organizations.NewGetGitLabGroupMembersOK().WithPayload(memberList)
+	})
+
 	api.GitlabOrganizationsUpdateProjectGitlabGroupConfigHandler = gitlab_organizations.UpdateProjectGitlabGroupConfigHandlerFunc(func(params gitlab_organizations.UpdateProjectGitlabGroupConfigParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
