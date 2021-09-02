@@ -2056,6 +2056,45 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                 cla.log.debug(f'{fn} - no github organization approval list defined for this CCLA')
         else:
             cla.log.debug(f'{fn} - user\'s github_username is not defined - skipping github org approval list check')
+        
+        #Check GitLab username and id
+        gitlab_username = self.get_user_gitlab_username()
+        gitlab_id = self.get_user_gitlab_id()
+
+        # Attempt to fetch the gitlab username based on the gitlab id
+        if gitlab_username is None and gitlab_id is not None:
+            github_username = cla.utils.lookup_user_gitlab_username(gitlab_id)
+            if gitlab_username is not None:
+                cla.log.debug(f'{fn} - updating user record - adding gitlab username: {gitlab_username}')
+                self.set_user_gitlab_username(gitlab_username)
+                self.save()
+
+        # Attempt to fetch the gitlab id based on the gitlab username
+        if gitlab_id is None and gitlab_username is not None:
+            gitlab_username = gitlab_username.strip()
+            gitlab_id = cla.utils.lookup_user_gitlab_id(gitlab_username)
+            if gitlab_id is not None:
+                cla.log.debug(f'{fn} - updating user record - adding gitlab id: {gitlab_id}')
+                self.set_user_gitlab_id(gitlab_id)
+                self.save()
+        
+        # GitHub username approval list processing
+        if gitlab_username is not None:
+            # remove leading and trailing whitespace from gitlab username
+            gitlab_username = gitlab_username.strip()
+            gitlab_whitelist = ccla_signature.get_gitlab_username_approval_list()
+            cla.log.debug(f'{fn} - testing user github username: {github_username} with '
+                          f'CCLA github approval list: {github_whitelist}')
+
+            if gitlab_whitelist is not None:
+                # case insensitive search
+                if gitlab_username.lower() in (s.lower() for s in github_whitelist):
+                    cla.log.debug(f'{fn} - found github username in github approval list')
+                    return True
+        else:
+            cla.log.debug(f'{fn} - users github_username is not defined - '
+                          'skipping github username approval list check')
+
 
         cla.log.debug(f'{fn} - unable to find user in any whitelist')
         return False
@@ -2398,6 +2437,8 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     email_whitelist = ListAttribute(null=True)
     github_whitelist = ListAttribute(null=True)
     github_org_whitelist = ListAttribute(null=True)
+    gitlab_org_approval_list = ListAttribute(null=True)
+    gitlab_username_approval_list = ListAttribute(null=True)
 
     # Additional attributes for ICLAs
     user_email = UnicodeAttribute(null=True)
@@ -2660,6 +2701,12 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def get_github_org_whitelist(self):
         return self.model.github_org_whitelist
+    
+    def get_gitlab_org_approval_list(self):
+        return self.model.gitlab_org_approval_list
+    
+    def get_gitlab_username_approval_list(self):
+        return self.model.gitlab_username_approval_list
 
     def get_note(self):
         return self.model.note
@@ -2810,6 +2857,12 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def set_github_org_whitelist(self, github_org_whitelist):
         self.model.github_org_whitelist = [github_org.strip() for github_org in github_org_whitelist]
+    
+    def set_gitlab_username_approval_list(self, gitlab_username_approval_list):
+        self.model.gitlab_username_approval_list = [gitlab_user.strip() for gitlab_user in gitlab_username_approval_list]
+    
+    def set_gitlab_org_approval_list(self, gitlab_org_approval_list):
+        self.model.gitlab_org_approval_list = [gitlab_org.strip() for gitlab_org in gitlab_org_approval_list]
 
     def set_note(self, note):
         self.model.note = note

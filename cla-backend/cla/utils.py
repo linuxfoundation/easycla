@@ -1370,6 +1370,51 @@ def request_individual_signature(installation_id, github_repository_id, user, ch
     raise falcon.HTTPFound(return_url)
 
 
+def lookup_user_gitlab_username(user_gitlab_id: int) -> Optional[str]:
+    """
+    Given a user gitlab ID, looks up the user's gitlab login/username.
+    :param user_gitlab_id: the gitlab id
+    :return: the user's gitlab login/username
+    """
+    try:
+        r = requests.get(f'https://gitlab.com/api/v4/users/{user_gitlab_id}')
+        r.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        msg = f'Could not get user github user from id: {user_gitlab_id}: error: {err}'
+        cla.log.warning(msg)
+        return None
+
+    gitlab_user = r.json()
+    if 'id' in gitlab_user:
+        return gitlab_user['id']
+    else:
+        cla.log.warning('Malformed HTTP response from GitLab - expecting "id" attribute '
+                            f'- response: {gitlab_user}')
+        return None
+
+def lookup_user_gitlab_id(user_gitlab_username: str) -> Optional[str]:
+    """
+    Given a user gitlab username, looks up the user's gitlab id.
+    :param user_gitlab_username: the gitlab username
+    :return: the user's gitlab id
+    """
+    try:
+        r = requests.get(f'https://gitlab.com/api/v4/users?username={user_gitlab_username}')
+        r.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        msg = f'Could not get user github user from username: {user_gitlab_username}: error: {err}'
+        cla.log.warning(msg)
+        return None
+
+    gitlab_user = r.json()
+    if 'username' in gitlab_user:
+        return gitlab_user['username']
+    else:
+        cla.log.warning('Malformed HTTP response from GitLab - expecting "username" attribute '
+                            f'- response: {gitlab_user}')
+        return None
+
+
 def lookup_user_github_username(user_github_id: int) -> Optional[str]:
     """
     Given a user github ID, looks up the user's github login/username.

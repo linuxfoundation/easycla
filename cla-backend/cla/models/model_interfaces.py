@@ -936,6 +936,12 @@ class Signature(object):  # pylint: disable=too-many-public-methods
 
     def get_github_org_whitelist(self):
         raise NotImplementedError()
+    
+    def get_gitlab_org_approval_list(self):
+        raise NotImplementedError
+    
+    def get_gitlab_username_approval_list(self):
+        raise NotImplementedError
 
     def get_note(self):
         raise NotImplementedError()
