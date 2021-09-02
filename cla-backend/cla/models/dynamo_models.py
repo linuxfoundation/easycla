@@ -2078,17 +2078,17 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                 self.set_user_gitlab_id(gitlab_id)
                 self.save()
         
-        # GitHub username approval list processing
+        # GitLab username approval list processing
         if gitlab_username is not None:
             # remove leading and trailing whitespace from gitlab username
             gitlab_username = gitlab_username.strip()
             gitlab_whitelist = ccla_signature.get_gitlab_username_approval_list()
-            cla.log.debug(f'{fn} - testing user github username: {github_username} with '
-                          f'CCLA github approval list: {github_whitelist}')
+            cla.log.debug(f'{fn} - testing user github username: {gitlab_username} with '
+                          f'CCLA github approval list: {gitlab_whitelist}')
 
             if gitlab_whitelist is not None:
                 # case insensitive search
-                if gitlab_username.lower() in (s.lower() for s in github_whitelist):
+                if gitlab_username.lower() in (s.lower() for s in gitlab_whitelist):
                     cla.log.debug(f'{fn} - found github username in github approval list')
                     return True
         else:
