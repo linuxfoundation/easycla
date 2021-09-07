@@ -480,6 +480,21 @@ class GitlabOrganizationNameLowerIndex(GlobalSecondaryIndex):
 
     organization_name_lower = UnicodeAttribute(hash_key=True)
 
+class GitlabExternalGroupIDIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying gitlab organizations by group ID
+    """
+
+    class Meta:
+        """Meta class for external ID for gitlab group id index"""
+
+        index_name = "gitlab-external-group-id-index"
+        write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
+        read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
+        projection = AllProjection()
+    
+    external_gitlab_group_id = NumberAttribute(hash_key=True)
+
 
 class GerritProjectIDIndex(GlobalSecondaryIndex):
     """
@@ -2094,7 +2109,19 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         else:
             cla.log.debug(f'{fn} - users github_username is not defined - '
                           'skipping github username approval list check')
-
+        
+        if gitlab_username is not None :
+            cla.log.debug(f'{fn} fetching gitlab org approval list items to search by username: {gitlab_username}')
+            gitlab_org_approval_lists = ccla_signature.get_gitlab_org_approval_list()
+            if gitlab_org_approval_lists:
+                for gl_name in gitlab_org_approval_lists:
+                    gl_org = GitlabOrg().search_organization_by_lower_name(gl_name)
+                    cla.log.debugf(f"{fn} checking gitlab_username against approval list for company: {gl_org}")
+                    gl_list = list(filter(lambda gl_user: gl_user.get_gitlab_username() == gitlab_username, cla.utils.lookup_gitlab_org_members(gl_org.get_organization_id())))
+                    if len(gl_list) > 0:
+                        cla.models.debug(f'{fn} - found gitlab username in gitlab approval list')
+                        return True
+        
 
         cla.log.debug(f'{fn} - unable to find user in any whitelist')
         return False
@@ -3710,9 +3737,11 @@ class GitlabOrgModel(BaseModel):
     organization_name_lower = UnicodeAttribute(null=True)
     organization_sfid = UnicodeAttribute()
     project_sfid = UnicodeAttribute()
+    auth_info = UnicodeAttribute()
     organization_sfid_index = GitlabOrgSFIndex()
     project_sfid_organization_name_index = GitlabOrgProjectSfidOrganizationNameIndex()
     organization_name_lowe_index = GitlabOrganizationNameLowerIndex()
+    gitlab_external_group_id_index = GitlabExternalGroupIDIndex()
     auto_enabled = BooleanAttribute(null=True)
     auto_enabled_cla_group_id = UnicodeAttribute(null=True)
     branch_protection_enabled = BooleanAttribute(null=True)
@@ -3909,7 +3938,7 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
     """
 
     def __init__(
-            self, organization_id=None, organization_name=None, organization_sfid=None,
+            self, organization_id=None, organization_name=None, organization_sfid=None, auth_info=None,
             project_sfid=None, auto_enabled=False, branch_protection_enabled=False, note=None, enabled=True
     ):
         super(GitlabOrg).__init__()
@@ -3928,6 +3957,7 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         self.model.branch_protection_enabled = branch_protection_enabled
         self.model.enabled = enabled
         self.model.note = note
+        self.model.auth_info = auth_info
 
     def __str__(self):
         return (
@@ -3937,7 +3967,8 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
             f'auto_enabled: {self.model.auto_enabled},'
             f'branch_protection_enabled: {self.model.branch_protection_enabled},'
             f'enabled: {self.model.enabled},'
-            f'note: {self.model.note}'
+            f'note: {self.model.note}',
+            f'auth_info: {self.model.auth_info}'
         )
 
     def to_dict(self):
@@ -3988,6 +4019,9 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         :rtype: str
         """
         return self.model.note
+    
+    def get_auth_info(self):
+        return self.model.auth_info
 
     def get_enabled(self):
         return self.model.enabled
@@ -4017,6 +4051,17 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
 
     def set_enabled(self, enabled):
         self.model.enabled = enabled
+    
+    def set_auth_info(self, auth_info):
+        self.model.auth_info = auth_info
+    
+    def get_organization_by_groupid(self, groupid):
+        org_generator = self.model.gitlab_external_group_id_index.query(groupid)
+        for org_model in org_generator:
+            org = GitlabOrg()
+            org.model = org_model
+            return org
+        return None
 
     def get_organization_by_sfid(self, sfid) -> List:
         organization_generator = self.model.organization_sfid_index.query(sfid)

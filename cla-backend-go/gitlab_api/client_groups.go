@@ -192,6 +192,24 @@ func GetGroupProjectListByGroupID(ctx context.Context, client *goGitLab.Client, 
 	return projectList, nil
 }
 
+// ListGroupMembers lists the members of a given groupID
+func ListGroupMembers(ctx context.Context, client *goGitLab.Client, groupID int) ([]*goGitLab.GroupMember, error) {
+	f := logrus.Fields{
+		"functionName":   "gitlab_api.client_groups.GetGroupMembers",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	log.WithFields(f).Debugf("fetching gitlab members for groupID: %d", groupID)
+
+	opts := &goGitLab.ListGroupMembersOptions{}
+	members, _, err := client.Groups.ListGroupMembers(groupID, opts)
+	if err != nil {
+		log.WithFields(f).Debugf("unable to fetch members for gitlab GroupID : %d", groupID)
+		return nil, err
+	}
+	return members, err
+}
+
 // ListUserProjectGroups fetches the unique groups of a gitlab users groups,
 // note: it doesn't list the projects/groups the user is member of ..., it's very limited
 func ListUserProjectGroups(ctx context.Context, client *goGitLab.Client, userID int) ([]*UserGroup, error) {

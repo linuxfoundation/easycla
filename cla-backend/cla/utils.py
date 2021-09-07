@@ -1496,6 +1496,16 @@ def lookup_github_organizations(github_username: str):
         return {'error': 'Could not get user github org: {}'.format(err)}
     return [github_org['login'] for github_org in r.json()]
 
+def lookup_gitlab_org_members(organization_id):
+    # Use the v2 Endpoint thats a wrapper for Gitlab Group member query
+    try:
+        r = requests.get(f'{cla.config.PLATFORM_GATEWAY_URL}/cla-service/v4/gitlab/group/{organization_id}/members')
+        r.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        cla.log.warning(f'Could not fetch gitlab org users: {err}')
+        return {f'error: Could not get user gitlab group id: {organization_id} members: {err}'}
+    return r.json()['list']
+
 
 def update_github_username(github_user: dict, user: User):
     """

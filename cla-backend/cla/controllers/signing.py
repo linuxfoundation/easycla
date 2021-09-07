@@ -123,7 +123,7 @@ def request_employee_signature(project_id, company_id, user_id, return_url_type,
                                                                  return_url)
     elif return_url_type is not None and (return_url_type.lower() == "github" or return_url_type.lower() == "gitlab"):
         cla.log.error(f'{fn} - return type is github - invoking: request_employee_signature')
-        return signing_service.request_employee_signature(str(project_id), str(company_id), str(user_id), return_url)
+        return signing_service.request_employee_signature(str(project_id), str(company_id), str(user_id), return_url, return_url_type=return_url_type)
 
     else:
         msg = (f'{fn} - unsupported return type {return_url_type} for '
