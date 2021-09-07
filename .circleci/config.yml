@@ -1029,7 +1029,7 @@ workflows:
               only:
                 - main
       # Deploy v2 Dev
-      - deployV1BackendDev:
+      - deployV2BackendDev:
           requires:
             - buildGoBackendCommon
           filters:
@@ -1078,8 +1078,8 @@ workflows:
                 - main
       - functionalTestsTavernDev:
           requires:
-            - deployv1BackendDev
-            - deployv2BackendDev
+            - deployV1BackendDev
+            - deployV2BackendDev
           filters:
             tags:
               ignore: /.*/
