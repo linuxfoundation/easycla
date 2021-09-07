@@ -97,7 +97,15 @@ class GitHub(repository_service_interface.RepositoryService):
         # Not sure if we need a different token for each installation ID...
         cla.log.debug(f'{fn} - Loading session from request: {request}...')
         session = self._get_request_session(request)
-        cla.log.debug(f'{fn} - Adding github details to session...')
+        cla.log.debug(f'{fn} - Adding github details to session: {session} which is type: {type(session)}...')
+
+        # Ensure session is a dict - getting issue where session is a string
+        if isinstance(session, str):
+            # convert string to a dict
+            cla.log.debug(f'{fn} - session is type: {type(session)} - converting to dict...')
+            session = json.loads(session)
+            cla.log.debug(f'{fn} - session is now type: {type(session)}...')
+
         session['github_installation_id'] = installation_id
         session['github_repository_id'] = github_repository_id
         session['github_change_request_id'] = change_request_id
@@ -124,7 +132,7 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.debug(f'{fn} - GitHub OAuth2 request with state {state} - sending user to {authorization_url}')
             raise falcon.HTTPFound(authorization_url)
 
-    def _get_request_session(self, request):  # pylint: disable=no-self-use
+    def _get_request_session(self, request) -> dict:  # pylint: disable=no-self-use
         """
         Mockable method used to get the current user session.
         """
@@ -132,6 +140,7 @@ class GitHub(repository_service_interface.RepositoryService):
         session = request.context.get('session')
         if session is None:
             cla.log.warning(f'Session is empty for request: {request}')
+        cla.log.debug(f'loaded session: {session}')
         return session
 
     def get_authorization_url_and_state(self, installation_id, github_repository_id, pull_request_number, scope):
@@ -845,7 +854,7 @@ def handle_commit_from_user(project, commit_sha, author_info, signed, missing): 
                               f'user: {author_username}, '
                               f'email {author_email}) is on the approved list, '
                               'but not affiliated with a company')
-                
+
                 list_author_info.append(True)
                 break
         missing.append((commit_sha, list_author_info))
