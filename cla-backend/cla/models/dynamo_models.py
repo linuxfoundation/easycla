@@ -2118,8 +2118,8 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                 for gl_name in gitlab_org_approval_lists:
                     try:
                         gl_org = GitlabOrg().search_organization_by_lower_name(gl_name)
-                        cla.log.debug(f"{fn} checking gitlab_username against approval list for company: {gl_org}")
-                        gl_list = list(filter(lambda gl_user: gl_user.get_gitlab_username() == gitlab_username, cla.utils.lookup_gitlab_org_members(gl_org.get_organization_id())))
+                        cla.log.debug(f"{fn} checking gitlab_username against approval list for company: {gl_org.get_organization_name()}")
+                        gl_list = list(filter(lambda gl_user: gl_user.get('username') == gitlab_username, cla.utils.lookup_gitlab_org_members(gl_org.get_organization_id())))
                         if len(gl_list) > 0:
                             cla.models.debug(f'{fn} - found gitlab username in gitlab approval list')
                             return True
