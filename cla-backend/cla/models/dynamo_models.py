@@ -2121,10 +2121,10 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                         cla.log.debug(f"{fn} checking gitlab_username against approval list for company: {gl_org.get_organization_name()}")
                         gl_list = list(filter(lambda gl_user: gl_user.get('username') == gitlab_username, cla.utils.lookup_gitlab_org_members(gl_org.get_organization_id())))
                         if len(gl_list) > 0:
-                            cla.models.debug(f'{fn} - found gitlab username in gitlab approval list')
+                            cla.log.debug(f'{fn} - found gitlab username in gitlab approval list')
                             return True
                     except DoesNotExist as err:
-                        cla.log.debugf(f'gitlab group : {gl_name} does not exist: {err}')
+                        cla.log.debug(f'gitlab group : {gl_name} does not exist: {err}')
         
 
         cla.log.debug(f'{fn} - unable to find user in any whitelist')
