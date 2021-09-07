@@ -98,14 +98,6 @@ class GitHub(repository_service_interface.RepositoryService):
         cla.log.debug(f'{fn} - Loading session from request: {request}...')
         session = self._get_request_session(request)
         cla.log.debug(f'{fn} - Adding github details to session: {session} which is type: {type(session)}...')
-
-        # Ensure session is a dict - getting issue where session is a string
-        if isinstance(session, str):
-            # convert string to a dict
-            cla.log.debug(f'{fn} - session is type: {type(session)} - converting to dict...')
-            session = json.loads(session)
-            cla.log.debug(f'{fn} - session is now type: {type(session)}...')
-
         session['github_installation_id'] = installation_id
         session['github_repository_id'] = github_repository_id
         session['github_change_request_id'] = change_request_id
@@ -136,11 +128,19 @@ class GitHub(repository_service_interface.RepositoryService):
         """
         Mockable method used to get the current user session.
         """
-        # return request.context['session']
+        fn = 'cla.models.github_models._get_request_session'
         session = request.context.get('session')
         if session is None:
             cla.log.warning(f'Session is empty for request: {request}')
         cla.log.debug(f'loaded session: {session}')
+
+        # Ensure session is a dict - getting issue where session is a string
+        if isinstance(session, str):
+            # convert string to a dict
+            cla.log.debug(f'{fn} - session is type: {type(session)} - converting to dict...')
+            session = json.loads(session)
+            cla.log.debug(f'{fn} - session: {session} which is now type: {type(session)}...')
+
         return session
 
     def get_authorization_url_and_state(self, installation_id, github_repository_id, pull_request_number, scope):
@@ -483,31 +483,33 @@ class GitHub(repository_service_interface.RepositoryService):
         :param request: The hug request object for this API call.
         :type request: Request
         """
+        fn = 'github_models.get_or_create_user'
         session = self._get_request_session(request)
         github_user = self.get_user_data(session, os.environ['GH_OAUTH_CLIENT_ID'])
         if 'error' in github_user:
             # Could not get GitHub user data - maybe user revoked CLA app permissions?
             session = self._get_request_session(request)
+
             del session['github_oauth2_state']
             del session['github_oauth2_token']
-            cla.log.warning('Deleted OAuth2 session data - retrying token exchange next time')
+            cla.log.warning(f'{fn} - Deleted OAuth2 session data - retrying token exchange next time')
             raise falcon.HTTPError('400 Bad Request', 'github_oauth2_token',
                                    'Token permissions have been rejected, please try again')
 
         emails = self.get_user_emails(session, os.environ['GH_OAUTH_CLIENT_ID'])
         if len(emails) < 1:
-            cla.log.warning('GitHub user has no verified email address: %s (%s)',
+            cla.log.warning(f'{fn} - GitHub user has no verified email address: %s (%s)',
                             github_user['name'], github_user['login'])
             raise falcon.HTTPError(
                 '412 Precondition Failed', 'email',
                 'Please verify at least one email address with GitHub')
 
-        cla.log.debug('Trying to load GitHub user by GitHub ID: %s', github_user['id'])
+        cla.log.debug(f'{fn} - Trying to load GitHub user by GitHub ID: %s', github_user['id'])
         users = cla.utils.get_user_instance().get_user_by_github_id(github_user['id'])
         if users is not None:
             # Users search can return more than one match - so it's an array - we set the first record value for now??
             user = users[0]
-            cla.log.debug('Loaded GitHub user by GitHub ID: %s - %s (%s)',
+            cla.log.debug(f'{fn} - Loaded GitHub user by GitHub ID: %s - %s (%s)',
                           user.get_user_name(),
                           user.get_user_emails(),
                           user.get_user_github_id())
@@ -520,7 +522,7 @@ class GitHub(repository_service_interface.RepositoryService):
             return user
 
         # User not found by GitHub ID, trying by email.
-        cla.log.debug('Could not find GitHub user by GitHub ID: %s', github_user['id'])
+        cla.log.debug(f'{fn} - Could not find GitHub user by GitHub ID: %s', github_user['id'])
         # TODO: This is very slow and needs to be improved - may need a DB schema change.
         users = None
         user = cla.utils.get_user_instance()
@@ -540,12 +542,12 @@ class GitHub(repository_service_interface.RepositoryService):
 
             user.set_user_emails(emails)
             user.save()
-            cla.log.debug(f'Loaded GitHub user by email: {user}')
+            cla.log.debug(f'{fn} - Loaded GitHub user by email: {user}')
             return user
 
         # User not found, create.
-        cla.log.debug(f'Could not find GitHub user by email: {emails}')
-        cla.log.debug(f'Creating new GitHub user {github_user["name"]} - '
+        cla.log.debug(f'{fn} - Could not find GitHub user by email: {emails}')
+        cla.log.debug(f'{fn} - Creating new GitHub user {github_user["name"]} - '
                       f'({github_user["id"]}/{github_user["login"]}), '
                       f'emails: {emails}')
         user = cla.utils.get_user_instance()
@@ -577,7 +579,7 @@ class GitHub(repository_service_interface.RepositoryService):
             return {'error': 'Could not get user data: %s' % github_user['message']}
         return github_user
 
-    def get_user_emails(self, session, client_id) -> Union[List[str], dict]:  # pylint: disable=no-self-use
+    def get_user_emails(self, session: dict, client_id: str) -> Union[List[str], dict]:  # pylint: disable=no-self-use
         """
         Mockable method to get all user emails based on OAuth2 session.
 
@@ -609,7 +611,7 @@ class GitHub(repository_service_interface.RepositoryService):
         """
         fn = 'github_models.get_primary_user_email'
         try:
-            cla.log.debug(f'{fn} - Fetching Github primary email')
+            cla.log.debug(f'{fn} - fetching Github primary email')
             session = self._get_request_session(request)
             client_id = os.environ['GH_OAUTH_CLIENT_ID']
             emails = self._fetch_github_emails(session=session, client_id=client_id)
@@ -624,7 +626,7 @@ class GitHub(repository_service_interface.RepositoryService):
             return None
         return None
 
-    def _fetch_github_emails(self, session, client_id) -> Union[List[dict], dict]:
+    def _fetch_github_emails(self, session: dict, client_id: str) -> Union[List[dict], dict]:
         """
         Method is responsible for fetching the user emails from /user/emails endpoint
         :param session:
@@ -1181,7 +1183,7 @@ class MockGitHub(GitHub):
     def _fetch_token(self, client_id, state, token_url, client_secret, code):  # pylint: disable=too-many-arguments
         return 'random-token'
 
-    def _get_request_session(self, request):
+    def _get_request_session(self, request) -> dict:
         if self.oauth2_token:
             return {'github_oauth2_token': 'random-token',
                     'github_oauth2_state': 'random-state',
@@ -1189,7 +1191,7 @@ class MockGitHub(GitHub):
                     'github_installation_id': 1}
         return {}
 
-    def get_user_data(self, session, client_id):
+    def get_user_data(self, session, client_id) -> dict:
         return {'email': 'test@user.com', 'name': 'Test User', 'id': 123}
 
     def get_user_emails(self, session, client_id):

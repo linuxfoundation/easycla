@@ -283,8 +283,8 @@ jobs:
       AWS_REGION: us-east-1
       DYNAMODB_AWS_REGION: us-east-1
 
-  # Deploys
-  deployBackend: &deployBackendAnchor
+  # Deploys Old API
+  deployV1Backend: &deployV1BackendAnchor
     docker:
       - image: circleci/python:3.7.9-node
     steps:
@@ -346,6 +346,66 @@ jobs:
             if [[ ! -f serverless-authorizer.yml ]]; then echo "Missing serverless-authorizer.yml file. Exiting..."; exit 1; fi
             yarn sls deploy --force --stage ${STAGE} --region us-east-1
       - run:
+          name: Service Check
+          command: |
+            sudo apt-get install -y curl
+            v2_url=''
+            v3_url=''
+            if [[ "${STAGE}" == "prod" ]]; then
+              v2_url=https://api.easycla.lfx.linuxfoundation.org/v2/health
+              v3_url=https://api.easycla.lfx.linuxfoundation.org/v3/ops/health
+            else
+              v2_url=https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v2/health
+              v3_url=https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v3/ops/health
+            fi
+
+            echo "Validating v2 backend using endpoint: ${v2_url}"
+            curl --fail -XGET ${v2_url}
+            exit_code=$?
+            if [[ ${exit_coe} -eq 0 ]]; then
+              echo "Successful response from endpoint: ${v2_url}"
+            else
+              echo "Failed to get a successful response from endpoint: ${v2_url}"
+              exit ${exit_code}
+            fi
+
+            echo "Validating v3 backend using endpoint: ${v3_url}"
+            curl --fail -XGET ${v3_url}
+            exit_code=$?
+            if [[ ${exit_coe} -eq 0 ]]; then
+              echo "Successful response from endpoint: ${v3_url}"
+              # JSON response should include "Status": "healthy"
+              if [[ `curl -s -XGET ${v3_url} | jq -r '.Status'` == "healthy" ]]; then
+                echo "Service is healthy"
+              else
+                echo "Service is NOT healthy"
+                exit -1
+              fi
+            else
+              echo "Failed to get a successful response from endpoint: ${v3_url}"
+              exit ${exit_code}
+            fi
+
+  deployV2Backend: &deployV2BackendAnchor
+    docker:
+      - image: circleci/python:3.7.9-node
+    steps:
+      - attach_workspace:
+          at: ~/
+      - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
+      - *setup_aws
+      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
+      - *install-node-12
+      - run:
+          name: Install Top Level Dependencies
+          command: |
+            echo "Node version is: $(node --version)"
+            echo "Running top level install..."
+            yarn install
+      - run:
           name: Deploy EasyCLA v2
           command: |
             echo "Using AWS profile: ${AWS_PROFILE}"
@@ -378,44 +438,11 @@ jobs:
           name: Service Check
           command: |
             sudo apt-get install -y curl
-            v2_url=''
-            v3_url=''
             v4_url=''
             if [[ "${STAGE}" == "prod" ]]; then
-              v2_url=https://api.easycla.lfx.linuxfoundation.org/v2/health
-              v3_url=https://api.easycla.lfx.linuxfoundation.org/v3/ops/health
               v4_url=https://api-gw.platform.linuxfoundation.org/cla-service/v4/ops/health
             else
-              v2_url=https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v2/health
-              v3_url=https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v3/ops/health
               v4_url=https://api-gw.${STAGE}.platform.linuxfoundation.org/cla-service/v4/ops/health
-            fi
-
-            echo "Validating v2 backend using endpoint: ${v2_url}"
-            curl --fail -XGET ${v2_url}
-            exit_code=$?
-            if [[ ${exit_coe} -eq 0 ]]; then
-              echo "Successful response from endpoint: ${v2_url}"
-            else
-              echo "Failed to get a successful response from endpoint: ${v2_url}"
-              exit ${exit_code}
-            fi
-
-            echo "Validating v3 backend using endpoint: ${v3_url}"
-            curl --fail -XGET ${v3_url}
-            exit_code=$?
-            if [[ ${exit_coe} -eq 0 ]]; then
-              echo "Successful response from endpoint: ${v3_url}"
-              # JSON response should include "Status": "healthy"
-              if [[ `curl -s -XGET ${v3_url} | jq -r '.Status'` == "healthy" ]]; then
-                echo "Service is healthy"
-              else
-                echo "Service is NOT healthy"
-                exit -1
-              fi
-            else
-              echo "Failed to get a successful response from endpoint: ${v3_url}"
-              exit ${exit_code}
             fi
 
             echo "Validating v4 backend using endpoint: ${v4_url}"
@@ -435,8 +462,8 @@ jobs:
               exit ${exit_code}
             fi
 
-  deployBackendDev:
-    <<: *deployBackendAnchor
+  deployV1BackendDev:
+    <<: *deployV1BackendAnchor
     environment:
       AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
       AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
@@ -446,8 +473,8 @@ jobs:
       ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
       PRODUCT_DOMAIN: dev.lfcla.com
 
-  deployBackendStaging:
-    <<: *deployBackendAnchor
+  deployV1BackendStaging:
+    <<: *deployV1BackendAnchor
     environment:
       AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
       AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
@@ -457,8 +484,41 @@ jobs:
       ROOT_DOMAIN: lfcla.staging.platform.linuxfoundation.org
       PRODUCT_DOMAIN: staging.lfcla.com
 
-  deployBackendProd:
-    <<: *deployBackendAnchor
+  deployV1BackendProd:
+    <<: *deployV1BackendAnchor
+    environment:
+      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_PROD
+      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_PROD
+      AWS_PROFILE: lf-cla
+      AWS_REGION: us-east-1
+      STAGE: prod
+      ROOT_DOMAIN: lfcla.platform.linuxfoundation.org
+      PRODUCT_DOMAIN: lfcla.com
+
+  deployV2BackendDev:
+    <<: *deployV2BackendAnchor
+    environment:
+      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
+      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
+      AWS_PROFILE: lf-cla
+      AWS_REGION: us-east-1
+      STAGE: dev
+      ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
+      PRODUCT_DOMAIN: dev.lfcla.com
+
+  deployV2BackendStaging:
+    <<: *deployV2BackendAnchor
+    environment:
+      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
+      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
+      AWS_PROFILE: lf-cla
+      AWS_REGION: us-east-1
+      STAGE: staging
+      ROOT_DOMAIN: lfcla.staging.platform.linuxfoundation.org
+      PRODUCT_DOMAIN: staging.lfcla.com
+
+  deployV2BackendProd:
+    <<: *deployV2BackendAnchor
     environment:
       AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_PROD
       AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_PROD
@@ -936,7 +996,7 @@ jobs:
 workflows:
   version: 2.1
   build_and_deploy:
-   jobs:
+    jobs:
       - buildBackendDev:
           filters:
             tags:
@@ -958,10 +1018,19 @@ workflows:
             tags:
               only: /.*/
 
-      # Deploy Dev
-      - deployBackendDev:
+      # Deploy v1 Dev
+      - deployV1BackendDev:
           requires:
             - buildBackendDev
+          filters:
+            tags:
+              ignore: /.*/
+            branches:
+              only:
+                - main
+      # Deploy v2 Dev
+      - deployV1BackendDev:
+          requires:
             - buildGoBackendCommon
           filters:
             tags:
@@ -999,7 +1068,8 @@ workflows:
                 - main
       - functionalTestsGoDev:
           requires:
-            - deployBackendDev
+            - deployV1BackendDev
+            - deployV2BackendDev
           filters:
             tags:
               ignore: /.*/
@@ -1008,7 +1078,8 @@ workflows:
                 - main
       - functionalTestsTavernDev:
           requires:
-            - deployBackendDev
+            - deployv1BackendDev
+            - deployv2BackendDev
           filters:
             tags:
               ignore: /.*/
@@ -1024,13 +1095,6 @@ workflows:
             tags:
               # see semver examples https://regex101.com/r/Ly7O1x/201/
               only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-#      - buildGoBackendStaging:
-#          filters:
-#            branches:
-#              ignore: /.*/
-#            tags:
-#              # see semver examples https://regex101.com/r/Ly7O1x/201/
-#              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
       - approve_staging:
           type: approval
           requires:
@@ -1042,10 +1106,19 @@ workflows:
             tags:
               # see semver examples https://regex101.com/r/Ly7O1x/201/
               only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployBackendStaging:
+      - deployV1BackendStaging:
           requires:
             - approve_staging
             - buildBackendStaging
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              # see semver examples https://regex101.com/r/Ly7O1x/201/
+              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
+      - deployV2BackendStaging:
+          requires:
+            - approve_staging
             - buildGoBackendCommon
           filters:
             branches:
@@ -1098,13 +1171,6 @@ workflows:
             tags:
               # see semver examples https://regex101.com/r/Ly7O1x/201/
               only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-#      - buildGoBackendProd:
-#          filters:
-#            branches:
-#              ignore: /.*/
-#            tags:
-#              # see semver examples https://regex101.com/r/Ly7O1x/201/
-#              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
       - approve_prod:
           type: approval
           requires:
@@ -1116,10 +1182,19 @@ workflows:
             tags:
               # see semver examples https://regex101.com/r/Ly7O1x/201/
               only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployBackendProd:
+      - deployV1BackendProd:
           requires:
             - approve_prod
             - buildBackendProd
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              # see semver examples https://regex101.com/r/Ly7O1x/201/
+              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
+      - deployV2BackendProd:
+          requires:
+            - approve_prod
             - buildGoBackendCommon
           filters:
             branches:
