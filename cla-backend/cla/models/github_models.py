@@ -132,13 +132,15 @@ class GitHub(repository_service_interface.RepositoryService):
         session = request.context.get('session')
         if session is None:
             cla.log.warning(f'Session is empty for request: {request}')
-        cla.log.debug(f'loaded session: {session}')
+        cla.log.debug(f'{fn} - loaded session: {session}')
 
         # Ensure session is a dict - getting issue where session is a string
         if isinstance(session, str):
             # convert string to a dict
             cla.log.debug(f'{fn} - session is type: {type(session)} - converting to dict...')
             session = json.loads(session)
+            # Reset the session now that we have converted it to a dict
+            request.context['session'] = session
             cla.log.debug(f'{fn} - session: {session} which is now type: {type(session)}...')
 
         return session
@@ -167,7 +169,7 @@ class GitHub(repository_service_interface.RepositoryService):
         github_oauth_client_id = os.environ['GH_OAUTH_CLIENT_ID']
 
         cla.log.debug(f'{fn} - Directing user to the github authorization url: {github_oauth_url} via '
-                      f'our github installation flow: {redirect_uri}'
+                      f'our github installation flow: {redirect_uri} '
                       f'using the github oauth client id: {github_oauth_client_id[0:5]} '
                       f'with scope: {scope}')
 
@@ -569,13 +571,18 @@ class GitHub(repository_service_interface.RepositoryService):
         :param client_id: The GitHub OAuth2 client ID.
         :type client_id: string
         """
-        token = session['github_oauth2_token']
+        fn = 'cla.models.github_models.get_user_data'
+        token = session.get('github_oauth2_token')
+        if token is None:
+            cla.log.error(f'{fn} - unable to load github_oauth2_token from session, session is: {session}')
+            return {'error': 'could not get user data from session'}
+
         oauth2 = OAuth2Session(client_id, token=token)
         request = oauth2.get('https://api.github.com/user')
         github_user = request.json()
-        cla.log.debug('GitHub user data: %s', github_user)
+        cla.log.debug(f'{fn} - GitHub user data: %s', github_user)
         if 'message' in github_user:
-            cla.log.error('Could not get user data with OAuth2 token: %s', github_user['message'])
+            cla.log.error(f'{fn} - Could not get user data with OAuth2 token: {github_user["message"]}')
             return {'error': 'Could not get user data: %s' % github_user['message']}
         return github_user
 
