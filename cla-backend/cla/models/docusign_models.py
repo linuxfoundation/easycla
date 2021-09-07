@@ -735,11 +735,11 @@ class DocuSign(signing_service_interface.SigningService):
         # signature metadata.
         if not project.get_project_ccla_requires_icla_signature():
             cla.log.info(f'{fn} - cla group does not require a separate ICLA signature from the employee - updating PR')
-            github_repository_id = signature_metadata['repository_id']
-            change_request_id = signature_metadata['pull_request_id']
 
             if return_url_type.lower() == "github":
                 # Get repository
+                github_repository_id = signature_metadata['repository_id']
+                change_request_id = signature_metadata['pull_request_id']
                 installation_id = cla.utils.get_installation_id_from_github_repository(github_repository_id)
                 if installation_id is None:
                     return {'errors': {'github_repository_id': 'The given github repository ID does not exist. '}}
