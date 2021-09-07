@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"os"
 
+	v2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
+
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 
 	gitlab "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
@@ -85,6 +87,7 @@ func init() {
 	userRepo := user.NewDynamoRepository(awsSession, stage)
 	companyRepo := company.NewRepository(awsSession, stage)
 	projectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
+	v2Repository := v2Repositories.NewRepository(awsSession, stage)
 	repositoriesRepo := repositories.NewRepository(awsSession, stage)
 	gerritRepo := gerrits.NewRepository(awsSession, stage)
 	projectRepo := project.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, projectClaGroupRepo)
@@ -142,6 +145,7 @@ func init() {
 		eventsRepo,
 		projectRepo,
 		gitlabOrganizationRepo,
+		v2Repository,
 		projectService,
 		githubOrganizationsService,
 		repositoriesService,

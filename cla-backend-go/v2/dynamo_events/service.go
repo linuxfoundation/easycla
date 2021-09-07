@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	v2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
+
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 
@@ -60,6 +62,7 @@ type service struct {
 	projectsClaGroupRepo     projects_cla_groups.Repository
 	eventsRepo               claevent.Repository
 	gitLabOrgRepo            gitlab_organizations.RepositoryInterface
+	v2Repository             v2Repositories.RepositoryInterface
 	projectRepo              project.ProjectRepository
 	projectService           project.Service
 	githubOrgService         github_organizations.ServiceInterface
@@ -85,6 +88,7 @@ func NewService(stage string,
 	eventsRepo claevent.Repository,
 	projectRepo project.ProjectRepository,
 	gitLabOrgRepo gitlab_organizations.RepositoryInterface,
+	v2Repository v2Repositories.RepositoryInterface,
 	projService project.Service,
 	githubOrgService github_organizations.ServiceInterface,
 	repositoryService repositories.Service,
@@ -98,6 +102,7 @@ func NewService(stage string,
 	projectsCLAGroupsTable := fmt.Sprintf("cla-%s-projects-cla-groups", stage)
 	githubOrgTableName := fmt.Sprintf("cla-%s-github-orgs", stage)
 	repositoryTableName := fmt.Sprintf("cla-%s-repositories", stage)
+	gitlabOrgTableName := fmt.Sprintf("cla-%s-gitlab-orgs", stage)
 	// gerritTableName := fmt.Sprintf("cla-%s-gerrit-instances", stage)
 	claGroupsTable := fmt.Sprintf("cla-%s-projects", stage)
 
@@ -110,6 +115,7 @@ func NewService(stage string,
 		eventsRepo:               eventsRepo,
 		projectRepo:              projectRepo,
 		gitLabOrgRepo:            gitLabOrgRepo,
+		v2Repository:             v2Repository,
 		projectService:           projService,
 		githubOrgService:         githubOrgService,
 		repositoryService:        repositoryService,
@@ -152,6 +158,9 @@ func NewService(stage string,
 	s.registerCallback(repositoryTableName, Insert, s.GitLabRepoAddedWebhookEventHandler)
 	s.registerCallback(repositoryTableName, Modify, s.GitlabRepoModifiedWebhookEventHandler)
 	s.registerCallback(repositoryTableName, Remove, s.GitLabRepoRemovedWebhookEventHandler)
+
+	// gitlab org updates handled like branch protection and etc.
+	s.registerCallback(gitlabOrgTableName, Modify, s.GitLabOrgUpdatedEvent)
 
 	// Check and enable/disable the branch protection when a project
 	s.registerCallback(repositoryTableName, Insert, s.EnableBranchProtectionServiceHandler)

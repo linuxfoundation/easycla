@@ -62,7 +62,7 @@ func (s *service) GitLabRepoAddedWebhookEventHandler(event events.DynamoDBEventR
 
 	repositoryExternalIDInt, err := strconv.Atoi(repositoryExternalID)
 	if err != nil {
-		return fmt.Errorf("parding external repository id failed : %v", err)
+		return fmt.Errorf("parsing external repository id failed : %v", err)
 	}
 
 	conf := config.GetConfig()

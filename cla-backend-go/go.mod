@@ -56,6 +56,7 @@ require (
 	github.com/spf13/viper v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/tencentyun/scf-go-lib v0.0.0-20200116145541-9a6ea1bf75b8
+	github.com/ugorji/go v1.2.6 // indirect
 	github.com/verdverm/frisby v0.0.0-20170604211311-b16556248a9a
 	github.com/xanzy/go-gitlab v0.50.1
 	go.uber.org/ratelimit v0.1.0
