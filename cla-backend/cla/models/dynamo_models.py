@@ -2104,23 +2104,27 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             if gitlab_whitelist is not None:
                 # case insensitive search
                 if gitlab_username.lower() in (s.lower() for s in gitlab_whitelist):
-                    cla.log.debug(f'{fn} - found github username in github approval list')
+                    cla.log.debug(f'{fn} - found gitlab username in gitlab approval list')
                     return True
         else:
-            cla.log.debug(f'{fn} - users github_username is not defined - '
-                          'skipping github username approval list check')
+            cla.log.debug(f'{fn} - users gitlab_username is not defined - '
+                          'skipping gitlab username approval list check')
         
         if gitlab_username is not None :
             cla.log.debug(f'{fn} fetching gitlab org approval list items to search by username: {gitlab_username}')
             gitlab_org_approval_lists = ccla_signature.get_gitlab_org_approval_list()
+            cla.log.debug(f'{fn} checking gitlab org approval list: {gitlab_org_approval_lists}')
             if gitlab_org_approval_lists:
                 for gl_name in gitlab_org_approval_lists:
-                    gl_org = GitlabOrg().search_organization_by_lower_name(gl_name)
-                    cla.log.debugf(f"{fn} checking gitlab_username against approval list for company: {gl_org}")
-                    gl_list = list(filter(lambda gl_user: gl_user.get_gitlab_username() == gitlab_username, cla.utils.lookup_gitlab_org_members(gl_org.get_organization_id())))
-                    if len(gl_list) > 0:
-                        cla.models.debug(f'{fn} - found gitlab username in gitlab approval list')
-                        return True
+                    try:
+                        gl_org = GitlabOrg().search_organization_by_lower_name(gl_name)
+                        cla.log.debugf(f"{fn} checking gitlab_username against approval list for company: {gl_org}")
+                        gl_list = list(filter(lambda gl_user: gl_user.get_gitlab_username() == gitlab_username, cla.utils.lookup_gitlab_org_members(gl_org.get_organization_id())))
+                        if len(gl_list) > 0:
+                            cla.models.debug(f'{fn} - found gitlab username in gitlab approval list')
+                            return True
+                    except DoesNotExist as err:
+                        cla.log.debugf(f'gitlab group : {gl_name} does not exist: {err}')
         
 
         cla.log.debug(f'{fn} - unable to find user in any whitelist')
