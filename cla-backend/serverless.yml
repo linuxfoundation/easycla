@@ -102,7 +102,7 @@ custom:
 provider:
   name: aws
   runtime: python3.7
-  stage: prod
+  stage: ${env:STAGE}
   region: us-east-1
   timeout: 60 # optional, in seconds, default is 6
   logRetentionInDays: 14
