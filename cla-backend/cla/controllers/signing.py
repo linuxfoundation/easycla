@@ -37,7 +37,7 @@ def request_individual_signature(project_id, user_id, return_url_type, return_ur
     if return_url_type is not None and return_url_type.lower() == "gerrit":
         return signing_service.request_individual_signature_gerrit(str(project_id), str(user_id), return_url)
     elif return_url_type is not None and (return_url_type.lower() == "github" or return_url_type.lower() == "gitlab"):
-        if return_url_type == "github":
+        if return_url_type.lower() == "github":
             # fetching the primary for the account
             github = get_repository_service("github")
             primary_user_email = github.get_primary_user_email(request)
