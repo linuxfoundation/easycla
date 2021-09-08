@@ -845,8 +845,8 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
 			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListAddGitlabUsernameData{
-				ApprovalListGitlabUsername: value,
+			EventData: &events.CLAApprovalListAddGitLabUsernameData{
+				ApprovalListGitLabUsername: value,
 			},
 		})
 	}
@@ -862,8 +862,8 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
 			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListRemoveGitlabUsernameData{
-				ApprovalListGitlabUsername: value,
+			EventData: &events.CLAApprovalListRemoveGitLabUsernameData{
+				ApprovalListGitLabUsername: value,
 			},
 		})
 	}
@@ -879,8 +879,8 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
 			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListAddGitlabOrgData{
-				ApprovalListGitlabOrg: value,
+			EventData: &events.CLAApprovalListAddGitLabGroupData{
+				ApprovalListGitLabGroup: value,
 			},
 		})
 	}
@@ -897,8 +897,8 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
 			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListRemoveGitlabOrgData{
-				ApprovalListGitlabOrg: value,
+			EventData: &events.CLAApprovalListRemoveGitLabGroupData{
+				ApprovalListGitLabGroup: value,
 			},
 		})
 	}

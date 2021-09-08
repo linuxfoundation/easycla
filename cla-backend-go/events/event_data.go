@@ -198,22 +198,22 @@ type GitHubOrganizationUpdatedEventData struct {
 	BranchProtectionEnabled bool
 }
 
-// GitlabOrganizationAddedEventData data model
-type GitlabOrganizationAddedEventData struct {
-	GitlabOrganizationName  string
+// GitLabOrganizationAddedEventData data model
+type GitLabOrganizationAddedEventData struct {
+	GitLabOrganizationName  string
 	AutoEnabled             bool
 	AutoEnabledClaGroupID   string
 	BranchProtectionEnabled bool
 }
 
-// GitlabOrganizationDeletedEventData data model
-type GitlabOrganizationDeletedEventData struct {
-	GitlabOrganizationName string
+// GitLabOrganizationDeletedEventData data model
+type GitLabOrganizationDeletedEventData struct {
+	GitLabOrganizationName string
 }
 
-// GitlabOrganizationUpdatedEventData data model
-type GitlabOrganizationUpdatedEventData struct {
-	GitlabOrganizationName string
+// GitLabOrganizationUpdatedEventData data model
+type GitLabOrganizationUpdatedEventData struct {
+	GitLabOrganizationName string
 	GitLabGroupID          int64
 	AutoEnabled            bool
 	AutoEnabledClaGroupID  string
@@ -335,24 +335,24 @@ type CLAApprovalListRemoveGitHubOrgData struct {
 	ApprovalListGitHubOrg string
 }
 
-// CLAApprovalListAddGitlabUsernameData data model
-type CLAApprovalListAddGitlabUsernameData struct {
-	ApprovalListGitlabUsername string
+// CLAApprovalListAddGitLabUsernameData data model
+type CLAApprovalListAddGitLabUsernameData struct {
+	ApprovalListGitLabUsername string
 }
 
-// CLAApprovalListRemoveGitlabUsernameData data model
-type CLAApprovalListRemoveGitlabUsernameData struct {
-	ApprovalListGitlabUsername string
+// CLAApprovalListRemoveGitLabUsernameData data model
+type CLAApprovalListRemoveGitLabUsernameData struct {
+	ApprovalListGitLabUsername string
 }
 
-// CLAApprovalListAddGitlabOrgData data model
-type CLAApprovalListAddGitlabOrgData struct {
-	ApprovalListGitlabOrg string
+// CLAApprovalListAddGitLabGroupData data model
+type CLAApprovalListAddGitLabGroupData struct {
+	ApprovalListGitLabGroup string
 }
 
-// CLAApprovalListRemoveGitlabOrgData data model
-type CLAApprovalListRemoveGitlabOrgData struct {
-	ApprovalListGitlabOrg string
+// CLAApprovalListRemoveGitLabGroupData data model
+type CLAApprovalListRemoveGitLabGroupData struct {
+	ApprovalListGitLabGroup string
 }
 
 // ApprovalListGitHubOrganizationAddedEventData data model
@@ -737,9 +737,9 @@ func (ed *GitHubOrganizationUpdatedEventData) GetEventDetailsString(args *LogEve
 }
 
 // GetEventDetailsString returns the details string for this event
-func (ed *GitlabOrganizationAddedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("Gitlab Organization: %s was added with auto-enabled: %t, with branch protection enabled: %t",
-		ed.GitlabOrganizationName, ed.AutoEnabled, ed.BranchProtectionEnabled)
+func (ed *GitLabOrganizationAddedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("GitLab Group: %s was added with auto-enabled: %t, with branch protection enabled: %t",
+		ed.GitLabOrganizationName, ed.AutoEnabled, ed.BranchProtectionEnabled)
 	if ed.AutoEnabledClaGroupID != "" {
 		data = data + fmt.Sprintf(" with auto-enabled-cla-group: %s", ed.AutoEnabledClaGroupID)
 	}
@@ -751,8 +751,8 @@ func (ed *GitlabOrganizationAddedEventData) GetEventDetailsString(args *LogEvent
 }
 
 // GetEventDetailsString returns the details string for this event
-func (ed *GitlabOrganizationDeletedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("GitHub Organization: %s was deleted ", ed.GitlabOrganizationName)
+func (ed *GitLabOrganizationDeletedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("GitLab Group: %s was deleted ", ed.GitLabOrganizationName)
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -761,10 +761,10 @@ func (ed *GitlabOrganizationDeletedEventData) GetEventDetailsString(args *LogEve
 }
 
 // GetEventDetailsString returns the details string for this event
-func (ed *GitlabOrganizationUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := "GitHub Organization" // nolint
-	if ed.GitlabOrganizationName != "" {
-		data = fmt.Sprintf("%s with name: %s", data, ed.GitlabOrganizationName)
+func (ed *GitLabOrganizationUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := "GitLab Group" // nolint
+	if ed.GitLabOrganizationName != "" {
+		data = fmt.Sprintf("%s with name: %s", data, ed.GitLabOrganizationName)
 	}
 	if ed.GitLabGroupID > 0 {
 		data = fmt.Sprintf("%s with group ID: %d", data, ed.GitLabGroupID)
@@ -1065,8 +1065,8 @@ func (ed *CLAApprovalListRemoveGitHubOrgData) GetEventDetailsString(args *LogEve
 }
 
 // GetEventDetailsString returns the details string for this event
-func (ed *CLAApprovalListAddGitlabUsernameData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab username %s was added to the approval list", ed.ApprovalListGitlabUsername)
+func (ed *CLAApprovalListAddGitLabUsernameData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab username %s was added to the approval list", ed.ApprovalListGitLabUsername)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -1087,8 +1087,8 @@ func (ed *CLAApprovalListAddGitlabUsernameData) GetEventDetailsString(args *LogE
 }
 
 // GetEventDetailsString returns the details string for this event
-func (ed *CLAApprovalListRemoveGitlabUsernameData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab username %s was removed from the approval list", ed.ApprovalListGitlabUsername)
+func (ed *CLAApprovalListRemoveGitLabUsernameData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab username %s was removed from the approval list", ed.ApprovalListGitLabUsername)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -1109,8 +1109,8 @@ func (ed *CLAApprovalListRemoveGitlabUsernameData) GetEventDetailsString(args *L
 }
 
 // GetEventDetailsString returns the details string for this event
-func (ed *CLAApprovalListAddGitlabOrgData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab organization %s was added to the approval list", ed.ApprovalListGitlabOrg)
+func (ed *CLAApprovalListAddGitLabGroupData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab group %s was added to the approval list", ed.ApprovalListGitLabGroup)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -1131,8 +1131,8 @@ func (ed *CLAApprovalListAddGitlabOrgData) GetEventDetailsString(args *LogEventA
 }
 
 // GetEventDetailsString returns the details string for this event
-func (ed *CLAApprovalListRemoveGitlabOrgData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab organization %s was removed from the approval list", ed.ApprovalListGitlabOrg)
+func (ed *CLAApprovalListRemoveGitLabGroupData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab group %s was removed from the approval list", ed.ApprovalListGitLabGroup)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -1814,9 +1814,9 @@ func (ed *GitHubOrganizationUpdatedEventData) GetEventSummaryString(args *LogEve
 }
 
 // GetEventSummaryString returns the summary string for this event
-func (ed *GitlabOrganizationAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab organization %s was added with auto-enabled set to %t with branch protection enabled set to %t",
-		ed.GitlabOrganizationName, ed.AutoEnabled, ed.BranchProtectionEnabled)
+func (ed *GitLabOrganizationAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab group %s was added with auto-enabled set to %t with branch protection enabled set to %t",
+		ed.GitLabOrganizationName, ed.AutoEnabled, ed.BranchProtectionEnabled)
 	if ed.AutoEnabledClaGroupID != "" {
 		data = data + fmt.Sprintf(" with auto-enabled-cla-group set to %s", ed.AutoEnabledClaGroupID)
 	}
@@ -1834,8 +1834,8 @@ func (ed *GitlabOrganizationAddedEventData) GetEventSummaryString(args *LogEvent
 }
 
 // GetEventSummaryString returns the summary string for this event
-func (ed *GitlabOrganizationDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab organization %s was deleted", ed.GitlabOrganizationName)
+func (ed *GitLabOrganizationDeletedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab group %s was deleted", ed.GitLabOrganizationName)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for CLA Group %s", args.CLAGroupName)
 	}
@@ -1850,10 +1850,10 @@ func (ed *GitlabOrganizationDeletedEventData) GetEventSummaryString(args *LogEve
 }
 
 // GetEventSummaryString returns the summary string for this event
-func (ed *GitlabOrganizationUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := "GitHub Organization" // nolint
-	if ed.GitlabOrganizationName != "" {
-		data = fmt.Sprintf("%s with name: %s", data, ed.GitlabOrganizationName)
+func (ed *GitLabOrganizationUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := "The GitLab group" // nolint
+	if ed.GitLabOrganizationName != "" {
+		data = fmt.Sprintf("%s with name: %s", data, ed.GitLabOrganizationName)
 	}
 	if ed.GitLabGroupID > 0 {
 		data = fmt.Sprintf("%s with group ID: %d", data, ed.GitLabGroupID)
@@ -2165,8 +2165,8 @@ func (ed *CLAApprovalListRemoveGitHubOrgData) GetEventSummaryString(args *LogEve
 }
 
 // GetEventSummaryString returns the summary string for this event
-func (ed *CLAApprovalListAddGitlabUsernameData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab username %s was added to the approval list", ed.ApprovalListGitlabUsername)
+func (ed *CLAApprovalListAddGitLabUsernameData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab username %s was added to the approval list", ed.ApprovalListGitLabUsername)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -2184,8 +2184,8 @@ func (ed *CLAApprovalListAddGitlabUsernameData) GetEventSummaryString(args *LogE
 }
 
 // GetEventSummaryString returns the summary string for this event
-func (ed *CLAApprovalListRemoveGitlabUsernameData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab username %s was removed from the approval list", ed.ApprovalListGitlabUsername)
+func (ed *CLAApprovalListRemoveGitLabUsernameData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab username %s was removed from the approval list", ed.ApprovalListGitLabUsername)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -2203,8 +2203,8 @@ func (ed *CLAApprovalListRemoveGitlabUsernameData) GetEventSummaryString(args *L
 }
 
 // GetEventSummaryString returns the summary string for this event
-func (ed *CLAApprovalListAddGitlabOrgData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab organization %s was added to the approval list", ed.ApprovalListGitlabOrg)
+func (ed *CLAApprovalListAddGitLabGroupData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab group %s was added to the approval list", ed.ApprovalListGitLabGroup)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -2222,8 +2222,8 @@ func (ed *CLAApprovalListAddGitlabOrgData) GetEventSummaryString(args *LogEventA
 }
 
 // GetEventSummaryString returns the summary string for this event
-func (ed *CLAApprovalListRemoveGitlabOrgData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The Gitlab organization %s was removed from the approval list", ed.ApprovalListGitlabOrg)
+func (ed *CLAApprovalListRemoveGitLabGroupData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The GitLab group %s was removed from the approval list", ed.ApprovalListGitLabGroup)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}

@@ -218,8 +218,8 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						LfUsername:  authUser.UserName,
 						EventType:   events.GitlabOrganizationAdded,
 						ProjectSFID: params.ProjectSFID,
-						EventData: &events.GitlabOrganizationAddedEventData{
-							GitlabOrganizationName: group.OrganizationName,
+						EventData: &events.GitLabOrganizationAddedEventData{
+							GitLabOrganizationName: group.OrganizationName,
 						},
 					})
 				}
@@ -317,7 +317,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			CLAGroupID:  params.Body.AutoEnabledClaGroupID,
 			LfUsername:  authUser.UserName,
 			UserName:    authUser.UserName,
-			EventData: &events.GitlabOrganizationUpdatedEventData{
+			EventData: &events.GitLabOrganizationUpdatedEventData{
 				GitLabGroupID:         params.GitLabGroupID,
 				AutoEnabledClaGroupID: params.Body.AutoEnabledClaGroupID,
 				AutoEnabled:           params.Body.AutoEnabled,
@@ -384,8 +384,8 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			LfUsername:  authUser.UserName,
 			EventType:   events.GitlabOrganizationDeleted,
 			ProjectSFID: params.ProjectSFID,
-			EventData: &events.GitlabOrganizationDeletedEventData{
-				GitlabOrganizationName: params.OrganizationFullPath,
+			EventData: &events.GitLabOrganizationDeletedEventData{
+				GitLabOrganizationName: params.OrganizationFullPath,
 			},
 		})
 
