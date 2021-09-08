@@ -3744,7 +3744,7 @@ class GitlabOrgModel(BaseModel):
     auth_info = UnicodeAttribute()
     organization_sfid_index = GitlabOrgSFIndex()
     project_sfid_organization_name_index = GitlabOrgProjectSfidOrganizationNameIndex()
-    organization_name_lowe_index = GitlabOrganizationNameLowerIndex()
+    organization_name_lower_index = GitlabOrganizationNameLowerIndex()
     gitlab_external_group_id_index = GitlabExternalGroupIDIndex()
     auto_enabled = BooleanAttribute(null=True)
     auto_enabled_cla_group_id = UnicodeAttribute(null=True)
@@ -4077,14 +4077,14 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         return organizations
     
     def search_organization_by_lower_name(self, organization_name):
-        organizations = list(filter(lambda org: org.get_organization_name_lower() == organization_name, self.all()))
+        organizations = list(filter(lambda org: org.get_organization_name_lower() == organization_name.lower(), self.all()))
         if organizations:
             return organizations[0]
-        raise cla.models.DoesNotExist("Gitlab Org does not exist")
+        raise cla.models.DoesNotExist(f"Gitlab Org : {organization_name} does not exist")
 
     def get_organization_by_lower_name(self, organization_name):
         organization_name = organization_name.lower()
-        organization_generator = self.model.organization_name_lowe_index.query(organization_name)
+        organization_generator = self.model.organization_name_lower_index.query(organization_name)
         organizations = []
         for org_model in organization_generator:
             org = GitlabOrg()
