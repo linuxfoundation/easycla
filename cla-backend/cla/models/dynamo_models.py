@@ -2117,14 +2117,14 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             if gitlab_org_approval_lists:
                 for gl_name in gitlab_org_approval_lists:
                     try:
-                        gl_org = GitlabOrg().search_organization_by_lower_name(gl_name)
-                        cla.log.debug(f"{fn} checking gitlab_username against approval list for company: {gl_org.get_organization_name()}")
+                        gl_org = GitlabOrg().search_organization_by_group_url(gl_name)
+                        cla.log.debug(f"{fn} checking gitlab_username against approval list for gitlab group: {gl_name}")
                         gl_list = list(filter(lambda gl_user: gl_user.get('username') == gitlab_username, cla.utils.lookup_gitlab_org_members(gl_org.get_organization_id())))
                         if len(gl_list) > 0:
                             cla.log.debug(f'{fn} - found gitlab username in gitlab approval list')
                             return True
                     except DoesNotExist as err:
-                        cla.log.debug(f'gitlab group : {gl_name} does not exist: {err}')
+                        cla.log.debug(f'gitlab group with full path: {gl_name} does not exist: {err}')
         
 
         cla.log.debug(f'{fn} - unable to find user in any whitelist')
@@ -3738,6 +3738,7 @@ class GitlabOrgModel(BaseModel):
 
     organization_id = UnicodeAttribute(hash_key=True)
     organization_name = UnicodeAttribute(null=True)
+    organization_url = UnicodeAttribute(null=True)
     organization_name_lower = UnicodeAttribute(null=True)
     organization_sfid = UnicodeAttribute()
     project_sfid = UnicodeAttribute()
@@ -3967,6 +3968,7 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         return (
             f'organization id:{self.model.organization_id}, '
             f'organization name:{self.model.organization_name}, '
+            f'organization url : {self.model.organization_url}, '
             f'organization SFID: {self.model.organization_sfid}, '
             f'auto_enabled: {self.model.auto_enabled},'
             f'branch_protection_enabled: {self.model.branch_protection_enabled},'
@@ -3997,6 +3999,9 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
 
     def get_organization_id(self):
         return self.model.organization_id
+    
+    def get_organization_url(self):
+        return self.model.organization_url
 
     def get_organization_name(self):
         return self.model.organization_name
@@ -4034,6 +4039,9 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         self.model.organization_name = organization_name
         if self.model.organization_name:
             self.model.organization_name_lower = self.model.organization_name.lower()
+    
+    def set_organization_url(self, organization_url):
+        self.model.organization_url = organization_url
 
     def set_organization_sfid(self, organization_sfid):
         self.model.organization_sfid = organization_sfid
@@ -4081,6 +4089,12 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         if organizations:
             return organizations[0]
         raise cla.models.DoesNotExist(f"Gitlab Org : {organization_name} does not exist")
+    
+    def search_organization_by_group_url(self, group_url):
+        organizations = list(filter(lambda org: org.get_organization_url() == group_url.strip(), self.all()))
+        if organizations:
+            return organizations[0]
+        raise cla.models.DoesNotExist(f"Gitlab Org : {group_url} does not exist")
 
     def get_organization_by_lower_name(self, organization_name):
         organization_name = organization_name.lower()
