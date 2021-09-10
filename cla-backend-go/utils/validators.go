@@ -145,7 +145,7 @@ func ValidGitlabOrg(gitlabOrg string) (string, bool) {
 		return "gitlab organization must be 3 or more characters", false
 	}
 
-	re := regexp.MustCompile("^[a-zA-Z0-9._-]*$")
+	re := regexp.MustCompile(`^(?:http(s)?:\/\/)?(?:www\.)?(\w+[\w-]+\w+\.)?gitlab\.com[\w\-\._~:/?#[\]@!\$&'\(\)\*\+,;=.]{3,100}$`)
 	valid := re.MatchString(strings.TrimSpace(gitlabOrg))
 	if !valid {
 		return fmt.Sprintf("invalid Gitlab organization: %s", gitlabOrg), false
