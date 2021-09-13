@@ -747,9 +747,9 @@ class DocuSign(signing_service_interface.SigningService):
                 update_repository_provider(installation_id, github_repository_id, change_request_id)
     
             elif return_url_type.lower() == "gitlab":
-                gitlab_repository_id = signature_metadata['repository_id']
+                gitlab_repository_id = int(signature_metadata['repository_id'])
                 merge_request_id = int(signature_metadata['merge_request_id'])
-                organization_id = int(cla.utils.get_organization_id_from_gitlab_repository(gitlab_repository_id))
+                organization_id = cla.utils.get_organization_id_from_gitlab_repository(gitlab_repository_id)
                 self._update_gitlab_mr(organization_id, gitlab_repository_id, merge_request_id)
 
                 if organization_id is None:
