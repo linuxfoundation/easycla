@@ -4091,9 +4091,26 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         raise cla.models.DoesNotExist(f"Gitlab Org : {organization_name} does not exist")
     
     def search_organization_by_group_url(self, group_url):
-        organizations = list(filter(lambda org: org.get_organization_url() == group_url.strip(), self.all()))
+        # first check for match.. could be in the format https://gitlab.com/groups/<group_name>
+        groups = self.all()
+        organizations = list(filter(lambda org: org.get_organization_url() == group_url.strip(), groups))
         if organizations:
             return organizations[0]
+        # also cater for potentially missing groups in url
+        pattern = re.compile(r"(?P<base>\bhttps://gitlab.com/\b)(?P<group>\bgroups\/\b)?(?P<name>\w+)")
+        match = pattern.search(group_url)
+        updated_url = ''
+        if match and not match.group('group') :
+            cla.log.debug(f'{group_url} missing groups in url. Inserting groups to url ')
+            parse_url_list = list(match.groups())
+            parse_url_list[1] = 'groups/'
+            updated_url = ''.join(parse_url_list)
+        if updated_url:
+            cla.log.debug(f'Updated group_url to : {updated_url}')
+            organizations = list(filter(lambda org: org.get_organization_url() == updated_url.strip(), groups))
+            if organizations:
+                return organizations[0]
+
         raise cla.models.DoesNotExist(f"Gitlab Org : {group_url} does not exist")
 
     def get_organization_by_lower_name(self, organization_name):
