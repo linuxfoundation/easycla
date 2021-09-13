@@ -578,25 +578,13 @@ func (osc *Client) CreateOrg(ctx context.Context, companyName, signingEntityName
 		}
 
 		clientAuth := runtimeClient.BearerToken(tok)
-		description := "No Description"
-		f["description"] = description
-		companyType := "Customer"
-		f["type"] = companyType
-		f["companyType"] = companyType
-		companySource := "No Source"
-		industry := "No Industry"
-		f["industry"] = industry
 		logoURL := linuxFoundation[0].LogoURL
 		f["logoURL"] = logoURL
 
 		params := &organizations.CreateOrgParams{
 			Org: &models.CreateOrg{
-				Description:       &description,
 				Name:              &companyName,
 				Website:           &companyWebsite,
-				Industry:          &industry,
-				Source:            &companySource,
-				Type:              &companyType,
 				LogoURL:           logoURL,
 				SigningEntityName: []string{signingEntityName},
 			},
@@ -604,18 +592,14 @@ func (osc *Client) CreateOrg(ctx context.Context, companyName, signingEntityName
 		}
 
 		log.WithFields(f).Debugf("Creating organization with params: %+v", models.CreateOrg{
-			Description:       &description,
 			Name:              &companyName,
 			Website:           &companyWebsite,
-			Industry:          &industry,
-			Source:            &companySource,
-			Type:              &companyType,
 			LogoURL:           logoURL,
 			SigningEntityName: []string{signingEntityName},
 		})
 		result, err := osc.cl.Organizations.CreateOrg(params, clientAuth)
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("Failed to create salesforce Company :%s , err: %+v ", companyName, err)
+			log.WithFields(f).WithError(err).Warnf("Failed to create salesforce Company: %s , err: %+v ", companyName, err)
 			return nil, err
 		}
 		log.WithFields(f).Infof("Company: %s  successfuly created ", companyName)
