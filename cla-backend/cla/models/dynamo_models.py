@@ -3741,6 +3741,7 @@ class GitlabOrgModel(BaseModel):
     organization_url = UnicodeAttribute(null=True)
     organization_name_lower = UnicodeAttribute(null=True)
     organization_sfid = UnicodeAttribute()
+    external_gitlab_group_id = NumberAttribute()
     project_sfid = UnicodeAttribute()
     auth_info = UnicodeAttribute()
     organization_sfid_index = GitlabOrgSFIndex()
@@ -3975,6 +3976,7 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
             f'enabled: {self.model.enabled},'
             f'note: {self.model.note}',
             f'auth_info: {self.model.auth_info}'
+            f'external_gitlab_group_id: {self.model.external_gitlab_group_id}'
         )
 
     def to_dict(self):
@@ -3996,6 +3998,9 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
 
     def delete(self):
         self.model.delete()
+    
+    def get_external_gitlab_group_id(self):
+        return self.model.external_gitlab_group_id
 
     def get_organization_id(self):
         return self.model.organization_id
@@ -4034,6 +4039,9 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
 
     def get_enabled(self):
         return self.model.enabled
+    
+    def set_external_gitlab_group_id(self, external_gitlab_group_id):
+        self.model.external_gitlab_group_id = external_gitlab_group_id
 
     def set_organization_name(self, organization_name):
         self.model.organization_name = organization_name
