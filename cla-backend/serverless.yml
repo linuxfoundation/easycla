@@ -292,6 +292,7 @@ provider:
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-project-sfid-organization-name-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-full-path-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-external-group-id-index"
+            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-org-url-index"
 
   environment:
     STAGE: ${sls:stage}
