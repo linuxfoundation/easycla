@@ -4,6 +4,7 @@
 package gitlab_activity
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -93,10 +94,11 @@ func TestIsUserApprovedForSignature(t *testing.T) {
 				expected: true,
 			},
 		}
+		activityService := NewService(nil, nil, nil, nil, nil, nil, nil, nil)
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(tt *testing.T) {
-				result := IsUserApprovedForSignature(logrus.Fields{}, tc.signature, userModel, gitlabUser)
+				result := activityService.IsUserApprovedForSignature(context.Background(),logrus.Fields{}, tc.signature, userModel, gitlabUser)
 				if tc.expected {
 					assert.True(tt, result)
 

@@ -60,6 +60,7 @@ type gatedGitlabUser struct {
 type Service interface {
 	ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error
 	ProcessMergeActivity(ctx context.Context, secretToken string, input *ProcessMergeActivityInput) error
+	IsUserApprovedForSignature(ctx context.Context, f logrus.Fields, corporateSignature *models.Signature, user *models.User, gitlabUser *gitlab.User) bool
 }
 
 type service struct {
@@ -533,7 +534,7 @@ func (s service) IsUserApprovedForSignature(ctx context.Context, f logrus.Fields
 				break
 			}
 			if isApproved == true {
-				log.WithFields(f).Debug(" found gitlab username : %s in gitlab org approval list : %+v", gitlabUserName, gitlabGroupApprovalList)
+				log.WithFields(f).Debugf(" found gitlab username : %s in gitlab org approval list : %+v", gitlabUserName, gitlabGroupApprovalList)
 				return true
 			}
 		}
