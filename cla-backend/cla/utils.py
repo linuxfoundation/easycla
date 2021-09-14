@@ -1254,7 +1254,7 @@ def get_organization_id_from_gitlab_repository(gitlab_repository_id):
         return None
     
     #return GitLab organization ID
-    return str(gitLabOrg.get_external_gitlab_group_id())
+    return gitLabOrg.get_organization_id()
 
 
 def get_project_id_from_github_repository(github_repository_id):
