@@ -134,7 +134,7 @@ export class AuthService {
     this.auth0Client$.subscribe((client: Auth0Client) => {
       // Call method to log in
       const type = JSON.parse(this.storageService.getItem('type'));
-      const redirectConsole = (type === 'Projects') ? AppSettings.PROJECT_CONSOLE_LINK : AppSettings.CORPORATE_CONSOLE_LINK;
+      const redirectConsole = (type === 'Projects') ? AppSettings.PROJECT_CONSOLE_LINK_V2 : AppSettings.CORPORATE_CONSOLE_LINK_V2;
       client.loginWithRedirect({
         redirect_uri: EnvConfig.default[redirectConsole],
         appState: { target: redirectPath },
@@ -201,7 +201,7 @@ export class AuthService {
         // this.router.navigate([targetRoute]);
         if (targetRoute !== '/') {
           const type = JSON.parse(this.storageService.getItem('type'));
-          const redirectConsole = (type === 'Projects') ? AppSettings.PROJECT_CONSOLE_LINK : AppSettings.CORPORATE_CONSOLE_LINK;
+          const redirectConsole = (type === 'Projects') ? AppSettings.PROJECT_CONSOLE_LINK_V2 : AppSettings.CORPORATE_CONSOLE_LINK_V2;
           window.open(EnvConfig.default[redirectConsole] + REDIRECT_AUTH_ROUTE, '_self');
         } else {
           this.router.navigate([targetRoute]);
