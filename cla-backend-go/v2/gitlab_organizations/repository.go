@@ -38,6 +38,8 @@ const (
 	GitLabExternalIDIndex = "gitlab-external-group-id-index"
 	// GitLabFullPathIndex the index for the full path
 	GitLabFullPathIndex = "gitlab-full-path-index"
+	// GitlabOrgURLIndex the index for the org url
+	GitlabOrgURLIndex = "gitlab-org-url-index"
 )
 
 // RepositoryInterface is interface for gitlab org data model
@@ -51,6 +53,7 @@ type RepositoryInterface interface {
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByFullPath(ctx context.Context, groupFullPath string) (*common.GitLabOrganization, error)
+	GetGitLabOrganizationByURL(ctx context.Context, url string) (*common.GitLabOrganization, error)
 	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, groupName, groupFullPath, organizationURL string) error
 	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization, enabled bool) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID, gitlabOrgFullPath string) error
@@ -364,6 +367,54 @@ func (repo *Repository) GetGitLabOrganizationByExternalID(ctx context.Context, g
 	}
 	if len(results.Items) == 0 {
 		log.WithFields(f).Debugf("Unable to find GitLab organization by group ID: %d - no results", gitLabGroupID)
+		return nil, nil
+	}
+
+	var resultOutput []*common.GitLabOrganization
+	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &resultOutput)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem decoding database results, error: %+v", err)
+		return nil, err
+	}
+
+	return resultOutput[0], nil
+}
+
+// GetGitLabOrganizationByURL loads the organization based on the url
+func (repo *Repository) GetGitLabOrganizationByURL(ctx context.Context, url string) (*common.GitLabOrganization, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.gitlab_organizations.repository. GetGitLabOrganizationByURL",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"URL":            url,
+	}
+
+	condition := expression.Key(GitLabOrganizationsOrganizationURLColumn).Equal(expression.Value(url))
+	builder := expression.NewBuilder().WithKeyCondition(condition)
+	// Use the nice builder to create the expression
+	expr, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		FilterExpression:          expr.Filter(),
+		TableName:                 aws.String(repo.gitlabOrgTableName),
+		IndexName:                 aws.String(GitlabOrgURLIndex),
+	}
+
+	log.WithFields(f).Debugf("querying for GitLab group by url: %s...", url)
+	results, err := repo.dynamoDBClient.Query(queryInput)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error retrieving GitLab group by url: %s", url)
+		return nil, err
+	}
+	if len(results.Items) == 0 {
+		log.WithFields(f).Debugf("Unable to find GitLab group by url: %s - no results", url)
 		return nil, nil
 	}
 

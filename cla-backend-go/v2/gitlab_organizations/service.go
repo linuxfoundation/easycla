@@ -39,6 +39,7 @@ type ServiceInterface interface {
 	GetGitLabOrganizationByID(ctx context.Context, gitLabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*v2Models.GitlabOrganization, error)
 	GetGitLabOrganizationByFullPath(ctx context.Context, gitLabOrganizationFullPath string) (*v2Models.GitlabOrganization, error)
+	GetGitLabOrganizationByURL(ctx context.Context, url string) (*v2Models.GitlabOrganization, error)
 	GetGitLabOrganizationByGroupID(ctx context.Context, gitLabGroupID int64) (*v2Models.GitlabOrganization, error)
 	GetGitLabOrganizations(ctx context.Context) (*v2Models.GitlabProjectOrganizations, error)
 	GetGitLabOrganizationsEnabled(ctx context.Context) (*v2Models.GitlabProjectOrganizations, error)
@@ -209,6 +210,26 @@ func (s *Service) GetGitLabOrganizationByFullPath(ctx context.Context, gitLabOrg
 
 	log.WithFields(f).Debugf("fetching gitlab group/organization using full path: %s", gitLabOrganizationFullPath)
 	dbModel, err := s.repo.GetGitLabOrganizationByFullPath(ctx, gitLabOrganizationFullPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if dbModel == nil {
+		return nil, nil
+	}
+	return common.ToModel(dbModel), nil
+}
+
+// GetGitLabOrganizationByURL returns the GitLab group/organization using the specified full path
+func (s *Service) GetGitLabOrganizationByURL(ctx context.Context, URL string) (*v2Models.GitlabOrganization, error) {
+	f := logrus.Fields{
+		"functionName":               "v2.gitlab_organizations.service.GetGitLabOrganizationByURL",
+		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
+		"gitLabOrganizationFullPath": URL,
+	}
+
+	log.WithFields(f).Debugf("fetching gitlab group/organization using url: %s", URL)
+	dbModel, err := s.repo.GetGitLabOrganizationByURL(ctx, URL)
 	if err != nil {
 		return nil, err
 	}
