@@ -408,8 +408,7 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 		log.WithFields(f).Errorf(msg)
 		return false, fmt.Errorf(msg)
 	}
-
-	if !IsUserApprovedForSignature(f, corporateSignature, userModel, gitlabUser) {
+	if !s.IsUserApprovedForSignature(ctx, f, corporateSignature, userModel, gitlabUser) {
 		log.WithFields(f).Debugf("user is not approved in signature : %s", corporateSignature.SignatureID)
 		return false, missingCompanyApproval
 	}
@@ -464,7 +463,7 @@ func (s service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.
 	return userModel, false, nil
 }
 
-func IsUserApprovedForSignature(f logrus.Fields, corporateSignature *models.Signature, user *models.User, gitlabUser *gitlab.User) bool {
+func (s service) IsUserApprovedForSignature(ctx context.Context, f logrus.Fields, corporateSignature *models.Signature, user *models.User, gitlabUser *gitlab.User) bool {
 	log.WithFields(f).Debugf("checking if user : %s is approved for corporate signature : %s", user.UserID, corporateSignature.SignatureID)
 	userEmails := user.Emails
 	if string(user.LfEmail) != "" {
@@ -523,8 +522,82 @@ func IsUserApprovedForSignature(f logrus.Fields, corporateSignature *models.Sign
 		log.WithFields(f).Warnf("no match found for gitlabUser : %s in gitlab approval list : %+v", gitlabUserName, gitlabUsernameApprovalList)
 	}
 
-	// todo check user against the gitlab org approval list
+	gitlabGroupApprovalList := corporateSignature.GitlabOrgApprovalList
+	if gitlabUserName != "" && len(gitlabGroupApprovalList) > 0 {
+		log.WithFields(f).Debugf("checking gitlab username : %s for gitlab org approval list : %+v ", gitlabUserName, gitlabGroupApprovalList)
+
+		for _, gitlabGroupApproval := range gitlabGroupApprovalList {
+			isApproved, err := s.checkGitLabGroupApproval(ctx, gitlabUserName, gitlabGroupApproval)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("unable to get username")
+				break
+			}
+			if isApproved == true {
+				log.WithFields(f).Debug(" found gitlab username : %s in gitlab org approval list : %+v", gitlabUserName, gitlabGroupApprovalList)
+				return true
+			}
+		}
+	}
+
 	log.WithFields(f).Errorf("unable to find user in any approval list")
 	return false
 
+}
+
+/**
+ * Parses url with the given regular expression and returns the
+ * group values defined in the expression.
+ *
+ */
+func getParams(regEx, url string) (paramsMap map[string]string) {
+
+	var compRegEx = regexp.MustCompile(regEx)
+	match := compRegEx.FindStringSubmatch(url)
+
+	paramsMap = make(map[string]string)
+	for i, name := range compRegEx.SubexpNames() {
+		if i > 0 && i <= len(match) {
+			paramsMap[name] = match[i]
+		}
+	}
+	return paramsMap
+}
+
+func (s service) checkGitLabGroupApproval(ctx context.Context, userName, URL string) (bool, error) {
+	f := logrus.Fields{
+		"functionName": "checkGitLabGroupApproval",
+		"userName":     userName,
+		"group_url":    URL,
+	}
+
+	log.WithFields(f).Debugf("checking approval list gitlab org criteria : %s for user: %s ", URL, userName)
+	var searchURL = URL
+	params := getParams(`(?P<base>\bhttps://gitlab.com/\b)(?P<group>\bgroups\/\b)?(?P<name>\w+)`, URL)
+	if params[`group`] == "" {
+		params[`group`] = "groups/"
+		updated := fmt.Sprintf("%s%s%s", params[`base`], params[`group`], params[`name`])
+		log.WithFields(f).Debugf("updating url : %s to %s for easycla search purporses ", searchURL, updated)
+		searchURL = updated
+	}
+	gitlabOrg, _ := s.gitlabRepository.GetGitLabOrganizationByURL(ctx, searchURL)
+	if gitlabOrg != nil {
+		gitlabClient, clientErr := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+		if clientErr != nil {
+			log.WithFields(f).WithError(clientErr).Warnf("problem getting gitLabClient for org: %s ", gitlabOrg.OrganizationName)
+			return false, clientErr
+		}
+		members, err := gitlab_api.ListGroupMembers(ctx, gitlabClient, int(gitlabOrg.ExternalGroupID))
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem getting gitlab group members")
+			return false, err
+		}
+		for _, member := range members {
+			if userName == member.Username {
+				log.WithFields(f).Debugf("%s is a member of group: %s ", userName, URL)
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
