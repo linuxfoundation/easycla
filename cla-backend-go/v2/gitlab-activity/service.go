@@ -397,6 +397,13 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 		log.WithFields(f).Errorf(msg)
 		return false, fmt.Errorf(msg)
 	}
+
+	if corporateSignature == nil {
+		msg := fmt.Sprintf("no ccla signature record for company : %s ", companyID)
+		log.WithFields(f).Errorf(msg)
+		return false, fmt.Errorf(msg)
+	}
+
 	log.WithFields(f).Debugf("loaded signature id : %s for claGroupID : %s and companyID : %s", corporateSignature.SignatureID, claGroupID, companyID)
 
 	approvalCriteria := &signatures.ApprovalCriteria{}

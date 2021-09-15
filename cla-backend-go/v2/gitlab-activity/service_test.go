@@ -98,7 +98,7 @@ func TestIsUserApprovedForSignature(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(tt *testing.T) {
-				result := activityService.IsUserApprovedForSignature(context.Background(),logrus.Fields{}, tc.signature, userModel, gitlabUser)
+				result := activityService.IsUserApprovedForSignature(context.Background(), logrus.Fields{}, tc.signature, userModel, gitlabUser)
 				if tc.expected {
 					assert.True(tt, result)
 
