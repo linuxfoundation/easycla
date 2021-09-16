@@ -112,3 +112,35 @@ func GetProjectByID(ctx context.Context, client *goGitLab.Client, gitLabProjectI
 
 	return project, nil
 }
+
+// EnableMergePipelineProtection enables the pipeline protection on given project, by default it's
+// turned off and when a new MR is raised users can merge requests bypassing the pipelines. With this
+// setting gitlab disables the Merge button if any of the pipelines are failing
+func EnableMergePipelineProtection(ctx context.Context, gitlabClient *goGitLab.Client, projectID int) error {
+	f := logrus.Fields{
+		"functionName":    "gitlab.client.EnableMergePipelineProtection",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"gitLabProjectID": projectID,
+	}
+
+	project, _, err := gitlabClient.Projects.GetProject(projectID, &goGitLab.GetProjectOptions{})
+	if err != nil {
+		return fmt.Errorf("fetching project failed : %v", err)
+	}
+
+	log.WithFields(f).Debugf("Merge if Pipeline is succeeds flag enabled : %v", project.OnlyAllowMergeIfPipelineSucceeds)
+	if project.OnlyAllowMergeIfPipelineSucceeds {
+		return nil
+	}
+
+	project.OnlyAllowMergeIfPipelineSucceeds = true
+	log.WithFields(f).Debugf("Enabling Merge Pipeline protection")
+	_, _, err = gitlabClient.Projects.EditProject(projectID, &goGitLab.EditProjectOptions{
+		OnlyAllowMergeIfPipelineSucceeds: goGitLab.Bool(true),
+	})
+
+	if err != nil {
+		return fmt.Errorf("editing project : %d failed : %v", projectID, err)
+	}
+	return nil
+}

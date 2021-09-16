@@ -69,9 +69,10 @@ func (s *service) GitLabRepoAddedWebhookEventHandler(event events.DynamoDBEventR
 	if err := gitlab_api.SetWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt, gitlabOrg.AuthState); err != nil {
 		log.WithFields(f).Errorf("adding gitlab webhook failed : %v", err)
 	}
-
 	log.WithFields(f).Debugf("gitlab webhhok added succesfully for repository")
-	return nil
+
+	log.WithFields(f).Debugf("enabling gitlab pipeline protection if not alreasy")
+	return gitlab_api.EnableMergePipelineProtection(ctx, gitLabClient, repositoryExternalIDInt)
 }
 
 func (s *service) GitlabRepoModifiedWebhookEventHandler(event events.DynamoDBEventRecord) error {
@@ -139,6 +140,10 @@ func (s *service) GitlabRepoModifiedWebhookEventHandler(event events.DynamoDBEve
 	if newRepoModel.Enabled {
 		if err := gitlab_api.SetWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt, gitlabOrg.AuthState); err != nil {
 			log.WithFields(f).Errorf("adding gitlab webhook failed : %v", err)
+		}
+		log.WithFields(f).Debugf("enabling gitlab pipeline protection if not alreasy")
+		if err := gitlab_api.EnableMergePipelineProtection(ctx, gitLabClient, repositoryExternalIDInt); err != nil {
+			return err
 		}
 	} else {
 		if err := gitlab_api.RemoveWebHook(gitLabClient, conf.Gitlab.WebHookURI, repositoryExternalIDInt); err != nil {
