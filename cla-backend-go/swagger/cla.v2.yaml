@@ -3968,7 +3968,45 @@ paths:
           $ref: '#/responses/internal-server-error'
       tags:
         - gitlab-activity
-
+  
+  /gitlab/user/oauth/callback:
+    get:
+      summary: The endpoint is called after user is authorized for the sign flow
+      description: The endpoint handles storing the OAuth2 session information for this user and initiate the signing workflow
+      security: [ ]
+      operationId: gitlabUserOauthCallback
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: code
+          description: oauth code used to fetch the access token
+          in: query
+          type: string
+          required: true
+        - name: state
+          description: state is used to find the gitlab user
+          in: query
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/success-response'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gitlab-activity
+      
   /gitlab/activity:
     post:
       summary: Gitlab Activity Callback Handler

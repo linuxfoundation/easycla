@@ -38,7 +38,8 @@ type service struct {
 }
 
 type Service interface {
-	GitlabSignRequest(ctx context.Context, req *http.Request, organizationID, repositoryID, mergeRequestID, contributorConsoleV2Base string, eventService events.Service) (*string, error)
+	InitiateSignRequest(ctx context.Context, req *http.Request, gitlabClient *gitlab.Client, repositoryID, mergeRequestID, originURL, contributorBaseURL string, eventService events.Service) (*string, error)
+	GetOriginURL(ctx context.Context, organizationID, repositoryID, mergeRequestID string) (*string, error)
 }
 
 func NewService(gitlabRepositoryService repositories.ServiceInterface, gitlabOrgRepository gitlab_organizations.RepositoryInterface, userService users.Service, storeRepo store.Repository, gitlabApp *gitlab_api.App) Service {
@@ -51,14 +52,12 @@ func NewService(gitlabRepositoryService repositories.ServiceInterface, gitlabOrg
 	}
 }
 
-func (s service) GitlabSignRequest(ctx context.Context, req *http.Request, organizationID, repositoryID, mergeRequestID, contributorConsoleV2Base string, eventService events.Service) (*string, error) {
+// GetOriginURL Gets Origin URL for the newly created MR
+func (s service) GetOriginURL(ctx context.Context, organizationID, repositoryID, mergeRequestID string) (*string, error) {
 	f := logrus.Fields{
-		"functionName":   "v2.gitlab_sign.service.GitlabSignRequest",
+		"functionName":   "v2.gitlab_sign.service.GetOriginURL",
 		"organizationID": organizationID,
-		"repositoryID":   repositoryID,
-		"mergeRequestID": mergeRequestID,
 	}
-
 	organization, err := s.gitlabOrgRepo.GetGitLabOrganization(ctx, organizationID)
 	if err != nil {
 		log.WithFields(f).Debugf("unable to get gitlab organiztion by ID: %s, error: %+v ", organizationID, err)
@@ -92,16 +91,11 @@ func (s service) GitlabSignRequest(ctx context.Context, req *http.Request, organ
 	originURL := mergeRequest.WebURL
 	log.WithFields(f).Debugf("Return URL from the inbound request is : %s ", originURL)
 
-	consoleURL, err := s.redirectToConsole(ctx, req, gitlabClient, repositoryID, mergeRequestID, originURL, contributorConsoleV2Base, eventService)
-	if err != nil {
-		log.WithFields(f).Debug("unable to redirect to contributor console")
-		return nil, err
-	}
-
-	return consoleURL, nil
+	return &originURL, nil
 }
 
-func (s service) redirectToConsole(ctx context.Context, req *http.Request, gitlabClient *gitlab.Client, repositoryID, mergeRequestID, originURL, contributorBaseURL string, eventService events.Service) (*string, error) {
+// InitiateSignRequest initiates sign request and returns easy cla redirect url
+func (s service) InitiateSignRequest(ctx context.Context, req *http.Request, gitlabClient *gitlab.Client, repositoryID, mergeRequestID, originURL, contributorBaseURL string, eventService events.Service) (*string, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.gitlab_sign.service.redirectToConsole",
 		"repositoryID":   repositoryID,

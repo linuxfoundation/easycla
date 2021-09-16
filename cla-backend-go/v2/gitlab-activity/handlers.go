@@ -7,22 +7,31 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_sign"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/gofrs/uuid"
+	"github.com/savaki/dynastore"
 	"github.com/sirupsen/logrus"
 	gitlabsdk "github.com/xanzy/go-gitlab"
 )
 
-func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgRepo gitlab_organizations.RepositoryInterface, eventService events.Service, gitLabApp *gitlab_api.App) {
+const (
+	// SessionStoreKey for cla-gitlab
+	SessionStoreKey = "cla-gitlab"
+)
+
+func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgRepo gitlab_organizations.RepositoryInterface, eventService events.Service, gitLabApp *gitlab_api.App, signService gitlab_sign.Service, contributorConsoleV2Base string, sessionStore *dynastore.Store) {
 
 	api.GitlabActivityGitlabTriggerHandler = gitlab_activity.GitlabTriggerHandlerFunc(func(params gitlab_activity.GitlabTriggerParams) middleware.Responder {
 		requestID, _ := uuid.NewV4()
@@ -172,5 +181,88 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgRepo gitlab
 
 		return gitlab_activity.NewGitlabActivityOK()
 	})
+
+	api.GitlabActivityGitlabUserOauthCallbackHandler = gitlab_activity.GitlabUserOauthCallbackHandlerFunc(
+		func(guocp gitlab_activity.GitlabUserOauthCallbackParams) middleware.Responder {
+			reqID := utils.GetRequestID(guocp.XREQUESTID)
+			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID)
+			f := logrus.Fields{
+				"functionName":   "gitlab_activity.handler.GitlabActivityGitlabUserOauthCallbackHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"code":           guocp.Code,
+				"state":          guocp.State,
+			}
+
+			return middleware.ResponderFunc(
+				func(rw http.ResponseWriter, p runtime.Producer) {
+					session, err := sessionStore.Get(guocp.HTTPRequest, SessionStoreKey)
+					if err != nil {
+						log.WithFields(f).WithError(err).Warn("error with session store lookup")
+						http.Error(rw, err.Error(), http.StatusInternalServerError)
+						return
+					}
+
+					state, ok := session.Values["gitlab_oauth2_state"].(string)
+					if !ok {
+						log.WithFields(f).Warn("Error getting session state - missing from session object")
+						http.Error(rw, "no session state", http.StatusInternalServerError)
+						return
+					}
+
+					gitlabOriginURL, ok := session.Values["gitlab_origin_url"].(string)
+					if !ok {
+						log.WithFields(f).Warn("Error getting gitlab_origin_url - missing from session object")
+						http.Error(rw, "no return url", http.StatusInternalServerError)
+						return
+					}
+
+					repositoryID, ok := session.Values["gitab_repository_id"].(string)
+					if !ok {
+						log.WithFields(f).Warn("Error getting gitlab_repository_id - missing from session object")
+						http.Error(rw, "no return url", http.StatusInternalServerError)
+						return
+					}
+
+					mergeRequestID, ok := session.Values["gitlab_merge_request_id"].(string)
+					if !ok {
+						log.WithFields(f).Warn("Error getting gitlab_merge_request_id - missing from session object")
+						http.Error(rw, "no return url", http.StatusInternalServerError)
+						return
+					}
+
+					if guocp.State != state {
+						msg := fmt.Sprintf("mismatch state, received: %s from callback, but loaded our state as: %s",
+							guocp.State, state)
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
+						return
+					}
+
+					log.WithFields(f).Debug("Fetching access token for user...")
+					token, err := gitlab_api.FetchUserOauthCredentials(guocp.Code)
+					if err != nil {
+						msg := fmt.Sprint("unable to fetch access token for user")
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
+						return
+					}
+
+					session.Values["gitlab_oauth2_token"] = token.AccessToken
+					session.Save(guocp.HTTPRequest, rw)
+
+					// Get client
+					gitlabClient, err := gitlab_api.NewGitlabOauthClientFromAccessToken(token.AccessToken)
+					if err != nil {
+						msg := fmt.Sprintf("unable to create gitlab client from token : %s ", token.AccessToken)
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
+						return
+					}
+
+					consoleURL, err := signService.InitiateSignRequest(ctx, guocp.HTTPRequest, gitlabClient, repositoryID, mergeRequestID, gitlabOriginURL, contributorConsoleV2Base, eventService)
+					log.WithFields(f).Debugf("redirecting to :%s ", *consoleURL)
+					http.Redirect(rw, guocp.HTTPRequest, *consoleURL, http.StatusSeeOther)
+				})
+		})
 
 }
