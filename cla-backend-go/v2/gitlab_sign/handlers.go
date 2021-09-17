@@ -61,8 +61,8 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				session.Values["gitlab_repository_id"] = srp.GitlabRepositoryID
 				session.Values["gitlab_merge_request_id"] = srp.MergeRequestID
 
-				gitlabAuthToken := session.Values["gitlab_oauth2_token"].(string)
-				if gitlabAuthToken != "" {
+				gitlabAuthToken, ok := session.Values["gitlab_oauth2_token"].(string)
+				if ok {
 					session.Save(srp.HTTPRequest, rw)
 					log.WithFields(f).Debugf("using existing Gitlab Ouath2 Token: %s ", gitlabAuthToken)
 					gitlabClient, err := gitlab.NewClient(gitlabAuthToken)
@@ -88,6 +88,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 					http.Redirect(rw, srp.HTTPRequest, *consoleURL, http.StatusSeeOther)
 				}
+				
 				log.WithFields(f).Debugf("No existing GitLab Oauth2 Token ")
 
 				log.WithFields(f).Debug("initiating gitlab sign request ...")
