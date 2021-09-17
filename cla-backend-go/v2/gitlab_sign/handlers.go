@@ -88,7 +88,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 					http.Redirect(rw, srp.HTTPRequest, *consoleURL, http.StatusSeeOther)
 				}
-				
+
 				log.WithFields(f).Debugf("No existing GitLab Oauth2 Token ")
 
 				log.WithFields(f).Debug("initiating gitlab sign request ...")
