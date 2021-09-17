@@ -65,7 +65,7 @@ func FetchOauthCredentials(code string) (*OauthSuccessResponse, error) {
 	return resp.Result().(*OauthSuccessResponse), nil
 }
 
-// FetchUserOauthCredentials is responsible for fetching the user credentials from gitlab for alredy started Oauth process (access_token, refresh_token)
+// FetchOauthToken is responsible for fetching the user credentials from gitlab for alredy started Oauth process (access_token, refresh_token)
 func FetchOauthToken(ctx context.Context, code string) (*oauth2.Token, error) {
 	gitLabConfig := config.GetConfig().Gitlab
 	f := logrus.Fields{
