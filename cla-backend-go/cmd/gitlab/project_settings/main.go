@@ -6,10 +6,11 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
+
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/xanzy/go-gitlab"
-	"os"
 )
 
 var projectID = flag.Int("project", 0, "gitlab project id")

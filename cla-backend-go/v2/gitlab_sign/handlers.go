@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
@@ -16,11 +15,12 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
-	"github.com/go-openapi/strfmt"
 	"github.com/gofrs/uuid"
 	"github.com/savaki/dynastore"
 	"github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
+	"golang.org/x/oauth2"
+	oauth_gitlab "golang.org/x/oauth2/gitlab"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 )
@@ -88,21 +88,31 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 					http.Redirect(rw, srp.HTTPRequest, *consoleURL, http.StatusSeeOther)
 				}
-				
+
 				log.WithFields(f).Debugf("No existing GitLab Oauth2 Token ")
 
 				log.WithFields(f).Debug("initiating gitlab sign request ...")
 				state, err := uuid.NewV4()
 				session.Values["gitlab_oauth2_state"] = state
 				session.Save(srp.HTTPRequest, rw)
-				params := url.Values{}
-				params.Add("client_id", config.Gitlab.AppClientID)
-				params.Add("state", state.String())
-				params.Add("response_type", "code")
-				params.Add("redirect_uri", "https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/gitlab/user/oauth/callback")
-				params.Add("scope", "profile email")
-				authURL := strfmt.URI("https://gitlab.com/oauth/authorize?" + params.Encode())
-				http.Redirect(rw, srp.HTTPRequest, string(authURL), http.StatusSeeOther)
+				oauthConfig := &oauth2.Config{
+					ClientID: config.Gitlab.AppClientID,
+					Scopes: []string{
+						"api",
+						"read_user",
+						"read_api",
+						"read_repository",
+						"write_repository",
+						"email",
+					},
+					Endpoint:    oauth_gitlab.Endpoint,
+					RedirectURL: "https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/gitlab/user/oauth/callback",
+				}
+
+				log.WithFields(f).Debug("initiating gitlab sign request ...")
+				session.Values["gitlab_oauth2_state"] = state.String()
+				session.Save(srp.HTTPRequest, rw)
+				http.Redirect(rw, srp.HTTPRequest, oauthConfig.AuthCodeURL(state.String()), http.StatusFound)
 			})
 
 		})
