@@ -61,4 +61,3 @@ func FetchOauthCredentials(code string) (*OauthSuccessResponse, error) {
 
 	return resp.Result().(*OauthSuccessResponse), nil
 }
-
