@@ -22,7 +22,7 @@
     "serverless-pseudo-parameters": "^2.5.0"
   },
   "resolutions": {
-    "axios": "^0.21.1",
+    "axios": "^0.21.2",
     "bl": "^1.2.3",
     "braces": "^2.3.1",
     "http-proxy": "^1.18.1",
@@ -33,6 +33,9 @@
     "netmask": "^2.0.1",
     "minimist": "^1.2.3",
     "normalize-url": "^4.5.1",
+    "pac-resolver": "^5.0.0",
+    "set-value": "^4.0.1",
+    "tar": "^6.1.9",
     "ws": "^7.4.6",
     "xmlhttprequest-ssl": "^1.6.2"
   }
