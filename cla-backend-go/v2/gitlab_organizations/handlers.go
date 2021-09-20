@@ -455,7 +455,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						return
 					}
 
-					repositoryID, ok := session.Values["gitab_repository_id"].(int)
+					repositoryID, ok := session.Values["gitlab_repository_id"].(int)
 					if !ok {
 						log.WithFields(f).Warn("Error getting gitlab_repository_id - missing from session object")
 						http.Error(rw, "no return url", http.StatusInternalServerError)
