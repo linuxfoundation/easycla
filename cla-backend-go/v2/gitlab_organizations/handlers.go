@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strings"
 	"strconv"
+	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
