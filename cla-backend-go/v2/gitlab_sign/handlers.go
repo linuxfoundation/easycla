@@ -61,6 +61,15 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				session.Values["gitlab_repository_id"] = srp.GitlabRepositoryID
 				session.Values["gitlab_merge_request_id"] = srp.MergeRequestID
 
+				originURL, err := service.GetOriginURL(ctx, srp.OrganizationID, srp.GitlabRepositoryID, srp.MergeRequestID)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warn("error getting origin URL")
+					http.Error(rw, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				session.Values["gitlab_origin_url"] = *originURL
+
 				gitlabAuthToken, ok := session.Values["gitlab_oauth2_token"].(string)
 				if ok {
 					session.Save(srp.HTTPRequest, rw)
@@ -74,8 +83,6 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 					}
 
 					log.WithFields(f).Debugf("Initiating Gitlab sign request for : %+v ", srp)
-
-					originURL, err := service.GetOriginURL(ctx, srp.OrganizationID, srp.GitlabRepositoryID, srp.MergeRequestID)
 
 					consoleURL, err := service.InitiateSignRequest(ctx, srp.HTTPRequest, gitlabClient, srp.GitlabRepositoryID, srp.MergeRequestID, *originURL, contributorConsoleV2Base, eventService)
 

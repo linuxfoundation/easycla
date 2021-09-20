@@ -438,6 +438,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						http.Error(rw, err.Error(), http.StatusInternalServerError)
 						return
 					}
+					log.WithFields(f).Debugf("Loaded session: %+v", session)
 
 					state, ok := session.Values["gitlab_oauth2_state"].(string)
 					if !ok {
