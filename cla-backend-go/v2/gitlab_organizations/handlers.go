@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"strconv"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
@@ -454,14 +455,14 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						return
 					}
 
-					repositoryID, ok := session.Values["gitab_repository_id"].(string)
+					repositoryID, ok := session.Values["gitab_repository_id"].(int)
 					if !ok {
 						log.WithFields(f).Warn("Error getting gitlab_repository_id - missing from session object")
 						http.Error(rw, "no return url", http.StatusInternalServerError)
 						return
 					}
 
-					mergeRequestID, ok := session.Values["gitlab_merge_request_id"].(string)
+					mergeRequestID, ok := session.Values["gitlab_merge_request_id"].(int)
 					if !ok {
 						log.WithFields(f).Warn("Error getting gitlab_merge_request_id - missing from session object")
 						http.Error(rw, "no return url", http.StatusInternalServerError)
@@ -497,7 +498,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						return
 					}
 
-					consoleURL, err := service.InitiateSignRequest(ctx, params.HTTPRequest, gitlabClient, repositoryID, mergeRequestID, gitlabOriginURL, contributorConsoleV2Base, eventService)
+					consoleURL, err := service.InitiateSignRequest(ctx, params.HTTPRequest, gitlabClient, strconv.Itoa(repositoryID), strconv.Itoa(mergeRequestID), gitlabOriginURL, contributorConsoleV2Base, eventService)
 					log.WithFields(f).Debugf("redirecting to :%s ", *consoleURL)
 					http.Redirect(rw, params.HTTPRequest, *consoleURL, http.StatusSeeOther)
 				})
