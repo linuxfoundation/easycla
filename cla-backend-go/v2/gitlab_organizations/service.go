@@ -5,14 +5,19 @@ package gitlab_organizations
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 
+	"time"
+
+	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
@@ -21,13 +26,16 @@ import (
 	gitlabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/go-openapi/strfmt"
 
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	projectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
+	"github.com/communitybridge/easycla/cla-backend-go/events"
 	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
 	"github.com/sirupsen/logrus"
 	goGitLab "github.com/xanzy/go-gitlab"
 )
@@ -50,6 +58,7 @@ type ServiceInterface interface {
 	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization) error
 	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID string, gitlabOrgFullPath string) error
+	InitiateSignRequest(ctx context.Context, req *http.Request, gitlabClient *goGitLab.Client, repositoryID, mergeRequestID, originURL, contributorBaseURL string, eventService events.Service) (*string, error)
 }
 
 // Service data model
@@ -58,15 +67,18 @@ type Service struct {
 	v2GitRepoService   repositories.ServiceInterface
 	claGroupRepository projects_cla_groups.Repository
 	gitLabApp          *gitlabApi.App
+	storeRepo          store.Repository
+	userService        users.Service
 }
 
 // NewService creates a new gitlab organization service
-func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceInterface, claGroupRepository projects_cla_groups.Repository) ServiceInterface {
+func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceInterface, claGroupRepository projects_cla_groups.Repository, storeRepo store.Repository, userService users.Service) ServiceInterface {
 	return &Service{
 		repo:               repo,
 		v2GitRepoService:   v2GitRepoService,
 		claGroupRepository: claGroupRepository,
 		gitLabApp:          gitlabApi.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
+		userService:        userService,
 	}
 }
 
@@ -641,6 +653,121 @@ func (s *Service) DeleteGitLabOrganizationByFullPath(ctx context.Context, projec
 	}
 
 	return s.repo.DeleteGitLabOrganizationByFullPath(ctx, projectSFID, gitLabOrgFullPath)
+}
+
+// InitiateSignRequest initiates sign request and returns easy cla redirect url
+func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gitlabClient *goGitLab.Client, repositoryID, mergeRequestID, originURL, contributorBaseURL string, eventService events.Service) (*string, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.gitlab_organizations.service.InitiateSignRequest",
+		"repositoryID":   repositoryID,
+		"mergeRequestID": mergeRequestID,
+		"originURL":      originURL,
+	}
+
+	claUser, err := s.getOrCreateUser(ctx, gitlabClient, eventService)
+	if err != nil {
+		msg := fmt.Sprintf("unable to get or create user : %+v ", err)
+		log.WithFields(f).Warn(msg)
+		return nil, err
+	}
+
+	repoIDInt, err := strconv.Atoi(repositoryID)
+	if err != nil {
+		msg := fmt.Sprintf("unable to convert GitlabRepoID: %s to int", repositoryID)
+		log.WithFields(f).Warn(msg)
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("getting gitlab repository for: %d", repoIDInt)
+	gitlabRepo, err := s.v2GitRepoService.GitLabGetRepositoryByExternalID(ctx, int64(repoIDInt))
+	if err != nil {
+		msg := fmt.Sprintf("unable to find repository by ID: %s , error: %+v ", repositoryID, err)
+		log.WithFields(f).Warn(msg)
+		return nil, err
+	}
+
+	type StoreValue struct {
+		UserID         string `json:"user_id"`
+		ProjectID      string `json:"project_id"`
+		RepositoryID   string `json:"repository_id"`
+		MergeRequestID string `json:"merge_request_id"`
+		ReturnURL      string `json:"return_url"`
+	}
+
+	log.WithFields(f).Debugf("setting active signature metadata: claUser: %+v, repository: %+v", claUser, gitlabRepo)
+	// set active signature metadata to track the user signing process
+	key := fmt.Sprintf("active_signature:%s", claUser.UserID)
+	storeValue := StoreValue{
+		UserID:         claUser.UserID,
+		ProjectID:      gitlabRepo.RepositoryClaGroupID,
+		RepositoryID:   repositoryID,
+		MergeRequestID: mergeRequestID,
+		ReturnURL:      originURL,
+	}
+	json_data, err := json.Marshal(storeValue)
+	if err != nil {
+		log.Fatal(err)
+	}
+	expire := time.Now().AddDate(0, 0, 1).Unix()
+
+	// jsonVal, _ := json.Marshal(value)
+
+	err = s.storeRepo.SetActiveSignatureMetaData(ctx, key, expire, string(json_data))
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to save signature metadata")
+	}
+
+	params := "redirect=" + url.QueryEscape(originURL)
+	consoleURL := fmt.Sprintf("https://%s/#/cla/project/%s/user/%s?%s", contributorBaseURL, gitlabRepo.RepositoryClaGroupID, claUser.UserID, params)
+	_, err = http.Get(consoleURL)
+
+	if err != nil {
+		msg := fmt.Sprintf("unable to redirect to : %s , error: %+v ", consoleURL, err)
+		log.WithFields(f).Warn(msg)
+		return nil, err
+	}
+
+	return &consoleURL, nil
+}
+
+func (s *Service) getOrCreateUser(ctx context.Context, gitlabClient *goGitLab.Client, eventsService events.Service) (*models.User, error) {
+
+	f := logrus.Fields{
+		"functionName": "v2.gitlab_sign.service.getOrCreateUser",
+	}
+
+	gitlabUser, _, err := gitlabClient.Users.CurrentUser()
+	if err != nil {
+		log.WithFields(f).Debugf("getting gitlab current user for failed : %v ", err)
+		return nil, err
+	}
+
+	claUser, err := s.userService.GetUserByGitlabID(gitlabUser.ID)
+	if err != nil {
+		log.WithFields(f).Debugf("unable to get CLA user by github ID: %d , error: %+v ", gitlabUser.ID, err)
+		log.WithFields(f).Infof("creating user record for gitlab user : %+v ", gitlabUser)
+		user := &models.User{
+			GitlabID:       fmt.Sprintf("%d", gitlabUser.ID),
+			GitlabUsername: gitlabUser.Username,
+			Emails:         []string{gitlabUser.Email},
+			Username:       gitlabUser.Name,
+		}
+		claUser, userErr := s.userService.CreateUser(user, nil)
+		if err != nil {
+			log.WithFields(f).Debugf("unable to create claUser with details : %+v, error: %+v", user, userErr)
+			return nil, userErr
+		}
+
+		// Log the event
+		eventsService.LogEvent(&events.LogEventArgs{
+			EventType: events.UserCreated,
+			UserID:    user.UserID,
+			UserModel: user,
+			EventData: &events.UserCreatedEventData{},
+		})
+		return claUser, nil
+	}
+	return claUser, nil
 }
 
 func buildInstallationURL(gitlabOrgID string, authStateNonce string) *strfmt.URI {
