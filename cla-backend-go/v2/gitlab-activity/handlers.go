@@ -239,7 +239,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgRepo gitlab
 					}
 
 					log.WithFields(f).Debug("Fetching access token for user...")
-					token, err := gitlab_api.FetchOauthToken(ctx, guocp.Code)
+					token, err := gitlab_api.FetchOauthCredentials(guocp.Code)
 					if err != nil {
 						msg := fmt.Sprint("unable to fetch access token for user")
 						log.WithFields(f).Warn(msg)

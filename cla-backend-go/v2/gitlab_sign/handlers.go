@@ -92,27 +92,22 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				log.WithFields(f).Debugf("No existing GitLab Oauth2 Token ")
 
 				log.WithFields(f).Debug("initiating gitlab sign request ...")
-				state, err := uuid.NewV4()
+				stateID, err := uuid.NewV4()
+				state := fmt.Sprintf("user:%s", stateID.String())
 				session.Values["gitlab_oauth2_state"] = state
 				session.Save(srp.HTTPRequest, rw)
 				oauthConfig := &oauth2.Config{
 					ClientID: config.Gitlab.AppClientID,
 					Scopes: []string{
-						"api",
 						"read_user",
-						"read_api",
-						"read_repository",
-						"write_repository",
 						"email",
 					},
 					Endpoint:    oauth_gitlab.Endpoint,
-					RedirectURL: "https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/gitlab/user/oauth/callback",
+					RedirectURL: config.Gitlab.RedirectURI,
 				}
-
-				log.WithFields(f).Debug("initiating gitlab sign request ...")
-				session.Values["gitlab_oauth2_state"] = state.String()
+				session.Values["gitlab_oauth2_state"] = state
 				session.Save(srp.HTTPRequest, rw)
-				http.Redirect(rw, srp.HTTPRequest, oauthConfig.AuthCodeURL(state.String()), http.StatusFound)
+				http.Redirect(rw, srp.HTTPRequest, oauthConfig.AuthCodeURL(state), http.StatusFound)
 			})
 
 		})

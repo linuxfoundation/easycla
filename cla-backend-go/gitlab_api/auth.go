@@ -4,7 +4,6 @@
 package gitlab
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -12,8 +11,6 @@ import (
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/gitlab"
 )
 
 // FetchOauthCredentials is responsible for fetching the credentials from gitlab for alredy started Oauth process (access_token, refresh_token)
@@ -65,39 +62,3 @@ func FetchOauthCredentials(code string) (*OauthSuccessResponse, error) {
 	return resp.Result().(*OauthSuccessResponse), nil
 }
 
-// FetchOauthToken is responsible for fetching the user credentials from gitlab for alredy started Oauth process (access_token, refresh_token)
-func FetchOauthToken(ctx context.Context, code string) (*oauth2.Token, error) {
-	gitLabConfig := config.GetConfig().Gitlab
-	f := logrus.Fields{
-		"functionName": "gitlab.auth.FetchUserOauthCredentials",
-		"code":         code,
-		"redirectURI":  "https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/gitlab/user/oauth/callback",
-	}
-
-	if len(gitLabConfig.AppClientID) > 4 {
-		f["gitLabClientID"] = fmt.Sprintf("%s...%s", gitLabConfig.AppClientID[0:4], gitLabConfig.AppClientID[len(gitLabConfig.AppClientID)-4:])
-	} else {
-		return nil, errors.New("gitlab application client ID value is not set - value is empty or malformed")
-	}
-	if len(gitLabConfig.AppClientSecret) > 4 {
-		f["gitLabClientSecret"] = fmt.Sprintf("%s...%s", gitLabConfig.AppClientSecret[0:4], gitLabConfig.AppClientSecret[len(gitLabConfig.AppClientSecret)-4:])
-	} else {
-		return nil, errors.New("gitlab application client secret value is not set - value is empty or malformed")
-	}
-
-	// For info on this authorization flow, see: https://docs.gitlab.com/ee/api/oauth2.html#authorization-code-flow
-	oauth2Config := oauth2.Config{
-		ClientID:     gitLabConfig.AppClientID,
-		ClientSecret: gitLabConfig.AppClientSecret,
-		Endpoint:     gitlab.Endpoint,
-	}
-
-	log.WithFields(f).Debugf("Getting token ...")
-	token, err := oauth2Config.Exchange(ctx, code)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to fetch token object")
-		return nil, err
-	}
-
-	return token, nil
-}

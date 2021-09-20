@@ -32,10 +32,16 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime/middleware"
+	"github.com/savaki/dynastore"
+)
+
+const (
+	// SessionStoreKey for cla-gitlab
+	SessionStoreKey = "cla-gitlab"
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventService events.Service) {
+func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventService events.Service, sessionStore *dynastore.Store, contributorConsoleV2Base string) {
 
 	api.GitlabOrganizationsGetProjectGitlabOrganizationsHandler = gitlab_organizations.GetProjectGitlabOrganizationsHandlerFunc(
 		func(params gitlab_organizations.GetProjectGitlabOrganizationsParams, authUser *auth.User) middleware.Responder {
@@ -420,6 +426,80 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			msg := fmt.Sprintf("invalid state variable passed : %s", params.State)
 			log.WithFields(f).Warn(msg)
 			return NewServerError(reqID, "", errors.New(msg))
+		}
+
+		if codeParts[0] == "user" {
+			// handle authorization
+			return middleware.ResponderFunc(
+				func(rw http.ResponseWriter, p runtime.Producer) {
+					session, err := sessionStore.Get(params.HTTPRequest, SessionStoreKey)
+					if err != nil {
+						log.WithFields(f).WithError(err).Warn("error with session store lookup")
+						http.Error(rw, err.Error(), http.StatusInternalServerError)
+						return
+					}
+
+					state, ok := session.Values["gitlab_oauth2_state"].(string)
+					if !ok {
+						log.WithFields(f).Warn("Error getting session state - missing from session object")
+						http.Error(rw, "no session state", http.StatusInternalServerError)
+						return
+					}
+
+					gitlabOriginURL, ok := session.Values["gitlab_origin_url"].(string)
+					if !ok {
+						log.WithFields(f).Warn("Error getting gitlab_origin_url - missing from session object")
+						http.Error(rw, "no return url", http.StatusInternalServerError)
+						return
+					}
+
+					repositoryID, ok := session.Values["gitab_repository_id"].(string)
+					if !ok {
+						log.WithFields(f).Warn("Error getting gitlab_repository_id - missing from session object")
+						http.Error(rw, "no return url", http.StatusInternalServerError)
+						return
+					}
+
+					mergeRequestID, ok := session.Values["gitlab_merge_request_id"].(string)
+					if !ok {
+						log.WithFields(f).Warn("Error getting gitlab_merge_request_id - missing from session object")
+						http.Error(rw, "no return url", http.StatusInternalServerError)
+						return
+					}
+
+					if params.State != state {
+						msg := fmt.Sprintf("mismatch state, received: %s from callback, but loaded our state as: %s",
+							params.State, state)
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
+						return
+					}
+
+					log.WithFields(f).Debug("Fetching access token for user...")
+					token, err := gitlabApi.FetchOauthCredentials(params.Code)
+					if err != nil {
+						msg := fmt.Sprint("unable to fetch access token for user")
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
+						return
+					}
+
+					session.Values["gitlab_oauth2_token"] = token.AccessToken
+					session.Save(params.HTTPRequest, rw)
+
+					// Get client
+					gitlabClient, err := gitlabApi.NewGitlabOauthClientFromAccessToken(token.AccessToken)
+					if err != nil {
+						msg := fmt.Sprintf("unable to create gitlab client from token : %s ", token.AccessToken)
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
+						return
+					}
+
+					consoleURL, err := service.InitiateSignRequest(ctx, params.HTTPRequest, gitlabClient, repositoryID, mergeRequestID, gitlabOriginURL, contributorConsoleV2Base, eventService)
+					log.WithFields(f).Debugf("redirecting to :%s ", *consoleURL)
+					http.Redirect(rw, params.HTTPRequest, *consoleURL, http.StatusSeeOther)
+				})
 		}
 
 		gitlabOrganizationID := codeParts[0]
