@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
@@ -439,33 +438,37 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						http.Error(rw, err.Error(), http.StatusInternalServerError)
 						return
 					}
-					log.WithFields(f).Debugf("Loaded session: %+v", session)
+					log.WithFields(f).Debugf("Loaded session: %+v", session.Values)
 
 					state, ok := session.Values["gitlab_oauth2_state"].(string)
 					if !ok {
-						log.WithFields(f).Warn("Error getting session state - missing from session object")
-						http.Error(rw, "no session state", http.StatusInternalServerError)
+						msg := "Error getting session state - missing from session object"
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
 						return
 					}
 
 					gitlabOriginURL, ok := session.Values["gitlab_origin_url"].(string)
 					if !ok {
-						log.WithFields(f).Warn("Error getting gitlab_origin_url - missing from session object")
-						http.Error(rw, "no return url", http.StatusInternalServerError)
+						msg := "Error getting gitlab_origin_url - missing from session object"
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
 						return
 					}
 
-					repositoryID, ok := session.Values["gitlab_repository_id"].(int)
+					repositoryID, ok := session.Values["gitlab_repository_id"].(string)
 					if !ok {
-						log.WithFields(f).Warn("Error getting gitlab_repository_id - missing from session object")
-						http.Error(rw, "no return url", http.StatusInternalServerError)
+						msg := "Error getting gitlab_repository_id - missing from session object"
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
 						return
 					}
 
-					mergeRequestID, ok := session.Values["gitlab_merge_request_id"].(int)
+					mergeRequestID, ok := session.Values["gitlab_merge_request_id"].(string)
 					if !ok {
-						log.WithFields(f).Warn("Error getting gitlab_merge_request_id - missing from session object")
-						http.Error(rw, "no return url", http.StatusInternalServerError)
+						msg := "Error getting gitlab_merge_request_id - missing from session object"
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
 						return
 					}
 
@@ -498,7 +501,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						return
 					}
 
-					consoleURL, err := service.InitiateSignRequest(ctx, params.HTTPRequest, gitlabClient, strconv.Itoa(repositoryID), strconv.Itoa(mergeRequestID), gitlabOriginURL, contributorConsoleV2Base, eventService)
+					consoleURL, err := service.InitiateSignRequest(ctx, params.HTTPRequest, gitlabClient, repositoryID, mergeRequestID, gitlabOriginURL, contributorConsoleV2Base, eventService)
 					log.WithFields(f).Debugf("redirecting to :%s ", *consoleURL)
 					http.Redirect(rw, params.HTTPRequest, *consoleURL, http.StatusSeeOther)
 				})
