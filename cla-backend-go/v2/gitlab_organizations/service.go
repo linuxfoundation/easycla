@@ -79,6 +79,7 @@ func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceI
 		claGroupRepository: claGroupRepository,
 		gitLabApp:          gitlabApi.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 		userService:        userService,
+		storeRepo:          storeRepo,
 	}
 }
 
@@ -715,6 +716,7 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 	}
 	expire := time.Now().AddDate(0, 0, 1).Unix()
 	log.WithFields(f).Debugf("setting expiry for active signature data to : %d", expire)
+	log.WithFields(f).Debugf("json data: %s", string(json_data))
 
 	activeSigErr := s.storeRepo.SetActiveSignatureMetaData(ctx, key, expire, string(json_data))
 	if activeSigErr != nil {
