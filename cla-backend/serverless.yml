@@ -386,7 +386,6 @@ plugins:
   # To avoid a Code Storage Limit after tons of deploys and revisions - we can prune old versions
   # This plugin allows us to remove/prune the old versions either manually or automatically
   - serverless-prune-plugin
-  - serverless-offline
   - serverless-domain-manager
 
 functions:
