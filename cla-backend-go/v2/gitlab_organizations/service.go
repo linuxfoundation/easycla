@@ -716,12 +716,10 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 	expire := time.Now().AddDate(0, 0, 1).Unix()
 	log.WithFields(f).Debugf("setting expiry for active signature data to : %d", expire)
 
-	// jsonVal, _ := json.Marshal(value)
-
-	err = s.storeRepo.SetActiveSignatureMetaData(ctx, key, expire, string(json_data))
-	if err != nil {
+	activeSigErr := s.storeRepo.SetActiveSignatureMetaData(ctx, key, expire, string(json_data))
+	if activeSigErr != nil {
 		log.WithFields(f).WithError(err).Warn("unable to save signature metadata")
-		return nil, err
+		return nil, activeSigErr
 	}
 
 	params := "redirect=" + url.QueryEscape(originURL)

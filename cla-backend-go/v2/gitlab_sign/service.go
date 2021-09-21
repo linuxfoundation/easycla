@@ -151,9 +151,10 @@ func (s service) InitiateSignRequest(ctx context.Context, req *http.Request, git
 
 	// jsonVal, _ := json.Marshal(value)
 
-	err = s.storeRepo.SetActiveSignatureMetaData(ctx, key, expire, string(json_data))
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to save signature metadata")
+	activeSignErr := s.storeRepo.SetActiveSignatureMetaData(ctx, key, expire, string(json_data))
+	if activeSignErr != nil {
+		log.WithFields(f).WithError(activeSignErr).Warn("unable to save signature metadata")
+		return nil, activeSignErr
 	}
 
 	params := "redirect=" + url.QueryEscape(originURL)
