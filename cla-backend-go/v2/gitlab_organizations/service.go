@@ -704,17 +704,24 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 		MergeRequestID: mergeRequestID,
 		ReturnURL:      originURL,
 	}
+
+	log.WithFields(f).Debugf("active signature metadata: %+v", storeValue)
+
 	json_data, err := json.Marshal(storeValue)
 	if err != nil {
-		log.Fatal(err)
+		msg := fmt.Sprintf("unable to marshall storeValue object: %+v", storeValue)
+		log.WithFields(f).Warn(msg)
+		return nil, err
 	}
 	expire := time.Now().AddDate(0, 0, 1).Unix()
+	log.WithFields(f).Debugf("setting expiry for active signature data to : %d", expire)
 
 	// jsonVal, _ := json.Marshal(value)
 
 	err = s.storeRepo.SetActiveSignatureMetaData(ctx, key, expire, string(json_data))
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to save signature metadata")
+		return nil, err
 	}
 
 	params := "redirect=" + url.QueryEscape(originURL)
