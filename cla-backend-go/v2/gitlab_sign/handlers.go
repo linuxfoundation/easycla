@@ -12,13 +12,13 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_sign"
+	gitlabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/gofrs/uuid"
 	"github.com/savaki/dynastore"
 	"github.com/sirupsen/logrus"
-	"github.com/xanzy/go-gitlab"
 	"golang.org/x/oauth2"
 	oauth_gitlab "golang.org/x/oauth2/gitlab"
 
@@ -74,7 +74,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				if ok {
 					session.Save(srp.HTTPRequest, rw)
 					log.WithFields(f).Debugf("using existing Gitlab Ouath2 Token: %s ", gitlabAuthToken)
-					gitlabClient, err := gitlab.NewClient(gitlabAuthToken)
+					gitlabClient, err := gitlabApi.NewGitlabOauthClientFromAccessToken(gitlabAuthToken)
 
 					if err != nil {
 						msg := fmt.Sprintf("problem creating gitlab client with token : %s ", gitlabAuthToken)
