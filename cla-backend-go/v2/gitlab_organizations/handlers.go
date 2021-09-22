@@ -279,8 +279,8 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		// Load the project parent
 		parentProjectModel, err := psc.GetParentProjectModel(params.ProjectSFID)
 		if err != nil || parentProjectModel == nil {
-			return gitlab_organizations.NewAddProjectGitlabOrganizationForbidden().WithPayload(
-				utils.ErrorResponseNotFound(reqID, fmt.Sprintf("unable to locate parent project from project with ID: %s", params.ProjectSFID)))
+			msg := fmt.Sprintf("unable to locate parent project from project with ID: %s", params.ProjectSFID)
+			log.WithFields(f).Warn(msg)
 		}
 
 		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
@@ -298,12 +298,15 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 		inputModel := &common.GitLabAddOrganization{
 			ProjectSFID:             params.ProjectSFID,
-			ParentProjectSFID:       parentProjectModel.ID,
 			AutoEnabled:             params.Body.AutoEnabled,
 			AutoEnabledClaGroupID:   params.Body.AutoEnabledClaGroupID,
 			BranchProtectionEnabled: params.Body.BranchProtectionEnabled,
 			ExternalGroupID:         params.GitLabGroupID,
 			Enabled:                 true,
+		}
+
+		if parentProjectModel != nil {
+			inputModel.ParentProjectSFID = parentProjectModel.ID
 		}
 
 		updateErr := service.UpdateGitLabOrganization(ctx, inputModel)
