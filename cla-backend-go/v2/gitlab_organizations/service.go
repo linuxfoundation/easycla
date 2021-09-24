@@ -759,9 +759,11 @@ func (s *Service) getOrCreateUser(ctx context.Context, gitlabClient *goGitLab.Cl
 			Emails:         []string{gitlabUser.Email},
 			Username:       gitlabUser.Name,
 		}
-		claUser, userErr := s.userService.CreateUser(user, nil)
-		if err != nil {
-			log.WithFields(f).Debugf("unable to create claUser with details : %+v, error: %+v", user, userErr)
+
+		var userErr error
+		claUser, userErr = s.userService.CreateUser(user, nil)
+		if userErr != nil {
+			log.WithFields(f).WithError(userErr).Warnf("unable to create user with details : %+v", user)
 			return nil, userErr
 		}
 
