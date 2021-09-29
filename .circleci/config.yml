@@ -570,6 +570,35 @@ jobs:
             yarn build
             popd
 
+  buildLandingPage: &buildLandingPageAnchor
+    docker:
+      - image: circleci/node:12-browsers
+    steps:
+      - checkout
+      - *setup_aws
+      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
+      - *install-node-12
+      - run:
+          name: Install Top Level Dependencies
+          command: |
+            echo "Node version is: $(node --version)"
+            echo "Running top level install..."
+            yarn install
+      - run:
+          name: Install UI Dependencies
+          command: |
+            pushd $PROJECT_DIR
+            echo "Running yarn install in folder: `pwd`."
+            yarn install
+            popd
+      - run:
+          name: Build Source
+          command: |
+            echo "Building source..."
+            pushd $PROJECT_DIR
+            yarn build:${STAGE}
+            popd
+
   # Build Project Management Console
   buildProjectConsoleDev:
     <<: *buildFrontendAnchor
@@ -606,6 +635,19 @@ jobs:
       AWS_REGION: us-east-1
       STAGE: dev
       PROJECT_DIR: cla-frontend-contributor-console
+      ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
+      PRODUCT_DOMAIN: dev.lfcla.com
+
+  # Build Landing Page Console
+  buildLandingPageDev:
+    <<: *buildLandingPageAnchor
+    environment:
+      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
+      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
+      AWS_PROFILE: lf-cla
+      AWS_REGION: us-east-1
+      STAGE: dev
+      PROJECT_DIR: cla-landing-page
       ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
       PRODUCT_DOMAIN: dev.lfcla.com
 
@@ -1014,6 +1056,10 @@ workflows:
             tags:
               only: /.*/
       - buildContributorConsoleDev:
+          filters:
+            tags:
+              only: /.*/
+      - buildLandingPageDev:
           filters:
             tags:
               only: /.*/
