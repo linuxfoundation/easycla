@@ -37,7 +37,7 @@ export class HomeComponent implements OnInit {
       title: 'Organizations',
       subtitle: 'Enable all your developers to contribute code easily and quickly while remaining compliant with contribution policies.',
       highlights: [
-        'Approved developers based on email, domain, GitHub handle, or GitHub organization',
+        'Approved developers based on email, domain, GitHub handle, GitHub organization, GitLab handle, or GitLab Group',
         'Enable your signatories and contributors to sign CLAs using DocuSign® electronic signatures',
         'Enforce signing of the Corporate CLA by your developers without slowing them down with manual bureaucracy'
       ],
@@ -49,7 +49,7 @@ export class HomeComponent implements OnInit {
       title: 'Developers',
       subtitle: 'Get started contributing code faster and with less friction.',
       highlights: [
-        'Receive an automatic notification in GitHub or Gerrit if you need to be authorized',
+        'Receive an automatic notification in GitHub, GitLab or Gerrit if you need to be authorized',
         'Sign your Individual CLA with an e-signature',
         'Start contributing faster with a streamlined authorization workflow for Corporate CLAs'
       ],
