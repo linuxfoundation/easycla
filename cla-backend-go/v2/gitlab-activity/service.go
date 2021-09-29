@@ -236,8 +236,8 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 	<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-signed.svg" alt="CLA Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
 	failedBadge := fmt.Sprintf(`<a href="%s">
 <img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-not-signed.svg" alt="CLA Not Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
-	missingUserIDBadge := fmt.Sprintf(`<a href="%s">
-<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-missing-id.svg" alt="CLA Missing ID" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+	// 	missingUserIDBadge := fmt.Sprintf(`<a href="%s">
+	// <img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-missing-id.svg" alt="CLA Missing ID" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
 	confirmationNeededBadge := fmt.Sprintf(`<a href="%s">
 <img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-confirmation-needed.svg" alt="CLA Confirmation Needed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
 
@@ -257,21 +257,13 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 		body = coveredBadge
 	}
 
-	gitlabSupportURL := "https://about.gitlab.com/support"
+	// gitlabSupportURL := "https://about.gitlab.com/support"
 	easyCLASupportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
 	if len(missingUsers) > 0 {
 		result += "<ul>"
 		for _, missingUser := range missingUsers {
 			authorInfo := getAuthorInfo(missingUser.User)
-			if errors.Is(missingUser.err, missingID) {
-				msg := fmt.Sprintf(`<li> %s The commit associated with %s is missing the User's ID, preventing the EasyCLA check. 
-                        <a href='%s' target='_blank'>Consult GitLab Help</a> to resolve.
-                        For further assistance with EasyCLA, 
-                        <a href='%s' target='_blank'>please submit a support request ticket</a>.
-                        </li>`, failed, authorInfo, gitlabSupportURL, easyCLASupportURL)
-				result += msg
-				body = missingUserIDBadge
-			} else if errors.Is(missingUser.err, missingCompanyAffiliation) {
+			if errors.Is(missingUser.err, missingCompanyAffiliation) {
 				msg := fmt.Sprintf(`<li>%s is authorized, but they must confirm their affiliation with their company.
                             Start the authorization process 
                             <a href='%s' target='_blank'> by clicking here</a>, click "Corporate",
