@@ -164,6 +164,11 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				if strings.HasPrefix(params.Body.OrganizationFullPath, "/") {
 					params.Body.OrganizationFullPath = params.Body.OrganizationFullPath[1:]
 				}
+
+				if strings.HasSuffix(params.Body.OrganizationFullPath, "/") {
+					log.WithFields(f).Debugf("Trimming suffix for : %s", params.Body.OrganizationFullPath)
+					params.Body.OrganizationFullPath = strings.TrimSuffix(params.Body.OrganizationFullPath, "/")
+				}
 			}
 
 			if params.Body.AutoEnabled == nil {
