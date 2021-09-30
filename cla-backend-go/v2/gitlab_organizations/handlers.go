@@ -412,21 +412,32 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 		requestID, _ := uuid.NewV4()
 		reqID := requestID.String()
-		if params.Code == "" {
-			msg := "missing code parameter"
+
+		if params.Code == nil || params.State == nil {
+			msg := "missing code or state parameter"
 			log.WithFields(f).Warn(msg)
-			return NewServerError(reqID, "", errors.New(msg))
+			return middleware.ResponderFunc(
+				func(rw http.ResponseWriter, p runtime.Producer) {
+					session, err := sessionStore.Get(params.HTTPRequest, SessionStoreKey)
+					if err != nil {
+						log.WithFields(f).WithError(err).Warn("error with session store lookup")
+						http.Error(rw, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					gitlabOriginURL, ok := session.Values["gitlab_origin_url"].(string)
+					if !ok {
+						msg := "Error getting gitlab_origin_url - missing from session object"
+						log.WithFields(f).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
+						return
+					}
+					http.Redirect(rw, params.HTTPRequest, gitlabOriginURL, http.StatusSeeOther)
+				})
 		}
 
-		if params.State == "" {
-			msg := "missing state parameter"
-			log.WithFields(f).Warn(msg)
-			return NewServerError(reqID, "", errors.New(msg))
-		}
-
-		codeParts := strings.Split(params.State, ":")
+		codeParts := strings.Split(*params.State, ":")
 		if len(codeParts) != 2 {
-			msg := fmt.Sprintf("invalid state variable passed : %s", params.State)
+			msg := fmt.Sprintf("invalid state variable passed : %s", *params.State)
 			log.WithFields(f).Warn(msg)
 			return NewServerError(reqID, "", errors.New(msg))
 		}
@@ -441,8 +452,8 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						http.Error(rw, err.Error(), http.StatusInternalServerError)
 						return
 					}
-					log.WithFields(f).Debugf("Loaded session: %+v", session.Values)
 
+					log.WithFields(f).Debugf("Loaded session: %+v", session.Values)
 					state, ok := session.Values["gitlab_oauth2_state"].(string)
 					if !ok {
 						msg := "Error getting session state - missing from session object"
@@ -475,16 +486,16 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						return
 					}
 
-					if params.State != state {
+					if *params.State != state {
 						msg := fmt.Sprintf("mismatch state, received: %s from callback, but loaded our state as: %s",
-							params.State, state)
+							*params.State, state)
 						log.WithFields(f).Warn(msg)
 						http.Error(rw, msg, http.StatusInternalServerError)
 						return
 					}
 
 					log.WithFields(f).Debug("Fetching access token for user...")
-					token, err := gitlabApi.FetchOauthCredentials(params.Code)
+					token, err := gitlabApi.FetchOauthCredentials(*params.Code)
 					if err != nil {
 						msg := fmt.Sprint("unable to fetch access token for user")
 						log.WithFields(f).Warn(msg)
@@ -521,7 +532,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		}
 
 		// now fetch the oauth credentials and store to db
-		oauthResp, err := gitlabApi.FetchOauthCredentials(params.Code)
+		oauthResp, err := gitlabApi.FetchOauthCredentials(*params.Code)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab credentials failed : %s : %v", gitlabOrganizationID, err)
 			log.WithFields(f).WithError(err).Warn(msg)
