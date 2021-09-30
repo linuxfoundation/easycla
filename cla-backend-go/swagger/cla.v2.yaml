@@ -3943,12 +3943,10 @@ paths:
           description: oauth code used to fetch the access token
           in: query
           type: string
-          required: true
         - name: state
           description: state is used to find the gitlab organization
           in: query
           type: string
-          required: true
       responses:
         '200':
           description: 'Success'

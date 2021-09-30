@@ -277,7 +277,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 			} else {
 				msg := fmt.Sprintf(`<li><a href='%s'>%s</a> - 
 							%s's commit is not authorized under a signed CLA. 
-                            <a href='%s' target='_blank'>Please click here to be authorized</a>.
+                            <a href='%s'>Please click here to be authorized</a>.
                             For further assistance with EasyCLA,
                             <a href='%s' target='_blank'>please submit a support request ticket</a>.
                             </li>`, signURL, failed, authorInfo, signURL, easyCLASupportURL)
