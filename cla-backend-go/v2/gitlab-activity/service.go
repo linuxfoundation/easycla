@@ -266,7 +266,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 			if errors.Is(missingUser.err, missingCompanyAffiliation) {
 				msg := fmt.Sprintf(`<li>%s is authorized, but they must confirm their affiliation with their company.
                             Start the authorization process 
-                            <a href='%s' target='_blank'> by clicking here</a>, click "Corporate",
+                            <a href='%s'> by clicking here</a>, click "Corporate",
                             select the appropriate company from the list, then confirm
                             your affiliation on the page that appears.
                             For further assistance with EasyCLA,
@@ -275,7 +275,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 				result += msg
 				body = confirmationNeededBadge
 			} else {
-				msg := fmt.Sprintf(`<li><a href='%s' target='_blank'>%s</a> - 
+				msg := fmt.Sprintf(`<li><a href='%s'>%s</a> - 
 							%s's commit is not authorized under a signed CLA. 
                             <a href='%s' target='_blank'>Please click here to be authorized</a>.
                             For further assistance with EasyCLA,
