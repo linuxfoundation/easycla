@@ -2240,7 +2240,7 @@ class Repository(model_interfaces.Repository):
         for repository_model in repository_generator:
             repository = Repository()
             repository.model = repository_model
-            repositories.append(repository.to_dict())
+            repositories.append(repository)
         return repositories
 
     def get_repository_models_by_repository_sfdc_id(self, project_sfid) -> List[Repository]:
