@@ -549,7 +549,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		if updateErr != nil {
 			msg := fmt.Sprintf("installation of GitLab Group and Repositories, error: %v", updateErr)
 			log.WithFields(f).WithError(updateErr).Warn(msg)
-			return NewServerError(reqID, "", errors.New(msg))
+			return NewServerError(reqID, "", errors.New(fmt.Sprintf("%v", updateErr)))
 		}
 
 		// Reload the GitLab organization - will have additional details now...

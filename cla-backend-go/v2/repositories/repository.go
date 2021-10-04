@@ -325,7 +325,7 @@ func (r *Repository) GitLabAddRepository(ctx context.Context, projectSFID string
 		}
 	} else {
 		return nil, &utils.GitLabRepositoryExists{
-			Message:        fmt.Sprintf("GitLab repository with name: %s has alerady been registered", input.RepositoryName),
+			Message:        fmt.Sprintf("GitLab repository with name: %s has already been registered", input.RepositoryName),
 			RepositoryName: "",
 			Err:            nil,
 		}
