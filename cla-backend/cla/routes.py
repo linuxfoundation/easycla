@@ -817,9 +817,9 @@ def get_project(project_id: hug.types.uuid):
 
         cla.log.debug(f'{fn} - querying github repositories for cla group: {project.get("project_name", None)} '
                       f'with id: {project_id}...')
+        repositories = Repository().get_repository_by_project_sfid(project_sfid)
         mapping_record['github_repos'] = []
         mapping_record["gitlab_repos"] = []
-        repositories = Repository().get_repositories_by_cla_group_id(project_id)
         if repositories:
             mapping_record['github_repos'] = [repo.to_dict() for repo in repositories if repo.get_repository_type() == "github"]
             mapping_record["gitlab_repos"] = [repo.to_dict() for repo in repositories if repo.get_repository_type() == "gitlab"]
