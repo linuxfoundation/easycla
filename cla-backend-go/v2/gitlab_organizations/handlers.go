@@ -143,7 +143,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			if params.Body.OrganizationFullPath != "" {
 				r, regexErr := regexp.Compile(`^http(s)?://`)
 				if regexErr != nil {
-					msg := fmt.Sprintf("invalid regex for group/organization full path, error: %+v", regexErr)
+					msg := fmt.Sprintf("invalid  for group/organization full path, error: %+v", regexErr)
 					log.WithFields(f).WithError(regexErr).Warn(msg)
 					return gitlab_organizations.NewAddProjectGitlabOrganizationInternalServerError().WithPayload(
 						utils.ErrorResponseInternalServerErrorWithError(reqID, msg, regexErr))
@@ -157,7 +157,8 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 							utils.ErrorResponseBadRequestWithError(reqID, msg, urlParseErr))
 					}
 					// Update the group full path value - just include the path and not the https://... part
-					params.Body.OrganizationFullPath = groupWithUrl.Path
+					params.Body.OrganizationFullPath = cleanPath(groupWithUrl.Path)
+					log.WithFields(f).Debug(fmt.Sprintf("updated full path: %s ", params.Body.OrganizationFullPath))
 				}
 
 				// Remove leading slash
@@ -657,4 +658,22 @@ func (o *ServerError) WriteResponse(rw http.ResponseWriter, producer runtime.Pro
 	if err != nil {
 		panic(err)
 	}
+}
+
+//cleanPath helper function that strips the groups/ prefix in full path
+func cleanPath(fullPath string) string {
+	f := logrus.Fields{
+		"functionName": "gitlab_organizations.handlers.cleanPath",
+		"orgPathName":  fullPath,
+	}
+	var result string
+	result = fullPath
+	reg := `(?P<groups>\bgroups\/\b)?(?P<name>\w+)`
+	paramsMap := utils.ParseString(reg, fullPath)
+	if paramsMap["groups"] != "" {
+		log.WithFields(f).Debugf("stripping %s from %s", paramsMap["groups"], fullPath)
+		result = strings.ReplaceAll(fullPath, paramsMap["groups"], "")
+	}
+	log.WithFields(f).Debugf("clean path is %s ", result)
+	return result
 }
