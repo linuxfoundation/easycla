@@ -503,6 +503,25 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					log.WithFields(f).WithError(enableErr).Warn(msg)
 					return gitlab_repositories.NewEnrollGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, enableErr))
 				}
+
+				// Log unenroll gitlab project event
+				for _, externalID := range params.GitlabRepositoriesEnroll.Enroll {
+					gitlabRepo, err := service.GitLabGetRepositoryByExternalID(ctx, externalID)
+					if err != nil {
+						log.WithFields(f).Errorf("unable to fetch repository by externalID: %d: error: %+v", externalID, err)
+						continue
+					}
+					eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+						EventType:   events.RepositoryAdded,
+						ProjectSFID: params.ProjectSFID,
+						CLAGroupID:  gitlabRepo.RepositoryClaGroupID,
+						LfUsername:  authUser.UserName,
+						EventData: &events.RepositoryAddedEventData{
+							RepositoryName: gitlabRepo.RepositoryName,
+							RepositoryType: utils.GitLabRepositoryType,
+						},
+					})
+				}
 			}
 
 			if len(params.GitlabRepositoriesEnroll.Unenroll) > 0 {
@@ -512,6 +531,24 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					msg := fmt.Sprintf("problem unenrolling GitLab repositories for projectSFID: %s", params.ProjectSFID)
 					log.WithFields(f).WithError(enableErr).Warn(msg)
 					return gitlab_repositories.NewEnrollGitLabRepositoryBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, enableErr))
+				}
+				// Log unenroll gitlab project event
+				for _, externalID := range params.GitlabRepositoriesEnroll.Unenroll {
+					gitlabRepo, err := service.GitLabGetRepositoryByExternalID(ctx, externalID)
+					if err != nil {
+						log.WithFields(f).Errorf("unable to fetch repository by externalID: %d: error: %+v", externalID, err)
+						continue
+					}
+					eventService.LogEventWithContext(ctx, &events.LogEventArgs{
+						EventType:   events.RepositoryDisabled,
+						ProjectSFID: params.ProjectSFID,
+						CLAGroupID:  gitlabRepo.RepositoryClaGroupID,
+						LfUsername:  authUser.UserName,
+						EventData: &events.RepositoryDisabledEventData{
+							RepositoryName: gitlabRepo.RepositoryName,
+							RepositoryType: utils.GitLabRepositoryType,
+						},
+					})
 				}
 			}
 

@@ -207,3 +207,9 @@ const SignatureQueryDefaultAll = "all"
 // query should return data - show only 'active' signatures or 'all' signatures when no other query signed/approved
 // params are provided
 const SignatureQueryDefaultActive = "active"
+
+//GitLabRepositoryType representing the GitLab repository type
+const GitLabRepositoryType = "GitLab"
+
+//GitHubRepositoryType representing the GitLab repository type
+const GitHubRepositoryType = "GitHub"
