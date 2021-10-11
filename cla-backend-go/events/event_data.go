@@ -40,12 +40,14 @@ type ProjectServiceCLADisabledData struct {
 // RepositoryAddedEventData event data model
 type RepositoryAddedEventData struct {
 	RepositoryName string
+	RepositoryType string
 }
 
 // RepositoryDisabledEventData event data model
 type RepositoryDisabledEventData struct {
 	RepositoryName       string
 	RepositoryExternalID int64
+	RepositoryType       string
 }
 
 // RepositoryDeletedEventData event data model
@@ -480,7 +482,11 @@ func (ed *ProjectServiceCLADisabledData) GetEventDetailsString(args *LogEventArg
 
 // GetEventDetailsString returns the details string for this event
 func (ed *RepositoryAddedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository: %s was added for the project %s", ed.RepositoryName, args.ProjectName)
+	repositoryType := utils.GitHubRepositoryType
+	if ed.RepositoryType != "" {
+		repositoryType = ed.RepositoryType
+	}
+	data := fmt.Sprintf("The %s repository: %s was added for the project %s", repositoryType, ed.RepositoryName, args.ProjectName)
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -490,7 +496,11 @@ func (ed *RepositoryAddedEventData) GetEventDetailsString(args *LogEventArgs) (s
 
 // GetEventDetailsString returns the details string for this event
 func (ed *RepositoryDisabledEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := "The GitHub repository " // nolint
+	repositoryType := utils.GitHubRepositoryType
+	if repositoryType != "" {
+		repositoryType = ed.RepositoryType
+	}
+	data := fmt.Sprintf("The %s repository", repositoryType) // nolint
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -1489,7 +1499,11 @@ func (ed *ProjectServiceCLADisabledData) GetEventSummaryString(args *LogEventArg
 
 // GetEventSummaryString returns the summary string for this event
 func (ed *RepositoryAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The GitHub repository %s was added", ed.RepositoryName)
+	repositoryType := utils.GitHubRepositoryType
+	if ed.RepositoryType != "" {
+		repositoryType = ed.RepositoryType
+	}
+	data := fmt.Sprintf("The %s repository %s was added", repositoryType, ed.RepositoryName)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
@@ -1508,7 +1522,11 @@ func (ed *RepositoryAddedEventData) GetEventSummaryString(args *LogEventArgs) (s
 
 // GetEventSummaryString returns the summary string for this event
 func (ed *RepositoryDisabledEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := "The GitHub repository " // nolint
+	repositoryType := utils.GitHubRepositoryType
+	if ed.RepositoryType != "" {
+		repositoryType = ed.RepositoryType
+	}
+	data := fmt.Sprintf("The %s repository", repositoryType) // nolint
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
