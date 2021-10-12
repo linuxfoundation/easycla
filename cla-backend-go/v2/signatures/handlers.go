@@ -118,7 +118,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		// Must be in the Project|Organization Scope to see this - signature ACL is double-checked in the service level when the signature is loaded
 		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, companyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
 			msg := fmt.Sprintf("user '%s' does not have access to update Project Company Approval List with Project|Organization scope of %s | %s",
-				authUser.UserName, params.ProjectSFID, params.CompanyID)
+				authUser.UserName, params.ProjectSFID, companyModel.CompanyExternalID)
 			log.WithFields(f).Warn(msg)
 			return signatures.NewUpdateApprovalListForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
