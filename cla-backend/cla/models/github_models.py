@@ -12,7 +12,7 @@ from typing import List, Union, Optional
 import falcon
 import github
 from github import PullRequest
-from github.GithubException import UnknownObjectException, BadCredentialsException, GithubException
+from github.GithubException import UnknownObjectException, BadCredentialsException, GithubException, IncompletableObject
 from requests_oauthlib import OAuth2Session
 
 import cla
@@ -915,7 +915,7 @@ def get_pull_request_commit_authors(pull_request):
                                 f'login: {commit.author.login}, '
                                 f'email: {commit.author.email}')
                     commit_authors.append((commit.sha, None))
-            except GithubException.IncompletableObject as ex:
+            except (GithubException, IncompletableObject) as ex:
                 cla.log.debug(f'Commit sha: {commit.sha} exception: {ex}')
                 try:
                     cla.log.debug('github.GitAuthor.GitAuthor object: {}'.format(commit.commit.author))
@@ -927,7 +927,7 @@ def get_pull_request_commit_authors(pull_request):
                                 format(pull_request.number, commit.sha,
                                         commit.commit.author.name, commit.commit.author.email))
                     commit_authors.append((commit.sha, (None, commit.commit.author.name, commit.commit.author.email)))
-                except GithubException.IncompletableObject:
+                except (GithubException, IncompletableObject):
                     cla.log.warning('PR: {}, could not find any commit author for SHA {}'.format(pull_request.number, commit.sha))
                     commit_authors.append((commit.sha, None))
         else:
