@@ -891,39 +891,45 @@ def get_pull_request_commit_authors(pull_request):
     for commit in pull_request.get_commits():
         cla.log.debug('Processing commit while looking for authors, commit: {}'.format(commit.sha))
         # Note: we can get the author info in two different ways:
-        if commit.author is not None:
-            # commit.author is a github.NamedUser.NamedUser type object
-            # https://pygithub.readthedocs.io/en/latest/github_objects/NamedUser.html
-            if commit.author.name is not None:
-                cla.log.debug('PR: {}, GitHub commit.author.name author found for commit SHA {}, '
-                              'author id: {}, name: {}, email: {}'.
-                              format(pull_request.number, commit.sha, commit.author.id,
-                                     commit.author.name, commit.author.email))
-                commit_authors.append((commit.sha, (commit.author.id, commit.author.name, commit.author.email)))
-            elif commit.author.login is not None:
-                cla.log.debug('PR: {}, GitHub commit.author.login author found for commit SHA {}, '
-                              'author id: {}, login: {}, email: {}'.
-                              format(pull_request.number, commit.sha, commit.author.id,
-                                     commit.author.login, commit.author.email))
-                commit_authors.append((commit.sha, (commit.author.id, commit.author.login, commit.author.email)))
-            else:
-                cla.log.debug(f'PR: {pull_request.number}, GitHub commit.author.name and commit.author.login '
-                              f'author information NOT found for commit SHA {commit.sha}, '
-                              f'author id: {commit.author.id}, '
-                              f'name: {commit.author.name}, '
-                              f'login: {commit.author.login}, '
-                              f'email: {commit.author.email}')
-                commit_authors.append((commit.sha, None))
-        elif commit.commit.author is not None:
-            cla.log.debug('github.GitAuthor.GitAuthor object: {}'.format(commit.commit.author))
-            # commit.commit.author is a github.GitAuthor.GitAuthor object type - object
-            # only has date, name and email attributes - no ID attribute/value
-            # https://pygithub.readthedocs.io/en/latest/github_objects/GitAuthor.html
-            cla.log.debug('PR: {}, GitHub NamedUser author NOT found for commit SHA {}, '
-                          'however, found GitAuthor author id: None, name: {}, email: {}'.
-                          format(pull_request.number, commit.sha,
-                                 commit.commit.author.name, commit.commit.author.email))
-            commit_authors.append((commit.sha, (None, commit.commit.author.name, commit.commit.author.email)))
+        if commit.author:
+            try:
+                # commit.author is a github.NamedUser.NamedUser type object
+                # https://pygithub.readthedocs.io/en/latest/github_objects/NamedUser.html
+                if commit.author.name is not None:
+                    cla.log.debug('PR: {}, GitHub commit.author.name author found for commit SHA {}, '
+                                'author id: {}, name: {}, email: {}'.
+                                format(pull_request.number, commit.sha, commit.author.id,
+                                        commit.author.name, commit.author.email))
+                    commit_authors.append((commit.sha, (commit.author.id, commit.author.name, commit.author.email)))
+                elif commit.author.login is not None:
+                    cla.log.debug('PR: {}, GitHub commit.author.login author found for commit SHA {}, '
+                                'author id: {}, login: {}, email: {}'.
+                                format(pull_request.number, commit.sha, commit.author.id,
+                                        commit.author.login, commit.author.email))
+                    commit_authors.append((commit.sha, (commit.author.id, commit.author.login, commit.author.email)))
+                else:
+                    cla.log.debug(f'PR: {pull_request.number}, GitHub commit.author.name and commit.author.login '
+                                f'author information NOT found for commit SHA {commit.sha}, '
+                                f'author id: {commit.author.id}, '
+                                f'name: {commit.author.name}, '
+                                f'login: {commit.author.login}, '
+                                f'email: {commit.author.email}')
+                    commit_authors.append((commit.sha, None))
+            except GithubException.IncompletableObject as ex:
+                cla.log.debug(f'Commit sha: {commit.sha} exception: {ex}')
+                try:
+                    cla.log.debug('github.GitAuthor.GitAuthor object: {}'.format(commit.commit.author))
+                    # commit.commit.author is a github.GitAuthor.GitAuthor object type - object
+                    # only has date, name and email attributes - no ID attribute/value
+                    # https://pygithub.readthedocs.io/en/latest/github_objects/GitAuthor.html
+                    cla.log.debug('PR: {}, GitHub NamedUser author NOT found for commit SHA {}, '
+                                'however, found GitAuthor author id: None, name: {}, email: {}'.
+                                format(pull_request.number, commit.sha,
+                                        commit.commit.author.name, commit.commit.author.email))
+                    commit_authors.append((commit.sha, (None, commit.commit.author.name, commit.commit.author.email)))
+                except GithubException.IncompletableObject:
+                    cla.log.warning('PR: {}, could not find any commit author for SHA {}'.format(pull_request.number, commit.sha))
+                    commit_authors.append((commit.sha, None))
         else:
             cla.log.warning('PR: {}, could not find any commit author for SHA {}'.
                             format(pull_request.number, commit.sha))
