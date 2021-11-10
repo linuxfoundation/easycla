@@ -40,11 +40,11 @@ const (
 func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1Company.IService, LfxPortalURL, CorporateConsoleV2URL string, projectClaGroupRepo projects_cla_groups.Repository, easyCLAUserRepo v1User.RepositoryService) { // nolint
 	api.ClaManagerCreateCLAManagerHandler = cla_manager.CreateCLAManagerHandlerFunc(func(params cla_manager.CreateCLAManagerParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
-		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 
 		f := logrus.Fields{
-			"functionName":   "cla_manager.handlers.ClaManagerCreateCLAManagerHandler",
+			"functionName":   "v2.cla_manager.handlers.ClaManagerCreateCLAManagerHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"CompanyID":      params.CompanyID,
 			"ProjectSFID":    params.ProjectSFID,
@@ -92,10 +92,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 	api.ClaManagerDeleteCLAManagerHandler = cla_manager.DeleteCLAManagerHandlerFunc(func(params cla_manager.DeleteCLAManagerParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
-		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "cla_manager.handlers.ClaManagerDeleteCLAManagerHandler",
+			"functionName":   "v2.cla_manager.handlers.ClaManagerDeleteCLAManagerHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"CompanyID":      params.CompanyID,
 			"ProjectSFID":    params.ProjectSFID,
@@ -136,10 +136,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 	api.ClaManagerCreateCLAManagerDesigneeHandler = cla_manager.CreateCLAManagerDesigneeHandlerFunc(func(params cla_manager.CreateCLAManagerDesigneeParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
-		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "cla_manager.handlers.ClaManagerCreateCLAManagerDesigneeHandler",
+			"functionName":   "v2.cla_manager.handlers.ClaManagerCreateCLAManagerDesigneeHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"CompanyID":      params.CompanyID,
 			"ProjectSFID":    params.ProjectSFID,
@@ -175,10 +175,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 	api.ClaManagerCreateCLAManagerDesigneeByGroupHandler = cla_manager.CreateCLAManagerDesigneeByGroupHandlerFunc(
 		func(params cla_manager.CreateCLAManagerDesigneeByGroupParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
-			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 			f := logrus.Fields{
-				"functionName":   "cla_manager.handlers.ClaManagerCreateCLAManagerDesigneeByGroupHandler",
+				"functionName":   "v2.cla_manager.handlers.ClaManagerCreateCLAManagerDesigneeByGroupHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"CompanySFID":    params.CompanyID,
 				"ClaGroupID":     params.ClaGroupID,
@@ -296,10 +296,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 	api.ClaManagerCreateCLAManagerRequestHandler = cla_manager.CreateCLAManagerRequestHandlerFunc(func(params cla_manager.CreateCLAManagerRequestParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
-		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "cla_manager.handlers.ClaManagerCreateCLAManagerRequestHandler",
+			"functionName":   "v2.cla_manager.handlers.ClaManagerCreateCLAManagerRequestHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"CompanyID":      params.CompanyID,
 			"ProjectSFID":    params.ProjectSFID,
@@ -369,7 +369,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			f := logrus.Fields{
-				"functionName":      "cla_manager.handlers.ClaManagerNotifyCLAManagersHandler",
+				"functionName":      "v2.cla_manager.handlers.ClaManagerNotifyCLAManagersHandler",
 				utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 				"companyName":       params.Body.CompanyName,
 				"signingEntityName": params.Body.SigningEntityName,

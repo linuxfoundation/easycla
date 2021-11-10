@@ -274,5 +274,6 @@ func IsUserAuthorizedForProjectOrganizationTree(ctx context.Context, user *auth.
 	} else {
 		log.WithFields(f).Debugf("user is not authorized for projectSFID: %s + companySFID: %s tree", projectSFID, companySFID)
 	}
+
 	return val
 }

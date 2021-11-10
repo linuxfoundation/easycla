@@ -427,7 +427,7 @@ func (s *service) LogEventWithContext(ctx context.Context, args *LogEventArgs) {
 	}()
 
 	if args == nil || args.EventType == "" || args.EventData == nil || (args.UserID == "" && args.LfUsername == "") {
-		log.WithFields(f).Warnf("invalid arguments to LogEvent, missing one or more required values. args %#v", args)
+		log.WithFields(f).Warnf("invalid arguments to LogEvent, missing one or more required values. Need EventType, EventData or one of UserID or LfUsername. args %#v", args)
 		return
 	}
 

@@ -4,10 +4,12 @@
 package sign
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
+
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
@@ -26,15 +28,22 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 	api.SignRequestCorporateSignatureHandler = sign.RequestCorporateSignatureHandlerFunc(
 		func(params sign.RequestCorporateSignatureParams, user *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
-			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, user) // nolint
 			utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
+			f := logrus.Fields{
+				"functionName":   "v2.sign.handlers.SignRequestCorporateSignatureHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"CompanyID":      params.Input.CompanySfid,
+				"ProjectSFID":    params.Input.ProjectSfid,
+				"authUserName":   utils.StringValue(params.XUSERNAME),
+				"authUserEmail":  utils.StringValue(params.XEMAIL),
+			}
+
 			if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, user, utils.StringValue(params.Input.ProjectSfid), utils.StringValue(params.Input.CompanySfid), utils.DISALLOW_ADMIN_SCOPE) {
-				return sign.NewRequestCorporateSignatureForbidden().WithPayload(&models.ErrorResponse{
-					Code: "403",
-					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s does not have access to Request Corporate Signature with Project|Organization scope of %s | %s",
-						user.UserName, utils.StringValue(params.Input.ProjectSfid), utils.StringValue(params.Input.CompanySfid)),
-					XRequestID: reqID,
-				})
+				msg := fmt.Sprintf("user %s does not have access to Request Corporate Signature with Project|Organization scope tree of %s | %s - allow admin scope: false",
+					user.UserName, utils.StringValue(params.Input.ProjectSfid), utils.StringValue(params.Input.CompanySfid))
+				log.WithFields(f).Warn(msg)
+				return sign.NewRequestCorporateSignatureForbidden().WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
 			resp, err := service.RequestCorporateSignature(ctx, utils.StringValue(params.XUSERNAME), params.Authorization, params.Input)

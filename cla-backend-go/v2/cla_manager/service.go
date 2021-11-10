@@ -405,6 +405,8 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 			ProjectSFID:  projectSFID,
 			CompanyModel: v1CompanyModel,
 			CompanyID:    v1CompanyModel.CompanyID,
+			UserName:     lfxUser.Username,
+			LfUsername:   lfxUser.Username,
 			EventData: &events.AssignRoleScopeData{
 				Role:      "cla-manager-designee",
 				Scope:     fmt.Sprintf("%s|%s", projectSFID, v1CompanyModel.CompanyExternalID),
