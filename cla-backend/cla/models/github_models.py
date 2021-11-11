@@ -733,6 +733,10 @@ def handle_commit_from_user(project, commit_sha, author_info, signed, missing): 
     :type missing: list of strings
     """
 
+    # handle edge case of non existant users
+    if author_info is None:
+        missing.append((commit_sha, []))
+        return
     # Extract the author_info tuple details
     author_id = author_info[0]
     author_username = author_info[1]
@@ -994,7 +998,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
         text = ""
         for authors in missing:
             # Check for valid github id
-            if authors[1][0] is None:
+            if authors[1] is None or authors[1][0] is None:
                 help_url = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
             else:
                 help_url = cla.utils.get_full_sign_url('github', str(installation_id), github_repository_id,
@@ -1004,15 +1008,18 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
             commit_sha = authors[0]
             if commit_sha != last_commit.sha:
                 continue
-            author_email = authors[1][2]
-            author_id = authors[1][0]
-            if author_id:
-                if len(authors[1]) == 4:
-                    text += f'{author_email} must confirm corporate affiliation.\n'
+            if authors[1]:
+                author_email = authors[1][2]
+                author_id = authors[1][0]
+                if author_id:
+                    if len(authors[1]) == 4:
+                        text += f'{author_email} must confirm corporate affiliation.\n'
+                    else:
+                        text += f'{author_email} is not authorized under a signed CLA.\n'
                 else:
-                    text += f'{author_email} is not authorized under a signed CLA.\n'
+                    text += f'{author_email} is not linked to this commit. \n'
             else:
-                text += f'{author_email} is not linked to this commit. \n'
+                text += 'Invalid author details. \n'
 
         payload = {
             "name": "CLA check",

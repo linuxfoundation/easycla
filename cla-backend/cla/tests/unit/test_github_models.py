@@ -97,6 +97,18 @@ class TestGitHubModels(unittest.TestCase):
         # We commented out this functionality for now - re-enable if we add it back
         # self.assertListEqual(missing, [('fake_sha', [123, 'foo', 'foo@gmail.com', True])])
         self.assertEqual(signed, [])
+    
+    def test_handle_invalid_author(self) -> None:
+        """
+        Test case handling non existant author tagged to a given commit
+        """
+        project = Project()
+        author_info = None
+        signed = [] 
+        missing = []
+        handle_commit_from_user(project, 'fake_sha', author_info, signed, missing)
+        self.assertEqual(signed, [])
+        self.assertEqual(missing, [('fake_sha', [])])
 
 
 class TestGithubModelsPrComment(unittest.TestCase):
