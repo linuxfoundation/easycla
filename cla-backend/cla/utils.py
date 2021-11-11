@@ -977,16 +977,15 @@ def get_comment_body(repository_type, sign_url, signed, missing):
         committers = {}
         # Consider the case where github Id does not exist
         for commit, author in missing:
-            if author is None:
-                author = (None,None,None)
-            if author[0] is None:
-                author[1] = "Unknown"
-            if author[1] not in committers:
-                committers[author[1]] = []
-            committers[author[1]].append(commit)
+            name = "Unknown"
+            if author and author[0]:
+                name = author[1]
+            if name not in committers:
+                committers[name] = []
+            committers[name].append(commit)
             # Check case for whitelisted unsigned user
             if len(author) == 4:
-                committers[author[1]].append(True)
+                committers[name].append(True)
 
         # Print author commit information.
         committers_comment += "<ul>"
