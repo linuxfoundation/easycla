@@ -8,11 +8,13 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -45,9 +47,16 @@ func IsUserAuthorizedForOrganization(ctx context.Context, user *auth.User, compa
 
 	val := user.IsUserAuthorizedForOrganizationScope(companySFID)
 	if val {
-		log.WithFields(f).Debugf("user is authorized for companySFID: %s", companySFID)
+		log.WithFields(f).Debugf("user '%s' is authorized for companySFID: %s  admin flag=%t",
+			user.UserName, companySFID, user.Admin)
 	} else {
-		log.WithFields(f).Debugf("user is not authorized for companySFID: %s", companySFID)
+		var scopeInfo string
+		for i, scope := range user.Scopes {
+			scopeInfo = fmt.Sprintf("%sscope[%d] = {type=%s, id=%s, level=%s, role=%s, related=[%s]} ",
+				scopeInfo, i, scope.Type, scope.ID, scope.Level, scope.Role, strings.Join(scope.Related, ","))
+		}
+		log.WithFields(f).Debugf("user '%s' is not authorized for companySFID: %s, admin flag=%t, scopeInfo: %s",
+			user.UserName, companySFID, user.Admin, scopeInfo)
 	}
 	return val
 }
@@ -71,9 +80,16 @@ func IsUserAuthorizedForProjectTree(ctx context.Context, user *auth.User, projec
 	log.WithFields(f).Debugf("checking project scope for projectSFID: %s...", projectSFID)
 	val := user.IsUserAuthorized(auth.Project, projectSFID, true)
 	if val {
-		log.WithFields(f).Debugf("user is authorized for projectSFID: %s", projectSFID)
+		log.WithFields(f).Debugf("user '%s' is authorized for projectSFID: %s tree, admin flag=%t",
+			user.UserName, projectSFID, user.Admin)
 	} else {
-		log.WithFields(f).Debugf("user is not authorized for projectSFID: %s", projectSFID)
+		var scopeInfo string
+		for i, scope := range user.Scopes {
+			scopeInfo = fmt.Sprintf("%sscope[%d] = {type=%s, id=%s, level=%s, role=%s, related=[%s]} ",
+				scopeInfo, i, scope.Type, scope.ID, scope.Level, scope.Role, strings.Join(scope.Related, ","))
+		}
+		log.WithFields(f).Debugf("user '%s' is not authorized for projectSFID: %s tree, admin flag=%t, scopeInfo: %s",
+			user.UserName, projectSFID, user.Admin, scopeInfo)
 	}
 	return val
 }
@@ -97,9 +113,16 @@ func IsUserAuthorizedForProject(ctx context.Context, user *auth.User, projectSFI
 	log.WithFields(f).Debugf("checking project scope for projectSFID: %s...", projectSFID)
 	val := user.IsUserAuthorizedForProjectScope(projectSFID)
 	if val {
-		log.WithFields(f).Debugf("user is authorized for projectSFID: %s", projectSFID)
+		log.WithFields(f).Debugf("user '%s' is authorized for projectSFID: %s, admin flag=%t",
+			user.UserName, projectSFID, user.Admin)
 	} else {
-		log.WithFields(f).Debugf("user is not authorized for projectSFID: %s", projectSFID)
+		var scopeInfo string
+		for i, scope := range user.Scopes {
+			scopeInfo = fmt.Sprintf("%sscope[%d] = {type=%s, id=%s, level=%s, role=%s, related=[%s]} ",
+				scopeInfo, i, scope.Type, scope.ID, scope.Level, scope.Role, strings.Join(scope.Related, ","))
+		}
+		log.WithFields(f).Debugf("user '%s' is not authorized for projectSFID: %s, admin flag=%t, scopeInfo: %s",
+			user.UserName, projectSFID, user.Admin, scopeInfo)
 	}
 	return val
 }
@@ -128,7 +151,13 @@ func IsUserAuthorizedForAnyProjects(ctx context.Context, user *auth.User, projec
 		}
 	}
 
-	log.WithFields(f).Debugf("project scope checks failed for: %s...", strings.Join(projectSFIDs, ","))
+	var scopeInfo string
+	for i, scope := range user.Scopes {
+		scopeInfo = fmt.Sprintf("%sscope[%d] = {type=%s, id=%s, level=%s, role=%s, related=[%s]} ",
+			scopeInfo, i, scope.Type, scope.ID, scope.Level, scope.Role, strings.Join(scope.Related, ","))
+	}
+	log.WithFields(f).Debugf("user '%s' is not authorized for project scope checks for any projects: %s, admin flag=%t, scopeInfo: %s",
+		user.UserName, strings.Join(projectSFIDs, ","), user.Admin, scopeInfo)
 	return false
 }
 
@@ -151,10 +180,18 @@ func IsUserAuthorizedForProjectOrganization(ctx context.Context, user *auth.User
 
 	val := user.IsUserAuthorizedByProject(projectSFID, companySFID)
 	if val {
-		log.WithFields(f).Debugf("user is authorized for projectSFID: %s + companySFID: %s", projectSFID, companySFID)
+		log.WithFields(f).Debugf("user '%s' is authorized for projectSFID: %s + companySFID: %s tree, admin flag=%t",
+			user.UserName, projectSFID, companySFID, user.Admin)
 	} else {
-		log.WithFields(f).Debugf("user is not authorized for projectSFID: %s + companySFID: %s", projectSFID, companySFID)
+		var scopeInfo string
+		for i, scope := range user.Scopes {
+			scopeInfo = fmt.Sprintf("%sscope[%d] = {type=%s, id=%s, level=%s, role=%s, related=[%s]} ",
+				scopeInfo, i, scope.Type, scope.ID, scope.Level, scope.Role, strings.Join(scope.Related, ","))
+		}
+		log.WithFields(f).Debugf("user '%s' is not authorized for projectSFID: %s + companySFID: %s tree, admin flag=%t, scopeInfo: %s",
+			user.UserName, projectSFID, companySFID, user.Admin, scopeInfo)
 	}
+
 	return val
 }
 
@@ -186,7 +223,13 @@ func IsUserAuthorizedForAnyProjectOrganization(ctx context.Context, user *auth.U
 		}
 	}
 
-	log.WithFields(f).Debugf("user is not authorized for any projectSFID: %s + companySFID: %s", strings.Join(projectSFIDs, ","), companySFID)
+	var scopeInfo string
+	for i, scope := range user.Scopes {
+		scopeInfo = fmt.Sprintf("%sscope[%d] = {type=%s, id=%s, level=%s, role=%s, related=[%s]} ",
+			scopeInfo, i, scope.Type, scope.ID, scope.Level, scope.Role, strings.Join(scope.Related, ","))
+	}
+	log.WithFields(f).Debugf("user '%s' is not authorized for any projectSFID: %s + companySFID: %s, admin flag=%t, scopeInfo: %s",
+		user.UserName, strings.Join(projectSFIDs, ","), companySFID, user.Admin, scopeInfo)
 	return false
 }
 
@@ -209,9 +252,17 @@ func IsUserAuthorizedForProjectOrganizationTree(ctx context.Context, user *auth.
 
 	val := user.IsUserAuthorized(auth.ProjectOrganization, projectSFID+"|"+companySFID, true)
 	if val {
-		log.WithFields(f).Debugf("user is authorized for projectSFID: %s + companySFID: %s tree", projectSFID, companySFID)
+		log.WithFields(f).Debugf("user '%s' is authorized for projectSFID: %s + companySFID: %s tree, admin flag=%t",
+			user.UserName, projectSFID, companySFID, user.Admin)
 	} else {
-		log.WithFields(f).Debugf("user is not authorized for projectSFID: %s + companySFID: %s tree", projectSFID, companySFID)
+		var scopeInfo string
+		for i, scope := range user.Scopes {
+			scopeInfo = fmt.Sprintf("%sscope[%d] = {type=%s, id=%s, level=%s, role=%s, related=[%s]} ",
+				scopeInfo, i, scope.Type, scope.ID, scope.Level, scope.Role, strings.Join(scope.Related, ","))
+		}
+		log.WithFields(f).Debugf("user '%s' is not authorized for projectSFID: %s + companySFID: %s tree, admin flag=%t, scopeInfo: %s",
+			user.UserName, projectSFID, companySFID, user.Admin, scopeInfo)
 	}
+
 	return val
 }
