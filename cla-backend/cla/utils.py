@@ -977,6 +977,8 @@ def get_comment_body(repository_type, sign_url, signed, missing):
         committers = {}
         # Consider the case where github Id does not exist
         for commit, author in missing:
+            if author is None:
+                author = (None,None,None)
             if author[0] is None:
                 author[1] = "Unknown"
             if author[1] not in committers:
