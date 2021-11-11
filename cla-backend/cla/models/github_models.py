@@ -432,12 +432,15 @@ class GitHub(repository_service_interface.RepositoryService):
                       'determining who has signed a CLA an who has not.')
         for commit_sha, author_info in commit_authors:
             # Extract the author info tuple details
-            author_id = author_info[0]
-            author_username = author_info[1]
-            author_email = author_info[2]
-            cla.log.debug(f'{fn} - PR: {pull_request.number}, '
-                          f'processing sha: {commit_sha} '
-                          f'from author id: {author_id}, username: {author_username}, email: {author_email}')
+            if author_info:
+                author_id = author_info[0]
+                author_username = author_info[1]
+                author_email = author_info[2]
+                cla.log.debug(f'{fn} - PR: {pull_request.number}, '
+                            f'processing sha: {commit_sha} '
+                            f'from author id: {author_id}, username: {author_username}, email: {author_email}')
+            else:
+                cla.log.debug(f'{fn} - PR: {pull_request.number}, processing sha: {commit_sha} with invalid author details')
             handle_commit_from_user(project, commit_sha, author_info, signed, missing)
 
         cla.log.debug(f'{fn} - PR: {pull_request.number}, '
