@@ -992,7 +992,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
     """
     notification = cla.conf['GITHUB_PR_NOTIFICATION']
     both = notification == 'status+comment' or notification == 'comment+status'
-    last_commit = pull_request.get_commits().reversed[0]
+    last_commit = pull_request.get_commits()[0]
 
     # Here we update the PR status by adding/updating the PR body - this is the way the EasyCLA app
     # knows if it is pass/fail.
@@ -1001,7 +1001,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
         text = ""
         for authors in missing:
             # Check for valid github id
-            if authors[1] is None or authors[1][0] is None:
+            if authors[1] is None or (authors[1] and  authors[1][0] is None):
                 help_url = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
             else:
                 help_url = cla.utils.get_full_sign_url('github', str(installation_id), github_repository_id,
