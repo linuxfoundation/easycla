@@ -437,10 +437,11 @@ class GitHub(repository_service_interface.RepositoryService):
                 author_username = author_info[1]
                 author_email = author_info[2]
                 cla.log.debug(f'{fn} - PR: {pull_request.number}, '
-                            f'processing sha: {commit_sha} '
-                            f'from author id: {author_id}, username: {author_username}, email: {author_email}')
+                              f'processing sha: {commit_sha} '
+                              f'from author id: {author_id}, username: {author_username}, email: {author_email}')
             else:
-                cla.log.debug(f'{fn} - PR: {pull_request.number}, processing sha: {commit_sha} with invalid author details')
+                cla.log.debug(
+                    f'{fn} - PR: {pull_request.number}, processing sha: {commit_sha} with invalid author details')
             handle_commit_from_user(project, commit_sha, author_info, signed, missing)
 
         cla.log.debug(f'{fn} - PR: {pull_request.number}, '
@@ -904,23 +905,23 @@ def get_pull_request_commit_authors(pull_request):
                 # https://pygithub.readthedocs.io/en/latest/github_objects/NamedUser.html
                 if commit.author.name is not None:
                     cla.log.debug('PR: {}, GitHub commit.author.name author found for commit SHA {}, '
-                                'author id: {}, name: {}, email: {}'.
-                                format(pull_request.number, commit.sha, commit.author.id,
-                                        commit.author.name, commit.author.email))
+                                  'author id: {}, name: {}, email: {}'.
+                                  format(pull_request.number, commit.sha, commit.author.id,
+                                         commit.author.name, commit.author.email))
                     commit_authors.append((commit.sha, (commit.author.id, commit.author.name, commit.author.email)))
                 elif commit.author.login is not None:
                     cla.log.debug('PR: {}, GitHub commit.author.login author found for commit SHA {}, '
-                                'author id: {}, login: {}, email: {}'.
-                                format(pull_request.number, commit.sha, commit.author.id,
-                                        commit.author.login, commit.author.email))
+                                  'author id: {}, login: {}, email: {}'.
+                                  format(pull_request.number, commit.sha, commit.author.id,
+                                         commit.author.login, commit.author.email))
                     commit_authors.append((commit.sha, (commit.author.id, commit.author.login, commit.author.email)))
                 else:
                     cla.log.debug(f'PR: {pull_request.number}, GitHub commit.author.name and commit.author.login '
-                                f'author information NOT found for commit SHA {commit.sha}, '
-                                f'author id: {commit.author.id}, '
-                                f'name: {commit.author.name}, '
-                                f'login: {commit.author.login}, '
-                                f'email: {commit.author.email}')
+                                  f'author information NOT found for commit SHA {commit.sha}, '
+                                  f'author id: {commit.author.id}, '
+                                  f'name: {commit.author.name}, '
+                                  f'login: {commit.author.login}, '
+                                  f'email: {commit.author.email}')
                     commit_authors.append((commit.sha, None))
             except (GithubException, IncompletableObject) as ex:
                 cla.log.debug(f'Commit sha: {commit.sha} exception: {ex}')
@@ -930,12 +931,13 @@ def get_pull_request_commit_authors(pull_request):
                     # only has date, name and email attributes - no ID attribute/value
                     # https://pygithub.readthedocs.io/en/latest/github_objects/GitAuthor.html
                     cla.log.debug('PR: {}, GitHub NamedUser author NOT found for commit SHA {}, '
-                                'however, found GitAuthor author id: None, name: {}, email: {}'.
-                                format(pull_request.number, commit.sha,
-                                        commit.commit.author.name, commit.commit.author.email))
+                                  'however, found GitAuthor author id: None, name: {}, email: {}'.
+                                  format(pull_request.number, commit.sha,
+                                         commit.commit.author.name, commit.commit.author.email))
                     commit_authors.append((commit.sha, (None, commit.commit.author.name, commit.commit.author.email)))
                 except (GithubException, IncompletableObject):
-                    cla.log.warning('PR: {}, could not find any commit author for SHA {}'.format(pull_request.number, commit.sha))
+                    cla.log.warning(
+                        'PR: {}, could not find any commit author for SHA {}'.format(pull_request.number, commit.sha))
                     commit_authors.append((commit.sha, None))
         else:
             cla.log.warning('PR: {}, could not find any commit author for SHA {}'.
@@ -992,7 +994,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
     """
     notification = cla.conf['GITHUB_PR_NOTIFICATION']
     both = notification == 'status+comment' or notification == 'comment+status'
-    last_commit = pull_request.get_commits()[0]
+    last_commit = pull_request.get_commits().reversed[0]
 
     # Here we update the PR status by adding/updating the PR body - this is the way the EasyCLA app
     # knows if it is pass/fail.
@@ -1001,7 +1003,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
         text = ""
         for authors in missing:
             # Check for valid github id
-            if authors[1] is None or (authors[1] and  authors[1][0] is None):
+            if authors[1] is None or (authors[1] and authors[1][0] is None):
                 help_url = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
             else:
                 help_url = cla.utils.get_full_sign_url('github', str(installation_id), github_repository_id,
@@ -1075,7 +1077,8 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
             context, body = cla.utils.assemble_cla_status(context_name, signed=False)
             sign_url = cla.utils.get_full_sign_url(
                 'github', str(installation_id), github_repository_id, pull_request.number, project_version)
-            cla.log.debug(f'Creating new CLA {state} status - {len(signed)} passed, {missing}, signing url: {sign_url}')
+            cla.log.debug(f'Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
+                          f'signing url: {sign_url}')
             create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
         elif signed is not None and len(signed) > 0:
             state = 'success'
@@ -1085,7 +1088,8 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
             sign_url = cla.conf["CLA_LANDING_PAGE"]  # Remove this once signature detail page ready.
             sign_url = os.path.join(sign_url, "#/")
             sign_url = append_project_version_to_url(address=sign_url, project_version=project_version)
-            cla.log.debug(f'Creating new CLA {state} status - {len(signed)} passed, {missing}, signing url: {sign_url}')
+            cla.log.debug(f'Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
+                          f'signing url: {sign_url}')
             create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
         else:
             # error condition - should have a least one committer and they would be in one of the above
@@ -1096,7 +1100,8 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
             context, body = cla.utils.assemble_cla_status(context_name, signed=False)
             sign_url = cla.utils.get_full_sign_url(
                 'github', str(installation_id), github_repository_id, pull_request.number, project_version)
-            cla.log.debug(f'Creating new CLA {state} status - {len(signed)} passed, {missing}, signing url: {sign_url}')
+            cla.log.debug(f'Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
+                          f'signing url: {sign_url}')
             cla.log.warning('This is an error condition - should have at least one committer in one of these lists: '
                             f'{len(signed)} passed, {missing}')
             create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
@@ -1130,11 +1135,13 @@ def create_commit_status(pull_request, commit_hash, state, sign_url, body, conte
             return
         # context is a string label to differentiate one signer status from another signer status.
         # committer name is used as context label
-        commit_obj.create_status(state, sign_url, body, context)
-        cla.log.info(f'Successfully posted status {state} on PR {pull_request.number}: Commit {commit_hash}'
-                     f'with SignUrl : {sign_url}')
+        cla.log.info(f'Updating status with state \'{state}\' on PR {pull_request.number} for commit {commit_hash}...')
+        # returns github.CommitStatus.CommitStatus
+        resp = commit_obj.create_status(state, sign_url, body, context)
+        cla.log.info(f'Successfully posted status \'{state}\' on PR {pull_request.number}: Commit {commit_hash} '
+                     f'with SignUrl : {sign_url} with response: {resp}')
     except GithubException as exc:
-        cla.log.error(f'Could not post status {state} on PR: {pull_request.number}, '
+        cla.log.error(f'Could not post status \'{state}\' on PR: {pull_request.number}, '
                       f'Commit: {commit_hash}, '
                       f'Response Code: {exc.status}, '
                       f'Message: {exc.data}')
