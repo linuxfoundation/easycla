@@ -1541,7 +1541,7 @@ class UserModel(BaseModel):
     user_gitlab_id = NumberAttribute(null=True)
     user_gitlab_username = UnicodeAttribute(null=True)
     user_gitlab_id_index = GitLabIDIndex()
-    user_github_username_index = GitLabUsernameIndex()
+    user_gitlab_username_index = GitLabUsernameIndex()
     user_ldap_id = UnicodeAttribute(null=True)
     user_github_id_index = GitHubUserIndex()
     github_user_external_id_index = GithubUserExternalIndex()
