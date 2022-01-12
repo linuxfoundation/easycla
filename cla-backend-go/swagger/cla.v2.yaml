@@ -5475,8 +5475,11 @@ definitions:
         example: false
         description: send signing request as email. This should be set to true when requestor is not signatory.
       authority_name:
+        type: string
+        example: "Derk Miyamoto"
         description: the name of the CLA signatory
-        $ref: './common/properties/user-name.yaml'
+        minLength: 2
+        maxLength: 255
       authority_email:
         $ref: './common/properties/email.yaml'
         description: the email of the CLA Signatory
