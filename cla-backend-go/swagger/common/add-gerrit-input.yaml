@@ -15,7 +15,7 @@ properties:
     pattern: '^[\w\p{L}][\w\s\p{L}\[\]\+\-\{\}\(\)\.\,\+\-]*$'
   gerritUrl:
     description: |
-      the gerrit url - must be one of the currently supported LF managed Gerrit instances:
+      the gerrit url - should be one of the supported LF managed Gerrit instances, examples are:
         https://gerrit.linuxfoundation.org
         https://gerrit.onap.org
         https://gerrit.o-ran-sc.org
@@ -23,12 +23,9 @@ properties:
         https://gerrit.opnfv.org
     example: 'https://gerrit.onap.org'
     type: string
-    enum:
-      - https://gerrit.linuxfoundation.org
-      - https://gerrit.onap.org
-      - https://gerrit.o-ran-sc.org
-      - https://gerrit.tungsten.io
-      - https://gerrit.opnfv.org
+    minLength: 10
+    maxLength: 255
+    pattern: ^(?:http(s)?:\/\/).+$
   groupIdCcla:
     type: string
     description: the LDAP group ID for CCLA
