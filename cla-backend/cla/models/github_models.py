@@ -6,6 +6,7 @@ Holds the GitHub repository service.
 """
 import json
 import os
+import time
 import uuid
 from typing import List, Union, Optional
 
@@ -363,13 +364,28 @@ class GitHub(repository_service_interface.RepositoryService):
         fn = 'update_change_request'
         # Queries GH for the complete pull request details, see:
         # https://developer.github.com/v3/pulls/#response-1
-        try:
-            # check if change_request_id is a valid int
-            _ = int(change_request_id)
-            pull_request = self.get_pull_request(github_repository_id, change_request_id, installation_id)
-        except ValueError:
-            cla.log.error(f'{fn} - Invalid PR: {change_request_id} . (Unable to cast to integer) ')
-            return
+
+        # Note: late 2021/early 2022 we observed that sometimes we get the event for a PR, then go back to GitHub
+        # to query for the PR details and discover the PR is 404, not available for some reason.  Added retry
+        # logic to retry a couple of times to address any timing issues.
+        tries = 3
+        for i in range(tries):
+            try:
+                # check if change_request_id is a valid int
+                _ = int(change_request_id)
+                pull_request = self.get_pull_request(github_repository_id, change_request_id, installation_id)
+            except ValueError as ve:
+                cla.log.error(f'{fn} - Invalid PR: {change_request_id} - error: {ve}. Unable to fetch PR from GitHub.')
+                if i <= tries:
+                    cla.log.debug(f'{fn} - attempt {i + 1} - waiting to retry...')
+                    time.sleep(2)
+                    continue
+                else:
+                    cla.log.debug(f'{fn} - attempt {i + 1} - exhausted retries - unable to load PR from GitHub.')
+                    # TODO: DAD - possibly update the PR status?
+                    return
+            # Fell through - no error, exit loop and continue on
+            break
         cla.log.debug(f'{fn} - retrieved pull request: {pull_request}')
 
         # Get all unique users/authors involved in this PR - returns a list of
