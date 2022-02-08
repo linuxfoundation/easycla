@@ -36,7 +36,7 @@ func GetInstallationRepositories(ctx context.Context, installationID int64) ([]*
 
 	// See pagination examples: https://godoc.org/github.com/google/go-github/github
 	opts := &github.ListOptions{
-		PerPage: 50,
+		PerPage: 100, // Max 100 per the GitHub API
 	}
 
 	for {
@@ -47,7 +47,7 @@ func GetInstallationRepositories(ctx context.Context, installationID int64) ([]*
 			return nil, errors.New(msg)
 		}
 
-		log.WithFields(f).Debugf("fetched %d records...", len(listReposResponse.Repositories))
+		//log.WithFields(f).Debugf("fetched %d records...", len(listReposResponse.Repositories))
 		allRepos = append(allRepos, listReposResponse.Repositories...)
 		if resp.NextPage == 0 {
 			break

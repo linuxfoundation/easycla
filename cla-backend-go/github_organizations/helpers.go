@@ -67,7 +67,7 @@ func buildGithubOrganizationListModels(ctx context.Context, githubOrganizations 
 						return
 					}
 
-					log.WithFields(f).Debugf("found %d repositories from GitHUb using the installation id: %d...",
+					log.WithFields(f).Debugf("found %d repositories from GitHub using the installation id: %d...",
 						len(list), ghorg.OrganizationInstallationID)
 					for _, repoInfo := range list {
 						ghorg.Repositories.List = append(ghorg.Repositories.List, &models.GithubRepositoryInfo{

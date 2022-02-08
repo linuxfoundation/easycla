@@ -62,6 +62,9 @@ func (s Service) AddGitHubOrganization(ctx context.Context, projectSFID string, 
 		log.WithFields(f).Warnf("problem fetching github organizations by projectSFID, error: %+v", projErr)
 		return nil, projErr
 	}
+	if parentProjectSFID == "" {
+		parentProjectSFID = projectSFID
+	}
 
 	// check if valid cla group id is passed
 	if input.AutoEnabledClaGroupID != "" {
@@ -102,6 +105,9 @@ func (s Service) GetGitHubOrganizations(ctx context.Context, projectSFID string)
 	if projErr != nil {
 		log.WithFields(f).Warnf("problem fetching project parent SFID, error: %+v", projErr)
 		return nil, projErr
+	}
+	if parentProjectSFID == "" {
+		parentProjectSFID = projectSFID
 	}
 
 	//Get SF Project
@@ -188,6 +194,9 @@ func (s Service) DeleteGitHubOrganization(ctx context.Context, projectSFID strin
 	if projErr != nil {
 		log.WithFields(f).Warnf("problem fetching project parent SFID, error: %+v", projErr)
 		return projErr
+	}
+	if parentProjectSFID == "" {
+		parentProjectSFID = projectSFID
 	}
 
 	err := s.ghRepository.GitHubDisableRepositoriesOfOrganization(ctx, parentProjectSFID, githubOrgName)

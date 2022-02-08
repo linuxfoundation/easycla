@@ -86,7 +86,7 @@ func (pmm *Client) GetProject(projectSFID string) (*models.ProjectOutputDetailed
 	mutex.Unlock()
 
 	if exists {
-		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
+		//log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
 		return existingModel, nil
 	}
 	log.WithFields(f).Debugf("cache miss - cache size: %d", len(projectServiceModels))
@@ -151,9 +151,13 @@ func (pmm *Client) GetParentProject(projectSFID string) (string, error) {
 
 	// Use our helper function to find the parent, if it exists
 	parentModel, err := pmm.GetParentProjectModel(projectSFID)
-	if err != nil || parentModel == nil {
-		log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel using projectSFID: '%s'", projectSFID)
-		return projectSFID, err
+	if err != nil {
+		log.WithFields(f).WithError(err).Debugf("unable to lookup parentProjectModel using projectSFID: '%s'", projectSFID)
+		return "", err
+	}
+	if parentModel == nil {
+		log.WithFields(f).Debugf("unable to lookup parentProjectModel using projectSFID: '%s' - parent project model is nil", projectSFID)
+		return "", err
 	}
 
 	return parentModel.ID, nil
@@ -177,11 +181,13 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	existingModel, exists = projectServiceModels[projectSFID]
 	mutex.Unlock()
 	if exists {
-		log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
+		//log.WithFields(f).Debugf("cache hit - cache size: %d", len(projectServiceModels))
 
 		if !utils.IsProjectHaveParent(existingModel) {
+			//log.WithFields(f).Debugf("project %+v does not have a parent", existingModel)
 			return nil, nil
 		}
+		log.WithFields(f).Debugf("project %+v has a parent", existingModel)
 
 		//// Does this project they have a parent? projectModel.Parent is deprecated and no longer returned, use project.Foundation.ID/Name attribute instead
 		//if existingModel.Foundation.Name == utils.TheLinuxFoundation || existingModel.Foundation.Name == utils.LFProjectsLLC {
@@ -191,6 +197,10 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 
 		// Grab the parent ID once
 		projectParentSFID := utils.GetProjectParentSFID(existingModel)
+		if projectParentSFID == "" {
+			log.WithFields(f).Debugf("unable to determine project %+v parent", existingModel)
+			return nil, nil
+		}
 
 		// Parent SFID in the cache?
 		mutex.Lock() // exclusive lock to the shared project service model map
@@ -205,6 +215,11 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel with projectSFID: '%s'", projectParentSFID)
 			return nil, err
+		}
+
+		if parentProjectModel == nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel with projectSFID: '%s' - project model is nil", projectParentSFID)
+			return nil, nil
 		}
 
 		// Save/Update our cache for next time
@@ -234,10 +249,11 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 
 	// No parent
 	if !utils.IsProjectHaveParent(projectModel) {
+		//log.WithFields(f).Debugf("project %+v does not have a parent", projectModel)
 		return nil, nil
 	}
 
-	// Do they have a parent? projectModel.Parent is deprecated and no longer returned
+	// Is the parent one of the root parents?
 	if projectModel.Foundation.Name == utils.TheLinuxFoundation || projectModel.Foundation.Name == utils.LFProjectsLLC {
 		log.WithFields(f).Debugf("no parent for projectSFID or %s or %s is the parent...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return nil, nil
@@ -245,6 +261,10 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 
 	// Grab the parent ID once
 	projectParentSFID := utils.GetProjectParentSFID(projectModel)
+	if projectParentSFID == "" {
+		log.WithFields(f).Debugf("unable to determine project %+v parent", projectModel)
+		return nil, nil
+	}
 
 	// Parent in the cache?
 	mutex.Lock() // exclusive lock to the shared project service model map
@@ -257,8 +277,12 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	// Parent project not in the cache - lookup
 	parentProjectModel, err := pmm.GetProject(projectParentSFID)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to lookup parentProjectModel with projectSFID: '%s'", projectParentSFID)
+		log.WithFields(f).WithError(err).Debugf("unable to lookup parentProjectModel with projectSFID: '%s'", projectParentSFID)
 		return nil, err
+	}
+	if parentProjectModel == nil {
+		log.WithFields(f).WithError(err).Debugf("unable to lookup parentProjectModel with projectSFID: '%s' - project model is nil", projectParentSFID)
+		return nil, nil
 	}
 
 	// Save/Update our cache for next time

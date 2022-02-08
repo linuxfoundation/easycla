@@ -85,12 +85,23 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		log.WithFields(f).WithError(err).Warn("problem loading project details from the project service")
 		return nil, err
 	}
+	if project == nil {
+		log.WithFields(f).Warnf("unable to load project by project SFID: %s", projectSFID)
+		return nil, nil
+	}
+	f["projectName"] = project.Name
+	f["projectType"] = project.Type
+	f["projectStatus"] = project.Status
 
 	var parentProjectSFID string
-	if !utils.IsProjectHaveParent(project) || utils.IsProjectHasRootParent(project) || utils.GetProjectParentSFID(project) == "" {
+	if !utils.IsProjectHaveParent(project) {
 		parentProjectSFID = projectSFID
 	} else {
 		parentProjectSFID = utils.GetProjectParentSFID(project)
+		// If we don't have a valid parent project SFID...
+		if parentProjectSFID == "" {
+			parentProjectSFID = projectSFID
+		}
 	}
 
 	f["parentProjectSFID"] = parentProjectSFID
@@ -170,7 +181,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	var repoList []*v1Models.GithubRepository
 	for _, org := range orgs.List {
 		orgRepos, orgReposErr := s.gitV1Repository.GitHubGetRepositoriesByOrganizationName(ctx, org.OrganizationName)
-		if orgReposErr != nil || orgRepos == nil {
+		if orgReposErr != nil || len(orgRepos) == 0 {
 			if _, ok := orgReposErr.(*utils.GitHubRepositoryNotFound); ok {
 				log.WithFields(f).Debug(orgReposErr)
 			} else {
@@ -184,6 +195,12 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	// Remove any duplicates
 	log.WithFields(f).Debugf("processing %d github repositories...", len(repoList))
 	for _, repo := range repoList {
+		if repo == nil || repo.RepositoryOrganizationName == "" {
+			log.WithFields(f).Warnf("repositories record nil or is missing the organization name: %+v - skipping", repo)
+			continue
+		}
+		//log.WithFields(f).Debugf("processing repository: %s", repo.RepositoryURL)
+
 		rorg, ok := orgmap[repo.RepositoryOrganizationName]
 		if !ok {
 			log.WithFields(f).Warnf("repositories table contain stale data for organization %s", repo.RepositoryOrganizationName)

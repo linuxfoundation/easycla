@@ -368,6 +368,7 @@ class GitHub(repository_service_interface.RepositoryService):
         # Note: late 2021/early 2022 we observed that sometimes we get the event for a PR, then go back to GitHub
         # to query for the PR details and discover the PR is 404, not available for some reason.  Added retry
         # logic to retry a couple of times to address any timing issues.
+        pull_request = {}
         tries = 3
         for i in range(tries):
             try:

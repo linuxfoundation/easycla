@@ -406,7 +406,7 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 
 		// Get Parent
 		parentDetails, parentDetailErr = v2ProjectService.GetClient().GetProject(parentSFID)
-		if parentDetailErr != nil {
+		if parentDetailErr != nil || parentDetails == nil {
 			return nil, parentDetailErr
 		}
 	}

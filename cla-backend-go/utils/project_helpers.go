@@ -7,7 +7,7 @@ import "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/mod
 
 // GetProjectParentSFID returns the project parent SFID if available, otherwise returns empty string
 func GetProjectParentSFID(project *models.ProjectOutputDetailed) string {
-	if project == nil || project.Foundation == nil || project.Foundation.ID == "" {
+	if project == nil || project.Foundation == nil || project.Foundation.ID == "" || project.Foundation.Name == "" || project.Foundation.Slug == "" {
 		return ""
 	}
 	return project.Foundation.ID
@@ -15,7 +15,7 @@ func GetProjectParentSFID(project *models.ProjectOutputDetailed) string {
 
 // IsProjectHaveParent returns true if the specified project has a parent
 func IsProjectHaveParent(project *models.ProjectOutputDetailed) bool {
-	return project != nil && project.Foundation != nil && project.Foundation.ID != "" && project.Foundation.Name != ""
+	return project != nil && project.Foundation != nil && project.Foundation.ID != "" && project.Foundation.Name != "" && project.Foundation.Slug != ""
 }
 
 // IsProjectHasRootParent determines if a given project has a root parent. A root parent is a parent that is empty parent or the parent is TLF or LFProjects
