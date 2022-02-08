@@ -16,6 +16,6 @@ export class AppSettings {
     public static PROJECT_CONSOLE_LINK_V2 = 'admin-v2-base';
     public static CORPORATE_CONSOLE_LINK_V2 = 'corporate-v2-base';
     public static REQUEST_ACCESS_LINK = 'https://docs.google.com/forms/d/e/1FAIpQLSdnTk_9xjk7YoiX_FcPEqsFytsLMcT8OzYUbK6TsYopR1XhdA/viewform';
-    public static CONTRIBUTORS_LEARN_MORE = 'https://docs.linuxfoundation.org/lfx/easycla/contributors';
+    public static CONTRIBUTORS_LEARN_MORE = 'https://docs.linuxfoundation.org/lfx/easycla/v2-current/contributors';
     public static TICKET_URL = 'https://jira.linuxfoundation.org/servicedesk/customer/portal/4/create/143';
 }
