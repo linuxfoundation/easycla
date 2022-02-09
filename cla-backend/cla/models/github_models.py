@@ -376,13 +376,17 @@ class GitHub(repository_service_interface.RepositoryService):
                 _ = int(change_request_id)
                 pull_request = self.get_pull_request(github_repository_id, change_request_id, installation_id)
             except ValueError as ve:
-                cla.log.error(f'{fn} - Invalid PR: {change_request_id} - error: {ve}. Unable to fetch PR from GitHub.')
+                cla.log.error(f'{fn} - Invalid PR: {change_request_id} - error: {ve}. Unable to fetch '
+                              f'PR {change_request_id} from GitHub repository {github_repository_id} '
+                              f'using installation id {installation_id}.')
                 if i <= tries:
                     cla.log.debug(f'{fn} - attempt {i + 1} - waiting to retry...')
                     time.sleep(2)
                     continue
                 else:
-                    cla.log.debug(f'{fn} - attempt {i + 1} - exhausted retries - unable to load PR from GitHub.')
+                    cla.log.warning(f'{fn} - attempt {i + 1} - exhausted retries - unable to load PR '
+                                    f'{change_request_id} from GitHub repository {github_repository_id} '
+                                    f'using installation id {installation_id}.')
                     # TODO: DAD - possibly update the PR status?
                     return
             # Fell through - no error, exit loop and continue on
@@ -403,7 +407,21 @@ class GitHub(repository_service_interface.RepositoryService):
                                 f'id: {github_repository_id} in our DB - repository reference is None - '
                                 'Is this org/repo configured in the Project Console?'
                                 ' Unable to update status.')
+                # Optionally, we could add a comment or add a status to the PR informing the users that the EasyCLA
+                # app/bot is enabled in GitHub (which is why we received the event in the first place), but the
+                # repository is not setup/configured in EasyCLA from the administration console
                 return
+
+            # If the repository is not enabled in our database, we don't process it.
+            if not repository.get_enabled():
+                cla.log.warning(f'{fn} - repository {repository.get_repository_url()} associated with '
+                                f'PR: {pull_request.number} is NOT enabled'
+                                ' - ignoring PR request')
+                # Optionally, we could add a comment or add a status to the PR informing the users that the EasyCLA
+                # app/bot is enabled in GitHub (which is why we received the event in the first place), but the
+                # repository is NOT enabled in the administration console
+                return
+
         except DoesNotExist:
             cla.log.warning(f'{fn} - PR: {pull_request.number}, could not find repository with the '
                             f'repository ID: {github_repository_id}')
@@ -411,11 +429,11 @@ class GitHub(repository_service_interface.RepositoryService):
                             f'repository {github_repository_id} - returning')
             return
 
-        # Get Github Organization name that the repository is configured to.
+        # Get GitHub Organization name that the repository is configured to.
         organization_name = repository.get_repository_organization_name()
         cla.log.debug(f'{fn} - PR: {pull_request.number}, determined github organization is: {organization_name}')
 
-        # Check that the Github Organization exists.
+        # Check that the GitHub Organization exists.
         github_org = GitHubOrg()
         try:
             github_org.load(organization_name)
@@ -982,7 +1000,7 @@ def has_check_previously_failed(pull_request: PullRequest):
             return True, comment
         if 'they must confirm their affiliation' in comment.body:
             return True, comment
-        if 'CLA Missing ID' in comment.body and 'is missing the User' in comment.body:
+        if 'is missing the User' in comment.body:
             return True, comment
     return False, None
 
@@ -1109,7 +1127,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
                           f'signing url: {sign_url}')
             create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
         else:
-            # error condition - should have a least one committer and they would be in one of the above
+            # error condition - should have at least one committer, and they would be in one of the above
             # lists: missing or signed
             state = 'failure'
             # For status, we change the context from author_name to 'communitybridge/cla' or the

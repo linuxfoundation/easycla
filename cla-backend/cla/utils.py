@@ -915,7 +915,9 @@ def assemble_cla_comment(repository_type, installation_id, github_repository_id,
     :type project_version: string
     """
     num_missing = len(missing)
-    missing_ids = list(filter(lambda x: (x[1] is None or (x[1] and x[1][0] is None)), missing))
+    # fails to catch empty list
+    # missing_ids = list(filter(lambda x: (x[1] is None or (x[1] and x[1][0] is None)), missing))
+    missing_ids = list(filter(lambda x: (x[1] is None or len(x[1]) == 0), missing))
     no_user_id = len(missing_ids) > 0
     # check if an unsigned committer has been approved by a CLA Manager, but not associated with a company
     # Logic not supported as we removed the DB query in the caller
