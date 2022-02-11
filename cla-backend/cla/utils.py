@@ -852,21 +852,33 @@ def get_comment_badge(repository_type, all_signed, sign_url, project_version, mi
         badge_hyperlink = os.path.join(badge_hyperlink, "#/")
         badge_hyperlink = append_project_version_to_url(address=badge_hyperlink, project_version=project_version)
         alt = "CLA Signed"
+        return (f'<a href="{badge_hyperlink}">'
+                f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328" >'
+                '</a><br/>')
     else:
+        badge_hyperlink = sign_url
+        text = ''
         if missing_user_id:
             badge_url = f'{CLA_LOGO_URL}/cla-missing-id.svg'
             alt = 'CLA Missing ID'
-        elif is_approved_by_manager:
+            text = (f'{text} <a href="{badge_hyperlink}">'
+                    f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328">'
+                    '</a>')
+
+        if is_approved_by_manager:
             badge_url = f'{CLA_LOGO_URL}/cla-confirmation-needed.svg'
             alt = 'CLA Confirmation Needed'
+            text = (f'{text} <a href="{badge_hyperlink}">'
+                    f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328">'
+                    '</a>')
         else:
             badge_url = f'{CLA_LOGO_URL}/cla-not-signed.svg'
             alt = "CLA Not Signed"
-        badge_hyperlink = sign_url
-    # return '[![CLA Check](' + badge_url + ')](' + badge_hyperlink + ')'
-    return (f'<a href="{badge_hyperlink}">'
-            f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328" >'
-            '</a><br/>')
+            text = (f'{text} <a href="{badge_hyperlink}">'
+                    f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328">'
+                    '</a>')
+
+        return f'{text}<br/>'
 
 
 def assemble_cla_status(author_name, signed=False):
