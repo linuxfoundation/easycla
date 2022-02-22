@@ -35,16 +35,18 @@ properties:
     format: uri
   groupIdCcla:
     type: string
-    description: the LDAP group ID for CCLA
+    description: the LDAP group ID for CCLA encoded as a string value
     example: '1902'
-    minLength: 3
+    minLength: 1
     maxLength: 12
+    pattern: ^[1-9]\d{0,11}$
   groupIdIcla:
     type: string
-    description: the LDAP group ID for ICLA
+    description: the LDAP group ID for ICLA encoded as a string value
     example: '1903'
-    minLength: 3
+    minLength: 1
     maxLength: 12
+    pattern: ^[1-9]\d{0,11}$
   groupNameCcla:
     type: string
     description: the LDAP group name for CCLA
