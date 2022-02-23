@@ -24,7 +24,8 @@ from cla.middleware import CLALogMiddleware
 from cla.models import DoesNotExist
 from cla.models.dynamo_models import User, Signature, Repository, \
     Company, Project, Document, \
-    GitHubOrg, Gerrit, UserPermissions, Event, CompanyInvite, ProjectCLAGroup, CCLAWhitelistRequest, CLAManagerRequest, GitlabOrg
+    GitHubOrg, Gerrit, UserPermissions, Event, CompanyInvite, ProjectCLAGroup, CCLAWhitelistRequest, CLAManagerRequest, \
+    GitlabOrg
 from cla.models.event_types import EventType
 
 API_BASE_URL = os.environ.get('CLA_API_BASE', '')
@@ -669,9 +670,14 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
             cla.log.debug(f'{fn} - CCLA signature check - located employee acknowledgement - '
                           f'signature id: {employee_signature.get_signature_id()}')
 
-            cla.log.debug(f'{fn} - CCLA signature check - loading company record by id: {company_id}...')
             company = get_company_instance()
-            company.load(company_id)
+            try:
+                cla.log.debug(f'{fn} - CCLA signature check - loading company record by id: {company_id}...')
+                company.load(company_id)
+            except DoesNotExist as err:
+                cla.log.debug(f'{fn} - CCLA signature check failed - user is NOT associated with a valid company - '
+                              f'company with id does not exist: {company_id}.')
+                return False
 
             # Get CCLA signature of company to access whitelist
             cla.log.debug(f'{fn} - CCLA signature check - loading signed CCLA for project|company, '
@@ -1216,7 +1222,7 @@ def get_active_signature_return_url(user_id, metadata=None):
     if metadata is None:
         cla.log.warning('Could not find active signature for user {}, return URL request failed'.format(user_id))
         return None
-    
+
     # Factor in Gitlab flow process
     if "merge_request_id" in metadata.keys():
         return metadata['return_url']
@@ -1254,6 +1260,7 @@ def get_installation_id_from_github_repository(github_repository_id):
     # Get this organization's installation ID
     return organization.get_organization_installation_id()
 
+
 def get_organization_id_from_gitlab_repository(gitlab_repository_id):
     # Get repository ID that references the gitlab ID.
     try:
@@ -1267,8 +1274,8 @@ def get_organization_id_from_gitlab_repository(gitlab_repository_id):
     except DoesNotExist:
         cla.log.debug(f"unable to get gitlab org by name: {repository.get_repository_organization_name()}")
         return None
-    
-    #return GitLab organization ID
+
+    # return GitLab organization ID
     return gitLabOrg.get_organization_id()
 
 
@@ -1313,6 +1320,7 @@ def get_individual_signature_callback_url(user_id, metadata=None):
     return os.path.join(API_BASE_URL, 'v2/signed/individual', str(installation_id), str(metadata['repository_id']),
                         str(metadata['pull_request_id']))
 
+
 def get_individual_signature_callback_url_gitlab(user_id, metadata=None):
     """
     Helper function to get a user's active signature callback URL.
@@ -1341,7 +1349,8 @@ def get_individual_signature_callback_url_gitlab(user_id, metadata=None):
                       gitlab_repository_id)
         return None
 
-    return os.path.join(API_BASE_URL, 'v2/signed/gitlab/individual',str(user_id), str(organization_id), str(metadata['repository_id']),
+    return os.path.join(API_BASE_URL, 'v2/signed/gitlab/individual', str(user_id), str(organization_id),
+                        str(metadata['repository_id']),
                         str(metadata['merge_request_id']))
 
 
@@ -1404,8 +1413,9 @@ def lookup_user_gitlab_username(user_gitlab_id: int) -> Optional[str]:
         return gitlab_user['id']
     else:
         cla.log.warning('Malformed HTTP response from GitLab - expecting "id" attribute '
-                            f'- response: {gitlab_user}')
+                        f'- response: {gitlab_user}')
         return None
+
 
 def lookup_user_gitlab_id(user_gitlab_username: str) -> Optional[str]:
     """
@@ -1426,7 +1436,7 @@ def lookup_user_gitlab_id(user_gitlab_username: str) -> Optional[str]:
         return gitlab_user['username']
     else:
         cla.log.warning('Malformed HTTP response from GitLab - expecting "username" attribute '
-                            f'- response: {gitlab_user}')
+                        f'- response: {gitlab_user}')
         return None
 
 
@@ -1510,6 +1520,7 @@ def lookup_github_organizations(github_username: str):
         cla.log.warning('Could not get user github org: {}'.format(err))
         return {'error': 'Could not get user github org: {}'.format(err)}
     return [github_org['login'] for github_org in r.json()]
+
 
 def lookup_gitlab_org_members(organization_id):
     # Use the v2 Endpoint thats a wrapper for Gitlab Group member query
