@@ -102,7 +102,7 @@ class TestGitHubModels(unittest.TestCase):
 
     def test_handle_invalid_author(self) -> None:
         """
-        Test case handling non existent author tagged to a given commit
+        Test case handling non-existent author tagged to a given commit
         """
         project = Project()
         author_info = UserCommitSummary('fake_sha', None, None, None, None, False, False)

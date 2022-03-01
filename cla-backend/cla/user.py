@@ -5,6 +5,7 @@
 user.py contains the user class and hug directive.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -76,6 +77,18 @@ class UserCommitSummary:
 
     def is_valid_user(self) -> bool:
         return self.author_id is not None and (self.author_login is not None or self.author_name is not None)
+
+    def get_user_info(self) -> str:
+        user_info = ''
+        if self.author_login:
+            user_info += f'login: {self.author_login} / '
+        if self.author_name:
+            user_info += f'name: {self.author_name} / '
+        if self.author_email:
+            user_info += f'email: {self.author_email}'
+
+        pattern = r'/ $'
+        return re.sub(pattern, '', user_info)
 
     def get_display_text(self) -> str:
         text = ''
