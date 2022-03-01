@@ -372,7 +372,7 @@ def handle_pull_request_comment_event(action: str, body: dict):
             result = service.process_easycla_command_comment(body)
             return result
         except ValueError as ex:
-            cla.log.warning(f"process_easycla_command_comment failed with : {str(ex)}")
+            cla.log.debug(f'{func_name} - ignoring github pull_request comment: {str(ex)}')
             return None
     else:
         cla.log.debug(f'{func_name} - ignoring github pull_request comment activity for action: {action}')

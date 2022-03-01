@@ -5,9 +5,14 @@
 user.py contains the user class and hug directive.
 """
 
+from dataclasses import dataclass
+from typing import Optional
+
 from hug.directives import _built_in_directive
-import cla
 from jose import jwt
+
+import cla
+
 
 @_built_in_directive
 def cla_user(default=None, request=None, **kwargs):
@@ -18,7 +23,7 @@ def cla_user(default=None, request=None, **kwargs):
         cla.log.error('Error reading headers')
         return default
 
-    bearer_token = headers.get('Authorization') or headers.get('AUTHORIZATION') 
+    bearer_token = headers.get('Authorization') or headers.get('AUTHORIZATION')
 
     if bearer_token is None:
         cla.log.error('Error reading authorization header')
@@ -49,3 +54,53 @@ class CLAUser(object):
         self.family_name = data.get('family_name', None)
         self.email = data.get('email', None)
         self.roles = data.get('realm_access', {}).get('roles', [])
+
+
+@dataclass
+class UserCommitSummary:
+    commit_sha: str
+    author_id: Optional[int]  # numeric ID of the user
+    author_login: Optional[str]  # login identifier of the user
+    author_name: Optional[str]  # english name of the user, typically First name Last name format.
+    author_email: Optional[str]  # public email address of the user
+    authorized: bool
+    affiliated: bool
+
+    def __str__(self) -> str:
+        return (f'User Commit Summary, '
+                f'commit SHA: {self.commit_sha}, '
+                f'author id: {self.author_id}, '
+                f'login: {self.author_login}, '
+                f'name: {self.author_name}, '
+                f'email: {self.author_email}.')
+
+    def is_valid_user(self) -> bool:
+        return self.author_id is not None and (self.author_login is not None or self.author_name is not None)
+
+    def get_display_text(self) -> str:
+        text = ''
+
+        if not self.author_id:
+            return f'{self.author_email} is not linked to this commit.\n'
+
+        # Build up the user text
+        if self.author_login:
+            text += f'login: {self.author_login} / '
+        if self.author_name:
+            text += f'name: {self.author_name} / '
+        if self.author_email:
+            text += f'email: {self.author_email} '
+
+        if not self.is_valid_user():
+            return 'Invalid author details.\n'
+
+        if self.authorized and self.affiliated:
+            text += 'is authorized.\n'
+            return text
+
+        if self.affiliated:
+            text += 'is associated with a company, but not on an approval list.\n'
+        else:
+            text += 'is not associated with a company.\n'
+
+        return text

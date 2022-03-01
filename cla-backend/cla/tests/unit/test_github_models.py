@@ -2,14 +2,15 @@
 # SPDX-License-Identifier: MIT
 import logging
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 from github import Github
 
 import cla
-from cla.models.github_models import get_pull_request_commit_authors, handle_commit_from_user, MockGitHub
 from cla.models.dynamo_models import Signature, Project
 from cla.models.github_models import GitHub as GithubModel
+from cla.models.github_models import get_pull_request_commit_authors, handle_commit_from_user, MockGitHub
+from cla.user import UserCommitSummary
 
 
 class TestGitHubModels(unittest.TestCase):
@@ -56,7 +57,7 @@ class TestGitHubModels(unittest.TestCase):
         commit_authors = get_pull_request_commit_authors(pr)
         # cla.log.info("Result: {}".format(commit_authors))
         # cla.log.info([author_info[1] for commit, author_info in commit_authors])
-        self.assertTrue(4779759 in [author_info[0] for commit, author_info in commit_authors])
+        self.assertTrue(4779759 in [user_commit_summary.author_id for user_commit_summary in commit_authors])
 
     def test_commit_authors_no_named_user(self) -> None:
         """
@@ -89,26 +90,27 @@ class TestGitHubModels(unittest.TestCase):
         self.mock_user_get.return_value.get_user_by_email.return_value = None
         self.mock_signature_get.return_value.get_signatures_by_project.return_value = [Signature()]
         self.mock_utils_get.return_value.is_approved.return_value = True
+        user_commit_summary = UserCommitSummary('fake_sha', 123, 'foo', None, 'foo@gmail.com', True, True)
         missing = []
         signed = []
         project = Project()
         project.set_project_id('fake_project_id')
-        handle_commit_from_user(project, 'fake_sha', (123, 'foo', 'foo@gmail.com'), signed, missing)
+        handle_commit_from_user(project, user_commit_summary, signed, missing)
         # We commented out this functionality for now - re-enable if we add it back
-        # self.assertListEqual(missing, [('fake_sha', [123, 'foo', 'foo@gmail.com', True])])
+        self.assertEqual(missing, [user_commit_summary])
         self.assertEqual(signed, [])
-    
+
     def test_handle_invalid_author(self) -> None:
         """
-        Test case handling non existant author tagged to a given commit
+        Test case handling non existent author tagged to a given commit
         """
         project = Project()
-        author_info = None
-        signed = [] 
+        author_info = UserCommitSummary('fake_sha', None, None, None, None, False, False)
+        signed = []
         missing = []
-        handle_commit_from_user(project, 'fake_sha', author_info, signed, missing)
+        handle_commit_from_user(project, author_info, signed, missing)
         self.assertEqual(signed, [])
-        self.assertEqual(missing, [('fake_sha', [])])
+        self.assertEqual(missing, [author_info])
 
 
 class TestGithubModelsPrComment(unittest.TestCase):

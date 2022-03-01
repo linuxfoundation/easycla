@@ -27,6 +27,7 @@ from cla.models.dynamo_models import User, Signature, Repository, \
     GitHubOrg, Gerrit, UserPermissions, Event, CompanyInvite, ProjectCLAGroup, CCLAWhitelistRequest, CLAManagerRequest, \
     GitlabOrg
 from cla.models.event_types import EventType
+from cla.user import UserCommitSummary
 
 API_BASE_URL = os.environ.get('CLA_API_BASE', '')
 CLA_LOGO_URL = os.environ.get('CLA_BUCKET_LOGO_URL', '')
@@ -906,7 +907,8 @@ def assemble_cla_status(author_name, signed=False):
     return author_name, 'Missing CLA Authorization.'
 
 
-def assemble_cla_comment(repository_type, installation_id, github_repository_id, change_request_id, signed, missing,
+def assemble_cla_comment(repository_type, installation_id, github_repository_id, change_request_id,
+                         signed: List[UserCommitSummary], missing: List[UserCommitSummary],
                          project_version):
     """
     Helper function to generate a CLA comment based on a a change request.
@@ -923,20 +925,21 @@ def assemble_cla_comment(repository_type, installation_id, github_repository_id,
     :type github_repository_id: int
     :param change_request_id: The repository service's ID of this change request.
     :type change_request_id: id
-    :param signed: The list of commit hashes and authors that have signed an signature for this
+    :param signed: The list of user commit summary objects indicating which authors that have signed an signature for
+        this change request.
+    :type signed: List[UserCommitSummary]
+    :param missing: The list of user commit summary objects indicating which authors have not signed for this
         change request.
-    :type signed: [(string, string)]
-    :param missing: The list of commit hashes and authors that have not signed for this
-        change request.
-    :type missing: [(string, list)]
+    :type missing: List[UserCommitSummary]
     :param project_version: Project version associated with PR comment
     :type project_version: string
     """
-    num_missing = len(missing)
-    # fails to catch empty list
-    # missing_ids = list(filter(lambda x: (x[1] is None or (x[1] and x[1][0] is None)), missing))
-    missing_ids = list(filter(lambda x: (x[1] is None or len(x[1]) == 0), missing))
-    no_user_id = len(missing_ids) > 0
+
+    # missing_ids = list(filter(lambda x: (x[1] is None or len(x[1]) == 0), missing))
+
+    # Test to see if any of the users in the missing category are missing their user id
+    no_user_id = len(list(filter(lambda x: (x.author_id is None), missing))) > 0
+
     # check if an unsigned committer has been approved by a CLA Manager, but not associated with a company
     # Logic not supported as we removed the DB query in the caller
     # approved_ids = list(filter(lambda x: len(x[1]) == 4 and x[1][3] is True, missing))
@@ -944,7 +947,7 @@ def assemble_cla_comment(repository_type, installation_id, github_repository_id,
     sign_url = get_full_sign_url(repository_type, installation_id, github_repository_id, change_request_id,
                                  project_version)
     comment = get_comment_body(repository_type, sign_url, signed, missing)
-    all_signed = num_missing == 0
+    all_signed = len(missing) == 0
     badge = get_comment_badge(
         repository_type=repository_type,
         all_signed=all_signed,
@@ -1004,7 +1007,7 @@ def get_comment_body(repository_type, sign_url, signed, missing):
                 committers[name] = []
             committers[name].append(commit)
             # Check case for whitelisted unsigned user
-            if len(author) == 4:
+            if len(author) == 5:
                 committers[name].append(True)
 
         # Print author commit information.

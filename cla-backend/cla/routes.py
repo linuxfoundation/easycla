@@ -1646,8 +1646,7 @@ def github_app_activity(body, request, response):
             cla.log.error(f'{fn} - v4 golang api failed with : 500 : {ex}')
             response.status = HTTP_500
             return {"status": f'v4_easycla_github_activity failed {ex}'}
-    cla.log.debug(f'{fn} - not forwarding event type: \'{event_type}\' with action: \'{action}\'.'
-                  'Will handle it here...')
+    cla.log.debug(f'{fn} - not forwarding event type: \'{event_type}\' with action: \'{action}\'.')
 
     if event_type is None:
         cla.log.error(f"{fn} - unable to determine the event type from request headers: {request.headers}")
