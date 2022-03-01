@@ -994,12 +994,12 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             committers[author_info].append(user_commit_summary)
 
         # Print author commit information.
-        committers_comment += "<ul>"
+        committers_comment += '<ul>'
         for author_info, user_commit_summaries in committers.items():
             # build a quick list of just the commit hash values
             commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
             committers_comment += f'<li>{success} {author_info} ({", ".join(commit_shas)})</li>'
-        committers_comment += "</ul>"
+        committers_comment += '</ul>'
 
     if num_missing > 0:
         support_url = "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
@@ -1009,7 +1009,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             if user_commit_summary.is_valid_user():
                 author_info = user_commit_summary.get_user_info()
             else:
-                author_info = "Unknown"
+                author_info = 'Unknown'
 
             if author_info not in committers:
                 committers[author_info] = []
@@ -1018,30 +1018,29 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             committers[author_info].append(user_commit_summary)
 
         # Print author commit information.
-        committers_comment += "<ul>"
+        committers_comment += '<ul>'
         github_help_url = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
         for author_info, user_commit_summaries in committers.items():
-            if author_info == "Unknown":
+            if author_info == 'Unknown':
                 # build a quick list of just the commit hash values
                 commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                 committers_comment += (
                         f"<li> {failed} The commit ({' ,'.join(commit_shas)}) "
-                        + f"is missing the User's ID, preventing the EasyCLA check. "
-                        + f"<a href='{github_help_url}' target='_blank'>Consult GitHub Help</a> to resolve."
-                        + f"For further assistance with EasyCLA, "
-                        + f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
-                        + "</li>"
-                )
+                        f"is missing the User's ID, preventing the EasyCLA check. "
+                        f"<a href='{github_help_url}' target='_blank'>Consult GitHub Help</a> to resolve."
+                        f'For further assistance with EasyCLA, '
+                        f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
+                        '</li>')
             else:
-                missing_affiliation = [user_commit_summary.affiliation for user_commit_summary in user_commit_summaries
-                                       if not user_commit_summary.affiliation]
-                if len(missing_affiliation) > 0:
+                missing_affiliations = [user_commit_summary.affiliated for user_commit_summary in user_commit_summaries
+                                       if not user_commit_summary.affiliated]
+                if len(missing_affiliations) > 0:
                     # build a quick list of just the commit hash values for users missing company affiliations
                     commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries
-                                   if not user_commit_summary.affiliation]
-                    cla.log.info(f"{fn} SHAs for users with missing company affiliations: {commit_shas}")
+                                   if not user_commit_summary.affiliated]
+                    cla.log.info(f'{fn} SHAs for users with missing company affiliations: {commit_shas}')
                     committers_comment += (
-                        f'<li>{author_info} ({" ,".join(commit_shas)}) '
+                        f'<li>{failed} {author_info} ({" ,".join(commit_shas)}) '
                         f'is authorized, but they must confirm their affiliation with their company. '
                         f'Start the authorization process '
                         f"<a href='{sign_url}' target='_blank'> by clicking here</a>, click \"Corporate\","

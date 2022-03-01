@@ -2,14 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 from unittest.mock import patch, Mock
-import unittest
 
 import pytest
 
+from cla.controllers import user as user_controller
 from cla.models.dynamo_models import User, Project, Company, CCLAWhitelistRequest, CompanyInvite
 from cla.models.event_types import EventType
-from cla.controllers import user as user_controller
-from cla.auth import AuthUser
 
 
 @pytest.fixture

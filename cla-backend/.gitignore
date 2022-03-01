@@ -14,4 +14,5 @@ _env.json
 .mypy_cache
 .venv
 .vscode/
+.coverage*
 
