@@ -793,6 +793,7 @@ def handle_commit_from_user(project, user_commit_summary: UserCommitSummary, sig
                 # Does this user have a signed signature for this project? If so, add to the signed list and return,
                 # no reason to continue looking
                 if cla.utils.user_signed_project_signature(user, project):
+                    user_commit_summary.authorized = True
                     signed.append(user_commit_summary)
                     return
 
@@ -850,6 +851,7 @@ def handle_commit_from_user(project, user_commit_summary: UserCommitSummary, sig
         # Does this user have a signed signature for this project? If so, add to the signed list and return,
         # no reason to continue looking
         if cla.utils.user_signed_project_signature(user, project):
+            user_commit_summary.authorized = True
             signed.append(user_commit_summary)
             return
 
@@ -925,7 +927,7 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
         if commit.author:
             try:
                 commit_author_summary = UserCommitSummary(
-                    pull_request.number,
+                    commit.sha,
                     commit.author.id,
                     commit.author.login,
                     commit.author.name,
@@ -941,7 +943,7 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
                     # only has date, name and email attributes - no ID attribute/value
                     # https://pygithub.readthedocs.io/en/latest/github_objects/GitAuthor.html
                     commit_author_summary = UserCommitSummary(
-                        pull_request.number,
+                        commit.sha,
                         None,
                         None,
                         commit.commit.author.name,
@@ -955,7 +957,7 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
                     commit_authors.append(commit_author_summary)
                 except (GithubException, IncompletableObject):
                     commit_author_summary = UserCommitSummary(
-                        pull_request.number,
+                        commit.sha,
                         None,
                         None,
                         None,
@@ -967,7 +969,7 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
                     commit_authors.append(commit_author_summary)
         else:
             commit_author_summary = UserCommitSummary(
-                pull_request.number,
+                commit.sha,
                 None,
                 None,
                 None,

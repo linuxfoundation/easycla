@@ -999,7 +999,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             # build a quick list of just the commit hash values
             commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
             cla.log.info(f'{fn} SHAs for signed users: {commit_shas}')
-            committers_comment += f'<li>{success} {author_info} ({", ".join(str(commit_shas))})</li>'
+            committers_comment += f'<li>{success} {author_info} ({", ".join(commit_shas)})</li>'
         committers_comment += '</ul>'
 
     if num_missing > 0:
@@ -1026,7 +1026,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                 # build a quick list of just the commit hash values
                 commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                 committers_comment += (
-                        f"<li> {failed} The commit ({' ,'.join(str(commit_shas))}) "
+                        f"<li> {failed} The commit ({' ,'.join(commit_shas)}) "
                         f"is missing the User's ID, preventing the EasyCLA check. "
                         f"<a href='{github_help_url}' target='_blank'>Consult GitHub Help</a> to resolve."
                         f'For further assistance with EasyCLA, '
@@ -1041,7 +1041,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                                    if not user_commit_summary.affiliated]
                     cla.log.info(f'{fn} SHAs for users with missing company affiliations: {commit_shas}')
                     committers_comment += (
-                        f'<li>{failed} {author_info} ({" ,".join(str(commit_shas))}) '
+                        f'<li>{failed} {author_info} ({" ,".join(commit_shas)}) '
                         f'is authorized, but they must confirm their affiliation with their company. '
                         f'Start the authorization process '
                         f"<a href='{sign_url}' target='_blank'> by clicking here</a>, click \"Corporate\","
