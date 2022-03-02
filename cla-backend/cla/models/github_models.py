@@ -1076,7 +1076,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
             if previously_failed:
                 cla.log.debug(f'{fn} - Found previously failed checks - updating CLA comment in PR.')
                 comment.edit(body)
-            cla.log.debug(f'{fn} - EasyCLA App checks pass for PR: {pull_request.numbe} with authors: {signed}')
+            cla.log.debug(f'{fn} - EasyCLA App checks pass for PR: {pull_request.number} with authors: {signed}')
         else:
             # Per Issue #167, only add a comment if check fails
             # update_cla_comment(pull_request, body)
