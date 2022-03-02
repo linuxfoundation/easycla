@@ -84,8 +84,8 @@ class UserCommitSummary:
             user_info += f'login: {self.author_login} / '
         if self.author_name:
             user_info += f'name: {self.author_name} / '
-        if self.author_email:
-            user_info += f'email: {self.author_email}'
+        # if self.author_email:
+        #     user_info += f'email: {self.author_email}'
 
         pattern = r'/ $'
         return re.sub(pattern, '', user_info)
