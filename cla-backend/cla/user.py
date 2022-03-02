@@ -91,29 +91,22 @@ class UserCommitSummary:
         return re.sub(pattern, '', user_info)
 
     def get_display_text(self) -> str:
-        text = ''
 
         if not self.author_id:
             return f'{self.author_email} is not linked to this commit.\n'
 
-        # Build up the user text
-        if self.author_login:
-            text += f'login: {self.author_login} / '
-        if self.author_name:
-            text += f'name: {self.author_name} / '
-        if self.author_email:
-            text += f'email: {self.author_email} '
+        text = self.get_user_info()
 
         if not self.is_valid_user():
             return 'Invalid author details.\n'
 
         if self.authorized and self.affiliated:
-            text += 'is authorized.\n'
+            text += ' is authorized.\n'
             return text
 
         if self.affiliated:
-            text += 'is associated with a company, but not on an approval list.\n'
+            text += ' is associated with a company, but not on an approval list.\n'
         else:
-            text += 'is not associated with a company.\n'
+            text += ' is not associated with a company.\n'
 
         return text

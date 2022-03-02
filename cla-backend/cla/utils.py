@@ -977,6 +977,11 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
     committers_comment = ""
     num_signed = len(signed)
     num_missing = len(missing)
+    text = ''
+
+    # Start of the HTML to render the list of committers
+    if len(signed) > 0 or len(missing) > 0:
+        committers_comment += '<ul>'
 
     if num_signed > 0:
         # Group commits by author.
@@ -994,17 +999,16 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             committers[author_info].append(user_commit_summary)
 
         # Print author commit information.
-        committers_comment += '<ul>'
         for author_info, user_commit_summaries in committers.items():
             # build a quick list of just the commit hash values
             commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
             cla.log.info(f'{fn} SHAs for signed users: {commit_shas}')
             committers_comment += f'<li>{success} {author_info} ({", ".join(commit_shas)})</li>'
-        committers_comment += '</ul>'
 
     if num_missing > 0:
         support_url = "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
-        # Group commits by author.
+
+        # Build a lookup table to group all the commits by author.
         committers = {}
         for user_commit_summary in missing:
             if user_commit_summary.is_valid_user():
@@ -1018,16 +1022,15 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             # user commit summary includes the author information and the corresponding commit hash
             committers[author_info].append(user_commit_summary)
 
-        # Print author commit information.
-        committers_comment += '<ul>'
+        # Print the author commit information.
         github_help_url = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
         for author_info, user_commit_summaries in committers.items():
             if author_info == 'Unknown':
                 # build a quick list of just the commit hash values
                 commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                 committers_comment += (
-                        f"<li> {failed} The commit ({' ,'.join(commit_shas)}) "
-                        f"is missing the User's ID, preventing the EasyCLA check. "
+                        f"<li> {failed} The commit ({' ,'.join(commit_shas)}). "
+                        f"This user is missing the User's ID, preventing the EasyCLA check. "
                         f"<a href='{github_help_url}' target='_blank'>Consult GitHub Help</a> to resolve."
                         f'For further assistance with EasyCLA, '
                         f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
@@ -1041,8 +1044,8 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                                    if not user_commit_summary.affiliated]
                     cla.log.info(f'{fn} SHAs for users with missing company affiliations: {commit_shas}')
                     committers_comment += (
-                        f'<li>{failed} {author_info} ({" ,".join(commit_shas)}) '
-                        f'is authorized, but they must confirm their affiliation with their company. '
+                        f'<li>{failed} {author_info} ({" ,".join(commit_shas)}). '
+                        f'This user is authorized, but they must confirm their affiliation with their company. '
                         f'Start the authorization process '
                         f"<a href='{sign_url}' target='_blank'> by clicking here</a>, click \"Corporate\","
                         f'select the appropriate company from the list, then confirm '
@@ -1056,15 +1059,19 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                     committers_comment += (
                             f'<li>'
                             f"<a href='{sign_url}' target='_blank'>{failed}</a> - "
-                            f"{author_info} The commit ({' ,'.join(commit_shas)}) is not authorized under a signed CLA. "
+                            f"{author_info}. The commit ({' ,'.join(commit_shas)}) "
+                            "is not authorized under a signed CLA. "
                             f"<a href='{sign_url}' target='_blank'>Please click here to be authorized</a>. "
                             f"For further assistance with EasyCLA, "
                             f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
                             "</li>")
-        committers_comment += "</ul>"
-        return committers_comment
 
-    text = "The committers are authorized under a signed CLA."
+    if len(signed) > 0 or len(missing) > 0:
+        committers_comment += '</ul>'
+
+    if len(signed) > 0 and len(missing) == 0:
+        text = "The committers listed above are authorized under a signed CLA."
+
     return text + committers_comment
 
 
