@@ -985,7 +985,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             if user_commit_summary.is_valid_user():
                 author_info = user_commit_summary.get_user_info()
             else:
-                author_info = "Unknown"
+                author_info = 'Unknown'
 
             if author_info not in committers:
                 committers[author_info] = []
@@ -998,7 +998,8 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
         for author_info, user_commit_summaries in committers.items():
             # build a quick list of just the commit hash values
             commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
-            committers_comment += f'<li>{success} {author_info} ({", ".join(commit_shas)})</li>'
+            cla.log.info(f'{fn} SHAs for signed users: {commit_shas}')
+            committers_comment += f'<li>{success} {author_info} ({", ".join(str(commit_shas))})</li>'
         committers_comment += '</ul>'
 
     if num_missing > 0:

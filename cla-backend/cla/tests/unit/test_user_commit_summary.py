@@ -29,10 +29,14 @@ class TestUserCommitSummary(unittest.TestCase):
         self.assertFalse(t.is_valid_user())
 
     def test_user_commit_summary_get_comment_body(self) -> None:
-        s = UserCommitSummary("some_sha", 1234, 'login_value', 'author name', 'foo@bar.com', True, True)
-        signed = [s]
+        s1 = UserCommitSummary("abc1234xyz-123", 1234, 'login_value', 'author name', 'foo@bar.com', True, True)
+        s2 = UserCommitSummary("abc1234xyz-456", 1234, 'login_value', 'author name', 'foo@bar.com', True, True)
+        signed = [s1, s2]
+
         m = UserCommitSummary("some_other_sha", 123456, 'login_value2', 'author name2', 'foo2@bar.com', False, False)
         missing = [m]
+
         body = get_comment_body('github', 'https://foo.com', signed, missing)
+        print(f'body: {body}')
         self.assertTrue(':white_check_mark:' in body)
         self.assertTrue(':x:' in body)
