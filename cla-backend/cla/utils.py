@@ -1029,7 +1029,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                 # build a quick list of just the commit hash values
                 commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                 committers_comment += (
-                        f"<li> {failed} The commit ({' ,'.join(commit_shas)}). "
+                        f"<li> {failed} The commit ({', '.join(commit_shas)}). "
                         f"This user is missing the User's ID, preventing the EasyCLA check. "
                         f"<a href='{github_help_url}' target='_blank'>Consult GitHub Help</a> to resolve."
                         f'For further assistance with EasyCLA, '
@@ -1044,7 +1044,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                                    if not user_commit_summary.affiliated]
                     cla.log.info(f'{fn} SHAs for users with missing company affiliations: {commit_shas}')
                     committers_comment += (
-                        f'<li>{failed} {author_info} ({" ,".join(commit_shas)}). '
+                        f'<li>{failed} {author_info} ({", ".join(commit_shas)}). '
                         f'This user is authorized, but they must confirm their affiliation with their company. '
                         f'Start the authorization process '
                         f"<a href='{sign_url}' target='_blank'> by clicking here</a>, click \"Corporate\","
@@ -1059,7 +1059,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                     committers_comment += (
                             f'<li>'
                             f"<a href='{sign_url}' target='_blank'>{failed}</a> - "
-                            f"{author_info}. The commit ({' ,'.join(commit_shas)}) "
+                            f"{author_info}. The commit ({', '.join(commit_shas)}) "
                             "is not authorized under a signed CLA. "
                             f"<a href='{sign_url}' target='_blank'>Please click here to be authorized</a>. "
                             f"For further assistance with EasyCLA, "
