@@ -78,10 +78,10 @@ class UserCommitSummary:
     def is_valid_user(self) -> bool:
         return self.author_id is not None and (self.author_login is not None or self.author_name is not None)
 
-    def get_user_info(self) -> str:
+    def get_user_info(self, tag_user:bool = False) -> str:
         user_info = ''
         if self.author_login:
-            user_info += f'login: {self.author_login} / '
+            user_info += f'login: {"@" if tag_user else ""}{self.author_login} / '
         if self.author_name:
             user_info += f'name: {self.author_name} / '
         # if self.author_email:

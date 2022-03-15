@@ -1011,8 +1011,9 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
         # Build a lookup table to group all the commits by author.
         committers = {}
         for user_commit_summary in missing:
+            tag_user = True
             if user_commit_summary.is_valid_user():
-                author_info = user_commit_summary.get_user_info()
+                author_info = user_commit_summary.get_user_info(tag_user)
             else:
                 author_info = 'Unknown'
 
@@ -1047,7 +1048,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                         f'<li>{failed} {author_info} ({", ".join(commit_shas)}). '
                         f'This user is authorized, but they must confirm their affiliation with their company. '
                         f'Start the authorization process '
-                        f"<a href='{sign_url}' target='_blank'> by clicking here</a>, click \"Corporate\","
+                        f"<a href='{sign_url}' target='_blank'> by clicking here</a>, click \"Corporate\", "
                         f'select the appropriate company from the list, then confirm '
                         f'your affiliation on the page that appears. '
                         f'For further assistance with EasyCLA, '

@@ -37,6 +37,27 @@ class TestUserCommitSummary(unittest.TestCase):
         missing = [m]
 
         body = get_comment_body('github', 'https://foo.com', signed, missing)
-        print(f'body: {body}')
         self.assertTrue(':white_check_mark:' in body)
         self.assertTrue(':x:' in body)
+
+    def test_user_commit_summary_tag_not_in_get_comment_body(self) -> None:
+        s1 = UserCommitSummary("abc1234xyz-123", 1234, 'login_value', 'author name', 'foo@bar.com', True, True)
+        s2 = UserCommitSummary("abc1234xyz-456", 1234, 'login_value', 'author name', 'foo@bar.com', True, True)
+        signed = [s1, s2]
+
+        missing = []
+
+        body = get_comment_body('github', 'https://foo.com', signed, missing)
+        self.assertTrue(':white_check_mark:' in body)
+        self.assertTrue('login_value' in body)
+        self.assertFalse('@login_value' in body)  # users should not be tagged in signed use case
+
+    def test_user_commit_summary_tag_in_get_comment_body(self) -> None:
+        signed = []
+
+        m = UserCommitSummary("some_other_sha", 123456, 'login_value2', 'author name2', 'foo2@bar.com', False, False)
+        missing = [m]
+
+        body = get_comment_body('github', 'https://foo.com', signed, missing)
+        self.assertTrue(':x:' in body)
+        self.assertTrue('@login_value2' in body)  # users should be tagged in missing use case
