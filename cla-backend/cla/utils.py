@@ -1036,9 +1036,8 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                     f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
                     '</li>')
             else:
-                missing_affiliations = [user_commit_summary.affiliated and user_commit_summary.authorized for
-                                        user_commit_summary in user_commit_summaries
-                                        if not user_commit_summary.affiliated]
+                missing_affiliations = [user_commit_summary for user_commit_summary in user_commit_summaries
+                                        if not user_commit_summary.affiliated and user_commit_summary.authorized]
                 if len(missing_affiliations) > 0:
                     # build a quick list of just the commit hash values for users missing company affiliations
                     commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries
