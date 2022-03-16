@@ -1036,9 +1036,10 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
     # knows if it is pass/fail.
     # Create check run for users that haven't yet signed and/or affiliated
     if missing:
-        text = ""
+        text = ''
+        help_url = ''
         for user_commit_summary in missing:
-            # Check for valid github id
+            # Check for valid GitHub id
             # old tuple: (sha, (author_id, author_login_or_name, author_email, optionalTrue))
             if not user_commit_summary.is_valid_user():
                 help_url = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
@@ -1051,7 +1052,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
             if user_commit_summary.commit_sha != last_commit.sha:
                 continue
 
-            text += user_commit_summary.get_display_text()
+            text += user_commit_summary.get_display_text(tag_user=True)
 
         payload = {
             "name": "CLA check",

@@ -988,7 +988,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
         committers = {}
         for user_commit_summary in signed:
             if user_commit_summary.is_valid_user():
-                author_info = user_commit_summary.get_user_info()
+                author_info = user_commit_summary.get_user_info(tag_user=False)
             else:
                 author_info = 'Unknown'
 
@@ -1011,9 +1011,8 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
         # Build a lookup table to group all the commits by author.
         committers = {}
         for user_commit_summary in missing:
-            tag_user = True
             if user_commit_summary.is_valid_user():
-                author_info = user_commit_summary.get_user_info(tag_user)
+                author_info = user_commit_summary.get_user_info(tag_user=True)
             else:
                 author_info = 'Unknown'
 
@@ -1030,16 +1029,17 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                 # build a quick list of just the commit hash values
                 commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                 committers_comment += (
-                        f"<li> {failed} The commit ({', '.join(commit_shas)}). "
-                        f"This user is missing the User's ID, preventing the EasyCLA check. "
-                        f"<a href='{github_help_url}' target='_blank'>Consult GitHub Help</a> to resolve."
-                        f'For further assistance with EasyCLA, '
-                        f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
-                        '</li>')
+                    f"<li> {failed} The commit ({', '.join(commit_shas)}). "
+                    f"This user is missing the User's ID, preventing the EasyCLA check. "
+                    f"<a href='{github_help_url}' target='_blank'>Consult GitHub Help</a> to resolve."
+                    f'For further assistance with EasyCLA, '
+                    f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
+                    '</li>')
             else:
-                missing_affiliations = [user_commit_summary.affiliated and user_commit_summary.authorized for user_commit_summary in user_commit_summaries
-                                       if not user_commit_summary.affiliated]
-                if len(missing_affiliations) > 0 :
+                missing_affiliations = [user_commit_summary.affiliated and user_commit_summary.authorized for
+                                        user_commit_summary in user_commit_summaries
+                                        if not user_commit_summary.affiliated]
+                if len(missing_affiliations) > 0:
                     # build a quick list of just the commit hash values for users missing company affiliations
                     commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries
                                    if not user_commit_summary.affiliated]
@@ -1058,14 +1058,14 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                     # build a quick list of just the commit hash values
                     commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                     committers_comment += (
-                            f'<li>'
-                            f"<a href='{sign_url}' target='_blank'>{failed}</a> - "
-                            f"{author_info}. The commit ({', '.join(commit_shas)}) "
-                            "is not authorized under a signed CLA. "
-                            f"<a href='{sign_url}' target='_blank'>Please click here to be authorized</a>. "
-                            f"For further assistance with EasyCLA, "
-                            f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
-                            "</li>")
+                        f'<li>'
+                        f"<a href='{sign_url}' target='_blank'>{failed}</a> - "
+                        f"{author_info}. The commit ({', '.join(commit_shas)}) "
+                        "is not authorized under a signed CLA. "
+                        f"<a href='{sign_url}' target='_blank'>Please click here to be authorized</a>. "
+                        f"For further assistance with EasyCLA, "
+                        f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
+                        "</li>")
 
     if len(signed) > 0 or len(missing) > 0:
         committers_comment += '</ul>'

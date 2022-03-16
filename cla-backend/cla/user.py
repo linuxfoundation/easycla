@@ -78,35 +78,27 @@ class UserCommitSummary:
     def is_valid_user(self) -> bool:
         return self.author_id is not None and (self.author_login is not None or self.author_name is not None)
 
-    def get_user_info(self, tag_user:bool = False) -> str:
+    def get_user_info(self, tag_user: bool = False) -> str:
         user_info = ''
         if self.author_login:
             user_info += f'login: {"@" if tag_user else ""}{self.author_login} / '
         if self.author_name:
             user_info += f'name: {self.author_name} / '
-        # if self.author_email:
-        #     user_info += f'email: {self.author_email}'
 
-        pattern = r'/ $'
-        return re.sub(pattern, '', user_info)
+        return re.sub(r'/ $', '', user_info)
 
-    def get_display_text(self) -> str:
+    def get_display_text(self, tag_user: bool = False) -> str:
 
         if not self.author_id:
             return f'{self.author_email} is not linked to this commit.\n'
-
-        text = self.get_user_info()
 
         if not self.is_valid_user():
             return 'Invalid author details.\n'
 
         if self.authorized and self.affiliated:
-            text += ' is authorized.\n'
-            return text
+            return self.get_user_info(tag_user) + ' is authorized.\n'
 
         if self.affiliated:
-            text += ' is associated with a company, but not on an approval list.\n'
+            return self.get_user_info(tag_user) + ' is associated with a company, but not on an approval list.\n'
         else:
-            text += ' is not associated with a company.\n'
-
-        return text
+            return self.get_user_info(tag_user) + ' is not associated with a company.\n'
