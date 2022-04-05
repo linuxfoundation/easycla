@@ -85,7 +85,8 @@ const (
 type Service interface {
 	GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyModel *models.Company, projectSFID string) (*models.CompanyClaManagers, error)
 	GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error)
-	GetCompanyProjectContributors(ctx context.Context, projectSFID string, companySFID string, searchTerm string) (*models.CorporateContributorList, error)
+	//GetCompanyProjectContributors(ctx context.Context, projectSFID string, companySFID string, searchTerm string) (*models.CorporateContributorList, error)
+	GetCompanyProjectContributors(ctx context.Context, params *v2Ops.GetCompanyProjectContributorsParams) (*models.CorporateContributorList, error)
 	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error)
 	CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error)
 	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error)
@@ -328,41 +329,52 @@ func (s *service) GetCompanyProjectActiveCLAs(ctx context.Context, companyID str
 	return &out, nil
 }
 
-func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID string, companyID string, searchTerm string) (*models.CorporateContributorList, error) {
+// GetCompanyProjectContributors by the specified parameters which include the project SFID, company ID and any additional search terms with pagination details
+func (s *service) GetCompanyProjectContributors(ctx context.Context, params *v2Ops.GetCompanyProjectContributorsParams) (*models.CorporateContributorList, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.company.service.GetCompanyProjectContributors",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"projectSFID":    projectSFID,
-		"companyID":      companyID,
-		"searchTerm":     searchTerm,
+		"projectSFID":    params.ProjectSFID,
+		"companyID":      params.CompanyID,
+	}
+	if params.SearchTerm != nil {
+		f["searchTerm"] = utils.StringValue(params.SearchTerm)
+	}
+	if params.PageSize != nil {
+		f["pageSize"] = utils.Int64Value(params.PageSize)
+	}
+	if params.NextKey != nil {
+		f["nextKey"] = utils.StringValue(params.NextKey)
 	}
 
 	list := make([]*models.CorporateContributor, 0)
 	log.WithFields(f).Debugf("querying for employee contributors...")
-	sigs, err := s.getAllCompanyProjectEmployeeSignatures(ctx, companyID, projectSFID)
+	sigResponse, err := s.getAllCompanyProjectEmployeeSignatures(ctx, params)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem fetching all company project employee signatures")
 		return nil, err
 	}
-	if len(sigs) == 0 {
+	if len(sigResponse.Signatures) == 0 {
 		log.WithFields(f).Debug("not signatures found - returning emtpy list")
 		return &models.CorporateContributorList{
 			List: list,
 		}, nil
 	}
-	log.WithFields(f).Debugf("found %d signatures", len(sigs))
+	log.WithFields(f).Debugf("found %d signatures", len(sigResponse.Signatures))
 
+	beforeQuery, _ := utils.CurrentTime()
 	var wg sync.WaitGroup
 	result := make(chan *models.CorporateContributor)
-	wg.Add(len(sigs))
+	wg.Add(len(sigResponse.Signatures))
 	go func() {
 		wg.Wait()
+		log.WithFields(f).Debugf("done additional corporate contributor details for %d signatures...duration: %+v", len(sigResponse.Signatures), time.Since(beforeQuery))
 		close(result)
 	}()
 
-	log.WithFields(f).Debugf("adding additional corporate contributor details for %d signatures...", len(sigs))
-	for _, sig := range sigs {
-		go fillCorporateContributorModel(&wg, s.userRepo, sig, result, searchTerm)
+	log.WithFields(f).Debugf("adding additional corporate contributor details for %d signatures...", len(sigResponse.Signatures))
+	for _, sig := range sigResponse.Signatures {
+		go fillCorporateContributorModel(&wg, s.userRepo, sig, result, utils.StringValue(params.SearchTerm))
 	}
 
 	for corpContributor := range result {
@@ -370,7 +382,9 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, projectSFID
 	}
 
 	return &models.CorporateContributorList{
-		List: list,
+		List:        list,
+		NextKey:     sigResponse.LastKeyScanned,
+		ResultCount: sigResponse.ResultCount,
 	}, nil
 }
 
@@ -1541,28 +1555,46 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 	result <- &contributor
 }
 
-func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, companyID string, projectSFID string) ([]*v1Models.Signature, error) {
+func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, params *v2Ops.GetCompanyProjectContributorsParams) (*v1Models.Signatures, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.company.service.getAllCompanyProjectEmployeeSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"companyID":      companyID,
-		"projectSFID":    projectSFID,
+		"projectSFID":    params.ProjectSFID,
+		"companyID":      params.CompanyID,
 	}
+	if params.SearchTerm != nil {
+		f["searchTerm"] = utils.StringValue(params.SearchTerm)
+	}
+	if params.PageSize != nil {
+		f["pageSize"] = utils.Int64Value(params.PageSize)
+	}
+	if params.NextKey != nil {
+		f["nextKey"] = utils.StringValue(params.NextKey)
+	}
+
 	log.WithFields(f).Debug("querying company and project...")
-	_, claGroup, err := s.getCompanyAndClaGroup(ctx, companyID, projectSFID)
+	_, claGroup, err := s.getCompanyAndClaGroup(ctx, params.CompanyID, params.ProjectSFID)
 	if err != nil {
 		return nil, err
 	}
-	params := v1SignatureParams.GetProjectCompanyEmployeeSignaturesParams{
+	queryParams := v1SignatureParams.GetProjectCompanyEmployeeSignaturesParams{
 		HTTPRequest: nil,
-		CompanyID:   companyID,
+		CompanyID:   params.CompanyID,
 		ProjectID:   claGroup.ProjectID,
 	}
-	sigs, err := s.signatureRepo.GetProjectCompanyEmployeeSignatures(ctx, params, nil, HugePageSize)
+	// Pass along any query parameters from the caller
+	if params.PageSize != nil {
+		queryParams.PageSize = params.PageSize
+	}
+	if params.NextKey != nil {
+		queryParams.NextKey = params.NextKey
+	}
+
+	sigs, err := s.signatureRepo.GetProjectCompanyEmployeeSignatures(ctx, queryParams, nil)
 	if err != nil {
 		return nil, err
 	}
-	return sigs.Signatures, nil
+	return sigs, nil
 }
 
 // get company and project in parallel

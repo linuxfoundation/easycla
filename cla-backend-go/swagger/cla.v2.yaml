@@ -3757,6 +3757,8 @@ paths:
         - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-projectSFID"
         - $ref: "#/parameters/searchTerm"
+        - $ref: '#/parameters/nextKey'
+        - $ref: '#/parameters/pageSize'
       responses:
         '200':
           description: 'Success'

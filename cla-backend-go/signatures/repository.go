@@ -75,7 +75,7 @@ type SignatureRepository interface {
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error)
-	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, pageSize int64) (*models.Signatures, error)
+	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams, pageSize int64, loadACL bool) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64) (*models.Signatures, error)
@@ -1489,7 +1489,7 @@ func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID,
 }
 
 // GetProjectCompanyEmployeeSignatures returns a list of employee signatures for the specified project and specified company
-func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, pageSize int64) (*models.Signatures, error) {
+func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetProjectCompanyEmployeeSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -1497,8 +1497,13 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		"companyID":      params.CompanyID,
 		"nextKey":        aws.StringValue(params.NextKey),
 		"sortOrder":      aws.StringValue(params.SortOrder),
-		"pageSize":       aws.Int64Value(params.PageSize),
 	}
+
+	pageSize := int64(HugePageSize)
+	if params.PageSize != nil {
+		pageSize = utils.Int64Value(params.PageSize)
+	}
+	f["pageSize"] = pageSize
 
 	// This is the keys we want to match
 	condition := expression.Key("signature_user_ccla_company_id").Equal(expression.Value(params.CompanyID)).And(
@@ -1526,6 +1531,8 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		filter = addAndCondition(filter, expression.Name("user_email").Equal(expression.Value(criteria.UserEmail)), &filterAdded)
 	}
 
+	beforeQuery, _ := utils.CurrentTime()
+	log.WithFields(f).Debugf("running signature query on table: %s", repo.signatureTableName)
 	// Use the nice builder to create the expression
 	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildProjection()).Build()
 	if err != nil {
@@ -1543,6 +1550,7 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		ProjectionExpression:      expr.Projection(),
 		TableName:                 aws.String(repo.signatureTableName),
 		IndexName:                 aws.String("signature-user-ccla-company-index"), // Name of a secondary index to scan
+		Limit:                     aws.Int64(pageSize),
 	}
 
 	// If we have the next key, set the exclusive start key value
@@ -1569,7 +1577,6 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	// Loop until we have all the records
 	for ok := true; ok; ok = lastEvaluatedKey != "" {
 		// Make the DynamoDB Query API call
-		//log.WithFields(f).Debugf("Running signature project company query using queryInput: %+v", queryInput)
 		results, errQuery := repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
 			log.WithFields(f).Warnf("error retrieving project company employee signature ID for project: %s with company: %s, error: %v",
@@ -1585,7 +1592,7 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 			return nil, modelErr
 		}
 
-		// Add to the signatures response model to the list
+		// Add to the signature response model to the list
 		sigs = append(sigs, signatureList...)
 
 		// log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey["signature_id"])
@@ -1600,6 +1607,7 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 			break
 		}
 	}
+	log.WithFields(f).Debugf("finished signature query on table: %s - duration: %+v", repo.signatureTableName, time.Since(beforeQuery))
 
 	// How many total records do we have - may not be up-to-date as this value is updated only periodically
 	describeTableInput := &dynamodb.DescribeTableInput{
@@ -2092,7 +2100,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	log.WithFields(f).Debug("querying database for approval list details")
 
 	approved, signed := true, true
-	pageSize := int64(10)
 
 	// Get CCLA signature - For Approval List info
 	cclaSignature, err := repo.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
@@ -2135,6 +2142,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	employeeSignatureParams := signatures.GetProjectCompanyEmployeeSignaturesParams{
 		ProjectID: projectID,
 		CompanyID: companyID,
+		PageSize:  utils.Int64(10),
 	}
 
 	authUser := auth.User{
@@ -2215,7 +2223,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						UserEmail: email,
 					}
 					log.WithFields(f).Debugf("Updating signature records for email approval list: %+v ", params.RemoveEmailApprovalList)
-					signs, appErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria, pageSize)
+					signs, appErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria)
 					if appErr != nil {
 						log.WithFields(f).Debugf("unable to get Company Employee signatures : %+v ", appErr)
 						return
@@ -2321,10 +2329,11 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			companyProjectParams := signatures.GetProjectCompanyEmployeeSignaturesParams{
 				CompanyID: approvalList.CompanyID,
 				ProjectID: approvalList.ClaGroupID,
+				PageSize:  utils.Int64(10),
 			}
 
 			criteria := ApprovalCriteria{}
-			eclas, eclaErr := repo.GetProjectCompanyEmployeeSignatures(ctx, companyProjectParams, &criteria, int64(10))
+			eclas, eclaErr := repo.GetProjectCompanyEmployeeSignatures(ctx, companyProjectParams, &criteria)
 			if eclaErr != nil {
 				log.WithFields(f).Warnf("unable to get cclas for company: %s and project: %s ", approvalList.CompanyID, approvalList.ClaGroupID)
 			}
@@ -2389,7 +2398,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							GitHubUsername: ghUsername,
 						}
 						log.WithFields(f).Debugf("Updating signature records for github username apporval list: %+v ", params.RemoveGithubUsernameApprovalList)
-						signs, ghUserErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria, pageSize)
+						signs, ghUserErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria)
 						if ghUserErr != nil {
 							log.WithFields(f).Debugf("unable to get Company Employee signatures : %+v ", ghUserErr)
 							return
@@ -2541,7 +2550,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							GitlabUsername: gitLabUsername,
 						}
 						log.WithFields(f).Debugf("Updating signature records for gitlab username apporval list: %+v ", params.RemoveGitlabUsernameApprovalList)
-						signs, ghUserErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria, pageSize)
+						signs, ghUserErr := repo.GetProjectCompanyEmployeeSignatures(ctx, employeeSignatureParams, criteria)
 						if ghUserErr != nil {
 							log.WithFields(f).Debugf("unable to get Company Employee signatures : %+v ", ghUserErr)
 							return

@@ -143,13 +143,11 @@ func (s service) GetProjectCompanySignatures(ctx context.Context, params signatu
 // GetProjectCompanyEmployeeSignatures returns the list of employee signatures associated with the specified project
 func (s service) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error) {
 
-	const defaultPageSize int64 = 10
-	var pageSize = defaultPageSize
-	if params.PageSize != nil {
-		pageSize = *params.PageSize
+	if params.PageSize == nil {
+		params.PageSize = utils.Int64(10)
 	}
 
-	projectSignatures, err := s.repo.GetProjectCompanyEmployeeSignatures(ctx, params, criteria, pageSize)
+	projectSignatures, err := s.repo.GetProjectCompanyEmployeeSignatures(ctx, params, criteria)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,14 @@
 type: object
 title: corporate contributors list
 properties:
+  nextKey:
+    type: string
+    title: Next Key
+    description: the next key to provide on subsequent API calls to fetch the next page of records
+  resultCount:
+    type: integer
+    format: int64
+    x-omitempty: false
   list:
     type: array
     items:

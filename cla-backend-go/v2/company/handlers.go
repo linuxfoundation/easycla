@@ -275,7 +275,8 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			}
 
 			log.WithFields(f).Debugf("querying for employee contributors...")
-			result, err := service.GetCompanyProjectContributors(ctx, params.ProjectSFID, params.CompanyID, utils.StringValue(params.SearchTerm))
+			//result, err := service.GetCompanyProjectContributors(ctx, params.ProjectSFID, params.CompanyID, utils.StringValue(params.SearchTerm))
+			result, err := service.GetCompanyProjectContributors(ctx, &params)
 			if err != nil {
 				if companyErr, ok := err.(*utils.CompanyNotFound); ok {
 					msg := fmt.Sprintf("Company not found with ID: %s", companyErr.CompanyID)

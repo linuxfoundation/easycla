@@ -416,7 +416,8 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 	employeeSignatures, err := s.signaturesRepository.GetProjectCompanyEmployeeSignatures(ctx, signatures1.GetProjectCompanyEmployeeSignaturesParams{
 		CompanyID: companyID,
 		ProjectID: claGroupID,
-	}, approvalCriteria, 100)
+		PageSize:  utils.Int64(100),
+	}, approvalCriteria)
 
 	if err != nil {
 		msg := fmt.Sprintf("can't load employee signature records : %s for user : %s association : %v", companyID, userModel.UserID, err)
