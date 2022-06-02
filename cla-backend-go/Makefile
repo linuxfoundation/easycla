@@ -20,13 +20,24 @@ COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.branch=$(BRANCH) -X main.buildDate=$(BUILD_TIME)"
 BUILD_TAGS=-tags aws_lambda
 
+ifeq "$(shell uname -s)" "Darwin"
+	BUILD_HOST=darwin
+endif
+ifeq "$(shell uname -s)" "Linux"
+	BUILD_HOST=linux
+endif
+
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
-LINT_VERSION=v1.41.1
+LINT_VERSION=v1.46.2
+SWAGGER_DIR=$(ROOT_DIR)/swagger
+SWAGGER_BIN_DIR=/usr/local/bin
 SWAGGER_TOOL_VERSION=v0.24.0
+SWAGGER_ASSET="swagger_$(BUILD_HOST)_amd64"
+SWAGGER_ASSET_URL="https://github.com/go-swagger/go-swagger/releases/download/$(SWAGGER_TOOL_VERSION)/$(SWAGGER_ASSET)"
 GO_PKGS=$(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/)
 GO_FILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')
 
-.PHONY: generate setup tool-setup setup-dev setup-deploy clean-all clean swagger up fmt test run deps build build-mac build-aws-lambda user-subscribe-lambda qc lint
+.PHONY: generate setup setup-dev setup-deploy clean-all clean swagger up fmt test run deps build build-mac build-aws-lambda user-subscribe-lambda qc lint
 
 all: all-mac
 all-mac: clean swagger deps fmt build-mac build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac build-gitlab-repository-check-lambda-mac test lint
@@ -40,27 +51,26 @@ generate: swagger
 
 setup: $(LINT_TOOL) setup-dev setup-deploy
 
-tool-setup:
-	@echo "Installing gobin for installing tools..."
-	@# gobin is the equivalent of 'go get' whilst in module-aware mode but this does not modify your go.mod
-	#GO111MODULE=off go get -u github.com/myitcv/gobin
-	go get -u github.com/myitcv/gobin
+.PHONY: swagger-tool
+swagger-tool:
+	@echo "Removing old swagger binary in $(SWAGGER_BIN_DIR)..."
+	@sudo rm -Rf $(SWAGGER_BIN_DIR)/swagger
+	@echo "Downloading $(SWAGGER_ASSET_URL)"
+	sudo curl -o $(SWAGGER_BIN_DIR)/swagger -L'#' $(SWAGGER_ASSET_URL)
+	sudo chmod +x $(SWAGGER_BIN_DIR)/swagger
+	$(SWAGGER_BIN_DIR)/swagger version
 
 setup_dev: setup-dev
-setup-dev: tool-setup
-	@echo "Removing previously install version of swagger..."
-	@rm -Rf $(shell echo $(GOPATH))/bin/swagger $(shell echo $(GOPATH))/src/github.com/go-swagger
-	@echo "Installing swagger version: '$(SWAGGER_TOOL_VERSION)'..."
-	gobin github.com/go-swagger/go-swagger/cmd/swagger@$(SWAGGER_TOOL_VERSION)
-	@echo "Installing goimports..."
-	gobin golang.org/x/tools/cmd/goimports
-	@echo "Installing cover..."
-	gobin golang.org/x/tools/cmd/cover
-	@echo "Installing multi-file-swagger tool..."
-	@echo "Downloading golangci-lint version $(LINT_VERSION)..."
+setup-dev: swagger-tool
+	pushd /tmp && echo "Installing goimport..." && go install golang.org/x/tools/cmd/goimports@latest && echo "Installation coverage tools..." && go install golang.org/x/tools/cmd/cover@latest && popd
+
+	@echo "Installing linter..."
 	@# Latest releases: https://github.com/golangci/golangci-lint/releases
-	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(shell go env GOPATH)/bin $(LINT_VERSION)
-	cd $(dir $(realpath $(firstword $(MAKEFILE_LIST))))swagger && pip3 install virtualenv && virtualenv .venv && source .venv/bin/activate && pip3 install -r requirements.txt
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(LINT_VERSION)
+	echo "golangci-lint version:" && golangci-lint version
+
+	@echo "Installing multi-file-swagger tool..."
+	cd $(dir $(realpath $(firstword $(MAKEFILE_LIST))))swagger && pip3 install virtualenv && virtualenv .venv && source .venv/bin/activate && python -m pip install --upgrade pip && pip3 install -r requirements.txt
 
 setup_deploy: setup-deploy
 setup-deploy:

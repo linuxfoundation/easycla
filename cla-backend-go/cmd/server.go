@@ -634,7 +634,7 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 	// search if user exist in database by username
 	userModel, err := usersService.GetUserByLFUserName(claUser.LFUsername)
 	if err != nil {
-		if err, ok := err.(*utils.UserNotFound); ok {
+		if _, ok := err.(*utils.UserNotFound); ok {
 			log.WithFields(f).Debug("unable to locate user by lf-email")
 		} else {
 			log.WithFields(f).WithError(err).Warn("searching user by lf-username failed")
@@ -649,7 +649,7 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 	// search if user exist in database by username
 	userModel, err = usersService.GetUserByEmail(claUser.LFEmail)
 	if err != nil {
-		if err, ok := err.(*utils.UserNotFound); ok {
+		if _, ok := err.(*utils.UserNotFound); ok {
 			log.WithFields(f).Debug("unable to locate user by lf-email")
 		} else {
 			log.WithFields(f).WithError(err).Warn("searching user by lf-email failed")

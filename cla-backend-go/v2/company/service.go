@@ -71,12 +71,14 @@ var (
 
 // constants
 const (
-	// used when we want to query all data from dependent service.
+	// HugePageSize is used when we want to query all data from dependent service
 	HugePageSize = int64(10000)
-	// LoadRepoDetails     = true
+
 	DontLoadRepoDetails = false
-	//NoAccount
+
+	// NoAccount constant
 	NoAccount = "Individual - No Account"
+
 	//OrgAssociated stating whether user has user association with another org
 	OrgAssociated = "are already associated with other organization"
 )
@@ -85,7 +87,6 @@ const (
 type Service interface {
 	GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyModel *models.Company, projectSFID string) (*models.CompanyClaManagers, error)
 	GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error)
-	//GetCompanyProjectContributors(ctx context.Context, projectSFID string, companySFID string, searchTerm string) (*models.CorporateContributorList, error)
 	GetCompanyProjectContributors(ctx context.Context, params *v2Ops.GetCompanyProjectContributorsParams) (*models.CorporateContributorList, error)
 	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error)
 	CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error)
@@ -102,7 +103,7 @@ type Service interface {
 	GetCompanyAdmins(ctx context.Context, companyID string) (*models.CompanyAdminList, error)
 	RequestCompanyAdmin(ctx context.Context, userID string, claManagerEmail string, claManagerName string, contributorName string, contributorEmail string, projectName string, companyName string, lFxPortalURL string) error
 
-	// org service lookup
+	// GetCompanyLookup uses the org service to lookup the value
 	GetCompanyLookup(ctx context.Context, companyName string, websiteName string) (*models.Lookup, error)
 }
 
@@ -137,7 +138,7 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyMod
 		"signingEntityName": v1CompanyModel.SigningEntityName,
 	}
 
-	// TODO: DAD - separate go routine
+	// TODO: DAD - consider using separate go routine
 	log.WithFields(f).Debugf("locating CLA Group(s) under project or foundation...")
 	var err error
 	claGroups, err := s.getCLAGroupsUnderProjectOrFoundation(ctx, projectSFID)
@@ -146,7 +147,7 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyMod
 		return nil, err
 	}
 
-	// TODO: DAD - separate go routine
+	// TODO: DAD - consider using separate go routine
 	// get the org client for org info filling
 	orgClient := orgService.GetClient()
 	orgModel, err := orgClient.GetOrganization(ctx, v1CompanyModel.CompanyExternalID)
@@ -154,7 +155,7 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyMod
 		return nil, fmt.Errorf("fetching org model failed for companySFID : %s : %w", v1CompanyModel.CompanyExternalID, err)
 	}
 
-	// TODO: DAD - separate go routine
+	// TODO: DAD - consider using separate go routine
 	signed, approved := true, true
 	maxLoad := int64(10)
 	var sigs []*v1Models.Signature
@@ -202,7 +203,7 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyMod
 		return &models.CompanyClaManagers{List: claManagers}, nil
 	}
 
-	// TODO: DAD - separate go routine
+	// TODO: DAD - consider using separate go routine
 	// get userinfo and project info
 	var usermap map[string]*v2UserServiceModels.User
 	usermap, err = getUsersInfo(lfUsernames.List())
@@ -216,7 +217,7 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyMod
 	// fill project info
 	fillProjectInfo(claManagers, claGroups)
 
-	// TODO: DAD - separate go routine
+	// TODO: DAD - consider using separate go routine
 	// fetch the cla_manager.added events so can fill the addedOn field
 	claManagerAddedEvents, err := s.eventService.GetCompanyEvents(v1CompanyModel.CompanyID, events.ClaManagerCreated, nil, aws.Int64(100), true)
 	if err != nil {
@@ -337,6 +338,7 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, params *v2O
 		"projectSFID":    params.ProjectSFID,
 		"companyID":      params.CompanyID,
 	}
+
 	if params.SearchTerm != nil {
 		f["searchTerm"] = utils.StringValue(params.SearchTerm)
 	}
@@ -360,7 +362,7 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, params *v2O
 			List: list,
 		}, nil
 	}
-	log.WithFields(f).Debugf("found %d signatures", len(sigResponse.Signatures))
+	log.WithFields(f).Debugf("found %d signatures matching filter critiera - total in database is: %d", len(sigResponse.Signatures), sigResponse.TotalCount)
 
 	beforeQuery, _ := utils.CurrentTime()
 	var wg sync.WaitGroup
@@ -385,6 +387,7 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, params *v2O
 		List:        list,
 		NextKey:     sigResponse.LastKeyScanned,
 		ResultCount: sigResponse.ResultCount,
+		TotalCount:  sigResponse.TotalCount,
 	}, nil
 }
 
