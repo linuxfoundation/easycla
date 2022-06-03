@@ -42,6 +42,14 @@ func buildProjection() expression.ProjectionBuilder {
 	)
 }
 
+// buildCountProject is a helper function to build a simple count projection for the total count query
+func buildCountProjection() expression.ProjectionBuilder {
+	// These are the columns we want returned - we only care about the signature_id
+	return expression.NamesList(
+		expression.Name("signature_id"),
+	)
+}
+
 // buildSignatureACLProject is a helper function to build a signature ACL response/projection
 func buildSignatureACLProjection() expression.ProjectionBuilder {
 	// These are the columns we want returned

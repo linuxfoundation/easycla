@@ -76,6 +76,7 @@ type SignatureRepository interface {
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error)
 	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
+	getProjectCompanyEmployeeSignatureCount(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, responseChannel chan int64)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams, pageSize int64, loadACL bool) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64) (*models.Signatures, error)
@@ -1499,6 +1500,9 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		"sortOrder":      aws.StringValue(params.SortOrder),
 	}
 
+	totalCountChannel := make(chan int64, 1)
+	go repo.getProjectCompanyEmployeeSignatureCount(ctx, params, criteria, totalCountChannel)
+
 	pageSize := int64(HugePageSize)
 	if params.PageSize != nil {
 		pageSize = utils.Int64Value(params.PageSize)
@@ -1595,7 +1599,6 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		// Add to the signature response model to the list
 		sigs = append(sigs, signatureList...)
 
-		// log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey["signature_id"])
 		if results.LastEvaluatedKey["signature_id"] != nil {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
@@ -1609,23 +1612,13 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	}
 	log.WithFields(f).Debugf("finished signature query on table: %s - duration: %+v", repo.signatureTableName, time.Since(beforeQuery))
 
-	// How many total records do we have - may not be up-to-date as this value is updated only periodically
-	describeTableInput := &dynamodb.DescribeTableInput{
-		TableName: &repo.signatureTableName,
-	}
-	describeTableResult, err := repo.dynamoDBClient.DescribeTable(describeTableInput)
-	if err != nil {
-		log.WithFields(f).Warnf("error retrieving total record count for project: %s, error: %v", params.ProjectID, err)
-		return nil, err
-	}
-
 	// Meta-data for the response
-	totalCount := *describeTableResult.Table.ItemCount
 	if int64(len(sigs)) > pageSize {
 		sigs = sigs[0:pageSize]
 		lastEvaluatedKey = sigs[pageSize-1].SignatureID
 	}
 
+	totalCount := <-totalCountChannel
 	return &models.Signatures{
 		ProjectID:      params.ProjectID,
 		ResultCount:    int64(len(sigs)),
@@ -1633,6 +1626,96 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		LastKeyScanned: lastEvaluatedKey,
 		Signatures:     sigs,
 	}, nil
+}
+
+// getProjectCompanyEmployeeSignatureCount returns the total count of employee signatures for the specified project and specified company
+func (repo repository) getProjectCompanyEmployeeSignatureCount(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, responseChannel chan int64) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.getProjectCompanyEmployeeSignatureCount",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectID":      params.ProjectID,
+		"companyID":      params.CompanyID,
+		"nextKey":        aws.StringValue(params.NextKey),
+		"sortOrder":      aws.StringValue(params.SortOrder),
+	}
+
+	// Ignore the provided page count in the parameters - we're focused on getting the total count
+	pageSize := int64(HugePageSize)
+	f["pageSize"] = pageSize
+
+	// This is the keys we want to match
+	condition := expression.Key("signature_user_ccla_company_id").Equal(expression.Value(params.CompanyID)).And(
+		expression.Key("signature_project_id").Equal(expression.Value(params.ProjectID)))
+
+	var filterAdded bool
+	var filter expression.ConditionBuilder
+
+	// Check for approved signatures
+	filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
+
+	if criteria != nil && criteria.GitHubUsername != "" {
+		filter = addAndCondition(filter, expression.Name(SignatureUserGitHubUsername).Equal(expression.Value(criteria.GitHubUsername)), &filterAdded)
+	}
+
+	if criteria != nil && criteria.GitHubUsername != "" {
+		filter = addAndCondition(filter, expression.Name(SignatureUserGitlabUsername).Equal(expression.Value(criteria.GitlabUsername)), &filterAdded)
+	}
+
+	if criteria != nil && criteria.UserEmail != "" {
+		filter = addAndCondition(filter, expression.Name("user_email").Equal(expression.Value(criteria.UserEmail)), &filterAdded)
+	}
+
+	beforeQuery, _ := utils.CurrentTime()
+	log.WithFields(f).Debugf("running total signature count query on table: %s", repo.signatureTableName)
+	// Use the nice builder to create the expression
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildCountProjection()).Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for project signature ID query, project: %s, error: %v",
+			params.ProjectID, err)
+		responseChannel <- 0
+		return
+	}
+
+	// Assemble the query input parameters - ignore the provided exclusive start key, we're only interested in the total count
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		FilterExpression:          expr.Filter(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.signatureTableName),
+		IndexName:                 aws.String("signature-user-ccla-company-index"), // Name of a secondary index to scan
+		Limit:                     aws.Int64(pageSize),
+	}
+
+	var lastEvaluatedKey string
+	var totalCount int64
+
+	// Loop until we have all the records
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
+		// Make the DynamoDB Query API call
+		results, errQuery := repo.dynamoDBClient.Query(queryInput)
+		if errQuery != nil {
+			log.WithFields(f).Warnf("error retrieving project company employee signature ID for project: %s with company: %s, error: %v",
+				params.ProjectID, params.CompanyID, errQuery)
+			responseChannel <- 0
+			return
+		}
+
+		// Add to our total count
+		totalCount += *results.Count
+
+		if results.LastEvaluatedKey["signature_id"] != nil {
+			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			lastEvaluatedKey = ""
+		}
+	}
+	log.WithFields(f).Debugf("finished signature total count query on table: %s - duration: %+v", repo.signatureTableName, time.Since(beforeQuery))
+
+	responseChannel <- totalCount
 }
 
 // GetCompanySignatures returns a list of company signatures for the specified company
