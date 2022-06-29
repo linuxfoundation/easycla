@@ -528,48 +528,6 @@ jobs:
       ROOT_DOMAIN: lfcla.platform.linuxfoundation.org
       PRODUCT_DOMAIN: lfcla.com
 
-  buildFrontend: &buildFrontendAnchor
-    docker:
-      - image: circleci/node:8-browsers
-    steps:
-      - checkout
-      - *setup_aws
-      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-12
-      - run:
-          name: Install Top Level Dependencies
-          command: |
-            echo "Node version is: $(node --version)"
-            echo "Running top level install..."
-            yarn install
-      - *install-node-8
-      - run:
-          name: Install UI Dependencies
-          command: |
-            pushd $PROJECT_DIR
-            echo "Running yarn install in folder: `pwd`. This will run yarn install in several places - see output below."
-            yarn install-frontend
-            popd
-      - run:
-          name: Build UI Source
-          command: |
-            echo "Building src..."
-            pushd $PROJECT_DIR/src
-            echo "AWS_PROFILE=${AWS_PROFILE}"
-            echo "AWS_REGION=${AWS_REGION}"
-            ls ~/.aws
-            cat ${BASH_ENV}
-            yarn prebuild:${STAGE}
-            yarn build
-            popd
-      - run:
-          name: Build Edge Source
-          command: |
-            echo "Building edge..."
-            pushd $PROJECT_DIR/edge
-            yarn build
-            popd
-
   buildLandingPage: &buildLandingPageAnchor
     docker:
       - image: circleci/node:12-browsers
@@ -599,45 +557,6 @@ jobs:
             yarn build:${STAGE}
             popd
 
-  # Build Project Management Console
-  buildProjectConsoleDev:
-    <<: *buildFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: dev
-      PROJECT_DIR: cla-frontend-project-console
-      ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: dev.lfcla.com
-
-  # Build Corporate Console
-  buildCorporateConsoleDev:
-    <<: *buildFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: dev
-      PROJECT_DIR: cla-frontend-corporate-console
-      ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: dev.lfcla.com
-
-  # Build Contributor Console
-  buildContributorConsoleDev:
-    <<: *buildFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: dev
-      PROJECT_DIR: cla-frontend-contributor-console
-      ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: dev.lfcla.com
-
   # Build Landing Page Console
   buildLandingPageDev:
     <<: *buildLandingPageAnchor
@@ -650,198 +569,6 @@ jobs:
       PROJECT_DIR: cla-landing-page
       ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
       PRODUCT_DOMAIN: dev.lfcla.com
-
-  deployFrontend: &deployFrontendAnchor
-    docker:
-      - image: circleci/node:8-browsers
-    steps:
-      - checkout
-      - *setup_aws
-      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-12
-      - run:
-          name: Install Top Level Dependencies
-          command: |
-            echo "Node version is: $(node --version)"
-            echo "Running top level install..."
-            yarn install
-      - *install-node-8
-      - run:
-          name: Install UI Dependencies
-          command: |
-            pushd $PROJECT_DIR
-            echo "Running yarn install in folder: `pwd`. This will run yarn install in several places - see output below."
-            yarn install-frontend
-            popd
-      - run:
-          name: Build UI Source
-          command: |
-            echo "Building src..."
-            pushd $PROJECT_DIR/src
-            echo "Current directory is: `pwd`"
-            echo "Running pre-fetch config: 'yarn prebuild:${STAGE}'..."
-            yarn prebuild:${STAGE}
-            echo "Running build: 'yarn build:${STAGE}'..."
-            yarn build:${STAGE}
-            popd
-      - run:
-          name: Build Edge Source
-          command: |
-            echo "Building edge..."
-            pushd $PROJECT_DIR/edge
-            echo "Current directory is: `pwd`"
-            echo "Running build: 'yarn build'..."
-            yarn build
-            popd
-      - *install-node-12
-      - *install_aws_cli
-      - run:
-          name: Deploy Cloudfront and LambdaEdge
-          command: |
-            pushd $PROJECT_DIR
-            echo "Running install 'yarn install'..."
-            yarn install
-            echo ""
-            echo "Running: yarn sls deploy --stage=\"${STAGE}\" --cloudfront=true"
-            yarn sls deploy --stage="${STAGE}" --cloudfront="true"
-            popd
-      - run:
-          name: Deploy Frontend Bucket
-          command: |
-            pushd $PROJECT_DIR
-            echo "Running install 'yarn install'..."
-            yarn install
-            echo ""
-            echo "Running: yarn sls client deploy --stage=\"${STAGE}\" --cloudfront=true --no-confirm --no-policy-change --no-config-change"
-            yarn sls client deploy --stage="${STAGE}" --cloudfront="true" --no-confirm --no-policy-change --no-config-change
-            popd
-      - run:
-          name: Invalidate Cache
-          command: |
-            pushd $PROJECT_DIR
-            echo "Running: yarn sls cloudfrontInvalidate --stage=\"${STAGE}\" --region=\"${AWS_REGION}\" --cloudfront=\"true\""
-            yarn sls cloudfrontInvalidate --stage="${STAGE}" --region="${AWS_REGION}" --cloudfront="true"
-            popd
-
-  # Project Management Console
-  deployProjectManagementConsoleDev:
-    <<: *deployFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: dev
-      PROJECT_DIR: cla-frontend-project-console
-      ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: dev.lfcla.com
-      BUCKET_NAME: lf-cla-dev-cla-frontend-pmc-4
-
-  deployProjectManagementConsoleStaging:
-    <<: *deployFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: staging
-      PROJECT_DIR: cla-frontend-project-console
-      ROOT_DOMAIN: lfcla.staging.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: staging.lfcla.com
-      BUCKET_NAME: lf-cla-staging-cla-frontend-pmc-3
-
-  deployProjectManagementConsoleProd:
-    <<: *deployFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_PROD
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_PROD
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: prod
-      PROJECT_DIR: cla-frontend-project-console
-      ROOT_DOMAIN: lfcla.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: lfcla.com
-      BUCKET_NAME: lf-cla-prod-cla-frontend-pmc-3
-
-  # Corporate Console
-  deployCorporateConsoleDev:
-    <<: *deployFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: dev
-      PROJECT_DIR: cla-frontend-corporate-console
-      ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: dev.lfcla.com
-      BUCKET_NAME: lf-cla-dev-cla-frontend-cc-4
-
-  deployCorporateConsoleStaging:
-    <<: *deployFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: staging
-      PROJECT_DIR: cla-frontend-corporate-console
-      ROOT_DOMAIN: lfcla.staging.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: staging.lfcla.com
-      BUCKET_NAME: lf-cla-staging-cla-frontend-cc-3
-
-  deployCorporateConsoleProd:
-    <<: *deployFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_PROD
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_PROD
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: prod
-      PROJECT_DIR: cla-frontend-corporate-console
-      ROOT_DOMAIN: lfcla.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: lfcla.com
-      BUCKET_NAME: lf-cla-prod-cla-frontend-cc-3
-
-  # Contributor Console
-  deployContributorConsoleDev:
-    <<: *deployFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: dev
-      PROJECT_DIR: cla-frontend-contributor-console
-      ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: dev.lfcla.com
-      BUCKET_NAME: lf-cla-dev-cla-frontend-ic-4
-
-  deployContributorConsoleStaging:
-    <<: *deployFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: staging
-      PROJECT_DIR: cla-frontend-contributor-console
-      ROOT_DOMAIN: lfcla.staging.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: staging.lfcla.com
-      BUCKET_NAME: lf-cla-staging-cla-frontend-ic-3
-
-  deployContributorConsoleProd:
-    <<: *deployFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_PROD
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_PROD
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: prod
-      PROJECT_DIR: cla-frontend-contributor-console
-      ROOT_DOMAIN: lfcla.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: lfcla.com
-      BUCKET_NAME: lf-cla-prod-cla-frontend-ic-3
 
   deployLandingFrontend: &deployLandingFrontendAnchor
     docker:
@@ -1047,18 +774,6 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - buildProjectConsoleDev:
-          filters:
-            tags:
-              only: /.*/
-      - buildCorporateConsoleDev:
-          filters:
-            tags:
-              only: /.*/
-      - buildContributorConsoleDev:
-          filters:
-            tags:
-              only: /.*/
       - buildLandingPageDev:
           filters:
             tags:
@@ -1085,28 +800,10 @@ workflows:
             branches:
               only:
                 - main
-      - deployProjectManagementConsoleDev:
-          filters:
-            tags:
-              ignore: /.*/
-            branches:
-              only:
-                - main
-      - deployCorporateConsoleDev:
-          filters:
-            tags:
-              ignore: /.*/
-            branches:
-              only:
-                - main
-      - deployContributorConsoleDev:
-          filters:
-            tags:
-              ignore: /.*/
-            branches:
-              only:
-                - main
+      # Deploy Landing Page Dev
       - deployLandingFrontendDev:
+          requires:
+            - buildLandingPageDev
           filters:
             tags:
               ignore: /.*/
@@ -1174,33 +871,6 @@ workflows:
             tags:
               # see semver examples https://regex101.com/r/Ly7O1x/201/
               only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployProjectManagementConsoleStaging:
-          requires:
-            - approve_staging
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployCorporateConsoleStaging:
-          requires:
-            - approve_staging
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployContributorConsoleStaging:
-          requires:
-            - approve_staging
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
       - deployLandingFrontendStaging:
           requires:
             - approve_staging
@@ -1245,33 +915,6 @@ workflows:
           requires:
             - approve_prod
             - buildGoBackendCommon
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployProjectManagementConsoleProd:
-          requires:
-            - approve_prod
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployCorporateConsoleProd:
-          requires:
-            - approve_prod
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployContributorConsoleProd:
-          requires:
-            - approve_prod
           filters:
             branches:
               ignore: /.*/
