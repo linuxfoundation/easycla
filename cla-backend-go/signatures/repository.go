@@ -3246,6 +3246,8 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		log.WithFields(f).Debugf("adding search term filter for: '%s'", searchTermValue)
 		searchTermExpression := expression.Name("signature_reference_name_lower").Contains(strings.ToLower(searchTermValue)).
 			Or(expression.Name("user_email").Contains(strings.ToLower(searchTermValue))).
+			Or(expression.Name("user_lf_username").Contains(strings.ToLower(searchTermValue))).
+			Or(expression.Name("user_name").Contains(strings.ToLower(searchTermValue))).
 			Or(expression.Name(SignatureUserGitHubUsername).Contains(strings.ToLower(searchTermValue))).
 			Or(expression.Name("user_docusign_name").Contains(strings.ToLower(searchTermValue)))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
