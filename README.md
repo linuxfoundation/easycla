@@ -69,7 +69,7 @@ The following diagram illustrates the EasyCLA release process:
 
 ## License
 
-Copyright The Linux Foundation and each contributor to CommunityBridge.
+Copyright The Linux Foundation and each contributor to CommunityBridge. 
 
 This project’s source code is licensed under the MIT License. A copy of the license is available in LICENSE.
 
