@@ -20,6 +20,12 @@ COMMIT := $(shell sh -c 'git rev-parse --short HEAD')
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.branch=$(BRANCH) -X main.buildDate=$(BUILD_TIME)"
 BUILD_TAGS=-tags aws_lambda
 
+ifeq "$(shell uname -p)" "arm"
+	BUILD_ARCH=arm64
+else
+    # ifeq "$(shell uname -p)" "x86_64"
+	BUILD_ARCH=amd64
+endif
 ifeq "$(shell uname -s)" "Darwin"
 	BUILD_HOST=darwin
 endif
@@ -28,11 +34,12 @@ ifeq "$(shell uname -s)" "Linux"
 endif
 
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
-LINT_VERSION=v1.46.2
+LINT_VERSION=v1.48.0
 SWAGGER_DIR=$(ROOT_DIR)/swagger
 SWAGGER_BIN_DIR=/usr/local/bin
-SWAGGER_TOOL_VERSION=v0.24.0
-SWAGGER_ASSET="swagger_$(BUILD_HOST)_amd64"
+#SWAGGER_TOOL_VERSION=v0.24.0
+SWAGGER_TOOL_VERSION=v0.29.0
+SWAGGER_ASSET="swagger_$(BUILD_HOST)_$(BUILD_ARCH)"
 SWAGGER_ASSET_URL="https://github.com/go-swagger/go-swagger/releases/download/$(SWAGGER_TOOL_VERSION)/$(SWAGGER_ASSET)"
 GO_PKGS=$(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/)
 GO_FILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')
@@ -104,6 +111,8 @@ swagger-prep:
 
 swagger-build-v1-services:
 	@echo
+	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "Go version is: $(shell go version )"
 	@echo "Generating v1 legacy API models..."
 	cd swagger; source .venv/bin/activate && python3 multi-file-swagger.py --spec-input-file cla.v1.yaml --spec-output-file cla.v1.compiled.yaml
 	swagger -q generate server \
@@ -114,10 +123,12 @@ swagger-build-v1-services:
 		--model-package=v1/models \
 		--exclude-main \
 		-A cla \
-		-P user.CLAUser
+		-P github.com/communitybridge/easycla/cla-backend-go/user.CLAUser
 
 swagger-build-v2-services:
 	@echo
+	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version)"
+	@echo "Go version is: $(shell go version )"
 	@echo "Generating v2 API models..."
 	cd swagger; source .venv/bin/activate && python3 multi-file-swagger.py --spec-input-file cla.v2.yaml --spec-output-file cla.v2.compiled.yaml
 	swagger -q generate server \
@@ -128,10 +139,12 @@ swagger-build-v2-services:
 		--model-package=v2/models \
 		--exclude-main \
 		-A easycla \
-		-P auth.User
+		-P github.com/LF-Engineering/lfx-kit/auth.User
 
 swagger-build-project-service:
 	@echo
+	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version)"
+	@echo "Go version is: $(shell go version )"
 	@echo "Generating swagger client for the project-service..."
 	@mkdir -p v2/project-service
 	curl -sfL https://api-gw.dev.platform.linuxfoundation.org/project-service/swagger.json --output swagger/project-service.yaml
@@ -144,6 +157,8 @@ swagger-build-project-service:
 
 swagger-build-organization-service:
 	@echo
+	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "Go version is: $(shell go version )"
 	@echo "Generating swagger client for the organization-service..."
 	@mkdir -p v2/organization-service
 	curl -sfL https://api-gw.dev.platform.linuxfoundation.org/organization-service/swagger.json --output swagger/organization-service.yaml
@@ -156,6 +171,8 @@ swagger-build-organization-service:
 
 swagger-build-user-service:
 	@echo
+	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "Go version is: $(shell go version )"
 	@echo "Generating swagger client for the user-service..."
 	@mkdir -p v2/user-service
 	curl -sfL https://api-gw.dev.platform.linuxfoundation.org/user-service/swagger.json --output swagger/user-service.yaml
@@ -168,6 +185,8 @@ swagger-build-user-service:
 
 swagger-build-acs-service:
 	@echo
+	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "Go version is: $(shell go version )"
 	@echo "Generating swagger client for the acs-service..."
 	@mkdir -p v2/acs-service
 	curl -sfL https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs/swagger/swagger.json --output swagger/acs-service.yaml
@@ -333,6 +352,6 @@ build-functional-tests-mac: deps build-prep
 	@chmod +x $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN)-mac
 
 lint:
-	@cd $(MAKEFILE_DIR) && echo "Running lint..." && $(LINT_TOOL) --version && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "Lint check passed."
+	@cd $(MAKEFILE_DIR) && $(LINT_TOOL) version && echo "Running lint..." && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "Lint check passed."
 	@cd $(MAKEFILE_DIR) && ./check-headers.sh
 

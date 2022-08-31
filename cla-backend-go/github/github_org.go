@@ -45,7 +45,7 @@ func GetOrganization(ctx context.Context, organizationName string) (*github.Orga
 	return org, nil
 }
 
-//GetOrganizationMembers gets members in organization
+// GetOrganizationMembers gets members in organization
 func GetOrganizationMembers(ctx context.Context, orgName string, installationID int64) ([]string, error) {
 	f := logrus.Fields{
 		"functionName":   "GetOrganizationMembers",

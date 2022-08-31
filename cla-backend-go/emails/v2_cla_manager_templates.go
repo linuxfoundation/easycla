@@ -7,7 +7,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
 
-//Contributor representing GH user details
+// Contributor representing GH user details
 type Contributor struct {
 	Email         string
 	Username      string

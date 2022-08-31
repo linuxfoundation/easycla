@@ -694,7 +694,7 @@ func (s *service) AssociateContributor(ctx context.Context, companySFID string, 
 	return contributor, nil
 }
 
-//CreateContributor creates contributor for contributor prospect
+// CreateContributor creates contributor for contributor prospect
 func (s *service) CreateContributor(ctx context.Context, companyID string, projectID string, userEmail string, ClaGroupID string) (*models.Contributor, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.company.service.CreateContributor",
@@ -785,7 +785,7 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 	return contributor, nil
 }
 
-//AssociateContributorByGroup creates contributor by group for contributor prospect
+// AssociateContributorByGroup creates contributor by group for contributor prospect
 func (s *service) AssociateContributorByGroup(ctx context.Context, companySFID, userEmail string, projectCLAGroups []*projects_cla_groups.ProjectClaGroup, ClaGroupID string) ([]*models.Contributor, string, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.company.service.AssociateContributorByGroup",

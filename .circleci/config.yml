@@ -101,19 +101,6 @@ set_functional_test_environment: &set_functional_test_environment
       echo "export AUTH0_USER5_CLIENT_ID='${!AUTH0_USER5_CLIENT_ID_ENV_VAR}'" >> ${BASH_ENV}
 
 step-library:
-  - &install-node-8
-    run:
-      name: Install node 8
-      command: |
-        set +e
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.2/install.sh | bash
-        [ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
-        node_version="v8.17.0"
-        echo "Installing node ${node_version}..."
-        nvm install ${node_version}
-        nvm alias default ${node_version}
-        echo "[ -s \"${NVM_DIR}/nvm.sh\" ] && . \"${NVM_DIR}/nvm.sh\"" >> $BASH_ENV
-
   - &install-node-12
     run:
       name: Install node 12
@@ -198,10 +185,10 @@ jobs:
 
   buildGoBackend: &buildGoBackendAnchor
     docker:
-      - image: circleci/golang:1.17
-    working_directory: /go/src/github.com/communitybridge/easycla/
+      - image: cimg/go:1.19.0
     steps:
       - checkout
+      - run: go version
       - add_ssh_keys:
           fingerprints:
             - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
@@ -675,11 +662,12 @@ jobs:
 
   functionalTestsGo: &functionalTestsGo
     docker:
-      - image: circleci/golang:1.17
+      - image: cimg/go:1.19.0
     steps:
       - attach_workspace:
           at: ~/
       - checkout
+      - run: go version
       - *set_functional_test_environment
       - run:
           name: functional-tests-go

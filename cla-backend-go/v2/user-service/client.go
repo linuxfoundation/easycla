@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 
@@ -35,7 +35,7 @@ var (
 
 // Client is client for user_service
 type Client struct {
-	cl       *client.UserService
+	cl       *client.UserServiceAPI
 	apiKey   string
 	apiGwURL string
 }
@@ -154,7 +154,7 @@ func (usc *Client) SearchUsers(firstName string, lastName string, email string) 
 		}
 	}()
 
-	data, err := ioutil.ReadAll(response.Body)
+	data, err := io.ReadAll(response.Body)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem decoding the user response")
 		return nil, err
@@ -336,7 +336,7 @@ func (usc *Client) GetStaff(userSFID string) (*models.Staff, error) {
 	return result.Payload, nil
 }
 
-//GetUserEmail returns email of a user given username
+// GetUserEmail returns email of a user given username
 func (usc *Client) GetUserEmail(username string) (string, error) {
 	user, err := usc.GetUserByUsername(username)
 	if err != nil {

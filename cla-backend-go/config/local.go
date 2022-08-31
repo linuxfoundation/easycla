@@ -5,18 +5,25 @@ package config
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"path/filepath"
+
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/sirupsen/logrus"
 )
 
 func loadLocalConfig(configFilePath string) (Config, error) {
-	configData, err := ioutil.ReadFile(filepath.Clean(configFilePath))
+	f := logrus.Fields{
+		"functionName": "config.local.loadLocalConfig",
+	}
+	content, err := os.ReadFile(filepath.Clean(configFilePath))
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("Failed to read config file: %s", configFilePath)
 		return Config{}, err
 	}
 
 	localConfig := Config{}
-	err = json.Unmarshal(configData, &localConfig)
+	err = json.Unmarshal(content, &localConfig)
 	if err != nil {
 		return Config{}, err
 	}

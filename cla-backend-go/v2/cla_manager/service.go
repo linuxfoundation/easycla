@@ -306,7 +306,7 @@ func (s *service) DeleteCLAManager(ctx context.Context, authUser *auth.User, cla
 	return nil
 }
 
-//CreateCLAManagerDesignee creates designee for cla manager prospect
+// CreateCLAManagerDesignee creates designee for cla manager prospect
 func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string, projectSFID string, userEmail string) (*models.ClaManagerDesignee, error) {
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.CreateCLAManagerDesignee",
@@ -548,7 +548,7 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 	}, nil
 }
 
-//CreateCLAManagerDesigneeByGroup creates designee by group for cla manager prospect
+// CreateCLAManagerDesigneeByGroup creates designee by group for cla manager prospect
 func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cla_manager.CreateCLAManagerDesigneeByGroupParams, projectCLAGroups []*projects_cla_groups.ProjectClaGroup) ([]*models.ClaManagerDesignee, string, error) {
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.CreateCLAManagerDesigneeByGroup",

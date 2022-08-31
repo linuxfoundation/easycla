@@ -9,7 +9,7 @@ type ClaManagerInfoParams struct {
 	Email    string
 }
 
-//InvalidateSignatureTemplateParams representing params when invalidating icla/ecla
+// InvalidateSignatureTemplateParams representing params when invalidating icla/ecla
 type InvalidateSignatureTemplateParams struct {
 	RecipientName   string
 	ClaType         string

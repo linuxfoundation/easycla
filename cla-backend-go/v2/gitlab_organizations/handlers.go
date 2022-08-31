@@ -660,7 +660,7 @@ func (o *ServerError) WriteResponse(rw http.ResponseWriter, producer runtime.Pro
 	}
 }
 
-//cleanPath helper function that strips the groups/ prefix in full path
+// cleanPath helper function that strips the groups/ prefix in full path
 func cleanPath(fullPath string) string {
 	f := logrus.Fields{
 		"functionName": "gitlab_organizations.handlers.cleanPath",

@@ -17,7 +17,7 @@ import (
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 )
 
-//DBStore represents DB Model for the store table
+// DBStore represents DB Model for the store table
 type DBStore struct {
 	Key    string `dynamodbav:"key"`
 	Value  string `dynamodbav:"value"`
@@ -35,7 +35,7 @@ type repo struct {
 	storeTableName string
 }
 
-//NewRepository initiates Store repository instance
+// NewRepository initiates Store repository instance
 func NewRepository(awsSession *session.Session, stage string) Repository {
 	return repo{
 		stage:          stage,

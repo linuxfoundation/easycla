@@ -319,7 +319,7 @@ func (s *Service) GetGitLabOrganizationsEnabledWithAutoEnabled(ctx context.Conte
 	return out, nil
 }
 
-//GetGitLabGroupMembers gets group members
+// GetGitLabGroupMembers gets group members
 func (s *Service) GetGitLabGroupMembers(ctx context.Context, groupID string) (*v2Models.GitlabGroupMembersList, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.gitlab_organizations.service.GetGitLabGroupMembers",

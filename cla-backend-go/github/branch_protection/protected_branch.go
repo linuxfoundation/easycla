@@ -182,8 +182,8 @@ func (bp *BranchProtectionRepository) GetProtectedBranch(ctx context.Context, ow
 	return nil, ErrBranchNotProtected
 }
 
-//EnableBranchProtection enables branch protection if not enabled and makes sure passed arguments such as enforceAdmin
-//statusChecks are applied. The operation makes sure it doesn't override the existing checks.
+// EnableBranchProtection enables branch protection if not enabled and makes sure passed arguments such as enforceAdmin
+// statusChecks are applied. The operation makes sure it doesn't override the existing checks.
 func (bp *BranchProtectionRepository) EnableBranchProtection(ctx context.Context, owner, repoName, branchName string, enforceAdmin bool, enableStatusChecks, disableStatusChecks []string) error {
 	repoName = CleanGithubRepoName(repoName)
 
@@ -220,7 +220,7 @@ func (bp *BranchProtectionRepository) EnableBranchProtection(ctx context.Context
 	return nil
 }
 
-//mergeStatusChecks merges the current checks with the new ones and disable the ones that are specified
+// mergeStatusChecks merges the current checks with the new ones and disable the ones that are specified
 func mergeStatusChecks(currentChecks []string, enableContexts, disableContexts []string) []string {
 
 	// seems github api is not happy with nils for arrays ;)
@@ -321,7 +321,7 @@ func prepareBranchProtectionMutation(repoID string, currentProtections []BranchP
 	return nil, &updateInput
 }
 
-//IsEnforceAdminEnabled checks if enforce admin option is enabled for the branch protection
+// IsEnforceAdminEnabled checks if enforce admin option is enabled for the branch protection
 func IsEnforceAdminEnabled(protection *BranchProtectionRule) bool {
 	return protection.IsAdminEnforced
 }

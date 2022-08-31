@@ -14,7 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations" // nolint - lint error for import not used, but it really is
 
 	"github.com/go-openapi/runtime"
 
@@ -132,8 +132,8 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		}
 
 		log.WithFields(f).Debug("loading CLA groups by projectSFID")
-		projectModels, projsErr := claGroupService.GetCLAGroupsByExternalSFID(ctx, params.ProjectSFID)
-		if projsErr != nil || projectModels == nil {
+		projectModels, projectErr := claGroupService.GetCLAGroupsByExternalSFID(ctx, params.ProjectSFID)
+		if projectErr != nil || projectModels == nil {
 			msg := fmt.Sprintf("unable to locate projects by Project SFID: %s", params.ProjectSFID)
 			log.WithFields(f).Warn(msg)
 			return signatures.NewUpdateApprovalListNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
@@ -603,7 +603,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 
 		if companyModel == nil {
 			log.WithFields(f).WithError(err).Warnf("problem loading company model by ID - returning empty response")
-			// Not sure this is the correct response as the LFX UI/Admin console wants 200 empty lists instead of non-200 status back
+			// the LFX UI/Admin console wants 200 empty lists instead of non-200 status back
 			return signatures.NewGetCompanySignaturesOK().WithXRequestID(reqID).WithPayload(&models.Signatures{
 				Signatures:  []*models.Signature{},
 				ResultCount: 0,
@@ -636,7 +636,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
-		// Nothing in the query response - return a empty model
+		// Nothing in the query response - return an empty model
 		if companySignatures == nil || len(companySignatures.Signatures) == 0 {
 			return signatures.NewGetCompanySignaturesOK().WithXRequestID(reqID).WithPayload(&models.Signatures{
 				Signatures:  []*models.Signature{},
@@ -761,7 +761,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 
 		// Lookup the Project to CLA Group mapping table entries - this will have the correct details
 		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, params.ClaGroupID)
-		// Should have at least one entry if we're setup correctly - it will have the foundation (parent project/project group) and project details set
+		// Should have at least one entry if we're set up correctly - it will have the foundation (parent project/project group) and project details set
 		if projectCLAGroupErr != nil || len(projectCLAGroupEntries) == 0 {
 			msg := fmt.Sprintf("unable to load project CLA Group mappings for CLA Group: %s - has this project been migrated to v2?", params.ClaGroupID)
 			log.WithFields(f).Warn(msg)

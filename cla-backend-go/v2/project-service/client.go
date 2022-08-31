@@ -33,7 +33,7 @@ const (
 
 // Client is client for user_service
 type Client struct {
-	cl *client.PMM
+	cl *client.PMMAPI
 }
 
 var (
@@ -463,7 +463,7 @@ func (pmm *Client) DisableCLA(ctx context.Context, projectSFID string) error {
 	return pmm.updateEnabledServices(ctx, projectSFID, newEnabledServices, clientAuth)
 }
 
-//GetSummary gets projects tree hierarchy and project details
+// GetSummary gets projects tree hierarchy and project details
 func (pmm *Client) GetSummary(ctx context.Context, projectSFID string) ([]*models.ProjectSummary, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.project-service.client.Summary",

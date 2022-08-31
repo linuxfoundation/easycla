@@ -6,7 +6,7 @@ package utils
 import (
 	"bytes"
 	"errors"
-	"io/ioutil"
+	"io"
 	"strings"
 	"time"
 
@@ -69,7 +69,7 @@ func (s3c *S3Client) Download(filename string) ([]byte, error) {
 		return nil, err
 	}
 
-	body, err := ioutil.ReadAll(ou.Body)
+	body, err := io.ReadAll(ou.Body)
 	if err != nil {
 		log.Warnf("problem reading file from s3 bucket: %s resource: %s, error: %+v",
 			s3c.BucketName, filename, err)

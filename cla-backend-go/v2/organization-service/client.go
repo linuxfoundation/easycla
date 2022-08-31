@@ -29,7 +29,7 @@ import (
 
 // Client is client for organization_service
 type Client struct {
-	cl *client.OrganizationService
+	cl *client.OrganizationServiceAPI
 }
 
 const (

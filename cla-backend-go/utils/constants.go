@@ -81,7 +81,7 @@ const CLASignatoryRole = "cla-signatory"
 // Lead representing type of user
 const Lead = "lead"
 
-//ContactRole contact role for user
+// ContactRole contact role for user
 const ContactRole = "contact"
 
 // ProjectScope is the ACS project scope
@@ -129,22 +129,22 @@ const SortOrderDescending = "desc"
 // RecordDeleted dynamo event for deleting a record
 const RecordDeleted = "REMOVE"
 
-//RecordModified dynamo event on modifying a record
+// RecordModified dynamo event on modifying a record
 const RecordModified = "MODIFY"
 
-//RecordAdded dynami event on adding a record
+// RecordAdded dynami event on adding a record
 const RecordAdded = "INSERT"
 
-//GithubRepoNotFound is a string that indicates the GitHub repository is not found
+// GithubRepoNotFound is a string that indicates the GitHub repository is not found
 const GithubRepoNotFound = "GitHub repository not found"
 
-//GithubRepoExists  is a string that indicates the GitHub repository already exists
+// GithubRepoExists  is a string that indicates the GitHub repository already exists
 const GithubRepoExists = "GitHub repository exists"
 
-//GitHubEmailLabel represents the GH Email label used for email
+// GitHubEmailLabel represents the GH Email label used for email
 const GitHubEmailLabel = "GitHub Email Address"
 
-//GitHubUserLabel represents the GH username Label used for email
+// GitHubUserLabel represents the GH username Label used for email
 const GitHubUserLabel = "GitHub Username"
 
 // GitLab is the GitLab spelled out with the proper case
@@ -153,49 +153,49 @@ const GitLab = "GitLab"
 // GitLabLower is the GitLab spelled out in lower case
 const GitLabLower = "gitlab"
 
-//GitLabRepoNotFound is a string that indicates the GitLab repository is not found
+// GitLabRepoNotFound is a string that indicates the GitLab repository is not found
 const GitLabRepoNotFound = "GitLab repository not found"
 
-//GitLabDuplicateRepoFound is a string that indicates that duplicate GitLab repositories were found
+// GitLabDuplicateRepoFound is a string that indicates that duplicate GitLab repositories were found
 const GitLabDuplicateRepoFound = "Duplicate GitLab repositories were found"
 
-//GitLabRepoExists  is a string that indicates the GitLab repository already exists
+// GitLabRepoExists  is a string that indicates the GitLab repository already exists
 const GitLabRepoExists = "GitLab repository exists"
 
-//GitLabEmailLabel represents the GitLab Email label used for email
+// GitLabEmailLabel represents the GitLab Email label used for email
 const GitLabEmailLabel = "GitLab Email Address"
 
-//GitLabUserLabel represents the GitLab username Label used for email
+// GitLabUserLabel represents the GitLab username Label used for email
 const GitLabUserLabel = "GitLab Username"
 
-//EmailLabel represents LF/EasyCLA Email address
+// EmailLabel represents LF/EasyCLA Email address
 const EmailLabel = "Email Address"
 
-//UserLabel represents the LF/EasyCLA username
+// UserLabel represents the LF/EasyCLA username
 const UserLabel = "Username"
 
-//EmailDomainCriteria represents approval based on email domain
+// EmailDomainCriteria represents approval based on email domain
 const EmailDomainCriteria = "Email Domain Criteria"
 
-//EmailCriteria represents approvals based on email addresses
+// EmailCriteria represents approvals based on email addresses
 const EmailCriteria = "Email Criteria"
 
-//AddApprovals is an action for adding approvals
+// AddApprovals is an action for adding approvals
 const AddApprovals = "AddApprovals"
 
-//RemoveApprovals is an action for removing approvals
+// RemoveApprovals is an action for removing approvals
 const RemoveApprovals = "RemoveApprovals"
 
-//GitHubUsernameCriteria represents criteria based on GitHub username
+// GitHubUsernameCriteria represents criteria based on GitHub username
 const GitHubUsernameCriteria = "GitHubUsername"
 
-//GitHubOrgCriteria represents approvals based on GitHub org membership
+// GitHubOrgCriteria represents approvals based on GitHub org membership
 const GitHubOrgCriteria = "GitHub Org Criteria"
 
-//GitlabUsernameCriteria represents criteria based on gitlab username
+// GitlabUsernameCriteria represents criteria based on gitlab username
 const GitlabUsernameCriteria = "GitHubUsername"
 
-//GitlabOrgCriteria represents approvals based on gitlab org group membership
+// GitlabOrgCriteria represents approvals based on gitlab org group membership
 const GitlabOrgCriteria = "Gitlab Org Criteria"
 
 // SignatureQueryDefaultAll the signature query default active value - A flag to indicate how a default signature
@@ -208,8 +208,8 @@ const SignatureQueryDefaultAll = "all"
 // params are provided
 const SignatureQueryDefaultActive = "active"
 
-//GitLabRepositoryType representing the GitLab repository type
+// GitLabRepositoryType representing the GitLab repository type
 const GitLabRepositoryType = "GitLab"
 
-//GitHubRepositoryType representing the GitLab repository type
+// GitHubRepositoryType representing the GitLab repository type
 const GitHubRepositoryType = "GitHub"

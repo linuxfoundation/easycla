@@ -8,7 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -81,7 +81,7 @@ func (lfg *LFGroup) getAccessToken(ctx context.Context) (string, error) {
 		}
 	}()
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem reading the response from URL: %s", OauthURL)
 		return "", err
@@ -138,7 +138,7 @@ func (lfg *LFGroup) GetGroup(ctx context.Context, groupID string) (*LDAPGroup, e
 		}
 	}()
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem reading the response from URL: %s", getGroupURL)
 		return nil, err
@@ -178,7 +178,7 @@ func (lfg *LFGroup) GetUsersOfGroup(ctx context.Context, authUser *auth.User, cl
 	// API Docs: https://confluence.linuxfoundation.org/display/IPM/Drupal+Identity+REST+for+Auth0
 	url := fmt.Sprintf("%s/rest/auth0/og/%s", lfg.LfBaseURL, groupName)
 
-	// Setup the request
+	// Set up the request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem creating a new request to URL: %s", url)
@@ -210,7 +210,7 @@ func (lfg *LFGroup) GetUsersOfGroup(ctx context.Context, authUser *auth.User, cl
 		log.WithFields(f).Debugf("successfully fetched members from group: %s", groupName)
 
 		var result v2Models.GerritGroupResponse
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("problem reading response for url: %s", url)
 			return nil, err
@@ -265,7 +265,7 @@ func (lfg *LFGroup) AddUserToGroup(ctx context.Context, authUser *auth.User, cla
 		return err
 	}
 
-	// Setup the request
+	// Set up the request
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem creating a new request to URL: %s", url)
@@ -347,7 +347,7 @@ func (lfg *LFGroup) RemoveUserFromGroup(ctx context.Context, authUser *auth.User
 		return err
 	}
 
-	// Setup the request
+	// Set up the request
 	req, err := http.NewRequest("DELETE", url, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem creating a new request to URL: %s", url)

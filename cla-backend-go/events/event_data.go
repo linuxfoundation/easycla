@@ -126,7 +126,7 @@ type SignatureProjectInvalidatedEventData struct {
 	InvalidatedCount int
 }
 
-//SignatureInvalidatedApprovalRejectionEventData data model
+// SignatureInvalidatedApprovalRejectionEventData data model
 type SignatureInvalidatedApprovalRejectionEventData struct {
 	GHUsername  string
 	Email       string

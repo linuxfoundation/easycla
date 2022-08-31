@@ -16,14 +16,14 @@ type SignatureCompanyID struct {
 	CompanyName string
 }
 
-//ApprovalCriteria struct representing approval criteria values
+// ApprovalCriteria struct representing approval criteria values
 type ApprovalCriteria struct {
 	UserEmail      string
 	GitHubUsername string
 	GitlabUsername string
 }
 
-//ApprovalList data model
+// ApprovalList data model
 type ApprovalList struct {
 	Criteria                string
 	ApprovalList            []string

@@ -83,7 +83,8 @@ type SendUserInviteInput struct {
 }
 
 // SendUserInvite invites users to the LFX platform
-//func (ac *Client) SendUserInvite(ctx context.Context, email *string,
+// func (ac *Client) SendUserInvite(ctx context.Context, email *string,
+//
 //	roleName string, scope string, projectID *string, organizationID string, inviteType string, subject *string, emailContent *string, automate bool) error {
 func (ac *Client) SendUserInvite(ctx context.Context, input *SendUserInviteInput) error {
 	f := logrus.Fields{
@@ -385,7 +386,7 @@ func (ac *Client) RemoveCLAUserRolesByProjectOrganization(projectSFID, organizat
 	return nil
 }
 
-//UserScope entity representative of project and org for given role scope
+// UserScope entity representative of project and org for given role scope
 type UserScope struct {
 	Username string
 	Email    string

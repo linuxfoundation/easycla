@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 )
 
-//GetHTTPOKResponse : return Get HTTP Success Response
+// GetHTTPOKResponse : return Get HTTP Success Response
 func GetHTTPOKResponse(ctx context.Context) events.APIGatewayProxyResponse {
 	resp := events.APIGatewayProxyResponse{
 		StatusCode:      200,

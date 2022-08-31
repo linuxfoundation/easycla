@@ -9,7 +9,7 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -24,7 +24,7 @@ func postSQSEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dataByte, err := ioutil.ReadAll(r.Body)
+	dataByte, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Println("Failed to read body")
 		http.Error(w, "Failed to read body", http.StatusInternalServerError)

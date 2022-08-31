@@ -31,7 +31,7 @@ const (
 	DeleteCLAManager  = "delete"
 )
 
-//ErrNoExternalID when company does not have externalID
+// ErrNoExternalID when company does not have externalID
 var ErrNoExternalID = errors.New("company External ID does not exist")
 
 // Signature database model
@@ -328,10 +328,8 @@ func (s *service) SignatureAddUsersDetails(event events.DynamoDBEventRecord) err
 
 // signature function should be invoked when signature ACL is updated
 func (s *service) UpdateCLAPermissions(event events.DynamoDBEventRecord) error {
-	ctx := utils.NewContext()
 	f := logrus.Fields{
-		"functionName":   "UpdateCLAPermissions",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"functionName": "v2.dynamo_events.UpdateCLAPermissions",
 	}
 
 	// Decode the pre-update and post-update signature record details

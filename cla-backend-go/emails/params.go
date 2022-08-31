@@ -41,14 +41,14 @@ type CLAProjectParams struct {
 // it checks at SignedAtFoundationLevel flag as well for this specific kind of projects
 func (p CLAProjectParams) GetProjectFullURL() template.HTML {
 	if p.CorporateConsole == "" {
-		return template.HTML(p.ExternalProjectName)
+		return template.HTML(url.QueryEscape(p.ExternalProjectName)) // nolint gosec auto-escape HTML
 	}
 
 	u, err := url.Parse(p.CorporateConsole)
 	if err != nil {
 		log.Warnf("couldn't parse the console url, probably wrong configuration used : %s : %v", p.CorporateConsole, err)
 		// at least return the project name so we don't have broken email
-		return template.HTML(p.ExternalProjectName)
+		return template.HTML(url.QueryEscape(p.ExternalProjectName)) // nolint gosec auto-escape HTML
 	}
 
 	var projectConsolePathURL string
@@ -61,7 +61,7 @@ func (p CLAProjectParams) GetProjectFullURL() template.HTML {
 		projectConsolePathURL = u.String()
 	}
 
-	return template.HTML(fmt.Sprintf(fullURLHtml, projectConsolePathURL, p.ExternalProjectName))
+	return template.HTML(fmt.Sprintf(fullURLHtml, projectConsolePathURL, url.QueryEscape(p.ExternalProjectName))) // nolint gosec auto-escape HTML
 }
 
 // CLAGroupTemplateParams includes the params for the CLAGroupTemplateParams

@@ -25,7 +25,7 @@ type V4BranchProtectionRepository interface {
 	GetRepositoryIDFromName(ctx context.Context, repositoryOwner, repositoryName string) (string, error)
 }
 
-//CombinedRepository is combination of V3Repositories and V4BranchProtectionRepository
+// CombinedRepository is combination of V3Repositories and V4BranchProtectionRepository
 type CombinedRepository interface {
 	V3Repositories
 	V4BranchProtectionRepository

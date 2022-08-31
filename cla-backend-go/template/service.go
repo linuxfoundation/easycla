@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
@@ -154,7 +153,7 @@ func (s Service) CreateTemplatePreview(ctx context.Context, claGroupFields *mode
 		}
 	}()
 
-	bytes, err := ioutil.ReadAll(ioReader)
+	bytes, err := io.ReadAll(ioReader)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("error reading PDF bytes from the generated template")
 		return nil, err

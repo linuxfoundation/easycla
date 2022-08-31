@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 
@@ -327,7 +327,7 @@ func requestCorporateSignature(authToken string, apiURL string, input *requestCo
 			log.WithFields(f).Warnf("error closing response body: %+v", closeErr)
 		}
 	}()
-	responseBody, err := ioutil.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.WithFields(f).Warnf("error reading response body: %+v", err)
 		return nil, err
