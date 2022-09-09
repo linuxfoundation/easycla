@@ -1766,7 +1766,7 @@ def get_time_from_string(date_string: str) -> Optional[datetime]:
     :return:
     """
     # Try these formats
-    formats = ['%Y-%m-%d %H:%M:%S.%f%z', '%Y-%m-%dT%H:%M:%S%z', '%Y-%m-%dT%H:%M:%S.%f%z']
+    formats = ['%Y-%m-%d %H:%M:%S.%f%z', '%Y-%m-%dT%H:%M:%S%z', '%Y-%m-%dT%H:%M:%S.%f%z', '%Y-%m-%dT%H:%M:%S.%f']
     for fmt in formats:
         try:
             return datetime.strptime(date_string, fmt)
