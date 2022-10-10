@@ -14,6 +14,7 @@ import uuid
 from typing import Optional, List
 
 import dateutil.parser
+from pynamodb import attributes
 from pynamodb.attributes import (
     UTCDateTimeAttribute,
     UnicodeSetAttribute,
@@ -22,7 +23,7 @@ from pynamodb.attributes import (
     NumberAttribute,
     ListAttribute,
     JSONAttribute,
-    MapAttribute,
+    MapAttribute, DESERIALIZE_CLASS_MAP,
 )
 from pynamodb.expressions.condition import Condition
 from pynamodb.indexes import GlobalSecondaryIndex, AllProjection
@@ -169,6 +170,7 @@ class GitHubUsernameIndex(GlobalSecondaryIndex):
     # This attribute is the hash key for the index.
     user_github_username = UnicodeAttribute(hash_key=True)
 
+
 class GitLabIDIndex(GlobalSecondaryIndex):
     """
     This class represents a global secondary index for querying users by github username.
@@ -182,6 +184,7 @@ class GitLabIDIndex(GlobalSecondaryIndex):
 
     # This attribute is the hash key for the index.
     user_gitlab_id = UnicodeAttribute(hash_key=True)
+
 
 class GitLabUsernameIndex(GlobalSecondaryIndex):
     """
@@ -480,6 +483,7 @@ class GitlabOrganizationNameLowerIndex(GlobalSecondaryIndex):
 
     organization_name_lower = UnicodeAttribute(hash_key=True)
 
+
 class GitlabExternalGroupIDIndex(GlobalSecondaryIndex):
     """
     This class represents a global secondary index for querying gitlab organizations by group ID
@@ -492,7 +496,7 @@ class GitlabExternalGroupIDIndex(GlobalSecondaryIndex):
         write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
         read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
         projection = AllProjection()
-    
+
     external_gitlab_group_id = NumberAttribute(hash_key=True)
 
 
@@ -1716,10 +1720,10 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
 
     def get_github_username(self):
         return self.model.user_github_username
-    
+
     def get_user_gitlab_id(self):
         return self.model.user_gitlab_id
-    
+
     def get_user_gitlab_username(self):
         return self.model.user_gitlab_username
 
@@ -1777,10 +1781,10 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
 
     def set_user_github_username(self, user_github_username):
         self.model.user_github_username = user_github_username
-    
+
     def set_user_gitlab_id(self, user_gitlab_id):
-        self.model.user_gitlab_id = user_gitlab_id 
-    
+        self.model.user_gitlab_id = user_gitlab_id
+
     def set_user_gitlab_username(self, user_gitlab_username):
         self.model.user_gitlab_username = user_gitlab_username
 
@@ -2071,8 +2075,8 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                 cla.log.debug(f'{fn} - no github organization approval list defined for this CCLA')
         else:
             cla.log.debug(f'{fn} - user\'s github_username is not defined - skipping github org approval list check')
-        
-        #Check GitLab username and id
+
+        # Check GitLab username and id
         gitlab_username = self.get_user_gitlab_username()
         gitlab_id = self.get_user_gitlab_id()
 
@@ -2092,7 +2096,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                 cla.log.debug(f'{fn} - updating user record - adding gitlab id: {gitlab_id}')
                 self.set_user_gitlab_id(gitlab_id)
                 self.save()
-        
+
         # GitLab username approval list processing
         if gitlab_username is not None:
             # remove leading and trailing whitespace from gitlab username
@@ -2109,8 +2113,8 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         else:
             cla.log.debug(f'{fn} - users gitlab_username is not defined - '
                           'skipping gitlab username approval list check')
-        
-        if gitlab_username is not None :
+
+        if gitlab_username is not None:
             cla.log.debug(f'{fn} fetching gitlab org approval list items to search by username: {gitlab_username}')
             gitlab_org_approval_lists = ccla_signature.get_gitlab_org_approval_list()
             cla.log.debug(f'{fn} checking gitlab org approval list: {gitlab_org_approval_lists}')
@@ -2118,14 +2122,15 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                 for gl_name in gitlab_org_approval_lists:
                     try:
                         gl_org = GitlabOrg().search_organization_by_group_url(gl_name)
-                        cla.log.debug(f"{fn} checking gitlab_username against approval list for gitlab group: {gl_name}")
-                        gl_list = list(filter(lambda gl_user: gl_user.get('username') == gitlab_username, cla.utils.lookup_gitlab_org_members(gl_org.get_organization_id())))
+                        cla.log.debug(
+                            f"{fn} checking gitlab_username against approval list for gitlab group: {gl_name}")
+                        gl_list = list(filter(lambda gl_user: gl_user.get('username') == gitlab_username,
+                                              cla.utils.lookup_gitlab_org_members(gl_org.get_organization_id())))
                         if len(gl_list) > 0:
                             cla.log.debug(f'{fn} - found gitlab username in gitlab approval list')
                             return True
                     except DoesNotExist as err:
                         cla.log.debug(f'gitlab group with full path: {gl_name} does not exist: {err}')
-        
 
         cla.log.debug(f'{fn} - unable to find user in any whitelist')
         return False
@@ -2530,6 +2535,11 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             user_docusign_date_signed=None,
     ):
         super(Signature).__init__()
+
+        # Patch the deserialize function of the ListAttribute - this addresses the issue when the List is 'None'
+        # See notes below in the patched function which describes the problem in more details
+        attributes.ListAttribute.deserialize = patched_deserialize
+
         self.model = SignatureModel()
         self.model.signature_id = signature_id
         self.model.signature_external_id = signature_external_id
@@ -2587,7 +2597,8 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             "signature company initial manager id: {}, signature company initial manager name: {},"
             "signature company initial manager email: {}, signature company secondary manager list: {},"
             "user_email: {}, user_github_username: {}, user_name: {}, "
-            "user_docusign_name: {}, user_docusign_date_signed: {}"
+            "user_docusign_name: {}, user_docusign_date_signed: {}, "
+            "created_on: {}, updated_on: {}"
         ).format(
             self.model.signature_id,
             self.model.signature_project_id,
@@ -2619,7 +2630,9 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             self.model.user_github_username,
             self.model.user_name,
             self.model.user_docusign_name,
-            self.model.user_docusign_date_signed
+            self.model.user_docusign_date_signed,
+            self.model.get_date_created(),
+            self.model.get_date_modified(),
         )
 
     def to_dict(self):
@@ -2732,10 +2745,10 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def get_github_org_whitelist(self):
         return self.model.github_org_whitelist
-    
+
     def get_gitlab_org_approval_list(self):
         return self.model.gitlab_org_approval_list
-    
+
     def get_gitlab_username_approval_list(self):
         return self.model.gitlab_username_approval_list
 
@@ -2888,10 +2901,11 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def set_github_org_whitelist(self, github_org_whitelist):
         self.model.github_org_whitelist = [github_org.strip() for github_org in github_org_whitelist]
-    
+
     def set_gitlab_username_approval_list(self, gitlab_username_approval_list):
-        self.model.gitlab_username_approval_list = [gitlab_user.strip() for gitlab_user in gitlab_username_approval_list]
-    
+        self.model.gitlab_username_approval_list = [gitlab_user.strip() for gitlab_user in
+                                                    gitlab_username_approval_list]
+
     def set_gitlab_org_approval_list(self, gitlab_org_approval_list):
         self.model.gitlab_org_approval_list = [gitlab_org.strip() for gitlab_org in gitlab_org_approval_list]
 
@@ -2942,78 +2956,63 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             signature_signed=None,
             signature_approved=None,
     ):
-        # TODO: Optimize this query to use filters properly.
-        # cla.log.debug('Signatures.get_signatures_by_reference() - reference_id: {}, reference_type: {}'
-        #              ' project_id: {}, user_ccla_company_id: {}'
-        #              ' signature_signed: {}, signature_approved: {}'.
-        #              format(reference_id, reference_type, project_id, user_ccla_company_id, signature_signed,
-        #                     signature_approved))
+        fn = 'cla.models.dynamo_models.signature.get_signatures_by_reference'
+        cla.log.debug(f'{fn} - reference_id: {reference_id}, reference_type: {reference_type}'
+                      f' project_id: {project_id}, user_ccla_company_id: {project_id}'
+                      f' signature_signed: {signature_signed}, signature_approved: {signature_approved}')
 
-        # cla.log.debug('Signatures.get_signatures_by_reference() - '
-        #              'performing signature_reference_id query using: {}'.format(reference_id))
+        cla.log.debug(f'{fn} - performing signature_reference_id query using: {reference_id}')
+        # TODO: Optimize this query to use filters properly.
         signature_generator = self.model.signature_reference_index.query(str(reference_id))
-        # cla.log.debug('Signatures.get_signatures_by_reference() - generator.last_evaluated_key: {}'.
-        #              format(signature_generator.last_evaluated_key))
+        cla.log.debug(f'{fn} - generator.last_evaluated_key: {signature_generator.last_evaluated_key}')
 
         signatures = []
         for signature_model in signature_generator:
+            cla.log.debug(f'{fn} - processing signature {signature_model}')
+
             # Skip signatures that are not the same reference type: user/company
             if signature_model.signature_reference_type != reference_type:
-                cla.log.debug(
-                    "Signatures.get_signatures_by_reference() - skipping signature - "
-                    "reference types do not match: {} versus {}".format(
-                        signature_model.signature_reference_type, reference_type
-                    )
-                )
+                cla.log.debug(f"{fn} - skipping signature - "
+                              f"reference types do not match: {signature_model.signature_reference_type} "
+                              f"versus {reference_type}")
                 continue
+            cla.log.debug(f"{fn} - signature reference types match: {signature_model.signature_reference_type}")
 
             # Skip signatures that are not an employee CCLA if user_ccla_company_id is present.
             # if user_ccla_company_id and signature_user_ccla_company_id are both none
             # it loads the ICLA signatures for a user.
             if signature_model.signature_user_ccla_company_id != user_ccla_company_id:
-                cla.log.debug(
-                    "Signatures.get_signatures_by_reference() - skipping signature - "
-                    "user_ccla_company_id values do not match: {} versus {}".format(
-                        signature_model.signature_user_ccla_company_id, user_ccla_company_id,
-                    )
-                )
+                cla.log.debug(f"{fn} - skipping signature - "
+                              f"user_ccla_company_id values do not match: "
+                              f"{signature_model.signature_user_ccla_company_id} "
+                              f"versus {user_ccla_company_id}")
                 continue
 
             # Skip signatures that are not of the same project
             if project_id is not None and signature_model.signature_project_id != project_id:
-                cla.log.debug(
-                    "Signatures.get_signatures_by_reference() - skipping signature - "
-                    "project_id values do not match: {} versus {}".format(
-                        signature_model.signature_project_id, project_id
-                    )
-                )
+                cla.log.debug(f"{fn} - skipping signature - "
+                              f"project_id values do not match: {signature_model.signature_project_id} "
+                              f"versus {project_id}")
                 continue
 
-            # SKip signatures that do not have the same signed flags
+            # Skip signatures that do not have the same signed flags
             # e.g. retrieving only signed / approved signatures
             if signature_signed is not None and signature_model.signature_signed != signature_signed:
-                cla.log.debug(
-                    "Signatures.get_signatures_by_reference() - skipping signature - "
-                    "signature_signed values do not match: {} versus {}".format(
-                        signature_model.signature_signed, signature_signed
-                    )
-                )
+                cla.log.debug(f"{fn} - skipping signature - "
+                              f"signature_signed values do not match: {signature_model.signature_signed} "
+                              f"versus {signature_signed}")
                 continue
 
             if signature_approved is not None and signature_model.signature_approved != signature_approved:
-                cla.log.debug(
-                    "Signatures.get_signatures_by_reference() - skipping signature - "
-                    "signature_approved values do not match: {} versus {}".format(
-                        signature_model.signature_approved, signature_approved
-                    )
-                )
+                cla.log.debug(f"{fn} - skipping signature - "
+                              f"signature_approved values do not match: {signature_model.signature_approved} "
+                              f"versus {signature_approved}")
                 continue
 
             signature = Signature()
             signature.model = signature_model
             signatures.append(signature)
-            # cla.log.debug('Signatures.get_signatures_by_reference() - signature match - '
-            #              'adding signature to signature list: {}'.format(signature))
+            cla.log.debug(f'{fn} -  signature match - adding signature to signature list: {signature}')
         return signatures
 
     def get_signatures_by_project(
@@ -3453,6 +3452,11 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             note=None,
     ):
         super(Company).__init__()
+
+        # Patch the deserialize function of the ListAttribute - this addresses the issue when the List is 'None'
+        # See notes below in the patched function which describes the problem in more details
+        attributes.ListAttribute.deserialize = patched_deserialize
+
         self.model = CompanyModel()
         self.model.company_id = company_id
         self.model.company_external_id = company_external_id
@@ -3594,9 +3598,13 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
         :return: The latest versioned signature object if it exists.
         :rtype: cla.models.model_interfaces.Signature or None
         """
+        cla.log.debug(f"locating latest signature - project_id={project_id}, "
+                      f"signature_signed={signature_signed}, "
+                      f"signature_approved={signature_approved}")
         signatures = self.get_company_signatures(
             project_id=project_id, signature_signed=signature_signed, signature_approved=signature_approved)
         latest = None
+        cla.log.debug(f"retrieved {len(signatures)}")
         for signature in signatures:
             if latest is None:
                 latest = signature
@@ -3998,13 +4006,13 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
 
     def delete(self):
         self.model.delete()
-    
+
     def get_external_gitlab_group_id(self):
         return self.model.external_gitlab_group_id
 
     def get_organization_id(self):
         return self.model.organization_id
-    
+
     def get_organization_url(self):
         return self.model.organization_url
 
@@ -4033,13 +4041,13 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         :rtype: str
         """
         return self.model.note
-    
+
     def get_auth_info(self):
         return self.model.auth_info
 
     def get_enabled(self):
         return self.model.enabled
-    
+
     def set_external_gitlab_group_id(self, external_gitlab_group_id):
         self.model.external_gitlab_group_id = external_gitlab_group_id
 
@@ -4047,7 +4055,7 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         self.model.organization_name = organization_name
         if self.model.organization_name:
             self.model.organization_name_lower = self.model.organization_name.lower()
-    
+
     def set_organization_url(self, organization_url):
         self.model.organization_url = organization_url
 
@@ -4071,10 +4079,10 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
 
     def set_enabled(self, enabled):
         self.model.enabled = enabled
-    
+
     def set_auth_info(self, auth_info):
         self.model.auth_info = auth_info
-    
+
     def get_organization_by_groupid(self, groupid):
         org_generator = self.model.gitlab_external_group_id_index.query(groupid)
         for org_model in org_generator:
@@ -4091,13 +4099,14 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
             org.model = org_model
             organizations.append(org)
         return organizations
-    
+
     def search_organization_by_lower_name(self, organization_name):
-        organizations = list(filter(lambda org: org.get_organization_name_lower() == organization_name.lower(), self.all()))
+        organizations = list(
+            filter(lambda org: org.get_organization_name_lower() == organization_name.lower(), self.all()))
         if organizations:
             return organizations[0]
         raise cla.models.DoesNotExist(f"Gitlab Org : {organization_name} does not exist")
-    
+
     def search_organization_by_group_url(self, group_url):
         # first check for match.. could be in the format https://gitlab.com/groups/<group_name>
         groups = self.all()
@@ -4108,7 +4117,7 @@ class GitlabOrg(model_interfaces.GitlabOrg):  # pylint: disable=too-many-public-
         pattern = re.compile(r"(?P<base>\bhttps://gitlab.com/\b)(?P<group>\bgroups\/\b)?(?P<name>\w+)")
         match = pattern.search(group_url)
         updated_url = ''
-        if match and not match.group('group') :
+        if match and not match.group('group'):
             cla.log.debug(f'{group_url} missing groups in url. Inserting groups to url ')
             parse_url_list = list(match.groups())
             parse_url_list[1] = 'groups/'
@@ -5347,3 +5356,34 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
             ccla_whitelist_request.model = request
             ret.append(ccla_whitelist_request)
         return ret
+
+
+def patched_deserialize(self, values):
+    """
+    Decode from list of AttributeValue types. This is a patched version of the pynamodb version 3.4.1 which address
+    the use-case where it attempts to iterate over a NoneType value. This is a known issue in pynamodb and has been
+    resolved in the latest 5.x series of pynamodb. However, if we upgrade to this version it will break all the
+    date/time processing in our models. So, we simply patch this version of the library to address this issue.
+    """
+    deserialized_lst = []
+    if not values:
+        return deserialized_lst
+    for v in values:
+        class_for_deserialize = self.element_type() if self.element_type else _get_class_for_deserialize(v)
+        attr_value = _get_value_for_deserialize(v)
+        deserialized_lst.append(class_for_deserialize.deserialize(attr_value))
+    return deserialized_lst
+
+
+def _get_value_for_deserialize(value):
+    key = next(iter(value.keys()))
+    if key == 'NULL':
+        return None
+    return value[key]
+
+
+def _get_class_for_deserialize(value):
+    value_type = list(value.keys())[0]
+    if value_type not in DESERIALIZE_CLASS_MAP:
+        raise ValueError('Unknown value: ' + str(value))
+    return DESERIALIZE_CLASS_MAP[value_type]
