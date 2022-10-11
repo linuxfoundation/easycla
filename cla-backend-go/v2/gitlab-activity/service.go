@@ -446,7 +446,7 @@ func (s service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.
 	}
 	if userModel == nil && gitlabUser.Username != "" {
 		log.WithFields(f).Debugf("Looking up Gitlab user via user gitlab username")
-		userModel, err = s.usersRepository.GetUserByGitlabUsername(gitlabUser.Username)
+		userModel, err = s.usersRepository.GetUserByGitLabUsername(gitlabUser.Username)
 		if !strings.Contains(err.Error(), "not found") {
 			return nil, false, fmt.Errorf("looking up gitlab user via gitlabUsername : %s failed : %v", gitlabUser.Username, err)
 		}

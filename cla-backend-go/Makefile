@@ -34,10 +34,9 @@ ifeq "$(shell uname -s)" "Linux"
 endif
 
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
-LINT_VERSION=v1.48.0
+LINT_VERSION=v1.50.0
 SWAGGER_DIR=$(ROOT_DIR)/swagger
 SWAGGER_BIN_DIR=/usr/local/bin
-#SWAGGER_TOOL_VERSION=v0.24.0
 SWAGGER_TOOL_VERSION=v0.29.0
 SWAGGER_ASSET="swagger_$(BUILD_HOST)_$(BUILD_ARCH)"
 SWAGGER_ASSET_URL="https://github.com/go-swagger/go-swagger/releases/download/$(SWAGGER_TOOL_VERSION)/$(SWAGGER_ASSET)"

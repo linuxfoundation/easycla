@@ -23,7 +23,7 @@ type Service interface {
 	GetUserByGitHubID(gitHubID string) (*models.User, error)
 	GetUserByGitHubUsername(gitlabUsername string) (*models.User, error)
 	GetUserByGitlabID(gitHubID int) (*models.User, error)
-	GetUserByGitlabUsername(gitlabUsername string) (*models.User, error)
+	GetUserByGitLabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(field string, searchTerm string, fullMatch bool) (*models.Users, error)
 }
 
@@ -49,7 +49,7 @@ func (s service) CreateUser(user *models.User, claUser *user.CLAUser) (*models.U
 
 	// System may need to create user accounts
 	var lfUser = "easycla_system_user"
-	if claUser != nil {
+	if claUser != nil && claUser.LFUsername != "" {
 		lfUser = claUser.LFUsername
 	}
 
@@ -157,12 +157,12 @@ func (s service) GetUserByGitlabID(gitlabID int) (*models.User, error) {
 	return s.repo.GetUserByGitlabID(gitlabID)
 }
 
-// GetUserByGitlabUsername fetches the user by Gitlab username
-func (s service) GetUserByGitlabUsername(gitlabUsername string) (*models.User, error) {
-	if gitlabUsername == "" {
-		return nil, errors.New("gitlabUsername is empty")
+// GetUserByGitLabUsername fetches the user by GitLab username
+func (s service) GetUserByGitLabUsername(gitLabUsername string) (*models.User, error) {
+	if gitLabUsername == "" {
+		return nil, errors.New("gitLabUsername is empty")
 	}
-	return s.repo.GetUserByGitHubUsername(gitlabUsername)
+	return s.repo.GetUserByGitLabUsername(gitLabUsername)
 }
 
 // SearchUsers attempts to locate the user by the searchField and searchTerm fields

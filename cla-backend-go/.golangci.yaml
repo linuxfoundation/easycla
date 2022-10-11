@@ -36,11 +36,17 @@ linters-settings:
     check-shadowing: true
     fieldalignment: true
   revive:
+    ignore-generated-header: true
     min-confidence: 0
+    rules:
+      # Recommended in Revive docs
+      # https://github.com/mgechev/revive#recommended-configuration
+      - name: package-comments
+        disabled: true
   dupl:
     threshold: 100
   goconst:
-    min-len:         2
+    min-len: 2
     min-occurrences: 2
 
 linters:
@@ -49,9 +55,6 @@ linters:
     - revive
     - govet
     - errcheck
-    - deadcode
-    - structcheck
-    - varcheck
     - ineffassign
     - typecheck
     - goconst

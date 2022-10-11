@@ -44,7 +44,7 @@ type UserRepository interface {
 	GetUserByGitHubID(gitHubID string) (*models.User, error)
 	GetUserByGitHubUsername(gitHubUsername string) (*models.User, error)
 	GetUserByGitlabID(gitlabID int) (*models.User, error)
-	GetUserByGitlabUsername(gitlabUsername string) (*models.User, error)
+	GetUserByGitLabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(searchField string, searchTerm string, fullMatch bool) (*models.Users, error)
 }
 
@@ -879,14 +879,14 @@ func (repo repository) GetUserByGitlabID(gitlabID int) (*models.User, error) {
 	return convertDBUserModel(dbUserModels[0]), nil
 }
 
-// GetUserByGitlabUsername fetches the user record by gitlab username
-func (repo repository) GetUserByGitlabUsername(gitlabUsername string) (*models.User, error) {
+// GetUserByGitLabUsername fetches the user record by GitLab username
+func (repo repository) GetUserByGitLabUsername(gitLabUsername string) (*models.User, error) {
 	f := logrus.Fields{
-		"functionName":   "users.repository.GetUserByGitlabUsername",
-		"gitlabUsername": gitlabUsername,
+		"functionName":   "users.repository.GetUserByGitLabUsername",
+		"gitLabUsername": gitLabUsername,
 	}
 	// This is the key we want to match
-	condition := expression.Key("user_gitlab_username").Equal(expression.Value(gitlabUsername))
+	condition := expression.Key("user_gitlab_username").Equal(expression.Value(gitLabUsername))
 
 	// These are the columns we want returned
 	projection := buildUserProjection()
@@ -894,7 +894,7 @@ func (repo repository) GetUserByGitlabUsername(gitlabUsername string) (*models.U
 	// Use the nice builder to create the expression
 	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithProjection(projection).Build()
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("error building expression for user_gitlab_username : %s, error: %v", gitlabUsername, err)
+		log.WithFields(f).WithError(err).Warnf("error building expression for user_gitlab_username : %s, error: %v", gitLabUsername, err)
 		return nil, err
 	}
 
@@ -911,7 +911,7 @@ func (repo repository) GetUserByGitlabUsername(gitlabUsername string) (*models.U
 	// Make the DynamoDB Query API call
 	result, err := repo.dynamoDBClient.Query(queryInput)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("error retrieving user by user_gitlab_username: %s, error: %+v", gitlabUsername, err)
+		log.WithFields(f).WithError(err).Warnf("error retrieving user by user_gitlab_username: %s, error: %+v", gitLabUsername, err)
 		return nil, err
 	}
 
@@ -920,12 +920,12 @@ func (repo repository) GetUserByGitlabUsername(gitlabUsername string) (*models.U
 
 	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &dbUserModels)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("error unmarshalling user record from database for user_gitlab_username: %s, error: %+v", gitlabUsername, err)
+		log.WithFields(f).WithError(err).Warnf("error unmarshalling user record from database for user_gitlab_username: %s, error: %+v", gitLabUsername, err)
 		return nil, err
 	}
 
 	if len(dbUserModels) == 0 {
-		return nil, errors.NotFound("user not found when searching by user_gitlab_username: %s", gitlabUsername)
+		return nil, errors.NotFound("user not found when searching by user_gitlab_username: %s", gitLabUsername)
 	} else if len(dbUserModels) > 1 {
 		log.WithFields(f).WithError(err).Warnf("retrieved %d results for the user_gitlab_username query when we should return 0 or 1", len(dbUserModels))
 	}

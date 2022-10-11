@@ -19,8 +19,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const gitHubTestsEnabled = false // nolint
+
 func TestGetRepositoryIDFromName(t *testing.T) {
-	if enabled {
+	if gitHubTestsEnabled {
 		ctx := utils.NewContext()
 
 		// Need to initialize the system to load the configuration which contains a number of SSM parameters

@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofrs/uuid"
+
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
@@ -65,6 +67,7 @@ type SignatureRepository interface {
 	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string) ([]models.GithubOrg, error)
 	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
 	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
+	ValidateProjectRecord(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
@@ -76,6 +79,8 @@ type SignatureRepository interface {
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error)
 	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
+	GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) (*models.Signature, error)
+	CreateProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) error
 	getProjectCompanyEmployeeSignatureCount(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, responseChannel chan int64)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams, pageSize int64, loadACL bool) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
@@ -1489,6 +1494,50 @@ func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID,
 	return nil
 }
 
+// ValidateProjectRecord validates the specified project record by setting the signature_approved flag to true
+func (repo repository) ValidateProjectRecord(ctx context.Context, signatureID, note string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.ValidateProjectRecord",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+	}
+
+	// Update project signatures for signature_approved and notes attributes
+	signatureTableName := fmt.Sprintf("cla-%s-signatures", repo.stage)
+
+	expressionAttributeNames := map[string]*string{}
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
+	updateExpression := "SET " // nolint
+
+	expressionAttributeNames["#A"] = aws.String("signature_approved")
+	expressionAttributeValues[":a"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
+	updateExpression = updateExpression + " #A = :a,"
+
+	expressionAttributeNames["#S"] = aws.String("note")
+	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
+	updateExpression = updateExpression + " #S = :s"
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: aws.String(signatureID),
+			},
+		},
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		UpdateExpression:          &updateExpression,
+		TableName:                 aws.String(signatureTableName),
+	}
+
+	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
+	if updateErr != nil {
+		log.WithFields(f).Warnf("error updating signature_approved for signature_id : %s error : %v ", signatureID, updateErr)
+		return updateErr
+	}
+
+	return nil
+}
+
 // GetProjectCompanyEmployeeSignatures returns a list of employee signatures for the specified project and specified company
 func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error) {
 	f := logrus.Fields{
@@ -1626,6 +1675,173 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		LastKeyScanned: lastEvaluatedKey,
 		Signatures:     sigs,
 	}, nil
+}
+
+func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) (*models.Signature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.GetProjectCompanyEmployeeSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+	if claGroupModel != nil {
+		f["projectID"] = claGroupModel.ProjectID
+		f["projectName"] = claGroupModel.ProjectName
+	}
+	if companyModel != nil {
+		f["companyID"] = companyModel.CompanyID
+		f["companyName"] = companyModel.CompanyName
+	}
+	if employeeUserModel != nil {
+		f["employeeUserID"] = employeeUserModel.UserID
+		f["employeeUserName"] = employeeUserModel.Username
+		f["employeeEmails"] = strings.Join(employeeUserModel.Emails, ",")
+	}
+
+	if companyModel == nil || claGroupModel == nil || employeeUserModel == nil {
+		return nil, nil
+	}
+
+	// This is the keys we want to match
+	condition := expression.Key("signature_user_ccla_company_id").Equal(expression.Value(companyModel.CompanyID)).And(
+		expression.Key("signature_project_id").Equal(expression.Value(claGroupModel.ProjectID))).And(
+		expression.Key("signature_user_id").Equal(expression.Value(employeeUserModel.UserID)))
+
+	log.WithFields(f).Debugf("running employee signature query on table: %s", repo.signatureTableName)
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildProjection()).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error building expression for employee signature query, company model: %+v, CLA group model: %+v, employee model: %+v",
+			companyModel, claGroupModel, employeeUserModel)
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		FilterExpression:          expr.Filter(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.signatureTableName),
+		IndexName:                 aws.String("signature-user-ccla-company-index"), // Name of a secondary index to scan
+		Limit:                     aws.Int64(10),
+	}
+
+	// Make the DynamoDB Query API call
+	results, errQuery := repo.dynamoDBClient.Query(queryInput)
+	if errQuery != nil {
+		log.WithFields(f).WithError(errQuery).Warnf("error retrieving project company employee acknowledgement record for company model: %+v, CLA group model: %+v, employee model: %+v",
+			companyModel, claGroupModel, employeeUserModel)
+		return nil, errQuery
+	}
+	if results == nil || len(results.Items) == 0 {
+		return nil, nil
+	}
+	log.WithFields(f).Debugf("returned %d results", len(results.Items))
+	// Convert the list of DB models to a list of response models
+	signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, claGroupModel.ProjectID, LoadACLDetails)
+	if modelErr != nil {
+		log.WithFields(f).WithError(modelErr).Warnf("error converting DB model to response model for project company employee acknowledgement record for company model: %+v, CLA group model: %+v, employee model: %+v",
+			companyModel, claGroupModel, employeeUserModel)
+		return nil, modelErr
+	}
+
+	if len(signatureList) == 0 {
+		return nil, nil
+	}
+
+	if len(signatureList) > 1 {
+		log.WithFields(f).Warnf("found more than one signature for employee company model: %+v, CLA group model: %+v, employee model: %+v",
+			companyModel, claGroupModel, employeeUserModel)
+	}
+
+	return signatureList[0], nil
+}
+
+// CreateProjectCompanyEmployeeSignature creates a new project employee signature using the provided details
+func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.CreateProjectCompanyEmployeeSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+	if claGroupModel != nil {
+		f["projectID"] = claGroupModel.ProjectID
+		f["projectName"] = claGroupModel.ProjectName
+	}
+	if companyModel != nil {
+		f["companyID"] = companyModel.CompanyID
+		f["companyName"] = companyModel.CompanyName
+	}
+	if employeeUserModel != nil {
+		f["employeeUserID"] = employeeUserModel.UserID
+		f["employeeUserName"] = employeeUserModel.Username
+		f["employeeEmails"] = strings.Join(employeeUserModel.Emails, ",")
+	}
+
+	existingSig, lookupErr := repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
+	if lookupErr != nil {
+		log.WithFields(f).WithError(lookupErr).Warnf("problem looking up existing signature for project: %+v, company: %+v, employee: %+v", claGroupModel, companyModel, employeeUserModel)
+	}
+
+	// If exists, need to update
+	if existingSig != nil {
+		log.WithFields(f).Debug("found existing employee acknowledgement")
+		if !existingSig.SignatureApproved {
+			log.WithFields(f).Debugf("found existing employee acknowledgement, but not currently approved.")
+			validateRecordErr := repo.ValidateProjectRecord(ctx, existingSig.SignatureID, fmt.Sprintf(" Enabled previously disabled employee acknowledgement via CLA Manager approval list edit with auto-enable feature flag configured on %s.", utils.CurrentSimpleDateTimeString()))
+			if validateRecordErr != nil {
+				return validateRecordErr
+			}
+			return nil
+		}
+
+		return nil
+	}
+	log.WithFields(f).Debugf("creating project company employee signature for project: %+v, company: %+v, employee: %+v", claGroupModel, companyModel, employeeUserModel)
+
+	// If not exists, need to create
+	// No existing records - create one
+	_, currentTime := utils.CurrentTime()
+	newSignatureID, err := uuid.NewV4()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("Unable to generate a UUID for signature record")
+		return err
+	}
+
+	newSignature := &SignatureDynamoDB{
+		SignatureID:                   newSignatureID.String(),
+		AutoCreateECLA:                false,
+		SignatureType:                 utils.ClaTypeECLA,
+		CompanyName:                   companyModel.CompanyName,
+		SignatureUserCCLACompanyID:    companyModel.CompanyID,
+		ProjectID:                     claGroupModel.ProjectID,
+		SignatureReferenceID:          employeeUserModel.UserID,
+		SignatureApproved:             true,
+		SignatureSigned:               true,
+		SignatureDocumentMajorVersion: "2",
+		SignatureDocumentMinorVersion: "0",
+		SigTypeSignedApprovedID:       fmt.Sprintf("ecla#true#true#%s", companyModel.CompanyID),
+		SignatureReferenceType:        utils.SignatureReferenceTypeUser,
+		SignedOn:                      currentTime,
+		DateCreated:                   currentTime,
+		DateModified:                  currentTime,
+		Version:                       "v1",
+	}
+
+	av, err := dynamodbattribute.MarshalMap(newSignature)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to create new signature record")
+		return err
+	}
+
+	log.WithFields(f).Debug("adding signature record to the database...")
+	_, err = repo.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
+		Item:      av,
+		TableName: aws.String(repo.signatureTableName),
+	})
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("cannot create new signature record")
+		return err
+	}
+	return nil
 }
 
 // getProjectCompanyEmployeeSignatureCount returns the total count of employee signatures for the specified project and specified company
@@ -2643,7 +2859,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							eclas = signs.Signatures
 						}
 
-						claUser, claErr := repo.usersRepo.GetUserByGitlabUsername(gitLabUsername)
+						claUser, claErr := repo.usersRepo.GetUserByGitLabUsername(gitLabUsername)
 						if claErr != nil {
 							log.WithFields(f).Debugf("unable to get User by gitlab username: %s ", gitLabUsername)
 							return

@@ -27,7 +27,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	errs := make(chan error, 2)
 	go func() {
 		log.Infof("Running http server on port: %d - set PORT environment variable to change port", viper.GetInt("PORT"))
-		errs <- http.ListenAndServe(fmt.Sprintf(":%d", viper.GetInt("PORT")), handler)
+		errs <- http.ListenAndServe(fmt.Sprintf(":%d", viper.GetInt("PORT")), handler) // nolint gosec no support for setting timeouts
 	}()
 	go func() {
 		c := make(chan os.Signal)

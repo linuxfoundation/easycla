@@ -3,6 +3,17 @@
 
 package signatures
 
+import (
+	"fmt"
+	"strings"
+
+	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/sirupsen/logrus"
+)
+
 // ClaManagerInfoParams represents the CLAManagerInfo used inside of the Email Templates
 type ClaManagerInfoParams struct {
 	Username string
@@ -84,3 +95,129 @@ const (
 	</ul>
 	`
 )
+
+// sendRequestAccessEmailToContributors sends the request access email to the specified contributors
+func sendRequestAccessEmailToContributorRecipient(authUser *auth.User, companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress, addRemove, toFrom, authorizedString string) {
+	companyName := companyModel.CompanyName
+	projectName := claGroupModel.ProjectName
+
+	// subject string, body string, recipients []string
+	subject := fmt.Sprintf("EasyCLA: Approval List Update for %s on %s", companyName, projectName)
+	recipients := []string{recipientAddress}
+	body := fmt.Sprintf(`
+<p>Hello %s,</p>
+<p>This is a notification email from EasyCLA regarding the project %s.</p>
+<p>You have been %s %s the Approval List of %s for %s by CLA Manager %s. This means that %s.</p>
+<b>
+<p>If you are a GitHub user and If you had previously submitted a pull request to EasyCLA Test Group that had failed, you can now go back to it, re-click the “Not Covered” button in the EasyCLA message in your pull request, and then follow these steps</p>
+<ol>
+<li>Select “Corporate Contributor”.</li>
+<li>Select your company from the organization drop down list</li>
+<li>Click Proceed</li>
+</ol>
+<p>If you are a Gerrit user and if you had previously submitted a pull request to EasyCLA Test Group that had failed, then navigate to Agreements Settings page on Gerrit, click on "New Contributor Agreement" link under Agreements section, select the radio button corresponding to Corporate CLA, click on "Please review the agreement" link, and then follow these steps</p>
+<ol>
+<li>Select “Corporate Contributor”.</li>
+<li>Select your company from the organization drop down list</li>
+<li>Click Proceed</li>
+</ol>
+<p>These steps will confirm your organization association and you will only need to do these once. After completing these steps, the EasyCLA check will be complete and enabled for all future code contributions for this project.</p>
+</b>
+%s
+%s`,
+		recipientName, projectName, addRemove, toFrom,
+		companyName, projectName, authUser.UserName, authorizedString,
+		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+
+	err := utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		logging.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
+	} else {
+		logging.Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
+	}
+}
+
+// getBestEmail is a helper function to return the best email address for the user model
+func getBestEmail(userModel *models.User) string {
+	if userModel.LfEmail != "" {
+		return userModel.LfEmail.String()
+	}
+
+	for _, email := range userModel.Emails {
+		if email != "" && !strings.Contains(email, "noreply.github.com") {
+			return email
+		}
+	}
+
+	return ""
+}
+
+func (s service) sendRequestAccessEmailToContributors(authUser *auth.User, companyModel *models.Company, claGroupModel *models.ClaGroup, approvalList *models.ApprovalList) {
+	addEmailUsers := s.getAddEmailContributors(approvalList)
+	for _, user := range addEmailUsers {
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "added", "to",
+			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
+	}
+	removeEmailUsers := s.getRemoveEmailContributors(approvalList)
+	for _, user := range removeEmailUsers {
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "removed", "from",
+			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
+	}
+	addGitHubUsers := s.getAddGitHubContributors(approvalList)
+	for _, user := range addGitHubUsers {
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "added", "to",
+			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
+	}
+	removeGitHubUsers := s.getRemoveGitHubContributors(approvalList)
+	for _, user := range removeGitHubUsers {
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "removed", "from",
+			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
+	}
+	addGitlabUsers := s.getAddGitlabContributors(approvalList)
+	for _, user := range addGitlabUsers {
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "added", "to",
+			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
+	}
+	removeGitlabUsers := s.getRemoveGitlabContributors(approvalList)
+	for _, user := range removeGitlabUsers {
+		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "removed", "from",
+			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
+	}
+}
+
+// sendRequestAccessEmailToCLAManagers sends the request access email to the specified CLA Managers
+func (s service) sendApprovalListUpdateEmailToCLAManagers(companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress string, approvalListChanges *models.ApprovalList) {
+	f := logrus.Fields{
+		"functionName":      "sendApprovalListUpdateEmailToCLAManagers",
+		"projectName":       claGroupModel.ProjectName,
+		"projectExternalID": claGroupModel.ProjectExternalID,
+		"foundationSFID":    claGroupModel.FoundationSFID,
+		"companyName":       companyModel.CompanyName,
+		"companyExternalID": companyModel.CompanyExternalID,
+		"recipientName":     recipientName,
+		"recipientAddress":  recipientAddress}
+
+	companyName := companyModel.CompanyName
+	projectName := claGroupModel.ProjectName
+
+	// subject string, body string, recipients []string
+	subject := fmt.Sprintf("EasyCLA: Approval List Update for %s on %s", companyName, projectName)
+	recipients := []string{recipientAddress}
+	body := fmt.Sprintf(`
+<p>Hello %s,</p>
+<p>This is a notification email from EasyCLA regarding the project %s.</p>
+<p>The EasyCLA approval list for %s for project %s was modified.</p>
+<p>The modification was as follows:</p>
+%s
+%s
+%s`,
+		recipientName, projectName, companyName, projectName, buildApprovalListSummary(approvalListChanges),
+		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
+
+	err := utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		logging.WithFields(f).Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
+	} else {
+		logging.WithFields(f).Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
+	}
+}

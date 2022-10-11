@@ -158,3 +158,8 @@ properties:
   userDocusignDateSigned:
     type: string
     description: docusign signature date
+  autoCreateECLA:
+    type: boolean
+    description: flag to indicate if the product should automatically create an employee acknowledgement for a given user when the CLA manager adds the user to the email, GitLab username, or GitLab username approval list
+    example: true
+    x-omitempty: false

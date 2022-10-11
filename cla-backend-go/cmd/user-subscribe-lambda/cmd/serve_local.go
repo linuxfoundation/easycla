@@ -67,7 +67,7 @@ func Start(hf fn) error {
 	http.HandleFunc("/", postSQSEvent)
 
 	fmt.Printf("Starting server for testing HTTP POST...\n")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", nil); err != nil { // nolint gosec http no support for setting timeouts
 		log.Fatal(err)
 	}
 	return nil

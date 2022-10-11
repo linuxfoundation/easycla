@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"strconv"
 	"sync"
+
+	"github.com/communitybridge/easycla/cla-backend-go/github"
 
 	"github.com/aws/aws-sdk-go/aws"
 
@@ -387,26 +389,39 @@ func (s service) DeleteGithubOrganizationFromApprovalList(ctx context.Context, s
 	return gitHubOrgApprovalList, nil
 }
 
-// UpdateApprovalList service method
-func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, claGroupModel *models.ClaGroup, companyModel *models.Company, claGroupID string, params *models.ApprovalList) (*models.Signature, error) {
+// UpdateApprovalList service method which handles updating the various approval lists
+func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, claGroupModel *models.ClaGroup, companyModel *models.Company, claGroupID string, params *models.ApprovalList) (*models.Signature, error) { // nolint gocyclo
+	f := logrus.Fields{
+		"functionName":      "v1.signatures.service.UpdateApprovalList",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"authUser.UserName": authUser.UserName,
+		"authUser.Email":    authUser.Email,
+		"claGroupID":        claGroupID,
+		"claGroupName":      claGroupModel.ProjectName,
+		"companyName":       companyModel.CompanyName,
+		"companyID":         companyModel.CompanyID,
+	}
+
+	// Lookup the project corporate signature - should have one
 	pageSize := int64(1)
 	signed, approved := true, true
-	sigModel, sigErr := s.GetProjectCompanySignature(ctx, companyModel.CompanyID, claGroupID, &signed, &approved, nil, &pageSize)
+	corporateSigModel, sigErr := s.GetProjectCompanySignature(ctx, companyModel.CompanyID, claGroupID, &signed, &approved, nil, &pageSize)
 	if sigErr != nil {
 		msg := fmt.Sprintf("unable to locate project company signature by Company ID: %s, Project ID: %s, CLA Group ID: %s, error: %+v",
 			companyModel.CompanyID, claGroupModel.ProjectID, claGroupID, sigErr)
-		log.Warn(msg)
+		log.WithFields(f).WithError(sigErr).Warn(msg)
 		return nil, NewBadRequestError(msg)
 	}
-	if sigModel == nil {
+	// If not found, return error
+	if corporateSigModel == nil {
 		msg := fmt.Sprintf("unable to locate signature for company ID: %s CLA Group ID: %s, type: ccla, signed: %t, approved: %t",
 			companyModel.CompanyID, claGroupID, signed, approved)
-		log.Warn(msg)
+		log.WithFields(f).Warn(msg)
 		return nil, NewBadRequestError(msg)
 	}
 
 	// Ensure current user is in the Signature ACL
-	claManagers := sigModel.SignatureACL
+	claManagers := corporateSigModel.SignatureACL
 	if !utils.CurrentUserInACL(authUser, claManagers) {
 		msg := fmt.Sprintf("EasyCLA - 403 Forbidden - CLA Manager %s / %s is not authorized to approve request for company ID: %s / %s / %s, project ID: %s / %s / %s",
 			authUser.UserName, authUser.Email,
@@ -415,14 +430,16 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		return nil, NewForbiddenError(msg)
 	}
 
-	// Lookup the user making the request
+	// Lookup the user making the request - should be the CLA Manager
 	userModel, userErr := s.usersService.GetUserByUserName(authUser.UserName, true)
 	if userErr != nil {
+		log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by user name: %s", authUser.UserName)
 		return nil, userErr
 	}
 
+	// This event is ONLY used when we need to invalidate the signature
 	eventArgs := &events.LogEventArgs{
-		EventType:     events.InvalidatedSignature,
+		EventType:     events.InvalidatedSignature, // reviewed and
 		ProjectID:     claGroupModel.ProjectExternalID,
 		ClaGroupModel: claGroupModel,
 		CompanyID:     companyModel.CompanyID,
@@ -433,37 +450,165 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		ProjectSFID:   claGroupModel.ProjectExternalID,
 	}
 
+	// Here we perform the approval list updates for all the different types of approval lists
 	updatedSig, err := s.repo.UpdateApprovalList(ctx, userModel, claGroupModel, companyModel.CompanyID, params, eventArgs)
-
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem updating approval list for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
 		return updatedSig, err
 	}
 
-	// Log Events
-	s.createEventLogEntries(ctx, companyModel, claGroupModel, userModel, params)
+	// Log Events that the CLA manager updated the approval lists
+	go s.createEventLogEntries(ctx, companyModel, claGroupModel, userModel, params)
 
-	// Send an email to the CLA Managers
+	// Send an email to each of the CLA Managers
 	for _, claManager := range claManagers {
 		claManagerEmail := getBestEmail(&claManager) // nolint
 		s.sendApprovalListUpdateEmailToCLAManagers(companyModel, claGroupModel, claManager.Username, claManagerEmail, params)
 	}
 
-	// Send emails to contributors if email or GH username as added/removed
+	// TODO: DAD - update email template to indicate that if auto crate ECLA is enabled, that users should be good-to-go
+	// Send emails to contributors if email or GitHub/GitLab username was added or removed
 	s.sendRequestAccessEmailToContributors(authUser, companyModel, claGroupModel, params)
+
+	// If auto create ECLA is enabled for this Corporate Agreement, then create an ECLA for each employee that was added to the approval list
+	// TODO: DAD should we move this to above the actual approval list update and email blast?
+	if corporateSigModel.AutoCreateECLA {
+		// For the add email list, create an ECLA signature record for each user
+		for _, email := range params.AddEmailApprovalList {
+			// Lookup the user by email in the local EasyCLA database - this will exist if the user first
+			// initiated the request from GitHub and if they shared their email (made it public). This record will
+			// likely not exist if the CLA Manager added the email directly from the UI without the user first
+			// initiating the workflow.
+			employeeUserModel, userLookupErr := s.usersService.GetUserByEmail(email)
+			// If we couldn't find the user, then create a user record
+			if userLookupErr != nil || employeeUserModel == nil {
+				log.WithFields(f).WithError(userLookupErr).Warnf("unable to lookup existing user by email: %s", email)
+				var userCreateErr error
+				// Create a new user record based on the email and company ID
+				employeeUserModel, userCreateErr = s.createUserModel("", "", "", "", email, companyModel.CompanyID, "auto-create ECLA user from CLA Manager approval list update")
+				if userCreateErr != nil || employeeUserModel == nil {
+					log.WithFields(f).WithError(userCreateErr).Warnf("unable to create a new user with email: %s", email)
+					// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
+					return nil, userCreateErr
+				}
+			}
+
+			// Ok, auto-create the employee acknowledgement record
+			createErr := s.repo.CreateProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
+			if createErr != nil {
+				log.WithFields(f).WithError(createErr).Warnf("unable to create project company employee signature record for: %+v", employeeUserModel)
+				// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
+				return nil, createErr
+			}
+		}
+		for _, gitHubUserName := range params.AddGithubUsernameApprovalList {
+			// Lookup the user by GitHub username in the local EasyCLA database - this will exist if the user first
+			// initiated the request from GitHub. This record will likely not exist if the CLA Manager added the GitHub
+			// username directly from the UI without the user first initiating the workflow.
+			employeeUserModel, userLookupErr := s.usersService.GetUserByGitHubUsername(gitHubUserName)
+			// If we couldn't find the user, then create a user record
+			if userLookupErr != nil || employeeUserModel == nil {
+				log.WithFields(f).WithError(userLookupErr).Infof("unable to lookup existing user by GitHub username: %s in our local database - will attempt to create a new record", gitHubUserName)
+				var gitHubUserID = ""
+				var gitHubUserEmail = ""
+				// Attempt to lookup the GitHub user record by the GitHub username - we need the GitHub numeric ID value which was not provided by the UI/API call
+				gitHubUserModel, gitHubErr := github.GetUserDetails(gitHubUserName)
+				// Should get a model, no errors and have at least the ID
+				if gitHubErr != nil || gitHubUserModel == nil || gitHubUserModel.ID == nil {
+					log.WithFields(f).WithError(gitHubErr).Warnf("problem looking up GitHub user details for user: %s, model: %+v, error: %+v", gitHubUserName, gitHubUserModel, gitHubErr)
+					// TODO: DAD - should we fail the entire operation? - seems like we should abort if we can't lookup the user details - maybe we should add GitHub and GitLab validation to the UI or early in the request?
+					return nil, gitHubErr
+				}
+
+				if gitHubUserModel.ID != nil {
+					gitHubUserID = strconv.FormatInt(*gitHubUserModel.ID, 10)
+				}
+				// User may not have a public email
+				if gitHubUserModel.Email != nil {
+					gitHubUserEmail = *gitHubUserModel.Email
+				}
+
+				var userCreateErr error
+				// Create a new user record based on the GitHub information, email and company ID
+				employeeUserModel, userCreateErr = s.createUserModel(gitHubUserName, gitHubUserID, "", "", gitHubUserEmail, companyModel.CompanyID, "auto-create ECLA user from CLA Manager approval list update")
+				if userCreateErr != nil || employeeUserModel == nil {
+					log.WithFields(f).WithError(userCreateErr).Warnf("unable to create a new user with GitHub username: %s", gitHubUserName)
+					// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
+					return nil, userCreateErr
+				}
+			}
+
+			// Ok, finally, auto-create the employee acknowledgement record
+			createErr := s.repo.CreateProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
+			if createErr != nil {
+				log.WithFields(f).WithError(createErr).Warnf("unable to create project company employee signature record for: %+v", employeeUserModel)
+				// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
+				return nil, createErr
+			}
+		}
+
+		/* Note: GitLab API is currently not working - plus, what credentials do we use to lookup the user details? Our current API leverages the GitHub app credentials (again, broken as of 09/2022 due to needing to refresh the token every hour)
+		for _, gitLabUserName := range params.AddGitlabUsernameApprovalList {
+			// Lookup the user by GitLab username in the local EasyCLA database - this will exist if the user first
+			// initiated the request from GitLab. This record will likely not exist if the CLA Manager added the GitLab
+			// username directly from the UI without the user first initiating the workflow.
+			employeeUserModel, userLookupErr := s.usersService.GetUserByGitLabUsername(gitLabUserName)
+			// If we couldn't find the user, then create a user record
+			if userLookupErr != nil || employeeUserModel == nil {
+				log.WithFields(f).WithError(userLookupErr).Warnf("unable to lookup existing user by GitLab username: %s", gitLabUserName)
+				var gitLabUserID = ""
+				var gitLabUserEmail = ""
+				// GitLab API is currently not working - plus, what credentials do we use to lookup the user details? Our current API leverages the GitHub app credentials (again, broken as of 09/2022 due to needing to refresh the token every hour)
+				gitHubUserModel, gitHubErr := gitlab.List(gitLabUserName)
+				// Should get a model, no errors and have at least the ID
+				if gitHubErr != nil || gitHubUserModel == nil || gitHubUserModel.ID == nil {
+					log.WithFields(f).WithError(gitHubErr).Warnf("problem looking up GitHub user details for user: %s, model: %+v, error: %+v", gitLabUserName, gitHubUserModel, gitHubErr)
+					// TODO: DAD - should we fail the entire operation? - seems like we should abort if we can't lookup the user details - maybe we should add GitHub and GitLab validation to the UI or early in the request?
+					return nil, gitHubErr
+				} else {
+					if gitHubUserModel.ID != nil {
+						gitLabUserID = strconv.FormatInt(*gitHubUserModel.ID, 10)
+					}
+					// User may not have a public email
+					if gitHubUserModel.Email != nil {
+						gitLabUserEmail = *gitHubUserModel.Email
+					}
+				}
+
+				var userCreateErr error
+				// Create a new user record based on the GitHub information, email and company ID
+				employeeUserModel, userCreateErr = s.createUserModel("", "", gitLabUserName, gitLabUserID, gitLabUserEmail, companyModel.CompanyID, "auto-create ECLA user from CLA Manager approval list update")
+				if userCreateErr != nil || employeeUserModel == nil {
+					log.WithFields(f).WithError(userCreateErr).Warnf("unable to create a new user with GitLab username: %s", gitLabUserName)
+					// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
+					return nil, userCreateErr
+				}
+			}
+
+			// Ok, finally, auto-create the employee acknowledgement record
+			createErr := s.repo.CreateProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
+			if createErr != nil {
+				log.WithFields(f).WithError(createErr).Warnf("unable to create project company employee signature record for: %+v", employeeUserModel)
+				// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
+				return nil, createErr
+			}
+		}
+		*/
+	}
 
 	return updatedSig, nil
 }
 
-// Disassociate project signatures
+// InvalidateProjectRecords disassociates project signatures
 func (s service) InvalidateProjectRecords(ctx context.Context, projectID, note string) (int, error) {
 	f := logrus.Fields{
-		"functionName": "InvalidateProjectRecords",
+		"functionName": "v1.signatures.service.InvalidateProjectRecords",
 		"projectID":    projectID,
 	}
 
 	result, err := s.repo.ProjectSignatures(ctx, projectID)
 	if err != nil {
-		log.WithFields(f).Warnf(fmt.Sprintf("Unable to get signatures for project: %s", projectID))
+		log.WithFields(f).WithError(err).Warnf(fmt.Sprintf("Unable to get signatures for project: %s", projectID))
 		return 0, err
 	}
 
@@ -478,8 +623,7 @@ func (s service) InvalidateProjectRecords(ctx context.Context, projectID, note s
 				defer wg.Done()
 				updateErr := s.repo.InvalidateProjectRecord(ctx, sigID, note)
 				if updateErr != nil {
-					log.WithFields(f).Warnf("Unable to update signature: %s with project ID: %s, error: %v",
-						sigID, projectID, updateErr)
+					log.WithFields(f).WithError(updateErr).Warnf("Unable to update signature: %s with project ID: %s, error: %v", sigID, projectID, updateErr)
 				}
 			}(signature.SignatureID, projectID)
 		}
@@ -533,375 +677,6 @@ func buildApprovalListSummary(approvalListChanges *models.ApprovalList) string {
 	return approvalListSummary
 }
 
-// sendRequestAccessEmailToCLAManagers sends the request access email to the specified CLA Managers
-func (s service) sendApprovalListUpdateEmailToCLAManagers(companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress string, approvalListChanges *models.ApprovalList) {
-	f := logrus.Fields{
-		"functionName":      "sendApprovalListUpdateEmailToCLAManagers",
-		"projectName":       claGroupModel.ProjectName,
-		"projectExternalID": claGroupModel.ProjectExternalID,
-		"foundationSFID":    claGroupModel.FoundationSFID,
-		"companyName":       companyModel.CompanyName,
-		"companyExternalID": companyModel.CompanyExternalID,
-		"recipientName":     recipientName,
-		"recipientAddress":  recipientAddress}
-
-	companyName := companyModel.CompanyName
-	projectName := claGroupModel.ProjectName
-
-	// subject string, body string, recipients []string
-	subject := fmt.Sprintf("EasyCLA: Approval List Update for %s on %s", companyName, projectName)
-	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>The EasyCLA approval list for %s for project %s was modified.</p>
-<p>The modification was as follows:</p>
-%s
-%s
-%s`,
-		recipientName, projectName, companyName, projectName, buildApprovalListSummary(approvalListChanges),
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
-
-	err := utils.SendEmail(subject, body, recipients)
-	if err != nil {
-		log.WithFields(f).Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
-	} else {
-		log.WithFields(f).Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
-	}
-}
-
-// getAddEmailContributors is a helper function to lookup the contributors impacted by the Approval List update
-func (s service) getAddEmailContributors(approvalList *models.ApprovalList) []*models.User {
-	var userModelList []*models.User
-	for _, value := range approvalList.AddEmailApprovalList {
-		userModel, err := s.usersService.GetUserByEmail(value)
-		if err != nil {
-			log.Warnf("unable to lookup user by LF email: %s, error: %+v", value, err)
-		} else {
-			userModelList = append(userModelList, userModel)
-		}
-	}
-
-	return userModelList
-}
-
-// getRemoveEmailContributors is a helper function to lookup the contributors impacted by the Approval List update
-func (s service) getRemoveEmailContributors(approvalList *models.ApprovalList) []*models.User {
-	var userModelList []*models.User
-	for _, value := range approvalList.RemoveEmailApprovalList {
-		userModel, err := s.usersService.GetUserByEmail(value)
-		if err != nil {
-			log.Warnf("unable to lookup user by LF email: %s, error: %+v", value, err)
-		} else {
-			userModelList = append(userModelList, userModel)
-		}
-	}
-
-	return userModelList
-}
-
-// getAddGitHubContributors is a helper function to lookup the contributors impacted by the Approval List update
-func (s service) getAddGitHubContributors(approvalList *models.ApprovalList) []*models.User {
-	var userModelList []*models.User
-	for _, value := range approvalList.AddGithubUsernameApprovalList {
-		userModel, err := s.usersService.GetUserByGitHubUsername(value)
-		if err != nil {
-			log.Warnf("unable to lookup user by GitHub username: %s, error: %+v", value, err)
-		} else {
-			userModelList = append(userModelList, userModel)
-		}
-	}
-
-	return userModelList
-}
-
-// getRemoveGitHubContributors is a helper function to lookup the contributors impacted by the Approval List update
-func (s service) getRemoveGitHubContributors(approvalList *models.ApprovalList) []*models.User {
-	var userModelList []*models.User
-	for _, value := range approvalList.RemoveGithubUsernameApprovalList {
-		userModel, err := s.usersService.GetUserByGitHubUsername(value)
-		if err != nil {
-			log.Warnf("unable to lookup user by GitHub username: %s, error: %+v", value, err)
-		} else {
-			userModelList = append(userModelList, userModel)
-		}
-	}
-
-	return userModelList
-}
-
-// getAddGitlabContributors is a helper function to look up the Gitlab contributors impacted by the Approval List update
-func (s service) getAddGitlabContributors(approvalList *models.ApprovalList) []*models.User {
-	var userModelList []*models.User
-	for _, value := range approvalList.AddGitlabUsernameApprovalList {
-		userModel, err := s.usersService.GetUserByGitHubUsername(value)
-		if err != nil {
-			log.Warnf("unable to lookup user by Gitlab username: %s, error: %+v", value, err)
-		} else {
-			userModelList = append(userModelList, userModel)
-		}
-	}
-
-	return userModelList
-}
-
-// getRemoveGitlabContributors is a helper function to look up the Gitlab contributors impacted by the Approval List update
-func (s service) getRemoveGitlabContributors(approvalList *models.ApprovalList) []*models.User {
-	var userModelList []*models.User
-	for _, value := range approvalList.RemoveGitlabUsernameApprovalList {
-		userModel, err := s.usersService.GetUserByGitHubUsername(value)
-		if err != nil {
-			log.Warnf("unable to lookup user by Gitlab username: %s, error: %+v", value, err)
-		} else {
-			userModelList = append(userModelList, userModel)
-		}
-	}
-
-	return userModelList
-}
-
-func (s service) sendRequestAccessEmailToContributors(authUser *auth.User, companyModel *models.Company, claGroupModel *models.ClaGroup, approvalList *models.ApprovalList) {
-	addEmailUsers := s.getAddEmailContributors(approvalList)
-	for _, user := range addEmailUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "added", "to",
-			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
-	}
-	removeEmailUsers := s.getRemoveEmailContributors(approvalList)
-	for _, user := range removeEmailUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "removed", "from",
-			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
-	}
-	addGitHubUsers := s.getAddGitHubContributors(approvalList)
-	for _, user := range addGitHubUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "added", "to",
-			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
-	}
-	removeGitHubUsers := s.getRemoveGitHubContributors(approvalList)
-	for _, user := range removeGitHubUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "removed", "from",
-			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
-	}
-	addGitlabUsers := s.getAddGitlabContributors(approvalList)
-	for _, user := range addGitlabUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "added", "to",
-			fmt.Sprintf("you are authorized to contribute to %s on behalf of %s", claGroupModel.ProjectName, companyModel.CompanyName))
-	}
-	removeGitlabUsers := s.getRemoveGitlabContributors(approvalList)
-	for _, user := range removeGitlabUsers {
-		sendRequestAccessEmailToContributorRecipient(authUser, companyModel, claGroupModel, user.Username, user.LfEmail.String(), "removed", "from",
-			fmt.Sprintf("you are no longer authorized to contribute to %s on behalf of %s ", claGroupModel.ProjectName, companyModel.CompanyName))
-	}
-}
-
-func (s service) createEventLogEntries(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, userModel *models.User, approvalList *models.ApprovalList) {
-	for _, value := range approvalList.AddEmailApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListAddEmailData{
-				ApprovalListEmail: value,
-			},
-		})
-	}
-	for _, value := range approvalList.RemoveEmailApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListRemoveEmailData{
-				ApprovalListEmail: value,
-			},
-		})
-	}
-	for _, value := range approvalList.AddDomainApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListAddDomainData{
-				ApprovalListDomain: value,
-			},
-		})
-	}
-	for _, value := range approvalList.RemoveDomainApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListRemoveDomainData{
-				ApprovalListDomain: value,
-			},
-		})
-	}
-	for _, value := range approvalList.AddGithubUsernameApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListAddGitHubUsernameData{
-				ApprovalListGitHubUsername: value,
-			},
-		})
-	}
-	for _, value := range approvalList.RemoveGithubUsernameApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListRemoveGitHubUsernameData{
-				ApprovalListGitHubUsername: value,
-			},
-		})
-	}
-	for _, value := range approvalList.AddGithubOrgApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListAddGitHubOrgData{
-				ApprovalListGitHubOrg: value,
-			},
-		})
-	}
-	for _, value := range approvalList.RemoveGithubOrgApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			CLAGroupID:    claGroupModel.ProjectID,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListRemoveGitHubOrgData{
-				ApprovalListGitHubOrg: value,
-			},
-		})
-	}
-	for _, value := range approvalList.AddGitlabUsernameApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListAddGitLabUsernameData{
-				ApprovalListGitLabUsername: value,
-			},
-		})
-	}
-	for _, value := range approvalList.RemoveGitlabUsernameApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListRemoveGitLabUsernameData{
-				ApprovalListGitLabUsername: value,
-			},
-		})
-	}
-	for _, value := range approvalList.AddGitlabOrgApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListAddGitLabGroupData{
-				ApprovalListGitLabGroup: value,
-			},
-		})
-	}
-	for _, value := range approvalList.RemoveGitlabOrgApprovalList {
-		// Send an event
-		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
-			EventType:     events.ClaApprovalListUpdated,
-			CLAGroupID:    claGroupModel.ProjectID,
-			ProjectID:     claGroupModel.ProjectExternalID,
-			ClaGroupModel: claGroupModel,
-			CompanyID:     companyModel.CompanyID,
-			CompanyModel:  companyModel,
-			LfUsername:    userModel.LfUsername,
-			UserID:        userModel.UserID,
-			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
-			EventData: &events.CLAApprovalListRemoveGitLabGroupData{
-				ApprovalListGitLabGroup: value,
-			},
-		})
-	}
-}
-
 func (s service) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
 	return s.repo.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm, approved, signed, pageSize, nextKey)
 }
@@ -919,60 +694,4 @@ func (s service) GetClaGroupCCLASignatures(ctx context.Context, claGroupID strin
 
 func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error) {
 	return s.repo.GetClaGroupCorporateContributors(ctx, claGroupID, companyID, searchTerm)
-}
-
-// sendRequestAccessEmailToContributors sends the request access email to the specified contributors
-func sendRequestAccessEmailToContributorRecipient(authUser *auth.User, companyModel *models.Company, claGroupModel *models.ClaGroup, recipientName, recipientAddress, addRemove, toFrom, authorizedString string) {
-	companyName := companyModel.CompanyName
-	projectName := claGroupModel.ProjectName
-
-	// subject string, body string, recipients []string
-	subject := fmt.Sprintf("EasyCLA: Approval List Update for %s on %s", companyName, projectName)
-	recipients := []string{recipientAddress}
-	body := fmt.Sprintf(`
-<p>Hello %s,</p>
-<p>This is a notification email from EasyCLA regarding the project %s.</p>
-<p>You have been %s %s the Approval List of %s for %s by CLA Manager %s. This means that %s.</p>
-<b>
-<p>If you are a GitHub user and If you had previously submitted a pull request to EasyCLA Test Group that had failed, you can now go back to it, re-click the “Not Covered” button in the EasyCLA message in your pull request, and then follow these steps</p>
-<ol>
-<li>Select “Corporate Contributor”.</li>
-<li>Select your company from the organization drop down list</li>
-<li>Click Proceed</li>
-</ol>
-<p>If you are a Gerrit user and if you had previously submitted a pull request to EasyCLA Test Group that had failed, then navigate to Agreements Settings page on Gerrit, click on "New Contributor Agreement" link under Agreements section, select the radio button corresponding to Corporate CLA, click on "Please review the agreement" link, and then follow these steps</p>
-<ol>
-<li>Select “Corporate Contributor”.</li>
-<li>Select your company from the organization drop down list</li>
-<li>Click Proceed</li>
-</ol>
-<p>These steps will confirm your organization association and you will only need to do these once. After completing these steps, the EasyCLA check will be complete and enabled for all future code contributions for this project.</p>
-</b>
-%s
-%s`,
-		recipientName, projectName, addRemove, toFrom,
-		companyName, projectName, authUser.UserName, authorizedString,
-		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
-
-	err := utils.SendEmail(subject, body, recipients)
-	if err != nil {
-		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
-	} else {
-		log.Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
-	}
-}
-
-// getBestEmail is a helper function to return the best email address for the user model
-func getBestEmail(userModel *models.User) string {
-	if userModel.LfEmail != "" {
-		return userModel.LfEmail.String()
-	}
-
-	for _, email := range userModel.Emails {
-		if email != "" && !strings.Contains(email, "noreply.github.com") {
-			return email
-		}
-	}
-
-	return ""
 }
