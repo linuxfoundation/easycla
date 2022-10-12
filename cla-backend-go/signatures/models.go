@@ -93,8 +93,8 @@ type SignatureDynamoDB struct {
 	SignatureReferenceNameLower   string   `json:"signature_reference_name_lower"`   // john doe
 	SignatureUserCCLACompanyID    string   `json:"signature_user_ccla_company_id"`   // set for ECLA record types, null/missing otherwise
 	SignatureReturnURL            string   `json:"signature_return_url"`             // e.g https://github.com/open-telemetry/opentelemetry-go/pull/1751
-	SignatureDocumentMajorVersion string   `json:"signature_document_major_version"` // 2
-	SignatureDocumentMinorVersion string   `json:"signature_document_minor_version"` // 0
+	SignatureDocumentMajorVersion int      `json:"signature_document_major_version"` // 2
+	SignatureDocumentMinorVersion int      `json:"signature_document_minor_version"` // 0
 	SigTypeSignedApprovedID       string   `json:"sig_type_signed_approved_id"`      // e.g. ecla#true#true#e908aefe-27ff-44ea-9f06-ab513f34cb1d
 	SignedOn                      string   `json:"signed_on"`                        // 2021-03-29T22:48:10.246463+0000
 	AutoCreateECLA                bool     `json:"auto_create_ecla"`                 // flag to indicate if auto-create ECLA feature is enabled (only applies to CCLA signature record types)
