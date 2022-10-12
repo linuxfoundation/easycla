@@ -402,6 +402,8 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		"companyID":         companyModel.CompanyID,
 	}
 
+	log.WithFields(f).Debugf("processing update approval list request")
+
 	// Lookup the project corporate signature - should have one
 	pageSize := int64(1)
 	signed, approved := true, true
@@ -451,6 +453,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 	}
 
 	// Here we perform the approval list updates for all the different types of approval lists
+	log.WithFields(f).Debugf("updating approval list...")
 	updatedSig, err := s.repo.UpdateApprovalList(ctx, userModel, claGroupModel, companyModel.CompanyID, params, eventArgs)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem updating approval list for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
@@ -458,9 +461,11 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 	}
 
 	// Log Events that the CLA manager updated the approval lists
+	log.WithFields(f).Debugf("creating event log entry...")
 	go s.createEventLogEntries(ctx, companyModel, claGroupModel, userModel, params)
 
 	// Send an email to each of the CLA Managers
+	log.WithFields(f).Debugf("sending email to cla managers...")
 	for _, claManager := range claManagers {
 		claManagerEmail := getBestEmail(&claManager) // nolint
 		s.sendApprovalListUpdateEmailToCLAManagers(companyModel, claGroupModel, claManager.Username, claManagerEmail, params)
@@ -468,13 +473,19 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 
 	// TODO: DAD - update email template to indicate that if auto crate ECLA is enabled, that users should be good-to-go
 	// Send emails to contributors if email or GitHub/GitLab username was added or removed
+	log.WithFields(f).Debugf("sending email to contributors...")
 	s.sendRequestAccessEmailToContributors(authUser, companyModel, claGroupModel, params)
 
 	// If auto create ECLA is enabled for this Corporate Agreement, then create an ECLA for each employee that was added to the approval list
 	// TODO: DAD should we move this to above the actual approval list update and email blast?
+	log.WithFields(f).Debugf("checking for auto-create ECLA option: %t...", corporateSigModel.AutoCreateECLA)
 	if corporateSigModel.AutoCreateECLA {
+		log.WithFields(f).Debugf("auto-create ECLA option is enabled: %t...", corporateSigModel.AutoCreateECLA)
+
 		// For the add email list, create an ECLA signature record for each user
 		for _, email := range params.AddEmailApprovalList {
+			log.WithFields(f).Debugf("auto-create ECLA option - add email: %s", email)
+
 			// Lookup the user by email in the local EasyCLA database - this will exist if the user first
 			// initiated the request from GitHub and if they shared their email (made it public). This record will
 			// likely not exist if the CLA Manager added the email directly from the UI without the user first
@@ -502,6 +513,8 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 			}
 		}
 		for _, gitHubUserName := range params.AddGithubUsernameApprovalList {
+			log.WithFields(f).Debugf("auto-create ECLA option - add githubUserName: %s", gitHubUserName)
+
 			// Lookup the user by GitHub username in the local EasyCLA database - this will exist if the user first
 			// initiated the request from GitHub. This record will likely not exist if the CLA Manager added the GitHub
 			// username directly from the UI without the user first initiating the workflow.
