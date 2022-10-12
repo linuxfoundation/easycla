@@ -480,6 +480,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 	// TODO: DAD should we move this to above the actual approval list update and email blast?
 	log.WithFields(f).Debugf("checking for auto-create ECLA option: %t...", corporateSigModel.AutoCreateECLA)
 	if corporateSigModel.AutoCreateECLA {
+		createdECLARecord := false
 		log.WithFields(f).Debugf("auto-create ECLA option is enabled: %t...", corporateSigModel.AutoCreateECLA)
 
 		// For the add email list, create an ECLA signature record for each user
@@ -511,6 +512,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 				// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
 				return nil, createErr
 			}
+			createdECLARecord = true
 		}
 		for _, gitHubUserName := range params.AddGithubUsernameApprovalList {
 			log.WithFields(f).Debugf("auto-create ECLA option - add githubUserName: %s", gitHubUserName)
@@ -558,6 +560,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 				// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
 				return nil, createErr
 			}
+			createdECLARecord = true
 		}
 
 		/* Note: GitLab API is currently not working - plus, what credentials do we use to lookup the user details? Our current API leverages the GitHub app credentials (again, broken as of 09/2022 due to needing to refresh the token every hour)
@@ -605,8 +608,16 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 				// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
 				return nil, createErr
 			}
+			createdECLARecord = true
 		}
 		*/
+
+		if createdECLARecord {
+			log.WithFields(f).Debug("created one or more ECLA records - need to update GitHub status check")
+			// TODO: add GitHub status check update
+		} else {
+			log.WithFields(f).Debug("no ECLA records created - no need to update GitHub status check")
+		}
 	}
 
 	return updatedSig, nil
