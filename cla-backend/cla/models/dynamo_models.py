@@ -2602,7 +2602,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             "signature company initial manager email: {}, signature company secondary manager list: {},"
             "user_email: {}, user_github_username: {}, user_name: {}, "
             "user_docusign_name: {}, user_docusign_date_signed: {}, "
-            "auto_create_ecla: {}, ",
+            "auto_create_ecla: {}, "
             "created_on: {}, updated_on: {}"
         ).format(
             self.model.signature_id,
