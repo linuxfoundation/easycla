@@ -39,6 +39,7 @@ func buildProjection() expression.ProjectionBuilder {
 		expression.Name("signatory_name"),
 		expression.Name("user_docusign_date_signed"),
 		expression.Name("user_docusign_name"),
+		expression.Name("auto_create_ecla"),
 	)
 }
 

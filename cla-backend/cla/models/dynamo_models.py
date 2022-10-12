@@ -2485,6 +2485,8 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     user_docusign_date_signed = UnicodeAttribute(null=True)
     user_docusign_raw_xml = UnicodeAttribute(null=True)
 
+    auto_create_ecla = BooleanAttribute(default=False)
+
 
 class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-methods
     """
@@ -2533,6 +2535,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             user_name=None,
             user_docusign_name=None,
             user_docusign_date_signed=None,
+            auto_create_ecla: bool = False,
     ):
         super(Signature).__init__()
 
@@ -2583,6 +2586,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         self.model.user_docusign_name = user_docusign_name
         # in format of 2020-12-21T08:29:20.51
         self.model.user_docusign_date_signed = user_docusign_date_signed
+        self.model.auto_create_ecla = auto_create_ecla
 
     def __str__(self):
         return (
@@ -2598,6 +2602,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             "signature company initial manager email: {}, signature company secondary manager list: {},"
             "user_email: {}, user_github_username: {}, user_name: {}, "
             "user_docusign_name: {}, user_docusign_date_signed: {}, "
+            "auto_create_ecla: {}, ",
             "created_on: {}, updated_on: {}"
         ).format(
             self.model.signature_id,
@@ -2631,6 +2636,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             self.model.user_name,
             self.model.user_docusign_name,
             self.model.user_docusign_date_signed,
+            self.model.auto_create_ecla,
             self.model.get_date_created(),
             self.model.get_date_modified(),
         )
@@ -2800,153 +2806,158 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
     def get_user_docusign_raw_xml(self):
         return self.model.user_docusign_raw_xml
 
-    def set_signature_id(self, signature_id):
+    def get_auto_create_ecla(self) -> bool:
+        return self.model.auto_create_ecla
+
+    def set_signature_id(self, signature_id) -> None:
         self.model.signature_id = str(signature_id)
 
-    def set_signature_external_id(self, signature_external_id):
+    def set_signature_external_id(self, signature_external_id) -> None:
         self.model.signature_external_id = str(signature_external_id)
 
-    def set_signature_project_id(self, project_id):
+    def set_signature_project_id(self, project_id) -> None:
         self.model.signature_project_id = str(project_id)
 
-    def set_signature_document_minor_version(self, document_minor_version):
+    def set_signature_document_minor_version(self, document_minor_version) -> None:
         self.model.signature_document_minor_version = int(document_minor_version)
 
-    def set_signature_document_major_version(self, document_major_version):
+    def set_signature_document_major_version(self, document_major_version) -> None:
         self.model.signature_document_major_version = int(document_major_version)
 
-    def set_signature_type(self, signature_type):
+    def set_signature_type(self, signature_type) -> None:
         self.model.signature_type = signature_type
 
-    def set_signature_signed(self, signed):
+    def set_signature_signed(self, signed) -> None:
         self.model.signature_signed = bool(signed)
 
-    def set_signed_on(self, signed_on):
+    def set_signed_on(self, signed_on) -> None:
         self.model.signed_on = signed_on
 
-    def set_signatory_name(self, signatory_name):
+    def set_signatory_name(self, signatory_name) -> None:
         self.model.signatory_name = signatory_name
 
-    def set_signing_entity_name(self, signing_entity_name):
+    def set_signing_entity_name(self, signing_entity_name) -> None:
         self.model.signing_entity_name = signing_entity_name
 
-    def set_sigtype_signed_approved_id(self, sigtype_signed_approved_id):
+    def set_sigtype_signed_approved_id(self, sigtype_signed_approved_id) -> None:
         self.model.sigtype_signed_approved_id = sigtype_signed_approved_id
 
-    def set_signature_approved(self, approved):
+    def set_signature_approved(self, approved) -> None:
         self.model.signature_approved = bool(approved)
 
-    def set_signature_sign_url(self, sign_url):
+    def set_signature_sign_url(self, sign_url) -> None:
         self.model.signature_sign_url = sign_url
 
-    def set_signature_return_url(self, return_url):
+    def set_signature_return_url(self, return_url) -> None:
         self.model.signature_return_url = return_url
 
-    def set_signature_callback_url(self, callback_url):
+    def set_signature_callback_url(self, callback_url) -> None:
         self.model.signature_callback_url = callback_url
 
-    def set_signature_reference_id(self, reference_id):
+    def set_signature_reference_id(self, reference_id) -> None:
         self.model.signature_reference_id = reference_id
 
-    def set_signature_reference_name(self, reference_name):
+    def set_signature_reference_name(self, reference_name) -> None:
         self.model.signature_reference_name = reference_name
         self.model.signature_reference_name_lower = reference_name.lower()
 
-    def set_signature_reference_type(self, reference_type):
+    def set_signature_reference_type(self, reference_type) -> None:
         self.model.signature_reference_type = reference_type
 
-    def set_signature_user_ccla_company_id(self, company_id):
+    def set_signature_user_ccla_company_id(self, company_id) -> None:
         self.model.signature_user_ccla_company_id = company_id
 
-    def set_signature_acl(self, signature_acl_username):
+    def set_signature_acl(self, signature_acl_username) -> None:
         self.model.signature_acl = set([signature_acl_username])
 
-    def set_signature_return_url_type(self, signature_return_url_type):
+    def set_signature_return_url_type(self, signature_return_url_type) -> None:
         self.model.signature_return_url_type = signature_return_url_type
 
-    def set_signature_envelope_id(self, signature_envelope_id):
+    def set_signature_envelope_id(self, signature_envelope_id) -> None:
         self.model.signature_envelope_id = signature_envelope_id
 
-    def set_signature_company_signatory_id(self, signature_company_signatory_id):
+    def set_signature_company_signatory_id(self, signature_company_signatory_id) -> None:
         self.model.signature_company_signatory_id = signature_company_signatory_id
 
-    def set_signature_company_signatory_name(self, signature_company_signatory_name):
+    def set_signature_company_signatory_name(self, signature_company_signatory_name) -> None:
         self.model.signature_company_signatory_name = signature_company_signatory_name
 
-    def set_signature_company_signatory_email(self, signature_company_signatory_email):
+    def set_signature_company_signatory_email(self, signature_company_signatory_email) -> None:
         self.model.signature_company_signatory_email = signature_company_signatory_email
 
-    def set_signature_company_initial_manager_id(self, signature_company_initial_manager_id):
+    def set_signature_company_initial_manager_id(self, signature_company_initial_manager_id) -> None:
         self.model.signature_company_initial_manager_id = signature_company_initial_manager_id
 
-    def set_signature_company_initial_manager_name(self, signature_company_initial_manager_name):
+    def set_signature_company_initial_manager_name(self, signature_company_initial_manager_name) -> None:
         self.model.signature_company_initial_manager_name = signature_company_initial_manager_name
 
-    def set_signature_company_initial_manager_email(self, signature_company_initial_manager_email):
+    def set_signature_company_initial_manager_email(self, signature_company_initial_manager_email) -> None:
         self.model.signature_company_initial_manager_email = signature_company_initial_manager_email
 
-    def set_signature_company_secondary_manager_list(self, signature_company_secondary_manager_list):
+    def set_signature_company_secondary_manager_list(self, signature_company_secondary_manager_list) -> None:
         self.model.signature_company_secondary_manager_list = signature_company_secondary_manager_list
 
     # Remove leading and trailing whitespace for all items before setting whitelist
 
-    def set_domain_whitelist(self, domain_whitelist):
+    def set_domain_whitelist(self, domain_whitelist) -> None:
         self.model.domain_whitelist = [domain.strip() for domain in domain_whitelist]
 
-    def set_email_whitelist(self, email_whitelist):
+    def set_email_whitelist(self, email_whitelist) -> None:
         self.model.email_whitelist = [email.strip() for email in email_whitelist]
 
-    def set_github_whitelist(self, github_whitelist):
+    def set_github_whitelist(self, github_whitelist) -> None:
         self.model.github_whitelist = [github_user.strip() for github_user in github_whitelist]
 
-    def set_github_org_whitelist(self, github_org_whitelist):
+    def set_github_org_whitelist(self, github_org_whitelist) -> None:
         self.model.github_org_whitelist = [github_org.strip() for github_org in github_org_whitelist]
 
-    def set_gitlab_username_approval_list(self, gitlab_username_approval_list):
+    def set_gitlab_username_approval_list(self, gitlab_username_approval_list) -> None:
         self.model.gitlab_username_approval_list = [gitlab_user.strip() for gitlab_user in
                                                     gitlab_username_approval_list]
 
-    def set_gitlab_org_approval_list(self, gitlab_org_approval_list):
+    def set_gitlab_org_approval_list(self, gitlab_org_approval_list) -> None:
         self.model.gitlab_org_approval_list = [gitlab_org.strip() for gitlab_org in gitlab_org_approval_list]
 
-    def set_note(self, note):
+    def set_note(self, note) -> None:
         self.model.note = note
 
-    def set_signature_project_external_id(self, signature_project_external_id):
+    def set_signature_project_external_id(self, signature_project_external_id) -> None:
         self.model.signature_project_external_id = signature_project_external_id
 
-    def add_signature_acl(self, username):
+    def add_signature_acl(self, username) -> None:
         if not self.model.signature_acl:
             self.model.signature_acl = set()
         self.model.signature_acl.add(username)
 
-    def remove_signature_acl(self, username):
+    def remove_signature_acl(self, username) -> None:
         current_acl = self.model.signature_acl or set()
         if username not in current_acl:
             return
         self.model.signature_acl.remove(username)
 
-    def set_user_email(self, user_email):
+    def set_user_email(self, user_email) -> None:
         self.model.user_email = user_email
 
-    def set_user_github_username(self, user_github_username):
+    def set_user_github_username(self, user_github_username) -> None:
         self.model.user_github_username = user_github_username
 
-    def set_user_name(self, user_name):
+    def set_user_name(self, user_name) -> None:
         self.model.user_name = user_name
 
-    def set_user_lf_username(self, user_lf_username):
+    def set_user_lf_username(self, user_lf_username) -> None:
         self.model.user_lf_username = user_lf_username
 
-    def set_user_docusign_name(self, user_docusign_name):
+    def set_user_docusign_name(self, user_docusign_name) -> None:
         self.model.user_docusign_name = user_docusign_name
 
-    def set_user_docusign_date_signed(self, user_docusign_date_signed):
+    def set_user_docusign_date_signed(self, user_docusign_date_signed) -> None:
         self.model.user_docusign_date_signed = user_docusign_date_signed
 
-    def set_user_docusign_raw_xml(self, user_docusign_raw_xml):
+    def set_user_docusign_raw_xml(self, user_docusign_raw_xml) -> None:
         self.model.user_docusign_raw_xml = user_docusign_raw_xml
 
+    def set_auto_create_ecla(self, auto_create_ecla: bool) -> None:
+        self.model.auto_create_ecla = auto_create_ecla
     def get_signatures_by_reference(
             self,  # pylint: disable=too-many-arguments
             reference_id,
@@ -2957,8 +2968,8 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             signature_approved=None,
     ):
         fn = 'cla.models.dynamo_models.signature.get_signatures_by_reference'
-        cla.log.debug(f'{fn} - reference_id: {reference_id}, reference_type: {reference_type}'
-                      f' project_id: {project_id}, user_ccla_company_id: {project_id}'
+        cla.log.debug(f'{fn} - reference_id: {reference_id}, reference_type: {reference_type},'
+                      f' project_id: {project_id}, user_ccla_company_id: {project_id},'
                       f' signature_signed: {signature_signed}, signature_approved: {signature_approved}')
 
         cla.log.debug(f'{fn} - performing signature_reference_id query using: {reference_id}')

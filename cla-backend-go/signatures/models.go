@@ -82,6 +82,7 @@ const (
 // | CCLA (CLA Manager)     | <valid_project_id> | company                  | ccla           | <company_id_value>     | null/empty                     | Yes  | No                    |
 type SignatureDynamoDB struct {
 	SignatureID                   string   `json:"signature_id"`                     // PK
+	SignatureProjectID            string   `json:"signature_project_id"`             // the signature CLA group ID
 	SignatureReferenceID          string   `json:"signature_reference_id"`           // value is user_id for icla/ecla, value is company_id for ccla
 	SignatureType                 string   `json:"signature_type"`                   // one of: cla, ccla
 	SignatureACL                  []string `json:"signature_acl"`                    // [github:1234567]

@@ -97,7 +97,9 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 			SignatoryName:               dbSignature.SignatoryName,
 			UserDocusignName:            dbSignature.UserDocusignName,
 			UserDocusignDateSigned:      dbSignature.UserDocusignDateSigned,
+			AutoCreateECLA:              dbSignature.AutoCreateECLA,
 		}
+
 		sigs = append(sigs, sig)
 		go func(sigModel *models.Signature, signatureUserCompanyID string, sigACL []string) {
 			defer wg.Done()

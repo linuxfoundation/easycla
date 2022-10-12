@@ -520,7 +520,9 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 			// Lookup the user by GitHub username in the local EasyCLA database - this will exist if the user first
 			// initiated the request from GitHub. This record will likely not exist if the CLA Manager added the GitHub
 			// username directly from the UI without the user first initiating the workflow.
+			log.WithFields(f).Debugf("locating user by GitHub username: %s", gitHubUserName)
 			employeeUserModel, userLookupErr := s.usersService.GetUserByGitHubUsername(gitHubUserName)
+
 			// If we couldn't find the user, then create a user record
 			if userLookupErr != nil || employeeUserModel == nil {
 				log.WithFields(f).WithError(userLookupErr).Infof("unable to lookup existing user by GitHub username: %s in our local database - will attempt to create a new record", gitHubUserName)
@@ -551,9 +553,12 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 					// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
 					return nil, userCreateErr
 				}
+			} else {
+				log.WithFields(f).Debugf("located user by GitHub username: %s", gitHubUserName)
 			}
 
 			// Ok, finally, auto-create the employee acknowledgement record
+			log.WithFields(f).Debugf("auto-creating ECLA record for user: %+v", employeeUserModel)
 			createErr := s.repo.CreateProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
 			if createErr != nil {
 				log.WithFields(f).WithError(createErr).Warnf("unable to create project company employee signature record for: %+v", employeeUserModel)

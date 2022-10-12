@@ -38,6 +38,7 @@ type ItemSignature struct {
 	SignatoryName                 string   `json:"signatory_name"`
 	UserDocusignName              string   `json:"user_docusign_name"`
 	UserDocusignDateSigned        string   `json:"user_docusign_date_signed"`
+	AutoCreateECLA                bool     `json:"auto_create_ecla"`
 }
 
 // DBManagersModel is a database model for only the ACL/Manager column
