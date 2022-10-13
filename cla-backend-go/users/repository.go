@@ -96,7 +96,7 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 
 	if user.GithubID != "" {
 		attributes["user_github_id"] = &dynamodb.AttributeValue{
-			S: aws.String(user.GithubID),
+			N: aws.String(user.GithubID),
 		}
 	}
 

@@ -59,23 +59,23 @@ setup: $(LINT_TOOL) setup-dev setup-deploy
 
 .PHONY: swagger-tool
 swagger-tool:
-	@echo "Removing old swagger binary in $(SWAGGER_BIN_DIR)..."
+	@echo "==> Removing old swagger binary in $(SWAGGER_BIN_DIR)..."
 	@sudo rm -Rf $(SWAGGER_BIN_DIR)/swagger
-	@echo "Downloading $(SWAGGER_ASSET_URL)"
+	@echo "==> Downloading $(SWAGGER_ASSET_URL)..."
 	sudo curl -o $(SWAGGER_BIN_DIR)/swagger -L'#' $(SWAGGER_ASSET_URL)
 	sudo chmod +x $(SWAGGER_BIN_DIR)/swagger
 	$(SWAGGER_BIN_DIR)/swagger version
 
 setup_dev: setup-dev
 setup-dev: swagger-tool
-	pushd /tmp && echo "Installing goimport..." && go install golang.org/x/tools/cmd/goimports@latest && echo "Installation coverage tools..." && go install golang.org/x/tools/cmd/cover@latest && popd
+	pushd /tmp && echo "==> Installing goimport..." && go install golang.org/x/tools/cmd/goimports@latest && echo "==> Installation coverage tools..." && go install golang.org/x/tools/cmd/cover@latest && popd
 
-	@echo "Installing linter..."
+	@echo "==> Installing linter..."
 	@# Latest releases: https://github.com/golangci/golangci-lint/releases
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(LINT_VERSION)
 	echo "golangci-lint version:" && golangci-lint version
 
-	@echo "Installing multi-file-swagger tool..."
+	@echo "==> Installing multi-file-swagger tool..."
 	cd $(dir $(realpath $(firstword $(MAKEFILE_LIST))))swagger && pip3 install virtualenv && virtualenv .venv && source .venv/bin/activate && python -m pip install --upgrade pip && pip3 install -r requirements.txt
 
 setup_deploy: setup-deploy
@@ -110,9 +110,9 @@ swagger-prep:
 
 swagger-build-v1-services:
 	@echo
-	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
-	@echo "Go version is: $(shell go version )"
-	@echo "Generating v1 legacy API models..."
+	@echo "==> Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "==> Go version is: $(shell go version )"
+	@echo "==> Generating v1 legacy API models..."
 	cd swagger; source .venv/bin/activate && python3 multi-file-swagger.py --spec-input-file cla.v1.yaml --spec-output-file cla.v1.compiled.yaml
 	swagger -q generate server \
 		-t gen \
@@ -126,9 +126,9 @@ swagger-build-v1-services:
 
 swagger-build-v2-services:
 	@echo
-	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version)"
-	@echo "Go version is: $(shell go version )"
-	@echo "Generating v2 API models..."
+	@echo "==> Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "==> Go version is: $(shell go version )"
+	@echo "==> Generating v2 API models..."
 	cd swagger; source .venv/bin/activate && python3 multi-file-swagger.py --spec-input-file cla.v2.yaml --spec-output-file cla.v2.compiled.yaml
 	swagger -q generate server \
 		-t gen \
@@ -142,9 +142,9 @@ swagger-build-v2-services:
 
 swagger-build-project-service:
 	@echo
-	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version)"
-	@echo "Go version is: $(shell go version )"
-	@echo "Generating swagger client for the project-service..."
+	@echo "==> Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "==> Go version is: $(shell go version )"
+	@echo "==> Generating swagger client for the project-service..."
 	@mkdir -p v2/project-service
 	curl -sfL https://api-gw.dev.platform.linuxfoundation.org/project-service/swagger.json --output swagger/project-service.yaml
 	sed -i.bak 's/X-ACL/Empty-Header/g' swagger/project-service.yaml
@@ -156,9 +156,9 @@ swagger-build-project-service:
 
 swagger-build-organization-service:
 	@echo
-	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
-	@echo "Go version is: $(shell go version )"
-	@echo "Generating swagger client for the organization-service..."
+	@echo "==> Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "==> Go version is: $(shell go version )"
+	@echo "==> Generating swagger client for the organization-service..."
 	@mkdir -p v2/organization-service
 	curl -sfL https://api-gw.dev.platform.linuxfoundation.org/organization-service/swagger.json --output swagger/organization-service.yaml
 	sed -i.bak 's/X-ACL/Empty-Header/g' swagger/organization-service.yaml
@@ -170,9 +170,9 @@ swagger-build-organization-service:
 
 swagger-build-user-service:
 	@echo
-	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
-	@echo "Go version is: $(shell go version )"
-	@echo "Generating swagger client for the user-service..."
+	@echo "==> Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "==> Go version is: $(shell go version )"
+	@echo "==> Generating swagger client for the user-service..."
 	@mkdir -p v2/user-service
 	curl -sfL https://api-gw.dev.platform.linuxfoundation.org/user-service/swagger.json --output swagger/user-service.yaml
 	sed -i.bak 's/X-ACL/Empty-Header/g' swagger/user-service.yaml
@@ -184,9 +184,9 @@ swagger-build-user-service:
 
 swagger-build-acs-service:
 	@echo
-	@echo "Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
-	@echo "Go version is: $(shell go version )"
-	@echo "Generating swagger client for the acs-service..."
+	@echo "==> Swagger version is: $(shell $(SWAGGER_BIN_DIR)/swagger version )"
+	@echo "==> Go version is: $(shell go version )"
+	@echo "==> Generating swagger client for the acs-service..."
 	@mkdir -p v2/acs-service
 	curl -sfL https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs/swagger/swagger.json --output swagger/acs-service.yaml
 	sed -i.bak 's/X-ACL/X-API-KEY/g' swagger/acs-service.yaml
@@ -197,25 +197,25 @@ swagger-build-acs-service:
 
 swagger-v1-validate:
 	@echo ""
-	@echo "Validating EasyCLA v1 legacy API specification..."
+	@echo "==> Validating EasyCLA v1 legacy API specification..."
 	@swagger validate --stop-on-error swagger/cla.v1.compiled.yaml
 
 swagger-v2-validate:
 	@echo ""
-	@echo "Validating EasyCLA v2 API specification..."
+	@echo "==> Validating EasyCLA v2 API specification..."
 	@swagger validate --stop-on-error swagger/cla.v2.compiled.yaml
 
 fmt:
-	@echo "Formatting code and optimizing imports..."
+	@echo "==> Formatting code and optimizing imports..."
 	@gofmt -w -l -s $(GO_FILES)
 	@goimports -w -l $(GO_FILES)
 
 test:
-	@echo "Running unit tests..."
+	@echo "==> Running unit tests..."
 	@go test -v $(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/) -coverprofile=cover.out
 
 mock:
-	@echo "Re-Generating mocks"
+	@echo "==> Re-Generating mocks"
 	@cd $(MAKEFILE_DIR) && mkdir -p repositories/mock
 	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -source=repositories/service.go -package=mock -destination=repositories/mock/mock_service.go
 	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -source=repositories/repository.go -package=mock -destination=repositories/mock/mock_repository.go
@@ -228,25 +228,25 @@ mock:
 
 
 deps:
-	go env -w GOPRIVATE=github.com/LF-Engineering/*
-	go mod download -x
+	@go env -w GOPRIVATE=github.com/LF-Engineering/*
+	@go mod download -x
 
 build-prep:
-	mkdir -p $(BIN_DIR)
+	@mkdir -p $(BIN_DIR)
 
 build: build-linux
 build-linux: deps build-prep
-	@echo "Building Linux amd64 binary..."
+	@echo "==> Building Linux amd64 binary..."
 	env GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVICE) main.go
 	@chmod +x $(BIN_DIR)/$(SERVICE)
 
 build-mac: deps build-prep
-	@echo "Building Mac OSX amd64 binary..."
+	@echo "==> Building Mac OSX amd64 binary..."
 	env GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVICE)-mac main.go
 	@chmod +x $(BIN_DIR)/$(SERVICE)-mac
 
 build-mac-arm64: deps build-prep
-	@echo "Building Mac OSX Arm64 binary..."
+	@echo "==> Building Mac OSX Arm64 binary..."
 	env GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVICE)-mac-arm64 main.go
 	@chmod +x $(BIN_DIR)/$(SERVICE)-mac-arm64
 
@@ -254,103 +254,102 @@ rebuild-mac: clean fmt build-mac lint
 
 build-aws-lambda: build-aws-lambda-linux
 build-aws-lambda-linux: deps build-prep
-	@echo "Building a statically linked Linux amd64 binary..."
+	@echo "==> Building a statically linked Linux amd64 binary..."
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(LAMBDA_BIN) main.go
 	@chmod +x $(BIN_DIR)/$(LAMBDA_BIN)
 
 build-aws-lambda-mac: deps build-prep
-	@echo "Building a statically linked Mac OSX amd64 binary..."
+	@echo "==> Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(LAMBDA_BIN)-mac main.go
 	@chmod +x $(BIN_DIR)/$(LAMBDA_BIN)-mac
 
 build-user-subscribe-lambda: build-user-subscribe-lambda-linux
 build-user-subscribe-lambda-linux: deps build-prep
-	@echo "Building a statically linked Linux amd64 binary..."
+	@echo "==> Building a statically linked Linux amd64 binary..."
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(USER_SUBSCRIBE_BIN) cmd/user-subscribe-lambda/main.go
 	@chmod +x $(BIN_DIR)/$(USER_SUBSCRIBE_BIN)
 
 build-user-subscribe-lambda-mac: deps build-prep
-	@echo "Building a statically linked Mac OSX amd64 binary..."
+	@echo "==> Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(USER_SUBSCRIBE_BIN)-mac cmd/user-subscribe-lambda/main.go
 	@chmod +x $(BIN_DIR)/$(USER_SUBSCRIBE_BIN)-mac
 
 build-metrics-lambda: build-metrics-lambda-linux
 build-metrics-lambda-linux: deps build-prep
-	@echo "Building a statically linked Linux amd64 binary..."
+	@echo "==> Building a statically linked Linux amd64 binary..."
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(METRICS_BIN) cmd/metrics_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(METRICS_BIN)
 
 build-metrics-lambda-mac: deps build-prep
-	@echo "Building a statically linked Mac OSX amd64 binary..."
+	@echo "==> Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(METRICS_BIN)-mac cmd/metrics_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(METRICS_BIN)-mac
 
 build-metrics-report-lambda: build-metrics-report-lambda-linux
 build-metrics-report-lambda-linux: deps build-prep
-	@echo "Building a statically linked Linux amd64 binary..."
+	@echo "==> Building a statically linked Linux amd64 binary..."
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(METRICS_REPORT_BIN) cmd/metrics_report_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(METRICS_REPORT_BIN)
 
 build-metrics-report-lambda-mac: deps build-prep
-	@echo "Building a statically linked Mac OSX amd64 binary..."
+	@echo "==> Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(METRICS_REPORT_BIN)-mac cmd/metrics_report_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(METRICS_REPORT_BIN)-mac
 
 build-dynamo-events-lambda: build-dynamo-events-lambda-linux
 build-dynamo-events-lambda-linux: deps build-prep
-	@echo "Building a statically linked Linux amd64 binary..."
+	@echo "==> Building a statically linked Linux amd64 binary..."
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(DYNAMO_EVENTS_BIN) cmd/dynamo_events_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(DYNAMO_EVENTS_BIN)
 
 build-dynamo-events-lambda-mac: deps build-prep
-	@echo "Building a statically linked Mac OSX amd64 binary..."
+	@echo "==> Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(DYNAMO_EVENTS_BIN)-mac cmd/dynamo_events_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(DYNAMO_EVENTS_BIN)-mac
 
 build-zipbuilder-scheduler-lambda: build-zipbuilder-scheduler-lambda-linux
 build-zipbuilder-scheduler-lambda-linux: deps build-prep
-	@echo "Building a statically linked Linux amd64 binary..."
+	@echo "==> Building a statically linked Linux amd64 binary..."
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(ZIPBUILDER_SCHEDULER_BIN) cmd/zipbuilder_scheduler_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(ZIPBUILDER_SCHEDULER_BIN)
 
 build-zipbuilder-scheduler-lambda-mac: deps build-prep
-	@echo "Building a statically linked Mac OSX amd64 binary..."
+	@echo "==> Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(ZIPBUILDER_SCHEDULER_BIN)-mac cmd/zipbuilder_scheduler_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(ZIPBUILDER_SCHEDULER_BIN)-mac
 
 build-zipbuilder-lambda: build-zipbuilder-lambda-linux
 build-zipbuilder-lambda-linux: deps build-prep
-	@echo "Building a statically linked Linux amd64 binary..."
+	@echo "==> Building a statically linked Linux amd64 binary..."
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(ZIPBUILDER_BIN) cmd/zipbuilder_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(ZIPBUILDER_BIN)
 
 build-zipbuilder-lambda-mac: deps build-prep
-	@echo "Building a statically linked Mac OSX amd64 binary..."
+	@echo "==> Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(ZIPBUILDER_BIN)-mac cmd/zipbuilder_lambda/main.go
 	@chmod +x $(BIN_DIR)/$(ZIPBUILDER_BIN)-mac
 
 build-gitlab-repository-check-lambda-linux: deps build-prep
-	@echo "Building a statically linked Linux OSX amd64 binary..."
+	@echo "==> Building a statically linked Linux OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) $(BUILD_TAGS) -o $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN) cmd/gitlab_repository_check/main.go
 	@chmod +x $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN)
 
 build-gitlab-repository-check-lambda-mac: deps build-prep
-	@echo "Building a statically linked Mac OSX amd64 binary..."
+	@echo "==> Building a statically linked Mac OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN)-mac cmd/gitlab_repository_check/main.go
 	@chmod +x $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN)-mac
 
 build-functional-tests: build-functional-tests-linux
 build-functional-tests-linux: deps build-prep
-	@echo "Building Functional Tests for Linux amd64 binary..."
+	@echo "==> Building Functional Tests for Linux amd64 binary..."
 	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN) cmd/functional_tests/main.go
 	@chmod +x $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN)
 
 build-functional-tests-mac: deps build-prep
-	@echo "Building Functional Tests for OSX amd64 binary..."
+	@echo "==> Building Functional Tests for OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN)-mac cmd/functional_tests/main.go
 	@chmod +x $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN)-mac
 
 lint:
-	@cd $(MAKEFILE_DIR) && $(LINT_TOOL) version && echo "Running lint..." && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "Lint check passed."
+	@cd $(MAKEFILE_DIR) && $(LINT_TOOL) version && echo "==> Running lint..." && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "==> Lint check passed."
 	@cd $(MAKEFILE_DIR) && ./check-headers.sh
-
