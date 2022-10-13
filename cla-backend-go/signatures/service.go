@@ -439,43 +439,6 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		return nil, userErr
 	}
 
-	// This event is ONLY used when we need to invalidate the signature
-	eventArgs := &events.LogEventArgs{
-		EventType:     events.InvalidatedSignature, // reviewed and
-		ProjectID:     claGroupModel.ProjectExternalID,
-		ClaGroupModel: claGroupModel,
-		CompanyID:     companyModel.CompanyID,
-		CompanyModel:  companyModel,
-		LfUsername:    userModel.LfUsername,
-		UserID:        userModel.UserID,
-		UserModel:     userModel,
-		ProjectSFID:   claGroupModel.ProjectExternalID,
-	}
-
-	// Here we perform the approval list updates for all the different types of approval lists
-	log.WithFields(f).Debugf("updating approval list...")
-	updatedSig, err := s.repo.UpdateApprovalList(ctx, userModel, claGroupModel, companyModel.CompanyID, params, eventArgs)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem updating approval list for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
-		return updatedSig, err
-	}
-
-	// Log Events that the CLA manager updated the approval lists
-	log.WithFields(f).Debugf("creating event log entry...")
-	go s.createEventLogEntries(ctx, companyModel, claGroupModel, userModel, params)
-
-	// Send an email to each of the CLA Managers
-	log.WithFields(f).Debugf("sending email to cla managers...")
-	for _, claManager := range claManagers {
-		claManagerEmail := getBestEmail(&claManager) // nolint
-		s.sendApprovalListUpdateEmailToCLAManagers(companyModel, claGroupModel, claManager.Username, claManagerEmail, params)
-	}
-
-	// TODO: DAD - update email template to indicate that if auto crate ECLA is enabled, that users should be good-to-go
-	// Send emails to contributors if email or GitHub/GitLab username was added or removed
-	log.WithFields(f).Debugf("sending email to contributors...")
-	s.sendRequestAccessEmailToContributors(authUser, companyModel, claGroupModel, params)
-
 	// If auto create ECLA is enabled for this Corporate Agreement, then create an ECLA for each employee that was added to the approval list
 	// TODO: DAD should we move this to above the actual approval list update and email blast?
 	log.WithFields(f).Debugf("checking for auto-create ECLA option: %t...", corporateSigModel.AutoCreateECLA)
@@ -647,7 +610,46 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		} else {
 			log.WithFields(f).Debug("no ECLA records created - no need to update GitHub status check")
 		}
+	} else {
+		log.WithFields(f).Debugf("auto-create ECLA option is disabled: %t...", corporateSigModel.AutoCreateECLA)
 	}
+
+	// Here we perform the approval list updates for all the different types of approval lists
+	log.WithFields(f).Debugf("updating approval list...")
+
+	// This event is ONLY used when we need to invalidate the signature
+	eventArgs := &events.LogEventArgs{
+		EventType:     events.InvalidatedSignature, // reviewed and
+		ProjectID:     claGroupModel.ProjectExternalID,
+		ClaGroupModel: claGroupModel,
+		CompanyID:     companyModel.CompanyID,
+		CompanyModel:  companyModel,
+		LfUsername:    userModel.LfUsername,
+		UserID:        userModel.UserID,
+		UserModel:     userModel,
+		ProjectSFID:   claGroupModel.ProjectExternalID,
+	}
+
+	updatedSig, err := s.repo.UpdateApprovalList(ctx, userModel, claGroupModel, companyModel.CompanyID, params, eventArgs)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem updating approval list for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
+		return updatedSig, err
+	}
+
+	// Log Events that the CLA manager updated the approval lists
+	log.WithFields(f).Debugf("creating event log entry...")
+	go s.createEventLogEntries(ctx, companyModel, claGroupModel, userModel, params)
+
+	// Send an email to each of the CLA Managers
+	log.WithFields(f).Debugf("sending notification email to cla managers...")
+	for _, claManager := range claManagers {
+		claManagerEmail := getBestEmail(&claManager) // nolint
+		s.sendApprovalListUpdateEmailToCLAManagers(companyModel, claGroupModel, claManager.Username, claManagerEmail, params)
+	}
+
+	// Send emails to contributors if email or GitHub/GitLab username was added or removed
+	log.WithFields(f).Debugf("sending notification email to contributors...")
+	s.sendRequestAccessEmailToContributors(authUser, companyModel, claGroupModel, params)
 
 	return updatedSig, nil
 }

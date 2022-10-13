@@ -141,6 +141,19 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 			S: aws.String(user.Username),
 		}
 	}
+
+	if user.CompanyID != "" {
+		attributes["user_company_id"] = &dynamodb.AttributeValue{
+			S: aws.String(user.CompanyID),
+		}
+	}
+
+	if user.Note != "" {
+		attributes["note"] = &dynamodb.AttributeValue{
+			S: aws.String(user.Note),
+		}
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	user.DateCreated = now
