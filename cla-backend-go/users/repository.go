@@ -46,6 +46,7 @@ type UserRepository interface {
 	GetUserByGitlabID(gitlabID int) (*models.User, error)
 	GetUserByGitLabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(searchField string, searchTerm string, fullMatch bool) (*models.Users, error)
+	UpdateUserCompanyID(userID string, companyID string) error
 }
 
 // repository data model
@@ -1034,6 +1035,42 @@ func (repo repository) SearchUsers(searchField string, searchTerm string, fullMa
 		Users:          users,
 	}, nil
 
+}
+
+// UpdateUserCompanyID updates the user's company ID
+func (repo repository) UpdateUserCompanyID(userID string, companyID string) error {
+	f := logrus.Fields{
+		"functionName": "users.repository.UpdateUserCompanyID",
+	}
+
+	expressionAttributeNames := map[string]*string{
+		"#CID": aws.String("user_company_id"),
+	}
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
+		":cid": {
+			S: aws.String(companyID),
+		},
+	}
+	updateExpression := "SET #CID = :cid"
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"user_id": {S: aws.String(userID)},
+		},
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		UpdateExpression:          &updateExpression,
+		TableName:                 aws.String(repo.tableName),
+	}
+
+	log.WithFields(f).Debug("updating user record with company_id...")
+	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
+	if updateErr != nil {
+		log.WithFields(f).WithError(updateErr).Warnf("unable to update user record with company ID, error: %+v", updateErr)
+		return updateErr
+	}
+
+	return nil
 }
 
 // convertDBUserModel translates a dyanamoDB data model into a service response model

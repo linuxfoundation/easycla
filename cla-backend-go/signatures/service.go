@@ -503,6 +503,19 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 					// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
 					return nil, userCreateErr
 				}
+			} else {
+				log.WithFields(f).Debugf("located user by email: %s", email)
+				if employeeUserModel.CompanyID == "" || employeeUserModel.CompanyID != companyModel.CompanyID {
+					log.WithFields(f).Debugf("updating user record with company ID: %s - previous value was: %s", companyModel.CompanyID, employeeUserModel.CompanyID)
+					employeeUserModel.CompanyID = companyModel.CompanyID
+					userUpdateErr := s.usersService.UpdateUserCompanyID(employeeUserModel.UserID, companyModel.CompanyID)
+					if userUpdateErr != nil {
+						log.WithFields(f).WithError(userUpdateErr).Warnf("problem updating user record with company ID: %s", companyModel.CompanyID)
+						// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
+						return nil, userUpdateErr
+					}
+					log.WithFields(f).Debugf("updated user record with company ID: %s", companyModel.CompanyID)
+				}
 			}
 
 			// Ok, auto-create the employee acknowledgement record
@@ -555,6 +568,17 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 				}
 			} else {
 				log.WithFields(f).Debugf("located user by GitHub username: %s", gitHubUserName)
+				if employeeUserModel.CompanyID == "" || employeeUserModel.CompanyID != companyModel.CompanyID {
+					log.WithFields(f).Debugf("updating user record with company ID: %s - previous value was: %s", companyModel.CompanyID, employeeUserModel.CompanyID)
+					employeeUserModel.CompanyID = companyModel.CompanyID
+					userUpdateErr := s.usersService.UpdateUserCompanyID(employeeUserModel.UserID, companyModel.CompanyID)
+					if userUpdateErr != nil {
+						log.WithFields(f).WithError(userUpdateErr).Warnf("problem updating user record with company ID: %s", companyModel.CompanyID)
+						// TODO: DAD - how do we communicate this back to the CLA Manager in the UI - simply return the error?
+						return nil, userUpdateErr
+					}
+					log.WithFields(f).Debugf("updated user record with company ID: %s", companyModel.CompanyID)
+				}
 			}
 
 			// Ok, finally, auto-create the employee acknowledgement record

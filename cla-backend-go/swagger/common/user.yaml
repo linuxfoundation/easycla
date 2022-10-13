@@ -54,3 +54,6 @@ properties:
     type: array
     items:
       type: string
+  userCompanyID:
+    type: string
+    description: the user's optional company ID
