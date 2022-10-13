@@ -1783,18 +1783,6 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		f["employeeEmails"] = strings.Join(employeeUserModel.Emails, ",")
 	}
 
-	// Try to figure out the employee's name
-	employeeUserName := employeeUserModel.Username
-	if employeeUserName == "" {
-		if employeeUserModel.LfUsername != "" {
-			employeeUserName = employeeUserModel.LfUsername
-		} else if employeeUserModel.GithubUsername != "" {
-			employeeUserName = employeeUserModel.GithubUsername
-		} else if employeeUserModel.GitlabUsername != "" {
-			employeeUserName = employeeUserModel.GitlabUsername
-		}
-	}
-
 	existingSig, lookupErr := repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
 	if lookupErr != nil {
 		log.WithFields(f).WithError(lookupErr).Warnf("problem looking up existing signature for project: %+v, company: %+v, employee: %+v", claGroupModel, companyModel, employeeUserModel)
@@ -1844,8 +1832,6 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		SignatureDocumentMinorVersion: 0,
 		SigTypeSignedApprovedID:       fmt.Sprintf("ecla#true#true#%s", companyModel.CompanyID),
 		SignatureReferenceType:        utils.SignatureReferenceTypeUser,
-		SignatureReferenceName:        employeeUserName,
-		SignatureReferenceNameLower:   strings.ToLower(employeeUserName),
 		SignatureACL:                  []string{},
 		SignedOn:                      currentTime,
 		DateCreated:                   currentTime,
@@ -1854,13 +1840,33 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		Note:                          fmt.Sprintf("Automatically created employee ackowledgement via CLA Manager approval list edit/update with auto_create_ecla feature flag set to true on %+v.", currentTime),
 	}
 
+	// Try to figure out the employee's name
+	// Signature Reference Name fields MUST have a value - cannot be nil because it is indexed (we have a separate index for these columns)
+	employeeUserName := employeeUserModel.Username
+	if employeeUserName == "" {
+		if employeeUserModel.LfUsername != "" {
+			employeeUserName = employeeUserModel.LfUsername
+		} else if employeeUserModel.GithubUsername != "" {
+			employeeUserName = employeeUserModel.GithubUsername
+		} else if employeeUserModel.GitlabUsername != "" {
+			employeeUserName = employeeUserModel.GitlabUsername
+		} else if employeeUserModel.LfEmail != "" {
+			employeeUserName = employeeUserModel.LfEmail.String()
+		} else if employeeUserModel.Emails != nil && len(employeeUserModel.Emails) > 0 {
+			employeeUserName = employeeUserModel.Emails[0]
+		}
+	}
+	if employeeUserName != "" {
+		newSignature.SignatureReferenceName = employeeUserName
+		newSignature.SignatureReferenceNameLower = strings.ToLower(employeeUserName)
+	}
+
 	av, marshalErr := dynamodbattribute.MarshalMap(newSignature)
 	if marshalErr != nil {
 		log.WithFields(f).WithError(marshalErr).Warn("unable to create new signature record")
 		return marshalErr
 	}
 
-	log.WithFields(f).Debug("adding signature record to the database...")
 	_, putErr := repo.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
 		Item:      av,
 		TableName: aws.String(repo.signatureTableName),
