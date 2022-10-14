@@ -52,3 +52,10 @@ type DBSignatureUsersModel struct {
 	SignatureID string `json:"signature_id"`
 	UserID      string `json:"signature_reference_id"`
 }
+
+// DBSignatureMetadata is a database model for the key and value fields for a given signature
+type DBSignatureMetadata struct {
+	Key    string `json:"key"`
+	Expire int64  `json:"expire"`
+	Value  string `json:"value"`
+}

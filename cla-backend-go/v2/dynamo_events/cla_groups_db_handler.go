@@ -6,7 +6,7 @@ package dynamo_events
 import (
 	"github.com/aws/aws-lambda-go/events"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
+	"github.com/communitybridge/easycla/cla-backend-go/project/models"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -26,7 +26,7 @@ func (s *service) ProcessCLAGroupUpdateEvents(event events.DynamoDBEventRecord) 
 
 	log.WithFields(f).Debug("processing event")
 
-	var oldProject, updatedProject project.DBProjectModel
+	var oldProject, updatedProject models.DBProjectModel
 	err := unmarshalStreamImage(event.Change.NewImage, &updatedProject)
 	if err != nil {
 		log.WithFields(f).Warnf("unable to unmarshal new project model, error: %+v", err)

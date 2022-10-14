@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
 
-package project
+package repository
 
 import (
 	"context"
@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/communitybridge/easycla/cla-backend-go/project/common"
+	models2 "github.com/communitybridge/easycla/cla-backend-go/project/models"
 
 	"github.com/sirupsen/logrus"
 
@@ -106,31 +109,31 @@ func (repo *repo) CreateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 
 	//var individualDocs []*dynamodb.AttributeValue
 	//var corporateDocs []*dynamodb.AttributeValue
-	addStringAttribute(input.Item, "project_id", claGroupID.String())
-	addStringAttribute(input.Item, "project_external_id", claGroupModel.ProjectExternalID)
-	addStringAttribute(input.Item, "foundation_sfid", claGroupModel.FoundationSFID)
-	addStringAttribute(input.Item, "project_description", claGroupModel.ProjectDescription)
-	addStringAttribute(input.Item, "project_name", claGroupModel.ProjectName)
-	addStringAttribute(input.Item, "project_template_id", claGroupModel.ProjectTemplateID)
-	addStringAttribute(input.Item, "project_name_lower", strings.ToLower(claGroupModel.ProjectName))
-	addStringSliceAttribute(input.Item, "project_acl", claGroupModel.ProjectACL)
-	addBooleanAttribute(input.Item, "project_icla_enabled", claGroupModel.ProjectICLAEnabled)
-	addBooleanAttribute(input.Item, "project_ccla_enabled", claGroupModel.ProjectCCLAEnabled)
-	addBooleanAttribute(input.Item, "project_ccla_requires_icla_signature", claGroupModel.ProjectCCLARequiresICLA)
-	addBooleanAttribute(input.Item, "project_live", claGroupModel.ProjectLive)
+	common.AddStringAttribute(input.Item, "project_id", claGroupID.String())
+	common.AddStringAttribute(input.Item, "project_external_id", claGroupModel.ProjectExternalID)
+	common.AddStringAttribute(input.Item, "foundation_sfid", claGroupModel.FoundationSFID)
+	common.AddStringAttribute(input.Item, "project_description", claGroupModel.ProjectDescription)
+	common.AddStringAttribute(input.Item, "project_name", claGroupModel.ProjectName)
+	common.AddStringAttribute(input.Item, "project_template_id", claGroupModel.ProjectTemplateID)
+	common.AddStringAttribute(input.Item, "project_name_lower", strings.ToLower(claGroupModel.ProjectName))
+	common.AddStringSliceAttribute(input.Item, "project_acl", claGroupModel.ProjectACL)
+	common.AddBooleanAttribute(input.Item, "project_icla_enabled", claGroupModel.ProjectICLAEnabled)
+	common.AddBooleanAttribute(input.Item, "project_ccla_enabled", claGroupModel.ProjectCCLAEnabled)
+	common.AddBooleanAttribute(input.Item, "project_ccla_requires_icla_signature", claGroupModel.ProjectCCLARequiresICLA)
+	common.AddBooleanAttribute(input.Item, "project_live", claGroupModel.ProjectLive)
 
 	// Empty documents for now - will add the template details later
-	addListAttribute(input.Item, "project_corporate_documents", []*dynamodb.AttributeValue{})
-	addListAttribute(input.Item, "project_individual_documents", []*dynamodb.AttributeValue{})
-	addListAttribute(input.Item, "project_member_documents", []*dynamodb.AttributeValue{})
+	common.AddListAttribute(input.Item, "project_corporate_documents", []*dynamodb.AttributeValue{})
+	common.AddListAttribute(input.Item, "project_individual_documents", []*dynamodb.AttributeValue{})
+	common.AddListAttribute(input.Item, "project_member_documents", []*dynamodb.AttributeValue{})
 
-	addStringAttribute(input.Item, "date_created", currentTimeString)
-	addStringAttribute(input.Item, "date_modified", currentTimeString)
+	common.AddStringAttribute(input.Item, "date_created", currentTimeString)
+	common.AddStringAttribute(input.Item, "date_modified", currentTimeString)
 	// Set the version attribute if not already set
 	if claGroupModel.Version == "" {
 		claGroupModel.Version = utils.V1 // default value
 	}
-	addStringAttribute(input.Item, "version", claGroupModel.Version)
+	common.AddStringAttribute(input.Item, "version", claGroupModel.Version)
 
 	_, err = repo.dynamoDBClient.PutItem(input)
 	if err != nil {
@@ -184,7 +187,7 @@ func (repo *repo) getCLAGroupByID(ctx context.Context, claGroupID string, loadCL
 	if len(results.Items) < 1 {
 		return nil, &utils.CLAGroupNotFound{CLAGroupID: claGroupID}
 	}
-	var dbModel DBProjectModel
+	var dbModel models2.DBProjectModel
 	err = dynamodbattribute.UnmarshalMap(results.Items[0], &dbModel)
 	if err != nil {
 		log.WithFields(f).Warnf("error unmarshalling db cla group model, error: %+v", err)
@@ -430,7 +433,7 @@ func (repo *repo) GetCLAGroupByName(ctx context.Context, projectName string) (*m
 	}
 
 	// Found it...
-	var dbModel DBProjectModel
+	var dbModel models2.DBProjectModel
 	err = dynamodbattribute.UnmarshalMap(results.Items[0], &dbModel)
 	if err != nil {
 		log.WithFields(f).Warnf("error unmarshalling db project model, error: %+v", err)
@@ -487,7 +490,7 @@ func (repo *repo) GetExternalCLAGroup(ctx context.Context, projectExternalID str
 		log.WithFields(f).Warnf("CLAGroup query returned more than one result using projectExternalID: %s", projectExternalID)
 	}
 
-	var dbModel DBProjectModel
+	var dbModel models2.DBProjectModel
 	err = dynamodbattribute.UnmarshalMap(results.Items[0], &dbModel)
 	if err != nil {
 		log.WithFields(f).Warnf("error unmarshalling db project model, error: %+v", err)
@@ -816,7 +819,7 @@ func (repo *repo) buildCLAGroupModels(ctx context.Context, results []map[string]
 	var projects []models.ClaGroup
 
 	// The DB project model
-	var dbProjects []DBProjectModel
+	var dbProjects []models2.DBProjectModel
 
 	err := dynamodbattribute.UnmarshalListOfMaps(results, &dbProjects)
 	if err != nil {
@@ -829,7 +832,7 @@ func (repo *repo) buildCLAGroupModels(ctx context.Context, results []map[string]
 
 	// For each project, convert to a response model - using a go routine
 	for _, dbProject := range dbProjects {
-		go func(dbProject DBProjectModel) {
+		go func(dbProject models2.DBProjectModel) {
 			// Send the results to the output channel
 			responseChannel <- repo.buildCLAGroupModel(ctx, dbProject, loadRepoDetails)
 		}(dbProject)
@@ -844,7 +847,7 @@ func (repo *repo) buildCLAGroupModels(ctx context.Context, results []map[string]
 }
 
 // buildCLAGroupModel maps the database model to the API response model
-func (repo *repo) buildCLAGroupModel(ctx context.Context, dbModel DBProjectModel, loadRepoDetails bool) *models.ClaGroup {
+func (repo *repo) buildCLAGroupModel(ctx context.Context, dbModel models2.DBProjectModel, loadRepoDetails bool) *models.ClaGroup {
 
 	var ghOrgs []*models.GithubRepositoriesGroupByOrgs
 	var gerrits []*models.Gerrit
@@ -899,9 +902,9 @@ func (repo *repo) buildCLAGroupModel(ctx context.Context, dbModel DBProjectModel
 		ProjectCCLARequiresICLA:      dbModel.ProjectCclaRequiresIclaSignature,
 		ProjectTemplateID:            dbModel.ProjectTemplateID,
 		ProjectLive:                  dbModel.ProjectLive,
-		ProjectCorporateDocuments:    buildCLAGroupDocumentModels(dbModel.ProjectCorporateDocuments),
-		ProjectIndividualDocuments:   buildCLAGroupDocumentModels(dbModel.ProjectIndividualDocuments),
-		ProjectMemberDocuments:       buildCLAGroupDocumentModels(dbModel.ProjectMemberDocuments),
+		ProjectCorporateDocuments:    common.BuildCLAGroupDocumentModels(dbModel.ProjectCorporateDocuments),
+		ProjectIndividualDocuments:   common.BuildCLAGroupDocumentModels(dbModel.ProjectIndividualDocuments),
+		ProjectMemberDocuments:       common.BuildCLAGroupDocumentModels(dbModel.ProjectMemberDocuments),
 		GithubRepositories:           ghOrgs,
 		Gerrits:                      gerrits,
 		DateCreated:                  dbModel.DateCreated,

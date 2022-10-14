@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	"github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/sirupsen/logrus"
 
@@ -17,8 +20,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations" // nolint - lint error for import not used, but it really is
 
 	"github.com/go-openapi/runtime"
-
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
@@ -40,7 +41,7 @@ import (
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, claGroupService project.Service, projectRepo project.ProjectRepository, companyService company.IService, v1SignatureService signatureService.SignatureService, sessionStore *dynastore.Store, eventsService events.Service, v2service ServiceInterface, projectClaGroupsRepo projects_cla_groups.Repository) { //nolint
+func Configure(api *operations.EasyclaAPI, claGroupService service.Service, projectRepo repository.ProjectRepository, companyService company.IService, v1SignatureService signatureService.SignatureService, sessionStore *dynastore.Store, eventsService events.Service, v2service ServiceInterface, projectClaGroupsRepo projects_cla_groups.Repository) { //nolint
 
 	const problemLoadingCLAGroupByID = "problem loading cla group by ID"
 	const iclaNotSupportedForCLAGroup = "individual contribution is not supported for this project"
@@ -371,7 +372,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
-			if err == project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return signatures.NewGetProjectSignaturesNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
 			}
@@ -716,7 +717,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
-			if err == project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return signatures.NewDownloadProjectSignatureEmployeeAsCSVNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
 			}
@@ -826,7 +827,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
-			if err == project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return signatures.NewListClaGroupIclaSignatureNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
 			}
@@ -890,10 +891,10 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		}
 
 		// Lookup the CLA Group by ID - make sure it's valid
-		claGroupModel, err := projectRepo.GetCLAGroupByID(ctx, params.ClaGroupID, project.DontLoadRepoDetails)
+		claGroupModel, err := projectRepo.GetCLAGroupByID(ctx, params.ClaGroupID, repository.DontLoadRepoDetails)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
-			if err == project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return signatures.NewListClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
 			}
@@ -1020,7 +1021,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
-			if err == project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return signatures.NewDownloadProjectSignatureICLAsNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
 			}
@@ -1075,7 +1076,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
-			if err == project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return signatures.NewDownloadProjectSignatureICLAAsCSVNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
 			}
@@ -1143,7 +1144,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
-			if err == project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return signatures.NewDownloadProjectSignatureCCLAsNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
 			}
@@ -1197,7 +1198,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService project.Service, proj
 		claGroupModel, err := claGroupService.GetCLAGroupByID(ctx, params.ClaGroupID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
-			if err == project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return signatures.NewDownloadProjectSignatureCCLAAsCSVNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
 			}
@@ -1294,7 +1295,7 @@ func getProjectIDsFromModels(f logrus.Fields, foundationSFID string, projectCLAG
 }
 
 // isUserHaveAccessOfSignedSignaturePDF returns true if the specified user has access to the provided signature, false otherwise
-func isUserHaveAccessOfSignedSignaturePDF(ctx context.Context, authUser *auth.User, signature *v1Models.Signature, companyService company.IService, projectClaGroupRepo projects_cla_groups.Repository, projectRepo project.ProjectRepository) (bool, error) {
+func isUserHaveAccessOfSignedSignaturePDF(ctx context.Context, authUser *auth.User, signature *v1Models.Signature, companyService company.IService, projectClaGroupRepo projects_cla_groups.Repository, projectRepo repository.ProjectRepository) (bool, error) {
 	f := logrus.Fields{
 		"functionName":           "v2.signatures.handlers.isUserHaveAccessOfSignedSignaturePDF",
 		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
@@ -1405,7 +1406,7 @@ func errorResponse(reqID string, err error) *models.ErrorResponse {
 }
 
 // isUserHaveAccessToCLAGroupProjects is a helper function to determine if the user has access to the specified CLA Group projects
-func isUserHaveAccessToCLAGroupProjects(ctx context.Context, authUser *auth.User, claGroupID string, projectClaGroupsRepo projects_cla_groups.Repository, projectRepo project.ProjectRepository) bool {
+func isUserHaveAccessToCLAGroupProjects(ctx context.Context, authUser *auth.User, claGroupID string, projectClaGroupsRepo projects_cla_groups.Repository, projectRepo repository.ProjectRepository) bool {
 	f := logrus.Fields{
 		"functionName":   "v2.signatures.handlers.isUserHaveAccessToCLAGroupProjects",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),

@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/go-openapi/strfmt"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
@@ -29,7 +31,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/user"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/go-openapi/runtime/middleware"
@@ -41,7 +42,7 @@ func isValidUser(claUser *user.CLAUser) bool {
 }
 
 // Configure is the API handler routine for the CLA manager routes
-func Configure(api *operations.ClaAPI, service IService, companyService company.IService, projectService project.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, emailSvc emails.EmailTemplateService) { // nolint
+func Configure(api *operations.ClaAPI, service IService, companyService company.IService, projectService service2.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, emailSvc emails.EmailTemplateService) { // nolint
 	api.ClaManagerCreateCLAManagerRequestHandler = cla_manager.CreateCLAManagerRequestHandlerFunc(func(params cla_manager.CreateCLAManagerRequestParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint

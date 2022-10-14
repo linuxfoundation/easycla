@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
@@ -16,10 +18,224 @@ import (
 	"github.com/google/go-github/v37/github"
 )
 
-// errors
 var (
-	ErrGithubRepositoryNotFound = errors.New("github repository not found")
+	// ErrGitHubRepositoryNotFound is returned when github repository is not found
+	ErrGitHubRepositoryNotFound = errors.New("github repository not found")
 )
+
+func GetGitHubRepository(ctx context.Context, installationID, githubRepositoryID int64) (*github.Repository, error) {
+	f := logrus.Fields{
+		"functionName":       "github.github_repository.GetGitHubRepository",
+		"githubRepositoryID": githubRepositoryID,
+	}
+	client, clientErr := NewGithubAppClient(installationID)
+	if clientErr != nil {
+		return nil, clientErr
+	}
+
+	repository, _, repoErr := client.Repositories.GetByID(ctx, githubRepositoryID)
+	if repoErr != nil {
+		log.WithFields(f).WithError(repoErr).Warnf("unable to fetch repository by ID: %d", githubRepositoryID)
+		return nil, repoErr
+	}
+
+	return repository, nil
+}
+
+func GetPullRequest(ctx context.Context, pullRequestID int, owner, repo string, client *github.Client) (*github.PullRequest, error) {
+	f := logrus.Fields{
+		"functionName":  "github.github_repository.GetPullRequest",
+		"pullRequestID": pullRequestID,
+		"owner":         owner,
+		"repo":          repo,
+	}
+
+	pullRequest, _, err := client.PullRequests.Get(ctx, owner, repo, pullRequestID)
+	if err != nil {
+		logging.WithFields(f).WithError(err).Warn("unable to get pull request")
+		return nil, err
+	}
+
+	return pullRequest, nil
+}
+
+type UserCommitSummary struct {
+	SHA          string
+	CommitAuthor *github.CommitAuthor
+	Affiliated   bool
+	Authorized   bool
+}
+
+func (u UserCommitSummary) IsValid() bool {
+	return (*u.CommitAuthor.Login != "" && *u.CommitAuthor.Name != "")
+}
+
+func (u UserCommitSummary) GetDisplayText(tagUser bool) string {
+	if !u.IsValid() {
+		return "Invalid author details.\n"
+	}
+	if u.Affiliated && u.Authorized {
+		return fmt.Sprintf("%s is authorized.\n ", u.getUserInfo(tagUser))
+	}
+	if u.Affiliated {
+		return fmt.Sprintf("%s is associated with a company, but not an approval list.\n", u.getUserInfo(tagUser))
+	} else {
+		return fmt.Sprintf("%s is not associated with a company.\n", u.getUserInfo(tagUser))
+	}
+}
+
+func (u UserCommitSummary) getUserInfo(tagUser bool) string {
+	userInfo := ""
+	tagValue := ""
+	var sb strings.Builder
+	sb.WriteString(userInfo)
+
+	if tagUser {
+		tagValue = "@"
+	}
+	if u.CommitAuthor.Login != nil {
+		sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, utils.StringValue(u.CommitAuthor.Login)))
+	}
+	if u.CommitAuthor.Name != nil {
+		sb.WriteString(fmt.Sprintf("%sname: %s / ", userInfo, utils.StringValue(u.CommitAuthor.Name)))
+	}
+	return strings.Replace(sb.String(), "/ $", "", -1)
+}
+
+func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pullRequestID int, owner, repo string) ([]*UserCommitSummary, *string, error) {
+	f := logrus.Fields{
+		"functionName":  "github.github_repository.GetPullRequestCommitAuthors",
+		"pullRequestID": pullRequestID,
+	}
+	var userCommitSummary []*UserCommitSummary
+
+	client, err := NewGithubAppClient(installationID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to create Github client")
+		return nil, nil, err
+	}
+
+	commits, _, comErr := client.PullRequests.ListCommits(ctx, owner, repo, pullRequestID, &github.ListOptions{})
+	if comErr != nil {
+		log.WithFields(f).WithError(comErr).Warn("unable to get commits")
+		return nil, nil, comErr
+	}
+
+	for _, commit := range commits {
+		userCommitSummary = append(userCommitSummary, &UserCommitSummary{
+			SHA:          *commit.SHA,
+			CommitAuthor: commit.Commit.Author,
+		})
+	}
+
+	// get latest commit SHA
+	latestCommitSHA := commits[len(commits)-1].SHA
+
+	return userCommitSummary, latestCommitSHA, nil
+
+}
+
+func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary) error {
+	f := logrus.Fields{
+		"functionName":   "github.github_repository.UpdatePullRequest",
+		"installationID": installationID,
+		"owner":          owner,
+		"repo":           repo,
+		"SHA":            latestSHA,
+		"pullRequestID":  pullRequestID,
+	}
+
+	client, err := NewGithubAppClient(installationID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to create Github client")
+		return err
+	}
+
+	if len(missing) > 0 {
+		helpURL := ""
+		text := ""
+		var sb strings.Builder
+		sb.WriteString(text)
+		for _, userSummary := range missing {
+			if !userSummary.IsValid() {
+				helpURL = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
+			}
+			if userSummary.SHA != latestSHA {
+				continue
+			}
+			sb.WriteString(userSummary.GetDisplayText(true))
+		}
+		text = sb.String()
+		status := "completed"
+		conclusion := "action_required"
+		title := "EasyCLA: Signed CLA not found"
+		summary := "One or more committers are authorized under a signed CLA"
+		checkRunOptions := github.CreateCheckRunOptions{
+			Name:       "CLA check",
+			HeadSHA:    latestSHA,
+			Status:     &status,
+			Conclusion: &conclusion,
+			DetailsURL: &helpURL,
+			Output: &github.CheckRunOutput{
+				Title:   &title,
+				Summary: &summary,
+				Text:    &text,
+			},
+		}
+
+		checkRun, checkRunResponse, checkRunErr := client.Checks.CreateCheckRun(ctx, owner, repo, checkRunOptions)
+		if checkRunErr != nil {
+			log.WithFields(f).WithError(checkRunErr).Warnf("problem creating check run")
+			return checkRunErr
+		}
+		if checkRunResponse == nil || checkRunResponse.StatusCode != http.StatusCreated {
+			var statusCode int
+			if checkRunResponse != nil {
+				statusCode = checkRunResponse.StatusCode
+			}
+			msg := fmt.Sprintf("problem creating check run - status %d - expecting %d", statusCode, http.StatusCreated)
+			log.WithFields(f).WithError(checkRunErr).Warn(msg)
+			return errors.New(msg)
+		}
+
+		if checkRun != nil {
+			log.WithFields(f).Debugf("created check run - ID: %d with name: %s",
+				utils.Int64Value(checkRun.ID), utils.StringValue(checkRun.Name))
+		} else {
+			log.WithFields(f).Debugf("created check run - but not check run details returned from API call")
+		}
+
+	}
+
+	return nil
+}
+
+/*
+func hasCheckPreviouslyFailed(ctx context.Context, client *github.Client, owner, repo string, pullRequestID int) (bool, *github.IssueComment, error) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.GetPullRequest",
+	}
+
+	comments, _, err := client.Issues.ListComments(ctx, owner, repo, pullRequestID, &github.IssueListCommentsOptions{})
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get fetch comments for repo: %s, pr: %d", repo, pullRequestID)
+		return false, nil, err
+	}
+
+	for _, comment := range comments {
+		if strings.Contains(*comment.Body, "is not authorized under a signed CLA") {
+			return true, comment, nil
+		}
+		if strings.Contains(*comment.Body, "they must confirm their affiliation") {
+			return true, comment, nil
+		}
+		if strings.Contains(*comment.Body, "is missing the User") {
+			return true, comment, nil
+		}
+	}
+	return false, nil, nil
+}
+*/
 
 // GetRepositoryByExternalID finds github repository by github repository id
 func GetRepositoryByExternalID(ctx context.Context, installationID, id int64) (*github.Repository, error) {
@@ -31,7 +247,7 @@ func GetRepositoryByExternalID(ctx context.Context, installationID, id int64) (*
 	if err != nil {
 		logging.Warnf("GitHubGetRepository %v failed. error = %s", id, err.Error())
 		if resp.StatusCode == 404 {
-			return nil, ErrGithubRepositoryNotFound
+			return nil, ErrGitHubRepositoryNotFound
 		}
 		return nil, err
 	}

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project"
+	models2 "github.com/communitybridge/easycla/cla-backend-go/project/models"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
@@ -41,7 +41,7 @@ type IRepository interface {
 	RejectCclaApprovalListRequest(requestID string) error
 	ListCclaApprovalListRequests(companyID string, projectID, status, userID *string) (*models.CclaWhitelistRequestList, error)
 	GetRequestsByCLAGroup(claGroupID string) ([]CLARequestModel, error)
-	UpdateRequestsByCLAGroup(model *project.DBProjectModel) error
+	UpdateRequestsByCLAGroup(model *models2.DBProjectModel) error
 }
 
 type repository struct {
@@ -364,7 +364,7 @@ func (repo repository) GetRequestsByCLAGroup(claGroupID string) ([]CLARequestMod
 }
 
 // UpdateRequestsByCLAGroup updates a list of requests for the specified CLA Group
-func (repo repository) UpdateRequestsByCLAGroup(model *project.DBProjectModel) error {
+func (repo repository) UpdateRequestsByCLAGroup(model *models2.DBProjectModel) error {
 	f := logrus.Fields{
 		"functionName": "v1.approval_list.repository.UpdateRequestsByCLAGroup",
 		"claGroupID":   model.ProjectID,

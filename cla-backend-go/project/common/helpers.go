@@ -1,14 +1,15 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
 
-package project
+package common
 
 import (
 	"context"
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
+
+	models2 "github.com/communitybridge/easycla/cla-backend-go/project/models"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -18,30 +19,30 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// addStringAttribute adds a new string attribute to the existing map
-func addStringAttribute(item map[string]*dynamodb.AttributeValue, key string, value string) {
+// AddStringAttribute adds a new string attribute to the existing map
+func AddStringAttribute(item map[string]*dynamodb.AttributeValue, key string, value string) {
 	if value != "" {
 		item[key] = &dynamodb.AttributeValue{S: aws.String(value)}
 	}
 }
 
-// addBooleanAttribute adds a new boolean attribute to the existing map
-func addBooleanAttribute(item map[string]*dynamodb.AttributeValue, key string, value bool) {
+// AddBooleanAttribute adds a new boolean attribute to the existing map
+func AddBooleanAttribute(item map[string]*dynamodb.AttributeValue, key string, value bool) {
 	item[key] = &dynamodb.AttributeValue{BOOL: aws.Bool(value)}
 }
 
-// addStringSliceAttribute adds a new string slice attribute to the existing map
-func addStringSliceAttribute(item map[string]*dynamodb.AttributeValue, key string, value []string) {
+// AddStringSliceAttribute adds a new string slice attribute to the existing map
+func AddStringSliceAttribute(item map[string]*dynamodb.AttributeValue, key string, value []string) {
 	item[key] = &dynamodb.AttributeValue{SS: aws.StringSlice(value)}
 }
 
-// addListAttribute adds a list to the existing map
-func addListAttribute(item map[string]*dynamodb.AttributeValue, key string, value []*dynamodb.AttributeValue) {
+// AddListAttribute adds a list to the existing map
+func AddListAttribute(item map[string]*dynamodb.AttributeValue, key string, value []*dynamodb.AttributeValue) {
 	item[key] = &dynamodb.AttributeValue{L: value}
 }
 
-// buildCLAGroupDocumentModels builds response models based on the array of db models
-func buildCLAGroupDocumentModels(dbDocumentModels []DBProjectDocumentModel) []models.ClaGroupDocument {
+// BuildCLAGroupDocumentModels builds response models based on the array of db models
+func BuildCLAGroupDocumentModels(dbDocumentModels []models2.DBProjectDocumentModel) []models.ClaGroupDocument {
 	if dbDocumentModels == nil {
 		return nil
 	}
@@ -65,44 +66,6 @@ func buildCLAGroupDocumentModels(dbDocumentModels []DBProjectDocumentModel) []mo
 	}
 
 	return response
-}
-
-func (s service) fillRepoInfo(ctx context.Context, project *models.ClaGroup) {
-	f := logrus.Fields{
-		"functionName":   "v1.project.helpers.fillRepoInfo",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-	var ghrepos []*models.GithubRepositoriesGroupByOrgs
-	var gerrits []*models.Gerrit
-
-	go func() {
-		defer wg.Done()
-		var err error
-		ghrepos, err = s.repositoriesRepo.GitHubGetCLAGroupRepositoriesGroupByOrgs(ctx, project.ProjectID, true)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to get github repositories for cla group ID: %s", project.ProjectID)
-			return
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		var err error
-		var gerritsList *models.GerritList
-		gerritsList, err = s.gerritRepo.GetClaGroupGerrits(ctx, project.ProjectID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to get gerrit instances for cla group ID: %s.", project.ProjectID)
-			return
-		}
-		gerrits = gerritsList.List
-	}()
-
-	wg.Wait()
-	project.GithubRepositories = ghrepos
-	project.Gerrits = gerrits
 }
 
 // GetCurrentDocument returns the current document based on the version and date/time

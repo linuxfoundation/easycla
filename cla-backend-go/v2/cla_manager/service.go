@@ -11,6 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/go-openapi/strfmt"
 
 	"github.com/sirupsen/logrus"
@@ -23,7 +26,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/cla_manager"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
@@ -71,7 +73,7 @@ const (
 type service struct {
 	emailTemplateService emails.EmailTemplateService
 	companyService       company.IService
-	projectService       project.Service
+	projectService       service2.Service
 	repositoriesService  repositories.Service
 	managerService       v1ClaManager.IService
 	easyCLAUserService   easyCLAUser.Service
@@ -103,7 +105,7 @@ type Service interface {
 }
 
 // NewService returns instance of CLA Manager service
-func NewService(emailTemplateService emails.EmailTemplateService, compService company.IService, projService project.Service, mgrService v1ClaManager.IService, claUserService easyCLAUser.Service,
+func NewService(emailTemplateService emails.EmailTemplateService, compService company.IService, projService service2.Service, mgrService v1ClaManager.IService, claUserService easyCLAUser.Service,
 	repoService repositories.Service, v2CompService v2Company.Service,
 	evService events.Service, projectCGroupRepo projects_cla_groups.Repository) Service {
 	return &service{
@@ -861,7 +863,7 @@ func (s *service) ValidateInviteCompanyAdminCheck(ctx context.Context, f logrus.
 			return ErrClaGroupNotFound
 
 		}
-		if errors.Is(projectErr, project.ErrProjectDoesNotExist) {
+		if errors.Is(projectErr, repository.ErrProjectDoesNotExist) {
 			log.WithFields(f).WithError(projectErr).Warn("problem cla group not found")
 			return ErrClaGroupNotFound
 		}

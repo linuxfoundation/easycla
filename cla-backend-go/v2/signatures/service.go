@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -25,7 +27,6 @@ import (
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -59,7 +60,7 @@ type ServiceInterface interface {
 
 // Service structure/model
 type Service struct {
-	v1ProjectService      project.Service
+	v1ProjectService      service.Service
 	v1CompanyService      company.IService
 	v1SignatureService    signatures.SignatureService
 	v1SignatureRepo       signatures.SignatureRepository
@@ -70,7 +71,7 @@ type Service struct {
 }
 
 // NewService creates instance of v2 signature service
-func NewService(awsSession *session.Session, signaturesBucketName string, v1ProjectService project.Service,
+func NewService(awsSession *session.Session, signaturesBucketName string, v1ProjectService service.Service,
 	v1CompanyService company.IService,
 	v1SignatureService signatures.SignatureService,
 	pcgRepo projects_cla_groups.Repository, v1SignatureRepo signatures.SignatureRepository, usersService users.Service) *Service {

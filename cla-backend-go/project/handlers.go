@@ -7,6 +7,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	"github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
 	"github.com/sirupsen/logrus"
@@ -35,7 +38,7 @@ func isValidUser(claUser *user.CLAUser) bool {
 }
 
 // Configure establishes the middleware handlers for the project service
-func Configure(api *operations.ClaAPI, service Service, eventsService events.Service, gerritService gerrits.Service, repositoryService repositories.Service, signatureService signatures.SignatureService) {
+func Configure(api *operations.ClaAPI, service service.Service, eventsService events.Service, gerritService gerrits.Service, repositoryService repositories.Service, signatureService signatures.SignatureService) {
 	// Create CLA Group/Project Handler
 	api.ProjectCreateProjectHandler = project.CreateProjectHandlerFunc(func(params project.CreateProjectParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
@@ -186,7 +189,7 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		log.WithFields(f).Debug("Processing delete request")
 		claGroupModel, err := service.GetCLAGroupByID(ctx, params.ProjectID)
 		if err != nil {
-			if err == ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return project.NewDeleteProjectByIDNotFound().WithXRequestID(reqID)
 			}
 			return project.NewDeleteProjectByIDBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
@@ -260,7 +263,7 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 
 		err = service.DeleteCLAGroup(ctx, params.ProjectID)
 		if err != nil {
-			if err == ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return project.NewDeleteProjectByIDNotFound()
 			}
 			return project.NewDeleteProjectByIDBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
@@ -308,7 +311,7 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 
 		claGroupModel, err := service.UpdateCLAGroup(ctx, &projectParams.Body)
 		if err != nil {
-			if err == ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return project.NewUpdateProjectNotFound()
 			}
 			return project.NewUpdateProjectBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))

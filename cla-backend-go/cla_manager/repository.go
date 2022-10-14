@@ -6,7 +6,7 @@ package cla_manager
 import (
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project"
+	"github.com/communitybridge/easycla/cla-backend-go/project/models"
 
 	"github.com/sirupsen/logrus"
 
@@ -29,7 +29,7 @@ type IRepository interface { //nolint
 	GetRequestsByUserID(companyID, projectID, userID string) (*CLAManagerRequests, error)
 	GetRequest(requestID string) (*CLAManagerRequest, error)
 	GetRequestsByCLAGroup(claGroupID string) ([]CLAManagerRequest, error)
-	UpdateRequestsByCLAGroup(model *project.DBProjectModel) error
+	UpdateRequestsByCLAGroup(model *models.DBProjectModel) error
 
 	ApproveRequest(companyID, projectID, requestID string) (*CLAManagerRequest, error)
 	DenyRequest(companyID, projectID, requestID string) (*CLAManagerRequest, error)
@@ -480,7 +480,7 @@ func (repo repository) GetRequestsByCLAGroup(claGroupID string) ([]CLAManagerReq
 }
 
 // UpdateRequestsByCLAGroup handles updating the existing requests in our table based on the modified/updated CLA Group
-func (repo repository) UpdateRequestsByCLAGroup(model *project.DBProjectModel) error {
+func (repo repository) UpdateRequestsByCLAGroup(model *models.DBProjectModel) error {
 	f := logrus.Fields{
 		"functionName": "UpdateRequestsByCLAGroup",
 		"claGroupID":   model.ProjectID,

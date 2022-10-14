@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/common"
+	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/aws/aws-sdk-go/aws"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
@@ -31,7 +34,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	v1Project "github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	v1Template "github.com/communitybridge/easycla/cla-backend-go/template"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
@@ -40,7 +42,7 @@ import (
 )
 
 type service struct {
-	v1ProjectService      v1Project.Service
+	v1ProjectService      service2.Service
 	v1TemplateService     v1Template.ServiceInterface
 	projectsClaGroupsRepo projects_cla_groups.Repository
 	claManagerRequests    v1ClaManager.IService
@@ -69,7 +71,7 @@ type Service interface {
 }
 
 // NewService returns instance of CLA group service
-func NewService(projectService v1Project.Service, templateService v1Template.ServiceInterface, projectsClaGroupsRepo projects_cla_groups.Repository, claMangerRequests v1ClaManager.IService, signatureService signatureService.SignatureService, metricsRepo metrics.Repository, gerritService gerrits.Service, repositoriesService repositories.Service, eventsService events.Service) Service {
+func NewService(projectService service2.Service, templateService v1Template.ServiceInterface, projectsClaGroupsRepo projects_cla_groups.Repository, claMangerRequests v1ClaManager.IService, signatureService signatureService.SignatureService, metricsRepo metrics.Repository, gerritService gerrits.Service, repositoriesService repositories.Service, eventsService events.Service) Service {
 	return &service{
 		v1ProjectService:      projectService, // aka cla_group service of v1
 		v1TemplateService:     templateService,
@@ -524,11 +526,11 @@ func (s *service) buildClaGroupSummaryResponseModel(ctx context.Context, f logru
 		// Keep a list of the CLA Group IDs - we'll use it later to do a batch look in the metrics
 		claGroupIDList.Add(v1ClaGroup.ProjectID)
 
-		currentICLADoc, docErr := v1Project.GetCurrentDocument(ctx, v1ClaGroup.ProjectIndividualDocuments)
+		currentICLADoc, docErr := common.GetCurrentDocument(ctx, v1ClaGroup.ProjectIndividualDocuments)
 		if docErr != nil {
 			log.WithFields(f).WithError(docErr).Warn("problem determining current ICLA for this CLA Group")
 		}
-		currentCCLADoc, docErr := v1Project.GetCurrentDocument(ctx, v1ClaGroup.ProjectCorporateDocuments)
+		currentCCLADoc, docErr := common.GetCurrentDocument(ctx, v1ClaGroup.ProjectCorporateDocuments)
 		if docErr != nil {
 			log.WithFields(f).WithError(docErr).Warn("problem determining current CCLA for this CLA Group")
 		}

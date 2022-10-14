@@ -7,12 +7,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 )
 
@@ -24,15 +26,15 @@ type EmailTemplateService interface {
 }
 
 type emailTemplateServiceProvider struct {
-	claGroupRepository project.ProjectRepository
+	claGroupRepository repository.ProjectRepository
 	repository         projects_cla_groups.Repository
-	projectService     project.Service
+	projectService     service2.Service
 	corporateConsoleV1 string
 	corporateConsoleV2 string
 }
 
 // NewEmailTemplateService creates a new instance of email template service
-func NewEmailTemplateService(claGroupRepository project.ProjectRepository, repository projects_cla_groups.Repository, projectService project.Service, corporateConsoleV1, corporateConsoleV2 string) EmailTemplateService {
+func NewEmailTemplateService(claGroupRepository repository.ProjectRepository, repository projects_cla_groups.Repository, projectService service2.Service, corporateConsoleV1, corporateConsoleV2 string) EmailTemplateService {
 	return &emailTemplateServiceProvider{
 		claGroupRepository: claGroupRepository,
 		repository:         repository,

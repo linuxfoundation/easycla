@@ -1229,6 +1229,49 @@ def delete_active_signature_metadata(user_id):
     cla.log.info('Deleted stored active signature details for user %s', user_id)
 
 
+def set_active_pr_metadata(github_author_username: str, github_author_email: str,
+                           cla_group_id: str, repository_id: str, pull_request_id: str):
+    """
+    When we receive a GitHub PR callback, we want to store a bit if information/metadata
+    about the repository, PR, commit authors, and associated CLA Group so that we can later
+    update the GitHub status check if a CLA manager asynchronously adds one or more commit
+    authors to the approval list.
+    This is a helper function to perform the storage of this information.
+
+    :param github_author_username: The GitHub username/logic of the commit author
+    :type github_author_username: string
+    :param github_author_email: The GitHub user email of the commit author (if available)
+    :type github_author_email: string
+    :param cla_group_id: The ID of the CLA Group
+    :type cla_group_id: string
+    :param repository_id: The repository where the PR is coming from.
+    :type repository_id: str
+    :param pull_request_id: The PR identifier
+    :type pull_request_id: str
+    """
+    store = get_key_value_store_service()
+
+    # the same value is stored twice, indexed separately by username and email to allow lookups by either
+    value = json.dumps(
+        {
+            'github_author_username': github_author_username,
+            'github_author_email': github_author_email,
+            'cla_group_id': cla_group_id,
+            'repository_id': repository_id,
+            'pull_request_id': pull_request_id
+        }
+    )
+
+    key_github_author_username = 'active_pr:u:' + github_author_username
+    store.set(key_github_author_username, value)
+    cla.log.info(f'stored active pull request details by user email: %s', key_github_author_username)
+
+    if github_author_email is not None:
+        key_github_author_email = 'active_pr:e:' + github_author_email
+        store.set(key_github_author_email, value)
+        cla.log.info(f'stored active pull request details by user email: %s', key_github_author_email)
+
+
 def get_active_signature_return_url(user_id, metadata=None):
     """
     Helper function to get a user's active signature return URL.

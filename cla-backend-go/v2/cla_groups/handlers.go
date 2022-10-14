@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	v1Project "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/aws/aws-sdk-go/aws"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
@@ -24,7 +27,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/cla_group"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	v1Project "github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	v2ProjectServiceClient "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/client/project"
@@ -120,7 +122,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				return cla_group.NewUpdateClaGroupNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, "CLA Group not found", err))
 			}
-			if errors.Is(err, v1Project.ErrProjectDoesNotExist) {
+			if errors.Is(err, repository.ErrProjectDoesNotExist) {
 				return cla_group.NewUpdateClaGroupNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, "CLA Group not found", err))
 			}
@@ -222,7 +224,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 					XRequestID: reqID,
 				})
 			}
-			if err == v1Project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return cla_group.NewDeleteClaGroupNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 					Code: "404",
 					Message: fmt.Sprintf("EasyCLA - 404 Not Found - cla_group %s not found",
@@ -281,7 +283,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("problem loading CLA Group by ID: %s", params.ClaGroupID), getCLAGroupErr))
 			}
-			if getCLAGroupErr == v1Project.ErrProjectDoesNotExist {
+			if getCLAGroupErr == repository.ErrProjectDoesNotExist {
 				return cla_group.NewEnrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("problem loading CLA Group by ID: %s", params.ClaGroupID), getCLAGroupErr))
 			}
@@ -375,7 +377,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				return cla_group.NewUnenrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("unable to locate CLA Group by ID: %s", params.ClaGroupID), err))
 			}
-			if err == v1Project.ErrProjectDoesNotExist {
+			if err == repository.ErrProjectDoesNotExist {
 				return cla_group.NewUnenrollProjectsNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, fmt.Sprintf("unable to locate CLA Group by ID: %s", params.ClaGroupID), err))
 			}

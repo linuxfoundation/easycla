@@ -21,6 +21,27 @@ var (
 )
 
 // GetOrganization gets github organization
+func GetMembership(ctx context.Context, user, organizationName string) (*github.Membership, error) {
+	f := logrus.Fields{
+		"functionName":     "GetOrganization",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+		"organizationName": organizationName,
+	}
+
+	client := NewGithubOauthClient()
+	membership, resp, err := client.Organizations.GetOrgMembership(ctx, user, organizationName)
+
+	if err != nil {
+		log.WithFields(f).Warnf("GetOrgOrganization %s failed. error = %s", organizationName, err.Error())
+		if resp != nil && resp.StatusCode == 404 {
+			return nil, ErrGithubOrganizationNotFound
+		}
+		return nil, err
+	}
+	return membership, nil
+}
+
+// GetOrganization gets github organization
 func GetOrganization(ctx context.Context, organizationName string) (*github.Organization, error) {
 	f := logrus.Fields{
 		"functionName":     "GetOrganization",

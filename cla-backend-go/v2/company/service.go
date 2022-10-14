@@ -12,12 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+
 	"github.com/go-openapi/strfmt"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/jinzhu/copier"
@@ -1876,7 +1877,7 @@ func (s *service) ValidateRequestCompanyAdminCheck(ctx context.Context, f logrus
 			return ErrClaGroupNotFound
 
 		}
-		if errors.Is(projectErr, project.ErrProjectDoesNotExist) {
+		if errors.Is(projectErr, repository.ErrProjectDoesNotExist) {
 			log.WithFields(f).WithError(projectErr).Warn("problem cla group not found")
 			return ErrClaGroupNotFound
 		}

@@ -7,8 +7,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/common"
+
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -56,7 +57,7 @@ func TestGetCurrentDocumentVersion(t *testing.T) {
 		DocumentS3URL:           "document3.pdf",
 	})
 
-	currentDoc, docErr := project.GetCurrentDocument(context.Background(), docs)
+	currentDoc, docErr := common.GetCurrentDocument(context.Background(), docs)
 	assert.Nil(t, docErr, "current document error check is nil")
 	assert.NotNil(t, currentDoc, "current document not nil")
 	assert.Equal(t, "document3.pdf", currentDoc.DocumentS3URL, "loaded correct document")
@@ -105,7 +106,7 @@ func TestGetCurrentDocumentDateTime(t *testing.T) {
 		DocumentS3URL:           "document3.pdf",
 	})
 
-	currentDoc, docErr := project.GetCurrentDocument(context.Background(), docs)
+	currentDoc, docErr := common.GetCurrentDocument(context.Background(), docs)
 	assert.Nil(t, docErr, "current document error check is nil")
 	assert.NotNil(t, currentDoc, "current document not nil")
 	assert.Equal(t, "document3.pdf", currentDoc.DocumentS3URL, "loaded correct document")
@@ -154,7 +155,7 @@ func TestGetCurrentDocumentDateTimeDiffOrder(t *testing.T) {
 		DocumentS3URL:           "document1.pdf",
 	})
 
-	currentDoc, docErr := project.GetCurrentDocument(context.Background(), docs)
+	currentDoc, docErr := common.GetCurrentDocument(context.Background(), docs)
 	assert.Nil(t, docErr, "current document error check is nil")
 	assert.NotNil(t, currentDoc, "current document not nil")
 	assert.Equal(t, "document3.pdf", currentDoc.DocumentS3URL, "loaded correct document")
@@ -203,7 +204,7 @@ func TestGetCurrentDocumentMixedUp(t *testing.T) {
 		DocumentS3URL:           "document3.pdf",
 	})
 
-	currentDoc, docErr := project.GetCurrentDocument(context.Background(), docs)
+	currentDoc, docErr := common.GetCurrentDocument(context.Background(), docs)
 	assert.Nil(t, docErr, "current document error check is nil")
 	assert.NotNil(t, currentDoc, "current document not nil")
 	assert.Equal(t, "document1.pdf", currentDoc.DocumentS3URL, "loaded correct document")

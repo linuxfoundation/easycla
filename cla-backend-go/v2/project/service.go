@@ -8,6 +8,9 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	v1Project "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
 	"github.com/sirupsen/logrus"
@@ -17,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	v1Project "github.com/communitybridge/easycla/cla-backend-go/project"
 	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 )
 
@@ -29,12 +31,12 @@ type Service interface {
 // service
 type service struct {
 	v1ProjectService  v1Project.Service
-	projectRepo       v1Project.ProjectRepository
+	projectRepo       repository.ProjectRepository
 	projectsClaGroups projects_cla_groups.Repository
 }
 
 // NewService returns an instance of v2 project service
-func NewService(v1ProjectService v1Project.Service, projectRepo v1Project.ProjectRepository, pcgRepo projects_cla_groups.Repository) Service {
+func NewService(v1ProjectService v1Project.Service, projectRepo repository.ProjectRepository, pcgRepo projects_cla_groups.Repository) Service {
 	return &service{
 		v1ProjectService:  v1ProjectService,
 		projectRepo:       projectRepo,
@@ -83,7 +85,7 @@ func (s *service) GetCLAProjectsByID(ctx context.Context, foundationSFID string)
 				cla.FoundationSfid = foundationSFID
 			}
 
-			claGroup, err := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, v1Project.DontLoadRepoDetails)
+			claGroup, err := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, repository.DontLoadRepoDetails)
 			if err != nil {
 				log.WithFields(f).Warnf("unable to fetch cla-group details of %s", claGroupID)
 			} else {

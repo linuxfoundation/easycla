@@ -1,11 +1,14 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
 
-package project
+package service
 
 import (
 	"context"
 	"sync"
+
+	"github.com/communitybridge/easycla/cla-backend-go/project/common"
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
 
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 
@@ -40,9 +43,9 @@ type Service interface {
 	GetCLAManagers(ctx context.Context, claGroupID string) ([]*models.ClaManagerUser, error)
 }
 
-// service
-type service struct {
-	repo                ProjectRepository
+// ProjectService project service data model
+type ProjectService struct {
+	repo                repository.ProjectRepository
 	repositoriesRepo    repositories.RepositoryInterface
 	gerritRepo          gerrits.Repository
 	projectCLAGroupRepo projects_cla_groups.Repository
@@ -50,8 +53,8 @@ type service struct {
 }
 
 // NewService returns an instance of the project service
-func NewService(projectRepo ProjectRepository, repositoriesRepo repositories.RepositoryInterface, gerritRepo gerrits.Repository, projectCLAGroupRepo projects_cla_groups.Repository, usersRepo users.UserRepository) Service {
-	return service{
+func NewService(projectRepo repository.ProjectRepository, repositoriesRepo repositories.RepositoryInterface, gerritRepo gerrits.Repository, projectCLAGroupRepo projects_cla_groups.Repository, usersRepo users.UserRepository) Service {
+	return ProjectService{
 		repo:                projectRepo,
 		repositoriesRepo:    repositoriesRepo,
 		gerritRepo:          gerritRepo,
@@ -61,26 +64,26 @@ func NewService(projectRepo ProjectRepository, repositoriesRepo repositories.Rep
 }
 
 // CreateCLAGroup service method
-func (s service) CreateCLAGroup(ctx context.Context, claGroupModel *models.ClaGroup) (*models.ClaGroup, error) {
+func (s ProjectService) CreateCLAGroup(ctx context.Context, claGroupModel *models.ClaGroup) (*models.ClaGroup, error) {
 	return s.repo.CreateCLAGroup(ctx, claGroupModel)
 }
 
 // GetCLAGroups service method
-func (s service) GetCLAGroups(ctx context.Context, params *project.GetProjectsParams) (*models.ClaGroups, error) {
+func (s ProjectService) GetCLAGroups(ctx context.Context, params *project.GetProjectsParams) (*models.ClaGroups, error) {
 	return s.repo.GetCLAGroups(ctx, params)
 }
 
 // GetCLAGroupByID service method
-func (s service) GetCLAGroupByID(ctx context.Context, claGroupID string) (*models.ClaGroup, error) {
+func (s ProjectService) GetCLAGroupByID(ctx context.Context, claGroupID string) (*models.ClaGroup, error) {
 	f := logrus.Fields{
 		"functionName":    "GetCLAGroupByID",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"claGroupID":      claGroupID,
-		"loadRepoDetails": LoadRepoDetails,
+		"loadRepoDetails": repository.LoadRepoDetails,
 	}
 
 	log.WithFields(f).Debug("locating CLA Group by ID...")
-	project, err := s.repo.GetCLAGroupByID(ctx, claGroupID, LoadRepoDetails)
+	project, err := s.repo.GetCLAGroupByID(ctx, claGroupID, repository.LoadRepoDetails)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +110,7 @@ func (s service) GetCLAGroupByID(ctx context.Context, claGroupID string) (*model
 }
 
 // GetCLAGroupsByExternalSFID returns a list of projects based on the external SFID parameter
-func (s service) GetCLAGroupsByExternalSFID(ctx context.Context, projectSFID string) (*models.ClaGroups, error) {
+func (s ProjectService) GetCLAGroupsByExternalSFID(ctx context.Context, projectSFID string) (*models.ClaGroups, error) {
 	return s.GetCLAGroupsByExternalID(ctx, &project.GetProjectsByExternalIDParams{
 		HTTPRequest: nil,
 		NextKey:     nil,
@@ -117,7 +120,7 @@ func (s service) GetCLAGroupsByExternalSFID(ctx context.Context, projectSFID str
 }
 
 // GetCLAGroupsByExternalID returns a list of projects based on the external ID parameters
-func (s service) GetCLAGroupsByExternalID(ctx context.Context, params *project.GetProjectsByExternalIDParams) (*models.ClaGroups, error) {
+func (s ProjectService) GetCLAGroupsByExternalID(ctx context.Context, params *project.GetProjectsByExternalIDParams) (*models.ClaGroups, error) {
 	f := logrus.Fields{
 		"functionName":   "GetCLAGroupsByExternalID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -125,7 +128,7 @@ func (s service) GetCLAGroupsByExternalID(ctx context.Context, params *project.G
 		"NextKey":        params.NextKey,
 		"PageSize":       params.PageSize}
 	log.Debugf("Project Service Handler - GetCLAGroupsByExternalID")
-	projects, err := s.repo.GetCLAGroupsByExternalID(ctx, params, LoadRepoDetails)
+	projects, err := s.repo.GetCLAGroupsByExternalID(ctx, params, repository.LoadRepoDetails)
 	if err != nil {
 		log.WithFields(f).Warnf("problem with query, error: %+v", err)
 		return nil, err
@@ -141,7 +144,7 @@ func (s service) GetCLAGroupsByExternalID(ctx context.Context, params *project.G
 	for i := range projects.Projects {
 		go func(project *models.ClaGroup) {
 			defer wg.Done()
-			s.fillRepoInfo(ctx, project)
+			s.FillRepoInfo(ctx, project)
 		}(&projects.Projects[i])
 	}
 	wg.Wait()
@@ -150,11 +153,11 @@ func (s service) GetCLAGroupsByExternalID(ctx context.Context, params *project.G
 }
 
 // GetCLAGroupByName service method
-func (s service) GetCLAGroupByName(ctx context.Context, projectName string) (*models.ClaGroup, error) {
+func (s ProjectService) GetCLAGroupByName(ctx context.Context, projectName string) (*models.ClaGroup, error) {
 	return s.repo.GetCLAGroupByName(ctx, projectName)
 }
 
-func (s service) GetCLAGroupCurrentICLATemplateURLByID(ctx context.Context, claGroupID string) (string, error) {
+func (s ProjectService) GetCLAGroupCurrentICLATemplateURLByID(ctx context.Context, claGroupID string) (string, error) {
 	f := logrus.Fields{
 		"functionName":   "GetCLAGroupCurrentICLATemplateURLByID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -199,7 +202,7 @@ func (s service) GetCLAGroupCurrentICLATemplateURLByID(ctx context.Context, claG
 	}
 
 	// Fetch the current document
-	currentDoc, err := GetCurrentDocument(ctx, docs)
+	currentDoc, err := common.GetCurrentDocument(ctx, docs)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem determining current ICLA for this CLA Group")
 		return "", &utils.CLAGroupICLANotConfigured{
@@ -230,7 +233,7 @@ func (s service) GetCLAGroupCurrentICLATemplateURLByID(ctx context.Context, claG
 	return currentDoc.DocumentS3URL, nil
 }
 
-func (s service) GetCLAGroupCurrentCCLATemplateURLByID(ctx context.Context, claGroupID string) (string, error) {
+func (s ProjectService) GetCLAGroupCurrentCCLATemplateURLByID(ctx context.Context, claGroupID string) (string, error) {
 	f := logrus.Fields{
 		"functionName":   "GetCLAGroupCurrentCCLATemplateURLByID",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -275,7 +278,7 @@ func (s service) GetCLAGroupCurrentCCLATemplateURLByID(ctx context.Context, claG
 	}
 
 	// Fetch the current document
-	currentDoc, err := GetCurrentDocument(ctx, docs)
+	currentDoc, err := common.GetCurrentDocument(ctx, docs)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem determining current CCLA for this CLA Group")
 		return "", &utils.CLAGroupCCLANotConfigured{
@@ -307,29 +310,29 @@ func (s service) GetCLAGroupCurrentCCLATemplateURLByID(ctx context.Context, claG
 }
 
 // DeleteCLAGroup service method
-func (s service) DeleteCLAGroup(ctx context.Context, claGroupID string) error {
+func (s ProjectService) DeleteCLAGroup(ctx context.Context, claGroupID string) error {
 	return s.repo.DeleteCLAGroup(ctx, claGroupID)
 }
 
 // UpdateCLAGroup service method
-func (s service) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaGroup) (*models.ClaGroup, error) {
+func (s ProjectService) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaGroup) (*models.ClaGroup, error) {
 	// Updates to the CLA Group "projects" table will cause a DB trigger handler (separate lambda) to also update other
 	// tables where we have the CLA Group name/description
 	return s.repo.UpdateCLAGroup(ctx, claGroupModel)
 }
 
 // GetClaGroupsByFoundationSFID service method
-func (s service) GetClaGroupsByFoundationSFID(ctx context.Context, foundationSFID string, loadRepoDetails bool) (*models.ClaGroups, error) {
+func (s ProjectService) GetClaGroupsByFoundationSFID(ctx context.Context, foundationSFID string, loadRepoDetails bool) (*models.ClaGroups, error) {
 	return s.repo.GetClaGroupsByFoundationSFID(ctx, foundationSFID, loadRepoDetails)
 }
 
 // GetClaGroupByProjectSFID service method
-func (s service) GetClaGroupByProjectSFID(ctx context.Context, projectSFID string, loadRepoDetails bool) (*models.ClaGroup, error) {
+func (s ProjectService) GetClaGroupByProjectSFID(ctx context.Context, projectSFID string, loadRepoDetails bool) (*models.ClaGroup, error) {
 	return s.repo.GetClaGroupByProjectSFID(ctx, projectSFID, loadRepoDetails)
 }
 
 // SignedAtFoundationLevel returns true if the specified foundation has a CLA Group at the foundation level, returns false otherwise.
-func (s service) SignedAtFoundationLevel(ctx context.Context, foundationSFID string) (bool, error) {
+func (s ProjectService) SignedAtFoundationLevel(ctx context.Context, foundationSFID string) (bool, error) {
 	f := logrus.Fields{
 		"functionName":   "SignedAtFoundationLevel",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -357,7 +360,7 @@ func (s service) SignedAtFoundationLevel(ctx context.Context, foundationSFID str
 }
 
 // GetCLAManagers retrieves a list of managers for the give claGroupID
-func (s service) GetCLAManagers(ctx context.Context, claGroupID string) ([]*models.ClaManagerUser, error) {
+func (s ProjectService) GetCLAManagers(ctx context.Context, claGroupID string) ([]*models.ClaManagerUser, error) {
 	claGroupModel, err := s.GetCLAGroupByID(ctx, claGroupID)
 	if err != nil {
 		return nil, err
@@ -383,4 +386,43 @@ func (s service) GetCLAManagers(ctx context.Context, claGroupID string) ([]*mode
 	}
 
 	return managers, nil
+}
+
+// FillRepoInfo helper function to fill the repository info
+func (s ProjectService) FillRepoInfo(ctx context.Context, project *models.ClaGroup) {
+	f := logrus.Fields{
+		"functionName":   "v1.project.helpers.fillRepoInfo",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	var ghrepos []*models.GithubRepositoriesGroupByOrgs
+	var gerrits []*models.Gerrit
+
+	go func() {
+		defer wg.Done()
+		var err error
+		ghrepos, err = s.repositoriesRepo.GitHubGetCLAGroupRepositoriesGroupByOrgs(ctx, project.ProjectID, true)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get github repositories for cla group ID: %s", project.ProjectID)
+			return
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		var err error
+		var gerritsList *models.GerritList
+		gerritsList, err = s.gerritRepo.GetClaGroupGerrits(ctx, project.ProjectID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get gerrit instances for cla group ID: %s.", project.ProjectID)
+			return
+		}
+		gerrits = gerritsList.List
+	}()
+
+	wg.Wait()
+	project.GithubRepositories = ghrepos
+	project.Gerrits = gerrits
 }

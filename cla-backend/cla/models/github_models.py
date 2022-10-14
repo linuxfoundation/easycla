@@ -20,7 +20,7 @@ import cla
 from cla.controllers.github_application import GitHubInstallation
 from cla.models import repository_service_interface, DoesNotExist
 from cla.models.dynamo_models import Repository, GitHubOrg
-from cla.utils import get_project_instance, append_project_version_to_url
+from cla.utils import get_project_instance, append_project_version_to_url, set_active_pr_metadata
 from cla.user import UserCommitSummary
 
 # some emails we want to exclude when we register the users
@@ -258,7 +258,7 @@ class GitHub(repository_service_interface.RepositoryService):
         # try:
         # document = cla.utils.get_project_latest_individual_document(project_id)
         # except DoesNotExist:
-        # cla.log.debug('No ICLA for project %s' %project_id)
+        # cla.log.debug('No ICLA for project %s' %project_idSignature)
         # if signature is not None and \
         # signature.get_signature_document_major_version() == document.get_document_major_version():
         # return cla.utils.redirect_user_by_signature(user, signature)
@@ -458,6 +458,18 @@ class GitHub(repository_service_interface.RepositoryService):
         project_id = repository.get_repository_project_id()
         project = get_project_instance()
         project.load(str(project_id))
+
+        try:
+            # Save entry into the cla-{stage}-store table for active PRs
+            set_active_pr_metadata(
+                github_author_username=pull_request.user.login,
+                github_author_email=pull_request.user.email,
+                cla_group_id=project.get_project_id(),
+                repository_id=str(github_repository_id),
+                pull_request_id=str(change_request_id),
+            )
+        except Exception as e:
+            cla.log.error(f'{fn} - problem saving PR metadata for PR: {pull_request.number}, error: {e}')
 
         # Find users who have signed and who have not signed.
         signed = []

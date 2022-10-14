@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	v1Project "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	projectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	v2ProjectServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/models"
 
@@ -24,7 +26,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/project"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	v1Project "github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/go-openapi/runtime/middleware"
 )
 

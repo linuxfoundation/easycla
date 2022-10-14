@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
 
-package project
+package models
 
 // DBProjectModel data model
 type DBProjectModel struct {

@@ -6,6 +6,8 @@ package org_service
 import (
 	"context"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+
 	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/test_models"
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	"github.com/communitybridge/easycla/cla-backend-go/config"
@@ -13,7 +15,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
 	ini "github.com/communitybridge/easycla/cla-backend-go/init"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
@@ -56,7 +57,7 @@ func (t *TestBehaviour) RunIsUserHaveRoleScope() {
 	type combinedRepo struct {
 		users.UserRepository
 		company.IRepository
-		project.ProjectRepository
+		repository.ProjectRepository
 		projects_cla_groups.Repository
 	}
 
@@ -66,7 +67,7 @@ func (t *TestBehaviour) RunIsUserHaveRoleScope() {
 	repositoriesRepo := repositories.NewRepository(awsSession, stage)
 	gerritRepo := gerrits.NewRepository(awsSession, stage)
 	projectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
-	projectRepo := project.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, projectClaGroupRepo)
+	projectRepo := repository.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, projectClaGroupRepo)
 
 	eventsService := events.NewService(eventsRepo, combinedRepo{
 		usersRepo,

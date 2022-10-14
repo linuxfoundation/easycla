@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/sirupsen/logrus"
 
@@ -19,7 +21,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	sigAPI "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -46,7 +47,7 @@ type service struct {
 	repo                 IRepository
 	projectClaRepository projects_cla_groups.Repository
 	companyService       company.IService
-	projectService       project.Service
+	projectService       service2.Service
 	usersService         users.Service
 	sigService           signatures.SignatureService
 	eventsService        events.Service
@@ -55,7 +56,7 @@ type service struct {
 }
 
 // NewService creates a new service object
-func NewService(repo IRepository, projectClaRepository projects_cla_groups.Repository, companyService company.IService, projectService project.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, emailTemplateService emails.EmailTemplateService, corporateConsoleURL string) IService {
+func NewService(repo IRepository, projectClaRepository projects_cla_groups.Repository, companyService company.IService, projectService service2.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, emailTemplateService emails.EmailTemplateService, corporateConsoleURL string) IService {
 	return service{
 		repo:                 repo,
 		projectClaRepository: projectClaRepository,

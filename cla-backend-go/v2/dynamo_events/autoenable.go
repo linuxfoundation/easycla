@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project"
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
@@ -43,7 +43,7 @@ func NewAutoEnableService(repositoryService repositories.Service,
 	githubRepo repositories.RepositoryInterface,
 	githubOrgRepo github_organizations.RepositoryInterface,
 	claRepository projects_cla_groups.Repository,
-	claService project.Service,
+	claService service2.Service,
 ) AutoEnableService {
 	return &autoEnableServiceProvider{
 		repositoryService: repositoryService,
@@ -61,7 +61,7 @@ type autoEnableServiceProvider struct {
 	gitV1Repository   repositories.RepositoryInterface
 	githubOrgRepo     github_organizations.RepositoryInterface
 	claRepository     projects_cla_groups.Repository
-	claService        project.Service
+	claService        service2.Service
 }
 
 func (a *autoEnableServiceProvider) CreateAutoEnabledRepository(repo *github.Repository) (*models.GithubRepository, error) {

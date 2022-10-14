@@ -68,3 +68,12 @@ func buildCompanyIDProjection() expression.ProjectionBuilder {
 		expression.Name("signature_reference_id"),
 	)
 }
+
+// buildSignatureMetadata is a helper function to build a projection with key and value for signature metadata
+func buildSignatureMetadata() expression.ProjectionBuilder {
+	// These are the columns we want returned
+	return expression.NamesList(
+		expression.Name("key"),
+		expression.Name("value"),
+	)
+}

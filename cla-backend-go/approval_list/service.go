@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"net/http"
 
+	repository2 "github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
@@ -21,7 +24,6 @@ import (
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/user"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 
@@ -49,10 +51,10 @@ type IService interface {
 
 type service struct {
 	repo                       IRepository
-	projectService             project.Service
+	projectService             service2.Service
 	userRepo                   users.UserRepository
 	companyRepo                company.IRepository
-	projectRepo                project.ProjectRepository
+	projectRepo                repository2.ProjectRepository
 	signatureRepo              signatures.SignatureRepository
 	projectsCLAGroupRepository projects_cla_groups.Repository
 	emailTemplateService       emails.EmailTemplateService
@@ -61,7 +63,7 @@ type service struct {
 }
 
 // NewService creates a new approval list service
-func NewService(repo IRepository, projectsCLAGroupRepository projects_cla_groups.Repository, projService project.Service, userRepo users.UserRepository, companyRepo company.IRepository, projectRepo project.ProjectRepository, signatureRepo signatures.SignatureRepository, emailTemplateService emails.EmailTemplateService, corpConsoleURL string, httpClient *http.Client) IService {
+func NewService(repo IRepository, projectsCLAGroupRepository projects_cla_groups.Repository, projService service2.Service, userRepo users.UserRepository, companyRepo company.IRepository, projectRepo repository2.ProjectRepository, signatureRepo signatures.SignatureRepository, emailTemplateService emails.EmailTemplateService, corpConsoleURL string, httpClient *http.Client) IService {
 	return service{
 		repo:                       repo,
 		projectService:             projService,

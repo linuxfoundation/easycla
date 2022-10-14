@@ -7,7 +7,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project"
+	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
 
@@ -19,11 +20,11 @@ type Service interface {
 
 type service struct {
 	EmailTemplateService
-	claService project.Service
+	claService service2.Service
 }
 
 // NewService is constructor for emails.Service
-func NewService(emailTemplateService EmailTemplateService, claService project.Service) Service {
+func NewService(emailTemplateService EmailTemplateService, claService service2.Service) Service {
 	return &service{
 		EmailTemplateService: emailTemplateService,
 		claService:           claService,

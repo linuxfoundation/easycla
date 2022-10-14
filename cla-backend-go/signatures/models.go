@@ -114,3 +114,12 @@ type SignatureDynamoDB struct {
 	Note                          string   `json:"note"`
 	Version                       string   `json:"version"` // v1
 }
+
+// ActivePullRequest data model
+type ActivePullRequest struct {
+	GitHubAuthorUsername string `json:"github_author_username"`
+	GitHubAuthorEmail    string `json:"github_author_email"`
+	CLAGroupID           string `json:"cla_group_id"`
+	RepositoryID         string `json:"repository_id"`
+	PullRequestID        string `json:"pull_request_id"`
+}

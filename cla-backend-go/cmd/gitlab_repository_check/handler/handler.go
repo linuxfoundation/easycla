@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -20,7 +22,6 @@ import (
 	gitlab "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	ini "github.com/communitybridge/easycla/cla-backend-go/init"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	v1Repositories "github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
@@ -111,14 +112,14 @@ func Handler(ctx context.Context) error {
 	gitV2Repository := v2Repositories.NewRepository(awsSession, stage)
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
 	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
-	v1CLAGroupRepo := project.NewRepository(awsSession, stage, gitV1Repository, gerritRepo, v1ProjectClaGroupRepo)
+	v1CLAGroupRepo := repository.NewRepository(awsSession, stage, gitV1Repository, gerritRepo, v1ProjectClaGroupRepo)
 
 	// Service Layer
 
 	type combinedRepo struct {
 		users.UserRepository
 		v1Company.IRepository
-		project.ProjectRepository
+		repository.ProjectRepository
 		projects_cla_groups.Repository
 	}
 

@@ -11,6 +11,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	v2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
@@ -26,7 +29,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/cla_manager"
 
 	claevent "github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
@@ -63,8 +65,8 @@ type service struct {
 	eventsRepo               claevent.Repository
 	gitLabOrgRepo            gitlab_organizations.RepositoryInterface
 	v2Repository             v2Repositories.RepositoryInterface
-	projectRepo              project.ProjectRepository
-	projectService           project.Service
+	projectRepo              repository.ProjectRepository
+	projectService           service2.Service
 	githubOrgService         github_organizations.ServiceInterface
 	repositoryService        repositories.Service
 	gerritService            gerrits.Service
@@ -86,10 +88,10 @@ func NewService(stage string,
 	companyService v2Company.Service,
 	pcgRepo projects_cla_groups.Repository,
 	eventsRepo claevent.Repository,
-	projectRepo project.ProjectRepository,
+	projectRepo repository.ProjectRepository,
 	gitLabOrgRepo gitlab_organizations.RepositoryInterface,
 	v2Repository v2Repositories.RepositoryInterface,
-	projService project.Service,
+	projService service2.Service,
 	githubOrgService github_organizations.ServiceInterface,
 	repositoryService repositories.Service,
 	gerritService gerrits.Service,

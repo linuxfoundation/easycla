@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"os"
 
+	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	"github.com/communitybridge/easycla/cla-backend-go/project/service"
+
 	v2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
@@ -22,7 +25,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/cla_manager"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
-	"github.com/communitybridge/easycla/cla-backend-go/project"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 
 	acs_service "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
@@ -90,7 +92,7 @@ func init() {
 	v2Repository := v2Repositories.NewRepository(awsSession, stage)
 	repositoriesRepo := repositories.NewRepository(awsSession, stage)
 	gerritRepo := gerrits.NewRepository(awsSession, stage)
-	projectRepo := project.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, projectClaGroupRepo)
+	projectRepo := repository.NewRepository(awsSession, stage, repositoriesRepo, gerritRepo, projectClaGroupRepo)
 	eventsRepo := claevents.NewRepository(awsSession, stage)
 	claManagerRequestsRepo := cla_manager.NewRepository(awsSession, stage)
 	approvalListRequestsRepo := approval_list.NewRepository(awsSession, stage)
@@ -113,12 +115,12 @@ func init() {
 		RefreshToken: configFile.LFGroup.RefreshToken,
 	})
 	// Services
-	projectService := project.NewService(projectRepo, repositoriesRepo, gerritRepo, projectClaGroupRepo, usersRepo)
+	projectService := service.NewService(projectRepo, repositoriesRepo, gerritRepo, projectClaGroupRepo, usersRepo)
 
 	type combinedRepo struct {
 		users.UserRepository
 		company.IRepository
-		project.ProjectRepository
+		repository.ProjectRepository
 		projects_cla_groups.Repository
 	}
 
