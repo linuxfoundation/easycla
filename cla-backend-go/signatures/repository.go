@@ -1837,7 +1837,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		DateCreated:                   currentTime,
 		DateModified:                  currentTime,
 		Version:                       "v1",
-		Note:                          fmt.Sprintf("Automatically created employee ackowledgement via CLA Manager approval list edit/update with auto_create_ecla feature flag set to true on %+v.", currentTime),
+		Note:                          fmt.Sprintf("automatically created employee ackowledgement via CLA Manager approval list edit/update with auto_create_ecla feature flag set to true on %+v.", currentTime),
 	}
 
 	// Try to figure out the employee's name

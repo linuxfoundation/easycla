@@ -46,7 +46,7 @@ type UserRepository interface {
 	GetUserByGitlabID(gitlabID int) (*models.User, error)
 	GetUserByGitLabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(searchField string, searchTerm string, fullMatch bool) (*models.Users, error)
-	UpdateUserCompanyID(userID string, companyID string) error
+	UpdateUserCompanyID(userID, companyID, note string) error
 }
 
 // repository data model
@@ -1051,9 +1051,16 @@ func (repo repository) SearchUsers(searchField string, searchTerm string, fullMa
 }
 
 // UpdateUserCompanyID updates the user's company ID
-func (repo repository) UpdateUserCompanyID(userID string, companyID string) error {
+func (repo repository) UpdateUserCompanyID(userID, companyID, note string) error {
 	f := logrus.Fields{
 		"functionName": "users.repository.UpdateUserCompanyID",
+	}
+
+	// First, make sure the user record exists
+	existingUserRecord, getErr := repo.GetUser(userID)
+	if getErr != nil || existingUserRecord == nil {
+		log.WithFields(f).WithError(getErr).Warnf("unable to update user record with company ID - user record not found for user_id: %s", userID)
+		return getErr
 	}
 
 	expressionAttributeNames := map[string]*string{
@@ -1065,6 +1072,18 @@ func (repo repository) UpdateUserCompanyID(userID string, companyID string) erro
 		},
 	}
 	updateExpression := "SET #CID = :cid"
+
+	// If a note is provided...add it to the update
+	if note != "" {
+		noteValue := note
+		// Append to the note if an existing note exists
+		if existingUserRecord.Note != "" {
+			noteValue = fmt.Sprintf("%s. %s", existingUserRecord.Note, note)
+		}
+		expressionAttributeNames["#NOTE"] = aws.String("note")
+		expressionAttributeValues[":NOTE"] = &dynamodb.AttributeValue{S: aws.String(noteValue)}
+		updateExpression = updateExpression + ", #NOTE = :NOTE"
+	}
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{

@@ -25,7 +25,7 @@ type Service interface {
 	GetUserByGitlabID(gitHubID int) (*models.User, error)
 	GetUserByGitLabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(field string, searchTerm string, fullMatch bool) (*models.Users, error)
-	UpdateUserCompanyID(userID string, companyID string) error
+	UpdateUserCompanyID(userID, companyID, note string) error
 }
 
 type service struct {
@@ -172,6 +172,6 @@ func (s service) SearchUsers(searchField string, searchTerm string, fullMatch bo
 }
 
 // UpdateUserCompanyID updates the user's company ID
-func (s service) UpdateUserCompanyID(userID string, companyID string) error {
-	return s.repo.UpdateUserCompanyID(userID, companyID)
+func (s service) UpdateUserCompanyID(userID, companyID, note string) error {
+	return s.repo.UpdateUserCompanyID(userID, companyID, note)
 }
