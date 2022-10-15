@@ -51,9 +51,9 @@ plugins:
   # Automatically versions and updates the lambda@edge function.
   - serverless-lambda-version
   # Automatically invalidates cloudfront after frontend bucket is deployed
-  - serverless-cloudfront-invalidate
+  # - serverless-cloudfront-invalidate
   - serverless-plugin-tracing
-  - serverless-pseudo-parameters
+  #- serverless-pseudo-parameters
 
 custom:
   project: ${file(project-vars.yml):projectIdentifier}
@@ -64,10 +64,10 @@ custom:
     # Because our application is a Single Page Application, we always want our index
     # documents to handle 404/403 urls.
     errorDocument: index.html
-  cloudfrontInvalidate:
-    distributionIdKey: 'CloudfrontDistributionId'
-    items: # one or more paths required
-      - '/*'
+  #cloudfrontInvalidate:
+  #  distributionIdKey: 'CloudfrontDistributionId'
+  #  items: # one or more paths required
+  #    - '/*'
   certificate:
     arn:
       # From env Certificate Manager -

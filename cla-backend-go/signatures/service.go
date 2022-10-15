@@ -762,7 +762,7 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 
 	// Fetch committers
 	log.WithFields(f).Debugf("fetching commit authors for PR: %d using repository owner: %s, repo: %s", pullRequestID, gitHubOrgName, gitHubRepoName)
-	authors, latestSHA, authorsErr := github.GetPullRequestCommitAuthors(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), *githubRepository.Owner.Name, *githubRepository.Name)
+	authors, latestSHA, authorsErr := github.GetPullRequestCommitAuthors(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName)
 	if authorsErr != nil {
 		log.WithFields(f).WithError(authorsErr).Warnf("unable to get commit authors for %s/%s for PR: %d", gitHubOrgName, gitHubRepoName, pullRequestID)
 		return authorsErr
@@ -777,52 +777,65 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 		if !userSummary.IsValid() {
 			log.WithFields(f).Debugf("invalid user summary: %+v", *userSummary)
 			unsigned = append(unsigned, userSummary)
+			continue
+		}
+
+		var user *models.User
+		var userErr error
+
+		commitAuthorID := getCommitAuthorIDFromSummary(userSummary)
+		commitAuthorUsername := getCommitAuthorUsernameFromSummary(userSummary)
+		commitAuthorEmail := getCommitAuthorEmailFromSummary(userSummary)
+
+		if commitAuthorID != "" {
+			user, userErr = s.usersService.GetUserByGitHubID(commitAuthorID)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to get user by github id: %s", commitAuthorID)
+			}
+		}
+		if user == nil && commitAuthorUsername != "" {
+			user, userErr = s.usersService.GetUserByGitHubUsername(commitAuthorUsername)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to get user by github username: %s", commitAuthorUsername)
+			}
+		}
+		if user == nil && commitAuthorEmail != "" {
+			user, userErr = s.usersService.GetUserByEmail(commitAuthorEmail)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to get user by user email: %s", commitAuthorEmail)
+			}
+		}
+		if userErr != nil || user == nil {
+			unsigned = append(unsigned, userSummary)
+			continue
+		}
+
+		userSigned, signedErr := s.hasUserSigned(ctx, user, projectID)
+		if signedErr != nil {
 			break
 		}
-		user, userErr := s.usersService.GetUserByGitHubID(strconv.Itoa(int(*userSummary.CommitAuthor.ID)))
-		if userErr != nil || user == nil {
-			// fallback try searching by email if user with githubID doesnt exist
-			user, userErr = s.usersService.GetUserByEmail(*userSummary.CommitAuthor.Email)
-			if user == nil || userErr != nil {
-				log.WithFields(f).Debugf("looking user record by github username: %s", *userSummary.CommitAuthor.Login)
-				user, userErr = s.usersService.GetUserByGitHubUsername(*userSummary.CommitAuthor.Login)
-				if userErr != nil {
-					log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by github username: %s", userSummary.CommitAuthor)
-					unsigned = append(unsigned, userSummary)
-					break
-				}
-			}
-		}
-		if user != nil {
-			userSigned, signedErr := s.hasUserSigned(ctx, user, projectID)
-			if signedErr != nil {
-				break
-			}
-			if userSigned != nil && *userSigned {
-				signed = append(signed, userSummary)
-				break
-			} else {
-				if user.CompanyID == "" {
-					unsigned = append(unsigned, userSummary)
-					break
-				}
-				userSummary.Affiliated = true
-				approved := true
-				signed := true
-				signature, sigErr := s.GetProjectCompanySignature(ctx, user.CompanyID, projectID, &approved, &signed, nil, nil)
-				if sigErr != nil {
-					return sigErr
-				}
-				approved, approvedErr := s.userIsApproved(ctx, user, signature)
-				if approvedErr != nil {
-					return approvedErr
-				}
-				if approved {
-					userSummary.Authorized = true
-				}
-				unsigned = append(unsigned, userSummary)
-			}
+		if userSigned != nil && *userSigned {
+			signed = append(signed, userSummary)
+			break
 		} else {
+			if user.CompanyID == "" {
+				unsigned = append(unsigned, userSummary)
+				break
+			}
+			userSummary.Affiliated = true
+			approved := true
+			signed := true
+			signature, sigErr := s.GetProjectCompanySignature(ctx, user.CompanyID, projectID, &approved, &signed, nil, nil)
+			if sigErr != nil {
+				return sigErr
+			}
+			approved, approvedErr := s.userIsApproved(ctx, user, signature)
+			if approvedErr != nil {
+				return approvedErr
+			}
+			if approved {
+				userSummary.Authorized = true
+			}
 			unsigned = append(unsigned, userSummary)
 		}
 	}
@@ -830,13 +843,37 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	log.WithFields(f).Debugf("user status signed: %+v and missing: %+v", signed, unsigned)
 
 	// update pull request
-	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), *githubRepository.Owner.Name, *githubRepository.Name, *latestSHA, signed, unsigned, s.claBaseAPIURL, s.claLamdingPage)
+	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, *latestSHA, signed, unsigned, s.claBaseAPIURL, s.claLamdingPage)
 	if updateErr != nil {
 		log.WithFields(f).Debugf("unable to update PR: %d", pullRequestID)
 		return updateErr
 	}
 
 	return nil
+}
+
+func getCommitAuthorIDFromSummary(summary *github.UserCommitSummary) string {
+	if summary != nil && summary.CommitAuthor != nil && summary.CommitAuthor.ID != nil {
+		return strconv.Itoa(int(*summary.CommitAuthor.ID))
+	}
+
+	return ""
+}
+
+func getCommitAuthorUsernameFromSummary(summary *github.UserCommitSummary) string {
+	if summary != nil && summary.CommitAuthor != nil && summary.CommitAuthor.Login != nil {
+		return *summary.CommitAuthor.Login
+	}
+
+	return ""
+}
+
+func getCommitAuthorEmailFromSummary(summary *github.UserCommitSummary) string {
+	if summary != nil && summary.CommitAuthor != nil && summary.CommitAuthor.Email != nil {
+		return *summary.CommitAuthor.Email
+	}
+
+	return ""
 }
 
 func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, error) {
@@ -995,15 +1032,6 @@ func (s service) userIsApproved(ctx context.Context, user *models.User, cclaSign
 
 	return false, nil
 }
-
-//func (s service) contains(items []string, val string) bool {
-//	for _, item := range items {
-//		if val == item {
-//			return true
-//		}
-//	}
-//	return false
-//}
 
 func (s service) processPattern(emails []string, patterns []string) (*bool, error) {
 	matched := false
