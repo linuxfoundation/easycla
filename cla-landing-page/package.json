@@ -57,7 +57,7 @@
     "bootstrap": "^4.4.0",
     "query-string": "^6.13.6",
     "rxjs": "~6.6.7",
-    "serverless": "^2.57.0",
+    "serverless": "^3.23.0",
     "serverless-aws-alias": "^1.8.0",
     "serverless-cloudfront-invalidate": "^1.5.0",
     "serverless-finch": "^2.6.0",
