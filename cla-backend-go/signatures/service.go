@@ -75,10 +75,12 @@ type service struct {
 	repositoryService   repositories.Service
 	githubOrgService    github_organizations.ServiceInterface
 	claGroupService     service2.Service
+	claBaseAPIURL       string
+	claLamdingPage      string
 }
 
 // NewService creates a new signature service
-func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service) SignatureService {
+func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, CLABaseAPIURL, CLALandingPage string) SignatureService {
 	return service{
 		repo,
 		companyService,
@@ -88,6 +90,8 @@ func NewService(repo SignatureRepository, companyService company.IService, users
 		repositoryService,
 		githubOrgService,
 		claGroupService,
+		CLABaseAPIURL,
+		CLALandingPage,
 	}
 }
 
@@ -758,7 +762,7 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 
 	// Fetch committers
 	log.WithFields(f).Debugf("fetching commit authors for PR: %d using repository owner: %s, repo: %s", pullRequestID, gitHubOrgName, gitHubRepoName)
-	authors, _, authorsErr := github.GetPullRequestCommitAuthors(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName)
+	authors, latestSHA, authorsErr := github.GetPullRequestCommitAuthors(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), *githubRepository.Owner.Name, *githubRepository.Name)
 	if authorsErr != nil {
 		log.WithFields(f).WithError(authorsErr).Warnf("unable to get commit authors for %s/%s for PR: %d", gitHubOrgName, gitHubRepoName, pullRequestID)
 		return authorsErr
@@ -771,33 +775,66 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	// triage signed and unsigned users
 	for _, userSummary := range authors {
 		if !userSummary.IsValid() {
-			log.WithFields(f).Debugf("invalid user summary: %+v", userSummary)
-			unsigned = append(unsigned, userSummary)
-		}
-
-		log.WithFields(f).Debug("TODO - need to lookup user by github username or email???")
-
-		log.WithFields(f).Debugf("looking user record by github username: %s", userSummary.CommitAuthor)
-		user, userErr := s.usersService.GetUserByGitHubUsername(userSummary.CommitAuthor)
-		if userErr != nil {
-			log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by github username: %s", userSummary.CommitAuthor)
+			log.WithFields(f).Debugf("invalid user summary: %+v", *userSummary)
 			unsigned = append(unsigned, userSummary)
 			break
 		}
-
-		log.WithFields(f).Debugf("found user record by github username: %s", userSummary.CommitAuthor)
-		userSigned, signedErr := s.hasUserSigned(ctx, user, projectID)
-		if signedErr != nil {
-			break
+		user, userErr := s.usersService.GetUserByGitHubID(strconv.Itoa(int(*userSummary.CommitAuthor.ID)))
+		if userErr != nil || user == nil {
+			// fallback try searching by email if user with githubID doesnt exist
+			user, userErr = s.usersService.GetUserByEmail(*userSummary.CommitAuthor.Email)
+			if user == nil || userErr != nil {
+				log.WithFields(f).Debugf("looking user record by github username: %s", *userSummary.CommitAuthor.Login)
+				user, userErr = s.usersService.GetUserByGitHubUsername(*userSummary.CommitAuthor.Login)
+				if userErr != nil {
+					log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by github username: %s", userSummary.CommitAuthor)
+					unsigned = append(unsigned, userSummary)
+					break
+				}
+			}
 		}
-		if userSigned != nil && *userSigned {
-			signed = append(signed, userSummary)
+		if user != nil {
+			userSigned, signedErr := s.hasUserSigned(ctx, user, projectID)
+			if signedErr != nil {
+				break
+			}
+			if userSigned != nil && *userSigned {
+				signed = append(signed, userSummary)
+				break
+			} else {
+				if user.CompanyID == "" {
+					unsigned = append(unsigned, userSummary)
+					break
+				}
+				userSummary.Affiliated = true
+				approved := true
+				signed := true
+				signature, sigErr := s.GetProjectCompanySignature(ctx, user.CompanyID, projectID, &approved, &signed, nil, nil)
+				if sigErr != nil {
+					return sigErr
+				}
+				approved, approvedErr := s.userIsApproved(ctx, user, signature)
+				if approvedErr != nil {
+					return approvedErr
+				}
+				if approved {
+					userSummary.Authorized = true
+				}
+				unsigned = append(unsigned, userSummary)
+			}
+		} else {
+			unsigned = append(unsigned, userSummary)
 		}
 	}
 
 	log.WithFields(f).Debugf("user status signed: %+v and missing: %+v", signed, unsigned)
 
 	// update pull request
+	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), *githubRepository.Owner.Name, *githubRepository.Name, *latestSHA, signed, unsigned, s.claBaseAPIURL, s.claLamdingPage)
+	if updateErr != nil {
+		log.WithFields(f).Debugf("unable to update PR: %d", pullRequestID)
+		return updateErr
+	}
 
 	return nil
 }
