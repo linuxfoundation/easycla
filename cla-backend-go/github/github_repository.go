@@ -67,6 +67,7 @@ func GetPullRequest(ctx context.Context, pullRequestID int, owner, repo string, 
 	return pullRequest, nil
 }
 
+// UserCommitSummary data model
 type UserCommitSummary struct {
 	SHA          string
 	CommitAuthor *github.CommitAuthor
@@ -74,10 +75,13 @@ type UserCommitSummary struct {
 	Authorized   bool
 }
 
+// IsValid returns true if the commit author information is available
 func (u UserCommitSummary) IsValid() bool {
-	return *u.CommitAuthor.Login != "" && *u.CommitAuthor.Name != ""
+	return u.CommitAuthor != nil && u.CommitAuthor.Login != nil && *u.CommitAuthor.Login != "" &&
+		u.CommitAuthor.Name != nil && *u.CommitAuthor.Name != ""
 }
 
+// GetDisplayText returns the display text for the user commit summary
 func (u UserCommitSummary) GetDisplayText(tagUser bool) string {
 	if !u.IsValid() {
 		return "Invalid author details.\n"
