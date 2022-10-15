@@ -70,14 +70,18 @@ func GetPullRequest(ctx context.Context, pullRequestID int, owner, repo string, 
 // UserCommitSummary data model
 type UserCommitSummary struct {
 	SHA          string
-	CommitAuthor string
+	CommitAuthor *github.User
 	Affiliated   bool
 	Authorized   bool
 }
 
 // IsValid returns true if the commit author information is available
 func (u UserCommitSummary) IsValid() bool {
-	return u.SHA != "" && u.CommitAuthor != ""
+	valid := false
+	if u.CommitAuthor != nil {
+		valid = u.CommitAuthor.ID != nil && (u.CommitAuthor.Login != nil || u.CommitAuthor.Name != nil)
+	}
+	return valid
 }
 
 // GetDisplayText returns the display text for the user commit summary
@@ -104,13 +108,13 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 	if tagUser {
 		tagValue = "@"
 	}
-	if u.CommitAuthor != "" {
+	if *u.CommitAuthor.Login != "" {
 		sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, u.CommitAuthor))
 	}
 
-	//if u.CommitAuthor.Name != nil {
-	//	sb.WriteString(fmt.Sprintf("%sname: %s / ", userInfo, utils.StringValue(u.CommitAuthor.Name)))
-	//}
+	if u.CommitAuthor.Name != nil {
+		sb.WriteString(fmt.Sprintf("%sname: %s / ", userInfo, utils.StringValue(u.CommitAuthor.Name)))
+	}
 	return strings.Replace(sb.String(), "/ $", "", -1)
 }
 
@@ -146,12 +150,15 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 			log.WithFields(f).Debugf("commit.Commit.Author: %s", utils.StringValue(commit.Commit.Author.Login))
 			commitAuthor = utils.StringValue(commit.Commit.Author.Login)
 		} else if commit.Author != nil && commit.Author.Login != nil {
-			log.WithFields(f).Debugf("commit.Author.Loging: %s", utils.StringValue(commit.Author.Login))
+			log.WithFields(f).Debugf("commit.Author.Login: %s", utils.StringValue(commit.Author.Login))
 			commitAuthor = utils.StringValue(commit.Author.Login)
 		}
+		log.WithFields(f).Debugf("commitAuthor: %s", commitAuthor)
 		userCommitSummary = append(userCommitSummary, &UserCommitSummary{
 			SHA:          *commit.SHA,
-			CommitAuthor: commitAuthor,
+			CommitAuthor: commit.Author,
+			Affiliated:   false,
+			Authorized:   false,
 		})
 	}
 
@@ -160,7 +167,7 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 	return userCommitSummary, latestCommitSHA, nil
 }
 
-func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary) error {
+func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary, CLABaseAPIURL, CLALandingPage string) error {
 	f := logrus.Fields{
 		"functionName":   "github.github_repository.UpdatePullRequest",
 		"installationID": installationID,
