@@ -715,7 +715,7 @@ func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubA
 		}
 
 		// Make the DynamoDb Query API call
-		log.WithFields(f).Debugf("loading active signature using key: %s", key)
+		// log.WithFields(f).Debugf("loading active signature using key: %s", key)
 		result, queryErr := repo.dynamoDBClient.GetItem(itemInput)
 		if queryErr != nil {
 			if queryErr.Error() == dynamodb.ErrCodeResourceNotFoundException {
@@ -733,13 +733,18 @@ func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubA
 			log.WithFields(f).Debugf("query result value is empty for key: %s", key)
 			continue
 		}
+
+		// Clean up the JSON string
 		strValue := utils.StringValue(result.Item["value"].S)
-		log.WithFields(f).Debugf("decoding value: %s", strValue)
+		// log.WithFields(f).Debugf("decoding value: %s", strValue)
 		if strings.HasSuffix(strValue, "\"") {
+			// Trim the leading and trailing quotes from the JSON record
 			strValue = strValue[1 : len(strValue)-1]
 		}
+		// Unescape the JSON string
 		strValue = strings.Replace(strValue, "\\\"", "\"", -1)
-		log.WithFields(f).Debugf("decoding value: %s", strValue)
+		// log.WithFields(f).Debugf("decoding value: %s", strValue)
+
 		jsonUnMarshallErr := json.Unmarshal([]byte(strValue), &activeSignature)
 		if jsonUnMarshallErr != nil {
 			log.WithFields(f).WithError(jsonUnMarshallErr).Warn("unable to convert model for active signature ")

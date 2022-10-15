@@ -70,15 +70,14 @@ func GetPullRequest(ctx context.Context, pullRequestID int, owner, repo string, 
 // UserCommitSummary data model
 type UserCommitSummary struct {
 	SHA          string
-	CommitAuthor *github.CommitAuthor
+	CommitAuthor string
 	Affiliated   bool
 	Authorized   bool
 }
 
 // IsValid returns true if the commit author information is available
 func (u UserCommitSummary) IsValid() bool {
-	return u.CommitAuthor != nil && u.CommitAuthor.Login != nil && *u.CommitAuthor.Login != "" &&
-		u.CommitAuthor.Name != nil && *u.CommitAuthor.Name != ""
+	return u.SHA != "" && u.CommitAuthor != ""
 }
 
 // GetDisplayText returns the display text for the user commit summary
@@ -105,12 +104,13 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 	if tagUser {
 		tagValue = "@"
 	}
-	if u.CommitAuthor.Login != nil {
-		sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, utils.StringValue(u.CommitAuthor.Login)))
+	if u.CommitAuthor != "" {
+		sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, u.CommitAuthor))
 	}
-	if u.CommitAuthor.Name != nil {
-		sb.WriteString(fmt.Sprintf("%sname: %s / ", userInfo, utils.StringValue(u.CommitAuthor.Name)))
-	}
+
+	//if u.CommitAuthor.Name != nil {
+	//	sb.WriteString(fmt.Sprintf("%sname: %s / ", userInfo, utils.StringValue(u.CommitAuthor.Name)))
+	//}
 	return strings.Replace(sb.String(), "/ $", "", -1)
 }
 
@@ -127,16 +127,31 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 		return nil, nil, err
 	}
 
-	commits, _, comErr := client.PullRequests.ListCommits(ctx, owner, repo, pullRequestID, &github.ListOptions{})
+	commits, resp, comErr := client.PullRequests.ListCommits(ctx, owner, repo, pullRequestID, &github.ListOptions{})
 	if comErr != nil {
-		log.WithFields(f).WithError(comErr).Warn("unable to get commits")
+		log.WithFields(f).WithError(comErr).Warnf("problem listing commits for repo: %s/%s pull request: %d", owner, repo, pullRequestID)
 		return nil, nil, comErr
 	}
+	if resp.StatusCode != http.StatusOK {
+		msg := fmt.Sprintf("unexpected status code: %d - expected: %d", resp.StatusCode, http.StatusOK)
+		log.WithFields(f).Warn(msg)
+		return nil, nil, errors.New(msg)
+	}
 
+	log.WithFields(f).Debugf("found %d commits for pull request: %d", len(commits), pullRequestID)
 	for _, commit := range commits {
+		log.WithFields(f).Debugf("loaded commit: %+v", commit)
+		commitAuthor := ""
+		if commit.Commit != nil && commit.Commit.Author != nil && commit.Commit.Author.Login != nil {
+			log.WithFields(f).Debugf("commit.Commit.Author: %s", utils.StringValue(commit.Commit.Author.Login))
+			commitAuthor = utils.StringValue(commit.Commit.Author.Login)
+		} else if commit.Author != nil && commit.Author.Login != nil {
+			log.WithFields(f).Debugf("commit.Author.Loging: %s", utils.StringValue(commit.Author.Login))
+			commitAuthor = utils.StringValue(commit.Author.Login)
+		}
 		userCommitSummary = append(userCommitSummary, &UserCommitSummary{
 			SHA:          *commit.SHA,
-			CommitAuthor: commit.Commit.Author,
+			CommitAuthor: commitAuthor,
 		})
 	}
 
