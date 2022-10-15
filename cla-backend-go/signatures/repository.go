@@ -687,8 +687,6 @@ func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubA
 		return nil, nil
 	}
 
-	var activeSignature ActivePullRequest
-	var dbSignatureMetadata DBSignatureMetadata
 	expr, err := expression.NewBuilder().WithProjection(buildSignatureMetadata()).Build()
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("error building expression for user ID query")
@@ -705,6 +703,7 @@ func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubA
 		keys = append(keys, fmt.Sprintf("active_pr:e:%s", gitHubAuthorEmail))
 	}
 
+	var activeSignature ActivePullRequest
 	for _, key := range keys {
 		itemInput := &dynamodb.GetItemInput{
 			Key: map[string]*dynamodb.AttributeValue{
@@ -734,26 +733,14 @@ func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubA
 			log.WithFields(f).Debugf("query result value is empty for key: %s", key)
 			continue
 		}
-
-		/*
-			log.WithFields(f).Debugf("decoding value for key: %s", key)
-			unmarshallErr := dynamodbattribute.Unmarshal(result.Item[key], &dbSignatureMetadata)
-			if unmarshallErr != nil {
-				log.WithFields(f).WithError(unmarshallErr).Warn("error converting DB model for signatureMetadata")
-				return nil, unmarshallErr
-			}
-
-			if dbSignatureMetadata.Value == "" {
-				msg := fmt.Sprintf("empty metadata value for user: %s", userID)
-				missingMetadataValue := errors.New(msg)
-				log.WithFields(f).WithError(missingMetadataValue).Warn(msg)
-				return nil, missingMetadataValue
-			}
-
-		*/
-
-		log.WithFields(f).Debugf("decoding value: %s", dbSignatureMetadata.Value)
-		jsonUnMarshallErr := json.Unmarshal([]byte(utils.StringValue(result.Item["value"].S)), &activeSignature)
+		strValue := utils.StringValue(result.Item["value"].S)
+		log.WithFields(f).Debugf("decoding value: %s", strValue)
+		if strings.HasSuffix(strValue, "\"") {
+			strValue = strValue[1 : len(strValue)-1]
+		}
+		strValue = strings.Replace(strValue, "\\\"", "\"", -1)
+		log.WithFields(f).Debugf("decoding value: %s", strValue)
+		jsonUnMarshallErr := json.Unmarshal([]byte(strValue), &activeSignature)
 		if jsonUnMarshallErr != nil {
 			log.WithFields(f).WithError(jsonUnMarshallErr).Warn("unable to convert model for active signature ")
 			return nil, jsonUnMarshallErr

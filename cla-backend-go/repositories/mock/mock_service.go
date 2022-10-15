@@ -164,6 +164,15 @@ func (m *MockService) GetRepositoryByName(ctx context.Context, repositoryName st
 	return ret0, ret1
 }
 
+// GetRepositoryByExternalID mocks base method
+func (m *MockService) GetRepositoryByExternalID(ctx context.Context, repositoryExternalID string) (*models.GithubRepository, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GitHubGetRepositoryByExternalID", ctx, repositoryExternalID)
+	ret0, _ := ret[0].(*models.GithubRepository)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
 // GetRepositoryByName indicates an expected call of GetRepositoryByName
 func (mr *MockServiceMockRecorder) GetRepositoryByName(ctx, repositoryName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()

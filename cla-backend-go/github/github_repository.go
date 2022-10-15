@@ -26,19 +26,27 @@ var (
 func GetGitHubRepository(ctx context.Context, installationID, githubRepositoryID int64) (*github.Repository, error) {
 	f := logrus.Fields{
 		"functionName":       "github.github_repository.GetGitHubRepository",
+		"installationID":     installationID,
 		"githubRepositoryID": githubRepositoryID,
 	}
 	client, clientErr := NewGithubAppClient(installationID)
 	if clientErr != nil {
+		log.WithFields(f).WithError(clientErr).Warnf("problem loading github client for installation ID: %d", installationID)
 		return nil, clientErr
 	}
 
-	repository, _, repoErr := client.Repositories.GetByID(ctx, githubRepositoryID)
+	log.WithFields(f).Debugf("getting github repository by id: %d", githubRepositoryID)
+	repository, httpResponse, repoErr := client.Repositories.GetByID(ctx, githubRepositoryID)
 	if repoErr != nil {
 		log.WithFields(f).WithError(repoErr).Warnf("unable to fetch repository by ID: %d", githubRepositoryID)
 		return nil, repoErr
 	}
+	if httpResponse.StatusCode != http.StatusOK {
+		log.WithFields(f).Warnf("unexpected status code: %d", httpResponse.StatusCode)
+		return nil, ErrGitHubRepositoryNotFound
+	}
 
+	//log.WithFields(f).Debugf("successfully retrieved github repository by id: %d - repository object: %+v", githubRepositoryID, repository)
 	return repository, nil
 }
 
@@ -67,7 +75,7 @@ type UserCommitSummary struct {
 }
 
 func (u UserCommitSummary) IsValid() bool {
-	return (*u.CommitAuthor.Login != "" && *u.CommitAuthor.Name != "")
+	return *u.CommitAuthor.Login != "" && *u.CommitAuthor.Name != ""
 }
 
 func (u UserCommitSummary) GetDisplayText(tagUser bool) string {
@@ -130,9 +138,7 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 
 	// get latest commit SHA
 	latestCommitSHA := commits[len(commits)-1].SHA
-
 	return userCommitSummary, latestCommitSHA, nil
-
 }
 
 func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary) error {

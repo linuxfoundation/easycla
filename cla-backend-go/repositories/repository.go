@@ -48,6 +48,7 @@ type RepositoryInterface interface {
 	GitHubDisableRepositoriesOfOrganization(ctx context.Context, externalProjectID, githubOrgName string) error
 	GitHubGetRepository(ctx context.Context, repositoryID string) (*models.GithubRepository, error)
 	GitHubGetRepositoryByName(ctx context.Context, repositoryName string) (*models.GithubRepository, error)
+	GitHubGetRepositoryByExternalID(ctx context.Context, repositoryExternalID string) (*models.GithubRepository, error)
 	GitHubGetRepositoryByGithubID(ctx context.Context, externalID string, enabled bool) (*models.GithubRepository, error)
 	GitHubGetRepositoriesByCLAGroup(ctx context.Context, claGroup string, enabled bool) ([]*models.GithubRepository, error)
 	GitHubGetRepositoriesByOrganizationName(ctx context.Context, gitHubOrgName string) ([]*models.GithubRepository, error)
@@ -394,6 +395,60 @@ func (r *Repository) GitHubGetRepositoryByName(ctx context.Context, repositoryNa
 		log.WithFields(f).Warnf("no repositories found with repository name: %s", repositoryName)
 		return nil, &utils.GitHubRepositoryNotFound{
 			RepositoryName: repositoryName,
+		}
+	}
+
+	var repositories []*RepositoryDBModel
+	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &repositories)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem unmarshalling response")
+		return nil, err
+	}
+
+	if len(repositories) > 1 {
+		log.WithFields(f).Warn("multiple repositories records with the same repository name")
+	}
+
+	return repositories[0].ToGitHubModel(), nil
+}
+
+// GitHubGetRepositoryByExternalID fetches the repository by repository ID
+func (r *Repository) GitHubGetRepositoryByExternalID(ctx context.Context, repositoryExternalID string) (*models.GithubRepository, error) {
+	f := logrus.Fields{
+		"functionName":         "v1.repositories.repository.GitHubGetRepositoryByExternalID",
+		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
+		"repositoryExternalID": repositoryExternalID,
+	}
+	builder := expression.NewBuilder()
+	condition := expression.Key("repository_external_id").Equal(expression.Value(repositoryExternalID))
+	builder = builder.WithKeyCondition(condition)
+
+	expr, err := builder.Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem creating builder")
+		return nil, err
+	}
+
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		FilterExpression:          expr.Filter(),
+		TableName:                 aws.String(r.repositoryTableName),
+		IndexName:                 aws.String(RepositoryExternalIDIndex),
+	}
+
+	results, err := r.dynamoDBClient.Query(queryInput)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to get repositories by name")
+		return nil, err
+	}
+
+	if len(results.Items) == 0 {
+		log.WithFields(f).Warnf("no repositories found with repository external ID: %s", repositoryExternalID)
+		return nil, &utils.GitHubRepositoryNotFound{
+			RepositoryName: repositoryExternalID,
 		}
 	}
 

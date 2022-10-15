@@ -505,13 +505,17 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 				return nil, createErr
 			}
 
-			// Update the GitHub status - do this as a background task
-			go func(c context.Context, userModel *models.User) {
-				handleStatusErr := s.handleGitHubStatusUpdate(c, userModel)
-				if handleStatusErr != nil {
-					log.WithFields(f).WithError(handleStatusErr).Warnf("problem updating GitHub status for user: %s", userModel.UserID)
-				}
-			}(ctx, employeeUserModel)
+			//// Update the GitHub status - do this as a background task
+			//go func(c context.Context, userModel *models.User) {
+			//	handleStatusErr := s.handleGitHubStatusUpdate(c, userModel)
+			//	if handleStatusErr != nil {
+			//		log.WithFields(f).WithError(handleStatusErr).Warnf("problem updating GitHub status for user: %s", userModel.UserID)
+			//	}
+			//}(ctx, employeeUserModel)
+			handleStatusErr := s.handleGitHubStatusUpdate(ctx, employeeUserModel)
+			if handleStatusErr != nil {
+				log.WithFields(f).WithError(handleStatusErr).Warnf("problem updating GitHub status for user: %s", userModel.UserID)
+			}
 		}
 
 		for _, gitHubUserName := range params.AddGithubUsernameApprovalList {
@@ -578,12 +582,16 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 			}
 
 			// Update the GitHub status - do this as a background task
-			go func(c context.Context, userModel *models.User) {
-				handleStatusErr := s.handleGitHubStatusUpdate(c, userModel)
-				if handleStatusErr != nil {
-					log.WithFields(f).WithError(handleStatusErr).Warnf("problem updating GitHub status for user: %s", userModel.UserID)
-				}
-			}(ctx, employeeUserModel)
+			//go func(c context.Context, userModel *models.User) {
+			//	handleStatusErr := s.handleGitHubStatusUpdate(c, userModel)
+			//	if handleStatusErr != nil {
+			//		log.WithFields(f).WithError(handleStatusErr).Warnf("problem updating GitHub status for user: %s", userModel.UserID)
+			//	}
+			//}(ctx, employeeUserModel)
+			handleStatusErr := s.handleGitHubStatusUpdate(ctx, employeeUserModel)
+			if handleStatusErr != nil {
+				log.WithFields(f).WithError(handleStatusErr).Warnf("problem updating GitHub status for user: %s", userModel.UserID)
+			}
 		}
 
 	} else {
@@ -741,11 +749,22 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 		log.WithFields(f).WithError(ghErr).Warn("unable to get github repository")
 		return ghErr
 	}
+	if githubRepository == nil || githubRepository.Owner == nil {
+		msg := "unable to get github repository - repository response is nil or owner is nil"
+		log.WithFields(f).Warn(msg)
+		return errors.New(msg)
+	}
+	log.WithFields(f).Debugf("githubRepository: %+v", githubRepository)
+	if githubRepository.Name == nil || githubRepository.Owner.Login == nil {
+		msg := fmt.Sprintf("unable to get github repository - missing repository name or owner name for repository ID: %d", repositoryID)
+		log.WithFields(f).Warn(msg)
+		return errors.New(msg)
+	}
 
 	// Fetch committers
-	log.WithFields(f).Debugf("fetching commit authors for PR: %d", pullRequestID)
+	log.WithFields(f).Debugf("fetching commit authors for PR: %d using repository owner: %s, repo: %s", pullRequestID, utils.StringValue(githubRepository.Owner.Login), utils.StringValue(githubRepository.Name))
 
-	authors, _, authorsErr := github.GetPullRequestCommitAuthors(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), *githubRepository.Owner.Name, *githubRepository.Name)
+	authors, _, authorsErr := github.GetPullRequestCommitAuthors(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), utils.StringValue(githubRepository.Owner.Login), utils.StringValue(githubRepository.Name))
 	if authorsErr != nil {
 		log.WithFields(f).WithError(authorsErr).Warnf("unable to get commit authors for PR: %d", pullRequestID)
 		return authorsErr
@@ -967,9 +986,10 @@ func (s service) handleGitHubStatusUpdate(ctx context.Context, employeeUserModel
 		log.WithFields(f).Debugf("unable to get active pull requst metadata for user: %+v - unable to update GitHub status", employeeUserModel)
 		return nil
 	}
+	log.WithFields(f).Debugf("decoded active pull request metadata: %+v", signatureMetadata)
 
 	// Fetch easycla repository
-	claRepository, repoErr := s.repositoryService.GetRepository(ctx, signatureMetadata.RepositoryID)
+	claRepository, repoErr := s.repositoryService.GetRepositoryByExternalID(ctx, signatureMetadata.RepositoryID)
 	if repoErr != nil {
 		log.WithFields(f).WithError(repoErr).Warnf("unable to fetch repository by ID: %s - unable to update GitHub status", signatureMetadata.RepositoryID)
 		return repoErr
@@ -1000,6 +1020,7 @@ func (s service) handleGitHubStatusUpdate(ctx context.Context, employeeUserModel
 	}
 
 	// Update change request
+	log.WithFields(f).Debugf("updating change request for repository: %d, pull request: %d", repositoryID, pullRequestID)
 	updateErr := s.updateChangeRequest(ctx, githubOrg, int64(repositoryID), int64(pullRequestID), signatureMetadata.CLAGroupID)
 	if updateErr != nil {
 		log.WithFields(f).WithError(updateErr).Warnf("unable to update pull request: %d", pullRequestID)

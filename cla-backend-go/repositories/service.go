@@ -31,6 +31,7 @@ type Service interface {
 	GetRepository(ctx context.Context, repositoryID string) (*models.GithubRepository, error)
 	GetRepositoryByProjectSFID(ctx context.Context, projectSFID string, enabled *bool) (*models.GithubListRepositories, error)
 	GetRepositoryByName(ctx context.Context, repositoryName string) (*models.GithubRepository, error)
+	GetRepositoryByExternalID(ctx context.Context, repositoryExternalID string) (*models.GithubRepository, error)
 	DisableRepositoriesByProjectID(ctx context.Context, projectID string) (int, error)
 	GetRepositoriesByCLAGroup(ctx context.Context, claGroupID string) ([]*models.GithubRepository, error)
 	GetRepositoriesByOrganizationName(ctx context.Context, gitHubOrgName string) ([]*models.GithubRepository, error)
@@ -179,6 +180,11 @@ func (s *service) GetRepositoryByProjectSFID(ctx context.Context, projectSFID st
 // GetRepositoryByName returns the repository by name: project-level/cla-project
 func (s *service) GetRepositoryByName(ctx context.Context, repositoryName string) (*models.GithubRepository, error) {
 	return s.repo.GitHubGetRepositoryByName(ctx, repositoryName)
+}
+
+// GetRepositoryByExternalID returns the repository by externalID
+func (s *service) GetRepositoryByExternalID(ctx context.Context, repositoryExternalID string) (*models.GithubRepository, error) {
+	return s.repo.GitHubGetRepositoryByExternalID(ctx, repositoryExternalID)
 }
 
 // DisableRepositoriesByProjectID disables the repositories by project ID

@@ -47,6 +47,7 @@ type ServiceInterface interface {
 	GitHubListProjectRepositories(ctx context.Context, projectSFID string) (*v1Models.GithubListRepositories, error)
 	GitHubGetRepository(ctx context.Context, repositoryID string) (*v1Models.GithubRepository, error)
 	GitHubGetRepositoryByName(ctx context.Context, repositoryName string) (*v1Models.GithubRepository, error)
+	GitHubGetRepositoryByExternalID(ctx context.Context, repositoryExternalID string) (*v1Models.GithubRepository, error)
 	GitHubDisableCLAGroupRepositories(ctx context.Context, claGroupID string) error
 	GitHubGetProtectedBranch(ctx context.Context, projectSFID, repositoryID, branchName string) (*v2Models.GithubRepositoryBranchProtection, error)
 	GitHubUpdateProtectedBranch(ctx context.Context, projectSFID, repositoryID string, input *v2Models.GithubRepositoryBranchProtectionInput) (*v2Models.GithubRepositoryBranchProtection, error)
@@ -395,6 +396,11 @@ func (s *Service) GitHubGetRepository(ctx context.Context, repositoryID string) 
 // GitHubGetRepositoryByName service function
 func (s *Service) GitHubGetRepositoryByName(ctx context.Context, repositoryName string) (*v1Models.GithubRepository, error) {
 	return s.gitV1Repository.GitHubGetRepositoryByName(ctx, repositoryName)
+}
+
+// GitHubGetRepositoryByExternalID service function
+func (s *Service) GitHubGetRepositoryByExternalID(ctx context.Context, repositoryExternalID string) (*v1Models.GithubRepository, error) {
+	return s.gitV1Repository.GitHubGetRepositoryByExternalID(ctx, repositoryExternalID)
 }
 
 // GitHubGetProtectedBranch service function
