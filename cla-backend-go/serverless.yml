@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 service: cla-backend-go
-frameworkVersion: '^2.57.0'
+frameworkVersion: '^3.23.0'
 
 package:
   # Exclude all first - selectively add in lambda functions,

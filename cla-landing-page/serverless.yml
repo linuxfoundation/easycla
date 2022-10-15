@@ -1,5 +1,5 @@
 service: cla-landing-page
-frameworkVersion: '^2.57.0'
+frameworkVersion: '^3.23.0'
 
 package:
   patterns:
