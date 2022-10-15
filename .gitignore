@@ -239,3 +239,5 @@ dist/*
 .playground
 
 api-postman/*
+
+cla-backend/run-python-test-example-*.py
