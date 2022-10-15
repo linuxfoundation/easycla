@@ -574,6 +574,7 @@ jobs:
       - image: circleci/node:8-browsers
     steps:
       - checkout
+      - *install_aws_cli
       - *setup_aws
       - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
       - *install-node-14
