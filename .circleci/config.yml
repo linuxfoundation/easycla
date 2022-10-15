@@ -529,7 +529,7 @@ jobs:
 
   buildLandingPage: &buildLandingPageAnchor
     docker:
-      - image: circleci/node:12-browsers
+      - image: circleci/node:14-browsers
     steps:
       - checkout
       - *setup_aws
@@ -603,13 +603,13 @@ jobs:
             yarn build:${STAGE}
 
             echo "Running deploy in folder: `pwd`"
-            SLS_DEBUG=* ../node_modules/serverless/bin/serverless.js deploy -s ${STAGE} -r ${AWS_REGION} --verbose
+            SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js deploy -s ${STAGE} -r ${AWS_REGION} --verbose
 
             echo "Running client deploy in folder: `pwd`"
-            SLS_DEBUG=* ../node_modules/serverless/bin/serverless.js client deploy -s ${STAGE} -r ${AWS_REGION} --cloudfront=true --no-confirm --no-policy-change --no-config-change
+            SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js client deploy -s ${STAGE} -r ${AWS_REGION} --no-confirm --no-policy-change --no-config-change
 
-            echo "Invalidating Cloudfront caches in folder: `pwd`"
-            SLS_DEBUG=* ../node_modules/serverless/bin/serverless.js cloudfrontInvalidate -s ${STAGE} -r ${AWS_REGION} --cloudfront=true
+            # echo "Invalidating Cloudfront caches in folder: `pwd`"
+            # SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js cloudfrontInvalidate -s ${STAGE} -r ${AWS_REGION} --cloudfront=true
             popd
 
           no_output_timeout: 1.5h
