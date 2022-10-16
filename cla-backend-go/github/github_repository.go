@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -73,6 +74,38 @@ type UserCommitSummary struct {
 	CommitAuthor *github.User
 	Affiliated   bool
 	Authorized   bool
+}
+
+// GetCommitAuthorID commit author username ID (numeric value as a string) if available, otherwise returns empty string
+func (u UserCommitSummary) GetCommitAuthorID() string {
+	if u.CommitAuthor != nil && u.CommitAuthor.ID != nil {
+		return strconv.Itoa(int(*u.CommitAuthor.ID))
+	}
+
+	return ""
+}
+
+// GetCommitAuthorUsername returns commit author username if available, otherwise returns empty string
+func (u UserCommitSummary) GetCommitAuthorUsername() string {
+	if u.CommitAuthor != nil {
+		if u.CommitAuthor.Login != nil {
+			return *u.CommitAuthor.Login
+		}
+		if u.CommitAuthor.Name != nil {
+			return *u.CommitAuthor.Name
+		}
+	}
+
+	return ""
+}
+
+// GetCommitAuthorEmail returns commit author email if available, otherwise returns empty string
+func (u UserCommitSummary) GetCommitAuthorEmail() string {
+	if u.CommitAuthor != nil && u.CommitAuthor.Email != nil {
+		return *u.CommitAuthor.Email
+	}
+
+	return ""
 }
 
 // IsValid returns true if the commit author information is available

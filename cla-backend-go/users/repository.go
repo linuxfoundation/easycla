@@ -738,7 +738,11 @@ func (repo repository) GetUserByGitHubID(gitHubID string) (*models.User, error) 
 		"gitHubID":     gitHubID,
 	}
 	// This is the key we want to match
-	condition := expression.Key("user_github_id").Equal(expression.Value(gitHubID))
+	intGitHubID, atoiErr := strconv.Atoi(gitHubID)
+	if atoiErr != nil {
+		return nil, atoiErr
+	}
+	condition := expression.Key("user_github_id").Equal(expression.Value(intGitHubID))
 
 	// These are the columns we want returned
 	projection := buildUserProjection()

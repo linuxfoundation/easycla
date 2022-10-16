@@ -731,7 +731,7 @@ func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupI
 	return s.repo.GetClaGroupCorporateContributors(ctx, claGroupID, companyID, searchTerm)
 }
 
-// updateChangeRequest is a helper function that updates PR upong auto ecla update
+// updateChangeRequest is a helper function that updates PR - typically after the auto ecla update
 func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOrganization, repositoryID, pullRequestID int64, projectID string) error {
 	f := logrus.Fields{
 		"functionName":  "v1.signatures.service.updateChangeRequest",
@@ -773,55 +773,83 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	unsigned := make([]*github.UserCommitSummary, 0)
 
 	// triage signed and unsigned users
+	log.WithFields(f).Debugf("triaging %d commit authors for PR: %d using repository %s/%s",
+		len(authors), pullRequestID, gitHubOrgName, gitHubRepoName)
 	for _, userSummary := range authors {
+
 		if !userSummary.IsValid() {
 			log.WithFields(f).Debugf("invalid user summary: %+v", *userSummary)
 			unsigned = append(unsigned, userSummary)
 			continue
 		}
 
+		commitAuthorID := userSummary.GetCommitAuthorID()
+		commitAuthorUsername := userSummary.GetCommitAuthorUsername()
+		commitAuthorEmail := userSummary.GetCommitAuthorEmail()
+
+		log.WithFields(f).Debugf("checking user - sha: %s, user ID: %s, username: %s, email: %s",
+			userSummary.SHA, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
+
 		var user *models.User
 		var userErr error
 
-		commitAuthorID := getCommitAuthorIDFromSummary(userSummary)
-		commitAuthorUsername := getCommitAuthorUsernameFromSummary(userSummary)
-		commitAuthorEmail := getCommitAuthorEmailFromSummary(userSummary)
-
 		if commitAuthorID != "" {
+			log.WithFields(f).Debugf("looking up user by ID: %s", commitAuthorID)
 			user, userErr = s.usersService.GetUserByGitHubID(commitAuthorID)
 			if userErr != nil {
 				log.WithFields(f).WithError(userErr).Warnf("unable to get user by github id: %s", commitAuthorID)
 			}
+			if user != nil {
+				log.WithFields(f).Debugf("found user by ID: %s", commitAuthorID)
+			}
 		}
 		if user == nil && commitAuthorUsername != "" {
+			log.WithFields(f).Debugf("looking up user by username: %s", commitAuthorUsername)
 			user, userErr = s.usersService.GetUserByGitHubUsername(commitAuthorUsername)
 			if userErr != nil {
 				log.WithFields(f).WithError(userErr).Warnf("unable to get user by github username: %s", commitAuthorUsername)
 			}
+			if user != nil {
+				log.WithFields(f).Debugf("found user by username: %s", commitAuthorUsername)
+			}
 		}
 		if user == nil && commitAuthorEmail != "" {
+			log.WithFields(f).Debugf("looking up user by email: %s", commitAuthorEmail)
 			user, userErr = s.usersService.GetUserByEmail(commitAuthorEmail)
 			if userErr != nil {
 				log.WithFields(f).WithError(userErr).Warnf("unable to get user by user email: %s", commitAuthorEmail)
 			}
+			if user != nil {
+				log.WithFields(f).Debugf("found user by email: %s", commitAuthorEmail)
+			}
 		}
-		if userErr != nil || user == nil {
+
+		if user == nil {
+			log.WithFields(f).Debugf("unable to find user for commit author - sha: %s, user ID: %s, username: %s, email: %s",
+				userSummary.SHA, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
 			unsigned = append(unsigned, userSummary)
 			continue
 		}
 
+		log.WithFields(f).Debugf("checking to see if user has signed an ICLA or ECLA for project: %s", projectID)
 		userSigned, signedErr := s.hasUserSigned(ctx, user, projectID)
 		if signedErr != nil {
+			log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
 			break
 		}
+
 		if userSigned != nil && *userSigned {
+			userSummary.Authorized = true
 			signed = append(signed, userSummary)
 			break
 		} else {
+			log.WithFields(f).Debugf("other logic...")
 			if user.CompanyID == "" {
+				log.WithFields(f).Debugf("user has no companyID - user: %+v", user)
 				unsigned = append(unsigned, userSummary)
 				break
 			}
+
 			userSummary.Affiliated = true
 			approved := true
 			signed := true
@@ -840,7 +868,7 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 		}
 	}
 
-	log.WithFields(f).Debugf("user status signed: %+v and missing: %+v", signed, unsigned)
+	log.WithFields(f).Debugf("commit authors status => signed: %+v and missing: %+v", signed, unsigned)
 
 	// update pull request
 	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, *latestSHA, signed, unsigned, s.claBaseAPIURL, s.claLamdingPage)
@@ -850,30 +878,6 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	}
 
 	return nil
-}
-
-func getCommitAuthorIDFromSummary(summary *github.UserCommitSummary) string {
-	if summary != nil && summary.CommitAuthor != nil && summary.CommitAuthor.ID != nil {
-		return strconv.Itoa(int(*summary.CommitAuthor.ID))
-	}
-
-	return ""
-}
-
-func getCommitAuthorUsernameFromSummary(summary *github.UserCommitSummary) string {
-	if summary != nil && summary.CommitAuthor != nil && summary.CommitAuthor.Login != nil {
-		return *summary.CommitAuthor.Login
-	}
-
-	return ""
-}
-
-func getCommitAuthorEmailFromSummary(summary *github.UserCommitSummary) string {
-	if summary != nil && summary.CommitAuthor != nil && summary.CommitAuthor.Email != nil {
-		return *summary.CommitAuthor.Email
-	}
-
-	return ""
 }
 
 func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, error) {
