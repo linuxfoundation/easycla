@@ -832,39 +832,24 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 		}
 
 		log.WithFields(f).Debugf("checking to see if user has signed an ICLA or ECLA for project: %s", projectID)
-		userSigned, signedErr := s.hasUserSigned(ctx, user, projectID)
+		userSigned, companyAffiliation, signedErr := s.hasUserSigned(ctx, user, projectID)
 		if signedErr != nil {
 			log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
-			break
+			unsigned = append(unsigned, userSummary)
+			continue
 		}
 
-		if userSigned != nil && *userSigned {
-			userSummary.Authorized = true
-			signed = append(signed, userSummary)
-			break
-		} else {
-			log.WithFields(f).Debugf("other logic...")
-			if user.CompanyID == "" {
-				log.WithFields(f).Debugf("user has no companyID - user: %+v", user)
-				unsigned = append(unsigned, userSummary)
-				break
-			}
+		if companyAffiliation != nil {
+			userSummary.Affiliated = *companyAffiliation
+		}
 
-			userSummary.Affiliated = true
-			approved := true
-			signed := true
-			signature, sigErr := s.GetProjectCompanySignature(ctx, user.CompanyID, projectID, &approved, &signed, nil, nil)
-			if sigErr != nil {
-				return sigErr
+		if userSigned != nil {
+			userSummary.Authorized = *userSigned
+			if userSummary.Authorized {
+				signed = append(signed, userSummary)
+			} else {
+				unsigned = append(unsigned, userSummary)
 			}
-			approved, approvedErr := s.userIsApproved(ctx, user, signature)
-			if approvedErr != nil {
-				return approvedErr
-			}
-			if approved {
-				userSummary.Authorized = true
-			}
-			unsigned = append(unsigned, userSummary)
 		}
 	}
 
@@ -880,34 +865,41 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	return nil
 }
 
-func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, error) {
+// hasUserSigned checks to see if the user has signed an ICLA or ECLA for the project, returns:
+// false, false, nil if user is not authorized for ICLA or ECLA
+// false, false, some error if user is not authorized for ICLA or ECLA - we has some problem looking up stuff
+// true, false, nil if user has an ICLA (authorized, but not company affiliation, no error)
+// true, true, nil if user has an ECLA (authorized, with company affiliation, no error)
+func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, *bool, error) {
 	f := logrus.Fields{
 		"functionName": "v1.signatures.service.updateChangeRequest",
 		"projectID":    projectID,
 		"user":         user,
 	}
 	var hasSigned bool
+	var companyAffiliation bool
 
 	approved := true
 	signed := true
 
-	// check for ICLA
+	// Check for ICLA
 	log.WithFields(f).Debugf("checking to see if user has signed an ICLA")
 	signature, sigErr := s.GetIndividualSignature(ctx, projectID, user.UserID, &approved, &signed)
 	if sigErr != nil {
 		log.WithFields(f).WithError(sigErr).Warnf("problem checking for ICLA signature for user: %s", user.UserID)
-		return nil, sigErr
+		return &hasSigned, &companyAffiliation, sigErr
 	}
 	if signature != nil {
 		hasSigned = true
 		log.WithFields(f).Debugf("ICLA signature check passed for user: %+v on project : %s", user, projectID)
+		return &hasSigned, &companyAffiliation, nil // ICLA passes, no company affiliation
 	} else {
-		log.WithFields(f).Debugf("ICLA signature check failed for user: %+v on project : %s", user, projectID)
+		log.WithFields(f).Debugf("ICLA signature check failed for user: %+v on project: %s - ICLA not signed", user, projectID)
 	}
 
-	// Check for CCLA
+	// Check for Employee Acknowledgment ECLA
 	companyID := user.CompanyID
-	log.WithFields(f).Debugf("checking to see if user has signed a CCLA for company: %s", companyID)
+	log.WithFields(f).Debugf("checking to see if user has signed a ECLA for company: %s", companyID)
 
 	if companyID != "" {
 		// Get employee signature
@@ -915,36 +907,40 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 		companyModel, compModelErr := s.companyService.GetCompany(ctx, companyID)
 		if compModelErr != nil {
 			log.WithFields(f).WithError(compModelErr).Warnf("problem looking up company: %s", companyID)
-			return nil, compModelErr
+			return &hasSigned, &companyAffiliation, compModelErr
 		}
 		claGroupModel, claGroupModelErr := s.claGroupService.GetCLAGroupByID(ctx, projectID)
 		if claGroupModelErr != nil {
 			log.WithFields(f).WithError(claGroupModelErr).Warnf("problem looking up project: %s", projectID)
-			return nil, claGroupModelErr
+			return &hasSigned, &companyAffiliation, claGroupModelErr
 		}
 
 		employeeSignature, empSigErr := s.repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, user)
 		if empSigErr != nil {
 			log.WithFields(f).WithError(empSigErr).Warnf("problem looking up employee signature for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
-			return nil, empSigErr
+			return &hasSigned, &companyAffiliation, empSigErr
 		}
 
 		if employeeSignature != nil {
-			log.WithFields(f).Debugf("CCLA Signature check - located employee acknowledgement - signature id: %s", employeeSignature.SignatureID)
+			log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgement - signature id: %s", employeeSignature.SignatureID)
 			// Get ccla signature of company to access the approval list
-			cclaSignature, cclaErr := s.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
+			eclaSignature, cclaErr := s.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
 			if cclaErr != nil {
-				log.WithFields(f).WithError(cclaErr).Warnf("problem looking up CCLA signature for company: %s, project: %s", companyID, projectID)
-				return nil, cclaErr
+				log.WithFields(f).WithError(cclaErr).Warnf("problem looking up ECLA signature for company: %s, project: %s", companyID, projectID)
+				return &hasSigned, &companyAffiliation, cclaErr
 			}
+			companyAffiliation = true
 
-			if cclaSignature != nil {
-				userApproved, approvedErr := s.userIsApproved(ctx, user, cclaSignature)
+			if eclaSignature != nil {
+				userApproved, approvedErr := s.userIsApproved(ctx, user, eclaSignature)
 				if approvedErr != nil {
-					return nil, approvedErr
+					log.WithFields(f).WithError(approvedErr).Warnf("problem determining if user: %s is approved for project: %s", user.UserID, projectID)
+					return &hasSigned, &companyAffiliation, approvedErr
 				}
+				log.WithFields(f).Debugf("ECLA Signature check - user approved: %t for projectID: %s for company: %s", userApproved, projectID, user.CompanyID)
+
 				if userApproved {
-					log.WithFields(f).Debugf("user: %s is in the approval list for signature: %s", user.UserID, signature.SignatureID)
+					log.WithFields(f).Debugf("user: %s is in the approval list for signature: %s", user.UserID, employeeSignature.SignatureID)
 					hasSigned = true
 				}
 			}
@@ -955,7 +951,7 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 		log.WithFields(f).Debugf("ECLA signature check - user does not have a company ID assigned - skipping...")
 	}
 
-	return &hasSigned, nil
+	return &hasSigned, &companyAffiliation, nil
 }
 
 func (s service) userIsApproved(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, error) {

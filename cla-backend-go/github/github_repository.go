@@ -216,6 +216,7 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 		return err
 	}
 
+	var checkRunOptions *github.CreateCheckRunOptions
 	if len(missing) > 0 {
 		helpURL := ""
 		text := ""
@@ -235,7 +236,7 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 		conclusion := "action_required"
 		title := "EasyCLA: Signed CLA not found"
 		summary := "One or more committers are authorized under a signed CLA"
-		checkRunOptions := github.CreateCheckRunOptions{
+		checkRunOptions = &github.CreateCheckRunOptions{
 			Name:       "CLA check",
 			HeadSHA:    latestSHA,
 			Status:     &status,
@@ -247,8 +248,16 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 				Text:    &text,
 			},
 		}
+	} else if len(signed) > 0 {
+		log.WithFields(f).Debugf("processing %d signed commits with 0 missing", len(signed))
+		// test if previously failed...update as needed
 
-		checkRun, checkRunResponse, checkRunErr := client.Checks.CreateCheckRun(ctx, owner, repo, checkRunOptions)
+		// add success updates below
+	}
+
+	// Run this if we have >=1 commit author (we should always have at least 1!!)
+	if checkRunOptions != nil {
+		checkRun, checkRunResponse, checkRunErr := client.Checks.CreateCheckRun(ctx, owner, repo, *checkRunOptions)
 		if checkRunErr != nil {
 			log.WithFields(f).WithError(checkRunErr).Warnf("problem creating check run")
 			return checkRunErr
@@ -269,7 +278,6 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 		} else {
 			log.WithFields(f).Debugf("created check run - but not check run details returned from API call")
 		}
-
 	}
 
 	return nil
