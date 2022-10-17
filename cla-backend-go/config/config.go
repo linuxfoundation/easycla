@@ -85,6 +85,9 @@ type Config struct {
 	// CLALandingPage
 	CLALandingPage string `json:"cla_landing_page"`
 
+	// CLALogoURL easyCLA bot LOGO url
+	CLALogoURL string `json:"cla_logo_url"`
+
 	// AcsAPIKey is api key of the acs
 	AcsAPIKey string `json:"acs_api_key"`
 
