@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/google/go-github/v37/github"
@@ -218,78 +218,32 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 	}
 
 	client, err := NewGithubAppClient(installationID)
-	if err != nil {
+	if err != nil || client == nil {
 		log.WithFields(f).WithError(err).Warn("unable to create Github client")
 		return err
 	}
 
-	var checkRunOptions *github.CreateCheckRunOptions
-	if len(missing) > 0 {
-		log.WithFields(f).Debugf("Creating check run for PR: %d... ", pullRequestID)
-		helpURL := ""
-		text := ""
-		var sb strings.Builder
-		sb.WriteString(text)
-		for _, userSummary := range missing {
-			if !userSummary.IsValid() {
-				helpURL = help
-			}
-			if userSummary.SHA != latestSHA {
-				continue
-			}
-			sb.WriteString(userSummary.GetDisplayText(true))
-		}
-		text = sb.String()
-		status := "completed"
-		conclusion := "action_required"
-		title := "EasyCLA: Signed CLA not found"
-		summary := "One or more committers are authorized under a signed CLA"
-		checkRunOptions = &github.CreateCheckRunOptions{
-			Name:       "CLA check",
-			HeadSHA:    latestSHA,
-			Status:     &status,
-			Conclusion: &conclusion,
-			DetailsURL: &helpURL,
-			Output: &github.CheckRunOutput{
-				Title:   &title,
-				Summary: &summary,
-				Text:    &text,
-			},
-		}
+	// Update comments as necessary
+	log.WithFields(f).Debugf("updating comment for PR: %d... ", pullRequestID)
 
-		checkRun, checkRunResponse, checkRunErr := client.Checks.CreateCheckRun(ctx, owner, repo, *checkRunOptions)
-		if checkRunErr != nil {
-			log.WithFields(f).WithError(checkRunErr).Warnf("problem creating check run")
-			return checkRunErr
-		}
-		if checkRunResponse == nil || checkRunResponse.StatusCode != http.StatusCreated {
-			var statusCode int
-			if checkRunResponse != nil {
-				statusCode = checkRunResponse.StatusCode
-			}
-			msg := fmt.Sprintf("problem creating check run - status %d - expecting %d", statusCode, http.StatusCreated)
-			log.WithFields(f).WithError(checkRunErr).Warn(msg)
-			return errors.New(msg)
-		}
-
-		if checkRun != nil {
-			log.WithFields(f).Debugf("created check run - ID: %d with name: %s",
-				utils.Int64Value(checkRun.ID), utils.StringValue(checkRun.Name))
-		} else {
-			log.WithFields(f).Debugf("created check run - but not check run details returned from API call")
-		}
-	}
-
-	// Update comment
-	log.WithFields(f).Debugf("Updating comment for PR: %d... ", pullRequestID)
 	previouslyFailed, comment, failedErr := hasCheckPreviouslyFailed(ctx, client, owner, repo, pullRequestID)
 	if failedErr != nil {
 		log.WithFields(f).WithError(failedErr).Debugf("unable to check previously failed PR: %d", pullRequestID)
 		return failedErr
 	}
 
+	previouslySucceeded, previousSucceededComment, succeedErr := hasCheckPreviouslySucceeded(ctx, client, owner, repo, pullRequestID)
+	if succeedErr != nil {
+		log.WithFields(f).WithError(succeedErr).Debugf("unable to check previously succeeded PR: %d", pullRequestID)
+		return failedErr
+	}
+
 	body := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, CLABaseAPIURL, CLALogoURL, CLALandingPage)
+
 	if len(missing) == 0 {
+		// All contributors are passing
+
+		// If we have previously failed, we need to update the comment
 		if previouslyFailed {
 			log.WithFields(f).Debugf("Found previously failed checks - updating the CLA comment in the PR : %d", pullRequestID)
 			comment.Body = &body
@@ -298,19 +252,32 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 				log.WithFields(f).Debug("unable to edit comment ")
 				return err
 			}
-
 		}
 	} else {
+		// One or more contributors are failing
+
+		// If we have previously failed, we need to update the comment
 		if previouslyFailed {
 			log.WithFields(f).Debugf("Found previously failed checks - updating the CLA comment in the PR : %d", pullRequestID)
 			comment.Body = &body
 			_, _, err = client.Issues.EditComment(ctx, owner, repo, *comment.ID, comment)
+			if err != nil {
+				log.WithFields(f).Debug("unable to edit comment ")
+				return err
+			}
+		} else if previouslySucceeded {
+			// If we have previously succeeded, then we also need to update the comment (pass => fail)
+			log.WithFields(f).Debugf("Found previously succeeeded checks - updating the CLA comment in the PR : %d", pullRequestID)
+			// Generate a new comment with all the failed CLA info
+			failedComment := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, CLABaseAPIURL, CLALogoURL, CLALandingPage)
+			previousSucceededComment.Body = &failedComment
+			_, _, err = client.Issues.EditComment(ctx, owner, repo, *previousSucceededComment.ID, previousSucceededComment)
 			if err != nil {
 				log.WithFields(f).Debug("unable to edit comment ")
 				return err
 			}
 		} else {
-			// create comment
+			// no previous comment - need to create a new comment
 			_, _, err = client.Issues.CreateComment(ctx, owner, repo, pullRequestID, comment)
 			if err != nil {
 				log.WithFields(f).Debug("unable to create comment")
@@ -331,18 +298,18 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 		state = failureState
 		context, statusBody = assembleCLAStatus(context, false)
 		signURL = getFullSignURL("github", strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL)
-		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d , signing url %s", state, len(signed), len(missing), signURL)
+		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(missing), signURL)
 	} else if len(signed) > 0 {
 		state = successState
 		context, statusBody = assembleCLAStatus(context, true)
 		signURL = fmt.Sprintf("%s/#/?version=2", CLALandingPage)
-		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d , signing url %s", state, len(signed), len(missing), signURL)
+		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(missing), signURL)
 
 	} else {
 		state = failureState
 		context, statusBody = assembleCLAStatus(context, false)
 		signURL = getFullSignURL("github", strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL)
-		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d , signing url %s", state, len(signed), len(missing), signURL)
+		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(missing), signURL)
 		log.WithFields(f).Debugf("This is an error condition - should have at least one committer in one of these lists: signed : %+v passed, %+v", signed, missing)
 	}
 
@@ -366,7 +333,7 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 
 func hasCheckPreviouslyFailed(ctx context.Context, client *github.Client, owner, repo string, pullRequestID int) (bool, *github.IssueComment, error) {
 	f := logrus.Fields{
-		"functionName": "github.github_repository.GetPullRequest",
+		"functionName": "github.github_repository.hasCheckPreviouslyFailed",
 	}
 
 	comments, _, err := client.Issues.ListComments(ctx, owner, repo, pullRequestID, &github.IssueListCommentsOptions{})
@@ -386,6 +353,26 @@ func hasCheckPreviouslyFailed(ctx context.Context, client *github.Client, owner,
 			return true, comment, nil
 		}
 	}
+	return false, nil, nil
+}
+
+func hasCheckPreviouslySucceeded(ctx context.Context, client *github.Client, owner, repo string, pullRequestID int) (bool, *github.IssueComment, error) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.hasCheckPreviouslySucceeded",
+	}
+
+	comments, _, err := client.Issues.ListComments(ctx, owner, repo, pullRequestID, &github.IssueListCommentsOptions{})
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get fetch comments for repo: %s, pr: %d", repo, pullRequestID)
+		return false, nil, err
+	}
+
+	for _, comment := range comments {
+		if strings.Contains(*comment.Body, "The committers listed above are authorized under a signed CLA.") {
+			return true, comment, nil
+		}
+	}
+
 	return false, nil, nil
 }
 
@@ -455,8 +442,9 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 	}
 
 	if len(missing) > 0 {
+		log.WithFields(f).Debugf("processing %d missing contributors", len(missing))
 		supportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
-		committers := getAuthorInfoCommits(signed, true)
+		committers := getAuthorInfoCommits(missing, true)
 		helpURL := help
 
 		for k, v := range committers {
@@ -465,11 +453,8 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 				shas = append(shas, summary.SHA)
 			}
 			if k == unknown {
-				committersComment.WriteString(fmt.Sprintf(`<li>%s The commit (%s).
-				This user is missing the User's ID, preventing the EasyCLA check.
-				<a href='%s' target='_blank'>Consult GitHub Help</a> to resolve.
-				For further assistance with EasyCLA,
-				<a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`, failed, strings.Join(shas, ", "), helpURL, supportURL))
+				committersComment.WriteString(fmt.Sprintf(`<li>%s The commit (%s). This user is missing the User's ID, preventing the EasyCLA check. <a href='%s' target='_blank'>Consult GitHub Help</a> to resolve. For further assistance with EasyCLA, <a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`,
+					failed, strings.Join(shas, ", "), helpURL, supportURL))
 			} else {
 				var missingAffiliations []*UserCommitSummary
 				for _, summary := range v {
@@ -479,20 +464,13 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 				}
 				if len(missingAffiliations) > 0 {
 					log.WithFields(f).Debugf("SHAs for users with missing company affiliations: %+v", shas)
-					committersComment.WriteString((fmt.Sprintf(`<li>%s The commit (%s).
-					This user is authorized, but they must confirm their affiliation with their company.
-					Start the authorization process
-					<a href='%s' target='_blank'> by clicking here</a>, click \"Corporate\",
-					select the appropriate company from the list, then confirm 
-					your affiliation on the page that appears.
-					For further assistance with EasyCLA,
-					<a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`, failed, k, signURL, supportURL)))
+					committersComment.WriteString(
+						fmt.Sprintf(`<li>%s %s The commit (%s). This user is authorized, but they must confirm their affiliation with their company. Start the authorization process <a href='%s' target='_blank'> by clicking here</a>, click \"Corporate\", select the appropriate company from the list, then confirm your affiliation on the page that appears. For further assistance with EasyCLA, <a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`,
+							failed, k, strings.Join(shas, ", "), signURL, supportURL))
 				} else {
-					committersComment.WriteString((fmt.Sprintf(`<li>"<a href='%s' target='_blank'>%s</a> - 
-					%s The commit (%s). is not authorized under a signed CLA.
-					"<a href='%s' target='_blank'>Please click here to be authorized</a>.
-					For further assistance with EasyCLA,
-					<a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`, signURL, failed, k, strings.Join(shas, ", "), signURL, supportURL)))
+					committersComment.WriteString(
+						fmt.Sprintf(`<li><a href='%s' target='_blank'>%s</a> - %s The commit (%s) is not authorized under a signed CLA. "<a href='%s' target='_blank'>Please click here to be authorized</a>. For further assistance with EasyCLA, <a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`,
+							signURL, failed, k, strings.Join(shas, ", "), signURL, supportURL))
 				}
 			}
 		}

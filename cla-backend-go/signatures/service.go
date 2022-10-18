@@ -516,6 +516,20 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 			// Add this user to the list of users to process for GitHub PR updates
 			employeeUserModels = append(employeeUserModels, employeeUserModel)
 		}
+		for _, email := range params.RemoveEmailApprovalList {
+			log.WithFields(f).Debugf("auto-create ECLA option - remove email: %s", email)
+
+			// Lookup the user by email in the local EasyCLA database
+			employeeUserModel, userLookupErr = s.usersService.GetUserByEmail(email)
+			// If we couldn't find the user - this is a problem since they were previously on the list
+			if userLookupErr != nil || employeeUserModel == nil {
+				log.WithFields(f).WithError(userLookupErr).Warnf("unable to lookup existing user by email: %s", email)
+				return nil, userLookupErr
+			}
+
+			// Add this user to the list of users to process for GitHub PR updates
+			employeeUserModels = append(employeeUserModels, employeeUserModel)
+		}
 
 		for _, gitHubUserName := range params.AddGithubUsernameApprovalList {
 			log.WithFields(f).Debugf("auto-create ECLA option - add githubUserName: %s", gitHubUserName)
@@ -583,7 +597,20 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 			// Add this user to the list of users to process for GitHub PR updates
 			employeeUserModels = append(employeeUserModels, employeeUserModel)
 		}
+		for _, gitHubUserName := range params.RemoveGithubUsernameApprovalList {
+			log.WithFields(f).Debugf("auto-create ECLA option - remove githubUserName: %s", gitHubUserName)
 
+			log.WithFields(f).Debugf("locating user by GitHub username: %s", gitHubUserName)
+			employeeUserModel, userLookupErr = s.usersService.GetUserByGitHubUsername(gitHubUserName)
+			// If we couldn't find the user - this is a problem since they were previously on the list
+			if userLookupErr != nil || employeeUserModel == nil {
+				log.WithFields(f).WithError(userLookupErr).Warnf("unable to lookup existing user by gitHubUserName: %s", gitHubUserName)
+				return nil, userLookupErr
+			}
+
+			// Add this user to the list of users to process for GitHub PR updates
+			employeeUserModels = append(employeeUserModels, employeeUserModel)
+		}
 	} else {
 		log.WithFields(f).Debugf("auto-create ECLA option is disabled: %t...", corporateSigModel.AutoCreateECLA)
 	}
@@ -904,19 +931,26 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 	log.WithFields(f).Debugf("checking to see if user has signed a ECLA for company: %s", companyID)
 
 	if companyID != "" {
+		companyAffiliation = true
+
 		// Get employee signature
 		log.WithFields(f).Debugf("ECLA signature check - user has a company: %s - looking for user's employee acknowledgement...", companyID)
+
+		// Load the company - make sure it is valid
 		companyModel, compModelErr := s.companyService.GetCompany(ctx, companyID)
 		if compModelErr != nil {
 			log.WithFields(f).WithError(compModelErr).Warnf("problem looking up company: %s", companyID)
 			return &hasSigned, &companyAffiliation, compModelErr
 		}
+
+		// Load the CLA Group - make sure it is valid
 		claGroupModel, claGroupModelErr := s.claGroupService.GetCLAGroupByID(ctx, projectID)
 		if claGroupModelErr != nil {
 			log.WithFields(f).WithError(claGroupModelErr).Warnf("problem looking up project: %s", projectID)
 			return &hasSigned, &companyAffiliation, claGroupModelErr
 		}
 
+		// Load the user's employee acknowledgement - make sure it is valid
 		employeeSignature, empSigErr := s.repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, user)
 		if empSigErr != nil {
 			log.WithFields(f).WithError(empSigErr).Warnf("problem looking up employee signature for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
@@ -925,16 +959,16 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 
 		if employeeSignature != nil {
 			log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgement - signature id: %s", employeeSignature.SignatureID)
-			// Get ccla signature of company to access the approval list
-			eclaSignature, cclaErr := s.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
+
+			// Get corporate ccla signature of company to access the approval list
+			cclaSignature, cclaErr := s.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
 			if cclaErr != nil {
 				log.WithFields(f).WithError(cclaErr).Warnf("problem looking up ECLA signature for company: %s, project: %s", companyID, projectID)
 				return &hasSigned, &companyAffiliation, cclaErr
 			}
-			companyAffiliation = true
 
-			if eclaSignature != nil {
-				userApproved, approvedErr := s.userIsApproved(ctx, user, eclaSignature)
+			if cclaSignature != nil {
+				userApproved, approvedErr := s.userIsApproved(ctx, user, cclaSignature)
 				if approvedErr != nil {
 					log.WithFields(f).WithError(approvedErr).Warnf("problem determining if user: %s is approved for project: %s", user.UserID, projectID)
 					return &hasSigned, &companyAffiliation, approvedErr
