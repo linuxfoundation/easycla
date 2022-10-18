@@ -3740,8 +3740,8 @@ class Store(key_value_store_interface.KeyValueStore):
             return False
 
     def get_expire_timestamp(self):
-        # helper function to set store item ttl: 1 day
-        exp_datetime = datetime.datetime.now() + datetime.timedelta(days=1)
+        # helper function to set store item ttl: 7 days
+        exp_datetime = datetime.datetime.now() + datetime.timedelta(days=7)
         return exp_datetime.timestamp()
 
 
