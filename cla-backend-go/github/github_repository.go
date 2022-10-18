@@ -322,7 +322,7 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 	}
 
 	// Update/Create the status
-	context := "communitybridge/cla"
+	context := "EasyCLA"
 	var statusBody string
 	var state string
 	var signURL string
