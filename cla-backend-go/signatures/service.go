@@ -77,10 +77,11 @@ type service struct {
 	claGroupService     service2.Service
 	claBaseAPIURL       string
 	claLamdingPage      string
+	claLogoURL          string
 }
 
 // NewService creates a new signature service
-func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, CLABaseAPIURL, CLALandingPage string) SignatureService {
+func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, CLABaseAPIURL, CLALandingPage, CLALogoURL string) SignatureService {
 	return service{
 		repo,
 		companyService,
@@ -92,6 +93,7 @@ func NewService(repo SignatureRepository, companyService company.IService, users
 		claGroupService,
 		CLABaseAPIURL,
 		CLALandingPage,
+		CLALogoURL,
 	}
 }
 
@@ -856,7 +858,7 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	log.WithFields(f).Debugf("commit authors status => signed: %+v and missing: %+v", signed, unsigned)
 
 	// update pull request
-	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, *latestSHA, signed, unsigned, s.claBaseAPIURL, s.claLamdingPage)
+	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, githubRepository.ID, *latestSHA, signed, unsigned, s.claBaseAPIURL, s.claLamdingPage, s.claLogoURL)
 	if updateErr != nil {
 		log.WithFields(f).Debugf("unable to update PR: %d", pullRequestID)
 		return updateErr

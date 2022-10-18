@@ -24,6 +24,13 @@ var (
 	ErrGitHubRepositoryNotFound = errors.New("github repository not found")
 )
 
+const (
+	help         = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
+	unknown      = "Unknown"
+	failureState = "failure"
+	successState = "success"
+)
+
 func GetGitHubRepository(ctx context.Context, installationID, githubRepositoryID int64) (*github.Repository, error) {
 	f := logrus.Fields{
 		"functionName":       "github.github_repository.GetGitHubRepository",
@@ -142,7 +149,7 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 		tagValue = "@"
 	}
 	if *u.CommitAuthor.Login != "" {
-		sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, u.CommitAuthor))
+		sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, *u.CommitAuthor.Login))
 	}
 
 	if u.CommitAuthor.Name != nil {
@@ -200,7 +207,7 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 	return userCommitSummary, latestCommitSHA, nil
 }
 
-func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary, CLABaseAPIURL, CLALandingPage string) error {
+func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, repoID *int64, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary, CLABaseAPIURL, CLALandingPage, CLALogoURL string) error {
 	f := logrus.Fields{
 		"functionName":   "github.github_repository.UpdatePullRequest",
 		"installationID": installationID,
@@ -218,13 +225,14 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 
 	var checkRunOptions *github.CreateCheckRunOptions
 	if len(missing) > 0 {
+		log.WithFields(f).Debugf("Creating check run for PR: %d... ", pullRequestID)
 		helpURL := ""
 		text := ""
 		var sb strings.Builder
 		sb.WriteString(text)
 		for _, userSummary := range missing {
 			if !userSummary.IsValid() {
-				helpURL = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
+				helpURL = help
 			}
 			if userSummary.SHA != latestSHA {
 				continue
@@ -248,15 +256,7 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 				Text:    &text,
 			},
 		}
-	} else if len(signed) > 0 {
-		log.WithFields(f).Debugf("processing %d signed commits with 0 missing", len(signed))
-		// test if previously failed...update as needed
 
-		// add success updates below
-	}
-
-	// Run this if we have >=1 commit author (we should always have at least 1!!)
-	if checkRunOptions != nil {
 		checkRun, checkRunResponse, checkRunErr := client.Checks.CreateCheckRun(ctx, owner, repo, *checkRunOptions)
 		if checkRunErr != nil {
 			log.WithFields(f).WithError(checkRunErr).Warnf("problem creating check run")
@@ -280,10 +280,90 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 		}
 	}
 
+	// Update comment
+	log.WithFields(f).Debugf("Updating comment for PR: %d... ", pullRequestID)
+	previouslyFailed, comment, failedErr := hasCheckPreviouslyFailed(ctx, client, owner, repo, pullRequestID)
+	if failedErr != nil {
+		log.WithFields(f).WithError(failedErr).Debugf("unable to check previously failed PR: %d", pullRequestID)
+		return failedErr
+	}
+
+	body := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, CLABaseAPIURL, CLALogoURL, CLALandingPage)
+	if len(missing) == 0 {
+		if previouslyFailed {
+			log.WithFields(f).Debugf("Found previously failed checks - updating the CLA comment in the PR : %d", pullRequestID)
+			comment.Body = &body
+			_, _, err = client.Issues.EditComment(ctx, owner, repo, *comment.ID, comment)
+			if err != nil {
+				log.WithFields(f).Debug("unable to edit comment ")
+				return err
+			}
+
+		}
+	} else {
+		if previouslyFailed {
+			log.WithFields(f).Debugf("Found previously failed checks - updating the CLA comment in the PR : %d", pullRequestID)
+			comment.Body = &body
+			_, _, err = client.Issues.EditComment(ctx, owner, repo, *comment.ID, comment)
+			if err != nil {
+				log.WithFields(f).Debug("unable to edit comment ")
+				return err
+			}
+		} else {
+			// create comment
+			_, _, err = client.Issues.CreateComment(ctx, owner, repo, pullRequestID, comment)
+			if err != nil {
+				log.WithFields(f).Debug("unable to create comment")
+			}
+
+			log.WithFields(f).Debugf(`EasyCLA App checks fail for PR: %d.
+			CLA signatures with signed authors: %+v and with missing authors: %+v`, pullRequestID, signed, missing)
+		}
+	}
+
+	// Update/Create the status
+	context := "communitybridge/cla"
+	var statusBody string
+	var state string
+	var signURL string
+
+	if len(missing) > 0 {
+		state = failureState
+		context, statusBody = assembleCLAStatus(context, false)
+		signURL = getFullSignURL("github", strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL)
+		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d , signing url %s", state, len(signed), len(missing), signURL)
+	} else if len(signed) > 0 {
+		state = successState
+		context, statusBody = assembleCLAStatus(context, true)
+		signURL = fmt.Sprintf("%s/#/?version=2", CLALandingPage)
+		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d , signing url %s", state, len(signed), len(missing), signURL)
+
+	} else {
+		state = failureState
+		context, statusBody = assembleCLAStatus(context, false)
+		signURL = getFullSignURL("github", strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL)
+		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d , signing url %s", state, len(signed), len(missing), signURL)
+		log.WithFields(f).Debugf("This is an error condition - should have at least one committer in one of these lists: signed : %+v passed, %+v", signed, missing)
+	}
+
+	status := Status{
+		State:       &state,
+		TargetURL:   &signURL,
+		Context:     &context,
+		Description: &statusBody,
+	}
+
+	log.WithFields(f).Debugf("Creating status: %+v", status)
+
+	_, _, err = CreateStatus(ctx, client, owner, repo, latestSHA, &status)
+	if err != nil {
+		log.WithFields(f).Debugf("unable to create status: %v", status)
+		return err
+	}
+
 	return nil
 }
 
-/*
 func hasCheckPreviouslyFailed(ctx context.Context, client *github.Client, owner, repo string, pullRequestID int) (bool, *github.IssueComment, error) {
 	f := logrus.Fields{
 		"functionName": "github.github_repository.GetPullRequest",
@@ -308,7 +388,177 @@ func hasCheckPreviouslyFailed(ctx context.Context, client *github.Client, owner,
 	}
 	return false, nil, nil
 }
-*/
+
+func assembleCLAStatus(authorName string, signed bool) (string, string) {
+	if authorName == "" {
+		authorName = unknown
+	}
+	if signed {
+		return authorName, "EasyCLA check passed. You are authorized to contribute."
+	}
+	return authorName, "Missing CLA Authorization."
+}
+
+func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, repositoryID *int64, signed, missing []*UserCommitSummary, apiBaseURL, CLALogoURL, CLALandingPage string) string {
+	f := logrus.Fields{
+		"functionName":   "github.github_repository.assembleCLAComment",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"installationID": installationID,
+		"repositoryID":   repositoryID,
+		"pullRequestID":  pullRequestID,
+		"repoID":         *repositoryID,
+	}
+
+	repositoryType := "github"
+	missingID := false
+	for _, userSummary := range missing {
+		if userSummary.GetCommitAuthorID() == "" {
+			missingID = true
+		}
+	}
+
+	log.WithFields(f).Debug("Building CLAComment body ")
+	signURL := getFullSignURL(repositoryType, strconv.Itoa(installationID), strconv.Itoa(int(*repositoryID)), strconv.Itoa(pullRequestID), apiBaseURL)
+	commentBody := getCommentBody(repositoryType, signURL, signed, missing)
+	allSigned := len(missing) == 0
+	badge := getCommentBadge(allSigned, signURL, missingID, false, CLALandingPage, CLALogoURL)
+	return fmt.Sprintf("%s<br >%s", badge, commentBody)
+}
+
+func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommitSummary) string {
+	f := logrus.Fields{
+		"functionName":   "github.github_repository:getCommentBody",
+		"repositoryType": repositoryType,
+		"signURL":        signURL,
+	}
+
+	failed := ":x:"
+	success := ":white_check_mark:"
+	committersComment := strings.Builder{}
+	text := ""
+
+	if len(missing) > 0 || len(signed) > 0 {
+		committersComment.WriteString("<ul>")
+	}
+
+	if len(signed) > 0 {
+		committers := getAuthorInfoCommits(signed, false)
+
+		for k, v := range committers {
+			var shas []string
+			for _, summary := range v {
+				shas = append(shas, summary.SHA)
+				log.WithFields(f).Debugf("SHAS for signed users: %s", shas)
+				committersComment.WriteString(fmt.Sprintf("<li>%s%s(%s)</li>", success, k, strings.Join(shas, ", ")))
+			}
+		}
+	}
+
+	if len(missing) > 0 {
+		supportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
+		committers := getAuthorInfoCommits(signed, true)
+		helpURL := help
+
+		for k, v := range committers {
+			var shas []string
+			for _, summary := range v {
+				shas = append(shas, summary.SHA)
+			}
+			if k == unknown {
+				committersComment.WriteString(fmt.Sprintf(`<li>%s The commit (%s).
+				This user is missing the User's ID, preventing the EasyCLA check.
+				<a href='%s' target='_blank'>Consult GitHub Help</a> to resolve.
+				For further assistance with EasyCLA,
+				<a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`, failed, strings.Join(shas, ", "), helpURL, supportURL))
+			} else {
+				var missingAffiliations []*UserCommitSummary
+				for _, summary := range v {
+					if !summary.Affiliated && !summary.Authorized {
+						missingAffiliations = append(missingAffiliations, summary)
+					}
+				}
+				if len(missingAffiliations) > 0 {
+					log.WithFields(f).Debugf("SHAs for users with missing company affiliations: %+v", shas)
+					committersComment.WriteString((fmt.Sprintf(`<li>%s The commit (%s).
+					This user is authorized, but they must confirm their affiliation with their company.
+					Start the authorization process
+					<a href='%s' target='_blank'> by clicking here</a>, click \"Corporate\",
+					select the appropriate company from the list, then confirm 
+					your affiliation on the page that appears.
+					For further assistance with EasyCLA,
+					<a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`, failed, k, signURL, supportURL)))
+				} else {
+					committersComment.WriteString((fmt.Sprintf(`<li>"<a href='%s' target='_blank'>%s</a> - 
+					%s The commit (%s). is not authorized under a signed CLA.
+					"<a href='%s' target='_blank'>Please click here to be authorized</a>.
+					For further assistance with EasyCLA,
+					<a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`, signURL, failed, k, strings.Join(shas, ", "), signURL, supportURL)))
+				}
+			}
+		}
+	}
+
+	if len(signed) > 0 || len(missing) > 0 {
+		committersComment.WriteString("</ul>")
+	}
+
+	if len(signed) > 0 && len(missing) == 0 {
+		text = "<br>The committers listed above are authorized under a signed CLA."
+	}
+
+	return fmt.Sprintf("%s%s", committersComment.String(), text)
+}
+
+func getCommentBadge(allSigned bool, signURL string, missingUserId, managerApproved bool, CLALandingPage, CLALogoURL string) string {
+	var alt string
+	var text string
+	var badgeHyperLink string
+	var badgeURL string
+
+	if allSigned {
+		badgeURL = fmt.Sprintf("%s/cla-signed.svg", CLALogoURL)
+		badgeHyperLink = fmt.Sprintf("%s/#/?version=2", CLALandingPage)
+		alt = "CLA Signed"
+		return fmt.Sprintf(`<a href="%s"><img src="%s" alt="%s" align="left" height="28" width="328" >`, badgeHyperLink, badgeURL, alt)
+	}
+	badgeHyperLink = signURL
+	if missingUserId {
+		badgeURL = fmt.Sprintf("%s/cla-missing-id.svg", CLALogoURL)
+		alt = "CLA Missing ID"
+	} else if managerApproved {
+		badgeURL = fmt.Sprintf("%s/cla-confirmation-needed.svg", CLALogoURL)
+		alt = "CLA Confirmation Needed"
+	} else {
+		badgeURL = fmt.Sprintf("%s/cla-not-signed.svg", CLALogoURL)
+		alt = "CLA Not Signed"
+	}
+
+	text = fmt.Sprintf(`<a href="%s"><img src="%s" alt="%s" align="left" height="28" width="328" >`, badgeHyperLink, badgeURL, alt)
+	return fmt.Sprintf("%s<br/>", text)
+}
+
+func getFullSignURL(repositoryType, installationID, githubRepositoryID, pullRequestID, apiBaseURL string) string {
+	return fmt.Sprintf("%s/v2/repository-provider/%s/sign/%s/%s/%s/#/?version=2", apiBaseURL, repositoryType, installationID, githubRepositoryID, pullRequestID)
+}
+
+func getAuthorInfoCommits(userSummary []*UserCommitSummary, tagUser bool) map[string][]*UserCommitSummary {
+	f := logrus.Fields{
+		"functioName": "github.github_repository.getAuthorInfoCommits",
+	}
+	result := make(map[string][]*UserCommitSummary)
+	for _, author := range userSummary {
+		log.WithFields(f).WithFields(f).Debugf("checking user summary for : %s", author.getUserInfo(tagUser))
+		if _, ok := result[author.getUserInfo(tagUser)]; !ok {
+
+			result[author.getUserInfo(tagUser)] = []*UserCommitSummary{
+				author,
+			}
+		} else {
+			result[author.getUserInfo(tagUser)] = append(result[author.getUserInfo(tagUser)], author)
+		}
+	}
+	return result
+}
 
 // GetRepositoryByExternalID finds github repository by github repository id
 func GetRepositoryByExternalID(ctx context.Context, installationID, id int64) (*github.Repository, error) {
@@ -378,4 +628,29 @@ func GetRepositories(ctx context.Context, organizationName string) ([]*github.Re
 	}
 
 	return responseRepoList, nil
+}
+
+type Status struct {
+	State       *string `json:"state,omitempty"`
+	TargetURL   *string `json:"target_url,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Context     *string `json:"context,omitempty"`
+}
+
+// CreateStatus creates a new status on the specified commit.
+//
+// GitHub API docs:https://docs.github.com/en/rest/commits/statuses
+func CreateStatus(ctx context.Context, client *github.Client, owner, repo, sha string, status *Status) (*Status, *github.Response, error) {
+	u := fmt.Sprintf("repos/%v/%v/statuses/%v", owner, repo, sha)
+	req, err := client.NewRequest("POST", u, status)
+	if err != nil {
+		return nil, nil, err
+	}
+	c := new(Status)
+	resp, err := client.Do(ctx, req, c)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return c, resp, nil
 }
