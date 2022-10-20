@@ -254,13 +254,6 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 				utils.ErrorResponseInternalServerErrorWithError(reqID, fmt.Sprintf("error deleting CLA Group by ID: %s", params.ClaGroupID), err))
 		}
 
-		err = projectClaGroupsRepo.RemoveProjectAssociatedWithClaGroup(ctx, claGroupModel.ProjectID, []string{claGroupModel.ProjectExternalID}, true)
-		if err != nil {
-			log.WithFields(f).Warn(err)
-			return cla_group.NewDeleteClaGroupInternalServerError().WithXRequestID(reqID).WithPayload(
-				utils.ErrorResponseInternalServerErrorWithError(reqID, fmt.Sprintf("error removing association of Project: %s and CLAGroup: %s", claGroupModel.ProjectExternalID, params.ClaGroupID), err))
-		}
-
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:     events.CLAGroupDeleted,
 			ClaGroupModel: claGroupModel,

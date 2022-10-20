@@ -954,15 +954,20 @@ func (s *service) DeleteCLAGroup(ctx context.Context, claGroupModel *v1Models.Cl
 		}
 	}
 
-	// Unenroll the specified projects with the CLA Group
-	err := s.UnenrollProjectsInClaGroup(ctx, &UnenrollProjectsModel{
+	unenrollModel := UnenrollProjectsModel{
 		AuthUser:        authUser,
 		CLAGroupID:      claGroupModel.ProjectID,
 		FoundationSFID:  foundationSFID,
 		ProjectSFIDList: projectIDList.List(),
-	})
+	}
+
+	log.WithFields(f).Debugf("Unenrolling with request: %+v", unenrollModel)
+
+	// Unenroll the specified projects with the CLA Group
+	err := s.UnenrollProjectsInClaGroup(ctx, &unenrollModel)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unenrolling projects in CLA Group failed - manual cleanup required.")
+		return err
 	}
 
 	// Finally, delete the CLA Group last...
