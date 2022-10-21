@@ -3797,16 +3797,18 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	}
 
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
-	if companyID != nil {
-		sortKey := fmt.Sprintf("%s#%v#%v#%v", utils.ClaTypeECLA, true, true, *companyID)
-		condition = condition.And(expression.Key("sigtype_signed_approved_id").Equal(expression.Value(sortKey)))
-	} else {
-		sortKeyPrefix := fmt.Sprintf("%s#%v#%v", utils.ClaTypeECLA, true, true)
-		condition = condition.And(expression.Key("sigtype_signed_approved_id").BeginsWith(sortKeyPrefix))
-	}
+	// if companyID != nil {
+	// 	sortKey := fmt.Sprintf("%s#%v#%v#%v", utils.ClaTypeECLA, true, true, *companyID)
+	// 	condition = condition.And(expression.Key("sigtype_signed_approved_id").Equal(expression.Value(sortKey)))
+	// } else {
+	// 	sortKeyPrefix := fmt.Sprintf("%s#%v#%v", utils.ClaTypeECLA, true, true)
+	// 	condition = condition.And(expression.Key("sigtype_signed_approved_id").BeginsWith(sortKeyPrefix))
+	// }
+	filter := expression.Name("company_id").Equal(expression.Value(companyID)).And(expression.Name("signature_approved").Equal(expression.Value(true))).And(expression.Name("signature_signed").Equal(expression.Value(true)))
+	filter = filter.And(expression.Name("signature_type").Equal(expression.Value(utils.ClaTypeECLA)))
 
 	// Create our builder
-	builder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildProjection())
+	builder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildProjection()).WithFilter(filter)
 
 	if searchTerm != nil {
 		searchTermValue := utils.StringValue(searchTerm)
@@ -3834,7 +3836,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		ProjectionExpression:      expr.Projection(),
 		FilterExpression:          expr.Filter(),
 		TableName:                 aws.String(repo.signatureTableName),
-		IndexName:                 aws.String(SignatureProjectIDSigTypeSignedApprovedIDIndex),
+		IndexName:                 aws.String(SignatureProjectIDIndex),
 		Limit:                     aws.Int64(HugePageSize),
 	}
 
@@ -3845,7 +3847,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		log.WithFields(f).Debug("querying signatures...")
 		results, queryErr := repo.dynamoDBClient.Query(queryInput)
 		if queryErr != nil {
-			log.WithFields(f).Warnf("error retrieving icla signatures for project: %s, error: %v", claGroupID, queryErr)
+			log.WithFields(f).Warnf("error retrieving ecla signatures for project: %s, error: %v", claGroupID, queryErr)
 			return nil, queryErr
 		}
 
