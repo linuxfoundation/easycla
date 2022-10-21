@@ -945,7 +945,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		}
 		log.WithFields(f).Debug("user has access for this query")
 
-		log.WithFields(f).Debug("searching for CCLA signatures...")
+		log.WithFields(f).Debug("searching for Coporate Contributors...")
 		result, err := v2service.GetClaGroupCorporateContributors(ctx, params.ClaGroupID, *params.CompanyID, params.SearchTerm)
 		if err != nil {
 			msg := fmt.Sprintf("problem getting corporate contributors for CLA Group: %s with company: %s", params.ClaGroupID, *params.CompanyID)
@@ -958,7 +958,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseInternalServerErrorWithError(reqID, "unexpected error when searching for corporate contributors", err))
 		}
 
-		log.WithFields(f).Debugf("returning %d CCLA signatures to caller...", len(result.List))
+		log.WithFields(f).Debugf("returning %d Corporate contributors to caller...", len(result.List))
 		return signatures.NewListClaGroupCorporateContributorsOK().WithXRequestID(reqID).WithPayload(result)
 	})
 
