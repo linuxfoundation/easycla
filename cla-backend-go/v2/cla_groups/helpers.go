@@ -349,7 +349,7 @@ func (s *service) validateUnenrollProjectsInput(ctx context.Context, foundationS
 	}
 	log.WithFields(f).Debugf("before unenroll, we have %d projects associated with the CLA Group - we will be removing %d and will have %d remaining.", len(existingProjectCLAGroupModels), len(projectSFIDList), len(existingProjectCLAGroupModels)-len(projectSFIDList))
 
-	if len(existingProjectCLAGroupModels)-len(projectSFIDList) < 1 {
+	if len(existingProjectCLAGroupModels)-len(projectSFIDList) < 0 {
 		return fmt.Errorf("validation failure - must have at least one project enrolled in the CLA group under parent: %s with ID: %s", foundationProjectDetails.Name, foundationSFID)
 	}
 
