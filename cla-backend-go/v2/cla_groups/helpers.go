@@ -105,58 +105,6 @@ func (s *service) validateClaGroupInput(ctx context.Context, input *models.Creat
 		return false, err
 	}
 
-	// Look up any existing configuration with this foundation SFID in our database...
-	log.WithFields(f).Debug("loading existing project IDs by foundation SFID...")
-	claGroupProjectModels, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, foundationSFID)
-	if lookupErr != nil {
-		log.WithFields(f).Warnf("problem looking up foundation level CLA group using foundation ID: %s, error: %+v", foundationSFID, lookupErr)
-		return false, lookupErr
-	}
-
-	// Do we have an existing Foundation Level CLA Group? We can't create a new CLA Group if we have an existing
-	// Foundation Level CLA Group setup
-	log.WithFields(f).Debug("checking for existing Foundation Level CLA Groups...")
-	for _, projectCLAGroupModel := range claGroupProjectModels {
-		// Do we have an existing Foundation Level setup? No need to check the input foundation SFID against this list
-		// since we did the query based on the foundation SFID.
-		if projectCLAGroupModel.FoundationSFID == projectCLAGroupModel.ProjectSFID {
-			msg := fmt.Sprintf("found existing foundation level CLA Group using foundation ID: %s - can't add new CLA Groups under this configuration", foundationSFID)
-			log.WithFields(f).Warn(msg)
-			return false, errors.New(msg)
-		}
-	}
-	log.WithFields(f).Debug("no existing Foundation Level CLA Groups found...")
-
-	// Are we trying to create a Foundation Level CLA Group, but one or more of the sub-projects already in a CLA Group?
-	if isFoundationIDInList(foundationSFID, input.ProjectSfidList) {
-		log.WithFields(f).Debug("we have a Foundation Level CLA Group request - checking if any CLA Groups include sub-projects from the foundation...")
-		// Only do this comparison if we have a input foundation level CLA group situation...
-		exists, existingProjectIDs := anySubProjectsAlreadyConfigured(input.ProjectSfidList, claGroupProjectModels)
-		if exists {
-			// So, we have the situation where the input is a foundation level CLA (meaning this applies to all sub-projects)
-			// but we have at least one project that is currently in an existing CLA group (other than the one just provided)
-			// so....we don't allow this (we don't migrate or merge - just reject)
-			msg := fmt.Sprintf("found existing sub-project(s) under foundation ID: %s which are already associated with an existing CLA Group - unable to create a new foundationl level CLA Group - project IDs: %+v", foundationSFID, existingProjectIDs)
-			log.WithFields(f).Warn(msg)
-			return false, errors.New(msg)
-		}
-
-		// Do we have any existing CLA Groups associated with this foundation?  Since this is a Foundation Level CLA
-		// Group, we can't create it if we have existing CLA groups already in place for this foundation
-		if len(claGroupProjectModels) > 0 {
-			// Create a string array to hold the existing CLA details for the error message
-			var claGroupString []string
-			for _, claGroupProjectModel := range claGroupProjectModels {
-				claGroupString = append(claGroupString, fmt.Sprintf("%s - %s", claGroupProjectModel.ClaGroupName, claGroupProjectModel.ClaGroupID))
-			}
-			msg := fmt.Sprintf("found existing CLA Groups under foundation ID: %s - unable to create a new foundationl level CLA Group - existing CLA Group(s): [%s]",
-				foundationSFID, strings.Join(claGroupString, ","))
-			log.WithFields(f).Warn(msg)
-			return false, errors.New(msg)
-		}
-	}
-	log.WithFields(f).Debug("we have a Foundation Level CLA Group request - good, no CLA Groups include sub-projects from the foundation...")
-
 	// Is our parent the LF project?
 	log.WithFields(f).Debugf("looking up LF parent project record...")
 	isLFParent := false
@@ -622,28 +570,6 @@ func (s *service) DisableCLAService(ctx context.Context, authUser *auth.User, cl
 
 	log.WithFields(f).Debugf("disabled %d projects successfully for CLA Group", len(projectSFIDList))
 	return nil
-}
-
-func anySubProjectsAlreadyConfigured(inputProjectIDs []string, existingProjectIDs []*projects_cla_groups.ProjectClaGroup) (bool, []string) {
-	// Build a quick map of the existing project IDs on file...
-	set := make(map[string]struct{})
-	var exists = struct{}{}
-	for _, existingProject := range existingProjectIDs {
-		set[existingProject.ProjectSFID] = exists
-	}
-
-	// Look through the input project ID list - if any matches set the flag and add to the response list
-	var foundIDs []string
-	var response = false
-
-	for _, id := range inputProjectIDs {
-		if _, ok := set[id]; ok {
-			response = true
-			foundIDs = append(foundIDs, id)
-		}
-	}
-
-	return response, foundIDs
 }
 
 func toFoundationMapping(list []*projects_cla_groups.ProjectClaGroup) *models.FoundationMappingList {
