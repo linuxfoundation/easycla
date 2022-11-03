@@ -2515,7 +2515,47 @@ paths:
       tags:
         - cla-manager
 
-
+  /signatures/company/{companyID}/clagroup/{claGroupID}/ecla-auto-create:
+    put:
+      summary: Updates CCLA signature record for the auto_create_ecla flag.
+      description: Updates CCLA signature record for the auto_create_ecla flag.
+      operationId: eclaAutoCreate
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+        - name: claGroupID
+          in: path
+          type: string
+          required: true
+        - name: body
+          in: body
+          schema:
+            $ref: '#/definitions/ecla-auto-create'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/signature'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - signatures
   /notify-cla-managers:
     post:
       summary: Send Notification to CLA Managaers
@@ -5645,6 +5685,14 @@ definitions:
 
   gitlab-organizations:
     $ref: './common/gitlab-organizations.yaml'
+  
+  ecla-auto-create:
+    type: object
+    properties:
+      auto_create_ecla:
+        type: boolean
+        description: flag to indicate if the product should automatically create an employee acknowledgement for a given user when the CLA manager adds the user to the email, GitLab username, or GitLab username approval list
+        example: true
 
   project-github-organizations:
     type: object

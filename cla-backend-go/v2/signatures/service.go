@@ -56,6 +56,7 @@ type ServiceInterface interface {
 	GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error)
 	GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error)
 	InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error
+	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
 }
 
 // Service structure/model
@@ -378,6 +379,24 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 
 	// Log event
 	eventsService.LogEventWithContext(ctx, eventArgs)
+
+	return nil
+}
+
+// EclaAutoCreate updates CCLA signature record for auto_create_ecla column
+func (s *Service) EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error {
+	f := logrus.Fields{
+		"functionName":   "v2.signatures.service.EclaAutoCreate",
+		"signatureID":    signatureID,
+		"autoCreateECLA": autoCreateECLA,
+	}
+
+	log.WithFields(f).Debug("updating CCLA signature record for auto_create_ecla...")
+	err := s.v1SignatureRepo.EclaAutoCreate(ctx, signatureID, autoCreateECLA)
+	if err != nil {
+		log.WithFields(f).Debug("unable to update CCLA signature record for auto_create_ecla")
+		return err
+	}
 
 	return nil
 }

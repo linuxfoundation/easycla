@@ -100,6 +100,7 @@ type SignatureRepository interface {
 
 	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error)
+	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
 }
 
 type iclaSignatureWithDetails struct {
@@ -3927,6 +3928,45 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	})
 
 	return out, nil
+}
+
+func (repo repository) EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signature.repository.EclaAutoCreate",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+		"autoCreateECLA": autoCreateECLA,
+	}
+
+	// Build the expression
+	expressionUpdate := expression.Set(expression.Name("auto_create_ecla"), expression.Value(autoCreateECLA))
+
+	expr, err := expression.NewBuilder().WithUpdate(expressionUpdate).Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for signature: %s, error: %v", signatureID, err)
+		return err
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		Key: map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: aws.String(signatureID),
+			},
+		},
+		ConditionExpression: expr.KeyCondition(),
+		TableName:           aws.String(repo.signatureTableName),
+		UpdateExpression:    expr.Update(),
+	}
+
+	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
+	if updateErr != nil {
+		log.WithFields(f).Warnf("error updating signature: %s, error: %v", signatureID, updateErr)
+		return updateErr
+	}
+
+	return nil
 }
 
 // getGerritUsers is a helper function to fetch the list of gerrit users for the specified type - results are returned through the specified results channel

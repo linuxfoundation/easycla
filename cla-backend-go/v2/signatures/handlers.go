@@ -1279,6 +1279,80 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		}
 		return signatures.NewInvalidateICLAOK().WithXRequestID(reqID)
 	})
+
+	api.SignaturesEclaAutoCreateHandler = signatures.EclaAutoCreateHandlerFunc(func(eacp signatures.EclaAutoCreateParams, u *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(eacp.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(u, eacp.XUSERNAME, eacp.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.signatures.handlers.SignaturesEclaAutoCreateHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     eacp.ClaGroupID,
+			"companyID":      eacp.CompanyID,
+		}
+
+		log.WithFields(f).Debug("Updating CCLA signature for the auto_create_ecla column...")
+
+		log.WithFields(f).Debug("Getting corporate signature...")
+		approved := true
+		signed := true
+
+		cclaSignature, err := v1SignatureService.GetCorporateSignature(ctx, eacp.ClaGroupID, eacp.CompanyID, &approved, &signed)
+		if err != nil {
+			msg := "unable to get corporate signature"
+			log.WithFields(f).Warn(msg)
+			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		company, err := companyService.GetCompany(ctx, eacp.CompanyID)
+		if err != nil {
+			msg := "unable to get company"
+			log.WithFields(f).Warn(msg)
+			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		claGroup, err := claGroupService.GetCLAGroupByID(ctx, eacp.ClaGroupID)
+		if err != nil {
+			msg := "unable to get CLA Group"
+			log.WithFields(f).Warn(msg)
+			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		// Ensure current user is in the Signature ACL
+		claManagers := cclaSignature.SignatureACL
+		if !utils.CurrentUserInACL(u, claManagers) {
+			msg := fmt.Sprintf("EasyCLA - 403 Forbidden - CLA Manager %s / %s is not authorized to approve request for company ID: %s / %s / %s, project ID: %s / %s / %s",
+				u.UserName, u.Email,
+				cclaSignature.CompanyName, company.CompanyExternalID, company.CompanyID,
+				claGroup.ProjectName, claGroup.ProjectExternalID, cclaSignature.ProjectID)
+			return signatures.NewEclaAutoCreateForbidden().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseForbidden(reqID, msg))
+		}
+
+		err = v2service.EclaAutoCreate(ctx, cclaSignature.SignatureID, eacp.Body.AutoCreateEcla)
+		if err != nil {
+			msg := "unable to update auto_create_ecla flag"
+			log.WithFields(f).Warn(msg)
+			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		eventsService.LogEvent(&events.LogEventArgs{
+			EventType:    events.SignatureAutoCreateECLAUpdated,
+			CLAGroupID:   eacp.ClaGroupID,
+			CompanyID:    eacp.CompanyID,
+			LfUsername:   u.UserName,
+			CLAGroupName: claGroup.ProjectName,
+			CompanyName:  company.CompanyName,
+			EventData: &events.SignatureAutoCreateECLAUpdatedEventData{
+				AutoCreateECLA: eacp.Body.AutoCreateEcla,
+			},
+		})
+		return signatures.NewEclaAutoCreateOK().WithXRequestID(reqID)
+	})
 }
 
 // getProjectIDsFromModels is a helper function to extract the project SFIDs from the project CLA Group models

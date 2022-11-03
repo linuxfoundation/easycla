@@ -440,6 +440,21 @@ type ClaManagerRoleDeletedData struct {
 	UserEmail string
 }
 
+// SugnatureAutoCreateECLAUpdatedEventData data model
+type SignatureAutoCreateECLAUpdatedEventData struct {
+	AutoCreateECLA bool
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *SignatureAutoCreateECLAUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The CLA Group %s (%s) has been updated auto-create ECLAs for new contributors : %t for the company: %s", args.CLAGroupName, args.CLAGroupID, ed.AutoCreateECLA, args.CompanyName)
+	if args.LfUsername != "" {
+		data = fmt.Sprintf("%s by %s", data, args.LfUsername)
+	}
+	data = data + "."
+	return data, true
+}
+
 // GetEventDetailsString returns the details string for this event
 func (ed *CLAGroupEnrolledProjectData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The project %s (%s) was enrolled into the CLA Group %s (%s)", args.ProjectName, args.ProjectID, args.CLAGroupName, args.CLAGroupID)
@@ -2650,6 +2665,25 @@ func (ed *ClaManagerRoleCreatedData) GetEventSummaryString(args *LogEventArgs) (
 // GetEventSummaryString returns the summary string for this event
 func (ed *ClaManagerRoleDeletedData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The user '%s' with email '%s' was added to the role %s", ed.UserName, ed.UserEmail, ed.Role)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, false
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *SignatureAutoCreateECLAUpdatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The user %s updated the auto-create ECLA flag to %t", args.LfUsername, ed.AutoCreateECLA)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}

@@ -93,6 +93,7 @@ const (
 	AssignUserRoleScopeType           = "lfx_org_service.assign_user_role_scope"
 	RemoveUserRoleScopeType           = "lfx_org_service.remove_user_role_scope"
 
-	ProjectServiceCLAEnabled  = "project.service.cla.enabled"
-	ProjectServiceCLADisabled = "project.service.cla.disabled"
+	ProjectServiceCLAEnabled       = "project.service.cla.enabled"
+	ProjectServiceCLADisabled      = "project.service.cla.disabled"
+	SignatureAutoCreateECLAUpdated = "signature.auto_create_ecla.updated"
 )
