@@ -23,7 +23,6 @@ BUILD_TAGS=-tags aws_lambda
 ifeq "$(shell uname -p)" "arm"
 	BUILD_ARCH=arm64
 else
-    # ifeq "$(shell uname -p)" "x86_64"
 	BUILD_ARCH=amd64
 endif
 ifeq "$(shell uname -s)" "Darwin"
@@ -241,14 +240,9 @@ build-linux: deps build-prep
 	@chmod +x $(BIN_DIR)/$(SERVICE)
 
 build-mac: deps build-prep
-	@echo "==> Building Mac OSX amd64 binary..."
-	env GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVICE)-mac main.go
+	@echo "==> Building Mac OSX $(BUILD_ARCH) binary..."
+	env GOOS=darwin GOARCH=$(BUILD_ARCH) go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVICE)-mac main.go
 	@chmod +x $(BIN_DIR)/$(SERVICE)-mac
-
-build-mac-arm64: deps build-prep
-	@echo "==> Building Mac OSX Arm64 binary..."
-	env GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVICE)-mac-arm64 main.go
-	@chmod +x $(BIN_DIR)/$(SERVICE)-mac-arm64
 
 rebuild-mac: clean fmt build-mac lint
 
