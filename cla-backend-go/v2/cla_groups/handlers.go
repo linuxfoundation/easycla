@@ -330,12 +330,29 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 			}
 		}
 
+		claProjectSFIDs := make([]string, 0)
+
+		// Get the list of projects already enrolled in the CLA Group
+		claGroupProjects, getProjectsErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, params.ClaGroupID)
+		if getProjectsErr != nil {
+			msg := fmt.Sprintf("problem loading projects for CLA Group by ID: %s", params.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+		}
+
+		if len(claGroupProjects) > 0 {
+			for _, claGroupProject := range claGroupProjects {
+				claProjectSFIDs = append(claProjectSFIDs, claGroupProject.ProjectSFID)
+			}
+		}
+
 		// Enroll the project(s) into the CLA Group
 		enrollCLAGroupErr := service.EnrollProjectsInClaGroup(ctx, &EnrollProjectsModel{
-			AuthUser:        authUser,
-			CLAGroupID:      params.ClaGroupID,
-			FoundationSFID:  claGroupModel.FoundationSFID,
-			ProjectSFIDList: params.ProjectSFIDList,
+			AuthUser:         authUser,
+			CLAGroupID:       params.ClaGroupID,
+			FoundationSFID:   claGroupModel.FoundationSFID,
+			ProjectSFIDList:  params.ProjectSFIDList,
+			ProjectLevel:     !claGroupModel.FoundationLevelCLA,
+			CLAGroupProjects: claProjectSFIDs,
 		})
 
 		if enrollCLAGroupErr != nil {

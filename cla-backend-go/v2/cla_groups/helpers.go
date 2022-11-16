@@ -142,21 +142,26 @@ func (s *service) validateClaGroupInput(ctx context.Context, input *models.Creat
 		return false, fmt.Errorf("bad request: invalid project_sfid_list. This project does not have subprojects defined in SF but some are provided as input")
 	}
 
-	// Any of the projects in an existing CLA Group?
-	log.WithFields(f).Debug("validating enrolled projects...")
-	err = s.validateEnrollProjectsInput(ctx, foundationSFID, input.ProjectSfidList)
+	projectLevelCLA := true
+	if isFoundationIDInList(*input.FoundationSfid, input.ProjectSfidList) {
+		projectLevelCLA = false
+	}
+
+	err = s.validateEnrollProjectsInput(ctx, foundationSFID, input.ProjectSfidList, projectLevelCLA, []string{})
 	if err != nil {
 		return false, err
 	}
 	return false, nil
 }
 
-func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFID string, projectSFIDList []string) error {
+func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFID string, projectSFIDList []string, projectLevel bool, claGroupProjects []string) error { //nolint
 	f := logrus.Fields{
-		"functionName":    "validateEnrollProjectsInput",
-		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
-		"foundationSFID":  foundationSFID,
-		"projectSFIDList": strings.Join(projectSFIDList, ","),
+		"functionName":     "validateEnrollProjectsInput",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+		"foundationSFID":   foundationSFID,
+		"projectSFIDList":  strings.Join(projectSFIDList, ","),
+		"projectLevel":     projectLevel,
+		"claGroupProjects": strings.Join(claGroupProjects, ","),
 	}
 
 	psc := v2ProjectService.GetClient()
@@ -191,6 +196,31 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 
 	// build Tree that tracks parent and child projects
 	projectTree := buildProjectNode(foundationProjectSummary)
+	log.WithFields(f).Debugf("projectTree: %+v", projectTree)
+
+	invalidSiblingProjects := []string{}
+	// Check to see if CLAGroup at ProjectLevel has no siblings
+	if projectLevel {
+		log.WithFields(f).Debugf("checking to see if CLAGroup at ProjectLevel has no siblings...")
+		for _, projectSFID := range projectSFIDList {
+			siblings := getSiblings(projectTree, projectSFID)
+			log.WithFields(f).Debugf("projectSFID: %s, siblings: %v", projectSFID, siblings)
+			if len(siblings) > 0 {
+				for _, claProject := range claGroupProjects {
+					for _, sibling := range siblings {
+						if sibling == claProject {
+							invalidSiblingProjects = append(invalidSiblingProjects, claProject)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if len(invalidSiblingProjects) > 0 {
+		log.WithFields(f).Warnf("validation failure - one of the input projects is a sibling of the project level CLA Group: %s", strings.Join(invalidSiblingProjects, ","))
+		return fmt.Errorf("validation failure - one of the input projects has siblings in the CLA Group: %s", strings.Join(invalidSiblingProjects, ","))
+	}
 
 	// Is our parent the LF project?
 	log.WithFields(f).Debugf("looking up LF parent project record...")
@@ -651,6 +681,9 @@ func getUniqueCLAGroupIDs(projectCLAGroupMappings []*projects_cla_groups.Project
 }
 
 func buildProjectNode(projectSummaryList []*v2ProjectServiceModels.ProjectSummary) *ProjectNode {
+	f := logrus.Fields{
+		"functionName": "buildProjectNode",
+	}
 	root := &ProjectNode{
 		ID:       "",
 		Name:     "",
@@ -660,14 +693,17 @@ func buildProjectNode(projectSummaryList []*v2ProjectServiceModels.ProjectSummar
 	parentSFID := ""
 	parentName := ""
 	for _, projectSummaryEntry := range projectSummaryList {
+		log.WithFields(f).Debugf("Processing project summary entry: %+v", *projectSummaryEntry)
 		// Get ParentProject
 		parentProjectModel, err := v2ProjectService.GetClient().GetParentProjectModel(projectSummaryEntry.ID)
 
 		if parentSFID == "" && err == nil && parentProjectModel != nil {
 			// Update our root node
-			root.Parent = nil
-			root.ID = parentProjectModel.ID
-			root.Name = parentProjectModel.Name
+			root.Parent = &ProjectNode{
+				ID:       parentProjectModel.ID,
+				Name:     parentProjectModel.Name,
+				Children: []*ProjectNode{root},
+			}
 
 			// Save the parentSFID
 			parentSFID = parentProjectModel.ID
@@ -686,6 +722,13 @@ func buildProjectNode(projectSummaryList []*v2ProjectServiceModels.ProjectSummar
 }
 
 func getLeafNodeFromProjectSFID(projectSFID, parentName, parentSFID string) *ProjectNode {
+	f := logrus.Fields{
+		"functionName": "getLeafNodeFromProjectSFID",
+		"projectSFID":  projectSFID,
+		"parentName":   parentName,
+		"parentSFID":   parentSFID,
+	}
+	log.WithFields(f).Debugf("building leaf node from projectSFID: %s", projectSFID)
 
 	// Get ParentProject
 	projectModel, err := v2ProjectService.GetClient().GetProject(projectSFID)
@@ -697,15 +740,14 @@ func getLeafNodeFromProjectSFID(projectSFID, parentName, parentSFID string) *Pro
 		ID:   projectModel.ID,
 		Name: projectModel.Name,
 		Parent: &ProjectNode{
-			ID:   parentName,
-			Name: parentSFID,
+			ID:   parentSFID,
+			Name: parentName,
 		},
 	}
 
 	// For this node, collect the list of child nodes...
 	for _, childNode := range projectModel.Projects {
 		node.Children = append(node.Children, getLeafNodeFromProjectSFID(childNode.ID, projectModel.Name, projectModel.ID))
-
 	}
 
 	return node
@@ -728,6 +770,52 @@ func findByID(node *ProjectNode, projectSFID string) *ProjectNode {
 	}
 
 	return nil
+}
+
+// getSiblings returns all siblings of a given projectSFID
+func getSiblings(root *ProjectNode, projectSFID string) []string {
+	f := logrus.Fields{
+		"functionName": "v2.project.utils.getSiblings",
+		"projectSFID":  projectSFID,
+	}
+
+	log.WithFields(f).Debugf("getting siblings for projectSFID: %s", projectSFID)
+
+	if root == nil {
+		return []string{}
+	}
+
+	siblings := make([]string, 0)
+
+	// stores nodes level wise
+	var queue ProjectStack
+
+	// push root node
+	queue.Push(root)
+
+	// traverse all levels
+	for !queue.IsEmpty() {
+		log.WithFields(f).Debugf("queue is not empty, processing next level")
+		tempNode := queue.Peek()
+		queue, _ = queue.Pop()
+		for _, child := range tempNode.Children {
+			if child.ID == projectSFID {
+				// add all children of tempNode to siblings aside from projectSFID
+				for _, sibling := range tempNode.Children {
+					if sibling.ID != projectSFID {
+						siblings = append(siblings, sibling.ID)
+					}
+				}
+				break
+			}
+			// push child node
+			queue.Push(child)
+		}
+
+	}
+	log.WithFields(f).Debugf("returning siblings: %+v", siblings)
+
+	return siblings
 }
 
 // allProjectsExistInTree searches for given list of projects in foundation items

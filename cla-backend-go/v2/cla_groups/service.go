@@ -994,7 +994,7 @@ func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollP
 	}
 
 	log.WithFields(f).Debug("validating enroll project input")
-	err := s.validateEnrollProjectsInput(ctx, request.FoundationSFID, request.ProjectSFIDList)
+	err := s.validateEnrollProjectsInput(ctx, request.FoundationSFID, request.ProjectSFIDList, request.ProjectLevel, request.CLAGroupProjects)
 	if err != nil {
 		return &utils.EnrollValidationError{
 			Type:    "enroll",

@@ -9,10 +9,12 @@ import (
 
 // EnrollProjectsModel model to encapsulate the enroll projects request
 type EnrollProjectsModel struct {
-	AuthUser        *auth.User
-	CLAGroupID      string
-	FoundationSFID  string
-	ProjectSFIDList []string
+	AuthUser         *auth.User
+	CLAGroupID       string
+	FoundationSFID   string
+	ProjectSFIDList  []string
+	ProjectLevel     bool
+	CLAGroupProjects []string
 }
 
 // UnenrollProjectsModel model to encapsulate the unenroll projects request
@@ -45,4 +47,27 @@ type ProjectNode struct {
 	ID       string
 	Name     string
 	Children []*ProjectNode
+}
+
+type ProjectStack []*ProjectNode
+
+func (s *ProjectStack) Push(v *ProjectNode) {
+	*s = append(*s, v)
+}
+
+func (s *ProjectStack) Pop() (ProjectStack, *ProjectNode) {
+	l := len(*s)
+	return (*s)[:l-1], (*s)[l-1]
+}
+
+func (s *ProjectStack) IsEmpty() bool {
+	return len(*s) == 0
+}
+
+func (s *ProjectStack) Peek() *ProjectNode {
+	return (*s)[len(*s)-1]
+}
+
+func (s *ProjectStack) Size() int {
+	return len(*s)
 }
