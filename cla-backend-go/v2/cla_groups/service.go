@@ -629,6 +629,15 @@ func (s *service) appendCLAGroupsForFoundation(ctx context.Context, f logrus.Fie
 				}
 			}
 
+			// skip project level CLA groups
+			if !claGroupModel.FoundationLevelCLA {
+				log.WithFields(f).Warnf("project by id: %s is not a foundation level CLA Group", projectCLAGroupClaGroupID)
+				claGroupResultChannel <- &CLAGroupResult{
+					claGroupModel: nil,
+					Error:         &utils.SFProjectNotFound{ProjectSFID: projectCLAGroupClaGroupID, Err: errors.New("not a foundation level CLA Group")},
+				}
+			}
+
 			claGroupResultChannel <- &CLAGroupResult{
 				claGroupModel: claGroupModel,
 				Error:         nil,
