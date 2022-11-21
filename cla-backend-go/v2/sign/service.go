@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/cla_groups"
 
 	"github.com/sirupsen/logrus"
 
@@ -62,16 +63,18 @@ type service struct {
 	projectRepo          ProjectRepo
 	projectClaGroupsRepo projects_cla_groups.Repository
 	companyService       company.IService
+	claGroupService      cla_groups.Service
 }
 
 // NewService returns an instance of v2 project service
-func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService) Service {
+func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service) Service {
 	return &service{
 		ClaV1ApiURL:          apiURL,
 		companyRepo:          compRepo,
 		projectRepo:          projectRepo,
 		projectClaGroupsRepo: pcgRepo,
 		companyService:       compService,
+		claGroupService:      claGroupService,
 	}
 }
 
@@ -186,8 +189,17 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 		claGroups := utils.NewStringSet()
 		for _, cg := range cgmlist {
-			claGroups.Add(cg.ClaGroupID)
+			claGroup, claGroupErr := s.claGroupService.GetCLAGroup(ctx, cg.ClaGroupID)
+			if err != nil {
+				log.WithFields(f).WithError(claGroupErr).Warn("unable to lookup cla group")
+				return nil, err
+			}
+			// ensure that cla group for project is a foundation level cla group
+			if claGroup != nil && claGroup.FoundationLevelCLA {
+				claGroups.Add(cg.ClaGroupID)
+			}
 		}
+
 		if claGroups.Length() > 1 {
 			// multiple cla group are linked with root_project
 			// so we can not determine which cla-group to use
