@@ -99,46 +99,6 @@ func (s Service) GetGitHubOrganizations(ctx context.Context, projectSFID string)
 	}
 	log.WithFields(f).Debugf("loaded %d GitHub organizations using projectSFID: %s", len(projectGithubModels.List), projectSFID)
 
-	// Lookup the parent
-	log.WithFields(f).Debugf("looking up parent for projectSFID: %s...", projectSFID)
-	parentProjectSFID, projErr := v2ProjectService.GetClient().GetParentProject(projectSFID)
-	if projErr != nil {
-		log.WithFields(f).Warnf("problem fetching project parent SFID, error: %+v", projErr)
-		return nil, projErr
-	}
-	if parentProjectSFID == "" {
-		parentProjectSFID = projectSFID
-	}
-
-	//Get SF Project
-	projectDetails, projDetailsErr := v2ProjectService.GetClient().GetProject(projectSFID)
-	if projDetailsErr != nil {
-		log.WithFields(f).Warnf("problem fetching parent project details for :%s ", projectSFID)
-		return nil, projDetailsErr
-	}
-
-	var parentGithubModels *models.GithubOrganizations
-	var parentErr error
-
-	// check if project is parent or has a parent to get parent github orgs
-	if parentProjectSFID != projectSFID && (projectDetails != nil && !utils.IsProjectHasRootParent(projectDetails)) {
-		log.WithFields(f).Debugf("found parent of projectSFID: %s to be %s. Searching github organization by parent SFID: %s...", projectSFID, parentProjectSFID, parentProjectSFID)
-		parentGithubModels, parentErr = s.repo.GetGitHubOrganizations(ctx, parentProjectSFID)
-	} else if parentProjectSFID == projectSFID {
-		log.WithFields(f).Debugf("%s is the parent. Searching github organization by parent SFID: %s...", projectSFID, parentProjectSFID)
-		parentGithubModels, parentErr = s.repo.GetGitHubOrganizationsByParent(ctx, parentProjectSFID)
-	}
-
-	if parentErr != nil {
-		log.WithFields(f).Warnf("problem fetching github organizations by parent projectSFID: %s , error: %+v", parentProjectSFID, err)
-		return nil, parentErr
-	}
-
-	if parentGithubModels != nil && len(parentGithubModels.List) >= 0 {
-		githubOrgs = append(githubOrgs, parentGithubModels.List...)
-	}
-	log.WithFields(f).Debugf("loaded %d GitHub organizations using projectSFID: %s", len(parentGithubModels.List), parentProjectSFID)
-
 	gitHubOrgModels.List = githubOrgs
 
 	// Remove potential duplicates

@@ -67,10 +67,25 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 	}
+	projectOrgSearch := projectSFID
+	pcg, pcgErr := s.projectsCLAGroupService.GetClaGroupIDForProject(ctx, projectSFID)
+	if pcgErr != nil {
+		if pcgErr == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
+			log.WithFields(f).Warnf("unable to locate project CLA Group mapping for project SFID: %s, error: %+v", projectSFID, pcgErr)
+		} else {
+			log.WithFields(f).WithError(pcgErr).Warnf("unable to load project CLA group for project SFID: %s", projectSFID)
+			return nil, pcgErr
+		}
+	}
+
+	if pcg != nil && pcg.FoundationSFID != "" {
+		log.WithFields(f).Debugf("Getting Github Organizations under foundation : %s", pcg.FoundationSFID)
+		projectOrgSearch = pcg.FoundationSFID
+	}
 
 	// Load the GitHub Organization and Repository details - result will be missing CLA Group info and ProjectSFID details
-	log.WithFields(f).Debugf("loading GitHub organizations for projectSFID: %s", projectSFID)
-	orgs, err := s.ghService.GetGitHubOrganizations(ctx, projectSFID)
+	log.WithFields(f).Debugf("loading GitHub organizations for projectSFID: %s", projectOrgSearch)
+	orgs, err := s.ghService.GetGitHubOrganizations(ctx, projectOrgSearch)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem loading github organizations from the project service")
 		return nil, err
@@ -81,6 +96,7 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	psc := v2ProjectService.GetClient()
 	log.WithFields(f).Debug("loading project details from the project service...")
 	project, err := psc.GetProject(projectSFID)
+
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem loading project details from the project service")
 		return nil, err
