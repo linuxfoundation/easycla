@@ -419,12 +419,14 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 
 	// If it's a project...
 	if utils.IsProjectCategory(sfProjectModelDetails, parentDetails) {
+		log.WithFields(f).Debugf("project SFID: %s is of type project ", projectOrFoundationSFID)
 		var appendErr error
 		foundationID, foundationName, appendErr = s.appendCLAGroupsForProject(ctx, f, projectOrFoundationSFID, sfProjectModelDetails, v1ClaGroups)
 		if appendErr != nil {
 			return nil, appendErr
 		}
 	} else if sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup {
+		log.WithFields(f).Debugf("project SFID: %s is of type project group ", projectOrFoundationSFID)
 		if err := s.appendCLAGroupsForFoundation(ctx, f, projectOrFoundationSFID, v1ClaGroups); err != nil {
 			return nil, err
 		}
@@ -626,15 +628,6 @@ func (s *service) appendCLAGroupsForFoundation(ctx context.Context, f logrus.Fie
 				claGroupResultChannel <- &CLAGroupResult{
 					claGroupModel: nil,
 					Error:         &utils.SFProjectNotFound{ProjectSFID: projectCLAGroupClaGroupID, Err: claGroupLookupErr},
-				}
-			}
-
-			// skip project level CLA groups
-			if !claGroupModel.FoundationLevelCLA {
-				log.WithFields(f).Warnf("project by id: %s is not a foundation level CLA Group", projectCLAGroupClaGroupID)
-				claGroupResultChannel <- &CLAGroupResult{
-					claGroupModel: nil,
-					Error:         &utils.SFProjectNotFound{ProjectSFID: projectCLAGroupClaGroupID, Err: errors.New("not a foundation level CLA Group")},
 				}
 			}
 
