@@ -772,6 +772,22 @@ func findByID(node *ProjectNode, projectSFID string) *ProjectNode {
 	return nil
 }
 
+// GetProjectDescendants returns all descendants of given projectSummary (salesforce)
+func GetProjectDescendants(projectSummary []*v2ProjectServiceModels.ProjectSummary) []string {
+
+	descendants := make([]string, 0)
+	for _, project := range projectSummary {
+		if len(project.Projects) > 0 {
+			descendants = append(descendants, project.ID)
+			for _, child := range project.Projects {
+				descendants = append(descendants, child.ID)
+			}
+		}
+	}
+
+	return descendants
+}
+
 // getSiblings returns all siblings of a given projectSFID
 func getSiblings(root *ProjectNode, projectSFID string) []string {
 	f := logrus.Fields{
