@@ -673,30 +673,57 @@ func (s *service) appendCLAGroupsForProject(ctx context.Context, f logrus.Fields
 
 	log.WithFields(f).Debugf("locating CLA Group mapping using projectOrFoundationSFID: '%s'...", projectOrFoundationSFID)
 	projectCLAGroup, lookupErr := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, projectOrFoundationSFID)
+
+	// in case project has no mapping check cla groups at the descendant level
 	if lookupErr != nil || projectCLAGroup == nil || projectCLAGroup.ClaGroupID == "" {
 		log.WithFields(f).WithError(lookupErr).Warnf("problem locating CLA group by project id: '%s'", projectOrFoundationSFID)
-		return "", "", &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
 	}
 
-	log.WithFields(f).Debugf("loading CLA Group by ID: '%s' - %+v", projectCLAGroup.ClaGroupID, projectCLAGroup)
-	v1ClaGroupsByProject, claGroupLoadErr := s.v1ProjectService.GetCLAGroupByID(ctx, projectCLAGroup.ClaGroupID)
-	if claGroupLoadErr != nil {
-		log.WithFields(f).Warnf("problem loading CLA group by id: '%s', error: %+v", projectCLAGroup.ClaGroupID, claGroupLoadErr)
-		return "", "", &utils.CLAGroupNotFound{CLAGroupID: projectCLAGroup.ClaGroupID, Err: claGroupLoadErr}
+	if projectCLAGroup != nil && projectCLAGroup.ClaGroupID != "" {
+		log.WithFields(f).Debugf("loading CLA Group by ID: '%s' - %+v", projectCLAGroup.ClaGroupID, projectCLAGroup)
+		v1ClaGroupsByProject, claGroupLoadErr := s.v1ProjectService.GetCLAGroupByID(ctx, projectCLAGroup.ClaGroupID)
+		if claGroupLoadErr != nil {
+			log.WithFields(f).Warnf("problem loading CLA group by id: '%s', error: %+v", projectCLAGroup.ClaGroupID, claGroupLoadErr)
+			return "", "", &utils.CLAGroupNotFound{CLAGroupID: projectCLAGroup.ClaGroupID, Err: claGroupLoadErr}
+		}
+
+		v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1ClaGroupsByProject)
 	}
 
-	v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1ClaGroupsByProject)
+	psc := v2ProjectService.GetClient()
 
-	v1CLAGroupData, v1ClaGroupErr := s.v1ProjectService.GetClaGroupByProjectSFID(ctx, projectOrFoundationSFID, false)
-	if v1ClaGroupErr != nil {
-		log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", v1ClaGroupErr)
-		return "", "", &utils.CLAGroupNotFound{CLAGroupID: projectOrFoundationSFID, Err: v1ClaGroupErr}
+	projectSummary, err := psc.GetSummary(ctx, projectOrFoundationSFID)
+	if err != nil {
+		log.WithFields(f).Warnf("problem loading project summary by id: '%s', error: %+v", projectOrFoundationSFID, err)
+		return "", "", err
 	}
 
-	_, found := Find(v1ClaGroups.Projects, v1CLAGroupData.ProjectID)
-	if !found {
-		v1ClaGroups.Projects = append(v1ClaGroups.Projects, *v1CLAGroupData)
+	log.WithFields(f).Debugf("Getting child projects for project: %s", projectOrFoundationSFID)
+
+	childProjects := GetProjectDescendants(projectSummary)
+	log.WithFields(f).Debugf("project descendant list: %+v", childProjects)
+
+	var wg sync.WaitGroup
+	wg.Add(len(childProjects))
+
+	for _, childProject := range childProjects {
+		go func(childProject string) {
+			defer wg.Done()
+			log.WithFields(f).Debugf("Getting CLA Group for child project: %s", childProject)
+			claData, v1ClaGroupErr := s.v1ProjectService.GetClaGroupByProjectSFID(ctx, childProject, false)
+			if v1ClaGroupErr != nil {
+				log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", v1ClaGroupErr)
+				return
+			}
+			_, found := Find(v1ClaGroups.Projects, claData.ProjectID)
+			if !found {
+				v1ClaGroups.Projects = append(v1ClaGroups.Projects, *claData)
+			}
+		}(childProject)
 	}
+
+	wg.Wait()
+
 	return foundationID, foundationName, nil
 }
 
