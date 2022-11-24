@@ -194,8 +194,9 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 				log.WithFields(f).WithError(claGroupErr).Warn("unable to lookup cla group")
 				return nil, err
 			}
+
 			// ensure that cla group for project is a foundation level cla group
-			if claGroup != nil && claGroup.FoundationLevelCLA {
+			if claGroup != nil && cg.ProjectSFID == utils.StringValue(input.ProjectSfid) {
 				claGroups.Add(cg.ClaGroupID)
 			}
 		}
