@@ -39,7 +39,7 @@ var ErrRepositoryDoesNotExist = errors.New("repository does not exist")
 // RepositoryInterface contains functions of the repositories service
 type RepositoryInterface interface {
 	GitHubAddRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
-	GitHubUpdateRepository(ctx context.Context, repositoryID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
+	GitHubUpdateRepository(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
 	GitHubUpdateClaGroupID(ctx context.Context, repositoryID, claGroupID string) error
 	GitHubEnableRepository(ctx context.Context, repositoryID string) error
 	GitHubEnableRepositoryWithCLAGroupID(ctx context.Context, repositoryID, claGroupID string) error
@@ -138,7 +138,7 @@ func (r *Repository) GitHubAddRepository(ctx context.Context, externalProjectID 
 }
 
 // GitHubUpdateRepository updates the repository record for given ID
-func (r *Repository) GitHubUpdateRepository(ctx context.Context, repositoryID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+func (r *Repository) GitHubUpdateRepository(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
 
 	externalID := utils.StringValue(input.RepositoryExternalID)
 	repositoryName := utils.StringValue(input.RepositoryName)
@@ -156,6 +156,8 @@ func (r *Repository) GitHubUpdateRepository(ctx context.Context, repositoryID st
 		"repositoryOrganizationName": repositoryOrganizationName,
 		"repositoryType":             repositoryType,
 		"repositoryURL":              repositoryURL,
+		"projectSFDID":               projectSFID,
+		"parentProjectSFID":          parentProjectSFID,
 	}
 
 	log.WithFields(f).Debugf("updating CombinedRepository : %s... ", repositoryID)
@@ -236,6 +238,20 @@ func (r *Repository) GitHubUpdateRepository(ctx context.Context, repositoryID st
 		expressionAttributeNames["#EN"] = aws.String("enabled")
 		expressionAttributeValues[":en"] = &dynamodb.AttributeValue{BOOL: input.Enabled}
 		updateExpression = updateExpression + " #EN = :en, "
+	}
+
+	if projectSFID != "" && repoModel.RepositoryProjectSfid != projectSFID {
+		log.WithFields(f).Debugf("adding projectSFID : %s ", projectSFID)
+		expressionAttributeNames["#P"] = aws.String("project_sfid")
+		expressionAttributeValues[":p"] = &dynamodb.AttributeValue{S: aws.String(projectSFID)}
+		updateExpression = updateExpression + " #P = :p, "
+	}
+
+	if parentProjectSFID != "" {
+		log.WithFields(f).Debugf("adding parentProjectSFID : %s ", parentProjectSFID)
+		expressionAttributeNames["#PP"] = aws.String("repository_sfdc_id")
+		expressionAttributeValues[":pp"] = &dynamodb.AttributeValue{S: aws.String(parentProjectSFID)}
+		updateExpression = updateExpression + " #PP = :pp, "
 	}
 
 	_, currentTimeString := utils.CurrentTime()
@@ -835,29 +851,32 @@ func (r *Repository) setEnabledGithubRepository(ctx context.Context, repositoryI
 
 	_, now := utils.CurrentTime()
 	log.WithFields(f).Debug("updating repository record")
+
+	note := fmt.Sprintf("%s%s on %s", existingNote, enabledString, now)
+
+	updateExpression := expression.Set(expression.Name(repositoryEnabledColumn), expression.Value(enabled)).Set(expression.Name("note"), expression.Value(note)).Set(expression.Name("date_modified"), expression.Value(now))
+
+	// delete project_sfid and repository_sfdc_id if enabled is false
+	if !enabled {
+		updateExpression = updateExpression.Remove(expression.Name("project_sfid")).Remove(expression.Name("repository_sfdc_id"))
+	}
+
+	expr, exprErr := expression.NewBuilder().WithUpdate(updateExpression).Build()
+	if exprErr != nil {
+		log.WithFields(f).Warnf("error building expression for updating repository record, error: %v", exprErr)
+		return exprErr
+	}
+
 	_, err := r.dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"repository_id": {S: aws.String(repositoryID)},
 		},
-		ExpressionAttributeNames: map[string]*string{
-			"#enabled":      aws.String(repositoryEnabledColumn),
-			"#note":         aws.String("note"),
-			"#dateModified": aws.String("date_modified"),
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":enabledValue": {
-				BOOL: aws.Bool(enabled),
-			},
-			":noteValue": {
-				S: aws.String(fmt.Sprintf("%s%s on %s", existingNote, enabledString, now)), // Add to existing note, if set
-			},
-			":dateModifiedValue": {
-				S: aws.String(now),
-			},
-		},
-		UpdateExpression: aws.String("SET #enabled = :enabledValue, #note = :noteValue, #dateModified = :dateModifiedValue"),
-		TableName:        aws.String(r.repositoryTableName),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		UpdateExpression:          expr.Update(),
+		TableName:                 aws.String(r.repositoryTableName),
 	})
+
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {

@@ -243,7 +243,7 @@ func (s *eventHandlerService) handleRepositoryRenamedAction(ctx context.Context,
 
 	log.WithFields(f).Infof("renaming Github Repository from : %s to : %s", repoModel.RepositoryName, *repo.Name)
 
-	if _, err := s.gitV1Repository.GitHubUpdateRepository(ctx, repoModel.RepositoryID, &models.GithubRepositoryInput{
+	if _, err := s.gitV1Repository.GitHubUpdateRepository(ctx, repoModel.RepositoryID, "", "", &models.GithubRepositoryInput{
 		RepositoryName: repo.Name,
 		Note:           "repository was renamed externally",
 	}); err != nil {
@@ -364,7 +364,7 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 		return fmt.Errorf("aborting the repository : %s transfer, new githubOrg : %s doesn't have claGroupID set", repoModel.RepositoryName, newGithubOrg.OrganizationName)
 	}
 
-	_, err = s.gitV1Repository.GitHubUpdateRepository(ctx, repoModel.RepositoryID, &models.GithubRepositoryInput{
+	_, err = s.gitV1Repository.GitHubUpdateRepository(ctx, repoModel.RepositoryID, "", "", &models.GithubRepositoryInput{
 		Note:                       fmt.Sprintf("repository was transferred from org : %s to : %s", oldGithubOrg.OrganizationName, newGithubOrg.OrganizationName),
 		RepositoryOrganizationName: aws.String(newGithubOrg.OrganizationName),
 		RepositoryURL:              repo.HTMLURL,
