@@ -55,7 +55,7 @@ func (mr *MockRepositoryMockRecorder) AddGithubRepository(ctx, externalProjectID
 }
 
 // UpdateGithubRepository mocks base method
-func (m *MockRepository) GitHubUpdateRepository(ctx context.Context, repositoryID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+func (m *MockRepository) GitHubUpdateRepository(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GitHubUpdateRepository", ctx, repositoryID, input)
 	ret0, _ := ret[0].(*models.GithubRepository)
