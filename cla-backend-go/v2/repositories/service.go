@@ -228,7 +228,7 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 				}
 
 				// Update Repo details in case of any changes
-				updatedRepository, updateErr := s.gitV1Repository.GitHubUpdateRepository(ctx, existingRepositoryModel.RepositoryID, v1Input)
+				updatedRepository, updateErr := s.gitV1Repository.GitHubUpdateRepository(ctx, existingRepositoryModel.RepositoryID, projectSFID, parentProjectSFID, v1Input)
 				if updateErr != nil {
 					log.WithFields(f).WithError(updateErr).Warnf("unable to update GitHub repository with name: %s, id: %s, using input: %+v", utils.StringValue(ghRepo.FullName), existingRepositoryModel.RepositoryID, v1Input)
 					return nil, updateErr
