@@ -12,6 +12,7 @@ ZIPBUILDER_BIN = zipbuilder-lambda
 GITLAB_REPO_CHECK_BIN = gitlab-repository-check-lambda
 FUNCTIONAL_TESTS_BIN = functional-tests
 USER_SUBSCRIBE_BIN = user-subscribe-lambda
+REPOSITORY_UPDATE_BIN = repository-update-tool
 MAKEFILE_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 BUILD_TIME=$(shell sh -c 'date -u +%FT%T%z')
 VERSION := $(shell sh -c 'git describe --always --tags')
@@ -42,11 +43,11 @@ SWAGGER_ASSET_URL="https://github.com/go-swagger/go-swagger/releases/download/$(
 GO_PKGS=$(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/)
 GO_FILES=$(shell find . -type f -name '*.go' -not -path './vendor/*')
 
-.PHONY: generate setup setup-dev setup-deploy clean-all clean swagger up fmt test run deps build build-mac build-aws-lambda user-subscribe-lambda qc lint
+.PHONY: generate setup setup-dev setup-deploy clean-all clean swagger up fmt test run deps build build-mac build-aws-lambda user-subscribe-lambda qc lint repository-update-tool
 
 all: all-mac
-all-mac: clean swagger deps fmt build-mac build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac build-gitlab-repository-check-lambda-mac test lint
-all-linux: clean swagger deps fmt build-linux build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux build-gitlab-repository-check-lambda-linux test lint
+all-mac: clean swagger deps fmt build-mac build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac build-gitlab-repository-check-lambda-mac build-repository-update-mac test lint
+all-linux: clean swagger deps fmt build-linux build-aws-lambda-linux build-user-subscribe-lambda-linux build-metrics-lambda-linux build-dynamo-events-lambda-linux build-zipbuilder-scheduler-lambda-linux build-zipbuilder-lambda-linux build-gitlab-repository-check-lambda-linux build-repository-update-linux test lint
 lambdas-mac: build-lambdas-mac
 build-lambdas-mac: build-aws-lambda-mac build-user-subscribe-lambda-mac build-metrics-lambda-mac build-metrics-report-lambda-mac build-dynamo-events-lambda-mac build-zipbuilder-scheduler-lambda-mac build-zipbuilder-lambda-mac build-gitlab-repository-check-lambda-mac
 lambdas: build-lambdas-linux
@@ -343,6 +344,17 @@ build-functional-tests-mac: deps build-prep
 	@echo "==> Building Functional Tests for OSX amd64 binary..."
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN)-mac cmd/functional_tests/main.go
 	@chmod +x $(BIN_DIR)/$(FUNCTIONAL_TESTS_BIN)-mac
+
+build-repository-update: build-repository-update-linux
+build-repository-update-linux: deps build-prep
+	@echo "==> Building a statically linked Linux amd64 binary..."
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(REPOSITORY_UPDATE_BIN) cmd/repository_project_update/main.go
+	@chmod +x $(BIN_DIR)/$(REPOSITORY_UPDATE_BIN)
+
+build-repository-update-mac: deps build-prep
+	@echo "==> Building a statically linked Mac OSX amd64 binary..."
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(REPOSITORY_UPDATE_BIN)-mac cmd/repository_project_update/main.go
+	@chmod +x $(BIN_DIR)/$(REPOSITORY_UPDATE_BIN)-mac
 
 lint:
 	@cd $(MAKEFILE_DIR) && $(LINT_TOOL) version && echo "==> Running lint..." && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "==> Lint check passed."
