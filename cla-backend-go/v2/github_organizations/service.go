@@ -67,7 +67,8 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"projectSFID":    projectSFID,
 	}
-	projectOrgSearch := projectSFID
+	var orgs *v1Models.GithubOrganizations
+	var orgErr error
 	pcg, pcgErr := s.projectsCLAGroupService.GetClaGroupIDForProject(ctx, projectSFID)
 	if pcgErr != nil {
 		if pcgErr == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
@@ -80,16 +81,18 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 
 	if pcg != nil && pcg.FoundationSFID != "" {
 		log.WithFields(f).Debugf("Getting Github Organizations under foundation : %s", pcg.FoundationSFID)
-		projectOrgSearch = pcg.FoundationSFID
+		orgs, orgErr = s.repo.GetGitHubOrganizationsByParent(ctx, pcg.FoundationSFID)
+	} else {
+		log.WithFields(f).Debugf("Getting Github Organizations under project : %s", projectSFID)
+		orgs, orgErr = s.repo.GetGitHubOrganizations(ctx, projectSFID)
+	}
+
+	if orgErr != nil {
+		log.WithFields(f).Warnf("problem loading github organizations for project : %s, error: %+v", projectSFID, orgErr)
+		return nil, orgErr
 	}
 
 	// Load the GitHub Organization and Repository details - result will be missing CLA Group info and ProjectSFID details
-	log.WithFields(f).Debugf("loading GitHub organizations for projectSFID: %s", projectOrgSearch)
-	orgs, err := s.ghService.GetGitHubOrganizations(ctx, projectOrgSearch)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem loading github organizations from the project service")
-		return nil, err
-	}
 	log.WithFields(f).Debugf("discovered %d GitHub organizations for projectSFID: %s", len(orgs.List), projectSFID)
 	orgs.List = s.ghService.RemoveDuplicates(orgs.List)
 
