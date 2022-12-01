@@ -1214,6 +1214,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 
 	// Determine query index (foundation or project)
 	if !utils.IsProjectCategory(projectDetails, parentProjectDetails) {
+		log.WithFields(f).Debugf("projectSFID: %s is of project group type", projectSFID)
 		// get all projects for all cla group under foundation
 		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForFoundation(ctx, projectSFID)
 		if err != nil {
@@ -1222,6 +1223,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 		}
 	} else {
 		// get cla group id from project
+		log.WithFields(f).Debugf("projectSFID: %s is of project type", projectSFID)
 		projectMapping, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 		if perr != nil {
 			log.WithFields(f).WithError(perr).Warnf("unable to get CLA group IDs for project SFID: %s", projectSFID)
@@ -1272,6 +1274,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 			defer wg.Done()
 			// get cla-group info
 			cginfo, err := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
+			log.WithFields(f).Debugf("clagroup info : %+v", cginfo)
 			if err != nil || cginfo == nil {
 				log.WithFields(f).Warnf("Unable to get details of cla_group: %s", claGroupID)
 				return
@@ -1292,7 +1295,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 					subProject, ok := v2ProjectMap[spid]
 					if !ok {
 						log.WithFields(f).Warnf("Unable to fill details for cla_group: %s with project details of %s", claGroupID, spid)
-						return
+						continue
 					}
 					claGroup.SubProjects = append(claGroup.SubProjects, subProject.Name)
 				}
