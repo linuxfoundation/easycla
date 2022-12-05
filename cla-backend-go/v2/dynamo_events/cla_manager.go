@@ -166,16 +166,16 @@ func (s service) assignCLAManager(ctx context.Context, email, username, companyS
 		return errors.New(msg)
 	}
 
-	// check if project is signed at foundation level
-	foundationID := projectList[0].FoundationSFID
-	f["foundationID"] = projectList[0].FoundationSFID
-	log.WithFields(f).Debugf("using first project's foundation ID: %s", foundationID)
+	// // check if project is signed at foundation level
+	// foundationID := projectList[0].FoundationSFID
+	// f["foundationID"] = projectList[0].FoundationSFID
+	// log.WithFields(f).Debugf("using first project's foundation ID: %s", foundationID)
 
-	log.WithFields(f).Debugf("determining if this project happens to be signed at the foundation level, foundationID: %s", foundationID)
-	signedAtFoundation, signedErr := s.projectService.SignedAtFoundationLevel(ctx, foundationID)
-	if signedErr != nil {
-		return signedErr
-	}
+	// log.WithFields(f).Debugf("determining if this project happens to be signed at the foundation level, foundationID: %s", foundationID)
+	// signedAtFoundation, signedErr := s.projectService.SignedAtFoundationLevel(ctx, foundationID)
+	// if signedErr != nil {
+	// 	return signedErr
+	// }
 
 	acsClient := v2AcsService.GetClient()
 	log.WithFields(f).Debugf("locating role ID for role: %s", utils.CLAManagerRole)
@@ -187,43 +187,35 @@ func (s service) assignCLAManager(ctx context.Context, email, username, companyS
 
 	orgService := v2OrgService.GetClient()
 
-	if signedAtFoundation {
-		// add cla manager role at foundation level
-		err := orgService.CreateOrgUserRoleOrgScopeProjectOrg(ctx, email, foundationID, companySFID, claManagerRoleID)
-		if err != nil {
-			log.WithFields(f).Warnf("unable to add %s scope. error = %s", utils.CLAManagerRole, err)
-		}
-	} else {
-		projectSFIDList := utils.NewStringSet()
-		for _, p := range projectList {
-			projectSFIDList.Add(p.ProjectSFID)
-		}
+	projectSFIDList := utils.NewStringSet()
+	for _, p := range projectList {
+		projectSFIDList.Add(p.ProjectSFID)
+	}
 
-		var assignErr error
-		var wg sync.WaitGroup
-		wg.Add(len(projectSFIDList.List()))
+	var assignErr error
+	var wg sync.WaitGroup
+	wg.Add(len(projectSFIDList.List()))
 
-		// add user as cla-manager for all projects of cla-group
-		for _, projectSFID := range projectSFIDList.List() {
-			go func(projectSFID string) {
-				defer wg.Done()
-				err := orgService.CreateOrgUserRoleOrgScopeProjectOrg(ctx, email, projectSFID, companySFID, claManagerRoleID)
+	// add user as cla-manager for all projects of cla-group
+	for _, projectSFID := range projectSFIDList.List() {
+		go func(projectSFID string) {
+			defer wg.Done()
+			log.WithFields(f).Debugf("assigning role: %s to user: %s with email: %s for project: %s", utils.CLAManagerRole, username, email, projectSFID)
+			err := orgService.CreateOrgUserRoleOrgScopeProjectOrg(ctx, email, projectSFID, companySFID, claManagerRoleID)
+			if err != nil {
+				log.WithFields(f).Warnf("unable to add %s scope for project: %s, company: %s using roleID: %s for user email: %s. error = %s",
+					utils.CLAManagerRole, projectSFID, companySFID, claManagerRoleID, email, err)
 				if err != nil {
-					log.WithFields(f).Warnf("unable to add %s scope for project: %s, company: %s using roleID: %s for user email: %s. error = %s",
-						utils.CLAManagerRole, projectSFID, companySFID, claManagerRoleID, email, err)
-					if err != nil {
-						assignErr = err
-					}
+					assignErr = err
 				}
-			}(projectSFID)
-		}
+			}
+		}(projectSFID)
+	}
 
-		wg.Wait()
+	wg.Wait()
 
-		if assignErr != nil {
-			return assignErr
-		}
-
+	if assignErr != nil {
+		return assignErr
 	}
 
 	return nil
