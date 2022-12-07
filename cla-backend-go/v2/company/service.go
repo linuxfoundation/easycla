@@ -1193,55 +1193,27 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 	}
 	log.WithFields(f).Debug("loaded project SFID")
 
-	parentProject, err := psc.GetParentProject(projectSFID)
-	if err != nil {
-		return nil, err
-	}
-
-	log.WithFields(f).Debug("loading parent project...")
-
-	var parentProjectDetails *v2ProjectServiceModels.ProjectOutputDetailed
-
-	if parentProject != "" {
-		parentProjectDetails, err = psc.GetProject(parentProject)
-		if err != nil {
-			return nil, err
-		}
-	}
-	log.WithFields(f).Debug("loaded parent Project")
-
 	var allProjectMapping []*projects_cla_groups.ProjectClaGroup
 
-	// Determine query index (foundation or project)
-	if !utils.IsProjectCategory(projectDetails, parentProjectDetails) {
-		log.WithFields(f).Debugf("projectSFID: %s is of project group type", projectSFID)
-		// get all projects for all cla group under foundation
-		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForFoundation(ctx, projectSFID)
+	// get cla group id from project
+	log.WithFields(f).Debugf("projectSFID: %s is of project type", projectSFID)
+	projectMapping, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
+	if perr != nil {
+		log.WithFields(f).WithError(perr).Warnf("unable to get CLA group IDs for project SFID: %s", projectSFID)
+		return nil, err
+	}
+	// get all projects for that cla group
+	allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, projectMapping.ClaGroupID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get project IDs for CLA Group: %s", projectMapping.ClaGroupID)
+		return nil, err
+	}
+	if len(allProjectMapping) > 1 && projectDetails.Foundation != nil && projectDetails.Foundation.ID != "" {
+		// reload data in projectDetails for all projects of foundation
+		projectDetails, err = psc.GetProject(projectDetails.Foundation.ID)
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to get project IDs for foundation SFID: %s", projectSFID)
+			log.WithFields(f).WithError(err).Warnf("unable to load project from project service using SFID: %s", projectDetails.Foundation.ID)
 			return nil, err
-		}
-	} else {
-		// get cla group id from project
-		log.WithFields(f).Debugf("projectSFID: %s is of project type", projectSFID)
-		projectMapping, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
-		if perr != nil {
-			log.WithFields(f).WithError(perr).Warnf("unable to get CLA group IDs for project SFID: %s", projectSFID)
-			return nil, err
-		}
-		// get all projects for that cla group
-		allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, projectMapping.ClaGroupID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to get project IDs for CLA Group: %s", projectMapping.ClaGroupID)
-			return nil, err
-		}
-		if len(allProjectMapping) > 1 && projectDetails.Foundation != nil && projectDetails.Foundation.ID != "" {
-			// reload data in projectDetails for all projects of foundation
-			projectDetails, err = psc.GetProject(projectDetails.Foundation.ID)
-			if err != nil {
-				log.WithFields(f).WithError(err).Warnf("unable to load project from project service using SFID: %s", projectDetails.Foundation.ID)
-				return nil, err
-			}
 		}
 	}
 
