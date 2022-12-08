@@ -116,7 +116,7 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 	log.WithFields(f).Debug("validating CLA Group input")
 	standaloneProject, err := s.validateClaGroupInput(ctx, input)
 	if err != nil {
-		log.WithFields(f).Warnf("validation of create cla group input failed")
+		log.WithFields(f).WithError(err).Warnf("validation of CLA Group input failed")
 		return nil, err
 	}
 

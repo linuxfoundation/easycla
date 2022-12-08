@@ -227,11 +227,15 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 	isLFParent := false
 	// if we have a project tree parent ID - check to see if it is one of our root parents
 	if projectTree != nil && projectTree.Parent != nil && projectTree.Parent.ID != "" {
+		log.WithFields(f).Debug("checking if parent project is the Linux Foundation or LF Projects LLC...")
 		isLFParent, err = psc.IsTheLinuxFoundation(projectTree.Parent.ID)
+
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup %s or %s project", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 			return err
 		}
+
+		log.WithFields(f).Debugf("isLFParent: %t", isLFParent)
 	}
 
 	// Make sure each project exists in the project service
@@ -241,12 +245,10 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 			return fmt.Errorf("validation failure - unable to lookup project by ID %s due to the error: %+v", projectSFID, err)
 		}
 
-		if projectTree != nil && projectTree.Parent != nil && (!isLFParent && (foundationProjectDetails.ProjectType == utils.ProjectTypeProjectGroup && projectDetails.ProjectType != utils.ProjectTypeProjectGroup)) {
-			msg := fmt.Sprintf("input validation failure - foundationSFID: %s , foundationType: %s , projectSFID: %s , projectType: %s ",
-				foundationProjectDetails.Foundation.ID, foundationProjectDetails.ProjectType, projectSFID, projectDetails.ProjectType)
-			log.WithFields(f).Warnf(msg)
-			return fmt.Errorf(msg)
+		if projectDetails == nil {
+			return fmt.Errorf("validation failure - unable to lookup project by ID %s", projectSFID)
 		}
+
 	}
 
 	// Check to see if all the provided enrolled projects are part of this foundation
