@@ -259,6 +259,8 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 
 	// gitlabSupportURL := "https://about.gitlab.com/support"
 	easyCLASupportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
+	faq := "https://docs.linuxfoundation.org/lfx/easycla/v2-current/getting-started/easycla-troubleshooting#github-unable-to-contribute-to-easycla-enforced-repositories"
+
 	if len(missingUsers) > 0 {
 		result += "<ul>"
 		for _, missingUser := range missingUsers {
@@ -271,7 +273,8 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
                             your affiliation on the page that appears.
                             For further assistance with EasyCLA,
                             <a href='%s' target='_blank'>please submit a support request ticket</a>.
-                            </li>`, authorInfo, signURL, easyCLASupportURL)
+							<a href='%s' target='_blank'>Consult the FAQ</a> for more information.
+                            </li>`, authorInfo, signURL, easyCLASupportURL, faq)
 				result += msg
 				body = confirmationNeededBadge
 			} else {
@@ -280,7 +283,8 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
                             <a href='%s'>Please click here to be authorized</a>.
                             For further assistance with EasyCLA,
                             <a href='%s' target='_blank'>please submit a support request ticket</a>.
-                            </li>`, signURL, failed, authorInfo, signURL, easyCLASupportURL)
+							<a href='%s' target='_blank'>Consult the FAQ</a> for more information.
+                            </li>`, signURL, failed, authorInfo, signURL, easyCLASupportURL, faq)
 				result += msg
 				body = failedBadge
 			}
