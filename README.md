@@ -21,7 +21,7 @@ The EasyCL system leverages the following third party services:
 * [Docusign](https://www.docusign.com/) for CLA agreement e-sign flow
 * [Docraptor](https://docraptor.com/) for converting CLA templates into PDF files
 * [GitHub](https://github.com/) for GitHub PR CLA authorization checking/gating
-* Gerrit for CLA authorization review checking/gating  
+* Gerrit for CLA authorization review checking/gating
 * Auth0 For Single Sign On
 * Salesforce via the LFX Platform APIs
 
@@ -69,7 +69,7 @@ The following diagram illustrates the EasyCLA release process:
 
 ## License
 
-Copyright The Linux Foundation and each contributor to CommunityBridge. 
+Copyright The Linux Foundation and each contributor to CommunityBridge.
 
 This project’s source code is licensed under the MIT License. A copy of the license is available in LICENSE.
 
