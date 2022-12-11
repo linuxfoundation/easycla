@@ -19,13 +19,14 @@
     "install": "^0.13.0",
     "node.extend": "^2.0.2",
     "request": "^2.88.0",
-    "serverless": "^3.23.0",
-    "serverless-finch": "^2.6.0",
-    "serverless-layers": "^2.5.1",
+    "serverless": "^3.25.1",
+    "serverless-finch": "^4.0.0",
+    "serverless-layers": "^2.5.4",
     "serverless-plugin-tracing": "^2.0.0",
-    "serverless-prune-plugin": "^1.5.1"
+    "serverless-prune-plugin": "^2.0.1"
   },
   "resolutions": {
+    "async": "^3.2.2",
     "axios": "^0.21.4",
     "ansi-regex": "^5.0.1",
     "file-type": "^16.5.4",
@@ -35,6 +36,7 @@
     "json-schema": "^0.4.0",
     "minimist": "^1.2.6",
     "normalize-url": "^4.5.1",
+    "qs": "^6.9.7",
     "set-value": "^4.0.1",
     "ws": "^7.4.6",
     "xmlhttprequest-ssl": "^1.6.2"
