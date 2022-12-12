@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 service: cla-backend
-frameworkVersion: '^3.23.0'
+frameworkVersion: '^3.25.1'
 variablesResolutionMode: 20210326
 
 package:
@@ -75,7 +75,7 @@ custom:
     - primaryDomain:
       domainName: ${self:custom.product.domain.name.${sls:stage}, self:custom.product.domain.name.other}
       stage: ${sls:stage}
-      basePath: ''  # a value of '/' will not work
+      basePath: '' # a value of '/' will not work
       securityPolicy: tls_1_2
       apiType: rest
       certificateArn: ${self:custom.certificate.arn.${sls:stage}, self:custom.certificate.arn.other}
@@ -86,7 +86,7 @@ custom:
     - alternateDomain:
       domainName: ${self:custom.product.domain.alt.${sls:stage}, self:custom.product.domain.alt.other}
       stage: ${sls:stage}
-      basePath: ''  # a value of '/' will not work
+      basePath: '' # a value of '/' will not work
       securityPolicy: tls_1_2
       apiType: rest
       certificateArn: ${self:custom.certificate.arn.${sls:stage}, self:custom.certificate.arn.other}
@@ -135,18 +135,18 @@ provider:
       # Alongside provider.iam.role.statements managed policies can also be added to this service-wide Role
       # These will also be merged into the generated IAM Role
       managedPolicies:
-        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-        - "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole'
       statements:
         - Effect: Allow
           Action:
             - cloudwatch:*
-          Resource: "*"
+          Resource: '*'
         - Effect: Allow
           Action:
             - xray:PutTraceSegments
             - xray:PutTelemetryRecords
-          Resource: "*"
+          Resource: '*'
         - Effect: Allow
           Action:
             - s3:GetObject
@@ -154,30 +154,30 @@ provider:
             - s3:DeleteObject
             - s3:PutObjectAcl
           Resource:
-            - "arn:aws:s3:::cla-signature-files-${sls:stage}/*"
-            - "arn:aws:s3:::cla-project-logo-${sls:stage}/*"
+            - 'arn:aws:s3:::cla-signature-files-${sls:stage}/*'
+            - 'arn:aws:s3:::cla-project-logo-${sls:stage}/*'
         - Effect: Allow
           Action:
             - s3:ListBucket
           Resource:
-            - "arn:aws:s3:::cla-signature-files-${sls:stage}"
-            - "arn:aws:s3:::cla-project-logo-${sls:stage}"
+            - 'arn:aws:s3:::cla-signature-files-${sls:stage}'
+            - 'arn:aws:s3:::cla-project-logo-${sls:stage}'
         - Effect: Allow
           Action:
             - lambda:InvokeFunction
           Resource:
-            - "arn:aws:lambda:${self:provider.region}:${aws:accountId}:function:cla-backend-${sls:stage}-zipbuilder-lambda"
+            - 'arn:aws:lambda:${self:provider.region}:${aws:accountId}:function:cla-backend-${sls:stage}-zipbuilder-lambda'
         - Effect: Allow
           Action:
             - ssm:GetParameter
           Resource:
-            - "arn:aws:ssm:${self:provider.region}:${aws:accountId}:parameter/cla-*"
+            - 'arn:aws:ssm:${self:provider.region}:${aws:accountId}:parameter/cla-*'
         - Effect: Allow
           Action:
             - ses:SendEmail
             - ses:SendRawEmail
           Resource:
-            - "*"
+            - '*'
           Condition:
             StringEquals:
               ses:FromAddress: ${self:custom.ses_from_email.${sls:stage}}
@@ -185,12 +185,12 @@ provider:
           Action:
             - sns:Publish
           Resource:
-            - "*"
+            - '*'
         - Effect: Allow
           Action:
             - sqs:SendMessage
           Resource:
-            - "*"
+            - '*'
         - Effect: Allow
           Action:
             - dynamodb:Query
@@ -206,93 +206,93 @@ provider:
             - dynamodb:DescribeStream
             - dynamodb:ListStreams
           Resource:
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-ccla-whitelist-requests"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-companies"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-company-invites"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gerrit-instances"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-github-orgs"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-session-store"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-store"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-user-permissions"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-metrics"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects-cla-groups"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs"
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-ccla-whitelist-requests'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-companies'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-company-invites'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gerrit-instances'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-github-orgs'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-session-store'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-store'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-user-permissions'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-metrics'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects-cla-groups'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs'
 
         - Effect: Allow
           Action:
             - dynamodb:Query
           Resource:
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-ccla-whitelist-requests/index/company-id-project-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-ccla-whitelist-requests/index/ccla-approval-list-request-project-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/github-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/github-username-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/gitlab-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/gitlab-username-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/github-user-external-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/lf-username-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/lf-email-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gerrit-instances/index/gerrit-name-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gerrit-instances/index/gerrit-project-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gerrit-instances/index/gerrit-project-sfid-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/project-signature-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/project-signature-date-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/reference-signature-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-project-reference-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-user-ccla-company-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/project-signature-external-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-company-signatory-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/reference-signature-search-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-project-id-type-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-company-initial-manager-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-project-id-sigtype-signed-approved-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-companies/index/external-company-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-companies/index/company-name-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-companies/index/company-signing-entity-name-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects/index/external-project-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects/index/project-name-search-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects/index/project-name-lower-search-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects/index/foundation-sfid-project-name-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/project-repository-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/repository-name-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/repository-organization-name-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/external-repository-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/sfdc-repository-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/project-sfid-repository-organization-name-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/project-sfid-repository-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/repository-type-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-github-orgs/index/github-org-sfid-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-github-orgs/index/project-sfid-organization-name-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-github-orgs/index/organization-name-lower-search-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-company-invites/index/requested-company-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-type-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/user-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-id-external-project-id-event-epoch-time-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-project-id-event-time-epoch-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-cla-group-id-event-time-epoch-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-date-and-contains-pii-event-time-epoch-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-sfid-foundation-sfid-event-time-epoch-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-sfid-project-id-event-time-epoch-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-id-event-type-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-foundation-sfid-event-time-epoch-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-metrics/index/metric-type-salesforce-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests/index/cla-manager-requests-company-project-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests/index/cla-manager-requests-external-company-project-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests/index/cla-manager-requests-project-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects-cla-groups/index/cla-group-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects-cla-groups/index/foundation-sfid-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-org-sfid-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-project-sfid-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-organization-name-lower-search-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-project-sfid-organization-name-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-full-path-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-external-group-id-index"
-            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-org-url-index"
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-ccla-whitelist-requests/index/company-id-project-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-ccla-whitelist-requests/index/ccla-approval-list-request-project-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/github-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/github-username-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/gitlab-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/gitlab-username-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/github-user-external-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/lf-username-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/lf-email-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gerrit-instances/index/gerrit-name-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gerrit-instances/index/gerrit-project-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gerrit-instances/index/gerrit-project-sfid-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/project-signature-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/project-signature-date-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/reference-signature-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-project-reference-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-user-ccla-company-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/project-signature-external-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-company-signatory-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/reference-signature-search-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-project-id-type-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-company-initial-manager-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-signatures/index/signature-project-id-sigtype-signed-approved-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-companies/index/external-company-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-companies/index/company-name-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-companies/index/company-signing-entity-name-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects/index/external-project-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects/index/project-name-search-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects/index/project-name-lower-search-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects/index/foundation-sfid-project-name-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/project-repository-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/repository-name-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/repository-organization-name-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/external-repository-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/sfdc-repository-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/project-sfid-repository-organization-name-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/project-sfid-repository-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-repositories/index/repository-type-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-github-orgs/index/github-org-sfid-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-github-orgs/index/project-sfid-organization-name-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-github-orgs/index/organization-name-lower-search-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-company-invites/index/requested-company-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-type-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/user-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-id-external-project-id-event-epoch-time-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-project-id-event-time-epoch-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-cla-group-id-event-time-epoch-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-date-and-contains-pii-event-time-epoch-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-sfid-foundation-sfid-event-time-epoch-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-sfid-project-id-event-time-epoch-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-id-event-type-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-foundation-sfid-event-time-epoch-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-metrics/index/metric-type-salesforce-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests/index/cla-manager-requests-company-project-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests/index/cla-manager-requests-external-company-project-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests/index/cla-manager-requests-project-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects-cla-groups/index/cla-group-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-projects-cla-groups/index/foundation-sfid-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-org-sfid-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-project-sfid-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-organization-name-lower-search-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-project-sfid-organization-name-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-full-path-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-external-group-id-index'
+            - 'arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-gitlab-orgs/index/gitlab-org-url-index'
 
   environment:
     STAGE: ${sls:stage}
@@ -305,7 +305,7 @@ provider:
     GH_OAUTH_SECRET: ${file(./env.json):gh-oauth-secret, ssm:/cla-gh-oauth-secret-${sls:stage}}
     GITHUB_OAUTH_TOKEN: ${file(./env.json):gh-access-token, ssm:/cla-gh-access-token-${sls:stage}}
     GITHUB_APP_WEBHOOK_SECRET: ${file(./env.json):gh-app-webhook-secret, ssm:/cla-gh-app-webhook-secret-${sls:stage}}
-    GH_STATUS_CTX_NAME: "EasyCLA"
+    GH_STATUS_CTX_NAME: 'EasyCLA'
     AUTH0_DOMAIN: ${file(./env.json):auth0-domain, ssm:/cla-auth0-domain-${sls:stage}}
     AUTH0_CLIENT_ID: ${file(./env.json):auth0-clientId, ssm:/cla-auth0-clientId-${sls:stage}}
     AUTH0_USERNAME_CLAIM: ${file(./env.json):auth0-username-claim, ssm:/cla-auth0-username-claim-${sls:stage}}
@@ -356,25 +356,25 @@ provider:
   stackTags:
     Name: ${self:service}
     stage: ${sls:stage}
-    Project: "EasyCLA"
-    Product: "EasyCLA"
-    ManagedBy: "Serverless CloudFormation"
-    SericeType: "Product"
+    Project: 'EasyCLA'
+    Product: 'EasyCLA'
+    ManagedBy: 'Serverless CloudFormation'
+    SericeType: 'Product'
     Service: ${self:service}
-    ServiceRole: "Backend"
+    ServiceRole: 'Backend'
     ProgrammingPlatform: Go
-    Owner: "David Deal"
+    Owner: 'David Deal'
   tags:
     Name: ${self:service}
     stage: ${sls:stage}
-    Project: "EasyCLA"
-    Product: "EasyCLA"
-    ManagedBy: "Serverless CloudFormation"
-    SericeType: "Product"
+    Project: 'EasyCLA'
+    Product: 'EasyCLA'
+    ManagedBy: 'Serverless CloudFormation'
+    SericeType: 'Product'
     Service: ${self:service}
-    ServiceRole: "Backend"
+    ServiceRole: 'Backend'
     ProgrammingPlatform: Go
-    Owner: "David Deal"
+    Owner: 'David Deal'
 
 plugins:
   - serverless-python-requirements
@@ -391,7 +391,7 @@ plugins:
 functions:
   authorizer:
     handler: auth/bin/authorizer
-    description: "EasyCLA API authorizer"
+    description: 'EasyCLA API authorizer'
     runtime: go1.x
     package:
       individually: true
@@ -400,7 +400,7 @@ functions:
 
   api-v3-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-api-v3-lambda
-    description: "EasyCLA Golang API handler for the /v3 endpoints"
+    description: 'EasyCLA Golang API handler for the /v3 endpoints'
     runtime: go1.x
     handler: 'bin/backend-aws-lambda'
     events:
@@ -416,7 +416,7 @@ functions:
 
   dynamo-projects-events-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-dynamo-projects-lambda
-    description: "EasyCLA DynamoDB stream events handler for the projects table"
+    description: 'EasyCLA DynamoDB stream events handler for the projects table'
     handler: 'bin/dynamo-events-lambda'
     runtime: go1.x
     package:
@@ -428,7 +428,7 @@ functions:
   dynamo-signatures-events-lambda:
     handler: 'bin/dynamo-events-lambda'
     name: ${self:service}-${sls:stage, 'dev'}-dynamo-signatures-events-lambda
-    description: "EasyCLA DynamoDB stream events handler for the signatures table"
+    description: 'EasyCLA DynamoDB stream events handler for the signatures table'
     runtime: go1.x
     package:
       individually: true
@@ -439,7 +439,7 @@ functions:
   dynamo-events-events-lambda:
     handler: 'bin/dynamo-events-lambda'
     name: ${self:service}-${sls:stage, 'dev'}-dynamo-events-events-lambda
-    description: "EasyCLA DynamoDB stream events handler for the events table"
+    description: 'EasyCLA DynamoDB stream events handler for the events table'
     runtime: go1.x
     package:
       individually: true
@@ -450,7 +450,7 @@ functions:
   dynamo-repositories-events-lambda:
     handler: 'bin/dynamo-events-lambda'
     name: ${self:service}-${sls:stage, 'dev'}-dynamo-repositories-events-lambda
-    description: "EasyCLA DynamoDB stream events handler for the repositories table"
+    description: 'EasyCLA DynamoDB stream events handler for the repositories table'
     runtime: go1.x
     package:
       individually: true
@@ -461,7 +461,7 @@ functions:
   dynamo-projects-cla-groups-events-lambda:
     handler: 'bin/dynamo-events-lambda'
     name: ${self:service}-${sls:stage, 'dev'}-dynamo-projects-cla-groups-events-lambda
-    description: "EasyCLA DynamoDB stream events handler for the projects-cla-groups table"
+    description: 'EasyCLA DynamoDB stream events handler for the projects-cla-groups table'
     runtime: go1.x
     package:
       individually: true
@@ -472,7 +472,7 @@ functions:
   dynamo-github-orgs-events-lambda:
     handler: 'bin/dynamo-events-lambda'
     name: ${self:service}-${sls:stage, 'dev'}-dynamo-github-orgs-events-lambda
-    description: "EasyCLA DynamoDB stream events handler for cla-<stage>-github-orgs the table"
+    description: 'EasyCLA DynamoDB stream events handler for cla-<stage>-github-orgs the table'
     runtime: go1.x
     package:
       individually: true
@@ -482,7 +482,7 @@ functions:
 
   save-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-save-metrics-lambda
-    description: "EasyCLA Save Metrics API handler"
+    description: 'EasyCLA Save Metrics API handler'
     runtime: go1.x
     handler: 'bin/metrics-aws-lambda'
     timeout: 900 # maximum time allowed
@@ -499,7 +499,7 @@ functions:
 
   report-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-report-metrics-lambda
-    description: "EasyCLA Report Metrics API handler"
+    description: 'EasyCLA Report Metrics API handler'
     runtime: go1.x
     handler: 'bin/metrics-report-lambda'
     timeout: 900 # maximum time allowed
@@ -516,7 +516,7 @@ functions:
 
   zip-builder-scheduler-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-zip-builder-scheduler-lambda
-    description: "call zipbuilder-lambda for all cla groups periodically"
+    description: 'call zipbuilder-lambda for all cla groups periodically'
     handler: 'bin/zipbuilder-scheduler-lambda'
     runtime: go1.x
     timeout: 900 # maximum time allowed
@@ -534,7 +534,7 @@ functions:
   zip-builder-lambda:
     handler: 'bin/zipbuilder-lambda'
     name: ${self:service}-${sls:stage, 'dev'}-zip-builder-lambda
-    description: "build zip of signed signature pdf for cla group"
+    description: 'build zip of signed signature pdf for cla group'
     runtime: go1.x
     timeout: 900 # maximum time allowed
     memorySize: 1024
@@ -547,7 +547,7 @@ functions:
   gitlab-repository-check-lambda:
     handler: 'bin/gitlab-repository-check-lambda'
     name: ${self:service}-${sls:stage, 'dev'}-gitlab-repository-check-lambda
-    description: "routine to periodically check the GitLab repository list for auto-enabled GitLab Groups"
+    description: 'routine to periodically check the GitLab repository list for auto-enabled GitLab Groups'
     runtime: go1.x
     timeout: 900 # maximum time allowed
     memorySize: 1024
@@ -580,7 +580,7 @@ functions:
 
   apiv1:
     handler: wsgi_handler.handler
-    description: "EasyCLA Python API handler for the /v1 endpoints"
+    description: 'EasyCLA Python API handler for the /v1 endpoints'
     events:
       - http:
           method: ANY
@@ -589,7 +589,7 @@ functions:
 
   apiv2:
     handler: wsgi_handler.handler
-    description: "EasyCLA Python API handler for the /v2 endpoints"
+    description: 'EasyCLA Python API handler for the /v2 endpoints'
     events:
       - http:
           method: ANY
@@ -598,7 +598,7 @@ functions:
 
   salesforceprojects:
     handler: cla.salesforce.get_projects
-    description: "EasyCLA API Callback Handler for fetching all SalesForce projects"
+    description: 'EasyCLA API Callback Handler for fetching all SalesForce projects'
     events:
       - http:
           method: ANY
@@ -607,7 +607,7 @@ functions:
 
   salesforceprojectbyID:
     handler: cla.salesforce.get_project
-    description: "EasyCLA API Callback Handler for fetching SalesForce projects by ID"
+    description: 'EasyCLA API Callback Handler for fetching SalesForce projects by ID'
     events:
       - http:
           method: ANY
@@ -617,7 +617,7 @@ functions:
   # GitHub callback handler
   githubinstall:
     handler: wsgi_handler.handler
-    description: "EasyCLA API Callback Handler for GitHub bot installations"
+    description: 'EasyCLA API Callback Handler for GitHub bot installations'
     events:
       - http:
           method: ANY
@@ -626,7 +626,7 @@ functions:
   # GitHub callback handler
   githubactivity:
     handler: wsgi_handler.handler
-    description: "EasyCLA API Callback Handler for GitHub activity"
+    description: 'EasyCLA API Callback Handler for GitHub activity'
     events:
       - http:
           method: POST
@@ -636,13 +636,13 @@ resources:
   Conditions:
     # Helper functions since we conditionally create some resources
     # https://gist.github.com/DavidWells/be078deef45f8cb2e280ccc7af947392
-    isProd: { "Fn::Equals": [ "${env:STAGE}", "prod" ] }
-    isStaging: { "Fn::Equals": [ "${env:STAGE}", "staging" ] }
-    isDev: { "Fn::Equals": [ "${env:STAGE}", "dev" ] }
-    isNotProd: { "Fn::Or": [ { "Condition": "isDev" }, { "Condition": "isStaging" } ] }
+    isProd: { 'Fn::Equals': ['${env:STAGE}', 'prod'] }
+    isStaging: { 'Fn::Equals': ['${env:STAGE}', 'staging'] }
+    isDev: { 'Fn::Equals': ['${env:STAGE}', 'dev'] }
+    isNotProd: { 'Fn::Or': [{ 'Condition': 'isDev' }, { 'Condition': 'isStaging' }] }
     # true when a TSL certificate should be created by serverless (false created externally)
     ShouldGenerateCertificate:
-      Fn::Not: [ Fn::Equals: [ "${env:STAGE}", "prod" ] ]
+      Fn::Not: [Fn::Equals: ['${env:STAGE}', 'prod']]
 
   Resources:
     # ApiGatewayRestApi, and GatewayResponse are used to enable Cors on custom authorizer responses.

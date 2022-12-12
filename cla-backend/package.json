@@ -33,14 +33,14 @@
     "install": "^0.13.0",
     "node.extend": "^2.0.2",
     "request": "^2.88.0",
-    "serverless": "^3.23.0",
+    "serverless": "^3.25.1",
     "serverless-domain-manager": "^5.1.0",
-    "serverless-finch": "^2.6.0",
-    "serverless-layers": "^2.5.1",
+    "serverless-finch": "^4.0.0",
+    "serverless-layers": "^2.5.4",
     "serverless-plugin-tracing": "^2.0.0",
-    "serverless-prune-plugin": "^1.5.1",
-    "serverless-python-requirements": "^5.1.1",
-    "serverless-wsgi": "^2.0.1"
+    "serverless-prune-plugin": "^2.0.1",
+    "serverless-python-requirements": "^6.0.0",
+    "serverless-wsgi": "^3.0.1"
   },
   "resolutions": {
     "ansi-regex": "^5.0.1",
