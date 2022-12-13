@@ -231,56 +231,16 @@ func (repo *Repository) GetGitLabOrganizationsByProjectSFID(ctx context.Context,
 		"projectSFID":    projectSFID,
 	}
 
-	type getResponseChannelModel struct {
-		Response *v2Models.GitlabOrganizations
-		Error    error
-	}
-	// A channel for the responses from the go routines
-	responseChannel := make(chan *getResponseChannelModel)
+	condition := expression.Key(GitLabOrganizationsProjectSFIDColumn).Equal(expression.Value(projectSFID))
+	filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true))
+	response, err := repo.getOrganizationsWithConditionFilter(ctx, condition, filter, GitLabOrgProjectSFIDIndex)
 
-	// Search the project SFID column
-	go func(ctx context.Context, projectSFID string) {
-		condition := expression.Key(GitLabOrganizationsProjectSFIDColumn).Equal(expression.Value(projectSFID))
-		filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true))
-		response, err := repo.getOrganizationsWithConditionFilter(ctx, condition, filter, GitLabOrgProjectSFIDIndex)
-		responseChannel <- &getResponseChannelModel{
-			Response: response,
-			Error:    err,
-		}
-	}(ctx, projectSFID)
-
-	// Search the organization SFID (parent sfid) column
-	go func(ctx context.Context, projectSFID string) {
-		condition := expression.Key(GitLabOrganizationsOrganizationSFIDColumn).Equal(expression.Value(projectSFID))
-		filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true))
-		response, err := repo.getOrganizationsWithConditionFilter(ctx, condition, filter, GitLabOrgOrganizationSFIDIndex)
-		responseChannel <- &getResponseChannelModel{
-			Response: response,
-			Error:    err,
-		}
-	}(ctx, projectSFID)
-
-	// Fetch the results and combine, no duplicates
-	fullResponse := &v2Models.GitlabOrganizations{
-		List: nil,
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("Error getting GitLab organizations by project SFID, error: %v2Models", err)
+		return nil, err
 	}
 
-	for i := 0; i < 2; i++ {
-		select {
-		case response := <-responseChannel:
-			if response.Error != nil {
-				log.WithFields(f).WithError(response.Error).Warnf("unable to load CLA Group")
-				return nil, response.Error
-			}
-			// Update the full response with the data from the channel
-			updateResponse(fullResponse, response.Response)
-		case <-ctx.Done():
-			log.WithFields(f).WithError(ctx.Err()).Warnf("waiting for GitLab group/organization query timed out")
-			return nil, fmt.Errorf("querying GitLab group/organization failed : %v", ctx.Err())
-		}
-	}
-
-	return fullResponse, nil
+	return response, nil
 }
 
 // GetGitLabOrganizationByName get GitLab organization by name
