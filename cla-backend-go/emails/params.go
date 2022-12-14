@@ -61,7 +61,7 @@ func (p CLAProjectParams) GetProjectFullURL() template.HTML {
 		projectConsolePathURL = u.String()
 	}
 
-	return template.HTML(fmt.Sprintf(fullURLHtml, projectConsolePathURL, url.QueryEscape(p.ExternalProjectName))) // nolint gosec auto-escape HTML
+	return template.HTML(fmt.Sprintf(fullURLHtml, projectConsolePathURL, p.ExternalProjectName)) // nolint gosec auto-escape HTML
 }
 
 // CLAGroupTemplateParams includes the params for the CLAGroupTemplateParams

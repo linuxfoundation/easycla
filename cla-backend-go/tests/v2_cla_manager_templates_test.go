@@ -22,6 +22,7 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 			Projects: []emails.CLAProjectParams{
 				{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
 				{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
+				{ExternalProjectName: "Project Spaced 1", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
 			},
 			CorporateConsole: "http://CorporateConsoleV2URL.com",
 		},
@@ -36,6 +37,7 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 	assert.Contains(t, result, "The following contributor would like to submit a contribution to the projects(s): Project1, Project2")
 	assert.Contains(t, result, "UserDetailsValue")
 	assert.Contains(t, result, "Approval can be done at http://CorporateConsoleV2URL.com")
+	assert.Contains(t, result, "target=\"_blank\">Project Spaced 1</a>")
 
 	params.SigningEntityName = "SigningEntityNameValue"
 
