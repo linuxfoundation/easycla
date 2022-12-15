@@ -66,7 +66,18 @@ func (s *emailTemplateServiceProvider) PrefillV2CLAProjectParams(projectSFIDs []
 			FoundationName:      projectCLAGroup.FoundationName,
 			FoundationSFID:      projectCLAGroup.FoundationSFID,
 			CorporateConsole:    s.corporateConsoleV2,
+			IsFoundation:        false,
 		}
+
+		projectClient := v2ProjectService.GetClient()
+		projectModel, err := projectClient.GetProject(pSFID)
+		if err != nil {
+			log.Warnf("unable to fetch project : %s details from project service : %v", pSFID, err)
+			return nil, fmt.Errorf("unable to fetch project : %s details from project service : %v", pSFID, err)
+		}
+
+		isFoundation := utils.IsProjectHasRootParent(projectModel)
+		params.IsFoundation = isFoundation
 
 		signedResult, err := s.projectService.SignedAtFoundationLevel(context.Background(), projectCLAGroup.FoundationSFID)
 		if err != nil {

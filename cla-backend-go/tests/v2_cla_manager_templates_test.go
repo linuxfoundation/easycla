@@ -20,8 +20,6 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 		},
 		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{
 			Projects: []emails.CLAProjectParams{
-				{ExternalProjectName: "Project1", ProjectSFID: "ProjectSFID1", FoundationSFID: "FoundationSFID1", CorporateConsole: "http://CorporateConsole.com"},
-				{ExternalProjectName: "Project2", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
 				{ExternalProjectName: "Project Spaced 1", ProjectSFID: "ProjectSFID2", FoundationSFID: "FoundationSFID2", CorporateConsole: "http://CorporateConsole.com"},
 			},
 			CorporateConsole: "http://CorporateConsoleV2URL.com",
@@ -34,10 +32,12 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the organization JohnsCompany")
-	assert.Contains(t, result, "The following contributor would like to submit a contribution to the projects(s): Project1, Project2")
+	assert.Contains(t, result, "The following contributor would like to submit a contribution to the projects(s): Project Spaced 1")
 	assert.Contains(t, result, "UserDetailsValue")
-	assert.Contains(t, result, "Approval can be done at http://CorporateConsoleV2URL.com")
 	assert.Contains(t, result, "target=\"_blank\">Project Spaced 1</a>")
+
+	assert.Contains(t, result, "CLA Managers can visit the EasyCLA corporate console page for <a href=\"http://CorporateConsole.com/foundation/FoundationSFID2/project/ProjectSFID2/cla\" target=\"_blank\">Project Spaced 1</a>")
+	assert.Contains(t, result, "and add the contributor to one of the approval lists.")
 
 	params.SigningEntityName = "SigningEntityNameValue"
 
@@ -46,9 +46,7 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the organization JohnsCompany")
-	assert.Contains(t, result, "The following contributor would like to submit a contribution to the projects(s): Project1, Project2")
 	assert.Contains(t, result, "UserDetailsValue")
-	assert.Contains(t, result, "Approval can be done at http://CorporateConsoleV2URL.com")
 }
 
 func TestV2OrgAdminTemplate(t *testing.T) {

@@ -34,6 +34,7 @@ type CLAProjectParams struct {
 	FoundationName          string
 	FoundationSFID          string
 	SignedAtFoundationLevel bool
+	IsFoundation            bool
 	CorporateConsole        string
 }
 
@@ -53,7 +54,7 @@ func (p CLAProjectParams) GetProjectFullURL() template.HTML {
 
 	var projectConsolePathURL string
 	fullURLHtml := `<a href="%s" target="_blank">%s</a>`
-	if p.SignedAtFoundationLevel {
+	if p.IsFoundation {
 		u.Path = path.Join(u.Path, "foundation", p.FoundationSFID, "cla")
 		projectConsolePathURL = u.String()
 	} else {
