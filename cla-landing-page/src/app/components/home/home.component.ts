@@ -61,7 +61,7 @@ export class HomeComponent implements OnInit {
     const script = document.createElement('script');
     script.setAttribute(
       'src',
-      EnvConfig.default['lfx-header']
+      EnvConfig.default['lfx-header-v2']
     );
     document.head.appendChild(script);
   }

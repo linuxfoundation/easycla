@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { BrowserModule } from '@angular/platform-browser';
-import { NgModule } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, NgModule } from '@angular/core';
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
@@ -28,6 +28,7 @@ import { LfxHeaderService } from './core/services/lfx-header.service';
     BrowserModule,
     AppRoutingModule
   ],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
   providers: [AuthService, StorageService, LfxHeaderService],
   bootstrap: [AppComponent]
 })
