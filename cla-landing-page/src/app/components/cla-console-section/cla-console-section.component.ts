@@ -30,18 +30,18 @@ export class ClaConsoleSectionComponent implements OnInit {
     if (!this.landingPageService.hasEventInitilize) {
       this.landingPageService.hasEventInitilize = true;
 
-      document.getElementById('lfx-header').addEventListener('project-login-event', () => {
+      document.getElementById('lfx-header-v2').addEventListener('project-login-event', () => {
         this.onClickProceed('Projects');
       });
 
-      document.getElementById('lfx-header').addEventListener('corporate-login-event', () => {
+      document.getElementById('lfx-header-v2').addEventListener('corporate-login-event', () => {
         this.onClickProceed('Organizations');
       });
     }
   }
 
   ngOnInit() {
-    const element: any = document.getElementById('lfx-header');
+    const element: any = document.getElementById('lfx-header-v2');
     this.links = [
       {
         title: 'Project Login',
