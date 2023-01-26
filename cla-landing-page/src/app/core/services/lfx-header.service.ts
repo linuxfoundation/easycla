@@ -13,7 +13,7 @@ export class LfxHeaderService {
 
   setUserInLFxHeader(): void {
     setTimeout(() => {
-      const lfHeaderEl: any = document.getElementById('lfx-header-v2');
+      const lfHeaderEl: any = document.getElementById('lfx-header');
       if (!lfHeaderEl) {
         return;
       }

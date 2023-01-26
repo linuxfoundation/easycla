@@ -1,4 +1,5 @@
 import {Component, OnInit} from '@angular/core';
+import { environment } from 'src/environments/environment';
 import {EnvConfig} from "../../config/cla-env-utils";
 
 @Component({
@@ -59,10 +60,7 @@ export class HomeComponent implements OnInit {
 
   mounted() {
     const script = document.createElement('script');
-    script.setAttribute(
-      'src',
-      EnvConfig.default['lfx-header-v2']
-    );
+    script.setAttribute('src', environment.lfxHeader);
     document.head.appendChild(script);
   }
 }
