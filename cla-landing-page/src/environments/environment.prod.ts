@@ -3,5 +3,6 @@
 
 export const environment = {
   environment: 'prod',
+  lfxHeader: 'https://cdn.platform.linuxfoundation.org/lfx-header-v2-no-zone.js',
   production: true
 };

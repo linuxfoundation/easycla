@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { Component } from '@angular/core';
+import { environment } from 'src/environments/environment';
 import { EnvConfig } from './config/cla-env-utils';
 import { LfxHeaderService } from './core/services/lfx-header.service';
 
@@ -28,10 +29,7 @@ export class AppComponent {
 
   mountHeader() {
     const script = document.createElement('script');
-    script.setAttribute(
-      'src',
-      EnvConfig.default['lfx-header-v2']
-    );
+    script.setAttribute('src', environment.lfxHeader);
     document.head.appendChild(script);
   }
 
