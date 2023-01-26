@@ -7,6 +7,7 @@
 
 export const environment = {
   environment: 'dev',
+  lfxHeader: "https://cdn.dev.platform.linuxfoundation.org/lfx-header-v2-no-zone.js",
   production: false
 };
 /*
