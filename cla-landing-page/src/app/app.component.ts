@@ -30,7 +30,7 @@ export class AppComponent {
     const script = document.createElement('script');
     script.setAttribute(
       'src',
-      EnvConfig.default['lfx-header-v2']
+      EnvConfig.default['lfx-header']
     );
     document.head.appendChild(script);
   }
