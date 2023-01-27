@@ -1,0 +1,28 @@
+---
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MI
+
+name: Yarn Landing Page Dependency Audit
+
+on:
+  # https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  yarn-scan-landing-page-pr:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+      - name: Setup
+        run: yarn install
+      - name: Yarn Audit
+        working-directory: cla-landing-page
+        run: |
+          yarn audit

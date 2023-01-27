@@ -1,0 +1,44 @@
+---
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MI
+
+name: Snyk Scan NPM Landing Page Dependencies
+
+on:
+  # https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  snyk-scan-npm-landing-page-pr:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v3
+      - uses: snyk/actions/setup@master
+        id: snyk
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+      - name: Yarn Version
+        run: yarn --version
+      - name: Yarn Install
+        working-directory: cla-landing-page
+        run: yarn install
+      - name: Snyk version
+        run: echo "${{ steps.snyk.outputs.version }}"
+      - name: Scan for NPM Vulnerabilities
+        working-directory: cla-landing-page
+        run: |
+          snyk test --org=${{ secrets.SNYK_ORG }} --file=package.json
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+      - name: Monitor for NPM Vulnerabilities
+        working-directory: cla-landing-page
+        run: snyk monitor --org=${{ secrets.SNYK_ORG }} --file=package.json
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true

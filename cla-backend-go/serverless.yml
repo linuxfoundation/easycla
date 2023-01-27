@@ -4,7 +4,6 @@
 service: cla-backend-go
 frameworkVersion: '^3.27.0'
 
-
 package:
   # Exclude all first - selectively add in lambda functions,
   # Support for "package.include" and "package.exclude" will be removed with next major release. Please use "package.patterns" instead
