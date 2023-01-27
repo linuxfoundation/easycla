@@ -48,7 +48,6 @@
   "resolutions": {
     "ansi-regex": "^5.0.1",
     "aws-sdk": "^2.814.0",
-    "async": "^3.2.4",
     "axios": "^0.21.4",
     "cookiejar": "^2.1.4",
     "glob-parent": "^5.1.2",
