@@ -1,6 +1,11 @@
 {
-  "name": "LFX-EasyCLA",
-  "version": "0.0.0",
+  "name": "LFX-EasyCLA-Landing-Page",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "The Linux Foundation",
+  "engines": {
+    "node": ">=16"
+  },
   "scripts": {
     "ng": "./node_modules/@angular/cli/bin/ng",
     "serve": "ng serve --port 8100 --configuration=dev",
@@ -99,7 +104,6 @@
     "elliptic": "^6.5.4",
     "engine.io": "^6.2.1",
     "eventsource": "^1.1.1",
-    "file-type": "^18.2.0",
     "glob-parent": "^5.1.2",
     "got": "^11.8.5",
     "hosted-git-info": "^3.0.8",

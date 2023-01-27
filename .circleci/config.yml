@@ -105,18 +105,6 @@ set_functional_test_environment: &set_functional_test_environment
       echo "export AUTH0_USER5_CLIENT_ID='${!AUTH0_USER5_CLIENT_ID_ENV_VAR}'" >> ${BASH_ENV}
 
 step-library:
-  - &install-node-12
-    run:
-      name: Install node 12
-      command: |
-        set +e
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.2/install.sh | bash
-        [ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
-        node_version="v12.20.0"
-        echo "Installing node ${node_version}..."
-        nvm install ${node_version}
-        nvm alias default ${node_version}
-        echo "[ -s \"${NVM_DIR}/nvm.sh\" ] && . \"${NVM_DIR}/nvm.sh\"" >> $BASH_ENV
   - &install-node-14
     run:
       name: Install node 14
@@ -125,6 +113,18 @@ step-library:
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.2/install.sh | bash
         [ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
         node_version="v14.18.1"
+        echo "Installing node ${node_version}..."
+        nvm install ${node_version}
+        nvm alias default ${node_version}
+        echo "[ -s \"${NVM_DIR}/nvm.sh\" ] && . \"${NVM_DIR}/nvm.sh\"" >> $BASH_ENV
+  - &install-node-16
+    run:
+      name: Install node 16
+      command: |
+        set +e
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.2/install.sh | bash
+        [ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
+        node_version="v16.13.0"
         echo "Installing node ${node_version}..."
         nvm install ${node_version}
         nvm alias default ${node_version}
@@ -142,13 +142,7 @@ jobs:
             - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
       - *setup_aws
       - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-14
-      - run:
-          name: Install Top Level Dependencies
-          command: |
-            echo "Node version is: $(node --version)"
-            echo "Running top level install..."
-            yarn install
+      - *install-node-16
       - *install_aws_cli
       - run:
           name: Setup Backend
@@ -210,7 +204,7 @@ jobs:
             - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
       - *setup_aws
       - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-14
+      - *install-node-16
       - run: echo 'export GO111MODULE=on' >> $BASH_ENV
       - run:
           name: Setup
@@ -299,13 +293,7 @@ jobs:
             - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
       - *setup_aws
       - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-14
-      - run:
-          name: Install Top Level Dependencies
-          command: |
-            echo "Node version is: $(node --version)"
-            echo "Running top level install..."
-            yarn install
+      - *install-node-16
       - run:
           name: Deploy EasyCLA v1
           command: |
@@ -401,13 +389,7 @@ jobs:
             - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
       - *setup_aws
       - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-14
-      - run:
-          name: Install Top Level Dependencies
-          command: |
-            echo "Node version is: $(node --version)"
-            echo "Running top level install..."
-            yarn install
+      - *install-node-16
       - run:
           name: Deploy EasyCLA v2
           command: |
@@ -538,13 +520,7 @@ jobs:
       - checkout
       - *setup_aws
       - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-14
-      - run:
-          name: Install Top Level Dependencies
-          command: |
-            echo "Node version is: $(node --version)"
-            echo "Running top level install..."
-            yarn install
+      - *install-node-16
       - run:
           name: Install UI Dependencies
           command: |
@@ -581,13 +557,7 @@ jobs:
       - *install_aws_cli
       - *setup_aws
       - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-14
-      - run:
-          name: Install Top Level Dependencies
-          command: |
-            echo "Node version is: $(node --version)"
-            echo "Running top level install..."
-            yarn install
+      - *install-node-16
       - run:
           name: Deploy
           command: |

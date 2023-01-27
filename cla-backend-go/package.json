@@ -1,8 +1,11 @@
 {
-  "name": "easycla-api",
+  "name": "easycla-go-api",
   "version": "1.0.0",
   "license": "MIT",
   "author": "The Linux Foundation",
+  "engines": {
+    "node": ">=16"
+  },
   "scripts": {
     "sls": "./node_modules/serverless/bin/serverless.js",
     "deploy:dev": "SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js deploy -s dev -r us-east-2 --verbose",
