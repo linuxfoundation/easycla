@@ -202,6 +202,7 @@ jobs:
           name: Setup
           command: |
             source ${BASH_ENV}
+            echo "Running on ubuntu: $(lsb_release -a)"
             echo "Installing python..."
             sudo apt-get update
             sudo apt install -y software-properties-common

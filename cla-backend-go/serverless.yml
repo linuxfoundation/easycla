@@ -273,7 +273,7 @@ provider:
     Project: "EasyCLA"
     Product: "EasyCLA"
     ManagedBy: "Serverless CloudFormation"
-    SericeType: "Product"
+    ServiceType: "Product"
     Service: ${self:service}
     ServiceRole: "Backend"
     ProgrammingPlatform: Go
@@ -284,7 +284,7 @@ provider:
     Project: "EasyCLA"
     Product: "EasyCLA"
     ManagedBy: "Serverless CloudFormation"
-    SericeType: "Product"
+    ServiceType: "Product"
     Service: ${self:service}
     ServiceRole: "Backend"
     ProgrammingPlatform: Go
