@@ -176,15 +176,6 @@ jobs:
       AWS_REGION: us-east-1
       STAGE: dev
 
-  buildBackendStaging:
-    <<: *buildBackendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: staging
-
   buildBackendProd:
     <<: *buildBackendAnchor
     environment:
@@ -459,17 +450,6 @@ jobs:
       ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
       PRODUCT_DOMAIN: dev.lfcla.com
 
-  deployV1BackendStaging:
-    <<: *deployV1BackendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: staging
-      ROOT_DOMAIN: lfcla.staging.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: staging.lfcla.com
-
   deployV1BackendProd:
     <<: *deployV1BackendAnchor
     environment:
@@ -491,17 +471,6 @@ jobs:
       STAGE: dev
       ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
       PRODUCT_DOMAIN: dev.lfcla.com
-
-  deployV2BackendStaging:
-    <<: *deployV2BackendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: staging
-      ROOT_DOMAIN: lfcla.staging.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: staging.lfcla.com
 
   deployV2BackendProd:
     <<: *deployV2BackendAnchor
@@ -604,18 +573,6 @@ jobs:
       PROJECT_DIR: cla-landing-page
       PRODUCT_DOMAIN: dev.lfcla.com
       DISTRIBUTION_ID: 'E4CMSMNLN6Y7T'
-
-  deployLandingFrontendStaging:
-    <<: *deployLandingFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_STAGING
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_STAGING
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: staging
-      PROJECT_DIR: cla-landing-page
-      PRODUCT_DOMAIN: staging.lfcla.com
-      DISTRIBUTION_ID: 'E3L64WV3BD83YK'
 
   deployLandingFrontendProd:
     <<: *deployLandingFrontendAnchor
@@ -811,56 +768,6 @@ workflows:
             branches:
               only:
                 - main
-
-      # Deploy Staging
-      - buildBackendStaging:
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - approve_staging:
-          type: approval
-          requires:
-            - buildBackendStaging
-            - buildGoBackendCommon
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployV1BackendStaging:
-          requires:
-            - approve_staging
-            - buildBackendStaging
-            - buildGoBackendCommon
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployV2BackendStaging:
-          requires:
-            - approve_staging
-            - buildGoBackendCommon
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployLandingFrontendStaging:
-          requires:
-            - approve_staging
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
 
       # Deploy Prod
       - buildBackendProd:
