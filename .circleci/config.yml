@@ -201,7 +201,7 @@ jobs:
 
   buildGoBackend: &buildGoBackendAnchor
     docker:
-      - image: cimg/go:1.19.0
+      - image: cimg/go:1.19.5
     steps:
       - checkout
       - run: go version
@@ -684,7 +684,7 @@ jobs:
 
   functionalTestsGo: &functionalTestsGo
     docker:
-      - image: cimg/go:1.19.0
+      - image: cimg/go:1.19.5
     steps:
       - attach_workspace:
           at: ~/
