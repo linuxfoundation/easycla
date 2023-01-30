@@ -69,9 +69,23 @@ func (s service) GetGithubOrganizations(ctx context.Context, projectSFID string)
 	}
 	var orgs *v1Models.GithubOrganizations
 	var orgErr error
+	pcg, pcgErr := s.projectsCLAGroupService.GetClaGroupIDForProject(ctx, projectSFID)
+	if pcgErr != nil {
+		if pcgErr == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
+			log.WithFields(f).Warnf("unable to locate project CLA Group mapping for project SFID: %s, error: %+v", projectSFID, pcgErr)
+		} else {
+			log.WithFields(f).WithError(pcgErr).Warnf("unable to load project CLA group for project SFID: %s", projectSFID)
+			return nil, pcgErr
+		}
+	}
 
-	log.WithFields(f).Debugf("Getting Github Organizations under project : %s", projectSFID)
-	orgs, orgErr = s.repo.GetGitHubOrganizations(ctx, projectSFID)
+	if pcg != nil && pcg.FoundationSFID != "" {
+		log.WithFields(f).Debugf("Getting Github Organizations under foundation : %s", pcg.FoundationSFID)
+		orgs, orgErr = s.repo.GetGitHubOrganizationsByParent(ctx, pcg.FoundationSFID)
+	} else {
+		log.WithFields(f).Debugf("Getting Github Organizations under project : %s", projectSFID)
+		orgs, orgErr = s.repo.GetGitHubOrganizations(ctx, projectSFID)
+	}
 
 	if orgErr != nil {
 		log.WithFields(f).Warnf("problem loading github organizations for project : %s, error: %+v", projectSFID, orgErr)
