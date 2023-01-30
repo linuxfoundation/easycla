@@ -55,10 +55,10 @@ build-lambdas-linux: build-aws-lambda-linux build-user-subscribe-lambda-linux bu
 
 generate: swagger
 
-setup: $(LINT_TOOL) setup-dev setup-deploy
+setup: setup-dev setup-swagger setup-deploy
 
-.PHONY: swagger-tool
-swagger-tool:
+.PHONY: setup-swagger
+setup-swagger:
 	@echo "==> Removing old swagger binary in $(SWAGGER_BIN_DIR)..."
 	@sudo rm -Rf $(SWAGGER_BIN_DIR)/swagger
 	@echo "==> Downloading $(SWAGGER_ASSET_URL)..."
@@ -67,7 +67,7 @@ swagger-tool:
 	$(SWAGGER_BIN_DIR)/swagger version
 
 setup_dev: setup-dev
-setup-dev: swagger-tool
+setup-dev:
 	pushd /tmp && echo "==> Installing goimport..." && go install golang.org/x/tools/cmd/goimports@latest && echo "==> Installation coverage tools..." && go install golang.org/x/tools/cmd/cover@latest && popd
 
 	@echo "==> Installing linter..."
@@ -80,7 +80,7 @@ setup-dev: swagger-tool
 
 setup_deploy: setup-deploy
 setup-deploy:
-	@yarn add serverless && yarn install
+	@yarn install
 
 clean: clean-models clean-lambdas
 	@rm -rf cla cla-mac* cla-linux
