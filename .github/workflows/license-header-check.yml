@@ -1,0 +1,31 @@
+---
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+name: License Header Check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  license-header-check:
+    name: License Header Check
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Check License Headers - Python
+        working-directory: cla-backend
+        run: |
+          ./check-headers.sh
+      - name: Check License Headers - Go
+        working-directory: cla-backend-go
+        run: |
+          ./check-headers.sh

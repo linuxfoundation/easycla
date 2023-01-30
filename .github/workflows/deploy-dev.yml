@@ -1,0 +1,227 @@
+---
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+name: Build and Deploy to DEV
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  AWS_PROFILE: lf-cla
+  STAGE: dev
+
+jobs:
+  build-deploy-dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.19.5'
+      - name: Go Version
+        run: go version
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+      - name: Setup python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: us-east-1
+          role-duration-seconds: 900
+      - name: Setup AWS Profile
+        run: |
+          echo "Installing Profile '${AWS_PROFILE}'..."
+          mkdir -p ~/.aws
+
+          touch ~/.aws/config
+          if ! grep -q AWS_PROFILE ~/.aws/config; then
+            printf "[profile ${AWS_PROFILE}]\nregion=${AWS_REGION}\noutput=json" > ~/.aws/config
+            echo "Added ${AWS_PROFILE} profile to ~/.aws/config"
+          else
+            echo "Skipped adding ${AWS_PROFILE} to ~/.aws/config - already there"
+          fi
+
+          touch ~/.aws/credentials
+          if ! grep -q AWS_PROFILE ~/.aws/credentials; then
+            printf "[${AWS_PROFILE}]\naws_access_key_id=${{ secrets.AWS_ACCESS_KEY }}\naws_secret_access_key=${{ secrets.AWS_SECRET_KEY }}" > ~/.aws/credentials
+            echo "Added ${AWS_PROFILE} profile to ~/.aws/credentials"
+          else
+            echo "Skipped adding ${AWS_PROFILE} to ~/.aws/credentials - already there"
+          fi
+
+          if ! grep -q AWS_PROFILE ${HOME}/.bashrc; then
+            echo "export AWS_PROFILE=${AWS_PROFILE}" >> ${HOME}/.bashrc
+            echo "Added ${AWS_PROFILE} profile to ${HOME}/.bashrc"
+          else
+            echo "Skipped adding ${AWS_PROFILE} to ${HOME}/.bashrc - already there"
+          fi
+      - name: Cache Go modules
+        uses: actions/cache@v2
+        with:
+          path: ${{ github.workspace }}/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Configure Git to clone private Github repos
+        run: git config --global url."https://${TOKEN_USER}:${TOKEN}@github.com".insteadOf "https://github.com"
+        env:
+          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN_GITHUB}}
+          TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER_GITHUB}}
+
+      - name: Add OS Tools
+        run: sudo apt update && sudo apt-get install file -y
+
+      - name: Python Setup
+        working-directory: cla-backend
+        run: |
+          pip install -r requirements.txt
+
+      - name: Python Lint
+        working-directory: cla-backend
+        run: |
+          pylint cla/*.py || true
+
+      - name: Python Test
+        working-directory: cla-backend
+        run: |
+          pytest "cla/tests" -p no:warnings
+        env:
+          PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
+          AUTH0_PLATFORM_URL: https://linuxfoundation-dev.auth0.com/oauth/token
+          AUTH0_PLATFORM_CLIENT_ID: ${{ secrets.AUTH0_PLATFORM_CLIENT_ID }}
+          AUTH0_PLATFORM_CLIENT_SECRET: ${{ secrets.AUTH0_PLATFORM_CLIENT_SECRET }}
+          AUTH0_PLATFORM_AUDIENCE: https://api-gw.dev.platform.linuxfoundation.org/
+
+      - name: Go Setup
+        working-directory: cla-backend-go
+        run: |
+          make clean setup
+
+      - name: Go Dependencies
+        working-directory: cla-backend-go
+        run: make deps
+
+      - name: Go Swagger Generate
+        working-directory: cla-backend-go
+        run: |
+          make swagger
+
+      - name: Go Build
+        working-directory: cla-backend-go
+        run: |
+          make build-lambdas-linux build-functional-tests-linux
+
+      - name: Go Test
+        working-directory: cla-backend-go
+        run: |
+          make test
+
+      - name: Go Lint
+        working-directory: cla-backend-go
+        run: make lint
+
+      - name: Setup Deployment
+        working-directory: cla-backend
+        run: |
+          mkdir -p bin
+          cp ../cla-backend-go/bin/backend-aws-lambda bin/
+          cp ../cla-backend-go/bin/user-subscribe-lambda bin/
+          cp ../cla-backend-go/bin/metrics-aws-lambda bin/
+          cp ../cla-backend-go/bin/metrics-report-lambda bin/
+          cp ../cla-backend-go/bin/dynamo-events-lambda bin/
+          cp ../cla-backend-go/bin/zipbuilder-scheduler-lambda bin/
+          cp ../cla-backend-go/bin/zipbuilder-lambda bin/
+          cp ../cla-backend-go/bin/gitlab-repository-check-lambda bin/
+
+      - name: EasyCLA v1 Deployment us-east-1
+        working-directory: cla-backend
+        run: |
+          yarn install
+          if [[ ! -f bin/backend-aws-lambda ]]; then echo "Missing bin/backend-aws-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f bin/user-subscribe-lambda ]]; then echo "Missing bin/user-subscribe-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f bin/metrics-aws-lambda ]]; then echo "Missing bin/metrics-aws-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f bin/metrics-report-lambda ]]; then echo "Missing bin/metrics-report-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f bin/dynamo-events-lambda ]]; then echo "Missing bin/dynamo-events-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f bin/zipbuilder-lambda ]]; then echo "Missing bin/zipbuilder-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f bin/zipbuilder-scheduler-lambda ]]; then echo "Missing bin/zipbuilder-scheduler-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f bin/gitlab-repository-check-lambda ]]; then echo "Missing bin/gitlab-repository-check-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f serverless.yml ]]; then echo "Missing serverless.yml file. Exiting..."; exit 1; fi
+          if [[ ! -f serverless-authorizer.yml ]]; then echo "Missing serverless-authorizer.yml file. Exiting..."; exit 1; fi
+          yarn sls deploy --force --stage ${STAGE} --region us-east-1 --verbose
+      - name: EasyCLA v1 Service Check
+        run: |
+          sudo apt install curl -y
+          
+          declare -r v2_url="https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v2/health"
+          declare -r v3_url="https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v3/ops/health"
+
+          echo "Validating v2 backend using endpoint: ${v2_url}"
+          curl --fail -XGET ${v2_url}
+          exit_code=$?
+          if [[ ${exit_coe} -eq 0 ]]; then
+            echo "Successful response from endpoint: ${v2_url}"
+          else
+            echo "Failed to get a successful response from endpoint: ${v2_url}"
+            exit ${exit_code}
+          fi
+
+          echo "Validating v3 backend using endpoint: ${v3_url}"
+          curl --fail -XGET ${v3_url}
+          exit_code=$?
+          if [[ ${exit_coe} -eq 0 ]]; then
+            echo "Successful response from endpoint: ${v3_url}"
+            # JSON response should include "Status": "healthy"
+            if [[ `curl -s -XGET ${v3_url} | jq -r '.Status'` == "healthy" ]]; then
+              echo "Service is healthy"
+            else
+              echo "Service is NOT healthy"
+              exit -1
+            fi
+          else
+            echo "Failed to get a successful response from endpoint: ${v3_url}"
+            exit ${exit_code}
+          fi
+      - name: EasyCLA v2 Deployment us-east-2
+        working-directory: cla-backend-go
+        run: |
+          if [[ ! -f bin/backend-aws-lambda ]]; then echo "Missing bin/backend-aws-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f bin/user-subscribe-lambda ]]; then echo "Missing bin/user-subscribe-lambda binary file. Exiting..."; exit 1; fi
+          yarn install
+          yarn sls deploy --force --stage ${STAGE} --region us-east-2
+
+      - name: EasyCLA v2 Service Check
+        run: |
+          sudo apt install curl -y
+          v4_url="https://api-gw.${STAGE}.platform.linuxfoundation.org/cla-service/v4/ops/health"
+
+          echo "Validating v4 backend using endpoint: ${v4_url}"
+          curl --fail -XGET ${v4_url}
+          exit_code=$?
+          if [[ ${exit_coe} -eq 0 ]]; then
+            echo "Successful response from endpoint: ${v4_url}"
+            # JSON response should include "Status": "healthy"
+            if [[ `curl -s -XGET ${v4_url} | jq -r '.Status'` == "healthy" ]]; then
+              echo "Service is healthy"
+            else
+              echo "Service is NOT healthy"
+              exit -1
+            fi
+          else
+            echo "Failed to get a successful response from endpoint: ${v4_url}"
+            exit ${exit_code}
+          fi
+          

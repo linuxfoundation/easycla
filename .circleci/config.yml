@@ -106,64 +106,102 @@ set_functional_test_environment: &set_functional_test_environment
       echo "export AUTH0_USER5_CLIENT_ID='${!AUTH0_USER5_CLIENT_ID_ENV_VAR}'" >> ${BASH_ENV}
 
 step-library:
-  - &install-node-14
-    run:
-      name: Install node 14
-      command: |
-        set +e
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.2/install.sh | bash
-        [ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
-        node_version="v14.18.1"
-        echo "Installing node ${node_version}..."
-        nvm install ${node_version}
-        nvm alias default ${node_version}
-        echo "[ -s \"${NVM_DIR}/nvm.sh\" ] && . \"${NVM_DIR}/nvm.sh\"" >> $BASH_ENV
-  - &install-node-16
+  - &install_node_16
     run:
       name: Install node 16
       command: |
-        set +e
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.2/install.sh | bash
+        source ${BASH_ENV}
+        echo "Running on ubuntu  : $(lsb_release -d)"
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+        # If it doesn't automatically add nvm configuration, you can add it yourself to your profile file:
+        export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
         [ -s "${NVM_DIR}/nvm.sh" ] && \. "${NVM_DIR}/nvm.sh"
+        # With your profile configuration updated, now you will reload the configuration for your terminal to use:
+        source ${BASH_ENV}
         node_version="v16.13.0"
         echo "Installing node ${node_version}..."
         nvm install ${node_version}
         nvm alias default ${node_version}
         echo "[ -s \"${NVM_DIR}/nvm.sh\" ] && . \"${NVM_DIR}/nvm.sh\"" >> $BASH_ENV
+  - &install_python_3_9
+    run:
+      name: Install Python 3.9
+      command: |
+        source ${BASH_ENV}
+        echo "Running on ubuntu  : $(lsb_release -d)"
+        sudo apt-get update
+        sudo apt install curl git -y 
+        if [ -d "$HOME/.pyenv" ]; then
+          echo "pyenv already installed"
+          echo "pyenv version      : $(pyenv --version)"
+        else
+          echo "Installing pyenv..."
+          curl https://pyenv.run | bash
+          export PATH="$HOME/.pyenv/bin:$PATH" && eval "$(pyenv init --path)" && echo -e 'if command -v pyenv 1>/dev/null 2>&1; then\n eval "$(pyenv init -)"\nfi' >> ${BASH_ENV}
+          # echo 'export PYENV_ROOT="$HOME/.pyenv"' >> $BASH_ENV
+          # echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> $BASH_ENV
+          # echo 'eval "$(pyenv init -)"' >> $BASH_ENV
+          echo "pyenv version      : $(pyenv --version)"
+        fi
+
+        # With your profile configuration updated, now you will reload the configuration for your terminal to use:
+        source ${BASH_ENV}
+        python_version="3.9.7"
+        pyenv install ${python_version}
+        pyenv global ${python_version}
+        python3 -m pip install --upgrade pip
+        echo "Python version     : $(python3 --version)"
+        echo "Python Pip version : $(pip --version)"
+  - &install_yarn
+    run:
+      name: Install Yarn
+      command: |
+        source ${BASH_ENV}
+        echo "Running on ubuntu  : $(lsb_release -d)"
+        sudo apt update && sudo apt install -y yarn
+        yarn --version
 
 jobs:
   # Builds
   buildBackend: &buildBackendAnchor
     docker:
-      - image: circleci/python:3.7.11-node
+      - image: cimg/python:3.9
     steps:
       - checkout
       - add_ssh_keys:
           fingerprints:
             - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
       - *setup_aws
-      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-16
       - *install_aws_cli
+      - *install_python_3_9
+      - *install_node_16
       - run:
           name: Setup Backend
           command: |
+            source ${BASH_ENV}
             cd cla-backend
-            yarn install
-            echo "Upgrading pip..."
-            python3 -m pip install --upgrade pip
+            pyenv local 3.9.7
+            echo "Running on ubuntu  : $(lsb_release -d)"
+            echo "Python version     : $(python3 --version)"
+            echo "Python Pip version : $(pip --version)"
             sudo pip install -r requirements.txt
       - run:
           name: lint
           command: |
+            source ${BASH_ENV}
             cd cla-backend
-            ./check-headers.sh
+            pyenv local 3.9.7
+            echo "Running on ubuntu  : $(lsb_release -d)"
+            echo "Python version     : $(python3 --version)"
+            echo "Python Pip version : $(pip --version)"
             # Lint will always pass for now - need to continue addressing lint issues
             pylint cla/*.py || true
       - run:
           name: test
           command: |
+            source ${BASH_ENV}
             cd cla-backend
+            pyenv local 3.9.7
             export GITHUB_OAUTH_TOKEN=${GITHUB_OAUTH_TOKEN}
             pytest "cla/tests" -p no:warnings --cov="cla"
 
@@ -195,42 +233,41 @@ jobs:
           fingerprints:
             - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
       - *setup_aws
-      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-16
-      - run: echo 'export GO111MODULE=on' >> $BASH_ENV
+      - *install_aws_cli
+      - *install_python_3_9
+      - *install_node_16
       - run:
           name: Setup
           command: |
             source ${BASH_ENV}
-            echo "Running on ubuntu: $(lsb_release -a)"
-            echo "Installing python..."
-            sudo apt-get update
-            sudo apt install -y software-properties-common
-            sudo add-apt-repository ppa:deadsnakes/ppa -y
-            sudo apt-get install -y python3 python3-pip
-            echo "Upgrading pip..."
-            python3 -m pip install --upgrade pip
-            echo "Python 3 version:"
-            python3 --version
+            pyenv local 3.9.7
+            echo "Running on ubuntu  : $(lsb_release -d)"
+            echo "Python version     : $(python3 --version)"
+            echo "Python Pip version : $(pip --version)"
             make -f cla-backend-go/Makefile setup-dev
       - run:
           name: Clean
           command: |
+            source ${BASH_ENV}
             cd cla-backend-go
             make clean
       - run:
           name: Dependencies
           command: |
+            source ${BASH_ENV}
             cd cla-backend-go
             make deps
       - run:
           name: Build Swagger
           command: |
+            source ${BASH_ENV}
             cd cla-backend-go
+            pyenv local 3.9.7
             make swagger
       - run:
           name: Build
           command: |
+            source ${BASH_ENV}
             cd cla-backend-go
             echo "Building Lambdas..."
             make build-lambdas-linux
@@ -239,6 +276,7 @@ jobs:
       - run:
           name: Test
           command: |
+            source ${BASH_ENV}
             if [[ "${STAGE}" == "dev" ]]; then
               cd cla-backend-go
               make test
@@ -248,6 +286,7 @@ jobs:
       - run:
           name: Lint
           command: |
+            source ${BASH_ENV}
             if [[ "${STAGE}" == "dev" ]]; then
               cd cla-backend-go
               make lint
@@ -276,7 +315,7 @@ jobs:
   # Deploys Old API
   deployV1Backend: &deployV1BackendAnchor
     docker:
-      - image: circleci/python:3.7.9-node
+      - image: cimg/python:3.9
     steps:
       - attach_workspace:
           at: ~/
@@ -285,8 +324,10 @@ jobs:
           fingerprints:
             - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
       - *setup_aws
-      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-16
+      - *install_aws_cli
+      - *install_python_3_9
+      - *install_node_16
+      - *install_yarn
       - run:
           name: Deploy EasyCLA v1
           command: |
@@ -372,7 +413,7 @@ jobs:
 
   deployV2Backend: &deployV2BackendAnchor
     docker:
-      - image: circleci/python:3.7.9-node
+      - image: cimg/python:3.9
     steps:
       - attach_workspace:
           at: ~/
@@ -381,8 +422,8 @@ jobs:
           fingerprints:
             - "e9:13:85:f1:b1:a1:25:bf:f5:44:34:66:82:1e:31:59"
       - *setup_aws
-      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-16
+      - *install_node_16
+      - *install_yarn
       - run:
           name: Deploy EasyCLA v2
           command: |
@@ -484,112 +525,9 @@ jobs:
       ROOT_DOMAIN: lfcla.platform.linuxfoundation.org
       PRODUCT_DOMAIN: lfcla.com
 
-  buildLandingPage: &buildLandingPageAnchor
-    docker:
-      - image: circleci/node:14-browsers
-    steps:
-      - checkout
-      - *setup_aws
-      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-16
-      - run:
-          name: Install UI Dependencies
-          command: |
-            pushd $PROJECT_DIR
-            echo "Running yarn install in folder: `pwd`."
-            yarn install
-            popd
-      - run:
-          name: Build Source
-          command: |
-            echo "Building source..."
-            pushd $PROJECT_DIR
-            yarn build:${STAGE}
-            popd
-
-  # Build Landing Page Console
-  buildLandingPageDev:
-    <<: *buildLandingPageAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: dev
-      PROJECT_DIR: cla-landing-page
-      ROOT_DOMAIN: lfcla.dev.platform.linuxfoundation.org
-      PRODUCT_DOMAIN: dev.lfcla.com
-
-  deployLandingFrontend: &deployLandingFrontendAnchor
-    docker:
-      - image: circleci/node:8-browsers
-    steps:
-      - checkout
-      - *install_aws_cli
-      - *setup_aws
-      - run: echo 'export NVM_DIR=${HOME}/.nvm' >> $BASH_ENV
-      - *install-node-16
-      - run:
-          name: Deploy
-          command: |
-            echo "Node version is: $(node --version)"
-            echo "Using AWS profile: ${AWS_PROFILE}"
-            echo "Stage is: ${STAGE}"
-            echo "PROJECT_DIR=${PROJECT_DIR}"
-
-            # Run the deploy scripts
-            pushd ${PROJECT_DIR}
-            echo "Current directory is: `pwd`"
-
-            echo "Running install 'yarn install'..."
-            yarn install
-            echo "Running pre-fetch config: 'yarn prebuild:${STAGE}'..."
-            yarn prebuild:${STAGE}
-            echo "Running build..."
-            yarn build:${STAGE}
-
-            echo "Running deploy in folder: `pwd`"
-            SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js deploy -s ${STAGE} -r ${AWS_REGION} --verbose
-
-            echo "Running client deploy in folder: `pwd`"
-            SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js client deploy -s ${STAGE} -r ${AWS_REGION} --no-confirm --no-policy-change --no-config-change
-
-            # Use AWS CLI to invalidate the CloudFront cache - the serverless plugin was causing some incompatibilities between node and the config
-            echo "Invalidating Cloudfront caches using command: aws --profile ${AWS_PROFILE} cloudfront create-invalidation --distribution-id ${DISTRIBUTION_ID} --paths '/*'"
-            # SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js cloudfrontInvalidate -s ${STAGE} -r ${AWS_REGION} --cloudfront=true
-            aws --profile ${AWS_PROFILE} cloudfront create-invalidation --distribution-id ${DISTRIBUTION_ID} --paths "/*"
-            popd
-
-          no_output_timeout: 1.5h
-
-  # Landing Page
-  deployLandingFrontendDev:
-    <<: *deployLandingFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_DEV
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_DEV
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: dev
-      PROJECT_DIR: cla-landing-page
-      PRODUCT_DOMAIN: dev.lfcla.com
-      DISTRIBUTION_ID: 'E4CMSMNLN6Y7T'
-
-  deployLandingFrontendProd:
-    <<: *deployLandingFrontendAnchor
-    environment:
-      AWS_ACCESS_KEY_ID_ENV_VAR: AWS_ACCESS_KEY_ID_PROD
-      AWS_SECRET_ACCESS_KEY_ENV_VAR: AWS_SECRET_ACCESS_KEY_PROD
-      AWS_PROFILE: lf-cla
-      AWS_REGION: us-east-1
-      STAGE: prod
-      PROJECT_DIR: cla-landing-page
-      PRODUCT_DOMAIN: lfcla.com
-      DISTRIBUTION_ID: 'E21VS2BPNQGLWS'
-
   functionalTestsTavern: &functionalTestsTavern
     docker:
-      - image: circleci/python:3.7.4-node
+      - image: cimg/python:3.9-node
     steps:
       - attach_workspace:
           at: ~/
@@ -606,7 +544,6 @@ jobs:
           name: functional-tests
           halt_build_on_fail: false  # for now, we will pass all functional tests
           command: |
-            source ${BASH_ENV}
             echo "Running functional tests for stage: ${STAGE}"
             cd tests/rest
             tavern-ci test_*.tavern.yaml --alluredir=allure_result_folder -v || true
@@ -713,10 +650,6 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - buildLandingPageDev:
-          filters:
-            tags:
-              only: /.*/
 
       # Deploy v1 Dev
       - deployV1BackendDev:
@@ -733,16 +666,6 @@ workflows:
       - deployV2BackendDev:
           requires:
             - buildGoBackendCommon
-          filters:
-            tags:
-              ignore: /.*/
-            branches:
-              only:
-                - main
-      # Deploy Landing Page Dev
-      - deployLandingFrontendDev:
-          requires:
-            - buildLandingPageDev
           filters:
             tags:
               ignore: /.*/
@@ -804,15 +727,6 @@ workflows:
           requires:
             - approve_prod
             - buildGoBackendCommon
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              # see semver examples https://regex101.com/r/Ly7O1x/201/
-              only: /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-      - deployLandingFrontendProd:
-          requires:
-            - approve_prod
           filters:
             branches:
               ignore: /.*/
