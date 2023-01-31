@@ -101,7 +101,7 @@ custom:
 
 provider:
   name: aws
-  runtime: python3.9
+  runtime: python3.7
   stage: ${env:STAGE}
   region: us-east-1
   timeout: 60 # optional, in seconds, default is 6
