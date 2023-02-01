@@ -164,8 +164,9 @@ jobs:
           yarn sls deploy --force --stage ${STAGE} --region us-east-1 --verbose
       - name: EasyCLA v1 Service Check
         run: |
-          sudo apt install curl -y
+          sudo apt install curl jq -y
           
+          # Development environment endpoints to test
           declare -r v2_url="https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v2/health"
           declare -r v3_url="https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v3/ops/health"
 
@@ -205,7 +206,9 @@ jobs:
 
       - name: EasyCLA v2 Service Check
         run: |
-          sudo apt install curl -y
+          sudo apt install curl jq -y
+          
+          # Development environment endpoint to test
           v4_url="https://api-gw.${STAGE}.platform.linuxfoundation.org/cla-service/v4/ops/health"
 
           echo "Validating v4 backend using endpoint: ${v4_url}"

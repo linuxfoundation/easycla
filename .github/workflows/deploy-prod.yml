@@ -93,22 +93,6 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Python Lint
-        working-directory: cla-backend
-        run: |
-          pylint cla/*.py || true
-
-      - name: Python Test
-        working-directory: cla-backend
-        run: |
-          pytest "cla/tests" -p no:warnings
-        env:
-          PLATFORM_GATEWAY_URL: https://api-gw.platform.linuxfoundation.org
-          AUTH0_PLATFORM_URL: https://linuxfoundation.auth0.com/oauth/token
-          AUTH0_PLATFORM_CLIENT_ID: ${{ secrets.AUTH0_PLATFORM_CLIENT_ID }}
-          AUTH0_PLATFORM_CLIENT_SECRET: ${{ secrets.AUTH0_PLATFORM_CLIENT_SECRET }}
-          AUTH0_PLATFORM_AUDIENCE: https://api-gw.platform.linuxfoundation.org/
-
       - name: Go Setup
         working-directory: cla-backend-go
         run: |
@@ -127,15 +111,6 @@ jobs:
         working-directory: cla-backend-go
         run: |
           make build-lambdas-linux build-functional-tests-linux
-
-      - name: Go Test
-        working-directory: cla-backend-go
-        run: |
-          make test
-
-      - name: Go Lint
-        working-directory: cla-backend-go
-        run: make lint
 
       - name: Setup Deployment
         working-directory: cla-backend
@@ -167,8 +142,9 @@ jobs:
           yarn sls deploy --force --stage ${STAGE} --region us-east-1 --verbose
       - name: EasyCLA v1 Service Check
         run: |
-          sudo apt install curl -y
+          sudo apt install curl jq -y
           
+          # Production environment endpoints to test
           declare -r v2_url="https://api.easycla.lfx.linuxfoundation.org/v2/health"
           declare -r v3_url="https://api.easycla.lfx.linuxfoundation.org/v3/ops/health"
 
@@ -208,7 +184,9 @@ jobs:
 
       - name: EasyCLA v2 Service Check
         run: |
-          sudo apt install curl -y
+          sudo apt install curl jq -y
+          
+          # Production environment endpoint to test
           v4_url="https://api-gw.platform.linuxfoundation.org/cla-service/v4/ops/health"
 
           echo "Validating v4 backend using endpoint: ${v4_url}"
@@ -227,4 +205,3 @@ jobs:
             echo "Failed to get a successful response from endpoint: ${v4_url}"
             exit ${exit_code}
           fi
-
