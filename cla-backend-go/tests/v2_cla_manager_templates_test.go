@@ -77,7 +77,7 @@ func TestV2OrgAdminTemplate(t *testing.T) {
 	assert.Contains(t, result, "SenderNameValue SenderEmailValue has identified you")
 	assert.Contains(t, result, "Corporate CLA in support of the following project(s):")
 	assert.Contains(t, result, "<li>JohnsProject</li>")
-	assert.Contains(t, result, "can login to this portal (http://CorporateConsole.com)")
+	assert.Contains(t, result, "can login to the EasyCLA portal")
 	assert.Contains(t, result, `sign the CLA for this project <a href="http://CorporateConsole.com/foundation/FoundationSFIDValue/project/ProjectSFIDValue/cla" target="_blank">JohnsProject</a>`)
 }
 

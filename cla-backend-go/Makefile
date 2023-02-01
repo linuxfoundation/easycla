@@ -213,6 +213,7 @@ fmt:
 test:
 	@echo "==> Running unit tests..."
 	@go test -v $(shell go list ./... | grep -v /vendor/ | grep -v /node_modules/) -coverprofile=cover.out
+	@echo "==> Unit test successful!"
 
 mock:
 	@echo "==> Re-Generating mocks"
