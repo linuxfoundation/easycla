@@ -47,6 +47,7 @@ func ToModel(in *GitLabOrganization) *models2.GitlabOrganization {
 		BranchProtectionEnabled: in.BranchProtectionEnabled,
 		ProjectSfid:             in.ProjectSFID,
 		OrganizationExternalID:  int64(in.ExternalGroupID),
+		AuthState:               in.AuthState,
 	}
 }
 

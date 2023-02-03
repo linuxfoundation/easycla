@@ -175,9 +175,9 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 		return fmt.Errorf("no participants found in gitlab mr : %d, and gitlab project : %d", mergeID, projectID)
 	}
 
-	claGroup, err := s.projectsCLAGroupsRepository.GetClaGroupIDForProject(ctx, gitlabOrg.ProjectSFID)
+	claGroup, err := s.projectsCLAGroupsRepository.GetClaGroupIDForProject(ctx, gitlabOrg.ProjectSfid)
 	if err != nil {
-		return fmt.Errorf("fetching claGroup id for gitlabOrg project sfid : %s, failed : %v", gitlabOrg.ProjectSFID, err)
+		return fmt.Errorf("fetching claGroup id for gitlabOrg project sfid : %s, failed : %v", gitlabOrg.ProjectSfid, err)
 	}
 	claGroupID := claGroup.ClaGroupID
 	log.WithFields(f).Debugf("gitlabOrg : %s is associated with cla group id : %s", gitlabOrg.OrganizationName, claGroupID)
@@ -589,7 +589,7 @@ func (s service) checkGitLabGroupApproval(ctx context.Context, userName, URL str
 		log.WithFields(f).Debugf("updating url : %s to %s for easycla search purporses ", searchURL, updated)
 		searchURL = updated
 	}
-	gitlabOrg, _ := s.gitlabRepository.GetGitLabOrganizationByURL(ctx, searchURL)
+	gitlabOrg, _ := s.gitlabOrgService.GetGitLabOrganizationByURL(ctx, searchURL)
 	if gitlabOrg != nil {
 		oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
 		if err != nil {
@@ -602,7 +602,7 @@ func (s service) checkGitLabGroupApproval(ctx context.Context, userName, URL str
 			log.WithFields(f).WithError(clientErr).Warnf("problem getting gitLabClient for org: %s ", gitlabOrg.OrganizationName)
 			return false, clientErr
 		}
-		members, err := gitlab_api.ListGroupMembers(ctx, gitlabClient, int(gitlabOrg.ExternalGroupID))
+		members, err := gitlab_api.ListGroupMembers(ctx, gitlabClient, int(gitlabOrg.OrganizationExternalID))
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("problem getting gitlab group members")
 			return false, err

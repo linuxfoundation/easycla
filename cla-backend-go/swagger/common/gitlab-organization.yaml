@@ -63,6 +63,9 @@ properties:
   auth_info:
     type: string
     description: auth info
+  auth_state:
+    type: string
+    description: auth state
   gitlab_info:
     type: object
     properties:
