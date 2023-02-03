@@ -81,8 +81,13 @@ func (s *service) enableBranchProtectionForGitLabOrg(ctx context.Context, newGit
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", newGitLabOrg.OrganizationName, err)
 	}
 
+	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+	if err != nil {
+		return fmt.Errorf("refreshing gitlab org auth failed : %v", err)
+	}
+
 	log.WithFields(f).Debugf("creating a new gitlab client object for org: %s...", newGitLabOrg.OrganizationName)
-	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+	gitLabClient, err := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing GitLab client failed : %v", err)
 	}

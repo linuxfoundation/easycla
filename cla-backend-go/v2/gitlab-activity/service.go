@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
-
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 
 	"github.com/communitybridge/easycla/cla-backend-go/company"
@@ -20,6 +18,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
@@ -65,7 +64,7 @@ type Service interface {
 
 type service struct {
 	usersRepository             users.UserRepository
-	gitlabRepository            gitlab_organizations.RepositoryInterface
+	gitlabOrgService            gitlab_organizations.ServiceInterface
 	gitRepository               repositories.RepositoryInterface
 	gitV2Repository             gitV2Repositories.RepositoryInterface
 	signaturesRepository        signatures.SignatureRepository
@@ -75,10 +74,9 @@ type service struct {
 	gitLabApp                   *gitlab_api.App
 }
 
-func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRepository repositories.RepositoryInterface, gitV2Repository gitV2Repositories.RepositoryInterface, usersRepository users.UserRepository, signaturesRepository signatures.SignatureRepository, projectsCLAGroupsRepository projects_cla_groups.Repository,
-	companyRepository company.IRepository, signatureRepository signatures.SignatureRepository) Service {
+func NewService(gitRepository repositories.RepositoryInterface, gitV2Repository gitV2Repositories.RepositoryInterface, usersRepository users.UserRepository, signaturesRepository signatures.SignatureRepository, projectsCLAGroupsRepository projects_cla_groups.Repository,
+	companyRepository company.IRepository, signatureRepository signatures.SignatureRepository, gitlabOrgService gitlab_organizations.ServiceInterface) Service {
 	return &service{
-		gitlabRepository:            gitlabRepository,
 		gitRepository:               gitRepository,
 		gitV2Repository:             gitV2Repository,
 		usersRepository:             usersRepository,
@@ -87,6 +85,7 @@ func NewService(gitlabRepository gitlab_organizations.RepositoryInterface, gitRe
 		companyRepository:           companyRepository,
 		signatureRepository:         signatureRepository,
 		gitLabApp:                   gitlab_api.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
+		gitlabOrgService:            gitlabOrgService,
 	}
 }
 
@@ -144,7 +143,13 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 
 	log.WithFields(f).Debugf("internal gitlab org : %s:%s is associated with external path : %s", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName, repositoryPath)
 
-	gitlabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+	// fetch updated token info
+	oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+	if err != nil {
+		return fmt.Errorf("refreshing gitlab org auth info failed : %v", err)
+	}
+
+	gitlabClient, err := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing gitlab client : %v", err)
 	}
@@ -313,20 +318,20 @@ func getAuthorInfo(gitlabUser *gitlab.User) string {
 	return fmt.Sprintf("%d:%s", gitlabUser.ID, gitlabUser.Username)
 }
 
-func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*common.GitLabOrganization, error) {
+func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*v2Models.GitlabOrganization, error) {
 	parts := strings.Split(projectPath, "/")
 	organizationName := parts[0]
 
-	gitlabOrg, err := s.gitlabRepository.GetGitLabOrganizationByName(ctx, organizationName)
+	gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganizationByName(ctx, organizationName)
 	if err != nil || gitlabOrg == nil {
 		// try getting it with project name as well
-		gitlabOrg, err = s.gitlabRepository.GetGitLabOrganizationByName(ctx, projectNameSpace)
+		gitlabOrg, err = s.gitlabOrgService.GetGitLabOrganizationByName(ctx, projectNameSpace)
 		if err != nil || gitlabOrg == nil {
 			return nil, fmt.Errorf("gitlab org : %s doesn't exist : %v", organizationName, err)
 		}
 	}
 
-	gitlabOrg, err = s.gitlabRepository.GetGitLabOrganization(ctx, gitlabOrg.OrganizationID)
+	gitlabOrg, err = s.gitlabOrgService.GetGitLabOrganization(ctx, gitlabOrg.OrganizationID)
 	if err != nil {
 		return nil, fmt.Errorf("fetching gitlab org : %s failed : %v", gitlabOrg.OrganizationID, err)
 	}
@@ -586,7 +591,13 @@ func (s service) checkGitLabGroupApproval(ctx context.Context, userName, URL str
 	}
 	gitlabOrg, _ := s.gitlabRepository.GetGitLabOrganizationByURL(ctx, searchURL)
 	if gitlabOrg != nil {
-		gitlabClient, clientErr := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+		oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem refreshing gitlab auth for org: %s ", gitlabOrg.OrganizationName)
+			return false, err
+		}
+
+		gitlabClient, clientErr := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
 		if clientErr != nil {
 			log.WithFields(f).WithError(clientErr).Warnf("problem getting gitLabClient for org: %s ", gitlabOrg.OrganizationName)
 			return false, clientErr

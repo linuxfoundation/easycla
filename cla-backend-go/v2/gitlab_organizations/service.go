@@ -59,6 +59,7 @@ type ServiceInterface interface {
 	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID string, gitlabOrgFullPath string) error
 	InitiateSignRequest(ctx context.Context, req *http.Request, gitlabClient *goGitLab.Client, repositoryID, mergeRequestID, originURL, contributorBaseURL string, eventService events.Service) (*string, error)
+	RefreshGitLabOrganizationAuth(ctx context.Context, authResponse, gitlabOrganizationID string) (*string, error)
 }
 
 // Service data model
@@ -334,7 +335,12 @@ func (s *Service) GetGitLabGroupMembers(ctx context.Context, groupID string) (*v
 	}
 
 	if gitlabOrg != nil {
-		glClient, clientErr := gitlabApi.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+		oauthResponse, err := s.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to refresh gitlab auth")
+			return nil, err
+		}
+		glClient, clientErr := gitlabApi.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
 		if clientErr != nil {
 			log.WithFields(f).WithError(clientErr).Warn("problem getting gitLabClient")
 			return nil, clientErr
@@ -407,6 +413,59 @@ func (s *Service) GetGitLabOrganizationsByProjectSFID(ctx context.Context, proje
 	return out, nil
 }
 
+// RefreshGitLabOrganizationAuth refreshes the GitLab organization auth token in case of expired token
+func (s *Service) RefreshGitLabOrganizationAuth(ctx context.Context, authResponse, gitlabOrganizationID string) (*string, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.gitlab_organizations.service.RefreshGitLabOrganizationAuth",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+	var gitLabAuthResponse string
+	var err error
+
+	// decrypt oauthResponse
+	decryptedOauthResponse, err := gitlabApi.DecryptAuthInfo(authResponse, s.gitLabApp)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem decrypting oauthResponse")
+		return nil, err
+	}
+
+	log.WithFields(f).Debug("decrypted oauthResponse: ", decryptedOauthResponse)
+
+	buffer := 30
+
+	if decryptedOauthResponse.ExpiresIn < (time.Now().Second() - buffer) {
+		log.WithFields(f).Debug("refreshing gitlab auth token")
+		refreshOauthResponse, err := gitlabApi.RefreshOauthToken(decryptedOauthResponse.RefreshToken)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem refreshing token")
+			return nil, err
+		}
+		log.WithFields(f).Debug("refreshed oauthResponse: ", refreshOauthResponse)
+
+		//update the gitlab organization with new auth info
+		err = s.UpdateGitLabOrganizationAuth(ctx, gitlabOrganizationID, refreshOauthResponse)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem updating gitlab organization auth info")
+			return nil, err
+		}
+
+		// encrypt oauthResponse
+		gitLabAuthResponse, err = gitlabApi.EncryptAuthInfo(refreshOauthResponse, s.gitLabApp)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem encrypting oauthResponse")
+			return nil, err
+		}
+
+		log.WithFields(f).Debug("encrypted oauthResponse: ", gitLabAuthResponse)
+
+	} else {
+		log.WithFields(f).Debug("using existing gitlab auth token")
+		gitLabAuthResponse = authResponse
+	}
+
+	return &gitLabAuthResponse, nil
+}
+
 func (s *Service) toGitLabProjectOrganizationList(ctx context.Context, dbModels *v2Models.GitlabOrganizations) []*v2Models.GitlabProjectOrganization {
 	f := logrus.Fields{
 		"functionName":   "v2.gitlab_organizations.service.toGitLabProjectOrganizationList",
@@ -471,7 +530,18 @@ func (s *Service) toGitLabProjectOrganizationList(ctx context.Context, dbModels 
 				rorg.ConnectionStatusMessage = repoErr.Error()
 			} else {
 				// We've been authenticated by the user - great, see if we can determine the list of repos...
-				glClient, clientErr := gitlabApi.NewGitlabOauthClient(orgDetailed.AuthInfo, s.gitLabApp)
+				oauthResponse, err := s.RefreshGitLabOrganizationAuth(ctx, orgDetailed.AuthInfo, orgDetailed.OrganizationID)
+				if err != nil {
+					log.WithFields(f).Warnf("refreshing gitlab auth for gitlab org: %s failed : %v", org.OrganizationID, err)
+					rorg.ConnectionStatus = utils.ConnectionFailure
+					rorg.ConnectionStatusMessage = err.Error()
+					oauthResponse = &orgDetailed.AuthInfo
+				} else {
+					rorg.ConnectionStatus = utils.Connected
+					rorg.ConnectionStatusMessage = "Connected"
+				}
+
+				glClient, clientErr := gitlabApi.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
 				if clientErr != nil {
 					log.WithFields(f).Warnf("using gitlab client for gitlab group id: %d, internal group/org ID: %s failed: %v", org.OrganizationExternalID, org.OrganizationID, clientErr)
 					rorg.ConnectionStatus = utils.ConnectionFailure

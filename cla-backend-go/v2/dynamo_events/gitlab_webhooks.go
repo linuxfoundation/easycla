@@ -55,7 +55,12 @@ func (s *service) GitLabRepoAddedWebhookEventHandler(event events.DynamoDBEventR
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", newRepoModel.RepositoryOrganizationName, err)
 	}
 
-	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+	if err != nil {
+		return fmt.Errorf("refreshing gitlab org auth failed : %v", err)
+	}
+
+	gitLabClient, err := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing GitLab client failed : %v", err)
 	}
@@ -125,7 +130,12 @@ func (s *service) GitlabRepoModifiedWebhookEventHandler(event events.DynamoDBEve
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", oldRepoModel.RepositoryOrganizationName, err)
 	}
 
-	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+	if err != nil {
+		return fmt.Errorf("refreshing gitlab org auth failed : %v", err)
+	}
+
+	gitLabClient, err := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing GitLab client failed : %v", err)
 	}
@@ -189,7 +199,12 @@ func (s *service) GitLabRepoRemovedWebhookEventHandler(event events.DynamoDBEven
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", oldRepoModel.RepositoryOrganizationName, err)
 	}
 
-	gitLabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, s.gitLabApp)
+	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+	if err != nil {
+		return fmt.Errorf("refreshing gitlab org auth failed : %v", err)
+	}
+
+	gitLabClient, err := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
 	if err != nil {
 		return fmt.Errorf("initializing GitLab client failed : %v", err)
 	}

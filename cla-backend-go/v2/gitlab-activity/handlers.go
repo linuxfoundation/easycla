@@ -31,7 +31,7 @@ const (
 	SessionStoreKey = "cla-gitlab"
 )
 
-func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgRepo gitlab_organizations.RepositoryInterface, eventService events.Service, gitLabApp *gitlab_api.App, signService gitlab_sign.Service, contributorConsoleV2Base string, sessionStore *dynastore.Store) {
+func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService gitlab_organizations.ServiceInterface, eventService events.Service, gitLabApp *gitlab_api.App, signService gitlab_sign.Service, contributorConsoleV2Base string, sessionStore *dynastore.Store) {
 
 	api.GitlabActivityGitlabTriggerHandler = gitlab_activity.GitlabTriggerHandlerFunc(func(params gitlab_activity.GitlabTriggerParams) middleware.Responder {
 		requestID, _ := uuid.NewV4()
@@ -57,7 +57,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgRepo gitlab
 		log.WithFields(f).Debugf("handling gitlab trigger")
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID)
 
-		gitlabOrg, err := gitlabOrgRepo.GetGitLabOrganization(ctx, gitlabOrganizationID)
+		gitlabOrg, err := gitlabOrgService.GetGitLabOrganization(ctx, gitlabOrganizationID)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab org failed : %v", err)
 			log.WithFields(f).Errorf(msg)
@@ -72,7 +72,15 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgRepo gitlab
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
 
-		gitlabClient, err := gitlab_api.NewGitlabOauthClient(gitlabOrg.AuthInfo, gitLabApp)
+		encryptedOauthResponse, err := gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+		if err != nil {
+			msg := fmt.Sprintf("refreshing gitlab org auth failed : %v", err)
+			log.WithFields(f).Errorf(msg)
+			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
+				utils.ErrorResponseBadRequest(reqID, msg))
+		}
+
+		gitlabClient, err := gitlab_api.NewGitlabOauthClient(*encryptedOauthResponse, gitLabApp)
 		if err != nil {
 			msg := fmt.Sprintf("initializing gitlab client : %v", err)
 			log.WithFields(f).Errorf(msg)

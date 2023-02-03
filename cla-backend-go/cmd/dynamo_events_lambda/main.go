@@ -12,6 +12,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/project/service"
 
 	v2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 
@@ -98,6 +99,7 @@ func init() {
 	approvalListRequestsRepo := approval_list.NewRepository(awsSession, stage)
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
 	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
+	storeRepo := store.NewRepository(awsSession, stage)
 
 	token.Init(configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret, configFile.Auth0Platform.URL, configFile.Auth0Platform.Audience)
 	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
@@ -108,6 +110,7 @@ func init() {
 	project_service.InitClient(configFile.APIGatewayURL)
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, repositoriesRepo, projectClaGroupRepo)
 	repositoriesService := repositories.NewService(repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo)
+
 	gerritService := gerrits.NewService(gerritRepo, &gerrits.LFGroup{
 		LfBaseURL:    configFile.LFGroup.ClientURL,
 		ClientID:     configFile.LFGroup.ClientID,
@@ -131,9 +134,11 @@ func init() {
 		projectClaGroupRepo,
 	})
 
-	signaturesRepo := signatures.NewRepository(awsSession, stage, companyRepo, usersRepo, eventsService, repositoriesRepo, githubOrganizationsRepo, gerritService)
-
 	usersService := users.NewService(usersRepo, eventsService)
+	signaturesRepo := signatures.NewRepository(awsSession, stage, companyRepo, usersRepo, eventsService, repositoriesRepo, githubOrganizationsRepo, gerritService)
+	v2RepositoryService := v2Repositories.NewService(repositoriesRepo, v2Repository, projectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
+	gitlabOrgService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoryService, projectClaGroupRepo, storeRepo, usersService)
+
 	companyService := company.NewService(companyRepo, configFile.CorporateConsoleV1URL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(companyService, signaturesRepo, projectRepo, usersRepo, companyRepo, projectClaGroupRepo, eventsService)
 	organization_service.InitClient(configFile.APIGatewayURL, eventsService)
@@ -154,7 +159,9 @@ func init() {
 		gerritService,
 		claManagerRequestsRepo,
 		approvalListRequestsRepo,
-		gitlabApp)
+		gitlabApp,
+		gitlabOrgService,
+	)
 }
 
 func handler(ctx context.Context, event events.DynamoDBEvent) {

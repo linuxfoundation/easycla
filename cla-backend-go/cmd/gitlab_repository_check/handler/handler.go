@@ -28,6 +28,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 	v2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
 
 	"strings"
 
@@ -113,6 +114,7 @@ func Handler(ctx context.Context) error {
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
 	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
 	v1CLAGroupRepo := repository.NewRepository(awsSession, stage, gitV1Repository, gerritRepo, v1ProjectClaGroupRepo)
+	storeRepo := store.NewRepository(awsSession, stage)
 
 	// Service Layer
 
@@ -131,8 +133,11 @@ func Handler(ctx context.Context) error {
 		v1ProjectClaGroupRepo,
 	})
 
+	usersService := users.NewService(usersRepo, eventsService)
+
 	v2RepositoriesService := v2Repositories.NewService(gitV1Repository, gitV2Repository, v1ProjectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
-	//gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo)
+	// gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo)
+	gitlabOrganizationService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepo, usersService)
 
 	// Query GitLab Groups
 	// for each group
@@ -159,7 +164,14 @@ func Handler(ctx context.Context) error {
 			continue
 		}
 
-		gitLabClient, gitLabClientErr := gitLabApi.NewGitlabOauthClient(gitLabGroup.AuthInfo, gitLabApp)
+		oauthResponse, err := gitlabOrganizationService.RefreshGitLabOrganizationAuth(ctx, gitLabGroup.AuthInfo, gitLabGroup.OrganizationID)
+
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem refreshing GitLab group/organization: %s authentication info - skipping", gitLabGroup.OrganizationURL)
+			continue
+		}
+
+		gitLabClient, gitLabClientErr := gitLabApi.NewGitlabOauthClient(*oauthResponse, gitLabApp)
 		if gitLabClientErr != nil {
 			log.WithFields(f).WithError(gitLabClientErr).Warnf("problem loading GitLab client for group/organization: %s - skipping", gitLabGroup.OrganizationURL)
 			continue

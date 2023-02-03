@@ -30,11 +30,11 @@ import (
 )
 
 type service struct {
-	repoService   repositories.ServiceInterface
-	gitlabOrgRepo gitlab_organizations.RepositoryInterface
-	userService   users.Service
-	gitlabApp     *gitlab_api.App
-	storeRepo     store.Repository
+	repoService      repositories.ServiceInterface
+	gitlabOrgService gitlab_organizations.ServiceInterface
+	userService      users.Service
+	gitlabApp        *gitlab_api.App
+	storeRepo        store.Repository
 }
 
 type Service interface {
@@ -42,13 +42,13 @@ type Service interface {
 	GetOriginURL(ctx context.Context, organizationID, repositoryID, mergeRequestID string) (*string, error)
 }
 
-func NewService(gitlabRepositoryService repositories.ServiceInterface, gitlabOrgRepository gitlab_organizations.RepositoryInterface, userService users.Service, storeRepo store.Repository, gitlabApp *gitlab_api.App) Service {
+func NewService(gitlabRepositoryService repositories.ServiceInterface, userService users.Service, storeRepo store.Repository, gitlabApp *gitlab_api.App, gitlabOrgService gitlab_organizations.ServiceInterface) Service {
 	return &service{
-		repoService:   gitlabRepositoryService,
-		gitlabOrgRepo: gitlabOrgRepository,
-		userService:   userService,
-		gitlabApp:     gitlabApp,
-		storeRepo:     storeRepo,
+		repoService:      gitlabRepositoryService,
+		userService:      userService,
+		gitlabApp:        gitlabApp,
+		storeRepo:        storeRepo,
+		gitlabOrgService: gitlabOrgService,
 	}
 }
 
@@ -58,7 +58,7 @@ func (s service) GetOriginURL(ctx context.Context, organizationID, repositoryID,
 		"functionName":   "v2.gitlab_sign.service.GetOriginURL",
 		"organizationID": organizationID,
 	}
-	organization, err := s.gitlabOrgRepo.GetGitLabOrganization(ctx, organizationID)
+	organization, err := s.gitlabOrgService.GetGitLabOrganization(ctx, organizationID)
 	if err != nil {
 		log.WithFields(f).Debugf("unable to get gitlab organiztion by ID: %s, error: %+v ", organizationID, err)
 		return nil, err
@@ -69,7 +69,14 @@ func (s service) GetOriginURL(ctx context.Context, organizationID, repositoryID,
 		log.WithFields(f).Debug(msg)
 		return nil, errors.New(msg)
 	}
-	gitlabClient, err := gitlab_api.NewGitlabOauthClient(organization.AuthInfo, s.gitlabApp)
+
+	oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, organization.AuthInfo, organizationID)
+	if err != nil {
+		log.WithFields(f).Debugf("unable to refresh gitlab organiztion auth by ID: %s, error: %+v ", organizationID, err)
+		return nil, err
+	}
+
+	gitlabClient, err := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitlabApp)
 	if err != nil {
 		log.WithFields(f).Debugf("initializaing gitlab client for gitlab org: %s failed: %v", organizationID, err)
 		return nil, err

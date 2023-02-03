@@ -64,6 +64,7 @@ type service struct {
 	projectsClaGroupRepo     projects_cla_groups.Repository
 	eventsRepo               claevent.Repository
 	gitLabOrgRepo            gitlab_organizations.RepositoryInterface
+	gitLabOrgService         gitlab_organizations.ServiceInterface
 	v2Repository             v2Repositories.RepositoryInterface
 	projectRepo              repository.ProjectRepository
 	projectService           service2.Service
@@ -97,7 +98,8 @@ func NewService(stage string,
 	gerritService gerrits.Service,
 	claManagerRequestsRepo cla_manager.IRepository,
 	approvalListRequestsRepo approval_list.IRepository,
-	gitLabApp *gitlab_api.App) Service {
+	gitLabApp *gitlab_api.App,
+	gitlabOrgService gitlab_organizations.ServiceInterface) Service {
 
 	signaturesTable := fmt.Sprintf("cla-%s-signatures", stage)
 	eventsTable := fmt.Sprintf("cla-%s-events", stage)
@@ -126,6 +128,7 @@ func NewService(stage string,
 		claManagerRequestsRepo:   claManagerRequestsRepo,
 		approvalListRequestsRepo: approvalListRequestsRepo,
 		gitLabApp:                gitLabApp,
+		gitLabOrgService:         gitlabOrgService,
 	}
 
 	s.registerCallback(signaturesTable, Modify, s.SignatureSignedEvent)
