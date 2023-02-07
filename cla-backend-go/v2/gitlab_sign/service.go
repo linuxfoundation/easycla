@@ -23,6 +23,7 @@ import (
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
@@ -70,7 +71,7 @@ func (s service) GetOriginURL(ctx context.Context, organizationID, repositoryID,
 		return nil, errors.New(msg)
 	}
 
-	oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, organization.AuthInfo, organizationID)
+	oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, common.ToCommonModel(organization))
 	if err != nil {
 		log.WithFields(f).Debugf("unable to refresh gitlab organiztion auth by ID: %s, error: %+v ", organizationID, err)
 		return nil, err

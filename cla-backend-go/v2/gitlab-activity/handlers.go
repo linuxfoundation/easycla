@@ -57,7 +57,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		log.WithFields(f).Debugf("handling gitlab trigger")
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID)
 
-		gitlabOrg, err := gitlabOrgService.GetGitLabOrganization(ctx, gitlabOrganizationID)
+		gitlabOrg, err := gitlabOrgService.GetGitLabOrganizationByID(ctx, gitlabOrganizationID)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab org failed : %v", err)
 			log.WithFields(f).Errorf(msg)
@@ -72,7 +72,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
 
-		encryptedOauthResponse, err := gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+		encryptedOauthResponse, err := gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg)
 		if err != nil {
 			msg := fmt.Sprintf("refreshing gitlab org auth failed : %v", err)
 			log.WithFields(f).Errorf(msg)

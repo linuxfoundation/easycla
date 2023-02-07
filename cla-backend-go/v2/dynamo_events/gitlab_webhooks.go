@@ -55,7 +55,7 @@ func (s *service) GitLabRepoAddedWebhookEventHandler(event events.DynamoDBEventR
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", newRepoModel.RepositoryOrganizationName, err)
 	}
 
-	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg)
 	if err != nil {
 		return fmt.Errorf("refreshing gitlab org auth failed : %v", err)
 	}
@@ -130,7 +130,7 @@ func (s *service) GitlabRepoModifiedWebhookEventHandler(event events.DynamoDBEve
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", oldRepoModel.RepositoryOrganizationName, err)
 	}
 
-	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg)
 	if err != nil {
 		return fmt.Errorf("refreshing gitlab org auth failed : %v", err)
 	}
@@ -199,7 +199,7 @@ func (s *service) GitLabRepoRemovedWebhookEventHandler(event events.DynamoDBEven
 		return fmt.Errorf("fetching gitlab org : %s failed : %v", oldRepoModel.RepositoryOrganizationName, err)
 	}
 
-	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+	oauthResponse, err := s.gitLabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg)
 	if err != nil {
 		return fmt.Errorf("refreshing gitlab org auth failed : %v", err)
 	}

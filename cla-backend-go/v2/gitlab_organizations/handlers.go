@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
@@ -546,7 +547,10 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		}
 		log.WithFields(f).Debugf("oauth resp is like : %+v", oauthResp)
 
-		updateErr := service.UpdateGitLabOrganizationAuth(ctx, gitlabOrganizationID, oauthResp)
+		// track the expiry time of the token
+		expiryTime := time.Now().Add(time.Duration(oauthResp.ExpiresIn) * time.Second).Second()
+
+		updateErr := service.UpdateGitLabOrganizationAuth(ctx, gitlabOrganizationID, oauthResp, expiryTime)
 		if updateErr != nil {
 			msg := fmt.Sprintf("installation of GitLab Group and Repositories, error: %v", updateErr)
 			log.WithFields(f).WithError(updateErr).Warn(msg)

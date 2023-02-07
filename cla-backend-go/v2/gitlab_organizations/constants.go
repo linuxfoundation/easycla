@@ -36,4 +36,6 @@ const (
 	GitLabOrganizationsDateModifiedColumn = "date_modified"
 	// GitLabOrganizationsExternalGitLabGroupIDColumn constant
 	GitLabOrganizationsExternalGitLabGroupIDColumn = "external_gitlab_group_id"
+	// GitLabOrganizationsAuthExpiryTimeColumn constant
+	GitLabOrganizationsAuthExpiryTimeColumn = "auth_expiry_time"
 )

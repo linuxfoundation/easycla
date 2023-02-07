@@ -66,6 +66,9 @@ properties:
   auth_state:
     type: string
     description: auth state
+  auth_expiry_time:
+    type: integer
+    description: auth expiry time
   gitlab_info:
     type: object
     properties:

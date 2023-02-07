@@ -26,6 +26,7 @@ type GitLabOrganization struct {
 	AuthInfo                string `json:"auth_info"`
 	AuthState               string `json:"auth_state"`
 	Note                    string `json:"note,omitempty"`
+	AuthExpirationTime      int    `json:"auth_expiry_time,omitempty"`
 	Version                 string `json:"version,omitempty"`
 }
 
@@ -48,6 +49,30 @@ func ToModel(in *GitLabOrganization) *models2.GitlabOrganization {
 		ProjectSfid:             in.ProjectSFID,
 		OrganizationExternalID:  int64(in.ExternalGroupID),
 		AuthState:               in.AuthState,
+		AuthExpiryTime:          int64(in.AuthExpirationTime),
+	}
+}
+
+// ToCommonModel converts to common.GitLabOrganization
+func ToCommonModel(in *models2.GitlabOrganization) *GitLabOrganization {
+	return &GitLabOrganization{
+		AuthInfo:                in.AuthInfo,
+		OrganizationID:          in.OrganizationID,
+		DateCreated:             in.DateCreated,
+		DateModified:            in.DateModified,
+		OrganizationName:        in.OrganizationName,
+		OrganizationFullPath:    in.OrganizationFullPath,
+		OrganizationURL:         in.OrganizationURL,
+		OrganizationSFID:        in.OrganizationSfid,
+		Version:                 in.Version,
+		Enabled:                 in.Enabled,
+		AutoEnabled:             in.AutoEnabled,
+		AutoEnabledClaGroupID:   in.AutoEnabledClaGroupID,
+		BranchProtectionEnabled: in.BranchProtectionEnabled,
+		ProjectSFID:             in.ProjectSfid,
+		ExternalGroupID:         int(in.OrganizationExternalID),
+		AuthState:               in.AuthState,
+		AuthExpirationTime:      int(in.AuthExpiryTime),
 	}
 }
 

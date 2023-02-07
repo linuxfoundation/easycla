@@ -164,7 +164,7 @@ func Handler(ctx context.Context) error {
 			continue
 		}
 
-		oauthResponse, err := gitlabOrganizationService.RefreshGitLabOrganizationAuth(ctx, gitLabGroup.AuthInfo, gitLabGroup.OrganizationID)
+		oauthResponse, err := gitlabOrganizationService.RefreshGitLabOrganizationAuth(ctx, gitLabGroup)
 
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("problem refreshing GitLab group/organization: %s authentication info - skipping", gitLabGroup.OrganizationURL)

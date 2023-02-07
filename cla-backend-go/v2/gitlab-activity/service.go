@@ -24,6 +24,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 	gitV2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
@@ -144,7 +145,8 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 	log.WithFields(f).Debugf("internal gitlab org : %s:%s is associated with external path : %s", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName, repositoryPath)
 
 	// fetch updated token info
-	oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+	log.WithFields(f).Debugf("refreshing gitlab org : %s:%s auth info", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName)
+	oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, common.ToCommonModel(gitlabOrg))
 	if err != nil {
 		return fmt.Errorf("refreshing gitlab org auth info failed : %v", err)
 	}
@@ -591,7 +593,7 @@ func (s service) checkGitLabGroupApproval(ctx context.Context, userName, URL str
 	}
 	gitlabOrg, _ := s.gitlabOrgService.GetGitLabOrganizationByURL(ctx, searchURL)
 	if gitlabOrg != nil {
-		oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg.AuthInfo, gitlabOrg.OrganizationID)
+		oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, common.ToCommonModel(gitlabOrg))
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("problem refreshing gitlab auth for org: %s ", gitlabOrg.OrganizationName)
 			return false, err

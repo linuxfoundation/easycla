@@ -54,7 +54,7 @@ type RepositoryInterface interface {
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByFullPath(ctx context.Context, groupFullPath string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByURL(ctx context.Context, url string) (*common.GitLabOrganization, error)
-	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, groupName, groupFullPath, organizationURL string) error
+	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID, authExpiryTime int, authInfo, groupName, groupFullPath, organizationURL string) error
 	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization, enabled bool) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID, gitlabOrgFullPath string) error
 }
@@ -471,7 +471,7 @@ func (repo *Repository) GetGitLabOrganization(ctx context.Context, gitLabOrganiz
 }
 
 // UpdateGitLabOrganizationAuth updates the specified Gitlab organization oauth info
-func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authInfo, groupName, groupFullPath, organizationURL string) error {
+func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID, authExpiryTime int, authInfo, groupName, groupFullPath, organizationURL string) error {
 	f := logrus.Fields{
 		"functionName":    "gitlab_organizations.repository.UpdateGitLabOrganizationAuth",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
@@ -495,6 +495,7 @@ func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organi
 		"#FP": aws.String(GitLabOrganizationsOrganizationFullPathColumn),
 		"#M":  aws.String(GitLabOrganizationsDateModifiedColumn),
 		"#P":  aws.String(GitLabOrganizationsExternalGitLabGroupIDColumn),
+		"#E":  aws.String(GitLabOrganizationsAuthExpiryTimeColumn),
 	}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
 		":a": {
@@ -512,8 +513,11 @@ func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organi
 		":p": {
 			N: aws.String(strconv.Itoa(gitLabGroupID)),
 		},
+		":e": {
+			N: aws.String(strconv.Itoa(authExpiryTime)),
+		},
 	}
-	updateExpression := "SET #A = :a, #U = :u, #FP = :fp, #M = :m, #P = :p"
+	updateExpression := "SET #A = :a, #U = :u, #FP = :fp, #M = :m, #P = :p, #E = :e"
 
 	if groupName != "" {
 		expressionAttributeNames["#N"] = aws.String(GitLabOrganizationsOrganizationNameColumn)
