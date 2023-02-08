@@ -54,7 +54,7 @@ type RepositoryInterface interface {
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByFullPath(ctx context.Context, groupFullPath string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByURL(ctx context.Context, url string) (*common.GitLabOrganization, error)
-	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID, authExpiryTime int, authInfo, groupName, groupFullPath, organizationURL string) error
+	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authExpiryTime int64, authInfo, groupName, groupFullPath, organizationURL string) error
 	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization, enabled bool) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID, gitlabOrgFullPath string) error
 }
@@ -218,8 +218,10 @@ func (repo *Repository) GetGitLabOrganizationsEnabled(ctx context.Context) (*v2M
 // GetGitLabOrganizationsEnabledWithAutoEnabled returns the list of GitLab groups/organizations that are enabled with the auto enabled flag set to true
 func (repo *Repository) GetGitLabOrganizationsEnabledWithAutoEnabled(ctx context.Context) (*v2Models.GitlabOrganizations, error) {
 	// Build the scan/query expression
-	filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true)).
-		And(expression.Name(GitLabOrganizationsAutoEnabledColumn).Equal(expression.Value(true)))
+	// Every GitLab organization should now have auto-enabled set to true - so we can just return the enabled list
+	//filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true)).
+	//	And(expression.Name(GitLabOrganizationsAutoEnabledColumn).Equal(expression.Value(true)))
+	filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true))
 	return repo.getScanResults(ctx, &filter)
 }
 
@@ -471,7 +473,7 @@ func (repo *Repository) GetGitLabOrganization(ctx context.Context, gitLabOrganiz
 }
 
 // UpdateGitLabOrganizationAuth updates the specified Gitlab organization oauth info
-func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID, authExpiryTime int, authInfo, groupName, groupFullPath, organizationURL string) error {
+func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authExpiryTime int64, authInfo, groupName, groupFullPath, organizationURL string) error {
 	f := logrus.Fields{
 		"functionName":    "gitlab_organizations.repository.UpdateGitLabOrganizationAuth",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
@@ -514,7 +516,7 @@ func (repo *Repository) UpdateGitLabOrganizationAuth(ctx context.Context, organi
 			N: aws.String(strconv.Itoa(gitLabGroupID)),
 		},
 		":e": {
-			N: aws.String(strconv.Itoa(authExpiryTime)),
+			N: aws.String(strconv.FormatInt(authExpiryTime, 10)),
 		},
 	}
 	updateExpression := "SET #A = :a, #U = :u, #FP = :fp, #M = :m, #P = :p, #E = :e"

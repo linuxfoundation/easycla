@@ -56,7 +56,7 @@ type ServiceInterface interface {
 	GetGitLabOrganizationByState(ctx context.Context, gitLabOrganizationID, authState string) (*v2Models.GitlabOrganization, error)
 	GetGitLabGroupMembers(ctx context.Context, groupID string) (*v2Models.GitlabGroupMembersList, error)
 	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization) error
-	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse, authExpiryTime int) error
+	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse, authExpiryTime int64) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID string, gitlabOrgFullPath string) error
 	InitiateSignRequest(ctx context.Context, req *http.Request, gitlabClient *goGitLab.Client, repositoryID, mergeRequestID, originURL, contributorBaseURL string, eventService events.Service) (*string, error)
 	RefreshGitLabOrganizationAuth(ctx context.Context, gitLabOrg *common.GitLabOrganization) (*string, error)
@@ -356,7 +356,7 @@ func (s *Service) GetGitLabGroupMembers(ctx context.Context, groupID string) (*v
 			for _, member := range members {
 				groupMemberList = append(groupMemberList, &v2Models.GitlabGroupMember{
 					Name:     member.Name,
-					ID:       strconv.Itoa((member.ID)),
+					ID:       strconv.Itoa(member.ID),
 					Username: member.Username,
 				})
 			}
@@ -429,21 +429,24 @@ func (s *Service) RefreshGitLabOrganizationAuth(ctx context.Context, gitLabOrg *
 		return nil, err
 	}
 
+	log.WithFields(f).Debugf("AuthExpirationTime: %d", gitLabOrg.AuthExpirationTime)
 	expireTime := time.Unix(int64(gitLabOrg.AuthExpirationTime), 0)
 	log.WithFields(f).Debugf("expiring time: %+v, current time: %v", utils.TimeToString(expireTime), utils.TimeToString(time.Now()))
 
-	buffer := 30
+	timeBuffer := 30 * time.Second
 
-	if expireTime.Second() <= (int(time.Now().Unix()) - buffer) {
-		log.WithFields(f).Debug("refreshing gitlab auth token")
+	// If the current time (minus a small buffer/window) is AFTER the expiration time, refresh the token
+	if gitLabOrg.AuthExpirationTime == 0 || time.Now().Add(timeBuffer).After(expireTime) {
+		log.WithFields(f).Debugf("refreshing gitlab auth token - now + buffer: %v - expiration: %v", time.Now().Add(timeBuffer), expireTime)
 		refreshOauthResponse, err := gitlabApi.RefreshOauthToken(decryptedOauthResponse.RefreshToken)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("problem refreshing token")
 			return nil, err
 		}
-		log.WithFields(f).Debug("refreshed oauthResponse: ", refreshOauthResponse)
+		log.WithFields(f).Debugf("refreshed oauthResponse: %+v - expiration in: %d seconds", refreshOauthResponse, refreshOauthResponse.ExpiresIn)
 
-		authExpiryTime := time.Now().Add(time.Duration(refreshOauthResponse.ExpiresIn) * time.Second).Second()
+		// convert the expiration as number of seconds to a unix timestamp
+		authExpiryTime := time.Now().Add(time.Duration(refreshOauthResponse.ExpiresIn) * time.Second).Unix()
 
 		// encrypt oauthResponse
 		gitLabAuthResponse, err = gitlabApi.EncryptAuthInfo(refreshOauthResponse, s.gitLabApp)
@@ -459,7 +462,6 @@ func (s *Service) RefreshGitLabOrganizationAuth(ctx context.Context, gitLabOrg *
 			log.WithFields(f).WithError(err).Warn("problem updating gitlab organization auth")
 			return nil, err
 		}
-
 	} else {
 		log.WithFields(f).Debug("using existing gitlab auth token")
 		gitLabAuthResponse = gitLabOrg.AuthInfo
@@ -604,7 +606,7 @@ func (s *Service) GetGitLabOrganizationByState(ctx context.Context, gitLabOrgani
 }
 
 // UpdateGitLabOrganizationAuth updates the GitLab organization authentication information
-func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse, authExpiryTime int) error {
+func (s *Service) UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse, authExpiryTime int64) error {
 	f := logrus.Fields{
 		"functionName":         "v2.gitlab_organizations.service.UpdateGitLabOrganizationAuth",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),

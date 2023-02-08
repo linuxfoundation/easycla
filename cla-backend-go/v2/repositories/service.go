@@ -79,7 +79,7 @@ type GitLabOrgRepo interface {
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByFullPath(ctx context.Context, groupFullPath string) (*common.GitLabOrganization, error)
-	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID, authExpiryTime int, authInfo, groupName, groupFullPath, organizationURL string) error
+	UpdateGitLabOrganizationAuth(ctx context.Context, organizationID string, gitLabGroupID int, authExpiryTime int64, authInfo, groupName, groupFullPath, organizationURL string) error
 	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization, enabled bool) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID, gitlabOrgFullPath string) error
 }

@@ -10,7 +10,8 @@ The process/algorithm is:
    is true
 1. For each GitLab group in our database...
     1. Create a new GitLab API client instance using the authorization token for the Git Group
-    1. Query the GitLab API for the project list under the group (include sub-groups). This grabs the list of current GitLab projects under the GitLab group.
+    1. Query the GitLab API for the project list under the group (include sub-groups). This grabs the list of current
+       GitLab projects under the GitLab group.
     1. Query for GitLab project in DB matching this GitLab group path
     1. Identify deltas - this identifies how many new and deleted GitLap projects we need to process
     1. If any new GitLab projects, add to the DB, set enabled, create an event log

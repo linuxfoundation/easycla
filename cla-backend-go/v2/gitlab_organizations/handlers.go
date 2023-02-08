@@ -548,7 +548,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		log.WithFields(f).Debugf("oauth resp is like : %+v", oauthResp)
 
 		// track the expiry time of the token
-		expiryTime := time.Now().Add(time.Duration(oauthResp.ExpiresIn) * time.Second).Second()
+		expiryTime := time.Now().Add(time.Duration(oauthResp.ExpiresIn) * time.Second).Unix()
 
 		updateErr := service.UpdateGitLabOrganizationAuth(ctx, gitlabOrganizationID, oauthResp, expiryTime)
 		if updateErr != nil {

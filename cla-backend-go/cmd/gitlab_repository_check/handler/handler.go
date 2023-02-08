@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+
 	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
@@ -149,7 +151,7 @@ func Handler(ctx context.Context) error {
 	//       if new, add to DB, create event log
 	//       if deleted, remove from DB, create event log
 
-	gitLabGroups, err := gitlabOrganizationRepo.GetGitLabOrganizationsEnabledWithAutoEnabled(ctx)
+	gitLabGroups, err := gitlabOrganizationRepo.GetGitLabOrganizationsEnabled(ctx)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem querying for GitLab group/organizations that are enabled with auto-enabled flag set to true")
 		return err
@@ -164,7 +166,7 @@ func Handler(ctx context.Context) error {
 			continue
 		}
 
-		oauthResponse, err := gitlabOrganizationService.RefreshGitLabOrganizationAuth(ctx, gitLabGroup)
+		oauthResponse, err := gitlabOrganizationService.RefreshGitLabOrganizationAuth(ctx, common.ToCommonModel(gitLabGroup))
 
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("problem refreshing GitLab group/organization: %s authentication info - skipping", gitLabGroup.OrganizationURL)

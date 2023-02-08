@@ -418,7 +418,7 @@ available-typed-arrays@^1.0.5:
   resolved "https://registry.yarnpkg.com/available-typed-arrays/-/available-typed-arrays-1.0.5.tgz#92f95616501069d07d10edb2fc37d3e1c65123b7"
   integrity sha512-DMD0KiN46eipeziST1LPP/STfDU0sufISXmjSgvVsoU2tqxctQeASejWcfNtxYKqETM1UxQ8sp2OrSBWpHY6sw==
 
-aws-sdk@^2.1261.0, aws-sdk@^2.1303.0, aws-sdk@^2.814.0:
+aws-sdk@^2.1303.0, aws-sdk@^2.1309.0, aws-sdk@^2.814.0:
   version "2.1233.0"
   resolved "https://registry.yarnpkg.com/aws-sdk/-/aws-sdk-2.1233.0.tgz#3386515966ca8a5baac048d986ad0977119c0765"
   integrity sha512-e1GbVltsoQpWvx0gxQlEtKOdOrNWyjhD8bjFIMx/3Nwwzw4ac2KOy7CyC5I+lBj8el4AB0399umLHJZmL5WcVg==
@@ -3201,12 +3201,12 @@ semver@^7.3.8:
   dependencies:
     lru-cache "^6.0.0"
 
-serverless-domain-manager@^6.2.1:
-  version "6.2.1"
-  resolved "https://registry.yarnpkg.com/serverless-domain-manager/-/serverless-domain-manager-6.2.1.tgz#43c81610a476dd03cce10f6f0eb6a67dc84e9480"
-  integrity sha512-xJ8bOW/e/MUB9twScTDGRlnS0yxW176+ikuR3SjAH4jW/uiZ/dXPdeGTeTFiPZdybzIE4fBZfeeW8CZAEG1OUg==
+serverless-domain-manager@^6.2.4:
+  version "6.3.1"
+  resolved "https://registry.yarnpkg.com/serverless-domain-manager/-/serverless-domain-manager-6.3.1.tgz#59c19b1a90236591a4d4b7661b7a9c9acdb66492"
+  integrity sha512-Cn90C/QBGSfcf7oAnDOdh2DuCj7RxmqwPjZFnL/gzOdyDtahBNuaha6wXXiLm85ejzAJQj1gDvAX4N0ye2dxXA==
   dependencies:
-    aws-sdk "^2.1261.0"
+    aws-sdk "^2.1309.0"
 
 serverless-finch@^4.0.0:
   version "4.0.0"

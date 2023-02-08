@@ -15,7 +15,7 @@ import (
 
 const oauthURL = "https://gitlab.com/oauth/token"
 
-// OauthSuccessResponse is success response from Gitlab
+// RefreshOauthToken common routine to refresh the GitLab token
 func RefreshOauthToken(refreshToken string) (*OauthSuccessResponse, error) {
 	gitLabConfig := config.GetConfig().Gitlab
 	f := logrus.Fields{
