@@ -266,32 +266,26 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 
 	// gitlabSupportURL := "https://about.gitlab.com/support"
 	easyCLASupportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
-	faq := "https://docs.linuxfoundation.org/lfx/easycla/v2-current/getting-started/easycla-troubleshooting#github-unable-to-contribute-to-easycla-enforced-repositories"
+	// faq := "https://docs.linuxfoundation.org/lfx/easycla/v2-current/getting-started/easycla-troubleshooting#github-unable-to-contribute-to-easycla-enforced-repositories"
 
 	if len(missingUsers) > 0 {
 		result += "<ul>"
 		for _, missingUser := range missingUsers {
 			authorInfo := getAuthorInfo(missingUser.User)
 			if errors.Is(missingUser.err, missingCompanyAffiliation) {
-				msg := fmt.Sprintf(`<li>%s is authorized, but they must confirm their affiliation with their company.
-                            Start the authorization process 
-                            <a href='%s'> by clicking here</a>, click "Corporate",
-                            select the appropriate company from the list, then confirm
-                            your affiliation on the page that appears.
-                            For further assistance with EasyCLA,
-                            <a href='%s' target='_blank'>please submit a support request ticket</a>.
-							<a href='%s' target='_blank'>Consult the FAQ</a> for more information.
-                            </li>`, authorInfo, signURL, easyCLASupportURL, faq)
+				msg := fmt.Sprintf(`<li> %s %s. This user is authorized, but they must confirm their affiliation with their company. 
+								  Start the authorization process <a href='%s'> by clicking here</a>, click "Corporate", 
+								  select the appropriate company from the list, then confirm your affiliation on the page that appears.
+								  For further assistance with EasyCLA,
+								  <a href='%s' target='_blank'>please submit a support request ticket</a>. </li>`, failed, authorInfo, signURL, easyCLASupportURL)
 				result += msg
 				body = confirmationNeededBadge
 			} else {
-				msg := fmt.Sprintf(`<li><a href='%s'>%s</a> - 
-							%s's commit is not authorized under a signed CLA. 
-                            <a href='%s'>Please click here to be authorized</a>.
-                            For further assistance with EasyCLA,
-                            <a href='%s' target='_blank'>please submit a support request ticket</a>.
-							<a href='%s' target='_blank'>Consult the FAQ</a> for more information.
-                            </li>`, signURL, failed, authorInfo, signURL, easyCLASupportURL, faq)
+				msg := fmt.Sprintf(`<li><a href='%s' target='_blank'>%s</a> - %s. The commit is not authorized under a signed CLA.
+									<a href='%s' target='_blank'>Please click here to be authorized</a>.
+									For further assistance with EasyCLA,
+									<a href='%s' target='_blank'>please submit a support request ticket</a>.
+									</li>`, signURL, failed, authorInfo, signURL, easyCLASupportURL)
 				result += msg
 				body = failedBadge
 			}
@@ -317,7 +311,7 @@ func GetFullSignURL(gitlabOrganizationID string, gitlabRepositoryID string, mrID
 }
 
 func getAuthorInfo(gitlabUser *gitlab.User) string {
-	return fmt.Sprintf("%d:%s", gitlabUser.ID, gitlabUser.Username)
+	return fmt.Sprintf("%s:%s", gitlabUser.Username, gitlabUser.Name)
 }
 
 func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*v2Models.GitlabOrganization, error) {
@@ -373,7 +367,7 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 
 	icla, err := s.signaturesRepository.GetIndividualSignature(ctx, claGroupID, userModel.UserID, aws.Bool(true), aws.Bool(true))
 	if err != nil {
-		return false, fmt.Errorf("fetching ICLS for gitlab user : %d:%s failed : %v", gitlabUser.ID, gitlabUser.Username, err)
+		return false, fmt.Errorf("fetching ICLA for gitlab user : %d:%s failed : %v", gitlabUser.ID, gitlabUser.Username, err)
 	}
 
 	if icla != nil {

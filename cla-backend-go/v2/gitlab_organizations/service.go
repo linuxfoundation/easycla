@@ -503,7 +503,8 @@ func (s *Service) toGitLabProjectOrganizationList(ctx context.Context, dbModels 
 		repoList, repoErr := s.v2GitRepoService.GitLabGetRepositoriesByNamePrefix(ctx, fmt.Sprintf("%s/", org.OrganizationFullPath))
 		if repoErr != nil {
 			if _, ok := repoErr.(*utils.GitLabRepositoryNotFound); ok {
-				log.WithFields(f).WithError(repoErr).Debugf("no GitLab repositories onboarded for group/organization : %s", org.OrganizationFullPath)
+				log.WithFields(f).Debugf("no GitLab repositories onboarded for group/organization : %s", org.OrganizationFullPath)
+				repoErr = nil // ignore error
 			} else {
 				log.WithFields(f).WithError(repoErr).Debugf("unexpected error while fetching GitLab group repositories for group/organization path: %s, error type: %T, error: %v", org.OrganizationFullPath, repoErr, repoErr)
 			}
