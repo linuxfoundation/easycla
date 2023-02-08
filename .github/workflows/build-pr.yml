@@ -9,8 +9,6 @@ on:
       - main
 
 env:
-  AWS_REGION: us-east-1
-  AWS_PROFILE: lf-cla
   STAGE: dev
 
 jobs:
@@ -34,40 +32,6 @@ jobs:
         with:
           python-version: '3.7'
           cache: 'pip'
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
-          aws-region: us-east-1
-          role-duration-seconds: 900
-      - name: Setup AWS Profile
-        run: |
-          echo "Installing Profile '${AWS_PROFILE}'..."
-          mkdir -p ~/.aws
-
-          touch ~/.aws/config
-          if ! grep -q AWS_PROFILE ~/.aws/config; then
-            printf "[profile ${AWS_PROFILE}]\nregion=${AWS_REGION}\noutput=json" > ~/.aws/config
-            echo "Added ${AWS_PROFILE} profile to ~/.aws/config"
-          else
-            echo "Skipped adding ${AWS_PROFILE} to ~/.aws/config - already there"
-          fi
-
-          touch ~/.aws/credentials
-          if ! grep -q AWS_PROFILE ~/.aws/credentials; then
-            printf "[${AWS_PROFILE}]\naws_access_key_id=${{ secrets.AWS_ACCESS_KEY }}\naws_secret_access_key=${{ secrets.AWS_SECRET_KEY }}" > ~/.aws/credentials
-            echo "Added ${AWS_PROFILE} profile to ~/.aws/credentials"
-          else
-            echo "Skipped adding ${AWS_PROFILE} to ~/.aws/credentials - already there"
-          fi
-
-          if ! grep -q AWS_PROFILE ${HOME}/.bashrc; then
-            echo "export AWS_PROFILE=${AWS_PROFILE}" >> ${HOME}/.bashrc
-            echo "Added ${AWS_PROFILE} profile to ${HOME}/.bashrc"
-          else
-            echo "Skipped adding ${AWS_PROFILE} to ${HOME}/.bashrc - already there"
-          fi
       - name: Cache Go modules
         uses: actions/cache@v2
         with:
