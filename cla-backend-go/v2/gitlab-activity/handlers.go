@@ -144,47 +144,52 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 				utils.ErrorResponseUnauthorized(reqID, "missing webhook secret token"))
 		}
 
+		// General note for this API endpoint:
+		// Even though we had an issue - we will  a 200 request indicating that we received the event, otherwise
+		// gitlab will disable the webhook after several failed requests (need to confirm this behavior)
+		//
+		// From GitLab:
+		//   Webhooks that return response codes in the 5xx range are understood to be failing intermittently and are temporarily disabled. These webhooks are initially disabled for 1 minute, which is extended on each retry up to a maximum of 24 hours.
+		//   Webhooks that return response codes in the 4xx range are understood to be misconfigured and are permanently disabled until you manually re-enable them yourself.
+		//   See Troubleshooting https://docs.gitlab.com/ee/user/project/integrations/webhooks.html#troubleshoot-webhooks for more information on disabled webhooks and how to re-enable them.
+
 		jsonData, err := params.GitlabActivityInput.MarshalJSON()
 		if err != nil {
 			msg := fmt.Sprintf("unmarshall event data failed : %v", err)
 			log.WithFields(f).Errorf(msg)
-			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+			// Always return 200 response
+			return gitlab_activity.NewGitlabActivityOK()
 		}
 
 		event, err := gitlabsdk.ParseWebhook(gitlabsdk.EventTypeMergeRequest, jsonData)
 		if err != nil {
 			msg := fmt.Sprintf("parsing gitlab merge event type failed : %v", err)
 			log.WithFields(f).Errorf(msg)
-			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+			// Always return 200 response
+			return gitlab_activity.NewGitlabActivityOK()
 		}
 
 		mergeEvent, ok := event.(*gitlabsdk.MergeEvent)
 		if !ok {
 			msg := fmt.Sprintf("parsing gitlab merge event typecast failed : %v", err)
 			log.WithFields(f).Errorf(msg)
-			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+			// Always return 200 response
+			return gitlab_activity.NewGitlabActivityOK()
 		}
 
 		if mergeEvent.ObjectAttributes.State != "opened" && mergeEvent.ObjectAttributes.State != "update" && mergeEvent.ObjectAttributes.State != "reopen" {
 			msg := fmt.Sprintf("parsing gitlab merge event : %s failed, only [open, update, reopen] accepted", mergeEvent.ObjectAttributes.State)
 			log.WithFields(f).Errorf(msg)
-			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+			// Always return 200 response
+			return gitlab_activity.NewGitlabActivityOK()
 		}
 
 		err = service.ProcessMergeOpenedActivity(ctx, params.XGitlabToken, mergeEvent)
 		if err != nil {
 			msg := fmt.Sprintf("processing gitlab merge event failed : %v", err)
 			log.WithFields(f).Errorf(msg)
-			if errors.Is(err, secretTokenMismatch) {
-				return gitlab_activity.NewGitlabActivityUnauthorized().WithPayload(
-					utils.ErrorResponseUnauthorized(reqID, msg))
-			}
-			return gitlab_activity.NewGitlabActivityInternalServerError().WithPayload(
-				utils.ErrorResponseBadRequest(reqID, msg))
+			// Always return 200 response
+			return gitlab_activity.NewGitlabActivityOK()
 		}
 
 		return gitlab_activity.NewGitlabActivityOK()
