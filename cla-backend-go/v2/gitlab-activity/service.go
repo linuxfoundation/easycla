@@ -311,7 +311,7 @@ func GetFullSignURL(gitlabOrganizationID string, gitlabRepositoryID string, mrID
 }
 
 func getAuthorInfo(gitlabUser *gitlab.User) string {
-	return fmt.Sprintf("%d:%s", gitlabUser.ID, gitlabUser.Username)
+	return fmt.Sprintf("%s:%s", gitlabUser.Username, gitlabUser.Name)
 }
 
 func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*v2Models.GitlabOrganization, error) {
