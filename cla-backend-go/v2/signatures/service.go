@@ -144,13 +144,27 @@ func (s *Service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGr
 
 // GetProjectIclaSignaturesCsv returns the ICLA signatures as a CSV file for the specified CLA Group
 func (s *Service) GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error) {
-	var b bytes.Buffer
-	result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, nil, nil, nil, 0, "")
-	if err != nil {
-		return nil, err
+
+	var totalResults []*v1Models.IclaSignature
+	lastKeyScanned := ""
+	// Loop until we have all the results - 100 per page
+	for {
+		result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, nil, nil, nil, 100, lastKeyScanned)
+		if err != nil {
+			return nil, err
+		}
+		totalResults = append(totalResults, result.List...)
+
+		if result.LastKeyScanned == "" {
+			break
+		}
+
+		lastKeyScanned = result.LastKeyScanned
 	}
+
+	var b bytes.Buffer
 	b.WriteString(`GitHub ID,LF_ID,Name,Email,Date Signed,Approved,Signed`)
-	for _, sig := range result.List {
+	for _, sig := range totalResults {
 		b.WriteString(iclaSigCsvLine(sig))
 	}
 	return b.Bytes(), nil
