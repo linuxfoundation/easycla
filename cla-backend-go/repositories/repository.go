@@ -856,9 +856,9 @@ func (r *Repository) setEnabledGithubRepository(ctx context.Context, repositoryI
 
 	updateExpression := expression.Set(expression.Name(repositoryEnabledColumn), expression.Value(enabled)).Set(expression.Name("note"), expression.Value(note)).Set(expression.Name("date_modified"), expression.Value(now))
 
-	// delete project_sfid and repository_sfdc_id if enabled is false
+	// delete project_sfid ,repository_sfdc_id and repository_project_id if enabled is false
 	if !enabled {
-		updateExpression = updateExpression.Remove(expression.Name("project_sfid")).Remove(expression.Name("repository_sfdc_id"))
+		updateExpression = updateExpression.Remove(expression.Name("project_sfid")).Remove(expression.Name("repository_sfdc_id")).Remove(expression.Name("repository_project_id"))
 	}
 
 	expr, exprErr := expression.NewBuilder().WithUpdate(updateExpression).Build()
