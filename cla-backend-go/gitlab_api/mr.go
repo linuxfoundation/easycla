@@ -5,6 +5,7 @@ package gitlab
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -22,7 +23,7 @@ func FetchMrInfo(client *gitlab.Client, projectID int, mergeID int) (*gitlab.Mer
 }
 
 // FetchMrParticipants is responsible to get unique mr participants
-func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int, unique bool) ([]*gitlab.User, error) {
+func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int) ([]*gitlab.User, error) {
 	commits, _, err := client.MergeRequests.GetMergeRequestCommits(projectID, mergeID, &gitlab.GetMergeRequestCommitsOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("fetching gitlab participants for project : %d and merge id : %d, failed : %v", projectID, mergeID, err)
@@ -33,39 +34,27 @@ func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int, uniq
 	}
 
 	var results []*gitlab.User
-	uniqueUsers := map[int]bool{}
 
 	for _, commit := range commits {
 		authorEmail := commit.AuthorEmail
 		authorName := commit.AuthorName
-
 		log.Debugf("user email found : %s, user name : %s, searching in gitlab ...", authorEmail, authorName)
 
-		var user *gitlab.User
-		if authorName != "" {
-			user, err = searchForUser(client, authorEmail)
-			if err != nil {
-				return nil, fmt.Errorf("searching for author email : %s, failed : %v", authorEmail, err)
-			}
+		authorID, err := strconv.Atoi(commit.ID)
+		if err != nil {
+			return nil, fmt.Errorf("parsing author id : %s, failed : %v", commit.ID, err)
 		}
 
-		if authorName != "" && user == nil {
-			user, err = searchForUser(client, authorName)
-			if err != nil {
-				return nil, fmt.Errorf("searching for author name : %s, failed : %v", authorName, err)
-			}
+		user, err := getUser(client, authorID)
+
+		if err != nil {
+			return nil, fmt.Errorf("searching for author email : %s, failed : %v", authorEmail, err)
 		}
 
 		if user == nil {
 			return nil, fmt.Errorf("no users found for commit author email : %s, name : %s", authorEmail, authorName)
 		}
-
-		if uniqueUsers[user.ID] {
-			continue
-		}
-
 		results = append(results, user)
-		uniqueUsers[user.ID] = true
 	}
 
 	return results, nil
@@ -130,22 +119,11 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, message str
 	return nil
 }
 
-func searchForUser(client *gitlab.Client, search string) (*gitlab.User, error) {
-	users, _, err := client.Users.ListUsers(&gitlab.ListUsersOptions{
-		Search: gitlab.String(search),
-	})
-
+// getUser is responsible for fetching the user info for given user id
+func getUser(client *gitlab.Client, userID int) (*gitlab.User, error) {
+	user, _, err := client.Users.GetUser(userID, gitlab.GetUsersOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("searching for user string : %s failed : %v", search, err)
+		return nil, fmt.Errorf("fetching user : %d failed : %v", userID, err)
 	}
-
-	if len(users) == 0 {
-		return nil, nil
-	}
-
-	if len(users) > 1 {
-		return nil, fmt.Errorf("found more than one gitlab user for search string : %s", search)
-	}
-
-	return users[0], nil
+	return user, nil
 }

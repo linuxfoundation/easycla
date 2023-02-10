@@ -168,7 +168,7 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 	}
 
 	log.WithFields(f).Debugf("internal gitlab repository found with id : %s", gitlabRepo.RepositoryID)
-	participants, err := gitlab_api.FetchMrParticipants(gitlabClient, projectID, mergeID, true)
+	participants, err := gitlab_api.FetchMrParticipants(gitlabClient, projectID, mergeID)
 	if err != nil {
 		return fmt.Errorf("fetching mr participants : %v", err)
 	}
