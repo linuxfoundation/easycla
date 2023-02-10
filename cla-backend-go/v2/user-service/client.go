@@ -98,7 +98,6 @@ func (usc *Client) GetUserByUsername(lfUsername string) (*models.User, error) {
 		"lfUsername":   lfUsername,
 	}
 
-	log.WithFields(f).Debug("querying user by username...")
 	// use the ListUsers API endpoint (actually called FindUsers) with the lfUsername filter
 	userModel, err := usc.ListUsersByUsername(lfUsername)
 	if err != nil {

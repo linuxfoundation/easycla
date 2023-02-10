@@ -75,7 +75,7 @@ func (s *snsEmail) SendEmail(subject string, body string, recipients []string) e
 		return err
 	}
 
-	log.Debugf("Sending SNS message '%s' to topic: '%s'", b, s.snsEventTopicARN)
+	log.Debugf("Sending SNS message to topic: '%s'", s.snsEventTopicARN)
 	input := &sns.PublishInput{
 		Message:  aws.String(string(b)),          // Required
 		TopicArn: aws.String(s.snsEventTopicARN), // Required
@@ -87,7 +87,7 @@ func (s *snsEmail) SendEmail(subject string, body string, recipients []string) e
 		return err
 	}
 
-	log.WithFields(f).Debugf("Successfully sent SNS message. Response: %v", sendResp)
+	log.WithFields(f).Debugf("Successfully sent SNS message. Response ID: %s", StringValue(sendResp.MessageId))
 	return nil
 }
 

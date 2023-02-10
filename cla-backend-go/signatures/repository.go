@@ -488,7 +488,7 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
 	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
 		filterAdded = true
-		log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
+		// log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
 		filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
 		filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
@@ -598,7 +598,7 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
 	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
 		filterAdded = true
-		log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
+		//log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
 		filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
 		filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 	}
@@ -1116,13 +1116,13 @@ func (repo repository) CreateProjectSummaryReport(ctx context.Context, params si
 
 	if params.Approved != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(params.Approved))
+		//log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(params.Approved))
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(params.Approved)))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
 	if params.Signed != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(params.Signed))
+		//log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(params.Signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(params.Signed)))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
@@ -1316,13 +1316,13 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 
 	if approved != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(approved))
+		//log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(approved))
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
 	if signed != nil {
 		filterAdded = true
-		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
+		//log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
@@ -1368,7 +1368,7 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 			log.WithFields(f).WithError(err).Warn("problem decoding next key value")
 			return nil, err
 		}
-		log.WithFields(f).Debugf("received a nextKey, value: %s - decoded: %+v", *nextKey, queryInput.ExclusiveStartKey)
+		//log.WithFields(f).Debugf("received a nextKey, value: %s - decoded: %+v", *nextKey, queryInput.ExclusiveStartKey)
 	}
 
 	sigs := make([]*models.Signature, 0)
@@ -1377,7 +1377,7 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 	// Loop until we have all the records
 	for ok := true; ok; ok = lastEvaluatedKey != "" {
 		// Make the DynamoDB Query API call
-		log.WithFields(f).Debugf("executing query for input: %+v", queryInput)
+		// log.WithFields(f).Debugf("executing query for input: %+v", queryInput)
 		results, errQuery := repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
 			log.WithFields(f).WithError(errQuery).Warnf("error retrieving project signature ID for project: %s with company: %s, error: %v",
@@ -1389,7 +1389,7 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 		// If we have any results - may not have any after filters are applied, but may have more records to page through...
 		if len(results.Items) > 0 {
 			// Convert the list of DB models to a list of response models
-			log.WithFields(f).Debugf("building response model for %d results", len(results.Items))
+			//log.WithFields(f).Debugf("building response model for %d results", len(results.Items))
 			signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, projectID, LoadACLDetails)
 			if modelErr != nil {
 				log.WithFields(f).Warnf("error converting DB model to response model for signatures with project %s with company: %s, error: %v",
@@ -1441,16 +1441,12 @@ func (repo repository) GetProjectCompanySignatures(ctx context.Context, companyI
 			log.WithFields(f).WithError(err).Warn("unable to build nextKey")
 		}
 		lastEvaluatedKey = encodedString
-		log.WithFields(f).Debugf("lastEvaluatedKey encoded is: %s", encodedString)
+		//log.WithFields(f).Debugf("lastEvaluatedKey encoded is: %s", encodedString)
 	}
 
 	// Meta-data for the response
 	totalCount := *describeTableResult.Table.ItemCount
 
-	log.WithFields(f).Debugf("returing %d signatures", len(sigs))
-	if len(sigs) > 0 {
-		log.WithFields(f).Debugf("signatureID: %s", sigs[0].SignatureID)
-	}
 	return &models.Signatures{
 		ProjectID:      projectID,
 		ResultCount:    int64(len(sigs)),
@@ -1650,22 +1646,22 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 
 	if criteria != nil && criteria.GitHubUsername != "" {
-		log.WithFields(f).Debugf("adding Githubusername criteria filter for :%s ", criteria.GitHubUsername)
+		//log.WithFields(f).Debugf("adding GitHub username criteria filter for: %s ", criteria.GitHubUsername)
 		filter = addAndCondition(filter, expression.Name(SignatureUserGitHubUsername).Equal(expression.Value(criteria.GitHubUsername)), &filterAdded)
 	}
 
-	if criteria != nil && criteria.GitHubUsername != "" {
-		log.WithFields(f).Debugf("adding Gitlabusername criteria filter for :%s ", criteria.GitlabUsername)
+	if criteria != nil && criteria.GitlabUsername != "" {
+		//log.WithFields(f).Debugf("adding GitLab username criteria filter for :%s ", criteria.GitlabUsername)
 		filter = addAndCondition(filter, expression.Name(SignatureUserGitlabUsername).Equal(expression.Value(criteria.GitlabUsername)), &filterAdded)
 	}
 
 	if criteria != nil && criteria.UserEmail != "" {
-		log.WithFields(f).Debugf("adding useremail criteria filter for : %s ", criteria.UserEmail)
+		//log.WithFields(f).Debugf("adding useremail criteria filter for : %s ", criteria.UserEmail)
 		filter = addAndCondition(filter, expression.Name("user_email").Equal(expression.Value(criteria.UserEmail)), &filterAdded)
 	}
 
 	beforeQuery, _ := utils.CurrentTime()
-	log.WithFields(f).Debugf("running signature query on table: %s", repo.signatureTableName)
+	//log.WithFields(f).Debugf("running signature query on table: %s", repo.signatureTableName)
 	// Use the nice builder to create the expression
 	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildProjection()).Build()
 	if err != nil {
@@ -3095,9 +3091,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		UpdateExpression:          aws.String(updateExpression),
 	}
 
-	log.WithFields(f).Debugf("updating approval list for company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t",
-		companyID, projectID, signed, approved)
-
 	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
 	if updateErr != nil {
 		log.WithFields(f).Warnf("error updating approval lists for company ID: %s project ID: %s, type: ccla, signed: %t, approved: %t, error: %v",
@@ -3943,6 +3936,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	return out, nil
 }
 
+// EclaAutoCreate this routine updates the CCLA signature record by adjusting the auto_create_ecla column to the specified value
 func (repo repository) EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error {
 	f := logrus.Fields{
 		"functionName":   "v1.signature.repository.EclaAutoCreate",

@@ -406,7 +406,7 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 	return nil
 }
 
-// EclaAutoCreate updates CCLA signature record for auto_create_ecla column
+// EclaAutoCreate this routine updates the CCLA signature record by adjusting the auto_create_ecla column to the specified value
 func (s *Service) EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error {
 	f := logrus.Fields{
 		"functionName":   "v2.signatures.service.EclaAutoCreate",

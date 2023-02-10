@@ -79,7 +79,7 @@ func ToEmailTemplateEvent(sender *string, recipients []string, subject *string, 
 		emailRecipients[i] = strfmt.Email(recipient)
 	}
 
-	log.Debug("Generating email template event...")
+	// log.Debug("Generating email template event...")
 	_, nowAsString := CurrentTime()
 	from := strfmt.Email(*sender)
 	return &emailevent.EmailEvent{

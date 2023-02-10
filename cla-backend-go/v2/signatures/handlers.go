@@ -1285,29 +1285,37 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(u, eacp.XUSERNAME, eacp.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "v2.signatures.handlers.SignaturesEclaAutoCreateHandler",
-			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-			"claGroupID":     eacp.ClaGroupID,
-			"companyID":      eacp.CompanyID,
+			"functionName":       "v2.signatures.handlers.SignaturesEclaAutoCreateHandler",
+			utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
+			"claGroupID":         eacp.ClaGroupID,
+			"companyID":          eacp.CompanyID,
+			"autoCreateEclaFlag": eacp.Body.AutoCreateEcla,
+		}
+
+		if eacp.Body == nil {
+			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequest(reqID, "missing request body"))
+		} else {
+			f["autoCreateEclaFlag"] = eacp.Body.AutoCreateEcla
 		}
 
 		log.WithFields(f).Debug("Updating CCLA signature for the auto_create_ecla column...")
 
-		log.WithFields(f).Debug("Getting corporate signature...")
+		log.WithFields(f).Debug("Loading the corporate signature...")
 		approved := true
 		signed := true
 
 		cclaSignature, err := v1SignatureService.GetCorporateSignature(ctx, eacp.ClaGroupID, eacp.CompanyID, &approved, &signed)
 		if err != nil {
-			msg := "unable to get corporate signature"
+			msg := "unable to load corporate signature"
 			log.WithFields(f).Warn(msg)
 			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
-		company, err := companyService.GetCompany(ctx, eacp.CompanyID)
+		companyRecord, err := companyService.GetCompany(ctx, eacp.CompanyID)
 		if err != nil {
-			msg := "unable to get company"
+			msg := "unable to load company"
 			log.WithFields(f).Warn(msg)
 			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
@@ -1315,7 +1323,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 
 		claGroup, err := claGroupService.GetCLAGroupByID(ctx, eacp.ClaGroupID)
 		if err != nil {
-			msg := "unable to get CLA Group"
+			msg := "unable to load CLA Group"
 			log.WithFields(f).Warn(msg)
 			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
@@ -1326,7 +1334,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		if !utils.CurrentUserInACL(u, claManagers) {
 			msg := fmt.Sprintf("EasyCLA - 403 Forbidden - CLA Manager %s / %s is not authorized to approve request for company ID: %s / %s / %s, project ID: %s / %s / %s",
 				u.UserName, u.Email,
-				cclaSignature.CompanyName, company.CompanyExternalID, company.CompanyID,
+				cclaSignature.CompanyName, companyRecord.CompanyExternalID, companyRecord.CompanyID,
 				claGroup.ProjectName, claGroup.ProjectExternalID, cclaSignature.ProjectID)
 			return signatures.NewEclaAutoCreateForbidden().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseForbidden(reqID, msg))
@@ -1346,7 +1354,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			CompanyID:    eacp.CompanyID,
 			LfUsername:   u.UserName,
 			CLAGroupName: claGroup.ProjectName,
-			CompanyName:  company.CompanyName,
+			CompanyName:  companyRecord.CompanyName,
 			EventData: &events.SignatureAutoCreateECLAUpdatedEventData{
 				AutoCreateECLA: eacp.Body.AutoCreateEcla,
 			},

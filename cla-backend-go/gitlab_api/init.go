@@ -32,8 +32,6 @@ func Init(glAppID, glAppSecret, glAppPrivateKey string) *App {
 					gitLabAppPrivateKey: glAppPrivateKey,
 				}
 			})
-	} else {
-		log.Debug("GitLabApp object single instance already - returning singleton instance")
 	}
 	return gitLabAppSingleton
 }

@@ -8,6 +8,15 @@ import (
 	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 )
 
+// simpleUserInfoModel is a  simple/temp user model to consolidate the email list, GitHub username list, and GitLab username list
+type simpleUserInfoModel struct {
+	Email          string
+	GitHubUserName string
+	GitHubUserID   string
+	GitLabUserName string
+	GitLabUserID   string
+}
+
 // SignatureCompanyID is a simple data model to hold the signature ID and come company details for CCLA's
 type SignatureCompanyID struct {
 	SignatureID string

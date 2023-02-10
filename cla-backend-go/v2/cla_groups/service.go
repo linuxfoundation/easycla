@@ -185,7 +185,7 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 	enrollErr := s.EnrollProjectsInClaGroup(ctx, &EnrollProjectsModel{
 		AuthUser:        authUser,
 		CLAGroupID:      claGroup.ProjectID,
-		FoundationSFID:  *input.FoundationSfid,
+		FoundationSFID:  *input.FoundationSfid, // invalid for FINOS -> CDM and FDC3 Scenario
 		ProjectSFIDList: input.ProjectSfidList,
 	})
 	if enrollErr != nil {

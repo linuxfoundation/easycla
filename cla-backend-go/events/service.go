@@ -245,18 +245,18 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 
 	if args.ProjectSFID != "" && utils.IsSalesForceID(args.ProjectSFID) {
 		// Check if project exists in platform project service
-		log.WithFields(f).Debugf("loading salesforce project by ID: %s...", args.ProjectSFID)
+		//log.WithFields(f).Debugf("loading salesforce project by ID: %s...", args.ProjectSFID)
 		project, projectErr := project_service.GetClient().GetProject(args.ProjectSFID)
 		if projectErr != nil || project == nil {
 			log.WithFields(f).Warnf("failed to load salesforce project by ID: %s", args.ProjectSFID)
 			return nil
 		}
-		log.WithFields(f).Debugf("loaded salesforce project by ID: %s", args.ProjectSFID)
+		//log.WithFields(f).Debugf("loaded salesforce project by ID: %s", args.ProjectSFID)
 		args.ProjectName = project.Name
 
 		// Try to load and set the parent information
 		if utils.IsProjectHaveParent(project) {
-			log.WithFields(f).Debugf("loading project parent by ID: %s...", utils.GetProjectParentSFID(project))
+			//log.WithFields(f).Debugf("loading project parent by ID: %s...", utils.GetProjectParentSFID(project))
 			parentProjectModel, parentProjectErr := project_service.GetClient().GetParentProjectModel(project.ID)
 			if parentProjectErr != nil || parentProjectModel == nil {
 				log.WithFields(f).Warnf("failed to load project parent by ID: %s", utils.GetProjectParentSFID(project))
@@ -271,8 +271,8 @@ func (s *service) loadSFProject(ctx context.Context, args *LogEventArgs) error {
 				parentProjectName = project.Name
 				parentProjectID = project.ID
 			}
-			log.WithFields(f).Debugf("loaded project by parent ID: %s - resulting in ID: %s with name: %s",
-				project.Foundation.ID, parentProjectID, parentProjectName)
+			//log.WithFields(f).Debugf("loaded project by parent ID: %s - resulting in ID: %s with name: %s",
+			//	project.Foundation.ID, parentProjectID, parentProjectName)
 			args.ParentProjectSFID = parentProjectID
 			args.ParentProjectName = parentProjectName
 		} else {
