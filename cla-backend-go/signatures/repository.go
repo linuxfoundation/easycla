@@ -59,7 +59,7 @@ const (
 
 	HugePageSize    = 10000
 	DefaultPageSize = 100
-	BigPageSize     = 200
+	BigPageSize     = 500
 )
 
 // SignatureRepository interface defines the functions for the the signature repository
@@ -98,7 +98,7 @@ type SignatureRepository interface {
 	AddUsersDetails(ctx context.Context, signatureID string, userID string) error
 	AddSignedOn(ctx context.Context, signatureID string) error
 
-	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error)
+	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error)
 	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
 }
@@ -2734,7 +2734,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		if params.RemoveDomainApprovalList != nil {
 			// Get ICLAs
 			log.WithFields(f).Debug("getting icla records... ")
-			iclas, iclaErr := repo.GetClaGroupICLASignatures(ctx, approvalList.ClaGroupID, nil, &approved, &signed, 0, "")
+			iclas, iclaErr := repo.GetClaGroupICLASignatures(ctx, approvalList.ClaGroupID, nil, &approved, &signed, 0, "", true)
 			if iclaErr != nil {
 				log.WithFields(f).Warn("unable to get iclas")
 			}
@@ -3535,12 +3535,13 @@ func (repo repository) AddSignedOn(ctx context.Context, signatureID string) erro
 	return nil
 }
 
-func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
+func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error) {
 	f := logrus.Fields{
-		"functionName":   "v1.signatures.repository.GetClaGroupICLASignatures",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"claGroupID":     claGroupID,
-		"searchTerm":     utils.StringValue(searchTerm),
+		"functionName":     "v1.signatures.repository.GetClaGroupICLASignatures",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+		"claGroupID":       claGroupID,
+		"searchTerm":       utils.StringValue(searchTerm),
+		"withExtraDetails": withExtraDetails,
 	}
 
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
@@ -3553,13 +3554,13 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 
 	if approved != nil {
 		f["approved"] = utils.BoolValue(approved)
-		log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(approved))
+		//log.WithFields(f).Debugf("adding filter signature_approved: %t", aws.BoolValue(approved))
 		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
 	if signed != nil {
 		f["signed"] = utils.BoolValue(signed)
-		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
+		//log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
 		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
@@ -3583,7 +3584,7 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
 	}
 
-	log.WithFields(f).Debugf("filter: %+v", filter)
+	//log.WithFields(f).Debugf("filter: %+v", filter)
 
 	// Use the builder to create the expression
 	expr, err := expression.NewBuilder().
@@ -3620,7 +3621,7 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 
 	// If we have the next key, set the exclusive start key value
 	if nextKey != "" {
-		log.WithFields(f).Debugf("Received a nextKey, value: %s", nextKey)
+		// log.WithFields(f).Debugf("Received a nextKey, value: %s", nextKey)
 		// The primary key of the first item that this operation will evaluate.
 		// and the query key (if not the same)
 		queryInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
@@ -3656,7 +3657,7 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 
 		intermediateResponse = append(intermediateResponse, repo.getIntermediateICLAResponse(f, dbSignatures)...)
 
-		log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey["signature_id"])
+		//log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey["signature_id"])
 		if results.LastEvaluatedKey["signature_id"] != nil {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
@@ -3681,7 +3682,14 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 		ResultCount:    int64(len(intermediateResponse)),
 	}
 
-	iclaSignatures, err := repo.addAdditionalICLAMetaData(f, intermediateResponse)
+	var iclaSignatures []*models.IclaSignature
+	if withExtraDetails {
+		iclaSignatures, err = repo.addAdditionalICLAMetaData(f, intermediateResponse)
+	} else {
+		for _, sig := range intermediateResponse {
+			iclaSignatures = append(iclaSignatures, sig.IclaSignature)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -3718,6 +3726,7 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 		intermediateResponse = append(intermediateResponse, &iclaSignatureWithDetails{
 			IclaSignature: &models.IclaSignature{
 				GithubUsername:         sig.UserGithubUsername,
+				GitlabUsername:         sig.UserGitlabUsername,
 				UserID:                 sig.SignatureReferenceID,
 				LfUsername:             sig.UserLFUsername,
 				SignatureApproved:      sig.SignatureApproved,
@@ -3738,7 +3747,6 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 }
 
 func (repo repository) addAdditionalICLAMetaData(f logrus.Fields, intermediateResponse []*iclaSignatureWithDetails) ([]*models.IclaSignature, error) {
-	log.WithFields(f).Debugf("Adding additional meta-data for %d records...", len(intermediateResponse))
 	// For some older ICLA signatures, we are missing the user's info, but we have their internal ID - let's look up those values before returning
 	responseChannel := make(chan *models.IclaSignature)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -3750,23 +3758,28 @@ func (repo repository) addAdditionalICLAMetaData(f logrus.Fields, intermediateRe
 			if userLookupErr != nil || userModel == nil {
 				log.WithFields(f).WithError(userLookupErr).Warnf("unable to lookup user with id: %s", iclaSignatureWithDetails.SignatureReferenceID)
 			} else {
-				// If the github username is empty, see if it was set in the user model
+				// If the GitHub username is empty, see if it was set in the user model
 				if iclaSignatureWithDetails.IclaSignature.GithubUsername == "" {
-					// Grab and set the github username
+					// Grab and set the GitHub username from the user model
 					iclaSignatureWithDetails.IclaSignature.GithubUsername = userModel.GithubUsername
 				}
-				// If the github username is empty, see if it was set in the user model
+				// If the GitLab username is empty, see if it was set in the user model
+				if iclaSignatureWithDetails.IclaSignature.GitlabUsername == "" {
+					// Grab and set the GitLab username from the user model
+					iclaSignatureWithDetails.IclaSignature.GitlabUsername = userModel.GitlabUsername
+				}
+				// If the username is empty, see if it was set in the user model
 				if iclaSignatureWithDetails.IclaSignature.UserName == "" {
 					if userModel.Username != "" {
-						// Grab and set the github username
+						// Grab and set the username
 						iclaSignatureWithDetails.IclaSignature.UserName = userModel.Username
 					} else if userModel.LfUsername != "" {
 						iclaSignatureWithDetails.IclaSignature.UserName = userModel.LfUsername
 					}
 				}
-				// If the github username is empty, see if it was set in the user model
+				// If the user email is empty, see if it was set in the user model
 				if iclaSignatureWithDetails.IclaSignature.UserEmail == "" {
-					// Grab and set the github username
+					// Grab and set the email from the user record
 					iclaSignatureWithDetails.IclaSignature.UserEmail = getBestEmail(userModel)
 				}
 			}

@@ -49,7 +49,7 @@ type ServiceInterface interface {
 	GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error)
 	GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
 	GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
-	GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error)
+	GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error)
 	GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companySFID string, searchTerm *string) (*models.CorporateContributorList, error)
 	GetSignedDocument(ctx context.Context, signatureID string) (*models.SignedDocument, error)
@@ -144,12 +144,20 @@ func (s *Service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGr
 
 // GetProjectIclaSignaturesCsv returns the ICLA signatures as a CSV file for the specified CLA Group
 func (s *Service) GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.signature_service.GetProjectIclaSignaturesCsv",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+	}
 
 	var totalResults []*v1Models.IclaSignature
 	lastKeyScanned := ""
+	batchSize := int64(500)
+	loadUserDetails := true
 	// Loop until we have all the results - 100 per page
 	for {
-		result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, nil, nil, nil, 100, lastKeyScanned)
+		log.WithFields(f).Debugf("loading ICLAs - %d of %d so far - requesting page with lastKeyScanned: %s", batchSize, len(totalResults), lastKeyScanned)
+		result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, nil, nil, nil, batchSize, lastKeyScanned, loadUserDetails)
 		if err != nil {
 			return nil, err
 		}
@@ -163,7 +171,7 @@ func (s *Service) GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID st
 	}
 
 	var b bytes.Buffer
-	b.WriteString(`GitHub ID,LF_ID,Name,Email,Date Signed,Approved,Signed`)
+	b.WriteString(iclaSigCsvHeader())
 	for _, sig := range totalResults {
 		b.WriteString(iclaSigCsvLine(sig))
 	}
@@ -196,18 +204,19 @@ func (s *Service) GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID st
 }
 
 // GetProjectIclaSignatures returns the ICLA signatures for the specified CLA Group and search term filters
-func (s *Service) GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string) (*models.IclaSignatures, error) {
+func (s *Service) GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error) {
 	f := logrus.Fields{
-		"functionName":   "v2.signatures.service.GetProjectIclaSignatures",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"claGroupID":     claGroupID,
-		"searchTerm":     utils.StringValue(searchTerm),
-		"approved":       utils.BoolValue(approved),
-		"signed":         utils.BoolValue(signed),
+		"functionName":     "v2.signatures.service.GetProjectIclaSignatures",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+		"claGroupID":       claGroupID,
+		"searchTerm":       utils.StringValue(searchTerm),
+		"approved":         utils.BoolValue(approved),
+		"signed":           utils.BoolValue(signed),
+		"withExtraDetails": withExtraDetails,
 	}
 
 	var out models.IclaSignatures
-	result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm, approved, signed, pageSize, nextKey)
+	result, err := s.v1SignatureService.GetClaGroupICLASignatures(ctx, claGroupID, searchTerm, approved, signed, pageSize, nextKey, withExtraDetails)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to load ICLA signatures using the specified search parameters")
 		return nil, err

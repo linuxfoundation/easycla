@@ -50,6 +50,10 @@ func v2SignaturesReplaceCompanyID(src *v1Models.Signatures, internalID, external
 	return &dst, nil
 }
 
+func iclaSigCsvHeader() string {
+	return `Name,GitHub Username,GitLab Username,LF_ID,Email,Signed Date,Approved,Signed`
+}
+
 func iclaSigCsvLine(sig *v1Models.IclaSignature) string {
 	var dateTime string
 	t, err := utils.ParseDateTime(sig.SignedOn)
@@ -59,7 +63,7 @@ func iclaSigCsvLine(sig *v1Models.IclaSignature) string {
 	} else {
 		dateTime = t.Format("Jan 2,2006")
 	}
-	return fmt.Sprintf("\n%s,%s,%s,%s,\"%s\",%t,%t", sig.GithubUsername, sig.LfUsername, sig.UserName, sig.UserEmail, dateTime, sig.SignatureApproved, sig.SignatureSigned)
+	return fmt.Sprintf("\n\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%t,%t", sig.UserName, sig.GithubUsername, sig.GitlabUsername, sig.LfUsername, sig.UserEmail, dateTime, sig.SignatureApproved, sig.SignatureSigned)
 }
 
 func cclaSigCsvHeader() string {

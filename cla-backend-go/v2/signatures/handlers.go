@@ -867,7 +867,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			nextKey = *params.NextKey
 		}
 
-		results, err := v2service.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm, params.Approved, params.Signed, pageSize, nextKey)
+		results, err := v2service.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm, params.Approved, params.Signed, pageSize, nextKey, true)
 		if err != nil {
 			msg := fmt.Sprintf("problem loading ICLA signatures by CLA Group ID search term: %s", aws.StringValue(params.SearchTerm))
 			log.WithFields(f).WithError(err).Warn(msg)
