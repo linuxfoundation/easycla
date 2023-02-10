@@ -240,6 +240,13 @@ func (r *Repository) GitHubUpdateRepository(ctx context.Context, repositoryID, p
 		updateExpression = updateExpression + " #EN = :en, "
 	}
 
+	if input.RepositoryProjectID != nil && repoModel.RepositoryClaGroupID != *input.RepositoryProjectID {
+		log.WithFields(f).Debugf("adding repositoryProjectID: %+v", *input.RepositoryProjectID)
+		expressionAttributeNames["#RP"] = aws.String("repository_project_id")
+		expressionAttributeValues[":rp"] = &dynamodb.AttributeValue{S: input.RepositoryProjectID}
+		updateExpression = updateExpression + " #RP = :rp, "
+	}
+
 	if projectSFID != "" && repoModel.RepositoryProjectSfid != projectSFID {
 		log.WithFields(f).Debugf("adding projectSFID : %s ", projectSFID)
 		expressionAttributeNames["#P"] = aws.String("project_sfid")
