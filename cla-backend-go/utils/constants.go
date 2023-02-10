@@ -105,6 +105,12 @@ const SignatureTypeCLA = "cla"
 // SignatureTypeCCLA is the ccla signature type in the DB
 const SignatureTypeCCLA = "ccla"
 
+// FileTypePDF is the pdf file type
+const FileTypePDF = "pdf"
+
+// FileTypeCSV is the csv file type
+const FileTypeCSV = "csv"
+
 // SignatureReferenceTypeUser is the signature reference type for user signatures - individual and employee
 const SignatureReferenceTypeUser = "user"
 

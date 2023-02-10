@@ -259,7 +259,7 @@ func (s *Service) GetSignedDocument(ctx context.Context, signatureID string) (*m
 
 // GetSignedCclaZipPdf returns the signed CCLA Zip PDF reference
 func (s *Service) GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error) {
-	url := utils.SignedClaGroupZipFilename(claGroupID, CCLA)
+	url := utils.SignedClaGroupZipFilename(claGroupID, utils.ClaTypeCCLA)
 	ok, err := s.IsZipPresentOnS3(url)
 	if err != nil {
 		return nil, err
@@ -278,7 +278,7 @@ func (s *Service) GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, err
 
 // GetSignedIclaZipPdf returns the signed ICLA Zip PDF reference
 func (s *Service) GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error) {
-	url := utils.SignedClaGroupZipFilename(claGroupID, ICLA)
+	url := utils.SignedClaGroupZipFilename(claGroupID, utils.ClaTypeICLA)
 	ok, err := s.IsZipPresentOnS3(url)
 	if err != nil {
 		return nil, err

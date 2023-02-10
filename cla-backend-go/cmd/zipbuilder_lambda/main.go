@@ -36,6 +36,7 @@ var (
 type BuildZipEvent struct {
 	ClaGroupID    string `json:"cla_group_id"`
 	SignatureType string `json:"signature_type"`
+	FileType      string `json:"file_type"`
 }
 
 var zipBuilder signatures.ZipBuilder
@@ -59,12 +60,30 @@ func handler(ctx context.Context, event BuildZipEvent) error {
 	var err error
 	log.WithField("event", event).Debug("zip builder called")
 	switch event.SignatureType {
-	case signatures.ICLA:
-		err = zipBuilder.BuildICLAZip(event.ClaGroupID)
-	case signatures.CCLA:
-		err = zipBuilder.BuildCCLAZip(event.ClaGroupID)
+	case utils.ClaTypeICLA:
+		if event.FileType == utils.FileTypePDF {
+			err = zipBuilder.BuildICLAPDFZip(event.ClaGroupID)
+		} else if event.FileType == utils.FileTypeCSV {
+			err = zipBuilder.BuildICLACSVZip(event.ClaGroupID)
+		} else {
+			log.WithField("event", event).Warn("Invalid event")
+		}
+	case utils.ClaTypeCCLA:
+		if event.FileType == utils.FileTypePDF {
+			err = zipBuilder.BuildCCLAPDFZip(event.ClaGroupID)
+		} else if event.FileType == utils.FileTypeCSV {
+			err = zipBuilder.BuildCCLACSVZip(event.ClaGroupID)
+		} else {
+			log.WithField("event", event).Warn("Invalid event")
+		}
+	case utils.ClaTypeECLA:
+		if event.FileType == utils.FileTypeCSV {
+			err = zipBuilder.BuildECLACSVZip(event.ClaGroupID)
+		} else {
+			log.WithField("event", event).Warn("Invalid event")
+		}
 	default:
-		log.WithField("event", event).Debug("Invalid event")
+		log.WithField("event", event).Warn("Invalid event")
 	}
 	if err != nil {
 		log.WithField("args", event).Error("failed to build zip", err)

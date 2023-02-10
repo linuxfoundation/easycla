@@ -52,6 +52,7 @@ type ClaGroup struct {
 type BuildZipEvent struct {
 	ClaGroupID    string `json:"cla_group_id"`
 	SignatureType string `json:"signature_type"`
+	FileType      string `json:"file_type"`
 }
 
 func handler(ctx context.Context, event events.CloudWatchEvent) {
@@ -71,13 +72,30 @@ func handler(ctx context.Context, event events.CloudWatchEvent) {
 		if claGroup.ProjectCclaEnabled {
 			eventPayloads = append(eventPayloads, BuildZipEvent{
 				ClaGroupID:    claGroup.ProjectID,
-				SignatureType: "ccla",
+				SignatureType: utils.ClaTypeCCLA,
+				FileType:      utils.FileTypePDF,
+			})
+			eventPayloads = append(eventPayloads, BuildZipEvent{
+				ClaGroupID:    claGroup.ProjectID,
+				SignatureType: utils.ClaTypeCCLA,
+				FileType:      utils.FileTypeCSV,
+			})
+			eventPayloads = append(eventPayloads, BuildZipEvent{
+				ClaGroupID:    claGroup.ProjectID,
+				SignatureType: utils.ClaTypeECLA,
+				FileType:      utils.FileTypeCSV,
 			})
 		}
 		if claGroup.ProjectIclaEnabled {
 			eventPayloads = append(eventPayloads, BuildZipEvent{
 				ClaGroupID:    claGroup.ProjectID,
-				SignatureType: "icla",
+				SignatureType: utils.ClaTypeICLA,
+				FileType:      utils.FileTypePDF,
+			})
+			eventPayloads = append(eventPayloads, BuildZipEvent{
+				ClaGroupID:    claGroup.ProjectID,
+				SignatureType: utils.ClaTypeICLA,
+				FileType:      utils.FileTypeCSV,
 			})
 		}
 	}

@@ -29,8 +29,6 @@ import (
 
 // constants
 const (
-	ICLA               = "icla"
-	CCLA               = "ccla"
 	ParallelDownloader = 100
 )
 
@@ -42,8 +40,11 @@ type Zipper struct {
 
 // ZipBuilder provides method to build ICLA/CCLA zip
 type ZipBuilder interface {
-	BuildICLAZip(claGroupID string) error
-	BuildCCLAZip(claGroupID string) error
+	BuildICLAPDFZip(claGroupID string) error
+	BuildCCLAPDFZip(claGroupID string) error
+	BuildICLACSVZip(claGroupID string) error
+	BuildCCLACSVZip(claGroupID string) error
+	BuildECLACSVZip(claGroupID string) error
 }
 
 // NewZipBuilder returns the ZipBuilder
@@ -62,17 +63,32 @@ func s3ZipPrefix(claType string, claGroupID string) string {
 	return fmt.Sprintf("contract-group/%s/%s/", claGroupID, claType)
 }
 
-// BuildICLAZip builds icla pdfs zip for cla-group and upload it on s3
-func (z *Zipper) BuildICLAZip(claGroupID string) error {
-	return z.buildZip(ICLA, claGroupID)
+// BuildICLAPDFZip builds ICLA pdfs zip for cla-group and upload it on s3
+func (z *Zipper) BuildICLAPDFZip(claGroupID string) error {
+	return z.buildPDFZip(utils.ClaTypeICLA, claGroupID)
 }
 
-// BuildCCLAZip builds ccla pdfs zip for cla-group and upload it on s3
-func (z *Zipper) BuildCCLAZip(claGroupID string) error {
-	return z.buildZip(CCLA, claGroupID)
+// BuildCCLAPDFZip builds CCLA pdfs zip for cla-group and upload it on s3
+func (z *Zipper) BuildCCLAPDFZip(claGroupID string) error {
+	return z.buildPDFZip(utils.ClaTypeCCLA, claGroupID)
 }
 
-func (z *Zipper) buildZip(claType string, claGroupID string) error {
+// BuildICLACSVZip builds ICLA csvs zip for cla-group and upload it to AWS s3
+func (z *Zipper) BuildICLACSVZip(claGroupID string) error {
+	return z.buildCSVZip(utils.ClaTypeICLA, claGroupID)
+}
+
+// BuildCCLACSVZip builds CCLA csvs zip for cla-group and upload it to AWS s3
+func (z *Zipper) BuildCCLACSVZip(claGroupID string) error {
+	return z.buildCSVZip(utils.ClaTypeCCLA, claGroupID)
+}
+
+// BuildECLACSVZip builds ECLA csvs zip for cla-group and upload it to AWS s3
+func (z *Zipper) BuildECLACSVZip(claGroupID string) error {
+	return z.buildCSVZip(utils.ClaTypeECLA, claGroupID)
+}
+
+func (z *Zipper) buildPDFZip(claType string, claGroupID string) error {
 	f := logrus.Fields{"cla_group_id": claGroupID, "cla_type": claType}
 	// get zip file from s3
 	buff, err := z.getZipFileFromS3(claType, claGroupID)
@@ -147,6 +163,12 @@ func (z *Zipper) buildZip(claType string, claGroupID string) error {
 		}
 		log.Debugf("Uploaded zip file %s", remoteZipFileKey)
 	}
+	return nil
+}
+func (z *Zipper) buildCSVZip(claType string, claGroupID string) error {
+	f := logrus.Fields{"cla_group_id": claGroupID, "cla_type": claType}
+	// TODO: DAD - requires query to the signatures table to get the list of signatures, then encode as CSV, then build a zip file, and upload to S3
+	log.WithFields(f).Infof("building %s csv zip for cla-group: %s is currently not supported", claType, claGroupID)
 	return nil
 }
 
