@@ -181,11 +181,22 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 	}
 	log.WithFields(f).Debug("cla_group_template attached", pdfUrls)
 
+	// If this is the project under a Parent Project/Foundation and this project is the only project in the list, then
+	// we need to set the foundation SFID to the current project SFID value
+	// This addresses the issue when we have a parent project and child project situation where the parent has a CLA
+	// Group and this is a request to create a new CLA Group for the child project - this is new logic that we added
+	// to support nested CLA groups where some child projects can inherit the CLA Group from the parent project while
+	// other child projects can have their own CLA Group.
+	claAnchorProject := *input.FoundationSfid
+	if len(input.ProjectSfidList) == 1 {
+		claAnchorProject = input.ProjectSfidList[0]
+	}
+
 	// Associate the specified projects with our new CLA Group
 	enrollErr := s.EnrollProjectsInClaGroup(ctx, &EnrollProjectsModel{
 		AuthUser:        authUser,
 		CLAGroupID:      claGroup.ProjectID,
-		FoundationSFID:  *input.FoundationSfid, // invalid for FINOS -> CDM and FDC3 Scenario
+		FoundationSFID:  claAnchorProject,
 		ProjectSFIDList: input.ProjectSfidList,
 	})
 	if enrollErr != nil {
