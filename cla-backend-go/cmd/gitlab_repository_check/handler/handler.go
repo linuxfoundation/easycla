@@ -202,7 +202,6 @@ func Handler(ctx context.Context) error {
 			continue
 		}
 		log.WithFields(f).Debugf("found %d GitLab projects for group/organization: %s", len(gitLabProjects), gitLabGroup.OrganizationFullPath)
-		
 
 		gitLabDBProjects, getProjectListDBErr := gitV2Repository.GitLabGetRepositoriesByOrganizationName(ctx, gitLabGroup.OrganizationFullPath)
 		if getProjectListDBErr != nil {
@@ -316,8 +315,6 @@ func getNewProjects(gitLabProjects []*goGitLab.Project, gitLabDBProjects []*v1Re
 
 	return response
 }
-
-
 
 // getDeletedProjects is a helper function to determine if we have any new GitLab projects that were removed from GitLab but are still in our database
 func getDeletedProjects(gitLabProjects []*goGitLab.Project, gitLabDBProjects []*v1Repositories.RepositoryDBModel) []*v1Repositories.RepositoryDBModel {
