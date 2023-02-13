@@ -31,7 +31,6 @@
   "resolutions": {
     "axios": "^0.21.4",
     "ansi-regex": "^5.0.1",
-    "cacheable-request": "^10.2.7",
     "cookiejar": "^2.1.4",
     "follow-redirects": "^1.14.7",
     "glob-parent": "^5.1.2",
