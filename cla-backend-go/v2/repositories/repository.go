@@ -126,6 +126,13 @@ func (r *Repository) GitLabGetRepositoryByName(ctx context.Context, repositoryNa
 
 // GitLabGetRepositoriesByNamePrefix returns a list of repositories matching the specified name prefix
 func (r *Repository) GitLabGetRepositoriesByNamePrefix(ctx context.Context, repositoryNamePrefix string) ([]*repoModels.RepositoryDBModel, error) {
+	f := logrus.Fields{
+		"functionName":      "v2.repositories.repositories.GitLabGetRepositoriesByNamePrefix",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"repositoryNamePrefix": repositoryNamePrefix,
+	}
+
+	log.WithFields(f).Debug("querying for repositories with name prefix")
 	condition := expression.Key(repoModels.RepositoryTypeColumn).Equal(expression.Value(utils.GitLabLower))
 	filter := expression.Name(repoModels.RepositoryNameColumn).BeginsWith(repositoryNamePrefix)
 	records, err := r.getRepositoriesWithConditionFilter(ctx, condition, filter, repoModels.RepositoryTypeIndex)

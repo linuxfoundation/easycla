@@ -151,7 +151,12 @@ func Handler(ctx context.Context) error {
 	//       if new, add to DB, create event log
 	//       if deleted, remove from DB, create event log
 
-	gitLabGroups, err := gitlabOrganizationRepo.GetGitLabOrganizationsEnabled(ctx)
+	// gitLabGroups, err := gitlabOrganizationRepo.GetGitLabOrganizationsEnabled(ctx)
+	// if err != nil {
+	// 	log.WithFields(f).WithError(err).Warnf("problem querying for GitLab group/organizations that are enabled with auto-enabled flag set to true")
+	// 	return err
+	// }
+	gitLabGroups, err := gitlabOrganizationRepo.GetGitLabOrganizationsByProjectSFID(ctx, "a092h000004x5sGAAQ")
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem querying for GitLab group/organizations that are enabled with auto-enabled flag set to true")
 		return err
@@ -159,7 +164,19 @@ func Handler(ctx context.Context) error {
 
 	log.WithFields(f).Debugf("start - checking %d GitLab projects for add/delete events", len(gitLabGroups.List))
 	for _, gitLabGroup := range gitLabGroups.List {
+		claGroupID := gitLabGroup.AutoEnabledClaGroupID
 		log.WithFields(f).Debugf("start - processing GitLab group/organization: %s with group ID: %d associated with project SFID: %s", gitLabGroup.OrganizationURL, gitLabGroup.OrganizationExternalID, gitLabGroup.ProjectSfid)
+
+		if claGroupID == "" {
+			log.WithFields(f).Debugf("GitLab group/organization: %s not fully onboarded - missing CLA Group ID", gitLabGroup.OrganizationURL)
+			pcg, err := v1ProjectClaGroupRepo.GetClaGroupIDForProject(ctx, gitLabGroup.ProjectSfid)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("problem querying for CLA Group ID for project SFID: %s", gitLabGroup.ProjectSfid)
+				continue
+			}
+			log.WithFields(f).Debug("found CLA Group ID: ", pcg.ClaGroupID)
+			claGroupID = pcg.ClaGroupID
+		}
 
 		if gitLabGroup.AuthInfo == "" {
 			log.WithFields(f).Debugf("GitLab group/organization: %s not fully onboarded - missing authentication info - skipping", gitLabGroup.OrganizationURL)
@@ -184,14 +201,21 @@ func Handler(ctx context.Context) error {
 			log.WithFields(f).WithError(getGitLabAPIError).Warnf("problem loading GitLab projects for group/organization: %s using the groupID: %d - skipping GitLab Group/Organziation - skipping", gitLabGroup.OrganizationFullPath, gitLabGroup.OrganizationExternalID)
 			continue
 		}
-		gitLabDBProjects, getProjectListDBErr := gitV2Repository.GitLabGetRepositoriesByNamePrefix(ctx, gitLabGroup.OrganizationFullPath)
+		log.WithFields(f).Debugf("found %d GitLab projects for group/organization: %s", len(gitLabProjects), gitLabGroup.OrganizationFullPath)
+		
+
+		gitLabDBProjects, getProjectListDBErr := gitV2Repository.GitLabGetRepositoriesByOrganizationName(ctx, gitLabGroup.OrganizationFullPath)
 		if getProjectListDBErr != nil {
-			log.WithFields(f).WithError(getProjectListDBErr).Warnf("problem loading GitLab projects for group/organization: %s from the database - skipping GitLab Group/Organziation - skipping", gitLabGroup.OrganizationFullPath)
-			continue
+			if _, ok := getProjectListDBErr.(*utils.GitLabRepositoryNotFound); ok {
+				log.WithFields(f).Debugf("GitLab group/organization: %s does not have any repositories in the database", gitLabGroup.OrganizationFullPath)
+			} else {
+				log.WithFields(f).WithError(getProjectListDBErr).Warnf("problem loading GitLab projects for group/organization: %s from the database - skipping GitLab Group/Organziation - skipping", gitLabGroup.OrganizationFullPath)
+				continue
+			}
 		}
 
 		newGitLabProjects := getNewProjects(gitLabProjects, gitLabDBProjects)
-		log.WithFields(f).Debugf("Found %d GitLab projects/repositories that were added for GitLab Group: %s", len(newGitLabProjects), gitLabGroup.OrganizationFullPath)
+		log.WithFields(f).Debugf("Found %d GitLab projects/repositories that are to be added for GitLab Group: %s", len(newGitLabProjects), gitLabGroup.OrganizationFullPath)
 		if len(newGitLabProjects) > 0 {
 			var gitLabProjectIDList []int64
 
@@ -202,7 +226,7 @@ func Handler(ctx context.Context) error {
 
 			// Add the repositories - will generate a log event
 			_, addErr := v2RepositoriesService.GitLabAddRepositoriesWithEnabledFlag(ctx, gitLabGroup.ProjectSfid, &v2Repositories.GitLabAddRepoModel{
-				ClaGroupID:    gitLabGroup.AutoEnabledClaGroupID,
+				ClaGroupID:    claGroupID,
 				GroupName:     gitLabGroup.OrganizationName,
 				ExternalID:    gitLabGroup.OrganizationExternalID,
 				GroupFullPath: gitLabGroup.OrganizationFullPath,
@@ -215,8 +239,26 @@ func Handler(ctx context.Context) error {
 			}
 		}
 
-		deletedGitLabProjects := getDeletedProjects(gitLabProjects, gitLabDBProjects)
-		log.WithFields(f).Debugf("Found %d GitLab projects/repositories that were removed from the GitLab Group: %s", len(newGitLabProjects), gitLabGroup.OrganizationFullPath)
+		gitLabProjects, getGitLabAPIError = gitLabApi.GetGroupProjectListByGroupID(ctx, gitLabClient, int(gitLabGroup.OrganizationExternalID))
+		if getGitLabAPIError != nil {
+			log.WithFields(f).WithError(getGitLabAPIError).Warnf("problem loading GitLab projects for group/organization: %s using the groupID: %d - skipping GitLab Group/Organziation - skipping", gitLabGroup.OrganizationFullPath, gitLabGroup.OrganizationExternalID)
+			continue
+		}
+		log.WithFields(f).Debugf("found %d GitLab projects for group/organization: %s", len(gitLabProjects), gitLabGroup.OrganizationFullPath)
+
+		dBProjects, getProjectListDBErr := gitV2Repository.GitLabGetRepositoriesByOrganizationName(ctx, gitLabGroup.OrganizationFullPath)
+		if getProjectListDBErr != nil {
+			if _, ok := getProjectListDBErr.(*utils.GitLabRepositoryNotFound); ok {
+				log.WithFields(f).Debugf("GitLab group/organization: %s does not have any repositories in the database", gitLabGroup.OrganizationFullPath)
+			} else {
+				log.WithFields(f).WithError(getProjectListDBErr).Warnf("problem loading GitLab projects for group/organization: %s from the database - skipping GitLab Group/Organziation - skipping", gitLabGroup.OrganizationFullPath)
+				continue
+			}
+		}
+		log.WithFields(f).Debugf("Found %d GitLab projects/repositories for GitLab Group: %s", len(dBProjects), gitLabGroup.OrganizationFullPath)
+
+		deletedGitLabProjects := getDeletedProjects(gitLabProjects, dBProjects)
+		log.WithFields(f).Debugf("Found %d GitLab projects/repositories that are to be removed from the GitLab Group: %s", len(deletedGitLabProjects), gitLabGroup.OrganizationFullPath)
 		if len(deletedGitLabProjects) > 0 {
 			for _, gitLabProjectDBRecord := range deletedGitLabProjects {
 				repositoryExternalID, parseIntErr := strconv.ParseInt(gitLabProjectDBRecord.RepositoryExternalID, 10, 64)
@@ -243,6 +285,15 @@ func Handler(ctx context.Context) error {
 // getNewProjects is a helper function to determine if we have any new GitLab projects that are not in our database
 func getNewProjects(gitLabProjects []*goGitLab.Project, gitLabDBProjects []*v1Repositories.RepositoryDBModel) []*goGitLab.Project {
 	var response []*goGitLab.Project
+	f := logrus.Fields{
+		"functionName": "getNewProjects",
+	}
+	if len(gitLabDBProjects) == 0 {
+		// No projects in the database - return all the projects from GitLab
+		log.WithFields(f).Debugf("no projects in the database - returning all projects from GitLab: %+v", gitLabProjects)
+		return gitLabProjects
+	}
+
 	// For each GitLab Project/Repo
 	for _, gitLabProject := range gitLabProjects {
 		found := false
@@ -266,9 +317,23 @@ func getNewProjects(gitLabProjects []*goGitLab.Project, gitLabDBProjects []*v1Re
 	return response
 }
 
+
+
 // getDeletedProjects is a helper function to determine if we have any new GitLab projects that were removed from GitLab but are still in our database
 func getDeletedProjects(gitLabProjects []*goGitLab.Project, gitLabDBProjects []*v1Repositories.RepositoryDBModel) []*v1Repositories.RepositoryDBModel {
-	var response []*v1Repositories.RepositoryDBModel
+	response := make([]*v1Repositories.RepositoryDBModel, 0)
+	f := logrus.Fields{
+		"functionName": "getDeletedProjects",
+	}
+
+	if len(gitLabProjects) == 0 {
+		// No projects in GitLab - return all the projects from the database
+		log.WithFields(f).Debugf("no projects in GitLab - returning all projects from the database: %+v", gitLabDBProjects)
+		return gitLabDBProjects
+	}
+
+	log.WithFields(f).Debugf("len(gitLabProjects): %d and len(gitLabDbProjects): %d", len(gitLabProjects), len(gitLabDBProjects))
+
 	// For each GitLab Project/Repo in the database
 	for _, gitLabDBProject := range gitLabDBProjects {
 		found := false
@@ -276,6 +341,7 @@ func getDeletedProjects(gitLabProjects []*goGitLab.Project, gitLabDBProjects []*
 		// For each GitLab Project/Repo
 		for _, gitLabProject := range gitLabProjects {
 			// Compare the full name/path
+			log.WithFields(f).Debugf("comparing GitLab project: %s with GitLab DB project: %s", gitLabProject.PathWithNamespace, gitLabDBProject.RepositoryFullPath)
 			if strings.ToLower(gitLabProject.PathWithNamespace) == strings.ToLower(gitLabDBProject.RepositoryFullPath) {
 				found = true
 				break
@@ -286,7 +352,10 @@ func getDeletedProjects(gitLabProjects []*goGitLab.Project, gitLabDBProjects []*
 		// Didn't find the GitLab Project Repo from the database defined in GitLab - must have been removed!
 		if !found {
 			// Add to our list
+			log.WithFields(f).Debugf("adding GitLab project: %s to the list of projects to be deleted", gitLabDBProject.RepositoryFullPath)
 			response = append(response, gitLabDBProject)
+		} else {
+			log.WithFields(f).Debugf("GitLab project: %s was not found in the list of projects to be deleted", gitLabDBProject.RepositoryFullPath)
 		}
 	}
 
