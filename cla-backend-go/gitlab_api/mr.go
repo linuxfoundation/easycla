@@ -5,7 +5,6 @@ package gitlab
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -40,12 +39,8 @@ func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int) ([]*
 		authorName := commit.AuthorName
 		log.Debugf("user email found : %s, user name : %s, searching in gitlab ...", authorEmail, authorName)
 
-		authorID, err := strconv.Atoi(commit.ID)
-		if err != nil {
-			return nil, fmt.Errorf("parsing author id : %s, failed : %v", commit.ID, err)
-		}
-
-		user, err := getUser(client, authorID)
+		// check if user already exists in the results
+		user, err := getUser(client, authorEmail)
 
 		if err != nil {
 			return nil, fmt.Errorf("searching for author email : %s, failed : %v", authorEmail, err)
@@ -119,11 +114,13 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, message str
 	return nil
 }
 
-// getUser is responsible for fetching the user info for given user id
-func getUser(client *gitlab.Client, userID int) (*gitlab.User, error) {
-	user, _, err := client.Users.GetUser(userID, gitlab.GetUsersOptions{})
+// getUser is responsible for fetching the user info for given user email
+func getUser(client *gitlab.Client, email string) (*gitlab.User, error) {
+	user, _, err := client.Users.ListUsers(&gitlab.ListUsersOptions{
+		Username: &email,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("fetching user : %d failed : %v", userID, err)
+		return nil, fmt.Errorf("fetching user : %s failed : %v", email, err)
 	}
-	return user, nil
+	return user[0], nil
 }
