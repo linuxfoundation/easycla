@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
 )
 
@@ -23,6 +24,12 @@ func FetchMrInfo(client *gitlab.Client, projectID int, mergeID int) (*gitlab.Mer
 
 // FetchMrParticipants is responsible to get unique mr participants
 func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int) ([]*gitlab.User, error) {
+	f := logrus.Fields{
+		"functionName": "gitlab_api.FetchMrParticipants",
+		"projectID":    projectID,
+		"mergeID":      mergeID,
+	}
+	log.WithFields(f).Debug("fetching mr participants...")
 	commits, _, err := client.MergeRequests.GetMergeRequestCommits(projectID, mergeID, &gitlab.GetMergeRequestCommitsOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("fetching gitlab participants for project : %d and merge id : %d, failed : %v", projectID, mergeID, err)
@@ -40,15 +47,13 @@ func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int) ([]*
 		log.Debugf("user email found : %s, user name : %s, searching in gitlab ...", authorEmail, authorName)
 
 		// check if user already exists in the results
-		user, err := getUser(client, authorEmail)
+		user, err := getUser(client, &authorEmail, &authorName)
 
 		if err != nil {
-			return nil, fmt.Errorf("searching for author email : %s, failed : %v", authorEmail, err)
+			log.WithFields(f).Warnf("unable to find user for commit author email : %s, name : %s, error : %v", authorEmail, authorName, err)
+			return nil, err
 		}
 
-		if user == nil {
-			return nil, fmt.Errorf("no users found for commit author email : %s, name : %s", authorEmail, authorName)
-		}
 		results = append(results, user)
 	}
 
@@ -115,12 +120,38 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, message str
 }
 
 // getUser is responsible for fetching the user info for given user email
-func getUser(client *gitlab.Client, email string) (*gitlab.User, error) {
-	user, _, err := client.Users.ListUsers(&gitlab.ListUsersOptions{
-		Username: &email,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("fetching user : %s failed : %v", email, err)
+func getUser(client *gitlab.Client, email, name *string) (*gitlab.User, error) {
+	f := logrus.Fields{
+		"functionName": "gitlab_api.getUser",
+		"email":        email,
 	}
-	return user[0], nil
+
+	users, _, err := client.Users.ListUsers(&gitlab.ListUsersOptions{
+		Search: gitlab.String(*name),
+	})
+
+	log.WithFields(f).Debugf("found %d users for name : %s", len(users), *name)
+
+	if err != nil {
+		log.WithFields(f).Warnf("unable to find user for name : %s, error : %v", *name, err)
+		return nil, nil
+	}
+
+	if len(users) == 0 {
+		log.WithFields(f).Warnf("no user found for name : %s", *name)
+		return &gitlab.User{
+			Email: *email,
+			Name:  *name,
+		}, nil
+	}
+
+	// check if user exists for the given email
+	log.WithFields(f).Debugf("found %d users for name : %s", len(users), *name)
+	for _, user := range users {
+		if user.Email == *email {
+			return user, nil
+		}
+	}
+	return nil, fmt.Errorf("unable to find user for email : %s", *email)
+
 }

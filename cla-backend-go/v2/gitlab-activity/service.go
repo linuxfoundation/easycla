@@ -311,7 +311,17 @@ func GetFullSignURL(gitlabOrganizationID string, gitlabRepositoryID string, mrID
 }
 
 func getAuthorInfo(gitlabUser *gitlab.User) string {
-	return fmt.Sprintf("login:@%s/name:%s", gitlabUser.Username, gitlabUser.Name)
+	f := logrus.Fields{
+		"functionName":   "getAuthorInfo",
+		"gitlabUsername": gitlabUser.Username,
+		"gitlabName":     gitlabUser.Name,
+		"gitlabEmail":    gitlabUser.Email,
+	}
+	log.WithFields(f).Debug("getting author info")
+	if gitlabUser.Username != "" {
+		return fmt.Sprintf("login:@%s/name:%s", gitlabUser.Username, gitlabUser.Name)
+	}
+	return fmt.Sprintf("email:%s/name:%s", gitlabUser.Username, gitlabUser.Name)
 }
 
 func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*v2Models.GitlabOrganization, error) {
