@@ -49,7 +49,7 @@ func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int) ([]*
 		// check if user already exists in the results
 		user, err := getUser(client, &authorEmail, &authorName)
 
-		if err != nil {
+		if err != nil && user == nil {
 			log.WithFields(f).Warnf("unable to find user for commit author email : %s, name : %s, error : %v", authorEmail, authorName, err)
 			return nil, err
 		}
@@ -146,12 +146,15 @@ func getUser(client *gitlab.Client, email, name *string) (*gitlab.User, error) {
 	}
 
 	// check if user exists for the given email
-	log.WithFields(f).Debugf("found %d users for name : %s", len(users), *name)
 	for _, user := range users {
+		log.WithFields(f).Debugf("checking user : %s for email : %s", user.Email, user.Email)
 		if user.Email == *email {
 			return user, nil
 		}
 	}
-	return nil, fmt.Errorf("unable to find user for email : %s", *email)
+	return &gitlab.User{
+		Email: *email,
+		Name:  *name,
+	}, fmt.Errorf("unable to find user for email : %s", *email)
 
 }
