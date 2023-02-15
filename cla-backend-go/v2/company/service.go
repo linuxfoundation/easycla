@@ -377,7 +377,7 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, params *v2O
 
 	log.WithFields(f).Debugf("adding additional corporate contributor details for %d signatures...", len(sigResponse.Signatures))
 	for _, sig := range sigResponse.Signatures {
-		go fillCorporateContributorModel(&wg, s.userRepo, sig, result, utils.StringValue(params.SearchTerm))
+		go fillCorporateContributorModel(&wg, s.userRepo, sig, result)
 	}
 
 	for corpContributor := range result {
@@ -1498,7 +1498,7 @@ func (s *service) filterClaProjects(ctx context.Context, projects []*v2ProjectSe
 	return results
 }
 
-func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepository, sig *v1Models.Signature, result chan *models.CorporateContributor, searchTerm string) {
+func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepository, sig *v1Models.Signature, result chan *models.CorporateContributor) {
 	f := logrus.Fields{
 		"functionName": "v2.company.service.fillCorporateContributorModel",
 	}
@@ -1507,13 +1507,6 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 	if err != nil {
 		log.WithFields(f).Warnf("unable to load user information using signature ID: %s", sig.SignatureReferenceID)
 		return
-	}
-
-	if searchTerm != "" {
-		ls := strings.ToLower(searchTerm)
-		if !(strings.Contains(strings.ToLower(user.Username), ls) || strings.Contains(strings.ToLower(user.LfUsername), ls)) {
-			return
-		}
 	}
 
 	var contributor models.CorporateContributor
@@ -1567,6 +1560,9 @@ func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, pa
 	}
 	if params.NextKey != nil {
 		queryParams.NextKey = params.NextKey
+	}
+	if params.SearchTerm != nil {
+		queryParams.SearchTerm = params.SearchTerm
 	}
 
 	sigs, err := s.signatureRepo.GetProjectCompanyEmployeeSignatures(ctx, queryParams, nil)

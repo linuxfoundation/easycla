@@ -1660,6 +1660,16 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		filter = addAndCondition(filter, expression.Name("user_email").Equal(expression.Value(criteria.UserEmail)), &filterAdded)
 	}
 
+	if params.SearchTerm != nil {
+		log.WithFields(f).Debugf("adding search term criteria filter for : %s ", *params.SearchTerm)
+		searchExpression := expression.Name("user_name").Contains(*params.SearchTerm).
+			Or(expression.Name("user_email").Contains(*params.SearchTerm)).
+			Or(expression.Name("user_github_username").Contains(*params.SearchTerm)).
+			Or(expression.Name("user_gitlab_username").Contains(*params.SearchTerm)).
+			Or(expression.Name("lf_username").Contains(*params.SearchTerm))
+		filter = addAndCondition(filter, searchExpression, &filterAdded)
+	}
+
 	beforeQuery, _ := utils.CurrentTime()
 	//log.WithFields(f).Debugf("running signature query on table: %s", repo.signatureTableName)
 	// Use the nice builder to create the expression

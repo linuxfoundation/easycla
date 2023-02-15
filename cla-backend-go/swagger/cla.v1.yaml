@@ -432,6 +432,7 @@ paths:
         - $ref: '#/parameters/pageSize'
         - $ref: '#/parameters/nextKey'
         - $ref: '#/parameters/sortOrder'
+        - $ref: '#/parameters/searchTerm'
       responses:
         '200':
           description: 'Success'
@@ -534,6 +535,7 @@ paths:
         - $ref: '#/parameters/pageSize'
         - $ref: '#/parameters/nextKey'
         - $ref: '#/parameters/sortOrder'
+        - $ref: '#/parameters/searchTerm'
       responses:
         '200':
           description: 'Success'
