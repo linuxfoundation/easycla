@@ -320,8 +320,10 @@ func getAuthorInfo(gitlabUser *gitlab.User) string {
 	log.WithFields(f).Debug("getting author info")
 	if gitlabUser.Username != "" {
 		return fmt.Sprintf("login:@%s/name:%s", gitlabUser.Username, gitlabUser.Name)
+	} else if gitlabUser.Email != "" {
+		return fmt.Sprintf("email:%s/name:%s", gitlabUser.Email, gitlabUser.Name)
 	}
-	return fmt.Sprintf("email:%s/name:%s", gitlabUser.Username, gitlabUser.Name)
+	return fmt.Sprintf("name:%s", gitlabUser.Name)
 }
 
 func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*v2Models.GitlabOrganization, error) {

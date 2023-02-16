@@ -123,12 +123,20 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, message str
 func getUser(client *gitlab.Client, email, name *string) (*gitlab.User, error) {
 	f := logrus.Fields{
 		"functionName": "gitlab_api.getUser",
-		"email":        email,
+		"email":        *email,
+		"name":         *name,
+	}
+
+	user := &gitlab.User{
+		Email: *email,
+		Name:  *name,
 	}
 
 	users, _, err := client.Users.ListUsers(&gitlab.ListUsersOptions{
-		Search: gitlab.String(*name),
+		Search: email,
 	})
+
+	log.WithFields(f).Debugf("found users : %+v", users)
 
 	log.WithFields(f).Debugf("found %d users for name : %s", len(users), *name)
 
@@ -139,22 +147,20 @@ func getUser(client *gitlab.Client, email, name *string) (*gitlab.User, error) {
 
 	if len(users) == 0 {
 		log.WithFields(f).Warnf("no user found for name : %s", *name)
-		return &gitlab.User{
-			Email: *email,
-			Name:  *name,
-		}, nil
+		return user, nil
 	}
 
 	// check if user exists for the given email
-	for _, user := range users {
-		log.WithFields(f).Debugf("checking user : %s for email : %s", user.Email, user.Email)
-		if user.Email == *email {
-			return user, nil
+	for _, found := range users {
+		if found.Name == *name {
+			log.WithFields(f).Debugf("checking user : %+v", found)
+			user.Username = found.Username
+			user.ID = found.ID
+			log.WithFields(f).Debugf("returning user: %+v", user)
+			break
 		}
 	}
-	return &gitlab.User{
-		Email: *email,
-		Name:  *name,
-	}, fmt.Errorf("unable to find user for email : %s", *email)
+
+	return user, fmt.Errorf("unable to find user for email : %s", *email)
 
 }
