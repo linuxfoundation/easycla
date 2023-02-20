@@ -187,16 +187,20 @@ func (s *service) CreateCLAGroup(ctx context.Context, authUser *auth.User, input
 	// Group and this is a request to create a new CLA Group for the child project - this is new logic that we added
 	// to support nested CLA groups where some child projects can inherit the CLA Group from the parent project while
 	// other child projects can have their own CLA Group.
-	claAnchorProject := *input.FoundationSfid
-	if len(input.ProjectSfidList) == 1 {
-		claAnchorProject = input.ProjectSfidList[0]
-	}
+	// claAnchorProject := *input.FoundationSfid
+	// foundationCLAGroup, err := s.v1ProjectService.GetClaGroupByProjectSFID(ctx, claAnchorProject, false)
+	// if err != nil {
+	// 	log.WithFields(f).WithError(err).Warnf("unable to get CLA Group by project SFID: %s", claAnchorProject)
+	// }
+	// if len(input.ProjectSfidList) == 1 && foundationCLAGroup != nil  {
+	// 	claAnchorProject = input.ProjectSfidList[0]
+	// }
 
 	// Associate the specified projects with our new CLA Group
 	enrollErr := s.EnrollProjectsInClaGroup(ctx, &EnrollProjectsModel{
 		AuthUser:        authUser,
 		CLAGroupID:      claGroup.ProjectID,
-		FoundationSFID:  claAnchorProject,
+		FoundationSFID:  *input.FoundationSfid,
 		ProjectSFIDList: input.ProjectSfidList,
 	})
 	if enrollErr != nil {

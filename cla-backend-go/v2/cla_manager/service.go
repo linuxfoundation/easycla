@@ -563,13 +563,6 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 	var designeeScopes []*models.ClaManagerDesignee
 	userEmail := params.Body.UserEmail.String()
 
-	foundationSFID := projectCLAGroups[0].FoundationSFID
-	signedAtFoundationLevel, signedErr := s.projectService.SignedAtFoundationLevel(ctx, foundationSFID)
-	if signedErr != nil {
-		msg := fmt.Sprintf("Problem getting level of CLA Group Signature for claGroup: %s ", foundationSFID)
-		return nil, msg, signedErr
-	}
-
 	// Lookup the company by internal ID
 	log.WithFields(f).Debugf("looking up company by internal ID...")
 	v1CompanyModel, err := s.companyService.GetCompany(ctx, params.CompanyID)
@@ -581,73 +574,58 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 	f["companySFID"] = v1CompanyModel.CompanyExternalID
 	f["companyName"] = v1CompanyModel.CompanyName
 
-	if signedAtFoundationLevel {
-		if foundationSFID != "" {
-			claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyID, foundationSFID, userEmail)
+	// Channel result
+	type result struct {
+		designee *models.ClaManagerDesignee
+		msg      string
+		err      error
+	}
+	designeeChan := make(chan *result)
+	var wg sync.WaitGroup
+	wg.Add(len(projectCLAGroups))
+
+	go func() {
+		wg.Wait()
+		close(designeeChan)
+	}()
+
+	for _, pcg := range projectCLAGroups {
+		go func(swg *sync.WaitGroup, pcg *projects_cla_groups.ProjectClaGroup, designeeChannel chan *result) {
+			defer swg.Done()
+			log.WithFields(f).Debugf("creating CLA Manager Designee for Project SFID: %s", pcg.ProjectSFID)
+			claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyID, pcg.ProjectSFID, userEmail)
+			var output result
 			if err != nil {
 				if err == ErrCLAManagerDesigneeConflict {
-					msg := fmt.Sprintf("Conflict assigning cla manager role for Foundation SFID: %s ", foundationSFID)
-					return nil, msg, err
-				}
-				msg := fmt.Sprintf("Creating cla manager failed for Foundation SFID: %s ", foundationSFID)
-				return nil, msg, err
-			}
-			designeeScopes = append(designeeScopes, claManagerDesignee)
-		}
-	} else {
-		// Channel result
-		type result struct {
-			designee *models.ClaManagerDesignee
-			msg      string
-			err      error
-		}
-		designeeChan := make(chan *result)
-		var wg sync.WaitGroup
-		wg.Add(len(projectCLAGroups))
-
-		go func() {
-			wg.Wait()
-			close(designeeChan)
-		}()
-
-		for _, pcg := range projectCLAGroups {
-			go func(swg *sync.WaitGroup, pcg *projects_cla_groups.ProjectClaGroup, designeeChannel chan *result) {
-				defer swg.Done()
-				log.WithFields(f).Debugf("creating CLA Manager Designee for Project SFID: %s", pcg.ProjectSFID)
-				claManagerDesignee, err := s.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyID, pcg.ProjectSFID, userEmail)
-				var output result
-				if err != nil {
-					if err == ErrCLAManagerDesigneeConflict {
-						msg := fmt.Sprintf("Conflict assigning cla manager role for Project SFID: %s, error: %s ", pcg.ProjectSFID, err)
-						output = result{
-							designee: nil,
-							msg:      msg,
-							err:      ErrCLAManagerDesigneeConflict,
-						}
-					}
-					msg := fmt.Sprintf("Creating cla manager failed for Project SFID: %s, error: %s ", pcg.ProjectSFID, err)
+					msg := fmt.Sprintf("Conflict assigning cla manager role for Project SFID: %s, error: %s ", pcg.ProjectSFID, err)
 					output = result{
 						designee: nil,
 						msg:      msg,
-						err:      err,
+						err:      ErrCLAManagerDesigneeConflict,
 					}
-					designeeChannel <- &output
-					return
 				}
+				msg := fmt.Sprintf("Creating cla manager failed for Project SFID: %s, error: %s ", pcg.ProjectSFID, err)
 				output = result{
-					designee: claManagerDesignee,
-					msg:      "",
-					err:      nil,
+					designee: nil,
+					msg:      msg,
+					err:      err,
 				}
 				designeeChannel <- &output
-			}(&wg, pcg, designeeChan)
-		}
-		for resultCh := range designeeChan {
-			if resultCh.err != nil {
-				return nil, resultCh.msg, resultCh.err
+				return
 			}
-			designeeScopes = append(designeeScopes, resultCh.designee)
+			output = result{
+				designee: claManagerDesignee,
+				msg:      "",
+				err:      nil,
+			}
+			designeeChannel <- &output
+		}(&wg, pcg, designeeChan)
+	}
+	for resultCh := range designeeChan {
+		if resultCh.err != nil {
+			return nil, resultCh.msg, resultCh.err
 		}
+		designeeScopes = append(designeeScopes, resultCh.designee)
 	}
 
 	return designeeScopes, "", nil
