@@ -1562,7 +1562,9 @@ func (s *service) getAllCompanyProjectEmployeeSignatures(ctx context.Context, pa
 		queryParams.NextKey = params.NextKey
 	}
 	if params.SearchTerm != nil {
-		queryParams.SearchTerm = params.SearchTerm
+		searchTermTrimmed := strings.TrimSpace(utils.StringValue(params.SearchTerm))
+		log.WithFields(f).Debugf("searchTermTrimmed: %s", searchTermTrimmed)
+		queryParams.SearchTerm = &searchTermTrimmed
 	}
 
 	sigs, err := s.signatureRepo.GetProjectCompanyEmployeeSignatures(ctx, queryParams, nil)
