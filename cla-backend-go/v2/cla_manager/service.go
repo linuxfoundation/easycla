@@ -357,6 +357,8 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 		return nil, ErrLFXUserNotFound
 	}
 
+	log.WithFields(f).Debugf("user found: %+v", lfxUser)
+
 	log.WithFields(f).Debugf("checking if user has %s role scope...", utils.CLADesigneeRole)
 	// Check if user is already CLA Manager designee of project|organization scope
 	hasRoleScope, hasRoleScopeErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLADesigneeRole, lfxUser.ID, v1CompanyModel.CompanyExternalID, projectSFID)
@@ -461,86 +463,74 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 	var hasRole = false
 
 	if len(pcgs) > 0 {
-
-		foundationSFID := pcgs[0].FoundationSFID
-		log.WithFields(f).Debugf("Check signed level status for foundationSFID: %s ...", foundationSFID)
-		signedAtFoundationLevel, signedErr := s.projectService.SignedAtFoundationLevel(ctx, foundationSFID)
-		if signedErr != nil {
-			log.WithFields(f).Warnf("problem checking for signed level for foundationSFID: %s ", foundationSFID)
-			return nil, signedErr
+		// Check for role at project level
+		log.WithFields(f).Debugf("Checking role for user: %s at project level for %d projects", user.ID, len(pcgs))
+		type result struct {
+			hasRole     bool
+			projectSFID string
+			err         error
 		}
-		if signedAtFoundationLevel {
-			// Check if user has cla-manager-designee role at foundation level
-			hasfoundationLevelRole, roleErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLADesigneeRole, user.ID, companySFID, foundationSFID)
-			if roleErr != nil {
-				log.WithFields(f).Debugf("problem getting role:%s for user and project: %s ", utils.CLADesigneeRole, foundationSFID)
-				return nil, roleErr
-			}
-			hasRole = hasfoundationLevelRole
-		} else {
-			// Check for role at project level
-			type result struct {
-				hasRole bool
-				err     error
-			}
-			roleStatusChan := make(chan *result)
-			var wg sync.WaitGroup
-			wg.Add(len(pcgs))
+		roleStatusChan := make(chan *result)
+		var wg sync.WaitGroup
+		wg.Add(len(pcgs))
 
-			go func() {
-				wg.Wait()
-				close(roleStatusChan)
-			}()
+		go func() {
+			wg.Wait()
+			close(roleStatusChan)
+		}()
 
-			for _, pcg := range pcgs {
-				go func(swg *sync.WaitGroup, pcg *projects_cla_groups.ProjectClaGroup, roleStatusChan chan *result) {
-					defer swg.Done()
-					var output result
-					log.WithFields(f).Debugf("Checking role status for projectSFID: %s", pcg.ProjectSFID)
-					hasProjectLevelRole, roleErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLADesigneeRole, user.ID, companySFID, pcg.ProjectSFID)
-					if roleErr != nil {
-						log.WithFields(f).Debugf("problem getting role:%s for user and project: %s ", utils.CLADesigneeRole, pcg.ProjectSFID)
-						output = result{
-							hasRole: false,
-							err:     roleErr,
-						}
-						roleStatusChan <- &output
-						return
+		for _, pcg := range pcgs {
+			go func(swg *sync.WaitGroup, pcg *projects_cla_groups.ProjectClaGroup, roleStatusChan chan *result) {
+				defer swg.Done()
+				var output result
+				log.WithFields(f).Debugf("Checking role status for projectSFID: %s", pcg.ProjectSFID)
+				hasProjectLevelRole, roleErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLADesigneeRole, user.ID, companySFID, pcg.ProjectSFID)
+				if roleErr != nil {
+					log.WithFields(f).Debugf("problem getting role:%s for user and project: %s ", utils.CLADesigneeRole, pcg.ProjectSFID)
+					output = result{
+						hasRole:     false,
+						err:         roleErr,
+						projectSFID: pcg.ProjectSFID,
 					}
-					if hasProjectLevelRole {
-						log.WithFields(f).Debugf("user has :%s role for company: %s ", utils.CLADesigneeRole, companySFID)
-						roleStatusChan <- &result{
-							hasRole: true,
-							err:     nil,
-						}
-					} else {
-						log.WithFields(f).Debugf("user does not have :%s role for company: %s ", utils.CLADesigneeRole, companySFID)
-						roleStatusChan <- &result{
-							hasRole: false,
-							err:     nil,
-						}
+					roleStatusChan <- &output
+					return
+				}
+				if hasProjectLevelRole {
+					log.WithFields(f).Debugf("user has :%s role for company: %s ", utils.CLADesigneeRole, companySFID)
+					roleStatusChan <- &result{
+						hasRole:     true,
+						err:         nil,
+						projectSFID: pcg.ProjectSFID,
 					}
-
-				}(&wg, pcg, roleStatusChan)
-			}
-
-			//confirm user has cla-manager-designee for all projects
-			for resultCh := range roleStatusChan {
-				if resultCh.err != nil {
-					return nil, resultCh.err
+				} else {
+					log.WithFields(f).Debugf("user does not have :%s role for company: %s ", utils.CLADesigneeRole, companySFID)
+					roleStatusChan <- &result{
+						hasRole:     false,
+						err:         nil,
+						projectSFID: pcg.ProjectSFID,
+					}
 				}
-				if !resultCh.hasRole {
-					log.WithFields(f).Debugf("User %s does not have role: %s at project level", userLFID, utils.CLADesigneeRole)
-					hasRole = false
-					return &models.UserRoleStatus{
-						HasRole:    &hasRole,
-						LfUsername: userLFID,
-					}, nil
-				}
-			}
-			log.WithFields(f).Debugf("User %s has %s role at project level", userLFID, utils.CLADesigneeRole)
-			hasRole = true
+
+			}(&wg, pcg, roleStatusChan)
 		}
+
+		//confirm user has cla-manager-designee for any of the  projects
+		for resultCh := range roleStatusChan {
+			if resultCh.err != nil {
+				return nil, resultCh.err
+			}
+
+			if resultCh.hasRole {
+				log.WithFields(f).Debugf("User %s has %s role for project : %s", userLFID, utils.CLADesigneeRole, resultCh.projectSFID)
+				hasRole = true
+				return &models.UserRoleStatus{
+					HasRole:    &hasRole,
+					LfUsername: userLFID,
+				}, nil
+			}
+		}
+		log.WithFields(f).Debugf("User %s has %s role at project level", userLFID, utils.CLADesigneeRole)
+		hasRole = true
 
 	}
 
