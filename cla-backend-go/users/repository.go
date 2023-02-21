@@ -47,6 +47,7 @@ type UserRepository interface {
 	GetUserByGitLabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(searchField string, searchTerm string, fullMatch bool) (*models.Users, error)
 	UpdateUserCompanyID(userID, companyID, note string) error
+	GetUsersByEmail(userEmail string) ([]*models.User, error)
 }
 
 // repository data model
@@ -669,6 +670,58 @@ func (repo repository) GetUserByUserName(userName string, fullMatch bool) (*mode
 	}
 
 	return nil, nil
+}
+
+func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error) {
+	f := logrus.Fields{
+		"functionName": "users.repository.GetUsersByEmail",
+		"userEmail":    userEmail,
+	}
+
+	// This is the filter we want to match
+	filter := expression.Name("user_emails").Contains(userEmail)
+
+	// These are the columns we want returned
+	projection := buildUserProjection()
+
+	// Use the nice builder to create the expression
+	expr, err := expression.NewBuilder().WithFilter(filter).WithProjection(projection).Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for lf_email : %s, error: %v", userEmail, err)
+		return nil, err
+	}
+
+	// Assemble the scan input parameters
+	scanInput := &dynamodb.ScanInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		FilterExpression:          expr.Filter(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.tableName),
+	}
+
+	// Make the DynamoDB Query API call
+	result, err := repo.dynamoDBClient.Scan(scanInput)
+	if err != nil {
+		log.WithFields(f).Warnf("Error retrieving user by user email: %s, error: %+v", userEmail, err)
+		return nil, err
+	}
+
+	// The database user model
+	var dbUserModels []DBUser
+
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &dbUserModels)
+	if err != nil {
+		log.WithFields(f).Warnf("error unmarshalling user record from database for user email: %s, error: %+v", userEmail, err)
+		return nil, err
+	}
+
+	users := make([]*models.User, 0, len(dbUserModels))
+	for _, dbUser := range dbUserModels {
+		users = append(users, convertDBUserModel(dbUser))
+	}
+
+	return users, nil
 }
 
 // GetUserByEmail fetches the user record by email

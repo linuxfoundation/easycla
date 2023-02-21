@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 
@@ -137,10 +138,10 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 		return fmt.Errorf("fetching internal gitlab org for following path : %s failed : %v", repositoryPath, err)
 	}
 
-	log.WithFields(f).Debugf("checking gitlab org : %s auth state agains the webhook secret token", gitlabOrg.OrganizationName)
-	if gitlabOrg.AuthState != secretToken {
-		return secretTokenMismatch
-	}
+	// log.WithFields(f).Debugf("checking gitlab org : %s auth state agains the webhook secret token", gitlabOrg.OrganizationName)
+	// if gitlabOrg.AuthState != secretToken {
+	// 	return secretTokenMismatch
+	// }
 
 	log.WithFields(f).Debugf("internal gitlab org : %s:%s is associated with external path : %s", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName, repositoryPath)
 
@@ -329,11 +330,19 @@ func getAuthorInfo(gitlabUser *gitlab.User) string {
 func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*v2Models.GitlabOrganization, error) {
 	parts := strings.Split(projectPath, "/")
 	organizationName := parts[0]
+	f := logrus.Fields{
+		"functionName":     "getGitlabOrganizationFromProjectPath",
+		"projectPath":      projectPath,
+		"projectNameSpace": projectNameSpace,
+		"organizationName": organizationName,
+	}
 
-	gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganizationByName(ctx, organizationName)
+	log.WithFields(f).Debug("getting gitlab org from project path")
+	gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganizationByFullPath(ctx, organizationName)
 	if err != nil || gitlabOrg == nil {
 		// try getting it with project name as well
-		gitlabOrg, err = s.gitlabOrgService.GetGitLabOrganizationByName(ctx, projectNameSpace)
+		log.WithFields(f).Debugf("getting gitlab org with project name : %s", projectNameSpace)
+		gitlabOrg, err = s.gitlabOrgService.GetGitLabOrganizationByFullPath(ctx, projectNameSpace)
 		if err != nil || gitlabOrg == nil {
 			return nil, fmt.Errorf("gitlab org : %s doesn't exist : %v", organizationName, err)
 		}
@@ -356,6 +365,11 @@ func (s service) getGitlabRepoByName(ctx context.Context, repoNameWithPath strin
 	return gitlabRepo.ToGitHubModel(), nil
 }
 
+type UserSigned struct {
+	signed bool
+	err    error
+}
+
 func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error) {
 	f := logrus.Fields{
 		"functionName":    "hasUserSigned",
@@ -365,31 +379,74 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 		"gitlabUserEmail": gitlabUser.Email,
 	}
 
-	userModel, b, err := s.findUserModelForGitlabUser(f, gitlabUser)
+	signed := false
+	var err error
+
+	userModels, b, err := s.findUserModelForGitlabUser(f, gitlabUser)
 	if err != nil {
 		return b, err
 	}
 
-	if userModel == nil {
+	if len(userModels) == 0 {
 		msg := fmt.Sprintf("gitlab user : %d:%s not found in easycla records", gitlabUser.ID, gitlabUser.Username)
 		log.WithFields(f).Error(msg)
 		return false, missingID
 	}
-	log.WithFields(f).Debugf("found following easyCLA user for gitlab record, userID: %s, lfusername : %s", userModel.UserID, userModel.LfUsername)
+
+	var wg sync.WaitGroup
+	userSignedChan := make(chan *UserSigned)
+
+	go func() {
+		wg.Wait()
+		close(userSignedChan)
+	}()
+
+	for _, userModel := range userModels {
+		wg.Add(1)
+		log.WithFields(f).Debugf("found following easyCLA user for gitlab record, userID: %s, lfusername : %s", userModel.UserID, userModel.LfUsername)
+		go s.isSigned(ctx, userModel, claGroupID, gitlabUser, &wg, userSignedChan)
+	}
+
+	for userSigned := range userSignedChan {
+		if userSigned.signed {
+			signed = true
+			break
+		}
+		if userSigned.err != nil {
+			return false, userSigned.err
+		}
+	}
+
+	return signed, nil
+
+}
+
+func (s service) isSigned(ctx context.Context, userModel *models.User, claGroupID string, gitlabUser *gitlab.User, wg *sync.WaitGroup, userSignedChan chan<- *UserSigned) {
+	defer wg.Done()
+	f := logrus.Fields{
+		"functionName":    "isSigned",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"gitlabUserID":    gitlabUser.ID,
+		"gitlabUserName":  gitlabUser.Username,
+		"gitlabUserEmail": gitlabUser.Email,
+	}
 
 	icla, err := s.signaturesRepository.GetIndividualSignature(ctx, claGroupID, userModel.UserID, aws.Bool(true), aws.Bool(true))
 	if err != nil {
-		return false, fmt.Errorf("fetching ICLA for gitlab user : %d:%s failed : %v", gitlabUser.ID, gitlabUser.Username, err)
+		log.WithFields(f).Warnf("fetching ICLA for gitlab user : %d:%s failed : %v", gitlabUser.ID, gitlabUser.Username, err)
+		userSignedChan <- &UserSigned{signed: false, err: err}
+		return
 	}
 
 	if icla != nil {
 		log.WithFields(f).Infof("user has signed the following signature : %s, passing", icla.SignatureID)
-		return true, nil
+		userSignedChan <- &UserSigned{signed: true, err: nil}
+		return
 	}
 
 	if userModel.CompanyID == "" {
 		log.WithFields(f).Debugf("user does not have association with any company, can't continue")
-		return false, fmt.Errorf("user hasn't signed yet")
+		userSignedChan <- &UserSigned{signed: false, err: fmt.Errorf("user hasn't signed yet")}
 	}
 
 	companyID := userModel.CompanyID
@@ -397,20 +454,20 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 	if err != nil {
 		msg := fmt.Sprintf("can't load company record : %s for user : %s association : %v", companyID, userModel.UserID, err)
 		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		userSignedChan <- &UserSigned{signed: false, err: fmt.Errorf(msg)}
 	}
 
 	corporateSignature, err := s.signatureRepository.GetCorporateSignature(ctx, claGroupID, companyID, aws.Bool(true), aws.Bool(true))
 	if err != nil {
 		msg := fmt.Sprintf("can't load company signature record : %s for user : %s association : %v", companyID, userModel.UserID, err)
 		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		userSignedChan <- &UserSigned{signed: false, err: fmt.Errorf(msg)}
 	}
 
 	if corporateSignature == nil {
 		msg := fmt.Sprintf("no ccla signature record for company : %s ", companyID)
 		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		userSignedChan <- &UserSigned{signed: false, err: fmt.Errorf(msg)}
 	}
 
 	log.WithFields(f).Debugf("loaded signature id : %s for claGroupID : %s and companyID : %s", corporateSignature.SignatureID, claGroupID, companyID)
@@ -423,11 +480,11 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 	} else {
 		msg := fmt.Sprintf("gitlabUser model doesn't have enough information to fetch the employee signatures for user : %s", userModel.UserID)
 		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		userSignedChan <- &UserSigned{signed: false, err: fmt.Errorf(msg)}
 	}
 	if !s.IsUserApprovedForSignature(ctx, f, corporateSignature, userModel, gitlabUser) {
 		log.WithFields(f).Debugf("user is not approved in signature : %s", corporateSignature.SignatureID)
-		return false, missingCompanyApproval
+		userSignedChan <- &UserSigned{signed: false, err: fmt.Errorf("user is not approved in signature : %s", corporateSignature.SignatureID)}
 	}
 
 	employeeSignatures, err := s.signaturesRepository.GetProjectCompanyEmployeeSignatures(ctx, signatures1.GetProjectCompanyEmployeeSignaturesParams{
@@ -439,46 +496,45 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 	if err != nil {
 		msg := fmt.Sprintf("can't load employee signature records : %s for user : %s association : %v", companyID, userModel.UserID, err)
 		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		userSignedChan <- &UserSigned{signed: false, err: fmt.Errorf(msg)}
 	}
 
 	if len(employeeSignatures.Signatures) == 0 {
 		msg := fmt.Sprintf("no employee signature records found for company : %s user : %s association", companyID, userModel.UserID)
 		log.WithFields(f).Errorf(msg)
-		return false, missingCompanyAffiliation
+		userSignedChan <- &UserSigned{signed: false, err: fmt.Errorf(msg)}
 	}
 
 	log.WithFields(f).Warnf("is in signature approval list : %s and has employee signature", corporateSignature.SignatureID)
-	return true, nil
+	userSignedChan <- &UserSigned{signed: true, err: nil}
 }
 
-func (s service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.User) (*models.User, bool, error) {
-	log.WithFields(f).Debugf("Looking up Gitlab user via gitlabID")
-	userModel, err := s.usersRepository.GetUserByGitlabID(gitlabUser.ID)
-	if err != nil {
-		if !strings.Contains(err.Error(), "not found") {
-			return nil, false, fmt.Errorf("looking up gitlab user via gitlabID : %d failed : %v", gitlabUser.ID, err)
-		}
-		userModel = nil
-	}
-	if userModel == nil && gitlabUser.Username != "" {
-		log.WithFields(f).Debugf("Looking up Gitlab user via user gitlab username")
-		userModel, err = s.usersRepository.GetUserByGitLabUsername(gitlabUser.Username)
-		if !strings.Contains(err.Error(), "not found") {
-			return nil, false, fmt.Errorf("looking up gitlab user via gitlabUsername : %s failed : %v", gitlabUser.Username, err)
-		}
-	}
+func (s service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.User) ([]*models.User, bool, error) {
 
-	if userModel == nil && gitlabUser.Email != "" {
+	userModels := make([]*models.User, 0)
+
+	if gitlabUser.Email != "" {
 		log.WithFields(f).Debugf("Looking up Gitlab user via user email")
-		userModel, err = s.usersRepository.GetUserByEmail(gitlabUser.Email)
-		if err != nil {
-			if !errors.Is(err, &utils.UserNotFound{}) {
-				return nil, false, fmt.Errorf("looking up gitlab user via email : %s failed : %v", gitlabUser.Email, err)
+		users, err := s.usersRepository.GetUsersByEmail(gitlabUser.Email)
+		if err != nil || len(users) == 0 {
+			log.WithFields(f).Warnf("unable to lookup user by email : %s, error : %v", gitlabUser.Email, err)
+			// If we can't find the user by email, we'll try to find them by lf_email
+			var userModel *models.User
+			userModel, err = s.usersRepository.GetUserByEmail(gitlabUser.Email)
+			if err != nil {
+				if !errors.Is(err, &utils.UserNotFound{}) {
+					return nil, false, fmt.Errorf("looking up gitlab user via email : %s failed : %v", gitlabUser.Email, err)
+				}
+			}
+			if userModel != nil {
+				userModels = append(userModels, userModel)
 			}
 		}
+		if len(users) > 0 {
+			userModels = append(userModels, users...)
+		}
 	}
-	return userModel, false, nil
+	return userModels, false, nil
 }
 
 func (s service) IsUserApprovedForSignature(ctx context.Context, f logrus.Fields, corporateSignature *models.Signature, user *models.User, gitlabUser *gitlab.User) bool {

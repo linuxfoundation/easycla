@@ -139,10 +139,10 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		log.WithFields(f).Debugf("handling gitlab activity callback")
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID)
 
-		if params.XGitlabToken == "" {
-			return gitlab_activity.NewGitlabActivityUnauthorized().WithPayload(
-				utils.ErrorResponseUnauthorized(reqID, "missing webhook secret token"))
-		}
+		// if params.XGitlabToken == "" {
+		// 	return gitlab_activity.NewGitlabActivityUnauthorized().WithPayload(
+		// 		utils.ErrorResponseUnauthorized(reqID, "missing webhook secret token"))
+		// }
 
 		// General note for this API endpoint:
 		// Even though we had an issue - we will  a 200 request indicating that we received the event, otherwise
