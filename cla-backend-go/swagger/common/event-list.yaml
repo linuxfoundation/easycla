@@ -5,6 +5,8 @@ type: object
 properties:
   NextKey:
     type: string
+  ResultCount:
+    type: integer
   Events:
     type: array
     items:
