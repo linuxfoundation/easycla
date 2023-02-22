@@ -478,7 +478,7 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 
 	if len(events) > 0 {
 		response := &models.EventList{
-			Events: events,
+			Events:      events,
 			ResultCount: int64(len(events)),
 		}
 		log.WithFields(f).Debugf("returning %d events - last key: %+v", len(events), results.LastEvaluatedKey)
@@ -497,7 +497,7 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 
 	// Just return an empty response - no events - just an empty list, and no nextKey
 	return &models.EventList{
-		Events: []*models.Event{},
+		Events:      []*models.Event{},
 		ResultCount: 0,
 	}, nil
 }
