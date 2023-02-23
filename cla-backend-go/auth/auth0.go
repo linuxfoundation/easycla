@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path"
 
+	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/dgrijalva/jwt-go"
 )
 
@@ -93,7 +94,12 @@ func (av Validator) getPemCert(token *jwt.Token) (interface{}, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		closeErr := resp.Body.Close()
+		if closeErr != nil {
+			log.WithError(closeErr).Warn("problem closing response body")
+		}
+	}()
 
 	var j = jwks{}
 	err = json.NewDecoder(resp.Body).Decode(&j)
