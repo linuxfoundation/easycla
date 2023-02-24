@@ -198,7 +198,7 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 	projectTree := buildProjectNode(foundationProjectSummary)
 	log.WithFields(f).Debugf("projectTree: %+v", projectTree)
 
-	invalidSiblingProjects := []string{}
+	var invalidSiblingProjects []string
 	// Check to see if CLAGroup at ProjectLevel has no siblings
 	if projectLevel {
 		log.WithFields(f).Debugf("checking to see if CLAGroup at ProjectLevel has no siblings...")

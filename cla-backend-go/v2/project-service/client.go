@@ -520,3 +520,15 @@ func (pmm *Client) IsAnyProjectTheRootParent(sliceProjectSFID []string) bool {
 
 	return retVal
 }
+
+// RemoveLinuxFoundationParentsFromProjectList removes any Linux Foundation root/parent projects from the list
+func (pmm *Client) RemoveLinuxFoundationParentsFromProjectList(projectList []string) []string {
+	var filteredProjectList []string
+	for _, projectSFID := range projectList {
+		// If not one of our Linux Foundation root/parent projects, then add it to the list
+		if isTLF, err := pmm.IsTheLinuxFoundation(projectSFID); !isTLF && err == nil {
+			filteredProjectList = append(filteredProjectList, projectSFID)
+		}
+	}
+	return filteredProjectList
+}

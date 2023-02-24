@@ -1037,8 +1037,16 @@ func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollP
 		"projectSFIDList": strings.Join(request.ProjectSFIDList, ","),
 	}
 
+	// We have two options - ask the UI to strip out any LF parent projects or we do it here
+	// In the interest of time, we'll do it here
+	psc := v2ProjectService.GetClient()
+	updatedProjectSFIDList := psc.RemoveLinuxFoundationParentsFromProjectList(request.ProjectSFIDList)
+	if len(updatedProjectSFIDList) != len(request.ProjectSFIDList) {
+		log.WithFields(f).Debugf("removed %d linux foundation parent projects from project list", len(request.ProjectSFIDList)-len(updatedProjectSFIDList))
+	}
+
 	log.WithFields(f).Debug("validating enroll project input")
-	err := s.validateEnrollProjectsInput(ctx, request.FoundationSFID, request.ProjectSFIDList, request.ProjectLevel, request.CLAGroupProjects)
+	err := s.validateEnrollProjectsInput(ctx, request.FoundationSFID, updatedProjectSFIDList, request.ProjectLevel, request.CLAGroupProjects)
 	if err != nil {
 		return &utils.EnrollValidationError{
 			Type:    "enroll",
@@ -1066,7 +1074,7 @@ func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollP
 			log.WithFields(f).WithError(enrollErr).Warn("enrolling projects in CLA Group failed")
 			errorList = append(errorList, enrollErr)
 		}
-	}(ctx, request.AuthUser, request.CLAGroupID, request.FoundationSFID, request.ProjectSFIDList)
+	}(ctx, request.AuthUser, request.CLAGroupID, request.FoundationSFID, updatedProjectSFIDList)
 
 	// Separate go routine for enabling the CLA Service in the project service
 	go func(c context.Context, claGroupID string, projSFIDList []string) {
@@ -1078,14 +1086,14 @@ func (s *service) EnrollProjectsInClaGroup(ctx context.Context, request *EnrollP
 			log.WithFields(f).WithError(errEnableCLA).Warn("enabling CLA service in platform project service failed")
 			errorList = append(errorList, errEnableCLA)
 		}
-	}(ctx, request.CLAGroupID, request.ProjectSFIDList)
+	}(ctx, request.CLAGroupID, updatedProjectSFIDList)
 
 	// Wait until all go routines are done
 	wg.Wait()
 	if len(errorList) > 0 {
 		return &utils.EnrollError{
 			Type:    "enroll",
-			Message: fmt.Sprintf("encountered %d errors when enrolling and disabling CLA service for %d projects", len(errorList), len(request.ProjectSFIDList)),
+			Message: fmt.Sprintf("encountered %d errors when enrolling and disabling CLA service for %d projects", len(errorList), len(updatedProjectSFIDList)),
 			Err:     errorList[0],
 		}
 	}
