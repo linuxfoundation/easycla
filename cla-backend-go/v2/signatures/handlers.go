@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
 	"github.com/communitybridge/easycla/cla-backend-go/project/service"
@@ -41,7 +42,7 @@ import (
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, claGroupService service.Service, projectRepo repository.ProjectRepository, companyService company.IService, v1SignatureService signatureService.SignatureService, sessionStore *dynastore.Store, eventsService events.Service, v2service ServiceInterface, projectClaGroupsRepo projects_cla_groups.Repository) { //nolint
+func Configure(api *operations.EasyclaAPI, claGroupService service.Service, projectRepo repository.ProjectRepository, companyService company.IService, v1SignatureService signatureService.SignatureService, sessionStore *dynastore.Store, eventsService events.Service, v2SignatureService ServiceInterface, projectClaGroupsRepo projects_cla_groups.Repository) { //nolint
 
 	const problemLoadingCLAGroupByID = "problem loading cla group by ID"
 	const iclaNotSupportedForCLAGroup = "individual contribution is not supported for this project"
@@ -482,7 +483,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		}
 
 		log.WithFields(f).Debug("loading project company signatures...")
-		projectSignatures, err := v2service.GetProjectCompanySignatures(ctx, params.CompanyID, companyModel.CompanyExternalID, params.ProjectSFID)
+		projectSignatures, err := v2SignatureService.GetProjectCompanySignatures(ctx, params.CompanyID, companyModel.CompanyExternalID, params.ProjectSFID)
 		if err != nil {
 			msg := fmt.Sprintf("error retrieving project signatures for project: %s, company: %s", params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
@@ -780,7 +781,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for corporate contributor signatures...")
-		result, err := v2service.GetClaGroupCorporateContributorsCsv(ctx, params.ClaGroupID, params.CompanyID)
+		result, err := v2SignatureService.GetClaGroupCorporateContributorsCsv(ctx, params.ClaGroupID, params.CompanyID)
 		if err != nil {
 			msg := fmt.Sprintf("problem getting corporate contributors CSV for CLA Group: %s with company: %s", params.ClaGroupID, companyModel.CompanyExternalID)
 			if _, ok := err.(*organizations.GetOrgNotFound); ok {
@@ -867,7 +868,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			nextKey = *params.NextKey
 		}
 
-		results, err := v2service.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm, params.Approved, params.Signed, pageSize, nextKey, true)
+		results, err := v2SignatureService.GetProjectIclaSignatures(ctx, params.ClaGroupID, params.SearchTerm, params.Approved, params.Signed, pageSize, nextKey, true)
 		if err != nil {
 			msg := fmt.Sprintf("problem loading ICLA signatures by CLA Group ID search term: %s", aws.StringValue(params.SearchTerm))
 			log.WithFields(f).WithError(err).Warn(msg)
@@ -946,7 +947,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for Coporate Contributors...")
-		result, err := v2service.GetClaGroupCorporateContributors(ctx, params.ClaGroupID, *params.CompanyID, params.SearchTerm)
+		result, err := v2SignatureService.GetClaGroupCorporateContributors(ctx, params.ClaGroupID, *params.CompanyID, params.SearchTerm)
 		if err != nil {
 			msg := fmt.Sprintf("problem getting corporate contributors for CLA Group: %s with company: %s", params.ClaGroupID, *params.CompanyID)
 			if _, ok := err.(*organizations.GetOrgNotFound); ok {
@@ -994,7 +995,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseForbidden(reqID, fmt.Sprintf("user %s does not have access to the specified signature", authUser.UserName)))
 		}
 
-		doc, err := v2service.GetSignedDocument(ctx, signatureModel.SignatureID)
+		doc, err := v2SignatureService.GetSignedDocument(ctx, signatureModel.SignatureID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("problem fetching signed document")
 			if strings.Contains(err.Error(), "bad request") {
@@ -1045,7 +1046,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for ICLA signatures...")
-		result, err := v2service.GetSignedIclaZipPdf(params.ClaGroupID)
+		result, err := v2SignatureService.GetSignedIclaZipPdf(params.ClaGroupID)
 		if err != nil {
 			if err == ErrZipNotPresent {
 				msg := "no icla signatures found for this cla group"
@@ -1110,7 +1111,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("generating ICLA signatures for CSV...")
-		result, err := v2service.GetProjectIclaSignaturesCsv(ctx, params.ClaGroupID)
+		result, err := v2SignatureService.GetProjectIclaSignaturesCsv(ctx, params.ClaGroupID)
 		if err != nil {
 			msg := "unable to load ICLA signatures for CSV"
 			log.WithFields(f).Warn(msg)
@@ -1167,7 +1168,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for CCLA signatures...")
-		result, err := v2service.GetSignedCclaZipPdf(params.ClaGroupID)
+		result, err := v2SignatureService.GetSignedCclaZipPdf(params.ClaGroupID)
 		if err != nil {
 			if err == ErrZipNotPresent {
 				msg := "no ccla signatures found for this cla group"
@@ -1232,7 +1233,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("generating ICLA signatures for CSV...")
-		result, err := v2service.GetProjectCclaSignaturesCsv(ctx, params.ClaGroupID)
+		result, err := v2SignatureService.GetProjectCclaSignaturesCsv(ctx, params.ClaGroupID)
 		if err != nil {
 			msg := "unable to load CCLA signatures for CSV"
 			log.WithFields(f).Warn(msg)
@@ -1268,7 +1269,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				InvalidatedCount: 1,
 			},
 		}
-		err := v2service.InvalidateICLA(ctx, params.ClaGroupID, params.UserID, authUser, eventsService, eventArgs)
+		err := v2SignatureService.InvalidateICLA(ctx, params.ClaGroupID, params.UserID, authUser, eventsService, eventArgs)
 		if err != nil {
 			msg := "unable to invalidate icla"
 			log.WithFields(f).Warn(msg)
@@ -1340,7 +1341,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		err = v2service.EclaAutoCreate(ctx, cclaSignature.SignatureID, eacp.Body.AutoCreateEcla)
+		err = v2SignatureService.EclaAutoCreate(ctx, cclaSignature.SignatureID, eacp.Body.AutoCreateEcla)
 		if err != nil {
 			msg := "unable to update auto_create_ecla flag"
 			log.WithFields(f).Warn(msg)
@@ -1348,17 +1349,48 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
-		eventsService.LogEvent(&events.LogEventArgs{
-			EventType:    events.SignatureAutoCreateECLAUpdated,
-			CLAGroupID:   eacp.ClaGroupID,
-			CompanyID:    eacp.CompanyID,
-			LfUsername:   u.UserName,
-			CLAGroupName: claGroup.ProjectName,
-			CompanyName:  companyRecord.CompanyName,
-			EventData: &events.SignatureAutoCreateECLAUpdatedEventData{
-				AutoCreateECLA: eacp.Body.AutoCreateEcla,
-			},
-		})
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			eventsService.LogEvent(&events.LogEventArgs{
+				EventType:    events.SignatureAutoCreateECLAUpdated,
+				CLAGroupID:   eacp.ClaGroupID,
+				CompanyID:    eacp.CompanyID,
+				LfUsername:   u.UserName,
+				CLAGroupName: claGroup.ProjectName,
+				CompanyName:  companyRecord.CompanyName,
+				EventData: &events.SignatureAutoCreateECLAUpdatedEventData{
+					AutoCreateECLA: eacp.Body.AutoCreateEcla,
+				},
+			})
+		}()
+
+		// Only work to create ECLA records when the auto-enable flag is set to true
+		if eacp.Body.AutoCreateEcla {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+				// Reload the CCLA signature record
+				cclaSignatureRecord, readErr := v1SignatureService.GetSignature(ctx, cclaSignature.SignatureID)
+				if readErr != nil {
+					msg := fmt.Sprintf("problem loading existing CCLA signature record for signature ID: %s", cclaSignature.SignatureID)
+					log.WithFields(f).WithError(readErr).Warn(msg)
+				}
+
+				_, processErr := v1SignatureService.CreateOrUpdateEmployeeSignature(ctx, claGroup, companyRecord, cclaSignatureRecord)
+				if processErr != nil {
+					msg := fmt.Sprintf("problem processing auto-enable request for company ID: %s, project ID: %s, cla group ID: %s", companyRecord.CompanyID, claGroup.ProjectID, eacp.ClaGroupID)
+					log.WithFields(f).WithError(processErr).Warn(msg)
+				}
+			}()
+		}
+
+		// Wait until all the workers are done
+		wg.Wait()
+
 		return signatures.NewEclaAutoCreateOK().WithXRequestID(reqID)
 	})
 }

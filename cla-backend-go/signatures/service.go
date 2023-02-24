@@ -66,7 +66,7 @@ type SignatureService interface {
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error)
 
 	createOrGetEmployeeModels(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error)
-	createOrUpdateEmployeeSignature(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error)
+	CreateOrUpdateEmployeeSignature(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error)
 	handleGitHubStatusUpdate(ctx context.Context, employeeUserModel *models.User) error
 }
 
@@ -487,7 +487,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 	var userModelList []*models.User
 	if corporateSigModel.AutoCreateECLA {
 		log.WithFields(f).Debug("auto-create ECLA option is enabled - processing auto-enable request for all items on the approval list...")
-		userList, processErr := s.createOrUpdateEmployeeSignature(ctx, claGroupModel, companyModel, updatedCorporateSignature)
+		userList, processErr := s.CreateOrUpdateEmployeeSignature(ctx, claGroupModel, companyModel, updatedCorporateSignature)
 		if processErr != nil {
 			log.WithFields(f).WithError(processErr).Warnf("problem processing auto-enable request for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
 		}
@@ -753,9 +753,10 @@ func (s service) updateUserCompanyID(ctx context.Context, employeeUserModel *mod
 	return employeeUserModel, nil
 }
 
-func (s service) createOrUpdateEmployeeSignature(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error) {
+// CreateOrUpdateEmployeeSignature creates or updates the employee signature for the given company
+func (s service) CreateOrUpdateEmployeeSignature(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error) {
 	f := logrus.Fields{
-		"functionName":   "v2.company.service.createOrUpdateEmployeeSignature",
+		"functionName":   "v2.company.service.CreateOrUpdateEmployeeSignature",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupModel.ProjectID,
 		"claGroupName":   claGroupModel.ProjectName,

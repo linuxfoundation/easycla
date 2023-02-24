@@ -29,6 +29,6 @@ func SetAuthUserProperties(authUser *auth.User, xUserName *string, xEmail *strin
 
 	tracingEnabled, conversionErr := strconv.ParseBool(os.Getenv("USER_AUTH_TRACING"))
 	if conversionErr == nil && tracingEnabled {
-		log.WithFields(f).Debugf("set authuser x-username: %s and x-email: %s from Auth User model: %+v", authUser.UserName, authUser.Email, authUser)
+		log.WithFields(f).Debugf("set authuser x-username: %s and x-email: %s from Auth User model", authUser.UserName, authUser.Email)
 	}
 }
