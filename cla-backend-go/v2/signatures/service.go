@@ -105,6 +105,8 @@ func (s *Service) GetProjectCompanySignatures(ctx context.Context, companyID, co
 	}
 	if sig != nil {
 		resp.ResultCount = 1
+		resp.TotalCount = 1
+		resp.ProjectID = sig.ProjectID
 		resp.Signatures = append(resp.Signatures, sig)
 	}
 	return v2SignaturesReplaceCompanyID(resp, companyID, companySFID)
