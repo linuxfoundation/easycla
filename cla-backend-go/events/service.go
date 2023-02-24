@@ -39,8 +39,8 @@ type Service interface {
 
 	GetFoundationEvents(foundationSFID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error)
 	GetClaGroupEvents(claGroupID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error)
-	GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
-	GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
+	GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
+	GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
 	GetCompanyEvents(companyID, eventType string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
 }
 
@@ -101,13 +101,13 @@ func (s *service) GetClaGroupEvents(projectSFDC string, nextKey *string, paramPa
 }
 
 // GetCompanyFoundationEvents returns list of events for company and foundation
-func (s *service) GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
-	return s.repo.GetCompanyFoundationEvents(companySFID, companyID, foundationSFID, nextKey, paramPageSize, all)
+func (s *service) GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
+	return s.repo.GetCompanyFoundationEvents(companySFID, companyID, foundationSFID, nextKey, paramPageSize, searchTerm, all)
 }
 
 // GetCompanyClaGroupEvents returns list of events for company and cla group
-func (s *service) GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
-	return s.repo.GetCompanyClaGroupEvents(companySFID, companyID, claGroupID, nextKey, paramPageSize, all)
+func (s *service) GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
+	return s.repo.GetCompanyClaGroupEvents(companySFID, companyID, claGroupID, nextKey, paramPageSize, searchTerm, all)
 }
 
 func (s *service) GetCompanyEvents(companyID, eventType string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {

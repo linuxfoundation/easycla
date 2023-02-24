@@ -310,7 +310,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 			var result *v1Models.EventList
 			if utils.IsProjectHasRootParent(projectDetails) {
 				log.WithFields(f).Debugf("loading foundation level events for projectSFID: %s...", params.ProjectSFID)
-				result, err = service.GetCompanyFoundationEvents(v1Company.CompanyExternalID, "", params.ProjectSFID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents))
+				result, err = service.GetCompanyFoundationEvents(v1Company.CompanyExternalID, "", params.ProjectSFID, params.NextKey, params.PageSize, params.SearchTerm, aws.BoolValue(params.ReturnAllEvents))
 			} else {
 				log.WithFields(f).Debugf("loading project level events for projectSFID :%s...", params.ProjectSFID)
 				pm, perr := projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
@@ -325,7 +325,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 					log.WithFields(f).WithError(perr).Warnf("problem determining CLA Group for project SFID: %s", params.ProjectSFID)
 					return events.NewGetCompanyProjectEventsInternalServerError().WithPayload(errorResponse(reqID, perr))
 				}
-				result, err = service.GetCompanyClaGroupEvents(v1Company.CompanyExternalID, params.CompanyID, pm.ClaGroupID, params.NextKey, params.PageSize, aws.BoolValue(params.ReturnAllEvents))
+				result, err = service.GetCompanyClaGroupEvents(v1Company.CompanyExternalID, params.CompanyID, pm.ClaGroupID, params.NextKey, params.PageSize, params.SearchTerm, aws.BoolValue(params.ReturnAllEvents))
 			}
 			if err != nil {
 				log.WithFields(f).WithError(err).Warn("problem loading events")

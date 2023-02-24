@@ -1078,6 +1078,7 @@ paths:
         - $ref: '#/parameters/path-projectSFID'
         - $ref: '#/parameters/path-companyID'
         - $ref: '#/parameters/nextKey'
+        - $ref: '#/parameters/searchTerm'
         - $ref: '#/parameters/returnAllEvents'
       produces:
         - application/json

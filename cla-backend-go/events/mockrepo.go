@@ -24,11 +24,11 @@ func (repo *mockRepository) AddDataToEvent(eventID, foundationSFID, projectSFID,
 	panic("implement me")
 }
 
-func (repo *mockRepository) GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
+func (repo *mockRepository) GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, searchterm *string, all bool) (*models.EventList, error) {
 	panic("implement me")
 }
 
-func (repo *mockRepository) GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error) {
+func (repo *mockRepository) GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
 	panic("implement me")
 }
 

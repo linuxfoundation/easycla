@@ -56,18 +56,18 @@ func (mr *MockServiceMockRecorder) GetClaGroupEvents(arg0, arg1, arg2, arg3, arg
 }
 
 // GetCompanyClaGroupEvents mocks base method
-func (m *MockService) GetCompanyClaGroupEvents(arg0, arg1, arg2 string, arg3 *string, arg4 *int64, arg5 bool) (*models.EventList, error) {
+func (m *MockService) GetCompanyClaGroupEvents(arg0, arg1, arg2 string, arg3 *string, arg4 *int64, arg5 *string, arg6 bool) (*models.EventList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCompanyClaGroupEvents", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret := m.ctrl.Call(m, "GetCompanyClaGroupEvents", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 	ret0, _ := ret[0].(*models.EventList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetCompanyClaGroupEvents indicates an expected call of GetCompanyClaGroupEvents
-func (mr *MockServiceMockRecorder) GetCompanyClaGroupEvents(arg0, arg1, arg2, arg3, arg4, arg5 interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) GetCompanyClaGroupEvents(arg0, arg1, arg2, arg3, arg4, arg5, arg6 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCompanyClaGroupEvents", reflect.TypeOf((*MockService)(nil).GetCompanyClaGroupEvents), arg0, arg1, arg2, arg3, arg4, arg5)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCompanyClaGroupEvents", reflect.TypeOf((*MockService)(nil).GetCompanyClaGroupEvents), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 }
 
 // GetCompanyEvents mocks base method
@@ -86,9 +86,9 @@ func (mr *MockServiceMockRecorder) GetCompanyEvents(arg0, arg1, arg2, arg3, arg4
 }
 
 // GetCompanyFoundationEvents mocks base method
-func (m *MockService) GetCompanyFoundationEvents(arg0, arg1, arg2 string, arg3 *string, arg4 *int64, arg5 bool) (*models.EventList, error) {
+func (m *MockService) GetCompanyFoundationEvents(arg0, arg1, arg2 string, arg3 *string, arg4 *int64, arg5 *string, arg6 bool) (*models.EventList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCompanyFoundationEvents", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret := m.ctrl.Call(m, "GetCompanyFoundationEvents", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 	ret0, _ := ret[0].(*models.EventList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
