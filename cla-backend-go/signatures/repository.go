@@ -99,7 +99,7 @@ type SignatureRepository interface {
 	AddSignedOn(ctx context.Context, signatureID string) error
 
 	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error)
-	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error)
+	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error)
 	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
 }
 
@@ -3805,13 +3805,16 @@ func (repo repository) addAdditionalICLAMetaData(f logrus.Fields, intermediateRe
 	return finalResults, nil
 }
 
-func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error) {
+func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetClaGroupCorporateContributors",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"companyID":      aws.StringValue(companyID),
 	}
+
+	totalCountChannel := make(chan int64, 1)
+	go repo.getTotalCorporateContributorCount(ctx, claGroupID, companyID, searchTerm, totalCountChannel)
 
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
 	// if companyID != nil {
@@ -3821,8 +3824,8 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	// 	sortKeyPrefix := fmt.Sprintf("%s#%v#%v", utils.ClaTypeECLA, true, true)
 	// 	condition = condition.And(expression.Key("sigtype_signed_approved_id").BeginsWith(sortKeyPrefix))
 	// }
-	filter := expression.Name("company_id").Equal(expression.Value(companyID)).And(expression.Name("signature_approved").Equal(expression.Value(true))).And(expression.Name("signature_signed").Equal(expression.Value(true)))
-	filter = filter.And(expression.Name("signature_type").Equal(expression.Value(utils.ClaTypeECLA)))
+	filter := expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyID)).And(expression.Name("signature_approved").Equal(expression.Value(true))).And(expression.Name("signature_signed").Equal(expression.Value(true)))
+	// filter = filter.And(expression.Name("signature_type").Equal(expression.Value(utils.ClaTypeECLA)))
 
 	// Create our builder
 	builder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildProjection()).WithFilter(filter)
@@ -3845,6 +3848,11 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		return nil, err
 	}
 
+	// If the page size is nil, set it to the default
+	if pageSize == nil {
+		pageSize = aws.Int64(10)
+	}
+
 	// Assemble the query input parameters
 	queryInput := &dynamodb.QueryInput{
 		ExpressionAttributeNames:  expr.Names(),
@@ -3854,12 +3862,25 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		FilterExpression:          expr.Filter(),
 		TableName:                 aws.String(repo.signatureTableName),
 		IndexName:                 aws.String(SignatureProjectIDIndex),
-		Limit:                     aws.Int64(HugePageSize),
+		Limit:                     aws.Int64(*pageSize),
+	}
+
+	if nextKey != nil {
+		log.WithFields(f).Debugf("adding next key to query input: %s", *nextKey)
+		queryInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
+			"signature_project_id": {
+				S: aws.String(claGroupID),
+			},
+			"signature_id": {
+				S: aws.String(*nextKey),
+			},
+		}
 	}
 
 	out := &models.CorporateContributorList{List: make([]*models.CorporateContributor, 0)}
+	var lastEvaluatedKey string
 
-	for {
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
 		// Make the DynamoDB Query API call
 		log.WithFields(f).Debug("querying signatures...")
 		results, queryErr := repo.dynamoDBClient.Query(queryInput)
@@ -3933,17 +3954,104 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 			})
 		}
 
-		if len(results.LastEvaluatedKey) == 0 {
+		if results.LastEvaluatedKey["signature_id"] != nil {
+			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			lastEvaluatedKey = ""
+		}
+
+		if int64(len(out.List)) >= *pageSize {
 			break
 		}
-		queryInput.ExclusiveStartKey = results.LastEvaluatedKey
-		log.WithFields(f).Debug("querying next page")
+
 	}
 	sort.Slice(out.List, func(i, j int) bool {
 		return out.List[i].Name < out.List[j].Name
 	})
 
+	out.ResultCount = int64(len(out.List))
+	out.TotalCount = <-totalCountChannel
+	out.NextKey = lastEvaluatedKey
+
 	return out, nil
+}
+
+func (repo repository) getTotalCorporateContributorCount(ctx context.Context, claGroupID string, companyID, searchTerm *string, totalCountChannel chan int64) {
+	f := logrus.Fields{
+		"functionName":   "v1.signature.repository.getTotalCorporateContributorCount",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupID,
+		"companyID":      companyID,
+		"searchTerm":     searchTerm,
+	}
+
+	pageSize := int64(HugePageSize)
+	f["pageSize"] = pageSize
+
+	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
+
+	filter := expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyID)).And(expression.Name("signature_approved").Equal(expression.Value(true))).And(expression.Name("signature_signed").Equal(expression.Value(true)))
+
+	builder := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter)
+
+	if searchTerm != nil {
+		searchTermValue := *searchTerm
+		builder = builder.WithFilter(expression.Name("user_name").Contains(strings.ToLower(searchTermValue)).
+			Or(expression.Name("user_email").Contains(strings.ToLower(searchTermValue))).
+			Or(expression.Name("github_username").Contains(strings.ToLower(searchTermValue))).
+			Or(expression.Name("userDocusignName").Contains(strings.ToLower(searchTermValue))))
+	}
+
+	beforeQuery, _ := utils.CurrentTime()
+	log.WithFields(f).Debugf("running total signature count query for claGroupID: %s, companyID: %s", claGroupID, *companyID)
+
+	expr, err := builder.WithProjection(buildCountProjection()).Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for cla group: %s, error: %v", claGroupID, err)
+		totalCountChannel <- 0
+		return
+	}
+
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		FilterExpression:          expr.Filter(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.signatureTableName),
+		IndexName:                 aws.String(SignatureProjectIDIndex),
+		Limit:                     aws.Int64(pageSize),
+	}
+
+	var lastEvaluatedKey string
+	var totalCount int64
+
+	// Loop until we have all the records - we'll get a nil lastEvaluatedKey when we're done
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
+		results, errQuery := repo.dynamoDBClient.QueryWithContext(ctx, queryInput)
+		if errQuery != nil {
+			log.WithFields(f).Warnf("error querying signatures for cla group: %s, error: %v", claGroupID, errQuery)
+			totalCountChannel <- 0
+			return
+		}
+
+		// Add the count to the total
+		totalCount += *results.Count
+
+		// Set the last evaluated key
+		if results.LastEvaluatedKey["signature_id"] != nil {
+			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			lastEvaluatedKey = ""
+		}
+	}
+
+	log.WithFields(f).Debugf("total signature count query took: %s", time.Since(beforeQuery))
+
+	totalCountChannel <- totalCount
+
 }
 
 // EclaAutoCreate this routine updates the CCLA signature record by adjusting the auto_create_ecla column to the specified value

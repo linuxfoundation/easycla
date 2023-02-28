@@ -26,6 +26,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	v2Sigs "github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/signatures"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
@@ -51,7 +52,7 @@ type ServiceInterface interface {
 	GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
 	GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error)
 	GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error)
-	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companySFID string, searchTerm *string) (*models.CorporateContributorList, error)
+	GetClaGroupCorporateContributors(ctx context.Context, params v2Sigs.ListClaGroupCorporateContributorsParams) (*models.CorporateContributorList, error)
 	GetSignedDocument(ctx context.Context, signatureID string) (*models.SignedDocument, error)
 	GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error)
 	GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error)
@@ -128,7 +129,7 @@ func eclaSigCsvLine(sig *v1Models.CorporateContributor) string {
 // GetClaGroupCorporateContributorsCsv returns the CLA Group corporate contributors as a CSV
 func (s *Service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error) {
 	var b bytes.Buffer
-	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, nil)
+	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -314,18 +315,18 @@ func (s *Service) IsZipPresentOnS3(zipFilePath string) (bool, error) {
 }
 
 // GetClaGroupCorporateContributors returns the list of corporate contributors for the specified CLA Group and company
-func (s *Service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID string, searchTerm *string) (*models.CorporateContributorList, error) {
+func (s *Service) GetClaGroupCorporateContributors(ctx context.Context, params v2Sigs.ListClaGroupCorporateContributorsParams) (*models.CorporateContributorList, error) {
 	f := logrus.Fields{
 		"functionName": "v2.signatures.service.GetClaGroupCorporateContributors",
-		"claGroupID":   claGroupID,
-		"companyID":    companyID,
+		"claGroupID":   params.ClaGroupID,
+		"companyID":    params.CompanyID,
 	}
-	if searchTerm != nil {
-		f["searchTerm"] = *searchTerm
+	if params.SearchTerm != nil {
+		f["searchTerm"] = *params.SearchTerm
 	}
 
 	log.WithFields(f).Debug("querying CLA corporate contributors...")
-	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, searchTerm)
+	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, params.ClaGroupID, params.CompanyID, params.PageSize, params.NextKey, params.SearchTerm)
 	if err != nil {
 		return nil, err
 	}

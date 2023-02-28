@@ -63,7 +63,7 @@ type SignatureService interface {
 
 	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error)
 	GetClaGroupCCLASignatures(ctx context.Context, claGroupID string, approved, signed *bool) (*models.Signatures, error)
-	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error)
+	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error)
 
 	createOrGetEmployeeModels(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error)
 	CreateOrUpdateEmployeeSignature(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error)
@@ -899,8 +899,8 @@ func (s service) GetClaGroupCCLASignatures(ctx context.Context, claGroupID strin
 	})
 }
 
-func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, searchTerm *string) (*models.CorporateContributorList, error) {
-	return s.repo.GetClaGroupCorporateContributors(ctx, claGroupID, companyID, searchTerm)
+func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error) {
+	return s.repo.GetClaGroupCorporateContributors(ctx, claGroupID, companyID, pageSize, nextKey, searchTerm)
 }
 
 // updateChangeRequest is a helper function that updates PR - typically after the auto ecla update

@@ -1922,6 +1922,8 @@ paths:
         - $ref: "#/parameters/path-claGroupID"
         - $ref: "#/parameters/companyID"
         - $ref: '#/parameters/searchTerm'
+        - $ref: '#/parameters/pageSize'
+        - $ref: '#/parameters/nextKey'
       responses:
         '200':
           description: 'Success'

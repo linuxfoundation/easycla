@@ -947,7 +947,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		log.WithFields(f).Debug("user has access for this query")
 
 		log.WithFields(f).Debug("searching for Coporate Contributors...")
-		result, err := v2SignatureService.GetClaGroupCorporateContributors(ctx, params.ClaGroupID, *params.CompanyID, params.SearchTerm)
+		result, err := v2SignatureService.GetClaGroupCorporateContributors(ctx, params)
 		if err != nil {
 			msg := fmt.Sprintf("problem getting corporate contributors for CLA Group: %s with company: %s", params.ClaGroupID, *params.CompanyID)
 			if _, ok := err.(*organizations.GetOrgNotFound); ok {
