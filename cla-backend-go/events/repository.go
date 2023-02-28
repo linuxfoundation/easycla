@@ -39,13 +39,14 @@ var (
 
 // indexes
 const (
-	CompanySFIDFoundationSFIDEpochIndex = "company-sfid-foundation-sfid-event-time-epoch-index"
-	CompanySFIDProjectIDEpochIndex      = "company-sfid-project-id-event-time-epoch-index"
-	CompanyIDEventTypeIndex             = "company-id-event-type-index"
-	EventFoundationSFIDEpochIndex       = "event-foundation-sfid-event-time-epoch-index"
-	EventProjectIDEpochIndex            = "event-project-id-event-time-epoch-index"
-	EventCLAGroupIDEpochIndex           = "event-cla-group-id-event-time-epoch-index"
-	EventCompanySFIDEventDataLowerIndex = "event-company-sfid-event-data-lower-index"
+	CompanySFIDFoundationSFIDEpochIndex           = "company-sfid-foundation-sfid-event-time-epoch-index"
+	CompanySFIDProjectIDEpochIndex                = "company-sfid-project-id-event-time-epoch-index"
+	CompanyIDEventTypeIndex                       = "company-id-event-type-index"
+	EventFoundationSFIDEpochIndex                 = "event-foundation-sfid-event-time-epoch-index"
+	EventProjectIDEpochIndex                      = "event-project-id-event-time-epoch-index"
+	EventCLAGroupIDEpochIndex                     = "event-cla-group-id-event-time-epoch-index"
+	EventCompanySFIDEventDataLowerIndex           = "event-company-sfid-event-data-lower-index"
+	CompanyIDExternalProjectIDEventEpochTimeIndex = "company-id-external-project-id-event-epoch-time-index"
 )
 
 // constants
@@ -62,7 +63,7 @@ type Repository interface {
 	GetRecentEvents(pageSize int64) (*models.EventList, error)
 
 	GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
-	GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
+	GetCompanyClaGroupEvents(projectSFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
 	GetCompanyEvents(companyID, eventType string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
 	GetFoundationEvents(foundationSFID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error)
 	GetClaGroupEvents(claGroupID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error)
@@ -426,6 +427,7 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 	for {
 		// Perform the query...
 		var errQuery error
+		log.WithFields(f).Debugf("queryInput: %+v", queryInput)
 		results, errQuery = repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
 			log.WithFields(f).WithError(errQuery).Warn("error retrieving events")
@@ -456,6 +458,7 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 		log.WithFields(f).Debugf("last evaluated key %+v", results.LastEvaluatedKey)
 		if len(results.LastEvaluatedKey) > 0 {
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+
 		} else {
 			break
 		}
@@ -528,6 +531,10 @@ func buildNextKey(indexName string, event *models.Event) (string, error) {
 	case EventCLAGroupIDEpochIndex:
 		nextKey["event_cla_group_id"] = &dynamodb.AttributeValue{S: aws.String(event.EventCLAGroupID)}
 		nextKey["event_time_epoch"] = &dynamodb.AttributeValue{N: aws.String(strconv.FormatInt(event.EventTimeEpoch, 10))}
+	case CompanyIDExternalProjectIDEventEpochTimeIndex:
+		nextKey["company_id_external_project_id"] = &dynamodb.AttributeValue{
+			S: aws.String(fmt.Sprintf("%s#%s", event.EventCompanyID, event.EventProjectSFID)),
+		}
 	}
 
 	return encodeNextKey(nextKey)
@@ -544,30 +551,30 @@ func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, found
 		"paramPageSize":  utils.Int64Value(paramPageSize),
 		"loadAll":        all,
 	}
-	log.WithFields(f).Debugf("adding key condition of 'event_company_sfid_sfid = %s'", companySFID)
-	keyCondition := expression.Key("event_company_sfid").Equal(expression.Value(companySFID))
+	log.WithFields(f).Debugf("adding key condition of 'event_parent_project_sfid = %s'", foundationSFID)
+	keyCondition := expression.Key("event_parent_project_sfid").Equal(expression.Value(foundationSFID))
 	var filter expression.ConditionBuilder
-	log.WithFields(f).Debugf("adding filter condition of 'event_parent_project_sfid = %s'", foundationSFID)
-	filter = expression.Name("event_parent_project_sfid").Equal(expression.Value(foundationSFID))
-	return repo.queryEventsTable(EventCompanySFIDEventDataLowerIndex, keyCondition, &filter, nextKey, paramPageSize, all, searchTerm)
+	log.WithFields(f).Debugf("adding filter condition of 'event_company_sfid = %s'", companySFID)
+	filter = expression.Name("event_company_sfid").Equal(expression.Value(companySFID))
+	return repo.queryEventsTable(EventFoundationSFIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, searchTerm)
 }
 
 // GetCompanyClaGroupEvents returns the list of events for cla group and the company
-func (repo *repository) GetCompanyClaGroupEvents(companySFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
+func (repo *repository) GetCompanyClaGroupEvents(projectSFID, companyID, claGroupID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
 	f := logrus.Fields{
 		"functionName":  "v1.events.repository.GetCompanyClaGroupEvents",
-		"companySFID":   companySFID,
+		"projectSFID":   projectSFID,
 		"companyID":     companyID,
 		"claGroupID":    claGroupID,
 		"nextKey":       utils.StringValue(nextKey),
 		"paramPageSize": utils.Int64Value(paramPageSize),
 		"loadAll":       all,
 	}
-	log.WithFields(f).Debugf("adding key condition of 'event_cla_group_id = %s'", claGroupID)
+	// key := fmt.Sprintf("%s#%s", companyID, projectSFID)
+	// log.WithFields(f).Debugf("adding key condition of 'company_id_external_project_id = %s'", key)
 	keyCondition := expression.Key("event_cla_group_id").Equal(expression.Value(claGroupID))
-	var filter expression.ConditionBuilder
-	log.WithFields(f).Debugf("adding filter condition of 'event_company_sfid = %s'", companySFID)
-	filter = expression.Name("event_company_sfid").Equal(expression.Value(companySFID))
+	log.WithFields(f).Debugf("adding filter condition of projectSFID = %s and companyID = %s", projectSFID, companyID)
+	filter := expression.Name("event_project_sfid").Equal(expression.Value(projectSFID)).And(expression.Name("event_company_id").Equal(expression.Value(companyID)))
 	return repo.queryEventsTable(EventCLAGroupIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, searchTerm)
 }
 
