@@ -375,6 +375,11 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 	log.WithFields(f).Debug("querying events table...")
 	builder := expression.NewBuilder().WithKeyCondition(condition)
 
+	// Add the filter to the builder, if we have one
+	if filter != nil {
+		builder.WithFilter(*filter)
+	}
+
 	// Use the nice builder to create the expression
 	expr, err := builder.Build()
 	if err != nil {
@@ -393,6 +398,7 @@ func (repo *repository) queryEventsTable(indexName string, condition expression.
 		ScanIndexForward:          aws.Bool(false), // Specifies the order for index traversal: If true (default), the traversal is performed in ascending order; if false, the traversal is performed in descending order.
 	}
 
+	// Add the filter expression if we have one
 	if filter != nil {
 		queryInput.FilterExpression = expr.Filter()
 	}
@@ -701,7 +707,7 @@ func buildProjection() expression.ProjectionBuilder {
 	)
 }
 
-func (repo repository) GetRecentEvents(pageSize int64) (*models.EventList, error) {
+func (repo *repository) GetRecentEvents(pageSize int64) (*models.EventList, error) {
 	f := logrus.Fields{
 		"functionName": "v1.events.repository.GetRecentEvents",
 		"pageSize":     pageSize,
@@ -730,7 +736,7 @@ func (repo repository) GetRecentEvents(pageSize int64) (*models.EventList, error
 	}, nil
 }
 
-func (repo repository) getEventByDay(day string, containsPII bool, pageSize int64) ([]*models.Event, error) {
+func (repo *repository) getEventByDay(day string, containsPII bool, pageSize int64) ([]*models.Event, error) {
 	f := logrus.Fields{
 		"functionName": "v1.events.repository.getEventByDay",
 		"day":          day,
@@ -797,7 +803,7 @@ func (repo repository) getEventByDay(day string, containsPII bool, pageSize int6
 	return events, nil
 }
 
-func (repo repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID string) error {
+func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID string) error {
 	f := logrus.Fields{
 		"functionName":      "v1.events.repository.AddDataToEvent",
 		"eventID":           eventID,
