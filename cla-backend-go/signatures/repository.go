@@ -1666,7 +1666,7 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 			Or(expression.Name("user_email").Contains(*params.SearchTerm)).
 			Or(expression.Name("user_github_username").Contains(*params.SearchTerm)).
 			Or(expression.Name("user_gitlab_username").Contains(*params.SearchTerm)).
-			Or(expression.Name("lf_username").Contains(*params.SearchTerm))
+			Or(expression.Name("user_lf_username").Contains(*params.SearchTerm))
 		filter = addAndCondition(filter, searchExpression, &filterAdded)
 	}
 
