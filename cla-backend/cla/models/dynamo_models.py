@@ -1898,15 +1898,18 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                                               signature_signed=signature_signed, signature_approved=signature_approved)
         latest = None
         for signature in signatures:
-            if latest is None:
+            if signature.get_signature_approved() and signature.get_signature_signed():
                 latest = signature
-            elif signature.get_signature_document_major_version() > latest.get_signature_document_major_version():
-                latest = signature
-            elif (
-                    signature.get_signature_document_major_version() == latest.get_signature_document_major_version()
-                    and signature.get_signature_document_minor_version() > latest.get_signature_document_minor_version()
-            ):
-                latest = signature
+                break
+            # if latest is None:
+            #     latest = signature
+            # elif signature.get_signature_document_major_version() > latest.get_signature_document_major_version():
+            #     latest = signature
+            # elif (
+            #         signature.get_signature_document_major_version() == latest.get_signature_document_major_version()
+            #         and signature.get_signature_document_minor_version() > latest.get_signature_document_minor_version()
+            # ):
+            #     latest = signature
 
         if latest is None:
             cla.log.debug(
