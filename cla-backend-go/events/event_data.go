@@ -440,16 +440,34 @@ type ClaManagerRoleDeletedData struct {
 	UserEmail string
 }
 
-// SugnatureAutoCreateECLAUpdatedEventData data model
+// SignatureAutoCreateECLAUpdatedEventData data model
 type SignatureAutoCreateECLAUpdatedEventData struct {
 	AutoCreateECLA bool
 }
 
 // GetEventDetailsString returns the details string for this event
 func (ed *SignatureAutoCreateECLAUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The CLA Group %s (%s) has been updated auto-create ECLAs for new contributors : %t for the company: %s", args.CLAGroupName, args.CLAGroupID, ed.AutoCreateECLA, args.CompanyName)
-	if args.LfUsername != "" {
-		data = fmt.Sprintf("%s by %s", data, args.LfUsername)
+
+	data := "Auto-create ECLAs for contributors was"
+	if ed.AutoCreateECLA {
+		data = data + " enabled"
+	} else {
+		data = data + " disabled"
+	}
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.ProjectSFID != "" {
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
 	}
 	data = data + "."
 	return data, true
