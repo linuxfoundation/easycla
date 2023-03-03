@@ -91,7 +91,7 @@ func NewService(gitRepository repositories.RepositoryInterface, gitV2Repository 
 	}
 }
 
-func (s service) ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error {
+func (s *service) ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error {
 	projectName := mergeEvent.Project.Name
 	projectPath := mergeEvent.Project.PathWithNamespace
 	projectNamespace := mergeEvent.Project.Namespace
@@ -124,12 +124,15 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 	lastCommitSha := input.LastCommitSha
 
 	f := logrus.Fields{
-		"functionName":      "ProcessMergeActivity",
-		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
-		"gitlabProjectName": projectName,
-		"gitlabProjectID":   projectID,
-		"repositoryName":    repositoryPath,
-		"mergeID":           mergeID,
+		"functionName":           "ProcessMergeActivity",
+		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
+		"gitlabProjectPath":      projectPath,
+		"gitlabProjectName":      projectName,
+		"gitlabProjectID":        projectID,
+		"gitlabProjectNamespace": projectNamespace,
+		"mergeID":                mergeID,
+		"repositoryName":         repositoryPath,
+		"lastCommitSha":          lastCommitSha,
 	}
 
 	log.WithFields(f).Debugf("looking up for gitlab org in easycla records ...")
@@ -192,40 +195,57 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 	var missingUsers []*gatedGitlabUser
 	var signedUsers []*gitlab.User
 	for _, gitlabUser := range participants {
-		if ok, err := s.hasUserSigned(ctx, claGroupID, gitlabUser); ok {
-			log.WithFields(f).Infof("gitlabUser : %d:%s has signed", gitlabUser.ID, gitlabUser.Username)
-			signedUsers = append(signedUsers, gitlabUser)
-		} else {
+		log.WithFields(f).Debugf("checking if GitLab user: %s (%d) has signed", gitlabUser.Username, gitlabUser.ID)
+		userSigned, signedCheckErr := s.hasUserSigned(ctx, claGroupID, gitlabUser)
+		if signedCheckErr != nil {
+			log.WithFields(f).WithError(signedCheckErr).Warnf("problem checking if user : %s (%d) has signed - assuming not signed", gitlabUser.Username, gitlabUser.ID)
 			missingUsers = append(missingUsers, &gatedGitlabUser{
 				User: gitlabUser,
 				err:  err,
 			})
-			log.WithFields(f).Errorf("gitlabUser : %d:%s hasn't signed, err : %v", gitlabUser.ID, gitlabUser.Username, err)
+			continue
+		}
+
+		if userSigned {
+			log.WithFields(f).Infof("gitlabUser: %s (%d) has signed", gitlabUser.Username, gitlabUser.ID)
+			signedUsers = append(signedUsers, gitlabUser)
+		} else {
+			log.WithFields(f).Infof("gitlabUser: %s (%d) has NOT signed", gitlabUser.Username, gitlabUser.ID)
+			missingUsers = append(missingUsers, &gatedGitlabUser{
+				User: gitlabUser,
+				err:  err,
+			})
 		}
 	}
 
 	signURL := GetFullSignURL(gitlabOrg.OrganizationID, strconv.Itoa(int(gitlabRepo.RepositoryExternalID)), strconv.Itoa(mergeID))
 	mrCommentContent := PrepareMrCommentContent(missingUsers, signedUsers, signURL)
 	if len(missingUsers) > 0 {
-		log.WithFields(f).Errorf("mr faild with following users : %s", mrCommentContent)
-		if err := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Failed, missingCLAMsg, signURL); err != nil {
-			return fmt.Errorf("setting commit status failed : %v", err)
+		log.WithFields(f).Errorf("merge request faild with 1 or more users not passing authorization - failed users : %+v", missingUsers)
+		if statusErr := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Failed, missingCLAMsg, signURL); statusErr != nil {
+			log.WithFields(f).WithError(statusErr).Warnf("problem setting the commit status for merge request ID: %d, sha: %s", mergeID, lastCommitSha)
+			return fmt.Errorf("setting commit status failed : %v", statusErr)
 		}
 
-		if err := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, mrCommentContent); err != nil {
-			return fmt.Errorf("setting comment failed : %v", err)
+		if mrCommentErr := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, mrCommentContent); mrCommentErr != nil {
+			log.WithFields(f).WithError(mrCommentErr).Warnf("problem setting the commit merge request comment for merge request ID: %d", mergeID)
+			return fmt.Errorf("setting comment failed : %v", mrCommentErr)
 		}
 
 		return nil
 	}
-	err = gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Success, signedCLAMsg, "")
-	if err != nil {
-		return fmt.Errorf("setting commit status failed : %v", err)
+
+	commitStatusErr := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Success, signedCLAMsg, "")
+	if commitStatusErr != nil {
+		log.WithFields(f).WithError(commitStatusErr).Warnf("problem setting the commit status for merge request ID: %d, sha: %s", mergeID, lastCommitSha)
+		return fmt.Errorf("setting commit status failed : %v", commitStatusErr)
 	}
 
-	if err := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, mrCommentContent); err != nil {
-		return fmt.Errorf("setting comment failed : %v", err)
+	if mrCommentErr := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, mrCommentContent); mrCommentErr != nil {
+		log.WithFields(f).WithError(mrCommentErr).Warnf("problem setting the commit merge request comment for merge request ID: %d", mergeID)
+		return fmt.Errorf("setting comment failed : %v", mrCommentErr)
 	}
+
 	return err
 }
 
@@ -327,7 +347,7 @@ func getAuthorInfo(gitlabUser *gitlab.User) string {
 	return fmt.Sprintf("name:%s", gitlabUser.Name)
 }
 
-func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*v2Models.GitlabOrganization, error) {
+func (s *service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*v2Models.GitlabOrganization, error) {
 	parts := strings.Split(projectPath, "/")
 	organizationName := parts[0]
 	f := logrus.Fields{
@@ -356,7 +376,7 @@ func (s service) getGitlabOrganizationFromProjectPath(ctx context.Context, proje
 	return gitlabOrg, nil
 }
 
-func (s service) getGitlabRepoByName(ctx context.Context, repoNameWithPath string) (*models.GithubRepository, error) {
+func (s *service) getGitlabRepoByName(ctx context.Context, repoNameWithPath string) (*models.GithubRepository, error) {
 	gitlabRepo, err := s.gitV2Repository.GitLabGetRepositoryByName(ctx, repoNameWithPath)
 	if err != nil || gitlabRepo == nil {
 		return nil, fmt.Errorf("unable to locate GitLab repo for repoNameWithPath : %s, failed : %v", repoNameWithPath, err)
@@ -370,7 +390,7 @@ type UserSigned struct {
 	err    error
 }
 
-func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error) {
+func (s *service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error) {
 	f := logrus.Fields{
 		"functionName":    "hasUserSigned",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
@@ -384,12 +404,12 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 
 	userModels, b, err := s.findUserModelForGitlabUser(f, gitlabUser)
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to find user model for gitlab user: %v", gitlabUser)
 		return b, err
 	}
 
 	if len(userModels) == 0 {
-		msg := fmt.Sprintf("gitlab user : %d:%s not found in easycla records", gitlabUser.ID, gitlabUser.Username)
-		log.WithFields(f).Error(msg)
+		log.WithFields(f).Warnf("gitlab user: %s (%d) not found in easycla records", gitlabUser.Username, gitlabUser.ID)
 		return false, missingID
 	}
 
@@ -421,7 +441,7 @@ func (s service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUse
 
 }
 
-func (s service) isSigned(ctx context.Context, userModel *models.User, claGroupID string, gitlabUser *gitlab.User, wg *sync.WaitGroup, userSignedChan chan<- *UserSigned) {
+func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroupID string, gitlabUser *gitlab.User, wg *sync.WaitGroup, userSignedChan chan<- *UserSigned) {
 	defer wg.Done()
 	f := logrus.Fields{
 		"functionName":    "isSigned",
@@ -509,12 +529,34 @@ func (s service) isSigned(ctx context.Context, userModel *models.User, claGroupI
 	userSignedChan <- &UserSigned{signed: true, err: nil}
 }
 
-func (s service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.User) ([]*models.User, bool, error) {
+func (s *service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.User) ([]*models.User, bool, error) {
 
 	userModels := make([]*models.User, 0)
 
+	if gitlabUser.ID != 0 {
+		log.WithFields(f).Debugf("Looking up GitLab user via ID: %d", gitlabUser.ID)
+		userModel, lookupErr := s.usersRepository.GetUserByGitlabID(gitlabUser.ID)
+		if lookupErr != nil {
+			log.WithFields(f).WithError(lookupErr).Warnf("problem locating GitLab user via GitLab ID : %d", gitlabUser.ID)
+		} else if userModel != nil {
+			userModels = append(userModels, userModel)
+			return userModels, false, nil
+		}
+	}
+
+	if gitlabUser.Username != "" {
+		log.WithFields(f).Debugf("Looking up GitLab user via username: %s", gitlabUser.Username)
+		userModel, lookupErr := s.usersRepository.GetUserByGitLabUsername(gitlabUser.Username)
+		if lookupErr != nil {
+			log.WithFields(f).WithError(lookupErr).Warnf("problem locating GitLab user via GitLab username : %s", gitlabUser.Username)
+		} else if userModel != nil {
+			userModels = append(userModels, userModel)
+			return userModels, false, nil
+		}
+	}
+
 	if gitlabUser.Email != "" {
-		log.WithFields(f).Debugf("Looking up Gitlab user via user email")
+		log.WithFields(f).Debugf("Looking up GitLab user via user email: %s", gitlabUser.Email)
 		users, err := s.usersRepository.GetUsersByEmail(gitlabUser.Email)
 		if err != nil || len(users) == 0 {
 			log.WithFields(f).Warnf("unable to lookup user by email : %s, error : %v", gitlabUser.Email, err)
@@ -530,14 +572,16 @@ func (s service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.
 				userModels = append(userModels, userModel)
 			}
 		}
+
 		if len(users) > 0 {
 			userModels = append(userModels, users...)
 		}
 	}
+
 	return userModels, false, nil
 }
 
-func (s service) IsUserApprovedForSignature(ctx context.Context, f logrus.Fields, corporateSignature *models.Signature, user *models.User, gitlabUser *gitlab.User) bool {
+func (s *service) IsUserApprovedForSignature(ctx context.Context, f logrus.Fields, corporateSignature *models.Signature, user *models.User, gitlabUser *gitlab.User) bool {
 	log.WithFields(f).Debugf("checking if user : %s is approved for corporate signature : %s", user.UserID, corporateSignature.SignatureID)
 	userEmails := user.Emails
 	if string(user.LfEmail) != "" {
@@ -637,7 +681,7 @@ func getParams(regEx, url string) (paramsMap map[string]string) {
 	return paramsMap
 }
 
-func (s service) checkGitLabGroupApproval(ctx context.Context, userName, URL string) (bool, error) {
+func (s *service) checkGitLabGroupApproval(ctx context.Context, userName, URL string) (bool, error) {
 	f := logrus.Fields{
 		"functionName": "checkGitLabGroupApproval",
 		"userName":     userName,
