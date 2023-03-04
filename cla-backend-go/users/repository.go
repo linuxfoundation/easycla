@@ -71,6 +71,7 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 	f := logrus.Fields{
 		"functionName": "users.repository.CreateUser",
 	}
+
 	theUUID, err := uuid.NewUUID()
 	if err != nil {
 		return nil, err

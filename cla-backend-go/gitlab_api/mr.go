@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
+
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
@@ -30,28 +32,34 @@ func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int) ([]*
 		"mergeID":      mergeID,
 	}
 	log.WithFields(f).Debug("fetching mr participants...")
-	commits, _, err := client.MergeRequests.GetMergeRequestCommits(projectID, mergeID, &gitlab.GetMergeRequestCommitsOptions{})
+	commits, response, err := client.MergeRequests.GetMergeRequestCommits(projectID, mergeID, &gitlab.GetMergeRequestCommitsOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("fetching gitlab participants for project : %d and merge id : %d, failed : %v", projectID, mergeID, err)
 	}
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("fetching gitlab participants for project : %d and merge id : %d, failed with status code : %d", projectID, mergeID, response.StatusCode)
+	}
 
 	if len(commits) == 0 {
+		log.WithFields(f).Debugf("no commits found for project : %d and merge id : %d", projectID, mergeID)
 		return nil, nil
 	}
 
 	var results []*gitlab.User
 
 	for _, commit := range commits {
+		log.WithFields(f).Debugf("commit information: %v", commit)
+		// The author is the person who originally wrote the code. The committer, on the other hand, is assumed to be
+		// the person who committed the code on behalf of the original author.
 		authorEmail := commit.AuthorEmail
 		authorName := commit.AuthorName
-		log.Debugf("user email found : %s, user name : %s, searching in gitlab ...", authorEmail, authorName)
+		log.WithFields(f).Debugf("extracted authorEmail: %s, user name: %s, from commit: %s. Searching GitLab API...", authorEmail, authorName, commit.ID)
 
-		// check if user already exists in the results
-		user, err := getUser(client, &authorEmail, &authorName)
-
-		if err != nil && user == nil {
-			log.WithFields(f).Warnf("unable to find user for commit author email : %s, name : %s, error : %v", authorEmail, authorName, err)
-			return nil, err
+		// attempt to find additional user details - may or may not be able to enrich the user details by adding the GitLab user ID or username
+		user, getUserErr := getUser(client, &authorEmail, &authorName)
+		if getUserErr != nil {
+			log.WithFields(f).Warnf("unable to find user for commit author email : %s, name : %s, error : %v", authorEmail, authorName, getUserErr)
+			return nil, getUserErr
 		}
 
 		results = append(results, user)
@@ -133,17 +141,15 @@ func getUser(client *gitlab.Client, email, name *string) (*gitlab.User, error) {
 	}
 
 	users, _, err := client.Users.ListUsers(&gitlab.ListUsersOptions{
-		Search: email,
+		Active:  utils.Bool(true),
+		Blocked: utils.Bool(false),
+		Search:  email,
 	})
-
-	log.WithFields(f).Debugf("found users : %+v", users)
-
-	log.WithFields(f).Debugf("found %d users for name : %s", len(users), *name)
-
 	if err != nil {
-		log.WithFields(f).Warnf("unable to find user for name : %s, error : %v", *name, err)
-		return nil, nil
+		log.WithFields(f).Warnf("unable to find user for email : %s, error : %v", utils.StringValue(email), err)
+		return nil, err
 	}
+	log.WithFields(f).Debugf("found %d users: %+v using email: %s", len(users), users, utils.StringValue(email))
 
 	if len(users) == 0 {
 		log.WithFields(f).Warnf("no user found for name : %s", *name)
@@ -152,15 +158,13 @@ func getUser(client *gitlab.Client, email, name *string) (*gitlab.User, error) {
 
 	// check if user exists for the given email
 	for _, found := range users {
-		if found.Name == *name {
-			log.WithFields(f).Debugf("checking user : %+v", found)
+		if strings.EqualFold(found.Email, *email) {
+			log.WithFields(f).Debugf("found matching user : %+v - updating GitLab username and ID", found)
 			user.Username = found.Username
 			user.ID = found.ID
-			log.WithFields(f).Debugf("returning user: %+v", user)
 			break
 		}
 	}
 
-	return user, fmt.Errorf("unable to find user for email : %s", *email)
-
+	return user, nil
 }
