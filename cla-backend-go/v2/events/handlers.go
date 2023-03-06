@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -25,12 +26,14 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/events"
+	v1ProjectService "github.com/communitybridge/easycla/cla-backend-go/project/service"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	projService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
 	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRepo v1Company.IRepository, projectsClaGroupsRepo projects_cla_groups.Repository) { // nolint
+func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRepo v1Company.IRepository, projectsClaGroupsRepo projects_cla_groups.Repository, projectService v1ProjectService.Service) { // nolint
 	api.EventsGetRecentEventsHandler = events.GetRecentEventsHandlerFunc(
 		func(params events.GetRecentEventsParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
@@ -303,20 +306,50 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 
 			var result *v1Models.EventList
 
-			log.WithFields(f).Debugf("loading project level events for projectSFID :%s...", params.ProjectSFID)
-			pm, perr := projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
-			if perr != nil {
-				if perr == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
-					// Although the API should view this as a bad request since the project doesn't seem to belong to a
-					// CLA Group...just return a successful 200 with an empty list to the caller - nothing to see here, move along.
-					return events.NewGetCompanyProjectEventsOK().WithPayload(&models.EventList{
-						Events: []*models.Event{},
-					})
-				}
-				log.WithFields(f).WithError(perr).Warnf("problem determining CLA Group for project SFID: %s", params.ProjectSFID)
-				return events.NewGetCompanyProjectEventsInternalServerError().WithPayload(errorResponse(reqID, perr))
+			claGroupIDs := make([]string, 0)
+
+			// Lookup the CLA Group associated with this Project SFID...
+			signedAtFoundationLevel, err := projectService.SignedAtFoundationLevel(ctx, params.ProjectSFID)
+			if err != nil {
+				log.WithFields(f).Warnf("unable to fetch project by ID:%s ", params.ProjectSFID)
+				return events.NewGetCompanyProjectEventsBadRequest().WithPayload(errorResponse(reqID, err))
 			}
-			result, err = service.GetCompanyClaGroupEvents(params.ProjectSFID, params.CompanyID, pm.ClaGroupID, params.NextKey, params.PageSize, params.SearchTerm, aws.BoolValue(params.ReturnAllEvents))
+
+			if signedAtFoundationLevel {
+				projectClient := projService.GetClient()
+				project, projErr := projectClient.GetProject(params.ProjectSFID)
+				if projErr != nil {
+					log.WithFields(f).Warnf("unable to fetch project by ID:%s ", params.ProjectSFID)
+					return events.NewGetCompanyProjectEventsBadRequest().WithPayload(errorResponse(reqID, err))
+				}
+				parentProjectSFID := utils.GetProjectParentSFID(project)
+				pcg, pcgErr := projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, parentProjectSFID)
+				if pcgErr != nil {
+					log.WithFields(f).Warnf("unable to fetch project by ID:%s ", params.ProjectSFID)
+					return events.NewGetCompanyProjectEventsBadRequest().WithPayload(errorResponse(reqID, err))
+				}
+				claGroupIDs = append(claGroupIDs, pcg.ClaGroupID)
+			} else {
+				// Lookup the CLA Group associated with this Project SFID...
+				log.WithFields(f).Debugf("loading project level events for projectSFID :%s...", params.ProjectSFID)
+				pm, perr := projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
+				if perr != nil {
+					if perr == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
+						// Although the API should view this as a bad request since the project doesn't seem to belong to a
+						// CLA Group...just return a successful 200 with an empty list to the caller - nothing to see here, move along.
+						return events.NewGetCompanyProjectEventsOK().WithPayload(&models.EventList{
+							Events: []*models.Event{},
+						})
+					}
+					log.WithFields(f).WithError(perr).Warnf("problem determining CLA Group for project SFID: %s", params.ProjectSFID)
+					return events.NewGetCompanyProjectEventsInternalServerError().WithPayload(errorResponse(reqID, perr))
+				}
+				claGroupIDs = append(claGroupIDs, pm.ClaGroupID)
+			}
+
+			log.WithFields(f).Debugf("project belongs to CLA Groups: %s", strings.Join(claGroupIDs, ", "))
+
+			result, err = service.GetCompanyClaGroupEvents(claGroupIDs, v1Company.CompanyExternalID, params.NextKey, params.PageSize, params.SearchTerm, aws.BoolValue(params.ReturnAllEvents))
 
 			if err != nil {
 				log.WithFields(f).WithError(err).Warn("problem loading events")
