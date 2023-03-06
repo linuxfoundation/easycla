@@ -37,7 +37,7 @@
     "node.extend": "^2.0.2",
     "request": "^2.88.0",
     "serverless": "^3.27.0",
-    "serverless-domain-manager": "^6.2.4",
+    "serverless-domain-manager": "^6.4.4",
     "serverless-finch": "^4.0.0",
     "serverless-layers": "^2.6.1",
     "serverless-plugin-tracing": "^2.0.0",
