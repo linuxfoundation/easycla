@@ -308,7 +308,7 @@ func (pmm *Client) IsTheLinuxFoundation(projectSFID string) (bool, error) {
 		return false, err
 	}
 
-	if projectModel.Name == utils.TheLinuxFoundation || projectModel.Name == utils.LFProjectsLLC {
+	if projectModel.Name == utils.TheLinuxFoundation {
 		// Save into our cache for next time
 		log.WithFields(f).Debugf("project is %s or %s...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
 		return true, nil
