@@ -797,7 +797,7 @@ def handle_commit_from_user(project, user_commit_summary: UserCommitSummary, sig
             cla.log.debug(f'{fn} - User commit summary: {user_commit_summary} '
                           f'lookup by github email not found in our database, '
                           'attempting to looking up user by github username...')
-            users = cla.utils.get_user_instance().get_user_by_github_username(user_commit_summary.author_username)
+            users = cla.utils.get_user_instance().get_user_by_github_username(user_commit_summary.author_login)
 
         # Got one or more records by searching the email or username
         if users is not None:
