@@ -20,7 +20,7 @@ func IsProjectHaveParent(project *models.ProjectOutputDetailed) bool {
 
 // IsProjectHasRootParent determines if a given project has a root parent. A root parent is a parent that is empty parent or the parent is TLF or LFProjects
 func IsProjectHasRootParent(project *models.ProjectOutputDetailed) bool {
-	return project.Foundation == nil || (project.Foundation != nil && project.Foundation.ID != "" && (project.Foundation.Name == TheLinuxFoundation || project.Foundation.Name == LFProjectsLLC))
+	return project.Foundation == nil || (project.Foundation != nil && project.Foundation.ID != "" && (project.Foundation.Name == TheLinuxFoundation))
 }
 
 // IsStandaloneProject determines if a given project is a standalone project. A standalone project is a project with no parent or the parent is TLF/LFProjects and does not have any children
