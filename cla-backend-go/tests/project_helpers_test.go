@@ -33,14 +33,14 @@ func TestIsProjectHasRootParentLF(t *testing.T) {
 	assert.True(t, utils.IsProjectHasRootParent(project), "Project Has Root Parent - LF Parent")
 }
 
-func TestIsProjectHasRootParentLFProjectsLLC(t *testing.T) {
+func TestIsProjectHasRootParentLFProjectsLLCFalse(t *testing.T) {
 	project := &models.ProjectOutputDetailed{}
 	project.Foundation = &models.Foundation{
 		ID:      testProjectID,
 		LogoURL: testProjectLogo,
 		Name:    utils.LFProjectsLLC,
 	}
-	assert.True(t, utils.IsProjectHasRootParent(project), "Project Has Root Parent - LF Projects LLC Parent")
+	assert.False(t, utils.IsProjectHasRootParent(project), "Project Has Root Parent - LF Projects LLC Parent")
 }
 
 func TestIsProjectHasRootParentNonLF(t *testing.T) {
@@ -50,7 +50,7 @@ func TestIsProjectHasRootParentNonLF(t *testing.T) {
 		LogoURL: testProjectLogo,
 		Name:    "other",
 	}
-	assert.False(t, utils.IsProjectHasRootParent(project), "Project Has Root Parent - Non LF Project Parent")
+	assert.False(t, utils.IsProjectHasRootParent(project), "Project Should not have Root Parent as - LF Project Parent")
 }
 
 func TestIsStandaloneProject(t *testing.T) {
@@ -79,7 +79,7 @@ func TestLFProjectsLLCParent(t *testing.T) {
 		Name:    utils.LFProjectsLLC,
 	}
 	project.Projects = []*models.ProjectOutput{}
-	assert.True(t, utils.IsStandaloneProject(project), "Standalone Project with LF Projects LLC parent with No Children")
+	assert.False(t, utils.IsStandaloneProject(project), "Should not be a standalone Project with LF Projects LLC parent with No Children")
 }
 
 func TestLFParentWithChildren(t *testing.T) {

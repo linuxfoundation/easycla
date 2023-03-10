@@ -231,7 +231,7 @@ func (s *service) validateEnrollProjectsInput(ctx context.Context, foundationSFI
 		isLFParent, err = psc.IsTheLinuxFoundation(projectTree.Parent.ID)
 
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup %s or %s project", utils.TheLinuxFoundation, utils.LFProjectsLLC)
+			log.WithFields(f).WithError(err).Warnf("validation failure - unable to lookup %s ", utils.TheLinuxFoundation)
 			return err
 		}
 

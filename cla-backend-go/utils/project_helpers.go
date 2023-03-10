@@ -27,7 +27,7 @@ func IsProjectHasRootParent(project *models.ProjectOutputDetailed) bool {
 func IsStandaloneProject(project *models.ProjectOutputDetailed) bool {
 	// standalone: No parent or parent is TLF/LFProjects....and no children
 	return (project.Foundation == nil ||
-		(project.Foundation != nil && (project.Foundation.Name == TheLinuxFoundation || project.Foundation.Name == LFProjectsLLC))) &&
+		(project.Foundation != nil && (project.Foundation.Name == TheLinuxFoundation))) &&
 		len(project.Projects) == 0
 }
 

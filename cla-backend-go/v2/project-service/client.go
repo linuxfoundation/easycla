@@ -189,12 +189,6 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 		}
 		log.WithFields(f).Debugf("project %+v has a parent", existingModel)
 
-		//// Does this project they have a parent? projectModel.Parent is deprecated and no longer returned, use project.Foundation.ID/Name attribute instead
-		//if existingModel.Foundation.Name == utils.TheLinuxFoundation || existingModel.Foundation.Name == utils.LFProjectsLLC {
-		//	log.WithFields(f).Debugf("no parent for projectSFID %s or %s or %s is the parent...", projectSFID, utils.TheLinuxFoundation, utils.LFProjectsLLC)
-		//	return nil, nil
-		//}
-
 		// Grab the parent ID once
 		projectParentSFID := utils.GetProjectParentSFID(existingModel)
 		if projectParentSFID == "" {
@@ -254,8 +248,8 @@ func (pmm *Client) GetParentProjectModel(projectSFID string) (*models.ProjectOut
 	}
 
 	// Is the parent one of the root parents?
-	if projectModel.Foundation.Name == utils.TheLinuxFoundation || projectModel.Foundation.Name == utils.LFProjectsLLC {
-		log.WithFields(f).Debugf("no parent for projectSFID or %s or %s is the parent...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
+	if projectModel.Foundation.Name == utils.TheLinuxFoundation {
+		log.WithFields(f).Debugf("no parent for projectSFID or %s  is the parent...", utils.TheLinuxFoundation)
 		return nil, nil
 	}
 
@@ -310,7 +304,7 @@ func (pmm *Client) IsTheLinuxFoundation(projectSFID string) (bool, error) {
 
 	if projectModel.Name == utils.TheLinuxFoundation {
 		// Save into our cache for next time
-		log.WithFields(f).Debugf("project is %s or %s...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
+		log.WithFields(f).Debugf("project is %s ", utils.TheLinuxFoundation)
 		return true, nil
 	}
 
@@ -342,9 +336,9 @@ func (pmm *Client) IsParentTheLinuxFoundation(projectSFID string) (bool, error) 
 		return false, err
 	}
 
-	if parentProjectModel.Name == utils.TheLinuxFoundation || parentProjectModel.Name == utils.LFProjectsLLC {
+	if parentProjectModel.Name == utils.TheLinuxFoundation {
 		// Save into our cache for next time
-		log.WithFields(f).Debugf("parent project is %s or %s...", utils.TheLinuxFoundation, utils.LFProjectsLLC)
+		log.WithFields(f).Debugf("parent project is %s ...", utils.TheLinuxFoundation)
 		return true, nil
 	}
 
