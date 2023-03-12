@@ -399,19 +399,30 @@ func (s *service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUs
 		"gitlabUserEmail": gitlabUser.Email,
 	}
 
-	userModel, lookUpErr := s.findUserModelForGitlabUser(f, gitlabUser)
+	userModels, lookUpErr := s.findUserModelForGitlabUser(f, gitlabUser)
 	if lookUpErr != nil {
 		log.WithFields(f).WithError(lookUpErr).Warnf("unable to find user model for gitlab user: %v", gitlabUser)
 		return false, lookUpErr
 	}
 
-	if userModel == nil {
+	if len(userModels) == 0 {
 		log.WithFields(f).Warnf("gitlab user: %s (%d) not found in easycla records", gitlabUser.Username, gitlabUser.ID)
 		return false, missingID
 	}
 
-	log.WithFields(f).Debugf("found following easyCLA user for gitlab record, userID: %s, lfusername : %s", userModel.UserID, userModel.LfUsername)
-	return s.isSigned(ctx, userModel, claGroupID, gitlabUser)
+	for _, userModel := range userModels {
+		signed, err := s.isSigned(ctx, userModel, claGroupID, gitlabUser)
+		if err != nil {
+			log.WithFields(f).Debugf("error checking if user is signed, error: %v", err)
+			break
+		}
+		if signed {
+			log.WithFields(f).Debugf("found signed user for gitlab record, userID: %s, lfusername : %s", userModel.UserID, userModel.LfUsername)
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroupID string, gitlabUser *gitlab.User) (bool, error) {
@@ -502,7 +513,7 @@ func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroup
 }
 
 // findUserModelForGitlabUser locates the user model in our users table for the given GitLab user (by GitLab ID, GitLab username, or email)
-func (s *service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.User) (*models.User, error) {
+func (s *service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab.User) ([]*models.User, error) {
 
 	if gitlabUser.ID != 0 {
 		log.WithFields(f).Debugf("Looking up GitLab user via ID: %d", gitlabUser.ID)
@@ -511,7 +522,7 @@ func (s *service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab
 			log.WithFields(f).WithError(lookupErr).Warnf("problem locating GitLab user via GitLab ID : %d", gitlabUser.ID)
 		} else if userModel != nil {
 			log.WithFields(f).Debugf("located GitLab user via ID: %d", gitlabUser.ID)
-			return userModel, nil
+			return []*models.User{userModel}, nil
 		}
 	}
 
@@ -522,11 +533,12 @@ func (s *service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab
 			log.WithFields(f).WithError(lookupErr).Warnf("problem locating GitLab user via GitLab username : %s", gitlabUser.Username)
 		} else if userModel != nil {
 			log.WithFields(f).Debugf("located GitLab user via username: %s", gitlabUser.Username)
-			return userModel, nil
+			return []*models.User{userModel}, nil
 		}
 	}
 
 	if gitlabUser.Email != "" {
+		gitlabUsers := make([]*models.User, 0)
 		log.WithFields(f).Debugf("Looking up GitLab user via user email: %s", gitlabUser.Email)
 		// previously search was done by lf_email, now we are searching by email #3816
 		users, lookupErr := s.usersRepository.GetUsersByEmail(gitlabUser.Email)
@@ -534,7 +546,8 @@ func (s *service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab
 			log.WithFields(f).WithError(lookupErr).Warnf("problem locating GitLab user via GitLab username : %s", gitlabUser.Username)
 		} else if len(users) > 0 {
 			log.WithFields(f).Debugf("located GitLab user via email: %s", gitlabUser.Email)
-			return users[0], nil
+			gitlabUsers = append(gitlabUsers, users...)
+			return gitlabUsers, nil
 		}
 	}
 
