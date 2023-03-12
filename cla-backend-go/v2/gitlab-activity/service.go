@@ -416,7 +416,7 @@ func (s *service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUs
 
 func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroupID string, gitlabUser *gitlab.User) (bool, error) {
 	f := logrus.Fields{
-		"functionName":    "isSigned",
+		"functionName":    "v2.gitlab-activity.service.isSigned",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"gitlabUserID":    gitlabUser.ID,
 		"gitlabUserName":  gitlabUser.Username,
@@ -528,12 +528,13 @@ func (s *service) findUserModelForGitlabUser(f logrus.Fields, gitlabUser *gitlab
 
 	if gitlabUser.Email != "" {
 		log.WithFields(f).Debugf("Looking up GitLab user via user email: %s", gitlabUser.Email)
-		userModel, lookupErr := s.usersRepository.GetUserByEmail(gitlabUser.Email)
+		// previously search was done by lf_email, now we are searching by email #3816
+		users, lookupErr := s.usersRepository.GetUsersByEmail(gitlabUser.Email)
 		if lookupErr != nil {
 			log.WithFields(f).WithError(lookupErr).Warnf("problem locating GitLab user via GitLab username : %s", gitlabUser.Username)
-		} else if userModel != nil {
+		} else if len(users) > 0 {
 			log.WithFields(f).Debugf("located GitLab user via email: %s", gitlabUser.Email)
-			return userModel, nil
+			return users[0], nil
 		}
 	}
 
