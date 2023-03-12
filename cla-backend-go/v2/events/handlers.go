@@ -317,12 +317,16 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 
 			if signedAtFoundationLevel {
 				projectClient := projService.GetClient()
+				parentProjectSFID := params.ProjectSFID
 				project, projErr := projectClient.GetProject(params.ProjectSFID)
 				if projErr != nil {
 					log.WithFields(f).Warnf("unable to fetch project by ID:%s ", params.ProjectSFID)
 					return events.NewGetCompanyProjectEventsBadRequest().WithPayload(errorResponse(reqID, err))
 				}
-				parentProjectSFID := utils.GetProjectParentSFID(project)
+				if !utils.IsProjectHasRootParent(project) {
+					log.WithFields(f).Debug("setting parentProjectSFID...")
+					parentProjectSFID = utils.GetProjectParentSFID(project)
+				}
 				pcg, pcgErr := projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, parentProjectSFID)
 				if pcgErr != nil {
 					log.WithFields(f).Warnf("unable to fetch project by ID:%s ", params.ProjectSFID)
