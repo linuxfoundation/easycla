@@ -745,7 +745,7 @@ class DocuSign(signing_service_interface.SigningService):
                     return {'errors': {'github_repository_id': 'The given github repository ID does not exist. '}}
 
                 update_repository_provider(installation_id, github_repository_id, change_request_id)
-    
+
             elif return_url_type.lower() == "gitlab":
                 gitlab_repository_id = int(signature_metadata['repository_id'])
                 merge_request_id = int(signature_metadata['merge_request_id'])
@@ -754,7 +754,7 @@ class DocuSign(signing_service_interface.SigningService):
 
                 if organization_id is None:
                     return {'errors': {'gitlab_repository_id': 'The given github repository ID does not exist. '}}
-                
+
 
             cla.utils.delete_active_signature_metadata(user_id)
         else:
@@ -1285,7 +1285,7 @@ class DocuSign(signing_service_interface.SigningService):
                 return
             cla.log.debug(f'populate_sign_url - {sig_type} - loaded project_individual_document...')
 
-        # Void the existing envelope to prevent multiple envelopes pending for a signer. 
+        # Void the existing envelope to prevent multiple envelopes pending for a signer.
         envelope_id = signature.get_signature_envelope_id()
         if envelope_id is not None:
             try:
@@ -1431,7 +1431,7 @@ class DocuSign(signing_service_interface.SigningService):
         signature.save()
         cla.log.debug(f'{fn} - {sig_type} - saved signature to database - id: {signature.get_signature_id()}...')
         cla.log.debug(f'populate_sign_url - {sig_type} - complete')
-    
+
 
     def signed_individual_callback(self, content, installation_id, github_repository_id, change_request_id):
         """
@@ -1608,13 +1608,13 @@ class DocuSign(signing_service_interface.SigningService):
             project_id = signature.get_signature_project_id()
             self.send_to_s3(document_data, project_id, signature_id, 'icla', user_id)
             cla.log.debug(f'{fn} - uploaded ICLA document to s3')
-    
+
     def _update_gitlab_mr(self, organization_id: str , gitlab_repository_id: int, merge_request_id: int) -> None:
         """
         Helper function that updates mr upon a successful signing
-        param organization_id: Gitlab group id 
+        param organization_id: Gitlab group id
         rtype organization_id: int
-        param gitlab_repository_id: Gitlab repository 
+        param gitlab_repository_id: Gitlab repository
         rtype: int
         param merge_request_id: Gitlab MR
         rtype: int
@@ -1636,7 +1636,7 @@ class DocuSign(signing_service_interface.SigningService):
         except requests.exceptions.HTTPError as err:
             msg = f'{fn} - Unable to update GitLab MR: {merge_request_id}, error: {err}'
             cla.log.warning(msg)
-    
+
     def signed_individual_callback_gitlab(self, content, user_id, organization_id, gitlab_repository_id, merge_request_id):
         fn = 'models.docusign_models.signed_individual_callback_gitlab'
         cla.log.debug(f'{fn} - Docusign GitLab ICLA signed callback POST data: {content}')
@@ -1758,7 +1758,7 @@ class DocuSign(signing_service_interface.SigningService):
                 cla.log.warning(msg)
                 return {'errors': {'error': msg}}
         else:
-            # If client_user_id is None, the callback came from the email that finished signing. 
+            # If client_user_id is None, the callback came from the email that finished signing.
             # Retrieve the latest signature with projectId and CompanyId.
             signature = company.get_latest_signature(str(project_id))
             signature_id = signature.get_signature_id()
@@ -1855,7 +1855,7 @@ class DocuSign(signing_service_interface.SigningService):
             except DoesNotExist:
                 gerrits = []
 
-            # Get LF user name. 
+            # Get LF user name.
             lf_username = user.get_lf_username()
             for gerrit in gerrits:
                 # Get Gerrit Group ID
@@ -2060,7 +2060,7 @@ def get_org_from_return_url(repo_provider_type, return_url, orgs):
     :param return_url: The URL will be redirected after signature done.
     :type return_url: string
     :return: List of Organizations of any repo service provider.
-    :rtype: [any_repo_service_provider.Organization] 
+    :rtype: [any_repo_service_provider.Organization]
     """
     if repo_provider_type == 'github':
         split_url = return_url.split('/')  # parse repo name from URL
@@ -2101,7 +2101,7 @@ def get_docusign_tabs_from_document(document: Document,
         }
 
         if tab.get_document_tab_anchor_string() is not None:
-            # Set only when anchor string exists 
+            # Set only when anchor string exists
             args['anchorString'] = tab.get_document_tab_anchor_string()
             args['anchorIgnoreIfNotPresent'] = tab.get_document_tab_anchor_ignore_if_not_present()
             args['anchorXOffset'] = tab.get_document_tab_anchor_x_offset()
@@ -2122,11 +2122,19 @@ def get_docusign_tabs_from_document(document: Document,
             args['locked'] = False
         elif tab_type == 'text_optional':
             tab_class = TextOptionalTab
+            # https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/enveloperecipienttabs/create/#schema__enveloperecipienttabs_texttabs_required
+            # required: string - When true, the signer is required to fill out this tab.
             args['required'] = False
         elif tab_type == 'number':
             tab_class = pydocusign.NumberTab
         elif tab_type == 'sign':
             tab_class = pydocusign.SignHereTab
+        elif tab_type == 'sign_optional':
+            tab_class = pydocusign.SignHereTab
+            # https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/enveloperecipienttabs/create/#schema__enveloperecipienttabs_signheretabs_optional
+            # optional: string - When true, the recipient does not need to complete this tab to
+            # complete the signing process.
+            args['optional'] = True
         elif tab_type == 'date':
             tab_class = pydocusign.DateSignedTab
         else:
