@@ -680,7 +680,7 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	}
 
 	// This is the filter we want to match
-	filter := expression.Name("user_emails").Contains(userEmail)
+	filter := expression.Name("user_emails").Contains("@" + userEmail)
 
 	// These are the columns we want returned
 	projection := buildUserProjection()
