@@ -815,7 +815,8 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 func (s *Service) getOrCreateUser(ctx context.Context, gitlabClient *goGitLab.Client, eventsService events.Service) (*models.User, error) {
 
 	f := logrus.Fields{
-		"functionName": "v2.gitlab_sign.service.getOrCreateUser",
+		"functionName":   "v2.gitlab_organizations.service.getOrCreateUser",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
 	gitlabUser, _, err := gitlabClient.Users.CurrentUser()
@@ -824,33 +825,51 @@ func (s *Service) getOrCreateUser(ctx context.Context, gitlabClient *goGitLab.Cl
 		return nil, err
 	}
 
+	log.WithFields(f).Debugf("looking up user by GitLab ID: %d", gitlabUser.ID)
 	claUser, err := s.userService.GetUserByGitlabID(gitlabUser.ID)
-	if err != nil {
-		log.WithFields(f).Debugf("unable to get CLA user by github ID: %d , error: %+v ", gitlabUser.ID, err)
-		log.WithFields(f).Infof("creating user record for gitlab user : %+v ", gitlabUser)
-		user := &models.User{
-			GitlabID:       fmt.Sprintf("%d", gitlabUser.ID),
-			GitlabUsername: gitlabUser.Username,
-			Emails:         []string{gitlabUser.Email},
-			Username:       gitlabUser.Name,
-		}
-
-		var userErr error
-		claUser, userErr = s.userService.CreateUser(user, nil)
-		if userErr != nil {
-			log.WithFields(f).WithError(userErr).Warnf("unable to create user with details : %+v", user)
-			return nil, userErr
-		}
-
-		// Log the event
-		eventsService.LogEvent(&events.LogEventArgs{
-			EventType: events.UserCreated,
-			UserID:    user.UserID,
-			UserModel: user,
-			EventData: &events.UserCreatedEventData{},
-		})
+	if err == nil && claUser != nil {
+		log.WithFields(f).Debugf("found user by GitLab ID: %d", gitlabUser.ID)
 		return claUser, nil
 	}
+	log.WithFields(f).Debugf("unable to lookup user by github ID: %d, error: %+v ", gitlabUser.ID, err)
+
+	log.WithFields(f).Debugf("looking up user by GitLab username: %s", gitlabUser.Username)
+	claUser, err = s.userService.GetUserByGitLabUsername(gitlabUser.Username)
+	if err == nil && claUser != nil {
+		log.WithFields(f).Debugf("found user by GitLab username: %s", gitlabUser.Username)
+		return claUser, nil
+	}
+	log.WithFields(f).Debugf("unable to lookup user by github username: %s, error: %+v ", gitlabUser.Username, err)
+
+	log.WithFields(f).Debugf("looking up user by GitLab email: %s", gitlabUser.Email)
+	claUsers, err := s.userService.GetUsersByEmail(gitlabUser.Email)
+	if err == nil && claUser != nil {
+		log.WithFields(f).Debugf("found user by GitLab email: %s", gitlabUser.Email)
+		return claUsers[0], nil
+	}
+
+	log.WithFields(f).Infof("unable to locate GitLab user - creating a new user record for GitLab user : %+v ", gitlabUser)
+	user := &models.User{
+		GitlabID:       fmt.Sprintf("%d", gitlabUser.ID),
+		GitlabUsername: gitlabUser.Username,
+		LfEmail:        strfmt.Email(gitlabUser.Email),
+		Emails:         []string{gitlabUser.Email},
+		Username:       gitlabUser.Name,
+	}
+	claUser, userErr := s.userService.CreateUser(user, nil)
+	if err != nil {
+		log.WithFields(f).Debugf("unable to create claUser with details : %+v, error: %+v", user, userErr)
+		return nil, userErr
+	}
+
+	// Log the event
+	eventsService.LogEvent(&events.LogEventArgs{
+		EventType: events.UserCreated,
+		UserID:    user.UserID,
+		UserModel: user,
+		EventData: &events.UserCreatedEventData{},
+	})
+
 	return claUser, nil
 }
 

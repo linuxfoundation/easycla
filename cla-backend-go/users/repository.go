@@ -680,7 +680,7 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	}
 
 	// This is the filter we want to match
-	filter := expression.Name("user_emails").Contains("@" + userEmail)
+	filter := expression.Name("user_emails").Contains(userEmail)
 
 	// These are the columns we want returned
 	projection := buildUserProjection()
@@ -688,7 +688,7 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	// Use the nice builder to create the expression
 	expr, err := expression.NewBuilder().WithFilter(filter).WithProjection(projection).Build()
 	if err != nil {
-		log.WithFields(f).Warnf("error building expression for lf_email : %s, error: %v", userEmail, err)
+		log.WithFields(f).Warnf("error building expression for user_emails : %s, error: %v", userEmail, err)
 		return nil, err
 	}
 
