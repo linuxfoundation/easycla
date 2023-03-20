@@ -612,6 +612,25 @@ func (s *service) buildClaGroupSummaryResponseModel(ctx context.Context, f logru
 	return claGroupIDList, nil
 }
 
+func (s *service) collateFoundationCLAGroups(ctx context.Context, uniqueCLAGroupList []string) []v1Models.ClaGroup {
+	var wg sync.WaitGroup
+	wg.Add(len(uniqueCLAGroupList))
+	claGroups := make([]v1Models.ClaGroup, 0)
+	for _, claGroupID := range uniqueCLAGroupList {
+		go func(claGroupID string) {
+			defer wg.Done()
+			claGroupModel, claGroupErr := s.v1ProjectService.GetCLAGroupByID(ctx, claGroupID)
+			if claGroupErr != nil {
+				log.Warnf("skipping - error looking up CLA Group by ID: %s, error: %+v", claGroupID, claGroupErr)
+			} else {
+				claGroups = append(claGroups, *claGroupModel)
+			}
+		}(claGroupID)
+	}
+	wg.Wait()
+	return claGroups
+}
+
 func (s *service) appendCLAGroupsForFoundation(ctx context.Context, f logrus.Fields, projectOrFoundationSFID string, v1ClaGroups *v1Models.ClaGroups) error {
 	log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
 	projectCLAGroupMappings, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, projectOrFoundationSFID)
@@ -624,50 +643,8 @@ func (s *service) appendCLAGroupsForFoundation(ctx context.Context, f logrus.Fie
 	// Determine how many CLA Groups we have - we could have many and possibly return duplicates, we use this loop
 	uniqueCLAGroupList := getUniqueCLAGroupIDs(projectCLAGroupMappings)
 
-	type CLAGroupResult struct {
-		claGroupModel *v1Models.ClaGroup
-		Error         error
-	}
+	v1ClaGroups.Projects = append(v1ClaGroups.Projects, s.collateFoundationCLAGroups(ctx, uniqueCLAGroupList)...)
 
-	claGroupResultChannel := make(chan *CLAGroupResult, len(uniqueCLAGroupList))
-
-	// Load these CLA Group records in parallel
-	for _, projectCLAGroupClaGroupID := range uniqueCLAGroupList {
-
-		// Load each CLA Group - save results to our channel
-		go func(ctx context.Context, projectCLAGroupClaGroupID string) {
-			log.WithFields(f).Debugf("loading CLA Group by ID: %s", projectCLAGroupClaGroupID)
-			claGroupModel, claGroupLookupErr := s.v1ProjectService.GetCLAGroupByID(ctx, projectCLAGroupClaGroupID)
-			if claGroupLookupErr != nil {
-				log.WithFields(f).Warnf("problem locating project by id: %s, error: %+v", projectCLAGroupClaGroupID, claGroupLookupErr)
-				claGroupResultChannel <- &CLAGroupResult{
-					claGroupModel: nil,
-					Error:         &utils.SFProjectNotFound{ProjectSFID: projectCLAGroupClaGroupID, Err: claGroupLookupErr},
-				}
-			}
-
-			claGroupResultChannel <- &CLAGroupResult{
-				claGroupModel: claGroupModel,
-				Error:         nil,
-			}
-		}(ctx, projectCLAGroupClaGroupID)
-	}
-
-	// Wait for the go routines to finish and load up the results
-	log.WithFields(f).Debug("waiting for CLA Groups to load...")
-	for range uniqueCLAGroupList {
-		select {
-		case response := <-claGroupResultChannel:
-			if response.Error != nil {
-				log.WithFields(f).WithError(response.Error).Warnf("unable to load CLA Group")
-				return response.Error
-			}
-			v1ClaGroups.Projects = append(v1ClaGroups.Projects, *response.claGroupModel)
-		case <-ctx.Done():
-			log.WithFields(f).WithError(ctx.Err()).Warnf("waiting for CLA Groups to load timeouted")
-			return fmt.Errorf("cla group laoding failed : %v", ctx.Err())
-		}
-	}
 	return nil
 }
 
