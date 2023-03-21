@@ -392,7 +392,7 @@ type UserSigned struct {
 
 func (s *service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error) {
 	f := logrus.Fields{
-		"functionName":    "hasUserSigned",
+		"functionName":    "v2.gitlab-activity.service.hasUserSigned",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"gitlabUserID":    gitlabUser.ID,
 		"gitlabUserName":  gitlabUser.Username,
@@ -414,11 +414,13 @@ func (s *service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUs
 		signed, err := s.isSigned(ctx, userModel, claGroupID, gitlabUser)
 		if err != nil {
 			log.WithFields(f).Debugf("error checking if user is signed, error: %v", err)
-			break
+			continue
 		}
 		if signed {
-			log.WithFields(f).Debugf("found signed user for gitlab record, userID: %s, lfusername : %s", userModel.UserID, userModel.LfUsername)
+			log.WithFields(f).Debugf("found signed user for clagroupID: %s, userID: %s", claGroupID, userModel.UserID)
 			return true, nil
+		} else {
+			log.WithFields(f).Debugf("user is not signed for claGroupID: %s, userID: %s", claGroupID, userModel.UserID)
 		}
 	}
 
