@@ -701,17 +701,45 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 		TableName:                 aws.String(repo.tableName),
 	}
 
-	// Make the DynamoDB Query API call
-	result, err := repo.dynamoDBClient.Scan(scanInput)
-	if err != nil {
-		log.WithFields(f).Warnf("Error retrieving user by user email: %s, error: %+v", userEmail, err)
-		return nil, err
+	lastEvaluatedKey := ""
+	resultItems := []map[string]*dynamodb.AttributeValue{}
+
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
+		var result *dynamodb.ScanOutput
+		// Make the DynamoDB Query API call
+		log.WithFields(f).Debugf("lastEvaluatedKey: %s", lastEvaluatedKey)
+		if lastEvaluatedKey != "" {
+			scanInput.ExclusiveStartKey = map[string]*dynamodb.AttributeValue{
+				"user_id": {
+					S: aws.String(lastEvaluatedKey),
+				},
+			}
+			result, err = repo.dynamoDBClient.Scan(scanInput)
+			if err != nil {
+				log.WithFields(f).Warnf("Error retrieving user by user email: %s, error: %+v", userEmail, err)
+				return nil, err
+			}
+		} else {
+			result, err = repo.dynamoDBClient.Scan(scanInput)
+			if err != nil {
+				log.WithFields(f).Warnf("Error retrieving user by user email: %s, error: %+v", userEmail, err)
+				return nil, err
+			}
+		}
+		resultItems = append(resultItems, result.Items...)
+
+		// If we have another page of results...
+		if result.LastEvaluatedKey["user_id"] != nil {
+			lastEvaluatedKey = *result.LastEvaluatedKey["user_id"].S
+		} else {
+			lastEvaluatedKey = ""
+		}
 	}
 
 	// The database user model
 	var dbUserModels []DBUser
 
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &dbUserModels)
+	err = dynamodbattribute.UnmarshalListOfMaps(resultItems, &dbUserModels)
 	if err != nil {
 		log.WithFields(f).Warnf("error unmarshalling user record from database for user email: %s, error: %+v", userEmail, err)
 		return nil, err
