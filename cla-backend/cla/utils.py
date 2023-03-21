@@ -1030,8 +1030,11 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                 commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                 committers_comment += (
                     f"<li> {failed} The commit ({', '.join(commit_shas)}). "
-                    f"This user is missing the User's ID, preventing the EasyCLA check. "
-                    f"<a href='{github_help_url}' target='_blank'>Consult GitHub Help</a> to resolve."
+                    "This user is missing the GitHub ID, preventing the EasyCLA check. "
+                    "Make sure to add the email address of the commit to your GitHub profile "
+                    "(to see the actual email address, add `.patch` at the end of this PR page's URL). "
+                    f"<a href='{github_help_url}' target='_blank'>See GitHub Help</a> for more info. "
+                    
                     f'For further assistance with EasyCLA, '
                     f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
                     '</li>')
