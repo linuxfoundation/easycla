@@ -3824,7 +3824,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	// 	sortKeyPrefix := fmt.Sprintf("%s#%v#%v", utils.ClaTypeECLA, true, true)
 	// 	condition = condition.And(expression.Key("sigtype_signed_approved_id").BeginsWith(sortKeyPrefix))
 	// }
-	filter := expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyID)).And(expression.Name("signature_approved").Equal(expression.Value(true))).And(expression.Name("signature_signed").Equal(expression.Value(true)))
+	filter := expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyID))
 	// filter = filter.And(expression.Name("signature_type").Equal(expression.Value(utils.ClaTypeECLA)))
 
 	// Create our builder
@@ -3951,6 +3951,8 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 				UserDocusignName:       sig.UserDocusignName,
 				UserDocusignDateSigned: sigSignedTime,
 				SignatureModified:      sig.DateModified,
+				SignatureApproved:      sig.SignatureApproved,
+				SignatureSigned:        sig.SignatureSigned,
 			})
 		}
 
