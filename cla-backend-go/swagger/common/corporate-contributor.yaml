@@ -40,3 +40,11 @@ properties:
     type: string
     description: the signature modified created time
     example: '2019-05-03T18:59:13.082304+0000'
+  signatureSigned:
+    type: boolean
+    description: the flag for contributor that has been able to sign
+    x-omitempty: false
+  signatureApproved:
+    type: boolean
+    description: the flag for contributor that has not yet been approved
+    x-omitempty: false
