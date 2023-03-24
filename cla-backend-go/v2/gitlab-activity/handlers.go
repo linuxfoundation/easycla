@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
@@ -156,7 +157,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		jsonData, err := params.GitlabActivityInput.MarshalJSON()
 		if err != nil {
 			msg := fmt.Sprintf("unmarshall event data failed : %v", err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Debugf(msg)
 			// Always return 200 response
 			return gitlab_activity.NewGitlabActivityOK()
 		}
@@ -164,7 +165,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		event, err := gitlabsdk.ParseWebhook(gitlabsdk.EventTypeMergeRequest, jsonData)
 		if err != nil {
 			msg := fmt.Sprintf("parsing gitlab merge event type failed : %v", err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Debugf(msg)
 			// Always return 200 response
 			return gitlab_activity.NewGitlabActivityOK()
 		}
@@ -172,24 +173,37 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		mergeEvent, ok := event.(*gitlabsdk.MergeEvent)
 		if !ok {
 			msg := fmt.Sprintf("parsing gitlab merge event typecast failed : %v", err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Debugf(msg)
 			// Always return 200 response
 			return gitlab_activity.NewGitlabActivityOK()
 		}
 
-		if mergeEvent.ObjectAttributes.State != "opened" && mergeEvent.ObjectAttributes.State != "update" && mergeEvent.ObjectAttributes.State != "reopen" {
-			msg := fmt.Sprintf("parsing gitlab merge event : %s failed, only [open, update, reopen] accepted", mergeEvent.ObjectAttributes.State)
-			log.WithFields(f).Errorf(msg)
-			// Always return 200 response
-			return gitlab_activity.NewGitlabActivityOK()
-		}
+		if mergeEvent.ObjectKind == "merge_request" {
 
-		err = service.ProcessMergeOpenedActivity(ctx, params.XGitlabToken, mergeEvent)
-		if err != nil {
-			msg := fmt.Sprintf("processing gitlab merge event failed : %v", err)
-			log.WithFields(f).Errorf(msg)
-			// Always return 200 response
-			return gitlab_activity.NewGitlabActivityOK()
+			if mergeEvent.ObjectAttributes.State != "opened" && mergeEvent.ObjectAttributes.State != "update" && mergeEvent.ObjectAttributes.State != "reopen" {
+				msg := fmt.Sprintf("parsing gitlab merge event : %s failed, only [open, update, reopen] accepted", mergeEvent.ObjectAttributes.State)
+				log.WithFields(f).Debugf(msg)
+				// Always return 200 response
+				return gitlab_activity.NewGitlabActivityOK()
+			}
+
+			err = service.ProcessMergeOpenedActivity(ctx, params.XGitlabToken, mergeEvent)
+			if err != nil {
+				msg := fmt.Sprintf("processing gitlab merge event failed : %v", err)
+				log.WithFields(f).Debugf(msg)
+				// Always return 200 response
+				return gitlab_activity.NewGitlabActivityOK()
+			}
+
+		} else if mergeEvent.ObjectKind == "note" && strings.Contains(mergeEvent.ObjectAttributes.Description, "/easycla") {
+			log.WithFields(f).Debugf("processing gitlab merge comment event")
+			err = service.ProcessMergeCommentActivity(ctx, params.XGitlabToken, mergeEvent)
+			if err != nil {
+				msg := fmt.Sprintf("processing gitlab merge comment event failed : %v", err)
+				log.WithFields(f).Debugf(msg)
+				// Always return 200 response
+				return gitlab_activity.NewGitlabActivityOK()
+			}
 		}
 
 		return gitlab_activity.NewGitlabActivityOK()

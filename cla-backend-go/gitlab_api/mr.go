@@ -24,6 +24,26 @@ func FetchMrInfo(client *gitlab.Client, projectID int, mergeID int) (*gitlab.Mer
 	return m, nil
 }
 
+func GetLatestCommit(client *gitlab.Client, projectID int, mergeID int) (*gitlab.Commit, error) {
+	f := logrus.Fields{
+		"functionName": "gitlab_api.GetLatestCommit",
+		"projectID":    projectID,
+		"mergeID":      mergeID,
+	}
+
+	log.WithFields(f).Debug("fetching latest commit...")
+	commits, _, err := client.MergeRequests.GetMergeRequestCommits(projectID, mergeID, &gitlab.GetMergeRequestCommitsOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("fetching merge request commits : %d for project : %v failed : %v", mergeID, projectID, err)
+	}
+
+	if len(commits) == 0 {
+		return nil, fmt.Errorf("no commits found for project : %d and merge id : %d", projectID, mergeID)
+	}
+
+	return commits[0], nil
+}
+
 // FetchMrParticipants is responsible to get unique mr participants
 func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int) ([]*gitlab.User, error) {
 	f := logrus.Fields{
@@ -70,6 +90,16 @@ func FetchMrParticipants(client *gitlab.Client, projectID int, mergeID int) ([]*
 
 // SetCommitStatus is responsible for setting the MR status for commit sha
 func SetCommitStatus(client *gitlab.Client, projectID int, commitSha string, state gitlab.BuildStateValue, message string, targetURL string) error {
+	f := logrus.Fields{
+		"functionName": "gitlab_api.SetCommitStatus",
+		"projectID":    projectID,
+		"commitSha":    commitSha,
+		"state":        state,
+		"message":      message,
+		"targetURL":    targetURL,
+	}
+
+	log.WithFields(f).Debug("setting commit status...")
 	options := &gitlab.SetCommitStatusOptions{
 		State:       state,
 		Name:        gitlab.String("EasyCLA Bot"),
@@ -85,6 +115,8 @@ func SetCommitStatus(client *gitlab.Client, projectID int, commitSha string, sta
 		return fmt.Errorf("setting commit status for the sha : %s and project id : %d failed : %v", commitSha, projectID, err)
 	}
 
+	log.WithFields(f).Debug("commit status set successfully")
+
 	return nil
 }
 
@@ -97,6 +129,8 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, message str
 	}
 
 	var previousNote *gitlab.Note
+	hasEasyclaComment := false
+
 	if len(notes) > 0 {
 		for _, n := range notes {
 			if strings.Contains(n.Body, "cla-signed.svg") || strings.Contains(n.Body, "cla-not-signed.svg") || strings.Contains(n.Body, "cla-missing-id.svg") || strings.Contains(n.Body, "cla-confirmation-needed.svg") {
@@ -104,10 +138,16 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, message str
 				break
 			}
 		}
+		for _, n := range notes {
+			if strings.Contains(n.Body, "/easycla") {
+				hasEasyclaComment = true
+				break
+			}
+		}
 	}
 
-	if previousNote == nil {
-		log.Debugf("no previous comments found for project id : %d and merge id : %d", projectID, mergeID)
+	if previousNote == nil || hasEasyclaComment {
+		log.Debugf("creating comment for project id : %d and merge id : %d", projectID, mergeID)
 		_, _, err = client.Notes.CreateMergeRequestNote(projectID, mergeID, &gitlab.CreateMergeRequestNoteOptions{
 			Body: &message,
 		})

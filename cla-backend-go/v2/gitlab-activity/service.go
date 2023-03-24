@@ -58,6 +58,7 @@ type gatedGitlabUser struct {
 }
 
 type Service interface {
+	ProcessMergeCommentActivity(ctx context.Context, secretToken string, commentEvent *gitlab.MergeEvent) error
 	ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error
 	ProcessMergeActivity(ctx context.Context, secretToken string, input *ProcessMergeActivityInput) error
 	IsUserApprovedForSignature(ctx context.Context, f logrus.Fields, corporateSignature *models.Signature, user *models.User, gitlabUser *gitlab.User) bool
@@ -113,6 +114,50 @@ func (s *service) ProcessMergeOpenedActivity(ctx context.Context, secretToken st
 
 }
 
+func (s *service) ProcessMergeCommentActivity(ctx context.Context, secretToken string, commentEvent *gitlab.MergeEvent) error {
+	f := logrus.Fields{
+		"functionName":      "ProcessMergeCommentActivity",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"gitlabProjectPath": commentEvent.Project.PathWithNamespace,
+		"projectID":         commentEvent.Project.ID,
+		"projectPath":       commentEvent.Project.PathWithNamespace,
+		"projectName":       commentEvent.Project.Name,
+		"repositoryPath":    commentEvent.Project.PathWithNamespace,
+		"commitSha":         commentEvent.ObjectAttributes.LastCommit.ID,
+	}
+
+	// Since we cant fetch the mergeID for comment event, we need to parse it from the URL
+	urlPathList := strings.Split(commentEvent.ObjectAttributes.URL, "/")
+	mergeID := strings.Split(urlPathList[len(urlPathList)-1], "#")[0]
+	if mergeID == "" {
+		return fmt.Errorf("merge ID not found in URL: %s", commentEvent.ObjectAttributes.URL)
+	}
+	mergeIDInt, err := strconv.Atoi(mergeID)
+	if err != nil {
+		return fmt.Errorf("unable to convert merge ID to int: %s, error: %v", mergeID, err)
+	}
+
+	f["mergeID"] = mergeIDInt
+
+	projectName := commentEvent.Project.Name
+	projectPath := commentEvent.Project.PathWithNamespace
+	projectNamespace := commentEvent.Project.Namespace
+	projectID := commentEvent.Project.ID
+	repositoryPath := commentEvent.Project.PathWithNamespace
+
+	input := &ProcessMergeActivityInput{
+		ProjectName:      projectName,
+		ProjectPath:      projectPath,
+		ProjectNamespace: projectNamespace,
+		ProjectID:        projectID,
+		MergeID:          mergeIDInt,
+		RepositoryPath:   repositoryPath,
+		LastCommitSha:    commentEvent.ObjectAttributes.LastCommit.ID,
+	}
+
+	return s.ProcessMergeActivity(ctx, secretToken, input)
+}
+
 func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, input *ProcessMergeActivityInput) error {
 	projectName := input.ProjectName
 	projectPath := input.ProjectPath
@@ -131,7 +176,6 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 		"gitlabProjectNamespace": projectNamespace,
 		"mergeID":                mergeID,
 		"repositoryName":         repositoryPath,
-		"lastCommitSha":          lastCommitSha,
 	}
 
 	log.WithFields(f).Debugf("looking up for gitlab org in easycla records ...")
@@ -158,6 +202,18 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 	if err != nil {
 		return fmt.Errorf("initializing gitlab client : %v", err)
 	}
+
+	if lastCommitSha == "" {
+		log.WithFields(f).Debugf("loading GitLab merge request info for merge request: %d", mergeID)
+		lastSha, err := gitlab_api.GetLatestCommit(gitlabClient, projectID, mergeID)
+		if err != nil {
+			return fmt.Errorf("fetching info for mr : %d and project : %d: %s, failed : %v", mergeID, projectID, projectName, err)
+		}
+		lastCommitSha = lastSha.ID
+	}
+
+	f["lastCommitSha"] = lastCommitSha
+	log.WithFields(f).Debugf("last commit sha for merge request: %d is %s", mergeID, lastCommitSha)
 
 	_, err = gitlab_api.FetchMrInfo(gitlabClient, projectID, mergeID)
 	if err != nil {
@@ -188,7 +244,7 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 	claGroupID := claGroup.ClaGroupID
 	log.WithFields(f).Debugf("gitlabOrg : %s is associated with cla group id : %s", gitlabOrg.OrganizationName, claGroupID)
 
-	log.WithFields(f).Debugf("found following participants for the MR : %d", len(participants))
+	log.WithFields(f).Debugf("found %d participants for the MR ", len(participants))
 	missingCLAMsg := "Missing CLA Authorization"
 	signedCLAMsg := "EasyCLA check passed. You are authorized to contribute."
 
@@ -246,7 +302,7 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 		return fmt.Errorf("setting comment failed : %v", mrCommentErr)
 	}
 
-	return err
+	return nil
 }
 
 func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*gitlab.User, signURL string) string {
