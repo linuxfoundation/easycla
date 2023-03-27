@@ -10,7 +10,7 @@ import (
 	"path"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 // Validator data model

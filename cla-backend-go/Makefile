@@ -14,6 +14,7 @@ FUNCTIONAL_TESTS_BIN = functional-tests
 USER_SUBSCRIBE_BIN = user-subscribe-lambda
 REPOSITORY_UPDATE_BIN = repository-update-tool
 MAKEFILE_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+GOPRIVATE=github.com/LF-Engineering/*
 BUILD_TIME=$(shell sh -c 'date -u +%FT%T%z')
 VERSION := $(shell sh -c 'git describe --always --tags')
 BRANCH := $(shell sh -c 'git rev-parse --abbrev-ref HEAD')
@@ -229,7 +230,7 @@ mock:
 
 
 deps:
-	@go env -w GOPRIVATE=github.com/LF-Engineering/*
+	@go env -w GOPRIVATE=$(GOPRIVATE)
 	@go mod download -x
 
 build-prep:
