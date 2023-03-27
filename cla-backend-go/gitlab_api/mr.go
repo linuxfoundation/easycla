@@ -129,7 +129,6 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, message str
 	}
 
 	var previousNote *gitlab.Note
-	hasEasyclaComment := false
 
 	if len(notes) > 0 {
 		for _, n := range notes {
@@ -138,15 +137,9 @@ func SetMrComment(client *gitlab.Client, projectID int, mergeID int, message str
 				break
 			}
 		}
-		for _, n := range notes {
-			if strings.Contains(n.Body, "/easycla") {
-				hasEasyclaComment = true
-				break
-			}
-		}
 	}
 
-	if previousNote == nil || hasEasyclaComment {
+	if previousNote == nil {
 		log.Debugf("creating comment for project id : %d and merge id : %d", projectID, mergeID)
 		_, _, err = client.Notes.CreateMergeRequestNote(projectID, mergeID, &gitlab.CreateMergeRequestNoteOptions{
 			Body: &message,
