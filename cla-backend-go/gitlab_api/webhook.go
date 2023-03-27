@@ -22,6 +22,7 @@ func SetWebHook(gitLabClient *gitlab.Client, hookURL string, projectID int, toke
 			URL:                   gitlab.String(hookURL),
 			MergeRequestsEvents:   gitlab.Bool(true),
 			PushEvents:            gitlab.Bool(true),
+			NoteEvents:            gitlab.Bool(true), // subscribe to comment events
 			EnableSSLVerification: gitlab.Bool(true),
 			Token:                 gitlab.String(token),
 		})
@@ -36,6 +37,7 @@ func SetWebHook(gitLabClient *gitlab.Client, hookURL string, projectID int, toke
 			URL:                   gitlab.String(hookURL),
 			MergeRequestsEvents:   gitlab.Bool(true),
 			PushEvents:            gitlab.Bool(true),
+			NoteEvents:            gitlab.Bool(true), // subscribe to comment events
 			EnableSSLVerification: gitlab.Bool(true),
 			Token:                 gitlab.String(token),
 		})
