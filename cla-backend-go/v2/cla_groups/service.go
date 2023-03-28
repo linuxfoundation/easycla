@@ -433,17 +433,12 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 	var foundationName = sfProjectModelDetails.Name
 
 	// If it's a project...
-	if utils.IsProjectCategory(sfProjectModelDetails, parentDetails) {
-		log.WithFields(f).Debugf("project SFID: %s is of type project ", projectOrFoundationSFID)
+	if sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup || sfProjectModelDetails.ProjectType == utils.ProjectTypeProject {
+		log.WithFields(f).Debugf("looking up CLA Groups for project or Foundation: %s with projectType: %s", projectOrFoundationSFID, sfProjectModelDetails.ProjectType)
 		var appendErr error
 		foundationID, foundationName, appendErr = s.appendCLAGroupsForProject(ctx, f, projectOrFoundationSFID, sfProjectModelDetails, v1ClaGroups)
 		if appendErr != nil {
 			return nil, appendErr
-		}
-	} else if sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup {
-		log.WithFields(f).Debugf("project SFID: %s is of type project group ", projectOrFoundationSFID)
-		if err := s.appendCLAGroupsForFoundation(ctx, f, projectOrFoundationSFID, v1ClaGroups); err != nil {
-			return nil, err
 		}
 	} else {
 		msg := fmt.Sprintf("unsupported foundation/project SFID type: %s", sfProjectModelDetails.ProjectType)
