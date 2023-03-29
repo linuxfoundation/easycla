@@ -658,29 +658,29 @@ func isFoundationIDInList(foundationSFID string, projectsSFIDs []string) bool {
 	return false
 }
 
-// getUniqueCLAGroupIDs logic to extract the unique
-func getUniqueCLAGroupIDs(projectCLAGroupMappings []*projects_cla_groups.ProjectClaGroup) []string {
-	// to ensure we get the distinct count
-	claGroupsMap := map[string]bool{}
-	for _, projectCLAGroupModel := range projectCLAGroupMappings {
-		// ensure that following goroutine gets a copy of projectSFID
-		projectCLAGroupClaGroupID := projectCLAGroupModel.ClaGroupID
-		// No need to re-process the same CLA group
-		if _, ok := claGroupsMap[projectCLAGroupClaGroupID]; ok {
-			continue
-		}
+// // getUniqueCLAGroupIDs logic to extract the unique
+// func getUniqueCLAGroupIDs(projectCLAGroupMappings []*projects_cla_groups.ProjectClaGroup) []string {
+// 	// to ensure we get the distinct count
+// 	claGroupsMap := map[string]bool{}
+// 	for _, projectCLAGroupModel := range projectCLAGroupMappings {
+// 		// ensure that following goroutine gets a copy of projectSFID
+// 		projectCLAGroupClaGroupID := projectCLAGroupModel.ClaGroupID
+// 		// No need to re-process the same CLA group
+// 		if _, ok := claGroupsMap[projectCLAGroupClaGroupID]; ok {
+// 			continue
+// 		}
 
-		// Add entry into our map - so we know not to re-process this CLA Group
-		claGroupsMap[projectCLAGroupClaGroupID] = true
-	}
+// 		// Add entry into our map - so we know not to re-process this CLA Group
+// 		claGroupsMap[projectCLAGroupClaGroupID] = true
+// 	}
 
-	keys := make([]string, 0, len(claGroupsMap))
-	for k := range claGroupsMap {
-		keys = append(keys, k)
-	}
+// 	keys := make([]string, 0, len(claGroupsMap))
+// 	for k := range claGroupsMap {
+// 		keys = append(keys, k)
+// 	}
 
-	return keys
-}
+// 	return keys
+// }
 
 func buildProjectNode(projectSummaryList []*v2ProjectServiceModels.ProjectSummary) *ProjectNode {
 	f := logrus.Fields{
