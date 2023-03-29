@@ -428,9 +428,11 @@ func (s *service) ListClaGroupsForFoundationOrProject(ctx context.Context, proje
 		}
 	}
 
-	// Lookup the foundation name - need this if we were a project - need to lookup parent ID/Name
-	var foundationID = sfProjectModelDetails.ID
-	var foundationName = sfProjectModelDetails.Name
+	// // Lookup the foundation name - need this if we were a project - need to lookup parent ID/Name
+	// var foundationID = sfProjectModelDetails.ID
+	// var foundationName = sfProjectModelDetails.Name
+	var foundationID string
+	var foundationName string
 
 	// If it's a project...
 	if sfProjectModelDetails.ProjectType == utils.ProjectTypeProjectGroup || sfProjectModelDetails.ProjectType == utils.ProjectTypeProject {
@@ -607,41 +609,41 @@ func (s *service) buildClaGroupSummaryResponseModel(ctx context.Context, f logru
 	return claGroupIDList, nil
 }
 
-func (s *service) collateFoundationCLAGroups(ctx context.Context, uniqueCLAGroupList []string) []v1Models.ClaGroup {
-	var wg sync.WaitGroup
-	wg.Add(len(uniqueCLAGroupList))
-	claGroups := make([]v1Models.ClaGroup, 0)
-	for _, claGroupID := range uniqueCLAGroupList {
-		go func(claGroupID string) {
-			defer wg.Done()
-			claGroupModel, claGroupErr := s.v1ProjectService.GetCLAGroupByID(ctx, claGroupID)
-			if claGroupErr != nil {
-				log.Warnf("skipping - error looking up CLA Group by ID: %s, error: %+v", claGroupID, claGroupErr)
-			} else {
-				claGroups = append(claGroups, *claGroupModel)
-			}
-		}(claGroupID)
-	}
-	wg.Wait()
-	return claGroups
-}
+// func (s *service) collateFoundationCLAGroups(ctx context.Context, uniqueCLAGroupList []string) []v1Models.ClaGroup {
+// 	var wg sync.WaitGroup
+// 	wg.Add(len(uniqueCLAGroupList))
+// 	claGroups := make([]v1Models.ClaGroup, 0)
+// 	for _, claGroupID := range uniqueCLAGroupList {
+// 		go func(claGroupID string) {
+// 			defer wg.Done()
+// 			claGroupModel, claGroupErr := s.v1ProjectService.GetCLAGroupByID(ctx, claGroupID)
+// 			if claGroupErr != nil {
+// 				log.Warnf("skipping - error looking up CLA Group by ID: %s, error: %+v", claGroupID, claGroupErr)
+// 			} else {
+// 				claGroups = append(claGroups, *claGroupModel)
+// 			}
+// 		}(claGroupID)
+// 	}
+// 	wg.Wait()
+// 	return claGroups
+// }
 
-func (s *service) appendCLAGroupsForFoundation(ctx context.Context, f logrus.Fields, projectOrFoundationSFID string, v1ClaGroups *v1Models.ClaGroups) error {
-	log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
-	projectCLAGroupMappings, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, projectOrFoundationSFID)
-	if lookupErr != nil {
-		log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
-		return &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
-	}
-	log.WithFields(f).Debugf("discovered %d projects based on foundation SFID...", len(projectCLAGroupMappings))
+// func (s *service) appendCLAGroupsForFoundation(ctx context.Context, f logrus.Fields, projectOrFoundationSFID string, v1ClaGroups *v1Models.ClaGroups) error {
+// 	log.WithFields(f).Debug("found 'project group' in platform project service. Locating CLA Groups for foundation...")
+// 	projectCLAGroupMappings, lookupErr := s.projectsClaGroupsRepo.GetProjectsIdsForFoundation(ctx, projectOrFoundationSFID)
+// 	if lookupErr != nil {
+// 		log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", lookupErr)
+// 		return &utils.ProjectCLAGroupMappingNotFound{ProjectSFID: projectOrFoundationSFID, Err: lookupErr}
+// 	}
+// 	log.WithFields(f).Debugf("discovered %d projects based on foundation SFID...", len(projectCLAGroupMappings))
 
-	// Determine how many CLA Groups we have - we could have many and possibly return duplicates, we use this loop
-	uniqueCLAGroupList := getUniqueCLAGroupIDs(projectCLAGroupMappings)
+// 	// Determine how many CLA Groups we have - we could have many and possibly return duplicates, we use this loop
+// 	uniqueCLAGroupList := getUniqueCLAGroupIDs(projectCLAGroupMappings)
 
-	v1ClaGroups.Projects = append(v1ClaGroups.Projects, s.collateFoundationCLAGroups(ctx, uniqueCLAGroupList)...)
+// 	v1ClaGroups.Projects = append(v1ClaGroups.Projects, s.collateFoundationCLAGroups(ctx, uniqueCLAGroupList)...)
 
-	return nil
-}
+// 	return nil
+// }
 
 func (s *service) appendCLAGroupsForProject(ctx context.Context, f logrus.Fields, projectOrFoundationSFID string, sfProjectModelDetails *v2ProjectServiceModels.ProjectOutputDetailed, v1ClaGroups *v1Models.ClaGroups) (string, string, error) {
 	// Since this is a project and not a foundation, we'll want to set he parent foundation ID and name (which is
@@ -701,6 +703,11 @@ func (s *service) appendCLAGroupsForProject(ctx context.Context, f logrus.Fields
 			if v1ClaGroupErr != nil {
 				log.WithFields(f).Warnf("problem locating CLA group by project id, error: %+v", v1ClaGroupErr)
 				return
+			}
+			if claData.ProjectID == "" {
+				log.WithFields(f).Warnf("problem locating CLA group by project id: %s", childProject)
+			} else {
+				log.WithFields(f).Debugf("loading CLA Group by ID: '%s' - %+v", claData.ProjectID, claData)
 			}
 			_, found := Find(v1ClaGroups.Projects, claData.ProjectID)
 			if !found {
