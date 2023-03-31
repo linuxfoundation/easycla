@@ -381,6 +381,8 @@ func (repo *repo) GetClaGroupByProjectSFID(ctx context.Context, projectSFID stri
 		return nil, err
 	}
 
+	log.WithFields(f).Debugf("found CLA Group ID: %s for project SFID: %s", claGroupProject.ClaGroupID, projectSFID)
+
 	return repo.getCLAGroupByID(ctx, claGroupProject.ClaGroupID, loadRepoDetails)
 }
 
