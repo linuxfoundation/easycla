@@ -397,13 +397,39 @@ func (s *Service) GetGitLabOrganizationsByProjectSFID(ctx context.Context, proje
 	log.WithFields(f).Debug("located parentProjectID...")
 
 	// Load the GitLab Organization and Repository details - result will be missing CLA Group info and ProjectSFID details
-	log.WithFields(f).Debugf("loading Gitlab organizations for projectSFID: %s", projectSFID)
-	orgList, err := s.repo.GetGitLabOrganizationsByProjectSFID(ctx, projectSFID)
+	pcg, pcgErr := s.claGroupRepository.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem loading gitlab organizations from the project service")
-		return nil, err
+		if pcgErr == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
+			log.WithFields(f).Warnf("unable to locate project CLA Group mapping for project SFID: %s, error: %+v", projectSFID, pcgErr)
+		} else {
+			log.WithFields(f).WithError(pcgErr).Warnf("unable to load project CLA group for project SFID: %s", projectSFID)
+			return nil, pcgErr
+		}
 	}
-	log.WithFields(f).Debugf("loaded %d Gitlab organizations for projectSFID: %s", len(orgList.List), projectSFID)
+
+	orgList := &v2Models.GitlabOrganizations{
+		List: make([]*v2Models.GitlabOrganization, 0),
+	}
+
+	if pcg != nil && pcg.FoundationSFID != "" {
+		log.WithFields(f).Debugf("loading Gitlab organizations for foundationSFID: %s", pcg.FoundationSFID)
+		orgList, err = s.repo.GetGitLabOrganizationsByFoundationSFID(ctx, pcg.FoundationSFID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem loading gitlab organizations from the project service")
+			return nil, err
+		}
+		log.WithFields(f).Debugf("loaded %d Gitlab organizations for foundationSFID: %s", len(orgList.List), pcg.FoundationSFID)
+	} else {
+		log.WithFields(f).Debugf("loading Gitlab organizations for projectSFID: %s", projectSFID)
+		orgList, err = s.repo.GetGitLabOrganizationsByProjectSFID(ctx, projectSFID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem loading gitlab organizations from the project service")
+			return nil, err
+		}
+		log.WithFields(f).Debugf("loaded %d Gitlab organizations for projectSFID: %s", len(orgList.List), projectSFID)
+	}
+
+	log.WithFields(f).Debugf("GitLab Organizations: %+v ", orgList)
 
 	// Our response model
 	out := &v2Models.GitlabProjectOrganizations{
@@ -477,6 +503,7 @@ func (s *Service) toGitLabProjectOrganizationList(ctx context.Context, dbModels 
 	}
 
 	var response []*v2Models.GitlabProjectOrganization
+	log.WithFields(f).Debugf("converting %d GitLab organizations to response model", len(dbModels.List))
 
 	orgMap := make(map[string]*v2Models.GitlabProjectOrganization)
 	for _, org := range dbModels.List {
