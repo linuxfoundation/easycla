@@ -49,6 +49,7 @@ type RepositoryInterface interface {
 	GetGitLabOrganizationsEnabled(ctx context.Context) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganizationsEnabledWithAutoEnabled(ctx context.Context) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganizationsByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
+	GetGitLabOrganizationsByFoundationSFID(ctx context.Context, foundationSFID string) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByExternalID(ctx context.Context, gitLabGroupID int64) (*common.GitLabOrganization, error)
@@ -223,6 +224,14 @@ func (repo *Repository) GetGitLabOrganizationsEnabledWithAutoEnabled(ctx context
 	//	And(expression.Name(GitLabOrganizationsAutoEnabledColumn).Equal(expression.Value(true)))
 	filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true))
 	return repo.getScanResults(ctx, &filter)
+}
+
+// GetGitLabOrganizationsByFoundationSFID returns the list of GitLab groups/organizations under the given foundation
+func (repo *Repository) GetGitLabOrganizationsByFoundationSFID(ctx context.Context, foundationSFID string) (*v2Models.GitlabOrganizations, error) {
+	// Build the scan/query expression
+	condition := expression.Key(GitLabOrganizationsOrganizationSFIDColumn).Equal(expression.Value(foundationSFID))
+	filter := expression.Name(GitLabOrganizationsEnabledColumn).Equal(expression.Value(true))
+	return repo.getOrganizationsWithConditionFilter(ctx, condition, filter, GitLabOrgOrganizationSFIDIndex)
 }
 
 // GetGitLabOrganizationsByProjectSFID get GitLab organizations based on the project SFID or parent project SFID
