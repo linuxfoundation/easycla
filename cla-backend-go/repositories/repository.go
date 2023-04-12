@@ -86,14 +86,32 @@ func (r *Repository) GitHubAddRepository(ctx context.Context, externalProjectID 
 	}
 
 	// Check first to see if the repository already exists
-	_, err := r.GitHubGetRepositoryByGithubID(ctx, utils.StringValue(input.RepositoryExternalID), true)
+	repo, err := r.GitHubGetRepositoryByExternalID(ctx, utils.StringValue(input.RepositoryExternalID))
 	if err != nil {
 		// Expecting Not found - no issue if not found - all other error we throw
 		if _, ok := err.(*utils.GitHubRepositoryNotFound); !ok {
 			return nil, err
 		}
 	} else {
-		return nil, errors.New("github repository already exist")
+		if repo.Enabled {
+			return nil, errors.New("github repository already exist")
+		}
+		// Here repository already exists. We update the same repository with latest document in order to avoid duplicate entries.
+		var enabled = true
+		var repository *models.GithubRepository
+		repository, err = r.GitHubUpdateRepository(ctx, repo.RepositoryID, projectSFID, externalProjectID, &models.GithubRepositoryInput{
+			RepositoryName:             input.RepositoryName,
+			RepositoryOrganizationName: input.RepositoryOrganizationName,
+			RepositoryProjectID:        input.RepositoryProjectID,
+			Enabled:                    &enabled,
+			RepositoryType:             input.RepositoryType,
+			RepositoryURL:              input.RepositoryURL,
+			Note:                       "Disabled repository enabled and updated",
+		})
+		if err != nil {
+			return nil, err
+		}
+		return repository, nil
 	}
 
 	_, currentTime := utils.CurrentTime()
@@ -801,6 +819,7 @@ func (r *Repository) GitHubGetRepositoryByGithubID(ctx context.Context, external
 	var result *RepositoryDBModel
 	if len(results.Items) == 0 {
 		msg := fmt.Sprintf("no repository found matching external repository ID: %s", externalID)
+		log.WithFields(f).Warn(msg)
 		return nil, &utils.GitHubRepositoryNotFound{
 			Message: msg,
 		}

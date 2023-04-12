@@ -82,25 +82,20 @@ type SignatureRepository interface {
 	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
 	GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) (*models.Signature, error)
 	CreateProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) error
-	getProjectCompanyEmployeeSignatureCount(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, responseChannel chan int64)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams, pageSize int64, loadACL bool) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64) (*models.Signatures, error)
 	ProjectSignatures(ctx context.Context, projectID string) (*models.Signatures, error)
 	UpdateApprovalList(ctx context.Context, claManager *models.User, claGroupModel *models.ClaGroup, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error)
-
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
 	RemoveCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
-
-	removeColumn(ctx context.Context, signatureID, columnName string) (*models.Signature, error)
-
 	AddSigTypeSignedApprovedID(ctx context.Context, signatureID string, val string) error
 	AddUsersDetails(ctx context.Context, signatureID string, userID string) error
 	AddSignedOn(ctx context.Context, signatureID string) error
-
 	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error)
 	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
+	ActivateSignature(ctx context.Context, signatureID string) error
 }
 
 type iclaSignatureWithDetails struct {
@@ -4093,6 +4088,44 @@ func (repo repository) EclaAutoCreate(ctx context.Context, signatureID string, a
 		return updateErr
 	}
 
+	return nil
+}
+
+// ActivateSignature used to activate signature again, in case of deactivated signature found
+func (repo repository) ActivateSignature(ctx context.Context, signatureID string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signature.repository.ActivateSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+	}
+
+	// Build the expression
+	expressionUpdate := expression.Set(expression.Name("signature_approved"), expression.Value(true)).Set(expression.Name("signature_signed"), expression.Value(false))
+
+	expr, err := expression.NewBuilder().WithUpdate(expressionUpdate).Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for signature: %s, error: %v", signatureID, err)
+		return err
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		Key: map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: aws.String(signatureID),
+			},
+		},
+		ConditionExpression: expr.KeyCondition(),
+		TableName:           aws.String(repo.signatureTableName),
+		UpdateExpression:    expr.Update(),
+	}
+
+	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
+	if updateErr != nil {
+		log.WithFields(f).Warnf("error updating signature: %s, error: %v", signatureID, updateErr)
+		return updateErr
+	}
 	return nil
 }
 

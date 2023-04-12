@@ -17,6 +17,9 @@ import (
 
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/communitybridge/easycla/cla-backend-go/company"
+	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
@@ -70,10 +73,12 @@ type Service struct {
 	gitLabApp          *gitlabApi.App
 	storeRepo          store.Repository
 	userService        users.Service
+	signatureRepo      signatures.SignatureRepository
+	companyRepository  company.IRepository
 }
 
 // NewService creates a new gitlab organization service
-func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceInterface, claGroupRepository projects_cla_groups.Repository, storeRepo store.Repository, userService users.Service) ServiceInterface {
+func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceInterface, claGroupRepository projects_cla_groups.Repository, storeRepo store.Repository, userService users.Service, signaturesRepo signatures.SignatureRepository, companyRepository company.IRepository) ServiceInterface {
 	return &Service{
 		repo:               repo,
 		v2GitRepoService:   v2GitRepoService,
@@ -81,6 +86,8 @@ func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceI
 		gitLabApp:          gitlabApi.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 		userService:        userService,
 		storeRepo:          storeRepo,
+		signatureRepo:      signaturesRepo,
+		companyRepository:  companyRepository,
 	}
 }
 
@@ -835,7 +842,49 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 		log.WithFields(f).Warn(msg)
 		return nil, err
 	}
+	var signatureID string
+	icla, signErr := s.signatureRepo.GetIndividualSignature(ctx, gitlabRepo.RepositoryClaGroupID, claUser.UserID, aws.Bool(false), aws.Bool(true))
+	if signErr != nil {
+		log.WithFields(f).WithError(signErr).Warnf("problem checking for ICLA signature for user: %s", claUser.UserID)
+	}
+	if icla != nil && icla.SignatureID != "" {
+		log.WithFields(f).Infof("loaded individual signature id: %s for claGroupID: %s and UserID: %s", icla.SignatureID, gitlabRepo.RepositoryClaGroupID, claUser.UserID)
+		signatureID = icla.SignatureID
+	} else {
+		log.WithFields(f).Debugf("ICLA signature check failed for user: %+v on project: %s - ICLA not signed", claUser, gitlabRepo.RepositoryClaGroupID)
+		if claUser.CompanyID == "" {
+			log.WithFields(f).Debugf("user does not have association with any company, can't confirm employee acknoledgement")
+			return &consoleURL, nil
+		}
 
+		companyID := claUser.CompanyID
+		_, err = s.companyRepository.GetCompany(ctx, companyID)
+		if err != nil {
+			msg := fmt.Sprintf("can't load company record: %s for user: %s (%s), error: %v", companyID, claUser.Username, claUser.UserID, err)
+			log.WithFields(f).Errorf(msg)
+			return &consoleURL, nil
+		}
+
+		corporateSignature, err := s.signatureRepo.GetCorporateSignature(ctx, gitlabRepo.RepositoryClaGroupID, companyID, aws.Bool(false), aws.Bool(true))
+		if err != nil {
+			msg := fmt.Sprintf("can't load company signature record for company: %s for user : %s (%s), error : %v", companyID, claUser.Username, claUser.UserID, err)
+			log.WithFields(f).Errorf(msg)
+			return &consoleURL, nil
+		}
+
+		if corporateSignature == nil {
+			msg := fmt.Sprintf("no corporate signature (CCLA) record found for company : %s ", companyID)
+			log.WithFields(f).Errorf(msg)
+			return &consoleURL, nil
+		}
+		log.WithFields(f).Debugf("loaded corporate signature id: %s for claGroupID: %s and companyID: %s", corporateSignature.SignatureID, gitlabRepo.RepositoryClaGroupID, companyID)
+		signatureID = corporateSignature.SignatureID
+	}
+	err = s.signatureRepo.ActivateSignature(ctx, signatureID)
+	if err != nil {
+		msg := fmt.Sprintf("found error on Activate Signature error : %s", err.Error())
+		log.WithFields(f).Errorf(msg)
+	}
 	return &consoleURL, nil
 }
 

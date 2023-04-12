@@ -1833,8 +1833,8 @@ def get_co_authors_from_commit(commit):
     """
     fn = "get_co_authors_from_commit"
     co_authors = []
-    if commit.get("commit"):
-        commit_message = commit.get("commit").get("message")
+    if commit.commit:
+        commit_message = commit.commit.message
         cla.log.debug(f'{fn} - commit message: {commit_message}')
         if commit_message:
             co_authors = re.findall(r"Co-authored-by: (.*) <(.*)>", commit_message)
