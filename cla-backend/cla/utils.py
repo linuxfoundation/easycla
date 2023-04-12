@@ -8,6 +8,7 @@ Utility functions for the CLA project.
 import inspect
 import json
 import os
+import re
 import urllib.parse
 import urllib.parse as urlparse
 from datetime import datetime
@@ -1825,3 +1826,16 @@ def get_public_email(user):
     """
     if len(user.get_all_user_emails()) > 0:
         return next((email for email in user.get_all_user_emails() if "noreply.github.com" not in email), None)
+
+def get_co_authors_from_commit(commit):
+    """
+    Helper function to return co-authors from commit
+    """
+    fn = "get_co_authors_from_commit"
+    co_authors = []
+    if commit.get("commit"):
+        commit_message = commit.get("commit").get("message")
+        cla.log.debug(f'{fn} - commit message: {commit_message}')
+        if commit_message:
+            co_authors = re.findall(r"Co-authored-by: (.*) <(.*)>", commit_message)
+    return co_authors
