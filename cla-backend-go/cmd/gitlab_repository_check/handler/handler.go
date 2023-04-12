@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
 	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
@@ -135,11 +136,18 @@ func Handler(ctx context.Context) error {
 		v1ProjectClaGroupRepo,
 	})
 
-	usersService := users.NewService(usersRepo, eventsService)
+	gerritService := gerrits.NewService(gerritRepo, &gerrits.LFGroup{
+		LfBaseURL:    configFile.LFGroup.ClientURL,
+		ClientID:     configFile.LFGroup.ClientID,
+		ClientSecret: configFile.LFGroup.ClientSecret,
+		RefreshToken: configFile.LFGroup.RefreshToken,
+	})
 
+	usersService := users.NewService(usersRepo, eventsService)
+	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService, gitV1Repository, githubOrganizationsRepo, gerritService)
 	v2RepositoriesService := v2Repositories.NewService(gitV1Repository, gitV2Repository, v1ProjectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
 	// gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo)
-	gitlabOrganizationService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepo, usersService)
+	gitlabOrganizationService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepo, usersService, signaturesRepo, v1CompanyRepo)
 
 	// Query GitLab Groups
 	// for each group
