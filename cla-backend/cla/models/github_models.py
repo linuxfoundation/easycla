@@ -958,12 +958,21 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
                 # issue # 3884
                 co_authors = cla.utils.get_co_authors_from_commit(commit)
                 for co_author in co_authors:
+                    # check if co-author is a github user
+                    login, github_id = None, None
+                    email = co_author[1]
+                    name = co_author[0]
+                    user = cla.utils.get_github_user_by_email(email)
+                    cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
+                    if user:
+                        login = user.login
+                        github_id = user.id
                     co_author_summary = UserCommitSummary(
                         commit.sha,
-                        None,
-                        None,
-                        co_author[0],
-                        co_author[1],
+                        github_id,
+                        login,
+                        name,
+                        email,
                         False, False  # default not authorized - will be evaluated and updated later
                     )
                     cla.log.debug(f'{fn} - PR: {pull_request.number}, {co_author_summary}')

@@ -16,6 +16,7 @@ from typing import List, Optional
 from urllib.parse import urlencode
 
 import falcon
+import github
 import requests
 from hug.middleware import SessionMiddleware
 from requests_oauthlib import OAuth2Session
@@ -23,10 +24,11 @@ from requests_oauthlib import OAuth2Session
 import cla
 from cla.middleware import CLALogMiddleware
 from cla.models import DoesNotExist
-from cla.models.dynamo_models import User, Signature, Repository, \
-    Company, Project, Document, \
-    GitHubOrg, Gerrit, UserPermissions, Event, CompanyInvite, ProjectCLAGroup, CCLAWhitelistRequest, CLAManagerRequest, \
-    GitlabOrg
+from cla.models.dynamo_models import (CCLAWhitelistRequest, CLAManagerRequest,
+                                      Company, CompanyInvite, Document, Event,
+                                      Gerrit, GitHubOrg, GitlabOrg, Project,
+                                      ProjectCLAGroup, Repository, Signature,
+                                      User, UserPermissions)
 from cla.models.event_types import EventType
 from cla.user import UserCommitSummary
 
@@ -433,6 +435,7 @@ def get_supported_repository_providers():
     :rtype: dict
     """
     from cla.models.github_models import GitHub, MockGitHub
+
     # from cla.models.gitlab_models import GitLab, MockGitLab
     # return {'github': GitHub, 'mock_github': MockGitHub,
     # 'gitlab': GitLab, 'mock_gitlab': MockGitLab}
@@ -1839,3 +1842,18 @@ def get_co_authors_from_commit(commit):
         if commit_message:
             co_authors = re.findall(r"Co-authored-by: (.*) <(.*)>", commit_message)
     return co_authors
+
+def get_github_user_by_email(email):
+    """
+    Helper function to return github user by email
+    """
+    fn = "get_github_user_by_email"
+    cla.log.debug(f'{fn} - searching for github user by email: {email}')
+    github_client = github.Github()
+    try:
+        users = github_client.search_users(email)
+        if len(users) > 0:
+            return users[0]
+    except Exception as e:
+        cla.log.warning(f'{fn} - unable to find github user by email: {email}, error: {e}')
+    return None
