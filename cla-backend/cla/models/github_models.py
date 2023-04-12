@@ -954,6 +954,20 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
                 )
                 cla.log.debug(f'{fn} - PR: {pull_request.number}, {commit_author_summary}')
                 commit_authors.append(commit_author_summary)
+                # check for co-author details in the commit message: 
+                # issue # 3884
+                co_authors = cla.utils.get_co_authors_from_commit(commit)
+                for co_author in co_authors:
+                    co_author_summary = UserCommitSummary(
+                        commit.sha,
+                        None,
+                        None,
+                        co_author[0],
+                        co_author[1],
+                        False, False  # default not authorized - will be evaluated and updated later
+                    )
+                    cla.log.debug(f'{fn} - PR: {pull_request.number}, {co_author_summary}')
+                    commit_authors.append(co_author_summary)
             except (GithubException, IncompletableObject) as ex:
                 cla.log.debug(f'Commit sha: {commit.sha} exception: {ex}')
                 try:
