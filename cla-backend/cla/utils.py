@@ -1852,7 +1852,7 @@ def get_github_user_by_email(email):
     github_client = github.Github()
     try:
         users = github_client.search_users(email)
-        if len(users) > 0:
+        if len(list(users)) > 0:
             return users[0]
     except Exception as e:
         cla.log.warning(f'{fn} - unable to find github user by email: {email}, error: {e}')
