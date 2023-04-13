@@ -954,8 +954,21 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
                 )
                 cla.log.debug(f'{fn} - PR: {pull_request.number}, {commit_author_summary}')
                 commit_authors.append(commit_author_summary)
-                # check for co-author details in the commit message: 
+                # check for co-author details| committer  in the commit message: 
                 # issue # 3884
+                # committter different from the author
+                if commit.committer:
+                    if commit.committer.id != commit.author.id:
+                        commit_author_summary = UserCommitSummary(
+                            commit.sha,
+                            commit.committer.id,
+                            commit.committer.login,
+                            commit.committer.name,
+                            commit.committer.email,
+                            False, False  # default not authorized - will be evaluated and updated later
+                        )
+                        cla.log.debug(f'{fn} - Committer PR: {pull_request.number}, {commit_author_summary}')
+                        commit_authors.append(commit_author_summary)
                 co_authors = cla.utils.get_co_authors_from_commit(commit)
                 for co_author in co_authors:
                     # check if co-author is a github user
