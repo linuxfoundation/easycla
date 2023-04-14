@@ -63,7 +63,7 @@ type Repository interface {
 	GetRecentEvents(pageSize int64) (*models.EventList, error)
 
 	GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
-	GetCompanyClaGroupEvents(claGroupID string, companySFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
+	GetCompanyClaGroupEvents(projectSFID string, companySFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
 	GetCompanyEvents(companyID, eventType string, nextKey *string, paramPageSize *int64, all bool) (*models.EventList, error)
 	GetFoundationEvents(foundationSFID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error)
 	GetClaGroupEvents(claGroupID string, nextKey *string, paramPageSize *int64, all bool, searchTerm *string) (*models.EventList, error)
@@ -566,20 +566,18 @@ func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, found
 }
 
 // GetCompanyClaGroupEvents returns the list of events for cla group and the company
-func (repo *repository) GetCompanyClaGroupEvents(clagroupID string, companySFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
+func (repo *repository) GetCompanyClaGroupEvents(projectSFID string, companySFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
 	f := logrus.Fields{
 		"functionName":  "v1.events.repository.GetCompanyClaGroupEvents",
-		"claGroupID":    clagroupID,
+		"projectSFID":   projectSFID,
 		"companySFID":   companySFID,
 		"nextKey":       utils.StringValue(nextKey),
 		"paramPageSize": utils.Int64Value(paramPageSize),
 		"loadAll":       all,
 	}
-	log.WithFields(f).Debugf("adding key condition of 'event_cla_group_id = %s'", clagroupID)
-	keyCondition := expression.Key("event_cla_group_id").Equal(expression.Value(clagroupID))
-	filter := expression.Name("event_company_sfid").Equal(expression.Value(companySFID))
-	return repo.queryEventsTable(EventCLAGroupIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, searchTerm)
-
+	log.WithFields(f).Debugf("adding key condition of 'company_sfid_project_id = %s'", expression.Value(fmt.Sprintf("%s#%s", companySFID, projectSFID)))
+	keyCondition := expression.Key("company_sfid_project_id").Equal(expression.Value(fmt.Sprintf("%s#%s", companySFID, projectSFID)))
+	return repo.queryEventsTable(CompanySFIDProjectIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
 
 // GetCompanyEvents returns the list of events for given company id and event types
