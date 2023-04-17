@@ -575,7 +575,7 @@ func (repo *repository) GetCompanyClaGroupEvents(projectSFID string, companySFID
 		"paramPageSize": utils.Int64Value(paramPageSize),
 		"loadAll":       all,
 	}
-	log.WithFields(f).Debugf("adding key condition of 'company_sfid_project_id = %s'", expression.Value(fmt.Sprintf("%s#%s", companySFID, projectSFID)))
+	log.WithFields(f).Debugf("adding key condition of 'company_sfid_project_id = %s'", fmt.Sprintf("%s#%s", companySFID, projectSFID))
 	keyCondition := expression.Key("company_sfid_project_id").Equal(expression.Value(fmt.Sprintf("%s#%s", companySFID, projectSFID)))
 	return repo.queryEventsTable(CompanySFIDProjectIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
