@@ -80,11 +80,6 @@ func (a *autoEnableServiceProvider) CreateAutoEnabledRepository(repo *github.Rep
 		log.Warnf("fetching github org failed : %v", err)
 		return nil, err
 	}
-
-	if !orgModel.AutoEnabled {
-		log.Warnf("skipping adding the repository, autoEnabled flag is off")
-		return nil, ErrAutoEnabledOff
-	}
 	orgName := orgModel.OrganizationName
 
 	claGroupID := orgModel.AutoEnabledClaGroupID
@@ -118,18 +113,55 @@ func (a *autoEnableServiceProvider) CreateAutoEnabledRepository(repo *github.Rep
 	}
 
 	externalProjectID := claGroupModel.ProjectExternalID
-
-	repoModel, err := a.gitV1Repository.GitHubAddRepository(ctx, externalProjectID, projectSFID, &models.GithubRepositoryInput{
-		RepositoryProjectID:        swag.String(claGroupID),
-		RepositoryName:             swag.String(repositoryFullName),
-		RepositoryType:             swag.String("github"),
-		RepositoryURL:              swag.String("https://github.com/" + repositoryFullName),
-		RepositoryOrganizationName: swag.String(organizationName),
-		RepositoryExternalID:       swag.String(repositoryExternalID),
-	})
-
+	var repoModel *models.GithubRepository
+	existingRepo, err := a.repositoryService.GetRepositoryByExternalID(ctx, repositoryExternalID)
 	if err != nil {
-		return nil, err
+		// Expecting Not found - no issue if not found - all other error we throw
+		if _, ok := err.(*utils.GitHubRepositoryNotFound); !ok {
+			return nil, err
+		}
+		if !orgModel.AutoEnabled {
+			log.Warnf("skipping adding the repository, autoEnabled flag is off")
+			return nil, ErrAutoEnabledOff
+		}
+
+		repoModel, err = a.gitV1Repository.GitHubAddRepository(ctx, externalProjectID, projectSFID, &models.GithubRepositoryInput{
+			RepositoryProjectID:        swag.String(claGroupID),
+			RepositoryName:             swag.String(repositoryFullName),
+			RepositoryType:             swag.String("github"),
+			RepositoryURL:              swag.String("https://github.com/" + repositoryFullName),
+			RepositoryOrganizationName: swag.String(organizationName),
+			RepositoryExternalID:       swag.String(repositoryExternalID),
+		})
+
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Here repository already exists. We update the same repository with latest document in order to avoid duplicate entries.
+		var enabled = false
+		if existingRepo.IsRemoteDeleted && existingRepo.WasClaEnforced {
+			enabled = true
+		} else {
+			enabled = existingRepo.Enabled
+		}
+		repoModel, err = a.gitV1Repository.GitHubUpdateRepository(ctx, existingRepo.RepositoryID, projectSFID, externalProjectID, &models.GithubRepositoryInput{
+			RepositoryName:             swag.String(repositoryFullName),
+			RepositoryOrganizationName: swag.String(organizationName),
+			RepositoryProjectID:        swag.String(claGroupID),
+			Enabled:                    &enabled,
+			RepositoryType:             swag.String("github"),
+			RepositoryURL:              swag.String("https://github.com/" + repositoryFullName),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if existingRepo.IsRemoteDeleted {
+			err = a.gitV1Repository.GitHubSetRemoteDeletedRepository(ctx, existingRepo.RepositoryID, false, false)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	return repoModel, nil
