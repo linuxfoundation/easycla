@@ -942,8 +942,11 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
         cla.log.debug(f'{fn} - Processing commit while looking for authors, commit: {commit.sha}')
         # Note: we can get the author info in two different ways:
         # https://pygithub.readthedocs.io/en/latest/github_objects/NamedUser.html
-        if commit.author:
+        if commit.author :
             try:
+                if 'web-flow' in commit.author.login:
+                    cla.log.debug(f'{fn} - Skipping web-flow user: {commit.author.login}')
+                    continue
                 commit_author_summary = UserCommitSummary(
                     commit.sha,
                     commit.author.id,
