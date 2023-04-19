@@ -168,7 +168,7 @@ func (s *eventHandlerService) handleRepositoryRemovedAction(ctx context.Context,
 		return fmt.Errorf("missing repo id")
 	}
 	repositoryExternalID := strconv.FormatInt(*repo.ID, 10)
-	repoModel, err := s.gitV1Repository.GitHubGetRepositoryByGithubID(context.Background(), repositoryExternalID, true)
+	repoModel, err := s.gitV1Repository.GitHubGetRepositoryByExternalID(context.Background(), repositoryExternalID)
 	if err != nil {
 		if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
 			log.WithFields(f).Warnf("event for non existing local repo : %s, nothing to do", *repo.FullName)
@@ -176,14 +176,23 @@ func (s *eventHandlerService) handleRepositoryRemovedAction(ctx context.Context,
 		}
 		return fmt.Errorf("fetching the repo : %s by external id : %s failed : %v", *repo.FullName, repositoryExternalID, err)
 	}
-
+	if !repoModel.Enabled {
+		log.WithFields(f).Infof("repo : %s already disabled, set repository as remote deleted", repoModel.RepositoryID)
+		err = s.gitV1Repository.GitHubSetRemoteDeletedRepository(ctx, repoModel.RepositoryID, true, false)
+		if err != nil {
+			return fmt.Errorf("setting repo : %s remote deleted failed : %v", *repo.FullName, err)
+		}
+		return nil
+	}
+	err = s.gitV1Repository.GitHubSetRemoteDeletedRepository(ctx, repoModel.RepositoryID, true, true)
+	if err != nil {
+		return fmt.Errorf("setting repo : %s remote deleted failed : %v", *repo.FullName, err)
+	}
 	log.WithFields(f).Infof("disabling repo : %s", repoModel.RepositoryID)
-
 	if err := s.gitV1Repository.GitHubDisableRepository(context.Background(), repoModel.RepositoryID); err != nil {
 		log.WithFields(f).Warnf("disabling repo : %s failed : %v", *repo.FullName, err)
 		return err
 	}
-
 	// sending event for the action
 	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
 		EventType:   events.RepositoryDisabled,
@@ -295,7 +304,6 @@ func (s *eventHandlerService) handleRepositoryRenamedAction(ctx context.Context,
 }
 
 func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Context, sender *github.User, repo *github.Repository, org *github.Organization) error {
-
 	if repo.Name == nil {
 		return fmt.Errorf("missing repo name can't proceed with transfer")
 	}
