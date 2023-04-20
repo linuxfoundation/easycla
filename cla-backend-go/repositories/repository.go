@@ -30,9 +30,7 @@ import (
 
 // index
 const (
-	repositoryEnabledColumn        = "enabled"
-	repositoryRemoteDeletedColumn  = "is_remote_deleted"
-	repositoryWasCLAEnforcedColumn = "was_cla_enforced"
+	repositoryEnabledColumn = "enabled"
 )
 
 // ErrRepositoryDoesNotExist ...
@@ -56,7 +54,6 @@ type RepositoryInterface interface {
 	GitHubGetRepositoriesByOrganizationName(ctx context.Context, gitHubOrgName string) ([]*models.GithubRepository, error)
 	GitHubGetCLAGroupRepositoriesGroupByOrgs(ctx context.Context, projectID string, enabled bool) ([]*models.GithubRepositoriesGroupByOrgs, error)
 	GitHubListProjectRepositories(ctx context.Context, projectSFID string, enabled *bool) (*models.GithubListRepositories, error)
-	GitHubSetRemoteDeletedRepository(ctx context.Context, repositoryID string, isDeleted bool, wasCLAEnforced bool) error
 }
 
 // NewRepository create new Repository
@@ -1047,49 +1044,6 @@ func (r *Repository) setClaGroupIDGithubRepository(ctx context.Context, reposito
 		},
 		UpdateExpression: aws.String("SET #repositoryProjectID = :repositoryProjectIDValue, #note = :noteValue, #dateModified = :dateModifiedValue"),
 		TableName:        aws.String(r.repositoryTableName),
-	})
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case dynamodb.ErrCodeConditionalCheckFailedException:
-				return errors.New("github repository entry does not exist or *Repositorysitory_sfdc_id does not match with specified project id")
-			}
-		}
-		log.WithFields(f).WithError(err).Warn("error disabling github repository")
-		return err
-	}
-
-	return nil
-}
-
-// GitHubSetRemoteDeletedRepository used to set remotely deleted flag on repository
-func (r *Repository) GitHubSetRemoteDeletedRepository(ctx context.Context, repositoryID string, isDeleted bool, wasCLAEnforced bool) error {
-	f := logrus.Fields{
-		"functionName":   "v1.repositories.repository.GitHubSetRemoteDeletedRepository",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"repositoryID":   repositoryID,
-		"isDeleted":      isDeleted,
-		"wasCLAEnforced": wasCLAEnforced,
-	}
-
-	_, now := utils.CurrentTime()
-	log.WithFields(f).Debug("Seting up remote deleted action.")
-
-	updateExpression := expression.Set(expression.Name(repositoryRemoteDeletedColumn), expression.Value(isDeleted)).Set(expression.Name(repositoryWasCLAEnforcedColumn), expression.Value(wasCLAEnforced)).Set(expression.Name("date_modified"), expression.Value(now))
-
-	expr, exprErr := expression.NewBuilder().WithUpdate(updateExpression).Build()
-	if exprErr != nil {
-		log.WithFields(f).Warnf("error building expression for updating repository record, error: %v", exprErr)
-		return exprErr
-	}
-	_, err := r.dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
-		Key: map[string]*dynamodb.AttributeValue{
-			"repository_id": {S: aws.String(repositoryID)},
-		},
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		UpdateExpression:          expr.Update(),
-		TableName:                 aws.String(r.repositoryTableName),
 	})
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
