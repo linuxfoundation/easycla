@@ -27,17 +27,13 @@ type RepositoryDBModel struct {
 	Enabled                    bool   `dynamodbav:"enabled" json:"enabled"`
 	Note                       string `dynamodbav:"note" json:"note,omitempty"`
 	Version                    string `dynamodbav:"version" json:"version,omitempty"`
-	IsRemoteDeleted            bool   `dynamodbav:"is_remote_deleted" json:"is_transfered,omitempty"`
-	WasCLAEnforced             bool   `dynamodbav:"was_cla_enforced" json:"was_cla_enforced,omitempty"`
 }
 
 func convertModels(dbModels []*RepositoryDBModel) []*models.GithubRepository {
 	var responseModels []*models.GithubRepository
 	for _, dbModel := range dbModels {
-		// Apply condition, don't return repositories which are remotely deleted.
-		if !dbModel.IsRemoteDeleted {
-			responseModels = append(responseModels, dbModel.ToGitHubModel())
-		}
+		responseModels = append(responseModels, dbModel.ToGitHubModel())
+
 	}
 	return responseModels
 }
@@ -64,7 +60,5 @@ func (gr *RepositoryDBModel) ToGitHubModel() *models.GithubRepository {
 		Enabled:                    gr.Enabled,
 		Note:                       gr.Note,
 		Version:                    gr.Version,
-		WasClaEnforced:             gr.WasCLAEnforced,
-		IsRemoteDeleted:            gr.IsRemoteDeleted,
 	}
 }
