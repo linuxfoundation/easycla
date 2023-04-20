@@ -55,11 +55,3 @@ properties:
     type: string
     description: The version identifier for this repository record
     example: 'v1'
-  is_remote_deleted:
-    type: boolean
-    description: Is Transferred is a flag to identify, is the repository is transferred, currently not active with current organization
-    x-omitempty: false
-  was_cla_enforced:
-    type: boolean
-    description: Was CLA Enforced is a flag to identify that, repository was CLA Enforced before transferred. If it was, then it should be enabled with new organization
-    x-omitempty: false
