@@ -9,9 +9,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
-	eventsMock "github.com/communitybridge/easycla/cla-backend-go/events/mock"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	githubOrgMock "github.com/communitybridge/easycla/cla-backend-go/github_organizations/mock"
+	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories/mock"
 	"github.com/golang/mock/gomock"
 	"github.com/google/go-github/v37/github"
@@ -25,10 +24,10 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryRenamedActio
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	githubOrganizationRepo := githubOrgMock.NewMockRepositoryInterface(ctrl)
-	githubRepo := mock.NewMockRepositoryInterface(ctrl)
+	githubOrganizationRepo := github_organizations.NewMockRepository(ctrl)
+	githubRepo := mock.NewMockRepository(ctrl)
 	githubRepo.EXPECT().
-		GitHubGetRepositoryByGithubID(gomock.Any(), "1", true).
+		GetRepositoryByGithubID(gomock.Any(), "1", true).
 		Return(&models.GithubRepository{
 			Enabled:                    true,
 			RepositoryExternalID:       1,
@@ -38,12 +37,12 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryRenamedActio
 		}, nil)
 
 	githubRepo.EXPECT().
-		GitHubUpdateRepository(gomock.Any(), repoID, "", "", &models.GithubRepositoryInput{
+		UpdateGithubRepository(gomock.Any(), repoID, &models.GithubRepositoryInput{
 			RepositoryName: &newRepoName,
 			Note:           "repository was renamed externally",
 		}).Return(nil, nil)
 
-	eventsService := eventsMock.NewMockService(ctrl)
+	eventsService := events.NewMockService(ctrl)
 	eventsService.EXPECT().
 		LogEventWithContext(gomock.Any(), &events.LogEventArgs{
 			EventType: events.RepositoryRenamed,
@@ -104,10 +103,10 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryTransferredA
 		t.Run(tc.name, func(tt *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			githubOrganizationRepo := githubOrgMock.NewMockRepositoryInterface(ctrl)
-			githubRepo := mock.NewMockRepositoryInterface(ctrl)
+			githubOrganizationRepo := github_organizations.NewMockRepository(ctrl)
+			githubRepo := mock.NewMockRepository(ctrl)
 			githubRepo.EXPECT().
-				GitHubGetRepositoryByGithubID(gomock.Any(), "1", true).
+				GetRepositoryByGithubID(gomock.Any(), "1", true).
 				Return(&models.GithubRepository{
 					Enabled:                    true,
 					RepositoryExternalID:       1,
@@ -118,20 +117,20 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryTransferredA
 
 			// return the old one
 			githubOrganizationRepo.EXPECT().
-				GetGitHubOrganization(gomock.Any(), oldOrgName).
+				GetGithubOrganization(gomock.Any(), oldOrgName).
 				Return(&models.GithubOrganization{
 					OrganizationName: oldOrgName,
 				}, nil)
 
 			// return the new one
 			githubOrganizationRepo.EXPECT().
-				GetGitHubOrganization(gomock.Any(), newOrgName).
+				GetGithubOrganization(gomock.Any(), newOrgName).
 				Return(tc.newGithubOrg, nil)
 
-			eventsService := eventsMock.NewMockService(ctrl)
+			eventsService := events.NewMockService(ctrl)
 			if tc.newGithubOrg.AutoEnabled {
 				githubRepo.EXPECT().
-					GitHubUpdateRepository(gomock.Any(), repoID, gomock.Any(), gomock.Any(), &models.GithubRepositoryInput{
+					UpdateGithubRepository(gomock.Any(), repoID, &models.GithubRepositoryInput{
 						RepositoryOrganizationName: &newOrgName,
 						RepositoryURL:              &newRepoUrl,
 						Note:                       fmt.Sprintf("repository was transferred from org : %s to : %s", oldOrgName, newOrgName),
@@ -150,7 +149,7 @@ func TestEventHandlerService_ProcessRepositoryEvent_HandleRepositoryTransferredA
 					}).Return()
 			} else {
 				githubRepo.EXPECT().
-					GitHubDisableRepository(gomock.Any(), repoID).Return(nil)
+					DisableRepository(gomock.Any(), repoID).Return(nil)
 				eventsService.EXPECT().
 					LogEventWithContext(gomock.Any(), &events.LogEventArgs{
 						EventType: events.RepositoryDisabled,
