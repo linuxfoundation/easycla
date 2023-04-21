@@ -1029,15 +1029,14 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                 # build a quick list of just the commit hash values
                 commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                 committers_comment += (
-                    f"<li> {failed} The commit ({', '.join(commit_shas)}). "
-                    "This user is missing the GitHub ID, preventing the EasyCLA check. "
-                    "Make sure to add the email address of the commit to your GitHub profile "
-                    "(to see the actual email address, add `.patch` at the end of this PR page's URL). "
-                    f"<a href='{github_help_url}' target='_blank'>See GitHub Help</a> for more info. "
-                    
-                    f'For further assistance with EasyCLA, '
+                    f"<li> {failed}  The email address for the commit ({', '.join(commit_shas)}) "
+                    "is not linked to the GitHub account, preventing the EasyCLA check. "
+                    "Consult Article Help and GitHub Help to resolve. "
+                    "(To view the commit's email address, add .patch at the end of this PR page's URL.) "
+
+                    "For further assistance with EasyCLA, "
                     f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
-                    '</li>')
+                    "</li>")
             else:
                 missing_affiliations = [user_commit_summary for user_commit_summary in user_commit_summaries
                                         if not user_commit_summary.affiliated and user_commit_summary.authorized]
