@@ -395,7 +395,7 @@ class GitHub(repository_service_interface.RepositoryService):
         cla.log.debug(f'{fn} - retrieved pull request: {pull_request}')
 
         # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
-        commit_authors = get_pull_request_commit_authors(pull_request)
+        commit_authors = get_pull_request_commit_authors(pull_request, installation_id)
 
         try:
             # Get existing repository info using the repository's external ID,
@@ -518,6 +518,26 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.error('Could not find pull request %s for repository %s - ensure it '
                           'exists and that your personal access token has the "repo" scope enabled',
                           pull_request_number, github_repository_id)
+        except BadCredentialsException as err:
+            cla.log.error('Invalid GitHub credentials provided: %s', str(err))
+    
+    def get_github_user_by_email(self, email, installation_id):
+        """
+        Helper method to get the GitHub user object from GitHub.
+
+        :param email: The email of the GitHub user.
+        :type email: string
+        :param installation_id: The ID of the GitHub application installed on this repository.
+        :type installation_id: int | None
+        """
+        cla.log.debug('Getting GitHub user %s', email)
+        if self.client is None:
+            self.client = get_github_integration_client(installation_id)
+        try:
+            return self.client.get_user(email)
+        except UnknownObjectException:
+            cla.log.error('Could not find GitHub user %s' ,
+                          email)
         except BadCredentialsException as err:
             cla.log.error('Invalid GitHub credentials provided: %s', str(err))
 
@@ -918,7 +938,7 @@ def handle_commit_from_user(project, user_commit_summary: UserCommitSummary, sig
         missing.append(user_commit_summary)
 
 
-def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
+def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[UserCommitSummary]:
     """
     Helper function to extract all committer information for a GitHub PR.
 
@@ -959,6 +979,7 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
                 # committter different from the author
                 if commit.committer:
                     if commit.committer.id != commit.author.id:
+                        # check if committer is a github user - handle edge case of web-flow for co-authors
                         if 'web-flow' not in commit.committer.login:
                             commit_author_summary = UserCommitSummary(
                                 commit.sha,
@@ -978,11 +999,17 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
                     login, github_id = None, None
                     email = co_author[1]
                     name = co_author[0]
-                    user = cla.utils.get_github_user_by_email(email)
+                    # get repository service
+                    github = cla.utils.get_repository_service('github')
+                    user = github.get_github_user_by_email(email, installation_id)
                     cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
                     if user:
+                        cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
                         login = user.login
                         github_id = user.id
+                    else:
+                        cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
+                    
                     co_author_summary = UserCommitSummary(
                         commit.sha,
                         github_id,
