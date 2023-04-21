@@ -305,8 +305,14 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 			var result *v1Models.EventList
 
 			log.WithFields(f).Debugf("loading CLA Group for projectSFID: %s", params.ProjectSFID)
+			pm, err := projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 
-			result, err = service.GetCompanyClaGroupEvents(params.ProjectSFID, v1Company.CompanyExternalID, params.NextKey, params.PageSize, params.SearchTerm, aws.BoolValue(params.ReturnAllEvents))
+			if err != nil {
+				log.WithFields(f).Warnf("unable to fetch project cla mapping  by ID:%s ", params.ProjectSFID)
+				return events.NewGetCompanyProjectEventsBadRequest().WithPayload(errorResponse(reqID, err))
+			}
+
+			result, err = service.GetCompanyClaGroupEvents(pm.ClaGroupID, v1Company.CompanyExternalID, params.NextKey, params.PageSize, params.SearchTerm, aws.BoolValue(params.ReturnAllEvents))
 
 			if err != nil {
 				log.WithFields(f).WithError(err).Warn("problem loading events")
