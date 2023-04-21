@@ -42,6 +42,7 @@ func (s *service) EventAddedEvent(event events.DynamoDBEventRecord) error {
 		if len(pmList) > 1 {
 			foundationSFID = pmList[0].FoundationSFID
 			projectSFID = pmList[0].FoundationSFID
+			claGroupID = pmList[0].ClaGroupID
 			psc := v2ProjectService.GetClient()
 			projectDetails, perr := psc.GetProject(foundationSFID)
 			if perr != nil {
@@ -53,6 +54,7 @@ func (s *service) EventAddedEvent(event events.DynamoDBEventRecord) error {
 			foundationSFID = pmList[0].FoundationSFID
 			projectSFID = pmList[0].ProjectSFID
 			projectSFName = pmList[0].ProjectName
+			claGroupID = pmList[0].ClaGroupID
 		}
 	}
 	err = s.eventsRepo.AddDataToEvent(newEvent.EventID, foundationSFID, projectSFID, projectSFName, companySFID, newEvent.EventProjectID, claGroupID)
