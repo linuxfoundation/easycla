@@ -1007,6 +1007,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
 
     if num_missing > 0:
         support_url = "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
+        missing_id_help_url = "https://confluence.linuxfoundation.org/pages/viewpage.action?pageId=86641302"
 
         # Build a lookup table to group all the commits by author.
         committers = {}
@@ -1029,11 +1030,11 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                 # build a quick list of just the commit hash values
                 commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                 committers_comment += (
-                    f"<li> {failed}  The email address for the commit ({', '.join(commit_shas)}) "
-                    "is not linked to the GitHub account, preventing the EasyCLA check. "
-                    "Consult Article Help and GitHub Help to resolve. "
+                    f"<li> {failed} The email address for the commit ({', '.join(commit_shas)}) "
+                    "is not linked to the GitHub account, preventing the EasyCLA check. Consult "
+                    f"<a href='{missing_id_help_url}' target='_blank'>this Help Article</a> and "
+                    f"<a href='{github_help_url}' target='_blank'>GitHub Help</a> to resolve. "
                     "(To view the commit's email address, add .patch at the end of this PR page's URL.) "
-
                     "For further assistance with EasyCLA, "
                     f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
                     "</li>")
