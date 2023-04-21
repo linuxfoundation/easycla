@@ -25,7 +25,8 @@
     "serverless-finch": "^4.0.0",
     "serverless-layers": "^2.6.1",
     "serverless-plugin-tracing": "^2.0.0",
-    "serverless-prune-plugin": "^2.0.2"
+    "serverless-prune-plugin": "^2.0.2",
+    "xml2js": "^0.5.0"
   },
   "resolutions": {
     "axios": "^0.21.4",
