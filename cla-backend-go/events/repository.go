@@ -572,33 +572,18 @@ func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, found
 }
 
 // GetCompanyClaGroupEvents returns the list of events for cla group and the company
-<<<<<<< HEAD
-func (repo *repository) GetCompanyClaGroupEvents(clagroupID string, companySFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
-	f := logrus.Fields{
-		"functionName":  "v1.events.repository.GetCompanyClaGroupEvents",
-		"claGroupID":    clagroupID,
-=======
 func (repo *repository) GetCompanyClaGroupEvents(claGroupID string, companySFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
 	f := logrus.Fields{
 		"functionName":  "v1.events.repository.GetCompanyClaGroupEvents",
 		"claGroupID":    claGroupID,
->>>>>>> Use new index for fetching events by company_sfid and cla_group_id
 		"companySFID":   companySFID,
 		"nextKey":       utils.StringValue(nextKey),
 		"paramPageSize": utils.Int64Value(paramPageSize),
 		"loadAll":       all,
 	}
-<<<<<<< HEAD
-	log.WithFields(f).Debugf("adding key condition of 'event_cla_group_id = %s'", clagroupID)
-	keyCondition := expression.Key("event_cla_group_id").Equal(expression.Value(clagroupID))
-	filter := expression.Name("event_company_sfid").Equal(expression.Value(companySFID))
-	return repo.queryEventsTable(EventCLAGroupIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, searchTerm)
-
-=======
 	log.WithFields(f).Debugf("adding key condition of 'company_sfid_cla_group_id = %s'", fmt.Sprintf("%s#%s", companySFID, claGroupID))
 	keyCondition := expression.Key("company_sfid_cla_group_id").Equal(expression.Value(fmt.Sprintf("%s#%s", companySFID, claGroupID)))
 	return repo.queryEventsTable(CompanySFIDClaGroupIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
->>>>>>> Use new index for fetching events by company_sfid and cla_group_id
 }
 
 // GetCompanyEvents returns the list of events for given company id and event types
