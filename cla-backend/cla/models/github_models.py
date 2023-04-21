@@ -1024,6 +1024,7 @@ def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[
 =======
                 if commit.committer:
                     if commit.committer.id != commit.author.id:
+                        # check if committer is a github user - handle edge case of web-flow for co-authors
                         if 'web-flow' not in commit.committer.login:
                             commit_author_summary = UserCommitSummary(
                                 commit.sha,
@@ -1043,11 +1044,17 @@ def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[
                     login, github_id = None, None
                     email = co_author[1]
                     name = co_author[0]
-                    user = cla.utils.get_github_user_by_email(email)
+                    # get repository service
+                    github = cla.utils.get_repository_service('github')
+                    user = github.get_github_user_by_email(email, installation_id)
                     cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
                     if user:
+                        cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
                         login = user.login
                         github_id = user.id
+                    else:
+                        cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
+                    
                     co_author_summary = UserCommitSummary(
                         commit.sha,
                         github_id,
