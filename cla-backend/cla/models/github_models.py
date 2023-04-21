@@ -977,49 +977,49 @@ def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[
                 # check for co-author details| committer  in the commit message: 
                 # issue # 3884
                 # committter different from the author
-                if commit.committer:
-                    if commit.committer.id != commit.author.id:
-                        # check if committer is a github user - handle edge case of web-flow for co-authors
-                        if 'web-flow' not in commit.committer.login:
-                            commit_author_summary = UserCommitSummary(
-                                commit.sha,
-                                commit.committer.id,
-                                commit.committer.login,
-                                commit.committer.name,
-                                commit.committer.email,
-                                False, False  # default not authorized - will be evaluated and updated later
-                            )
-                            cla.log.debug(f'{fn} - Committer PR: {pull_request.number}, {commit_author_summary}')
-                            commit_authors.append(commit_author_summary)
-                        else:
-                            cla.log.debug(f'{fn} - Skipping web-flow user: {commit.committer.login}')
-                co_authors = cla.utils.get_co_authors_from_commit(commit)
-                for co_author in co_authors:
-                    # check if co-author is a github user
-                    login, github_id = None, None
-                    email = co_author[1]
-                    name = co_author[0]
-                    # get repository service
-                    github = cla.utils.get_repository_service('github')
-                    user = github.get_github_user_by_email(email, installation_id)
-                    cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
-                    if user:
-                        cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
-                        login = user.login
-                        github_id = user.id
-                    else:
-                        cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
+                # if commit.committer:
+                #     if commit.committer.id != commit.author.id:
+                #         # check if committer is a github user - handle edge case of web-flow for co-authors
+                #         if 'web-flow' not in commit.committer.login:
+                #             commit_author_summary = UserCommitSummary(
+                #                 commit.sha,
+                #                 commit.committer.id,
+                #                 commit.committer.login,
+                #                 commit.committer.name,
+                #                 commit.committer.email,
+                #                 False, False  # default not authorized - will be evaluated and updated later
+                #             )
+                #             cla.log.debug(f'{fn} - Committer PR: {pull_request.number}, {commit_author_summary}')
+                #             commit_authors.append(commit_author_summary)
+                #         else:
+                #             cla.log.debug(f'{fn} - Skipping web-flow user: {commit.committer.login}')
+                # co_authors = cla.utils.get_co_authors_from_commit(commit)
+                # for co_author in co_authors:
+                #     # check if co-author is a github user
+                #     login, github_id = None, None
+                #     email = co_author[1]
+                #     name = co_author[0]
+                #     # get repository service
+                #     github = cla.utils.get_repository_service('github')
+                #     user = github.get_github_user_by_email(email, installation_id)
+                #     cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
+                #     if user:
+                #         cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
+                #         login = user.login
+                #         github_id = user.id
+                #     else:
+                #         cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
                     
-                    co_author_summary = UserCommitSummary(
-                        commit.sha,
-                        github_id,
-                        login,
-                        name,
-                        email,
-                        False, False  # default not authorized - will be evaluated and updated later
-                    )
-                    cla.log.debug(f'{fn} - PR: {pull_request.number}, {co_author_summary}')
-                    commit_authors.append(co_author_summary)
+                #     co_author_summary = UserCommitSummary(
+                #         commit.sha,
+                #         github_id,
+                #         login,
+                #         name,
+                #         email,
+                #         False, False  # default not authorized - will be evaluated and updated later
+                #     )
+                #     cla.log.debug(f'{fn} - PR: {pull_request.number}, {co_author_summary}')
+                #     commit_authors.append(co_author_summary)
             except (GithubException, IncompletableObject) as ex:
                 cla.log.debug(f'Commit sha: {commit.sha} exception: {ex}')
                 try:
