@@ -20,7 +20,7 @@ import (
 // mockRepository data model
 type mockRepository struct{}
 
-func (repo *mockRepository) AddDataToEvent(eventID, foundationSFID, projectSFID, projectSFName, companySFID, projectID string) error {
+func (repo *mockRepository) AddDataToEvent(eventID, foundationSFID, projectSFID, projectSFName, companySFID, projectID, claGroupID string) error {
 	panic("implement me")
 }
 

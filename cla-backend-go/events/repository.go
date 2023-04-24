@@ -47,6 +47,7 @@ const (
 	EventCLAGroupIDEpochIndex                     = "event-cla-group-id-event-time-epoch-index"
 	EventCompanySFIDEventDataLowerIndex           = "event-company-sfid-event-data-lower-index"
 	CompanyIDExternalProjectIDEventEpochTimeIndex = "company-id-external-project-id-event-epoch-time-index"
+	CompanySFIDClaGroupIDEpochIndex               = "company-sfid-cla-group-id-event-time-epoch-index"
 )
 
 // constants
@@ -58,7 +59,7 @@ const (
 // Repository interface defines methods of event repository service
 type Repository interface {
 	CreateEvent(event *models.Event) error
-	AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID string) error
+	AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID, claGroupID string) error
 	SearchEvents(params *eventOps.SearchEventsParams, pageSize int64) (*models.EventList, error)
 	GetRecentEvents(pageSize int64) (*models.EventList, error)
 
@@ -541,6 +542,11 @@ func buildNextKey(indexName string, event *models.Event) (string, error) {
 		nextKey["company_id_external_project_id"] = &dynamodb.AttributeValue{
 			S: aws.String(fmt.Sprintf("%s#%s", event.EventCompanyID, event.EventProjectSFID)),
 		}
+	case CompanySFIDClaGroupIDEpochIndex:
+		nextKey["company_sfid_cla_group_id"] = &dynamodb.AttributeValue{
+			S: aws.String(fmt.Sprintf("%s#%s", event.EventCompanySFID, event.EventCLAGroupID)),
+		}
+		nextKey["event_time_epoch"] = &dynamodb.AttributeValue{N: aws.String(strconv.FormatInt(event.EventTimeEpoch, 10))}
 	}
 
 	return encodeNextKey(nextKey)
@@ -566,20 +572,18 @@ func (repo *repository) GetCompanyFoundationEvents(companySFID, companyID, found
 }
 
 // GetCompanyClaGroupEvents returns the list of events for cla group and the company
-func (repo *repository) GetCompanyClaGroupEvents(clagroupID string, companySFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
+func (repo *repository) GetCompanyClaGroupEvents(claGroupID string, companySFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error) {
 	f := logrus.Fields{
 		"functionName":  "v1.events.repository.GetCompanyClaGroupEvents",
-		"claGroupID":    clagroupID,
+		"claGroupID":    claGroupID,
 		"companySFID":   companySFID,
 		"nextKey":       utils.StringValue(nextKey),
 		"paramPageSize": utils.Int64Value(paramPageSize),
 		"loadAll":       all,
 	}
-	log.WithFields(f).Debugf("adding key condition of 'event_cla_group_id = %s'", clagroupID)
-	keyCondition := expression.Key("event_cla_group_id").Equal(expression.Value(clagroupID))
-	filter := expression.Name("event_company_sfid").Equal(expression.Value(companySFID))
-	return repo.queryEventsTable(EventCLAGroupIDEpochIndex, keyCondition, &filter, nextKey, paramPageSize, all, searchTerm)
-
+	log.WithFields(f).Debugf("adding key condition of 'company_sfid_cla_group_id = %s'", fmt.Sprintf("%s#%s", companySFID, claGroupID))
+	keyCondition := expression.Key("company_sfid_cla_group_id").Equal(expression.Value(fmt.Sprintf("%s#%s", companySFID, claGroupID)))
+	return repo.queryEventsTable(CompanySFIDClaGroupIDEpochIndex, keyCondition, nil, nextKey, paramPageSize, all, searchTerm)
 }
 
 // GetCompanyEvents returns the list of events for given company id and event types
@@ -801,7 +805,7 @@ func (repo *repository) getEventByDay(day string, containsPII bool, pageSize int
 	return events, nil
 }
 
-func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID string) error {
+func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID, claGroupID string) error {
 	f := logrus.Fields{
 		"functionName":      "v1.events.repository.AddDataToEvent",
 		"eventID":           eventID,
@@ -810,6 +814,7 @@ func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, 
 		"projectSFName":     projectSFName,
 		"companySFID":       companySFID,
 		"projectID":         projectID,
+		"claGroupID":        claGroupID,
 	}
 
 	input := &dynamodb.UpdateItemInput{
@@ -822,6 +827,8 @@ func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, 
 	}
 	companySFIDFoundationSFID := fmt.Sprintf("%s#%s", companySFID, parentProjectSFID)
 	companySFIDProjectID := fmt.Sprintf("%s#%s", companySFID, projectID)
+	companySFIDClaGroupID := fmt.Sprintf("%s#%s", companySFID, claGroupID)
+
 	ue := utils.NewDynamoUpdateExpression()
 	ue.AddAttributeName("#parent_project_sfid", "event_parent_project_sfid", parentProjectSFID != "")
 	ue.AddAttributeName("#project_sfid", "event_project_sfid", projectSFID != "")
@@ -830,6 +837,7 @@ func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, 
 	ue.AddAttributeName("#company_sfid", "event_company_sfid", companySFID != "")
 	ue.AddAttributeName("#company_sfid_foundation_sfid", "company_sfid_foundation_sfid", companySFID != "" && parentProjectSFID != "")
 	ue.AddAttributeName("#company_sfid_project_id", "company_sfid_project_id", companySFID != "" && projectID != "")
+	ue.AddAttributeName("#company_sfid_cla_group_id", "company_sfid_cla_group_id", companySFID != "" && claGroupID != "")
 
 	ue.AddAttributeValue(":foundation_sfid", &dynamodb.AttributeValue{S: aws.String(parentProjectSFID)}, parentProjectSFID != "")
 	ue.AddAttributeValue(":project_sfid", &dynamodb.AttributeValue{S: aws.String(projectSFID)}, projectSFID != "")
@@ -838,6 +846,7 @@ func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, 
 	ue.AddAttributeValue(":company_sfid", &dynamodb.AttributeValue{S: aws.String(companySFID)}, companySFID != "")
 	ue.AddAttributeValue(":company_sfid_foundation_sfid", &dynamodb.AttributeValue{S: aws.String(companySFIDFoundationSFID)}, companySFID != "" && parentProjectSFID != "")
 	ue.AddAttributeValue(":company_sfid_project_id", &dynamodb.AttributeValue{S: aws.String(companySFIDProjectID)}, companySFID != "" && projectID != "")
+	ue.AddAttributeValue(":company_sfid_cla_group_id", &dynamodb.AttributeValue{S: aws.String(companySFIDClaGroupID)}, companySFID != "" && claGroupID != "")
 
 	ue.AddUpdateExpression("#parent_project_sfid = :parent_project_sfid", parentProjectSFID != "")
 	ue.AddUpdateExpression("#project_sfid = :project_sfid", projectSFID != "")
@@ -846,6 +855,7 @@ func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, 
 	ue.AddUpdateExpression("#company_sfid = :company_sfid", companySFID != "")
 	ue.AddUpdateExpression("#company_sfid_foundation_sfid = :company_sfid_foundation_sfid", companySFID != "" && parentProjectSFID != "")
 	ue.AddUpdateExpression("#company_sfid_project_id = :company_sfid_project_id", companySFID != "" && projectID != "")
+	ue.AddUpdateExpression("#company_sfid_cla_group_id = :company_sfid_cla_group_id", companySFID != "" && claGroupID != "")
 	if ue.Expression == "" {
 		// nothing to update
 		log.WithFields(f).Warn("not expression - nothing to update")

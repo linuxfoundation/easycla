@@ -27,14 +27,15 @@ func (s *service) EventAddedEvent(event events.DynamoDBEventRecord) error {
 		return err
 	}
 	f := logrus.Fields{"event": newEvent}
-	var foundationSFID, projectSFID, projectSFName, companySFID string
+	var foundationSFID, projectSFID, projectSFName, companySFID, claGroupID string
 	companyModel, err := s.companyRepo.GetCompany(ctx, newEvent.EventCompanyID)
 	if err != nil {
 		log.WithFields(f).Error("unable to get company detail", err)
 	} else {
 		companySFID = companyModel.CompanyExternalID
 	}
-	pmList, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, newEvent.EventProjectID)
+	claGroupID = newEvent.EventProjectID
+	pmList, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
 	if err != nil || len(pmList) == 0 {
 		log.WithFields(f).Error("unable to get project mapping detail", err)
 	} else {
@@ -54,7 +55,7 @@ func (s *service) EventAddedEvent(event events.DynamoDBEventRecord) error {
 			projectSFName = pmList[0].ProjectName
 		}
 	}
-	err = s.eventsRepo.AddDataToEvent(newEvent.EventID, foundationSFID, projectSFID, projectSFName, companySFID, newEvent.EventProjectID)
+	err = s.eventsRepo.AddDataToEvent(newEvent.EventID, foundationSFID, projectSFID, projectSFName, companySFID, newEvent.EventProjectID, claGroupID)
 	if err != nil {
 		return err
 	}
