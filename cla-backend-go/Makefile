@@ -218,16 +218,7 @@ test:
 
 mock:
 	@echo "==> Re-Generating mocks"
-	@cd $(MAKEFILE_DIR) && mkdir -p repositories/mock
-	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -source=repositories/service.go -package=mock -destination=repositories/mock/mock_service.go
-	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -source=repositories/repository.go -package=mock -destination=repositories/mock/mock_repository.go
-    # github organizations
-	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -package=github_organizations -destination=github_organizations/mock.go -self_package=github.com/communitybridge/easycla/cla-backend-go/github_organizations github.com/communitybridge/easycla/cla-backend-go/github_organizations Repository
-    # events
-	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -package=events -destination=events/mock.go -self_package=github.com/communitybridge/easycla/cla-backend-go/events github.com/communitybridge/easycla/cla-backend-go/events Service
-	# mocks for github
-	@cd $(MAKEFILE_DIR) && mockgen -copyright_file=copyright-header.txt -package=branch_protection -destination=github/branch_protection/mock.go -self_package=github.com/communitybridge/easycla/cla-backend-go/github/branch_protection github.com/communitybridge/easycla/cla-backend-go/github/branch_protection CombinedRepository
-
+	@./tools/regenmocks.sh
 
 deps:
 	@go env -w GOPRIVATE=$(GOPRIVATE)
