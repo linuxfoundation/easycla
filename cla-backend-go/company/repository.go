@@ -41,7 +41,6 @@ type IRepository interface { //nolint
 	DeleteCompanyBySFID(ctx context.Context, companySFID string) error
 	GetCompaniesByUserManager(ctx context.Context, userID string, userModel user.User) (*models.Companies, error)
 	GetCompaniesByUserManagerWithInvites(ctx context.Context, userID string, userModel user.User) (*models.CompaniesWithInvites, error)
-
 	AddPendingCompanyInviteRequest(ctx context.Context, companyID string, userModel user.User) (*Invite, error)
 	GetCompanyInviteRequest(ctx context.Context, companyInviteID string) (*Invite, error)
 	GetCompanyInviteRequests(ctx context.Context, companyID string, status *string) ([]Invite, error)
@@ -49,8 +48,6 @@ type IRepository interface { //nolint
 	GetUserInviteRequests(ctx context.Context, userID string) ([]Invite, error)
 	ApproveCompanyAccessRequest(ctx context.Context, companyInviteID string) error
 	RejectCompanyAccessRequest(ctx context.Context, companyInviteID string) error
-	updateInviteRequestStatus(ctx context.Context, companyInviteID, status string) error
-
 	UpdateCompanyAccessList(ctx context.Context, companyID string, companyACL []string) error
 }
 
