@@ -26,7 +26,8 @@
     "serverless-layers": "^2.6.1",
     "serverless-plugin-tracing": "^2.0.0",
     "serverless-prune-plugin": "^2.0.2",
-    "xml2js": "^0.5.0"
+    "xml2js": "^0.5.0",
+    "yarn-audit-fix": "^9.3.10"
   },
   "resolutions": {
     "axios": "^0.21.4",
