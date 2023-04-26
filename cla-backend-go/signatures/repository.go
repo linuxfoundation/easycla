@@ -1636,10 +1636,6 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	var filterAdded bool
 	var filter expression.ConditionBuilder
 
-	// Check for approved signatures
-	filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
-	filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
-
 	if criteria != nil && criteria.GitHubUsername != "" {
 		//log.WithFields(f).Debugf("adding GitHub username criteria filter for: %s ", criteria.GitHubUsername)
 		filter = addAndCondition(filter, expression.Name(SignatureUserGitHubUsername).Equal(expression.Value(criteria.GitHubUsername)), &filterAdded)
@@ -1668,7 +1664,11 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	beforeQuery, _ := utils.CurrentTime()
 	//log.WithFields(f).Debugf("running signature query on table: %s", repo.signatureTableName)
 	// Use the nice builder to create the expression
-	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildProjection()).Build()
+	expressionBuilder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildProjection())
+	if filterAdded {
+		expressionBuilder = expressionBuilder.WithFilter(filter)
+	}
+	expr, err := expressionBuilder.Build()
 	if err != nil {
 		log.WithFields(f).Warnf("error building expression for project signature ID query, project: %s, error: %v",
 			params.ProjectID, err)
@@ -1680,11 +1680,14 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
-		FilterExpression:          expr.Filter(),
 		ProjectionExpression:      expr.Projection(),
 		TableName:                 aws.String(repo.signatureTableName),
 		IndexName:                 aws.String("signature-user-ccla-company-index"), // Name of a secondary index to scan
 		Limit:                     aws.Int64(pageSize),
+	}
+
+	if filterAdded {
+		queryInput.FilterExpression = expr.Filter()
 	}
 
 	// If we have the next key, set the exclusive start key value
