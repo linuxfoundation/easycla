@@ -521,12 +521,14 @@ class GitHub(repository_service_interface.RepositoryService):
         except BadCredentialsException as err:
             cla.log.error('Invalid GitHub credentials provided: %s', str(err))
     
-    def get_github_user_by_email(self, email, installation_id):
+    def get_github_user_by_email_and_name(self, email,name, installation_id):
         """
         Helper method to get the GitHub user object from GitHub.
 
         :param email: The email of the GitHub user.
         :type email: string
+        :param name: The name of the GitHub user.
+        :type name: string
         :param installation_id: The ID of the GitHub application installed on this repository.
         :type installation_id: int | None
         """
@@ -534,7 +536,15 @@ class GitHub(repository_service_interface.RepositoryService):
         if self.client is None:
             self.client = get_github_integration_client(installation_id)
         try:
-            return self.client.get_user(email)
+            users_by_name = self.client.search_users(name)
+            email_handle = email.split('@')[0]
+            cla.log.debug('Searching for GitHub user by email handle: %s', email_handle)
+            users_by_email = self.client.search_users(f"{email_handle} in:email")
+            for user in users_by_email:
+                if user in users_by_name:
+                    cla.log.debug('Found GitHub user login: %s and id: %s', user.login, user.id)
+                    return user
+            cla.log.debug('Could not find GitHub user for %s<%s>',name, email)
         except UnknownObjectException:
             cla.log.error('Could not find GitHub user %s' ,
                           email)
@@ -984,7 +994,8 @@ def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[
                     name = co_author[0]
                     # get repository service
                     github = cla.utils.get_repository_service('github')
-                    user = github.get_github_user_by_email(email, installation_id)
+                    cla.log.debug(f'{fn} - getting co-author details: {co_author}, email: {email}, name: {name}')
+                    user = github.get_github_user_by_email_and_name(email, name, installation_id)
                     cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
                     if user:
                         cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
