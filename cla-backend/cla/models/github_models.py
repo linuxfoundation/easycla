@@ -1061,7 +1061,7 @@ def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[
     return commit_authors
 
 
-def has_check_previously_failed(pull_request: PullRequest):
+def has_check_previously_passed_or_failed(pull_request: PullRequest):
     """
     Review the status updates in the PR. Identify 1 or more previous failed
     updates from the EasyCLA bot. If we fine one, return True with the comment, otherwise
@@ -1081,8 +1081,9 @@ def has_check_previously_failed(pull_request: PullRequest):
             return True, comment
         if 'is missing the User' in comment.body:
             return True, comment
+        if 'are authorized under a signed CLA' in comment.body:
+            return True, comment
     return False, None
-
 
 def update_pull_request(installation_id, github_repository_id, pull_request, repository_name,
                         signed: List[UserCommitSummary],
@@ -1150,18 +1151,18 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
     if both or notification == 'comment':
         body = cla.utils.assemble_cla_comment('github', str(installation_id), github_repository_id, pull_request.number,
                                               signed, missing, project_version)
-        previously_failed, comment = has_check_previously_failed(pull_request)
+        previously_pass_or_failed, comment = has_check_previously_passed_or_failed(pull_request)
         if not missing:
             # After Issue #167 wsa in place, they decided via Issue #289 that we
             # DO want to update the comment, but only after we've previously failed
-            if previously_failed:
+            if previously_pass_or_failed:
                 cla.log.debug(f'{fn} - Found previously failed checks - updating CLA comment in PR.')
                 comment.edit(body)
             cla.log.debug(f'{fn} - EasyCLA App checks pass for PR: {pull_request.number} with authors: {signed}')
         else:
             # Per Issue #167, only add a comment if check fails
             # update_cla_comment(pull_request, body)
-            if previously_failed:
+            if previously_pass_or_failed:
                 cla.log.debug(f'{fn} - Found previously failed checks - updating CLA comment in PR.')
                 comment.edit(body)
             else:
