@@ -1732,6 +1732,9 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		// Add to the signature response model to the list
 		sigs = append(sigs, signatureList...)
 
+		// remove duplicate values
+		sigs = removeDuplicates(sigs)
+
 		if results.LastEvaluatedKey["signature_id"] != nil {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
@@ -1759,6 +1762,36 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		LastKeyScanned: lastEvaluatedKey,
 		Signatures:     sigs,
 	}, nil
+}
+
+func removeDuplicates(signatures []*models.Signature) []*models.Signature {
+	f := logrus.Fields{
+		"functionName": "v1.signatures.repository.removeDuplicates",
+	}
+
+	type SignatureCheck struct {
+		SignatureRef      string
+		SignatureApproved bool
+		SignatureSigned   bool
+	}
+
+	seen := make(map[SignatureCheck]bool)
+	result := []*models.Signature{}
+
+	for _, model := range signatures {
+		check := SignatureCheck{
+			SignatureRef:      model.SignatureReferenceID,
+			SignatureApproved: model.SignatureApproved,
+			SignatureSigned:   model.SignatureSigned,
+		}
+		if !seen[check] {
+			log.WithFields(f).Debugf("Signature : %+v does not exist", check)
+			seen[check] = true
+			result = append(result, model)
+		}
+	}
+
+	return result
 }
 
 func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) (*models.Signature, error) {
