@@ -281,6 +281,7 @@ provider:
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-id-event-type-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-foundation-sfid-event-time-epoch-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/event-company-sfid-event-data-lower-index"
+            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-events/index/company-sfid-cla-group-id-event-time-epoch-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-metrics/index/metric-type-salesforce-id-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests/index/cla-manager-requests-company-project-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests/index/cla-manager-requests-external-company-project-index"
