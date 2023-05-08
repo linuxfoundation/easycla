@@ -53,7 +53,7 @@ six==1.13.0
 soupsieve==1.9.5
 termcolor==1.1.0
 typed-ast==1.4.1
-urllib3==1.25.9
+urllib3==2.0.2
 vintage==0.4.1
 wcwidth==0.1.7
 Werkzeug==0.15.5
