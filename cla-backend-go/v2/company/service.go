@@ -1504,7 +1504,7 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 	}
 	defer wg.Done()
 	user, err := usersRepo.GetUser(sig.SignatureReferenceID)
-	if err != nil {
+	if err != nil || user == nil {
 		log.WithFields(f).Warnf("unable to load user information using signature ID: %s", sig.SignatureReferenceID)
 		return
 	}
