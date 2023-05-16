@@ -1732,9 +1732,6 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		// Add to the signature response model to the list
 		sigs = append(sigs, signatureList...)
 
-		// remove duplicate values
-		sigs = removeDuplicates(sigs)
-
 		if results.LastEvaluatedKey["signature_id"] != nil {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
@@ -1747,6 +1744,9 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 		}
 	}
 	log.WithFields(f).Debugf("finished signature query on table: %s - duration: %+v", repo.signatureTableName, time.Since(beforeQuery))
+
+	// remove duplicate values
+	sigs = getLatestSignatures(sigs)
 
 	// Meta-data for the response
 	if int64(len(sigs)) > pageSize {
@@ -1764,31 +1764,29 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	}, nil
 }
 
-func removeDuplicates(signatures []*models.Signature) []*models.Signature {
+func getLatestSignatures(signatures []*models.Signature) []*models.Signature {
 	f := logrus.Fields{
-		"functionName": "v1.signatures.repository.removeDuplicates",
+		"functionName": "v1.signatures.repository.getLatestSignatures",
 	}
 
-	type SignatureCheck struct {
-		SignatureRef      string
-		SignatureApproved bool
-		SignatureSigned   bool
-	}
-
-	seen := make(map[SignatureCheck]bool)
+	signatureMap := make(map[string]*models.Signature)
 	result := []*models.Signature{}
 
-	for _, model := range signatures {
-		check := SignatureCheck{
-			SignatureRef:      model.SignatureReferenceID,
-			SignatureApproved: model.SignatureApproved,
-			SignatureSigned:   model.SignatureSigned,
+	log.WithFields(f).Debug("get latest signatures per contributor...")
+
+	for _, signature := range signatures {
+		if _, ok := signatureMap[signature.SignatureReferenceID]; !ok {
+			log.WithFields(f).Debugf("adding signature: %s to map", signature.SignatureReferenceID)
+			signatureMap[signature.SignatureReferenceID] = signature
+		} else {
+			if signature.Modified > signatureMap[signature.SignatureReferenceID].Modified {
+				signatureMap[signature.SignatureReferenceID] = signature
+			}
 		}
-		if !seen[check] {
-			log.WithFields(f).Debugf("Signature : %+v does not exist", check)
-			seen[check] = true
-			result = append(result, model)
-		}
+	}
+
+	for _, signature := range signatureMap {
+		result = append(result, signature)
 	}
 
 	return result
