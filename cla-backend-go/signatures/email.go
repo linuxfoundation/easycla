@@ -139,14 +139,22 @@ func sendRequestAccessEmailToContributorRecipient(authUser *auth.User, companyMo
 
 // getBestEmail is a helper function to return the best email address for the user model
 func getBestEmail(userModel *models.User) string {
-	if userModel.LfEmail != "" {
-		return userModel.LfEmail.String()
+	f := logrus.Fields{
+		"functionName": "getBestEmail",
 	}
 
-	for _, email := range userModel.Emails {
-		if email != "" && !strings.Contains(email, "noreply.github.com") {
-			return email
+	if userModel != nil {
+		if userModel.LfEmail != "" {
+			return userModel.LfEmail.String()
 		}
+
+		for _, email := range userModel.Emails {
+			if email != "" && !strings.Contains(email, "noreply.github.com") {
+				return email
+			}
+		}
+	} else {
+		logging.WithFields(f).Warn("user model is nil")
 	}
 
 	return ""
