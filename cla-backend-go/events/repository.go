@@ -830,7 +830,7 @@ func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, 
 	companySFIDClaGroupID := fmt.Sprintf("%s#%s", companySFID, claGroupID)
 
 	ue := utils.NewDynamoUpdateExpression()
-	ue.AddAttributeName("#parent_project_sfid", "event_parent_project_sfid", parentProjectSFID != "")
+	ue.AddAttributeName("#foundation_sfid", "foundation_sfid", parentProjectSFID != "")
 	ue.AddAttributeName("#project_sfid", "event_project_sfid", projectSFID != "")
 	ue.AddAttributeName("#project_sf_name", "event_sf_project_name", projectSFName != "")
 
@@ -848,7 +848,7 @@ func (repo *repository) AddDataToEvent(eventID, parentProjectSFID, projectSFID, 
 	ue.AddAttributeValue(":company_sfid_project_id", &dynamodb.AttributeValue{S: aws.String(companySFIDProjectID)}, companySFID != "" && projectID != "")
 	ue.AddAttributeValue(":company_sfid_cla_group_id", &dynamodb.AttributeValue{S: aws.String(companySFIDClaGroupID)}, companySFID != "" && claGroupID != "")
 
-	ue.AddUpdateExpression("#parent_project_sfid = :parent_project_sfid", parentProjectSFID != "")
+	ue.AddUpdateExpression("#foundation_sfid = :foundation_sfid", parentProjectSFID != "")
 	ue.AddUpdateExpression("#project_sfid = :project_sfid", projectSFID != "")
 	ue.AddUpdateExpression("#project_sf_name = :project_sf_name", projectSFName != "")
 
