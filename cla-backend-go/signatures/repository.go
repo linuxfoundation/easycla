@@ -1752,6 +1752,8 @@ func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, 
 	if int64(len(sigs)) > pageSize {
 		sigs = sigs[0:pageSize]
 		lastEvaluatedKey = sigs[pageSize-1].SignatureID
+	} else {
+		lastEvaluatedKey = ""
 	}
 
 	totalCount := <-totalCountChannel
