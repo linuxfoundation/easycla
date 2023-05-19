@@ -1392,7 +1392,7 @@ func (ed *SignatureInvalidatedApprovalRejectionEventData) GetEventDetailsString(
 	} else if ed.GHUsername != "" {
 		reason = fmt.Sprintf("GH Username: %s approval removal ", ed.GHUsername)
 	}
-	data := fmt.Sprintf("Signature ID: %s invalidated by %s (approved set to false) due to %s ", utils.GetBestUsername(ed.CLAManager), ed.SignatureID, reason)
+	data := fmt.Sprintf("Signature invalidated by %s (approved set to false) due to %s ", utils.GetBestUsername(ed.CLAManager), reason)
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -2554,7 +2554,7 @@ func (ed *SignatureInvalidatedApprovalRejectionEventData) GetEventSummaryString(
 	} else if ed.GHUsername != "" {
 		reason = fmt.Sprintf("GH Username: %s approval removal ", ed.GHUsername)
 	}
-	data := fmt.Sprintf("Signature ID: %s invalidated (approved set to false) due to %s", ed.SignatureID, reason)
+	data := fmt.Sprintf("Signature invalidated by %s (approved set to false) due to %s", utils.GetBestUsername(ed.CLAManager), reason)
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
