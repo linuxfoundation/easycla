@@ -1388,7 +1388,7 @@ func (ed *SignatureProjectInvalidatedEventData) GetEventDetailsString(args *LogE
 func (ed *SignatureInvalidatedApprovalRejectionEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	reason := noReason
 	if ed.Email != "" {
-		reason = fmt.Sprintf("GH Username: %s approval removal ", ed.GHUsername)
+		reason = fmt.Sprintf("Email: %s approval removal ", ed.Email)
 	} else if ed.GHUsername != "" {
 		reason = fmt.Sprintf("GH Username: %s approval removal ", ed.GHUsername)
 	}
