@@ -56,7 +56,7 @@ type SignatureService interface {
 	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error)
 	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
 	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
-	UpdateApprovalList(ctx context.Context, authUser *auth.User, claGroupModel *models.ClaGroup, companyModel *models.Company, claGroupID string, params *models.ApprovalList) (*models.Signature, error)
+	UpdateApprovalList(ctx context.Context, authUser *auth.User, claGroupModel *models.ClaGroup, companyModel *models.Company, claGroupID string, params *models.ApprovalList, projectSFID string) (*models.Signature, error)
 
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
 	RemoveCLAManager(ctx context.Context, ignatureID, claManagerID string) (*models.Signature, error)
@@ -414,7 +414,7 @@ func (s service) DeleteGithubOrganizationFromApprovalList(ctx context.Context, s
 }
 
 // UpdateApprovalList service method which handles updating the various approval lists
-func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, claGroupModel *models.ClaGroup, companyModel *models.Company, claGroupID string, params *models.ApprovalList) (*models.Signature, error) { // nolint gocyclo
+func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, claGroupModel *models.ClaGroup, companyModel *models.Company, claGroupID string, params *models.ApprovalList, projectSFID string) (*models.Signature, error) { // nolint gocyclo
 	f := logrus.Fields{
 		"functionName":      "v1.signatures.service.UpdateApprovalList",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
@@ -473,7 +473,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		LfUsername:    userModel.LfUsername,
 		UserID:        userModel.UserID,
 		UserModel:     userModel,
-		ProjectSFID:   claGroupModel.ProjectExternalID,
+		ProjectSFID:   projectSFID,
 	}
 
 	updatedCorporateSignature, err := s.repo.UpdateApprovalList(ctx, userModel, claGroupModel, companyModel.CompanyID, params, eventArgs)
