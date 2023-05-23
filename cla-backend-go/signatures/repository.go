@@ -3278,6 +3278,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 					CLAManager:  claManager,
 					CLAGroupID:  signature.ProjectID,
 					Email:       email,
+					GHUsername:  user.GithubUsername,
 				}
 				repo.eventsService.LogEventWithContext(ctx, eventArgs)
 			}(icla)
@@ -3310,6 +3311,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 					CLAManager:  claManager,
 					CLAGroupID:  ecla.ProjectID,
 					Email:       email,
+					GHUsername:  user.GithubUsername,
 				}
 				repo.eventsService.LogEventWithContext(ctx, eventArgs)
 			}(ecla)
