@@ -160,7 +160,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		}
 
 		// Invoke the update v1SignatureService function
-		updatedSig, updateErr := v1SignatureService.UpdateApprovalList(ctx, authUser, claGroupModel, companyModel, params.ClaGroupID, &v1ApprovalList)
+		updatedSig, updateErr := v1SignatureService.UpdateApprovalList(ctx, authUser, claGroupModel, companyModel, params.ClaGroupID, &v1ApprovalList, params.ProjectSFID)
 		if updateErr != nil || updatedSig == nil {
 			msg := fmt.Sprintf("unable to update signature approval list using CLA Group ID: %s", params.ClaGroupID)
 			log.WithFields(f).Warn(msg)
