@@ -10,7 +10,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 )
 
-func (s service) createEventLogEntries(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, userModel *models.User, approvalList *models.ApprovalList) {
+func (s service) createEventLogEntries(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, userModel *models.User, approvalList *models.ApprovalList, projectSFID string) {
 	for _, value := range approvalList.AddEmailApprovalList {
 		// Send an event
 		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
@@ -22,7 +22,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListAddEmailData{
 				ApprovalListEmail: value,
 			},
@@ -39,7 +39,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListRemoveEmailData{
 				ApprovalListEmail: value,
 			},
@@ -56,7 +56,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListAddDomainData{
 				ApprovalListDomain: value,
 			},
@@ -73,7 +73,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListRemoveDomainData{
 				ApprovalListDomain: value,
 			},
@@ -90,7 +90,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListAddGitHubUsernameData{
 				ApprovalListGitHubUsername: value,
 			},
@@ -107,7 +107,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListRemoveGitHubUsernameData{
 				ApprovalListGitHubUsername: value,
 			},
@@ -124,7 +124,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListAddGitHubOrgData{
 				ApprovalListGitHubOrg: value,
 			},
@@ -142,7 +142,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListRemoveGitHubOrgData{
 				ApprovalListGitHubOrg: value,
 			},
@@ -159,7 +159,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListAddGitLabUsernameData{
 				ApprovalListGitLabUsername: value,
 			},
@@ -176,7 +176,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListRemoveGitLabUsernameData{
 				ApprovalListGitLabUsername: value,
 			},
@@ -193,7 +193,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListAddGitLabGroupData{
 				ApprovalListGitLabGroup: value,
 			},
@@ -211,7 +211,7 @@ func (s service) createEventLogEntries(ctx context.Context, companyModel *models
 			LfUsername:    userModel.LfUsername,
 			UserID:        userModel.UserID,
 			UserModel:     userModel,
-			ProjectSFID:   claGroupModel.ProjectExternalID,
+			ProjectSFID:   projectSFID,
 			EventData: &events.CLAApprovalListRemoveGitLabGroupData{
 				ApprovalListGitLabGroup: value,
 			},

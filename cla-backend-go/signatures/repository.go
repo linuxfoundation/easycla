@@ -3061,7 +3061,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			updateExpression = updateExpression + " #GLO = :glo, "
 		}
 
-		if params.RemoveGithubOrgApprovalList != nil {
+		if params.RemoveGitlabOrgApprovalList != nil {
 			approvalList.Criteria = utils.GitlabOrgCriteria
 			approvalList.ApprovalList = params.RemoveGitlabOrgApprovalList
 			approvalList.Action = utils.RemoveApprovals

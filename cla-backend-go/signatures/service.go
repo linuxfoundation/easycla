@@ -507,7 +507,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		s.createEventLogEntries(ctx, companyModel, claGroupModel, userModel, params)
+		s.createEventLogEntries(ctx, companyModel, claGroupModel, userModel, params, projectSFID)
 	}()
 
 	// Send an email to each of the CLA Managers - do it in a separate go routine
