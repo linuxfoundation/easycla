@@ -80,7 +80,7 @@ type SignatureRepository interface {
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error)
 	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
-	GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) (*models.Signature, error)
+	GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User, wg *sync.WaitGroup, resultChannel chan<- *EmployeeModel, errorChannel chan<- error)
 	CreateProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) error
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams, pageSize int64, loadACL bool) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
@@ -1792,7 +1792,14 @@ func getLatestSignatures(signatures []*models.Signature) []*models.Signature {
 	return result
 }
 
-func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) (*models.Signature, error) {
+type EmployeeModel struct {
+	Signature *models.Signature
+	User      *models.User
+}
+
+func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User, wg *sync.WaitGroup, resultChannel chan<- *EmployeeModel, errorChannel chan<- error) {
+	defer wg.Done()
+
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetProjectCompanyEmployeeSignature",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -1812,7 +1819,8 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 	}
 
 	if companyModel == nil || claGroupModel == nil || employeeUserModel == nil {
-		return nil, nil
+		resultChannel <- nil
+		return
 	}
 
 	// This is the keys we want to match
@@ -1832,7 +1840,8 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("error building expression for employee signature query, company model: %+v, CLA group model: %+v, employee model: %+v",
 			companyModel, claGroupModel, employeeUserModel)
-		return nil, err
+		errorChannel <- err
+		return
 	}
 
 	// Assemble the query input parameters
@@ -1852,10 +1861,15 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 	if errQuery != nil {
 		log.WithFields(f).WithError(errQuery).Warnf("error retrieving project company employee acknowledgement record for company model: %+v, CLA group model: %+v, employee model: %+v",
 			companyModel, claGroupModel, employeeUserModel)
-		return nil, errQuery
+		errorChannel <- errQuery
+		return
 	}
 	if results == nil || len(results.Items) == 0 {
-		return nil, nil
+		resultChannel <- &EmployeeModel{
+			Signature: nil,
+			User:      employeeUserModel,
+		}
+		return
 	}
 	log.WithFields(f).Debugf("returned %d results", len(results.Items))
 	// Convert the list of DB models to a list of response models
@@ -1863,11 +1877,13 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 	if modelErr != nil {
 		log.WithFields(f).WithError(modelErr).Warnf("error converting DB model to response model for project company employee acknowledgement record for company model: %+v, CLA group model: %+v, employee model: %+v",
 			companyModel, claGroupModel, employeeUserModel)
-		return nil, modelErr
+		errorChannel <- modelErr
+		return
 	}
 
 	if len(signatureList) == 0 {
-		return nil, nil
+		resultChannel <- nil
+		return
 	}
 
 	if len(signatureList) > 1 {
@@ -1875,7 +1891,10 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 			companyModel, claGroupModel, employeeUserModel)
 	}
 
-	return signatureList[0], nil
+	resultChannel <- &EmployeeModel{
+		Signature: signatureList[0],
+		User:      employeeUserModel,
+	}
 }
 
 // CreateProjectCompanyEmployeeSignature creates a new project employee signature using the provided details
@@ -1898,25 +1917,46 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		f["employeeEmails"] = strings.Join(employeeUserModel.Emails, ",")
 	}
 
-	existingSig, lookupErr := repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
-	if lookupErr != nil {
-		log.WithFields(f).WithError(lookupErr).Warnf("problem looking up existing signature for project: %+v, company: %+v, employee: %+v", claGroupModel, companyModel, employeeUserModel)
-	}
+	var wg sync.WaitGroup
+	resultChan := make(chan *EmployeeModel)
+	errorChan := make(chan error)
 
-	// If exists, need to update
-	if existingSig != nil {
-		log.WithFields(f).Debug("found existing employee acknowledgement")
-		if !existingSig.SignatureApproved {
-			log.WithFields(f).Debugf("found existing employee acknowledgement, but not currently approved.")
-			validateRecordErr := repo.ValidateProjectRecord(ctx, existingSig.SignatureID, fmt.Sprintf(" Enabled previously disabled employee acknowledgement via CLA Manager approval list edit with auto-enable feature flag configured on %s.", utils.CurrentSimpleDateTimeString()))
-			if validateRecordErr != nil {
-				return validateRecordErr
+	wg.Add(1)
+	go repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel, &wg, resultChan, errorChan)
+
+	go func() {
+		wg.Wait()
+		close(resultChan)
+		close(errorChan)
+	}()
+
+	for result := range resultChan {
+		if result != nil {
+			existingSig := result.Signature
+			// If exists, need to update
+			if existingSig != nil {
+				log.WithFields(f).Debug("found existing employee acknowledgement")
+				if !existingSig.SignatureApproved {
+					log.WithFields(f).Debugf("found existing employee acknowledgement, but not currently approved.")
+					validateRecordErr := repo.ValidateProjectRecord(ctx, existingSig.SignatureID, fmt.Sprintf(" Enabled previously disabled employee acknowledgement via CLA Manager approval list edit with auto-enable feature flag configured on %s.", utils.CurrentSimpleDateTimeString()))
+					if validateRecordErr != nil {
+						return validateRecordErr
+					}
+					return nil
+				}
+
+				return nil
 			}
-			return nil
 		}
-
-		return nil
 	}
+
+	for err := range errorChan {
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("error creating project company employee signature for company model: %+v, CLA group model: %+v, employee model: %+v",
+				companyModel, claGroupModel, employeeUserModel)
+		}
+	}
+
 	log.WithFields(f).Debugf("creating project company employee signature for project: %+v, company: %+v, employee: %+v", claGroupModel, companyModel, employeeUserModel)
 
 	// If not exists, need to create
@@ -2016,10 +2056,6 @@ func (repo repository) getProjectCompanyEmployeeSignatureCount(ctx context.Conte
 	var filterAdded bool
 	var filter expression.ConditionBuilder
 
-	// Check for approved signatures
-	filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
-	filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
-
 	if criteria != nil && criteria.GitHubUsername != "" {
 		filter = addAndCondition(filter, expression.Name(SignatureUserGitHubUsername).Equal(expression.Value(criteria.GitHubUsername)), &filterAdded)
 	}
@@ -2035,7 +2071,11 @@ func (repo repository) getProjectCompanyEmployeeSignatureCount(ctx context.Conte
 	beforeQuery, _ := utils.CurrentTime()
 	log.WithFields(f).Debugf("running total signature count query on table: %s", repo.signatureTableName)
 	// Use the nice builder to create the expression
-	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildCountProjection()).Build()
+	expressionBuilder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildCountProjection())
+	if filterAdded {
+		expressionBuilder = expressionBuilder.WithFilter(filter)
+	}
+	expr, err := expressionBuilder.Build()
 	if err != nil {
 		log.WithFields(f).Warnf("error building expression for project signature ID query, project: %s, error: %v",
 			params.ProjectID, err)
@@ -2048,11 +2088,15 @@ func (repo repository) getProjectCompanyEmployeeSignatureCount(ctx context.Conte
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
-		FilterExpression:          expr.Filter(),
-		ProjectionExpression:      expr.Projection(),
-		TableName:                 aws.String(repo.signatureTableName),
-		IndexName:                 aws.String("signature-user-ccla-company-index"), // Name of a secondary index to scan
-		Limit:                     aws.Int64(pageSize),
+		// FilterExpression:          expr.Filter(),
+		ProjectionExpression: expr.Projection(),
+		TableName:            aws.String(repo.signatureTableName),
+		IndexName:            aws.String("signature-user-ccla-company-index"), // Name of a secondary index to scan
+		Limit:                aws.Int64(pageSize),
+	}
+
+	if filterAdded {
+		queryInput.FilterExpression = expr.Filter()
 	}
 
 	var lastEvaluatedKey string
