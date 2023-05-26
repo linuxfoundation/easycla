@@ -1171,7 +1171,7 @@ func (s service) processEmployeeSignature(ctx context.Context, companyModel *mod
 	signed := true
 
 	wg.Add(1)
-	s.repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, user, &wg, resultChannel, errorChannel)
+	go s.repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, user, &wg, resultChannel, errorChannel)
 
 	go func() {
 		wg.Wait()
