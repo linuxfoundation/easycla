@@ -771,39 +771,82 @@ func (s service) CreateOrUpdateEmployeeSignature(ctx context.Context, claGroupMo
 		log.WithFields(f).WithError(userErr).Warnf("problem creating or loading user records from the approval list")
 	}
 
+	responseErr := s.processEmployeeSignatures(ctx, companyModel, claGroupModel, userList)
+
+	if responseErr != nil {
+		log.WithFields(f).WithError(responseErr).Warnf("problem processing employee signatures")
+	}
+
+	return userList, responseErr
+}
+
+func (s service) processEmployeeSignatures(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, userList []*models.User) error {
+	f := logrus.Fields{
+		"functionName":   "v2.company.service.processEmployeeSignatures",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupModel.ProjectID,
+		"companyName":    companyModel.CompanyName,
+		"companyID":      companyModel.CompanyID,
+	}
+
 	var responseErr error
+	var wg sync.WaitGroup
+	resultChan := make(chan *EmployeeModel)
+	errChan := make(chan error)
 
 	// For each item in the email approval list...
 	for _, employeeUserModel := range userList {
+		wg.Add(1)
+		go s.repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel, &wg, resultChan, errChan)
+	}
 
-		// Look up the employee signature record - it may not exist
-		employeeSignatureModel, employeeSignatureErr := s.repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
-		if employeeSignatureErr != nil {
-			log.WithFields(f).WithError(employeeSignatureErr).Warnf("unexpected problem looking up employee signature record for: %+v - unable to process new employee acknowledgement request", employeeUserModel)
-			responseErr = employeeSignatureErr
-			continue
-		}
+	// Wait for all the go routines to complete
+	go func() {
+		wg.Wait()
+		close(resultChan)
+		close(errChan)
+	}()
 
-		if employeeSignatureModel != nil {
-			if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned {
-				// If record exists, this will update the record
-				updateErr := s.repo.ValidateProjectRecord(ctx, employeeSignatureModel.SignatureID, "signed and approved employee acknowledgement since auto_create_ecla feature flag set to true")
-				if updateErr != nil {
-					log.WithFields(f).WithError(updateErr).Warnf("problem updating employee signature record for: %+v", employeeUserModel)
-					responseErr = updateErr
+	for employeeModel := range resultChan {
+		if employeeModel != nil {
+			employeeSignatureModel := employeeModel.Signature
+			employeeUserModel := employeeModel.User
+			log.WithFields(f).Debugf("processing employee signature record for user: %+s", employeeUserModel.UserID)
+			if employeeSignatureModel != nil {
+				if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned {
+					// If record exists, this will update the record
+					log.WithFields(f).Debugf("updating employee signature record for: %+v", employeeSignatureModel)
+					updateErr := s.repo.ValidateProjectRecord(ctx, employeeSignatureModel.SignatureID, "signed and approved employee acknowledgement since auto_create_ecla feature flag set to true")
+					if updateErr != nil {
+						log.WithFields(f).WithError(updateErr).Warnf("problem updating employee signature record for: %+v", employeeSignatureModel)
+						responseErr = updateErr
+					}
+				} else {
+					log.WithFields(f).Debugf("employee signature record already exists for: %+v", employeeUserModel)
 				}
-			}
-		} else {
-			// Ok, auto-create the employee acknowledgement record
-			createErr := s.repo.CreateProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
-			if createErr != nil {
-				log.WithFields(f).WithError(createErr).Warnf("unable to create project company employee signature record for: %+v", employeeUserModel)
-				responseErr = createErr
+			} else {
+				// Ok, auto-create the employee acknowledgement record
+				log.WithFields(f).Debugf("creating employee signature record for user: %+s", employeeUserModel.UserID)
+				createErr := s.repo.CreateProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
+				if createErr != nil {
+					log.WithFields(f).WithError(createErr).Warnf("unable to create project company employee signature record for: %+v", employeeUserModel)
+					responseErr = createErr
+				}
 			}
 		}
 	}
 
-	return userList, responseErr
+	// Check for any errors
+	for err := range errChan {
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem looking up employee signature record ")
+			responseErr = err
+		}
+	}
+
+	log.WithFields(f).Debugf("completed processing employee signatures")
+
+	return responseErr
 }
 
 // InvalidateProjectRecords disassociates project signatures
@@ -1093,44 +1136,88 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 			return &hasSigned, &companyAffiliation, claGroupModelErr
 		}
 
-		// Load the user's employee acknowledgement - make sure it is valid
-		employeeSignature, empSigErr := s.repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, user)
-		if empSigErr != nil {
-			log.WithFields(f).WithError(empSigErr).Warnf("problem looking up employee signature for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
-			return &hasSigned, &companyAffiliation, empSigErr
+		employeeSigned, err := s.processEmployeeSignature(ctx, companyModel, claGroupModel, user)
+
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem looking up employee signature for company: %s", companyID)
+			return &hasSigned, &companyAffiliation, err
+		}
+		if employeeSigned != nil {
+			hasSigned = *employeeSigned
 		}
 
-		if employeeSignature != nil {
-			log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgement - signature id: %s", employeeSignature.SignatureID)
-
-			// Get corporate ccla signature of company to access the approval list
-			cclaSignature, cclaErr := s.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
-			if cclaErr != nil {
-				log.WithFields(f).WithError(cclaErr).Warnf("problem looking up ECLA signature for company: %s, project: %s", companyID, projectID)
-				return &hasSigned, &companyAffiliation, cclaErr
-			}
-
-			if cclaSignature != nil {
-				userApproved, approvedErr := s.userIsApproved(ctx, user, cclaSignature)
-				if approvedErr != nil {
-					log.WithFields(f).WithError(approvedErr).Warnf("problem determining if user: %s is approved for project: %s", user.UserID, projectID)
-					return &hasSigned, &companyAffiliation, approvedErr
-				}
-				log.WithFields(f).Debugf("ECLA Signature check - user approved: %t for projectID: %s for company: %s", userApproved, projectID, user.CompanyID)
-
-				if userApproved {
-					log.WithFields(f).Debugf("user: %s is in the approval list for signature: %s", user.UserID, employeeSignature.SignatureID)
-					hasSigned = true
-				}
-			}
-		} else {
-			log.WithFields(f).Debugf("ECLA Signature check - unable to locate employee acknowledgement for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
-		}
 	} else {
 		log.WithFields(f).Debugf("ECLA signature check - user does not have a company ID assigned - skipping...")
 	}
 
 	return &hasSigned, &companyAffiliation, nil
+}
+
+func (s service) processEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, user *models.User) (*bool, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.signatures.service.processEmployeeSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyModel.CompanyID,
+		"projectID":      claGroupModel.ProjectID,
+		"userID":         user.UserID,
+	}
+	var wg sync.WaitGroup
+	resultChannel := make(chan *EmployeeModel)
+	errorChannel := make(chan error)
+	hasSigned := false
+	projectID := claGroupModel.ProjectID
+	companyID := companyModel.CompanyID
+	approved := true
+	signed := true
+
+	wg.Add(1)
+	s.repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, user, &wg, resultChannel, errorChannel)
+
+	go func() {
+		wg.Wait()
+		close(resultChannel)
+		close(errorChannel)
+	}()
+
+	for result := range resultChannel {
+		if result != nil {
+			employeeSignature := result.Signature
+			if employeeSignature != nil {
+				log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgement - signature id: %s", employeeSignature.SignatureID)
+
+				// Get corporate ccla signature of company to access the approval list
+				cclaSignature, cclaErr := s.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
+				if cclaErr != nil {
+					log.WithFields(f).WithError(cclaErr).Warnf("problem looking up ECLA signature for company: %s, project: %s", companyID, projectID)
+					return &hasSigned, cclaErr
+				}
+
+				if cclaSignature != nil {
+					userApproved, approvedErr := s.userIsApproved(ctx, user, cclaSignature)
+					if approvedErr != nil {
+						log.WithFields(f).WithError(approvedErr).Warnf("problem determining if user: %s is approved for project: %s", user.UserID, projectID)
+						return &hasSigned, approvedErr
+					}
+					log.WithFields(f).Debugf("ECLA Signature check - user approved: %t for projectID: %s for company: %s", userApproved, projectID, user.CompanyID)
+
+					if userApproved {
+						log.WithFields(f).Debugf("user: %s is in the approval list for signature: %s", user.UserID, employeeSignature.SignatureID)
+						hasSigned = true
+					}
+				}
+			} else {
+				log.WithFields(f).Debugf("ECLA Signature check - unable to locate employee acknowledgement for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
+			}
+		}
+	}
+
+	for empSigErr := range errorChannel {
+		log.WithFields(f).WithError(empSigErr).Warnf("problem looking up employee signature for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
+		return &hasSigned, empSigErr
+	}
+
+	return &hasSigned, nil
+
 }
 
 func (s service) userIsApproved(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, error) {
