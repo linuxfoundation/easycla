@@ -1785,6 +1785,8 @@ func getLatestSignatures(signatures []*models.Signature) []*models.Signature {
 		}
 	}
 
+	log.WithFields(f).Debugf("signature Map: %+v", signatureMap)
+
 	for _, signature := range signatureMap {
 		result = append(result, signature)
 	}
@@ -1832,8 +1834,6 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 
 	// Check for approved signatures
 	filter = addAndCondition(filter, expression.Name("signature_reference_id").Equal(expression.Value(employeeUserModel.UserID)), &filterAdded)
-	filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
-	filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
 
 	log.WithFields(f).Debugf("running employee signature query on table: %s", repo.signatureTableName)
 	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildProjection()).Build()
