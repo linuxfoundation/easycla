@@ -43,8 +43,8 @@ your local machine. If there are folders represented in the object keys (keys
 containing "/" characters), they will be downloaded as separate directories
 in the target location.
 
-1. First, establish your AWS credentials for the environment
-2. Then run the copy command with the `--recursive` flag
+1. First, establish your AWS credentials for the environment.
+2. Then run the copy command with the `--recursive` flag.
 
 Example:
 
