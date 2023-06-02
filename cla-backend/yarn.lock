@@ -3598,9 +3598,9 @@ serverless-domain-manager@^7.0.4:
     "@aws-sdk/node-config-provider" "^3.329.0"
     "@aws-sdk/smithy-client" "^3.329.0"
 
-serverless-finch@^4.0.0:
-  version "4.0.0"
-  resolved "https://registry.npmjs.org/serverless-finch/-/serverless-finch-4.0.0.tgz"
+serverless-finch@^4.0.3:
+  version "4.0.3"
+  resolved "https://registry.yarnpkg.com/serverless-finch/-/serverless-finch-4.0.3.tgz#c0a8f513c3fe0af4f8e80b74ba8e7a83683add7c"
   dependencies:
     "@serverless/utils" "^6.0.2"
     is_js "^0.9.0"
