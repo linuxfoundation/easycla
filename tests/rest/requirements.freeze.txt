@@ -31,6 +31,6 @@ six==1.12.0
 stevedore==1.31.0
 tavern==0.30.3
 termcolor==1.1.0
-urllib3==1.25.6
+urllib3==1.26.5
 wcwidth==0.1.7
 zipp==0.6.0
