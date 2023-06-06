@@ -415,7 +415,7 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 				Role:      "cla-manager-designee",
 				Scope:     fmt.Sprintf("%s|%s", projectSFID, v1CompanyModel.CompanyExternalID),
 				UserName:  lfxUser.Username,
-				UserEmail: utils.StringValue(lfxUser.Email),
+				UserEmail: userEmail,
 			},
 		})
 
