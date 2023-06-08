@@ -13,7 +13,7 @@ from typing import List, Union, Optional
 import falcon
 import github
 from github import PullRequest
-from github.GithubException import UnknownObjectException, BadCredentialsException, GithubException, IncompletableObject
+from github.GithubException import UnknownObjectException, BadCredentialsException, GithubException, IncompletableObject, RateLimitExceededException
 from requests_oauthlib import OAuth2Session
 
 import cla
@@ -521,7 +521,7 @@ class GitHub(repository_service_interface.RepositoryService):
         except BadCredentialsException as err:
             cla.log.error('Invalid GitHub credentials provided: %s', str(err))
     
-    def get_github_user_by_email_and_name(self, email,name, installation_id):
+    def get_github_user_by_email(self, email, installation_id):
         """
         Helper method to get the GitHub user object from GitHub.
 
@@ -536,15 +536,9 @@ class GitHub(repository_service_interface.RepositoryService):
         if self.client is None:
             self.client = get_github_integration_client(installation_id)
         try:
-            users_by_name = self.client.search_users(name)
-            email_handle = email.split('@')[0]
-            cla.log.debug('Searching for GitHub user by email handle: %s', email_handle)
-            users_by_email = self.client.search_users(f"{email_handle} in:email")
-            for user in users_by_email:
-                if user in users_by_name:
-                    cla.log.debug('Found GitHub user login: %s and id: %s', user.login, user.id)
-                    return user
-            cla.log.debug('Could not find GitHub user for %s<%s>',name, email)
+            cla.log.debug('Searching for GitHub user by email handle: %s', email)
+            users_by_email = self.client.search_users(f"{email} in:email")
+            return users_by_email[0]
         except UnknownObjectException:
             cla.log.error('Could not find GitHub user %s' ,
                           email)
@@ -995,7 +989,12 @@ def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[
                     # get repository service
                     github = cla.utils.get_repository_service('github')
                     cla.log.debug(f'{fn} - getting co-author details: {co_author}, email: {email}, name: {name}')
-                    user = github.get_github_user_by_email_and_name(email, name, installation_id)
+                    try:
+                        user = github.get_github_user_by_email(email, installation_id)
+                    except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
+                        # user not found
+                        cla.log.debug(f'{fn} - co-author github user not found : {co_author} with exception: {ex}')
+                        user = None
                     cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
                     if user:
                         cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
