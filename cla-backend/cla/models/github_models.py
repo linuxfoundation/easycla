@@ -538,10 +538,10 @@ class GitHub(repository_service_interface.RepositoryService):
         try:
             cla.log.debug('Searching for GitHub user by email handle: %s', email)
             users_by_email = self.client.search_users(f"{email} in:email")
-            if len(users_by_email) == 0:
+            if len(list(users_by_email)) == 0:
                 cla.log.debug('No GitHub user found with email handle: %s', email)
                 return None
-            return users_by_email[0]
+            return list(users_by_email)[0]
         except UnknownObjectException:
             cla.log.error('Could not find GitHub user %s' ,
                           email)
