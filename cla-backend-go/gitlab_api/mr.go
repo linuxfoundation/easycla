@@ -189,9 +189,9 @@ func getUser(client *gitlab.Client, email, name *string) (*gitlab.User, error) {
 		return user, nil
 	}
 
-	// check if user exists for the given email
+	// check if user exists for the given name
 	for _, found := range users {
-		if strings.EqualFold(found.Email, *email) {
+		if strings.EqualFold(found.Name, *name) {
 			log.WithFields(f).Debugf("found matching user : %+v - updating GitLab username and ID", found)
 			user.Username = found.Username
 			user.ID = found.ID
