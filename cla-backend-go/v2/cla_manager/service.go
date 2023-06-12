@@ -285,7 +285,19 @@ func (s *service) DeleteCLAManager(ctx context.Context, authUser *auth.User, cla
 		"authUserEmail":  authUser.Email,
 	}
 
-	signature, deleteErr := s.managerService.RemoveClaManager(ctx, authUser, params.CompanyID, claGroupID, params.UserLFID)
+	// GetSFProject
+	ps := v2ProjectService.GetClient()
+	projectSF, deleteErr := ps.GetProject(params.ProjectSFID)
+	if deleteErr != nil {
+		msg := buildErrorMessageDelete(params, deleteErr)
+		log.WithFields(f).Warn(msg)
+		return &models.ErrorResponse{
+			Message: msg,
+			Code:    "400",
+		}
+	}
+
+	signature, deleteErr := s.managerService.RemoveClaManager(ctx, authUser, params.CompanyID, claGroupID, params.UserLFID, projectSF.Name)
 
 	if deleteErr != nil {
 		msg := buildErrorMessageDelete(params, deleteErr)

@@ -830,7 +830,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 		}
 
 		// Audit Event sent from service upon success
-		signature, deleteErr := service.RemoveClaManager(ctx, ToAuthUser(claUser), params.CompanyID, params.ProjectID, params.UserLFID)
+		signature, deleteErr := service.RemoveClaManager(ctx, ToAuthUser(claUser), params.CompanyID, params.ProjectID, params.UserLFID, "")
 
 		if deleteErr != nil {
 			msg := buildErrorMessageDeleteManager("EasyCLA - 400 Bad Request - Delete CLA Manager - Service Error", params, deleteErr)
