@@ -40,7 +40,7 @@ type IService interface {
 	DeleteRequest(requestID string) error
 
 	AddClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error)
-	RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string) (*models.Signature, error)
+	RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error)
 }
 
 type service struct {
@@ -218,6 +218,11 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 		return nil, projectErr
 	}
 
+	// if projectSFName is empty, we can set clagroup project name.
+	if projectSFName == "" {
+		projectSFName = claGroupModel.ProjectName
+	}
+
 	// Look up signature ACL to ensure the user can add cla manager
 
 	signed := true
@@ -278,7 +283,7 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 		CompanyModel:  companyModel,
 		EventData: &events.CLAManagerCreatedEventData{
 			CompanyName: companyModel.CompanyName,
-			ProjectName: claGroupModel.ProjectName,
+			ProjectName: projectSFName,
 			UserName:    userModel.Username,
 			UserEmail:   userModel.LfEmail.String(),
 			UserLFID:    userModel.LfUsername,
@@ -312,7 +317,7 @@ func (s service) getCompanySignature(ctx context.Context, companyID string, claG
 }
 
 // RemoveClaManager removes lfid from signature acl with given company and project
-func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string) (*models.Signature, error) {
+func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error) {
 
 	f := logrus.Fields{
 		"functionName":   "v1.cla_manager.RemoveClaManager",
@@ -334,6 +339,11 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 	claGroupModel, projectErr := s.projectService.GetCLAGroupByID(ctx, claGroupID)
 	if projectErr != nil || claGroupModel == nil {
 		return nil, projectErr
+	}
+
+	// if projectSFName is empty, we can set clagroup project name.
+	if projectSFName == "" {
+		projectSFName = claGroupModel.ProjectName
 	}
 
 	signed := true
@@ -398,7 +408,7 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 		CompanyModel:  companyModel,
 		EventData: &events.CLAManagerDeletedEventData{
 			CompanyName: companyModel.CompanyName,
-			ProjectName: claGroupModel.ProjectName,
+			ProjectName: projectSFName,
 			UserName:    userModel.LfUsername,
 			UserEmail:   userModel.LfEmail.String(),
 			UserLFID:    LFID,
