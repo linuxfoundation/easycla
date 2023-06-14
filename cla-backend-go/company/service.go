@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/go-openapi/strfmt"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	orgServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/user"
 	organization_service "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
@@ -55,6 +57,7 @@ type IService interface { // nolint
 	AddPendingCompanyInviteRequest(ctx context.Context, companyID string, userID string) (*InviteModel, error)
 	ApproveCompanyAccessRequest(ctx context.Context, companyInviteID string) (*InviteModel, error)
 	RejectCompanyAccessRequest(ctx context.Context, companyInviteID string) (*InviteModel, error)
+	IsCCLAEnabledForCompany(ctx context.Context, companySFID string) (bool, error)
 
 	// calls org service
 	SearchOrganizationByName(ctx context.Context, orgName string, websiteName string, includeSigningEntityName bool, filter string) (*models.OrgList, error)
@@ -434,6 +437,11 @@ func (s service) AddUserToCompanyAccessList(ctx context.Context, companyID, lfid
 	return nil
 }
 
+// IsCCLAEnabledForCompany determines if the specified company has CCLA enabled
+func (s service) IsCCLAEnabledForCompany(ctx context.Context, companyID string) (bool, error) {
+	return s.repo.IsCCLAEnabledForCompany(ctx, companyID)
+}
+
 // sendRequestAccessEmail sends the request access email
 func (s service) sendRequestAccessEmail(ctx context.Context, companyModel *models.Company, requesterName, requesterEmail, recipientName, recipientAddress string) {
 	f := logrus.Fields{
@@ -701,35 +709,80 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 		return nil, err
 	}
 
-	result := &models.OrgList{List: make([]*models.Org, 0, len(orgs))}
+	resultsChannel := make(chan *models.Org, len(orgs))
+	var wg sync.WaitGroup
+
+	wg.Add(len(orgs))
 	for _, org := range orgs {
-		if includeSigningEntityName {
-			var signingEntityNames []string
-			if len(org.SigningEntityName) > 0 {
-				signingEntityNames = utils.TrimSpaceFromItems(org.SigningEntityName)
-				// Auto-create on-demand from SF
-				for _, signingEntityName := range signingEntityNames {
-					// Auto-create the internal record, if needed
-					_, err = s.CreateOrgFromExternalID(ctx, signingEntityName, org.ID)
-					if err != nil {
-						log.WithFields(f).WithError(err).Warnf("Unable to create organization from external ID: %s using signing entity name: %s", org.ID, signingEntityName)
-					}
+		go func(org *orgServiceModels.Organization) {
+			defer wg.Done()
+			// get company by external ID
+			cclaEnabled := false
+			company, err := s.repo.GetCompanyByExternalID(ctx, org.ID)
+			if err != nil {
+				if _, ok := err.(*utils.CompanyNotFound); ok {
+					// company not found, so ccla is not enabled
+					log.WithFields(f).WithError(err).Warnf("company not found by name: %s", org.Name)
+					cclaEnabled = false
+				} else {
+					log.WithFields(f).WithError(err).Warnf("problem searching company by external ID: %s", org.ID)
+					return
 				}
 			}
-			result.List = append(result.List, &models.Org{
-				OrganizationID:      org.ID,
-				OrganizationName:    org.Name,
-				SigningEntityNames:  signingEntityNames,
-				OrganizationWebsite: org.Link,
-			})
-		} else {
-			result.List = append(result.List, &models.Org{
-				OrganizationID:      org.ID,
-				OrganizationName:    org.Name,
-				SigningEntityNames:  []string{},
-				OrganizationWebsite: org.Link,
-			})
-		}
+
+			if company != nil {
+				cclaEnabled, err = s.IsCCLAEnabledForCompany(ctx, company.CompanyID)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warnf("problem checking if ccla is enabled for company: %s", company.CompanyID)
+					return
+				}
+			}
+
+			if includeSigningEntityName {
+
+				if len(org.SigningEntityName) > 0 {
+					var signingEntityNames []string
+					if len(org.SigningEntityName) > 0 {
+						signingEntityNames = utils.TrimSpaceFromItems(org.SigningEntityName)
+						for _, signingEntityName := range signingEntityNames {
+							// Auto-create the internal record, if needed
+							_, err = s.CreateOrgFromExternalID(ctx, signingEntityName, org.ID)
+							if err != nil {
+								log.WithFields(f).WithError(err).Warnf("Unable to create organization from external ID: %s using signing entity name: %s", org.ID, signingEntityName)
+							}
+						}
+						resultsChannel <- &models.Org{
+							OrganizationID:      org.ID,
+							OrganizationName:    org.Name,
+							SigningEntityNames:  signingEntityNames,
+							OrganizationWebsite: org.Link,
+							CclaEnabled:         &cclaEnabled,
+						}
+
+					}
+				}
+			} else {
+				resultsChannel <- &models.Org{
+					OrganizationID:      org.ID,
+					OrganizationName:    org.Name,
+					OrganizationWebsite: org.Link,
+					CclaEnabled:         &cclaEnabled,
+				}
+			}
+		}(org)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultsChannel)
+	}()
+
+	result := &models.OrgList{
+		List: make([]*models.Org, 0),
+	}
+
+	for orgResult := range resultsChannel {
+		result.List = append(result.List, orgResult)
 	}
 
 	// Sort the results
