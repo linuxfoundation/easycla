@@ -15,3 +15,8 @@ properties:
   organization_website:
     $ref: './common/properties/website.yaml'
     description: website of the organization
+  ccla_enabled:
+    type: boolean
+    default: false
+    description: Status describing if organization has signed CCLA
+

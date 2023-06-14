@@ -27,6 +27,10 @@ import (
 	"github.com/gofrs/uuid"
 )
 
+const (
+	SignatureReferenceIndex = "reference-signature-index"
+)
+
 // IRepository interface methods
 type IRepository interface { //nolint
 	CreateCompany(ctx context.Context, in *models.Company) (*models.Company, error)
@@ -49,12 +53,14 @@ type IRepository interface { //nolint
 	ApproveCompanyAccessRequest(ctx context.Context, companyInviteID string) error
 	RejectCompanyAccessRequest(ctx context.Context, companyInviteID string) error
 	UpdateCompanyAccessList(ctx context.Context, companyID string, companyACL []string) error
+	IsCCLAEnabledForCompany(ctx context.Context, companyID string) (bool, error)
 }
 
 type repository struct {
 	stage                   string
 	dynamoDBClient          *dynamodb.DynamoDB
 	companyTableName        string
+	signatureTableName      string
 	companyInvitesTableName string
 }
 
@@ -64,6 +70,7 @@ func NewRepository(awsSession *session.Session, stage string) IRepository {
 		stage:                   stage,
 		dynamoDBClient:          dynamodb.New(awsSession),
 		companyTableName:        fmt.Sprintf("cla-%s-companies", stage),
+		signatureTableName:      fmt.Sprintf("cla-%s-signatures", stage),
 		companyInvitesTableName: fmt.Sprintf("cla-%s-company-invites", stage),
 	}
 }
@@ -629,6 +636,50 @@ func (repo repository) GetCompaniesByUserManager(ctx context.Context, userID str
 		LastKeyScanned: lastEvaluatedKey,
 		Companies:      companies,
 	}, nil
+}
+
+// IsCCLAEnabled returns true if company is enabled for CCLA
+func (repo repository) IsCCLAEnabledForCompany(ctx context.Context, companyID string) (bool, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signature.repository.IsCCLAEnabled",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyID,
+	}
+
+	// Build the query
+	condition := expression.Key("signature_reference_id").Equal(expression.Value(companyID))
+
+	filter := expression.Name("signature_signed").Equal(expression.Value(true)).And(expression.Name("signature_approved").Equal(expression.Value(true))).And(expression.Name("signature_type").Equal(expression.Value("ccla")))
+
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).Build()
+
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for company: %s, error: %v", companyID, err)
+		return false, err
+	}
+
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		FilterExpression:          expr.Filter(),
+		TableName:                 aws.String(repo.signatureTableName),
+		IndexName:                 aws.String(SignatureReferenceIndex),
+	}
+
+	results, queryErr := repo.dynamoDBClient.QueryWithContext(ctx, queryInput)
+	if queryErr != nil {
+		log.WithFields(f).Warnf("error querying signatures for company: %s, error: %v", companyID, queryErr)
+		return false, queryErr
+	}
+
+	if *results.Count > 0 {
+		log.WithFields(f).Debugf("company: %s is enabled for CCLA", companyID)
+		return true, nil
+	}
+
+	return false, nil
+
 }
 
 // GetCompanyUserManagerWithInvites the get a list of companies including status when provided the company id and user manager
