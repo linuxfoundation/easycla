@@ -19,11 +19,11 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	orgServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/user"
 	organization_service "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	orgServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/models"
 )
 
 type service struct {
