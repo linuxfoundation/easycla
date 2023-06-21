@@ -860,11 +860,13 @@ func (ed *CLAManagerCreatedEventData) GetEventDetailsString(args *LogEventArgs) 
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
-	if args.ProjectName != "" {
+	if ed.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", ed.ProjectName)
+	} else {
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -882,7 +884,9 @@ func (ed *CLAManagerDeletedEventData) GetEventDetailsString(args *LogEventArgs) 
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
-	if args.ProjectName != "" {
+	if ed.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", ed.ProjectName)
+	} else {
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
@@ -1977,7 +1981,9 @@ func (ed *CLAManagerCreatedEventData) GetEventSummaryString(args *LogEventArgs) 
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
-	if args.ProjectName != "" {
+	if ed.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", ed.ProjectName)
+	} else {
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.CompanyName != "" {
@@ -1996,7 +2002,9 @@ func (ed *CLAManagerDeletedEventData) GetEventSummaryString(args *LogEventArgs) 
 	if args.CLAGroupName != "" {
 		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
 	}
-	if args.ProjectName != "" {
+	if ed.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", ed.ProjectName)
+	} else {
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.CompanyName != "" {
