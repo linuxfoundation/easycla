@@ -74,6 +74,9 @@ class GitHub(repository_service_interface.RepositoryService):
         if data['action'] == 'opened':
             cla.log.debug('github_models.received_activity - Handling opened pull request')
             return self.process_opened_pull_request(data)
+        elif data['action'] == 'enqueued':
+            cla.log.debug('github_models.received_activity - Handling enqueued pull request')
+            return self.process_opened_pull_request(data)
         elif data['action'] == 'reopened':
             cla.log.debug('github_models.received_activity - Handling reopened pull request')
             return self.process_reopened_pull_request(data)
