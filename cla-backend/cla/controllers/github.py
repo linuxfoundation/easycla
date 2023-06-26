@@ -350,7 +350,7 @@ def handle_pull_request_event(action: str, body: dict):
     cla.log.debug(f'{func_name} - processing github pull_request activity callback...')
 
     # New PR opened
-    if action == 'opened' or action == 'reopened' or action == 'synchronize':
+    if action == 'opened' or action == 'reopened' or action == 'synchronize' or action == 'enqueued':
         cla.log.debug(f'{func_name} - processing github pull_request activity for action: {action}')
         # Copied from repository_service.py
         service = cla.utils.get_repository_service('github')
