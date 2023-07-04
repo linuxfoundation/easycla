@@ -68,14 +68,11 @@ class GitHub(repository_service_interface.RepositoryService):
 
     def received_activity(self, data):
         cla.log.debug('github_models.received_activity - Received GitHub activity: %s', data)
-        if 'pull_request' not in data:
+        if 'pull_request' not in data or 'merge_group' not in data:
             cla.log.debug('github_models.received_activity - Activity not related to pull request - ignoring')
-            return {'message': 'Not a pull request - no action performed'}
+            return {'message': 'Not a pull request nor a merge group  - no action performed'}
         if data['action'] == 'opened':
             cla.log.debug('github_models.received_activity - Handling opened pull request')
-            return self.process_opened_pull_request(data)
-        elif data['action'] == 'enqueued':
-            cla.log.debug('github_models.received_activity - Handling enqueued pull request')
             return self.process_opened_pull_request(data)
         elif data['action'] == 'reopened':
             cla.log.debug('github_models.received_activity - Handling reopened pull request')
@@ -86,6 +83,9 @@ class GitHub(repository_service_interface.RepositoryService):
         elif data['action'] == 'synchronize':
             cla.log.debug('github_models.received_activity - Handling synchronized pull request')
             return self.process_synchronized_pull_request(data)
+        elif data['action'] == 'checks_requested':
+            cla.log.debug('github_models.received_activity - Handling checks requested pull request')
+            return self.process_checks_requested_merge_group(data)
         else:
             cla.log.debug('github_models.received_activity - Ignoring unsupported action: {}'.format(data['action']))
 
@@ -326,6 +326,22 @@ class GitHub(repository_service_interface.RepositoryService):
         github_repository_id = data['repository']['id']
         installation_id = data['installation']['id']
         self.update_change_request(installation_id, github_repository_id, pull_request_id)
+    
+    def process_checks_requested_merge_group(self, data):
+        """
+        Helper method to handle a webhook fired from GitHub for a merge group event.
+
+        :param data: The data returned from GitHub on this webhook.
+        :type data: dict
+        """
+        merge_group_sha = data['merge_group']['head_sha']
+        github_repository_id = data['repository']['id']
+        installation_id = data['installation']['id']
+        pull_request_message = data['merge_group']['head_commit']['message']
+
+        # Extract the pull request number from the message
+        pull_request_id = cla.utils.extract_pull_request_number(pull_request_message)
+        self.update_merge_group(installation_id, github_repository_id, merge_group_sha, pull_request_id)
 
     def process_easycla_command_comment(self, data):
         """
@@ -363,7 +379,128 @@ class GitHub(repository_service_interface.RepositoryService):
     def get_return_url(self, github_repository_id, change_request_id, installation_id):
         pull_request = self.get_pull_request(github_repository_id, change_request_id, installation_id)
         return pull_request.html_url
+    
+    def get_existing_repository(self, installation_id, github_repository_id):
+        fn = 'get_existing_repository'
+        # Queries GH for the complete repository details, see:
+        # https://developer.github.com/v3/repos/#get-a-repository
+        cla.log.debug(f'{fn} - fetching repository details for GH repo ID: {github_repository_id}...')
+        repository = cla.utils.get_repository_by_external_id(installation_id, github_repository_id)
+        if repository is None:
+            cla.log.warning(f'{fn} - unable to locate repository by GH ID: {github_repository_id}')
+            return None
+        
+        if repository.get_enabled() is False:
+            cla.log.warning(f'{fn} - repository is disabled, skipping: {github_repository_id}')
+            return None
+        
+        cla.log.debug(f'{fn} - found repository by GH ID: {github_repository_id}')
+        return repository
+    
+    
+    def check_org_validity(self, installation_id, repository):
+        fn = 'check_org_validity'
+        organization_name = repository.get_organization_name()
 
+        # Check that the Github Organization exists in our database
+        cla.log.debug(f'{fn} - fetching organization details for GH org name: {organization_name}...')
+        github_org = GitHubOrg()
+        try:
+            github_org.load(organization_name=organization_name)
+        except DoesNotExist as err:
+            cla.log.warning(f'{fn} - unable to locate organization by GH name: {organization_name}')
+            return False
+        
+        if github_org.get_organization_installation_id() != installation_id:
+            cla.log.warning(f'{fn} - '
+                            f'the installation ID: {github_org.get_organization_installation_id()} '
+                            f'of this organization does not match installation ID: {installation_id} '
+                            'given by the pull request.')
+            return False
+
+        cla.log.debug(f'{fn} - found organization by GH name: {organization_name}')
+        return True
+        
+    def get_pull_request_retry(self, github_repository_id, change_request_id, installation_id, retries=3) -> dict:
+        """
+        Helper function to retry getting a pull request from GitHub.
+        """
+        fn = 'get_pull_request_retry'
+        pull_request = {}
+        for i in range(retries):
+            try:
+                # check if change_request_id is a valid int
+                _ = int(change_request_id)
+                pull_request = self.get_pull_request(github_repository_id, change_request_id, installation_id)
+            except ValueError as ve:
+                cla.log.error(f'{fn} - Invalid PR: {change_request_id} - error: {ve}. Unable to fetch '
+                              f'PR {change_request_id} from GitHub repository {github_repository_id} '
+                              f'using installation id {installation_id}.')
+                if i <= retries:
+                    cla.log.debug(f'{fn} - attempt {i + 1} - waiting to retry...')
+                    time.sleep(2)
+                    continue
+                else:
+                    cla.log.warning(f'{fn} - attempt {i + 1} - exhausted retries - unable to load PR '
+                                    f'{change_request_id} from GitHub repository {github_repository_id} '
+                                    f'using installation id {installation_id}.')
+                    # TODO: DAD - possibly update the PR status?
+                    return
+            # Fell through - no error, exit loop and continue on
+            break
+        cla.log.debug(f'{fn} - retrieved pull request: {pull_request}')
+
+        return pull_request
+
+
+
+    def update_merge_group(self, installation_id, github_repository_id, merge_group_sha, pull_request_id):
+        fn = 'update_queue_entry'
+
+        # Note: late 2021/early 2022 we observed that sometimes we get the event for a PR, then go back to GitHub
+        # to query for the PR details and discover the PR is 404, not available for some reason.  Added retry
+        # logic to retry a couple of times to address any timing issues.
+
+        # Get the pull request details from GitHub
+        cla.log.debug(f'{fn} - fetching pull request details for GH repo ID: {github_repository_id} '
+                        f'PR ID: {pull_request_id}...')
+        pull_request = self.get_pull_request_retry(installation_id, github_repository_id, pull_request_id, installation_id, retries=3)
+
+        # Get Commit authors
+        commit_authors = self.get_pull_request_commit_authors(pull_request, installation_id)
+
+        try:
+            repository = self.get_existing_repository(installation_id, github_repository_id)
+            if repository is None:
+                cla.log.warning(f'{fn} - unable to locate repository by GH ID: {github_repository_id}')
+                return None
+            is_valid = self.check_org_validity(installation_id, repository)
+            if not is_valid:
+                cla.log.warning(f'{fn} - the organization is not valid, skipping: {github_repository_id}')
+                return None
+        
+        except DoesNotExist as err:
+            cla.log.warning(f'{fn} - unable to locate repository by GH ID: {github_repository_id}')
+            return 
+        
+        project_id = repository.get_project_id()
+        cla.log.debug(f'{fn} - found project by GH ID: {github_repository_id}')
+        project = get_project_instance()
+        project.load(project_id)
+
+        signed = []
+        missing = []
+
+        # Check if the user has signed the CLA
+        cla.log.debug(f'{fn} - checking if the user has signed the CLA...')
+        for user_commit_summary in commit_authors:
+            handle_commit_from_user(user_commit_summary, signed, missing, project)
+        
+        #update Merge group status
+        update_merge_group_status(installation_id, github_repository_id, merge_group_sha, signed, missing, project.get_version())
+
+
+        
     def update_change_request(self, installation_id, github_repository_id, change_request_id):
         fn = 'update_change_request'
         # Queries GH for the complete pull request details, see:
@@ -947,6 +1084,51 @@ def handle_commit_from_user(project, user_commit_summary: UserCommitSummary, sig
 
         missing.append(user_commit_summary)
 
+def get_merge_group_commit_authors(merge_group_sha, installation_id=None) -> List[UserCommitSummary]:
+    """
+    Helper function to extract all committer information for a GitHub merge group.
+
+    :param: merge_group_sha: A GitHub merge group sha to examine.
+    :type: merge_group_sha: string
+    :return: A list of User Commit Summary objects containing the commit sha and available user information
+    """
+
+    fn = 'cla.models.github_models.get_merge_group_commit_authors'
+    cla.log.debug(f'Querying merge group {merge_group_sha} for commit authors...')
+    commit_authors = []
+    try:
+        g = cla.utils.get_github_integration_instance(installation_id=installation_id)
+        commit = g.get_commit(merge_group_sha)
+        for parent in commit.parents:
+            try:
+                cla.log.debug(f'{fn} - Querying parent commit {parent.sha} for commit authors...')
+                commit = g.get_commit(parent.sha)
+                cla.log.debug(f'{fn} - Found {commit.commit.author.name} as the author of parent commit {parent.sha}')
+                commit_authors.append(UserCommitSummary(
+                    parent.sha,
+                    commit.author.id,
+                    commit.author.login,
+                    commit.author.name,
+                    commit.author.email,
+                    False, False
+                ))
+            except (GithubException, IncompletableObject) as e:
+                cla.log.warning(f'{fn} - Unable to query parent commit {parent.sha} for commit authors: {e}')
+                commit_authors.append(UserCommitSummary(
+                    parent.sha,
+                    None,
+                    None,
+                    None,
+                    None,
+                    False, False
+                ))
+                
+    except Exception as e:
+        cla.log.warning(f'{fn} - Unable to query merge group {merge_group_sha} for commit authors: {e}')
+
+    return commit_authors
+    
+
 
 def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[UserCommitSummary]:
     """
@@ -1090,6 +1272,35 @@ def has_check_previously_passed_or_failed(pull_request: PullRequest):
             return True, comment
     return False, None
 
+def update_merge_group_status(installation_id, repository_id, pull_request,merge_commit_sha,signed, missing, project_version):
+    """
+    Helper function to update a merge queue entrys status based on the list of signers.
+    :param installation_id: The ID of the GitHub installation
+    :type installation_id: int
+    :param repository_id: The ID of the GitHub repository this PR belongs to.
+    :type repository_id: int
+    :param pull_request: The GitHub PullRequest object for this PR.
+    """
+    fn = 'update_merge_group_status'
+    context_name = os.environ.get('GH_STATUS_CTX_NAME')
+    if context_name is None:
+            context_name = 'communitybridge/cla'
+    if missing is not None and len(missing) > 0:
+        state = 'failure'
+        context, body = cla.utils.assemble_cla_status(context_name, signed=False)
+        sign_url = cla.utils.get_full_sign_url(
+                'github', str(installation_id), repository_id, pull_request.number, project_version)
+        cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
+                          f'signing url: {sign_url}')
+        create_commit_status_for_merge_group(installation_id, repository_id,merge_commit_sha, state, sign_url, body, context)
+    else:
+        state = 'success'
+        context, body = cla.utils.assemble_cla_status(context_name, signed=True)
+        cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed')
+        create_commit_status_for_merge_group(installation_id, repository_id,merge_commit_sha, state, sign_url, body, context)
+
+
+
 def update_pull_request(installation_id, github_repository_id, pull_request, repository_name,
                         signed: List[UserCommitSummary],
                         missing: List[UserCommitSummary], project_version):  # pylint: disable=too-many-locals
@@ -1220,6 +1431,34 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
                             f'{len(signed)} passed, {missing}')
             create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
 
+
+def create_commit_status_for_merge_group(installation_id, repository_id,merge_commit_sha, state, sign_url, body, context):
+    """
+    Helper function to create a pull request commit status message.
+
+    :param repository_id: The GitHub repository ID.
+    :type repository_id: string
+    :param merge_commit_sha: The commit hash to post a status on.
+    :type merge_commit_sha: string
+    :param state: The state of the status.
+    :type state: string
+    :param sign_url: The link the user will be taken to when clicking on the status message.
+    :type sign_url: string
+    :param body: The contents of the status message.
+    :type body: string
+    """
+    try:
+        client = GitHubInstallation(installation_id)
+        repository = client.get_repository(repository_id)
+        # Get Commit object
+        commit_obj = repository.get_commit(merge_commit_sha)
+        # Create status
+        cla.log.debug(f'Creating commit status for repository {repository_id} and merge commit {merge_commit_sha}')
+        commit_obj.create_status(state=state, target_url=sign_url, description=body, context=context)
+
+    except Exception as e:
+        cla.log.warning(f'Unable to create commit status for repository {repository_id} '
+                        f'and merge commit {merge_commit_sha}: {e}')
 
 def create_commit_status(pull_request, commit_hash, state, sign_url, body, context):
     """
