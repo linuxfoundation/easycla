@@ -169,7 +169,11 @@ def load_ssm_keys():
         f'cla-auth0-platform-url-{stage}',
         f'cla-auth0-platform-client-id-{stage}',
         f'cla-auth0-platform-client-secret-{stage}',
-        f'cla-auth0-platform-audience-{stage}'
+        f'cla-auth0-platform-audience-{stage}',
+        f'cla-docusign-root-url-{stage}',
+        f'cla-docusign-client-id-{stage}',
+        f'cla-docusign-user-id-{stage}',
+        f'cla-docusign-private-key-{stage}'
     ]
     config_keys = [
         "GITHUB_PRIVATE_KEY",
@@ -177,7 +181,11 @@ def load_ssm_keys():
         "AUTH0_PLATFORM_URL",
         "AUTH0_PLATFORM_CLIENT_ID",
         "AUTH0_PLATFORM_CLIENT_SECRET",
-        "AUTH0_PLATFORM_AUDIENCE"
+        "AUTH0_PLATFORM_AUDIENCE",
+        "DOCUSIGN_ROOT_URL",
+        "DOCUSIGN_CLIENT_ID",
+        "DOCUSIGN_USER_ID",
+        "DOCUSIGN_PRIVATE_KEY"
     ]
 
     # thread pool of 5 to load fetch the keys
