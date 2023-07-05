@@ -32,10 +32,10 @@ AUTH0_ALGORITHM='';
 
 # DocuSign and Docraptor Credentials
 DOCRAPTOR_API_KEY=''
-DOCUSIGN_USERNAME=''
-DOCUSIGN_PASSWORD=''
+DOCUSIGN_USER_ID=''
+DOCUSIGN_PRIVATE_KEY=''
 DOCUSIGN_INTEGRATOR_KEY=''
-DOCUSIGN_ROOT_URL=''
+DOCUSIGN_AUTH_SERVER=''
 
 # Github Credentials
 GH_APP_ID=''
@@ -164,14 +164,14 @@ if [ -n "$DOCRAPTOR_API_KEY" ]; then
     aws ssm put-parameter --profile $PROFILE --region us-east-1 --name "cla-doc-raptor-api-key-$ENV" --description "Docraptor API Key" --value "$DOCRAPTOR_API_KEY" --type "String" --overwrite
 fi
 
-if [ -n "$DOCUSIGN_USERNAME" ]; then
-    echo "updating DocuSign Username: $DOCUSIGN_USERNAME"
-    aws ssm put-parameter --profile $PROFILE --region us-east-1 --name "cla-docusign-username-$ENV" --description "DocuSign Username" --value "$DOCUSIGN_USERNAME" --type "String" --overwrite
+if [ -n "$DOCUSIGN_USER_ID" ]; then
+    echo "updating DocuSign Userid: $DOCUSIGN_USER_ID"
+    aws ssm put-parameter --profile $PROFILE --region us-east-1 --name "cla-docusign-user-id-$ENV" --description "DocuSign Userid" --value "$DOCUSIGN_USER_ID" --type "String" --overwrite
 fi
 
-if [ -n "$DOCUSIGN_PASSWORD" ]; then
-    echo "updating DocuSign Password: $DOCUSIGN_PASSWORD"
-    aws ssm put-parameter --profile $PROFILE --region us-east-1 --name "cla-docusign-password-$ENV" --description "Docusign Password" --value "$DOCUSIGN_PASSWORD" --type "String" --overwrite
+if [ -n "$DOCUSIGN_PRIVATE_KEY" ]; then
+    echo "updating DocuSign Private key : xxxxx"
+    aws ssm put-parameter --profile $PROFILE --region us-east-1 --name "cla-docusign-private-key-$ENV" --description "Docusign Private Key" --value "$DOCUSIGN_PRIVATE_KEY" --type "String" --overwrite
 fi
 
 if [ -n "$DOCUSIGN_INTEGRATOR_KEY" ]; then
@@ -179,9 +179,9 @@ if [ -n "$DOCUSIGN_INTEGRATOR_KEY" ]; then
     aws ssm put-parameter --profile $PROFILE --region us-east-1 --name "cla-docusign-integrator-key-$ENV" --description "Docusign Integrator Key" --value "$DOCUSIGN_INTEGRATOR_KEY" --type "String" --overwrite
 fi
 
-if [ -n "$DOCUSIGN_ROOT_URL" ]; then
-    echo "updating DocuSign Root Url: $DOCUSIGN_ROOT_URL"
-    aws ssm put-parameter --profile $PROFILE --region us-east-1 --name "cla-docusign-root-url-$ENV" --description "DocuSign Root Url" --value "$DOCUSIGN_ROOT_URL" --type "String" --overwrite
+if [ -n "$DOCUSIGN_AUTH_SERVER" ]; then
+    echo "updating DocuSign Auth Server: $DOCUSIGN_AUTH_SERVER"
+    aws ssm put-parameter --profile $PROFILE --region us-east-1 --name "cla-docusign-auth-server-$ENV" --description "DocuSign Auth Server" --value "$DOCUSIGN_AUTH_SERVER" --type "String" --overwrite
 fi
 
 # Github Credentials

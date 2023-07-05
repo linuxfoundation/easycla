@@ -35,9 +35,10 @@ from cla.utils import (append_email_help_sign_off_content, get_corporate_url,
                        get_email_help_content, get_project_cla_group_instance)
 
 api_base_url = os.environ.get('CLA_API_BASE', '')
-root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
-ds_client_id = os.environ.get('DOCUSIGN_CLIENT_ID', '')
+
 ds_user_id = os.environ.get('DOCUSIGN_USER_ID', '')
+ds_auth_url = os.environ.get('DOCUSIGN_AUTH_SERVER', '')
+ds_client_id = os.environ.get('DOCUSIGN_INTEGRATOR_KEY', '')
 ds_private_key = os.environ.get('DOCUSIGN_PRIVATE_KEY', '')
 
 lf_group_client_url = os.environ.get('LF_GROUP_CLIENT_URL', '')
@@ -108,8 +109,8 @@ class DocuSign(signing_service_interface.SigningService):
 
     def initialize(self, config):
         api_client = docusign_esign.ApiClient()
-        api_client.set_base_path(root_url)
-        api_client.set_oauth_host_name(root_url)
+        api_client.set_base_path(ds_auth_url)
+        api_client.set_oauth_host_name(ds_auth_url)
         err = self.setAuthToken()
         if err != None:
             return err
@@ -119,11 +120,11 @@ class DocuSign(signing_service_interface.SigningService):
 
     def setAuthToken(self):
         api_client = docusign_esign.ApiClient()
-        api_client.set_base_path(root_url)
+        api_client.set_base_path(ds_auth_url)
         response = api_client.request_jwt_user_token(
             client_id=ds_client_id,
             user_id=ds_user_id,
-            oauth_host_name=root_url,
+            oauth_host_name=ds_auth_url,
             private_key_bytes=ds_private_key,
             expires_in=4000,
             scopes=self.SCOPES

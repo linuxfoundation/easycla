@@ -233,9 +233,9 @@ provider:
     SF_USERNAME: ${file(./env.json):sf-username, ssm:/cla-sf-username-${opt:stage}}
     SF_PASSWORD: ${file(./env.json):sf-password, ssm:/cla-sf-password-${opt:stage}}
     DOCRAPTOR_API_KEY: ${file(./env.json):doc-raptor-api-key, ssm:/cla-doc-raptor-api-key-${opt:stage}}
-    DOCUSIGN_ROOT_URL: ${file(./env.json):docusign-root-url, ssm:/cla-docusign-root-url-${opt:stage}}
-    DOCUSIGN_USERNAME: ${file(./env.json):docusign-username, ssm:/cla-docusign-username-${opt:stage}}
-    DOCUSIGN_PASSWORD: ${file(./env.json):docusign-password, ssm:/cla-docusign-password-${opt:stage}}
+    DOCUSIGN_AUTH_SERVER: ${file(./env.json):docusign-auth-server, ssm:/cla-docusign-auth-server-${sls:stage}}
+    DOCUSIGN_USER_ID: ${file(./env.json):docusign-user-id, ssm:/cla-docusign-user-id-${sls:stage}}
+    DOCUSIGN_PRIVATE_KEY: ${file(./env.json):docusign-private-key, ssm:/cla-docusign-private-key-${sls:stage}}
     DOCUSIGN_INTEGRATOR_KEY: ${file(./env.json):docusign-integrator-key, ssm:/cla-docusign-integrator-key-${opt:stage}}
     CLA_API_BASE: ${file(./env.json):cla-api-base, ssm:/cla-api-base-${opt:stage}}
     CLA_CONTRIBUTOR_BASE: ${file(./env.json):cla-contributor-base, ssm:/cla-contributor-base-${opt:stage}}
