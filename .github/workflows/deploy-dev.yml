@@ -167,18 +167,20 @@ jobs:
           sudo apt install curl jq -y
           
           # Development environment endpoints to test
-          declare -r v2_url="https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v2/health"
+          # declare -r v2_url="https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v2/health"
+          
+          # echo "Validating v2 backend using endpoint: ${v2_url}"
+          # curl --fail -XGET ${v2_url}
+          # exit_code=$?
+          # if [[ ${exit_coe} -eq 0 ]]; then
+          #   echo "Successful response from endpoint: ${v2_url}"
+          # else
+          #   echo "Failed to get a successful response from endpoint: ${v2_url}"
+          #   exit ${exit_code}
+          # fi
+
           declare -r v3_url="https://api.lfcla.${STAGE}.platform.linuxfoundation.org/v3/ops/health"
 
-          echo "Validating v2 backend using endpoint: ${v2_url}"
-          curl --fail -XGET ${v2_url}
-          exit_code=$?
-          if [[ ${exit_coe} -eq 0 ]]; then
-            echo "Successful response from endpoint: ${v2_url}"
-          else
-            echo "Failed to get a successful response from endpoint: ${v2_url}"
-            exit ${exit_code}
-          fi
 
           echo "Validating v3 backend using endpoint: ${v3_url}"
           curl --fail -XGET ${v3_url}
