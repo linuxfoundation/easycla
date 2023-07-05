@@ -1861,6 +1861,6 @@ def extract_pull_request_number(pull_request_message):
         cla.log.warning(f'{fn} - unable to extract pull request number from message: {pull_request_message}, error: {e}')
     return pull_request_number
 
-def get_pull_request()
+
 
 
