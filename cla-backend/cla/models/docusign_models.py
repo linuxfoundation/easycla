@@ -39,7 +39,7 @@ api_base_url = os.environ.get('CLA_API_BASE', '')
 ds_user_id = os.environ.get('DOCUSIGN_USER_ID', '')
 ds_auth_url = os.environ.get('DOCUSIGN_AUTH_SERVER', '')
 ds_client_id = os.environ.get('DOCUSIGN_INTEGRATOR_KEY', '')
-ds_private_key = os.environ.get('DOCUSIGN_PRIVATE_KEY', '')
+ds_private_key = cla.config.DOCUSIGN_PRIVATE_KEY
 
 lf_group_client_url = os.environ.get('LF_GROUP_CLIENT_URL', '')
 lf_group_client_id = os.environ.get('LF_GROUP_CLIENT_ID', '')
