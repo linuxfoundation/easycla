@@ -284,6 +284,10 @@ def activity(action: str, event_type: str, body: dict):
     elif event_type == "issue_comment":
         cla.log.debug(f'{fn} - received issue_comment action: {action}...')
         handle_pull_request_comment_event(action, body)
+    
+    # Github Merge Group Event
+    elif event_type == 'merge_group':
+        handle_merge_group_event(action, body)
 
     else:
         cla.log.debug(f'{fn} - ignoring github activity event, action: {action}...')
@@ -350,7 +354,7 @@ def handle_pull_request_event(action: str, body: dict):
     cla.log.debug(f'{func_name} - processing github pull_request activity callback...')
 
     # New PR opened
-    if action == 'opened' or action == 'reopened' or action == 'synchronize' or action == 'enqueued':
+    if action == 'opened' or action == 'reopened' or action == 'synchronize':
         cla.log.debug(f'{func_name} - processing github pull_request activity for action: {action}')
         # Copied from repository_service.py
         service = cla.utils.get_repository_service('github')
@@ -358,6 +362,20 @@ def handle_pull_request_event(action: str, body: dict):
         return result
     else:
         cla.log.debug(f'{func_name} - ignoring github pull_request activity for action: {action}')
+
+def handle_merge_group_event(action: str, body: dict):
+    func_name = 'github.activity.handle_merge_group_event'
+    cla.log.debug(f'{func_name} - processing github merge_group activity callback...')
+
+    # Checks Requested action
+    if action == 'checks_requested':
+        cla.log.debug(f'{func_name} - processing github merge_group activity for action: {action}')
+        # Copied from repository_service.py
+        service = cla.utils.get_repository_service('github')
+        result = service.received_activity(body)
+        return result
+    else:
+        cla.log.debug(f'{func_name} - ignoring github merge_group activity for action: {action}')
 
 
 def handle_pull_request_comment_event(action: str, body: dict):
@@ -581,6 +599,7 @@ def notify_project_managers(repositories):
                       f' to managers: {recipients}'
                       f' for project {project} with '
                       f' repositories: {repositories}')
+    
 
 
 def unable_to_do_cla_check_email_content(project, managers, repositories):
