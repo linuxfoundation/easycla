@@ -473,7 +473,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
         try :
             # Get Commit authors
-            commit_authors = self.get_pull_request_commit_authors(pull_request, installation_id)
+            commit_authors = get_pull_request_commit_authors(pull_request, installation_id)
             cla.log.debug(f'{fn} - commit authors: {commit_authors}')
         except Exception as e:
             cla.log.warning(f'{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository '
