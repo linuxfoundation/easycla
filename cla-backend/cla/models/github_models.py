@@ -461,13 +461,24 @@ class GitHub(repository_service_interface.RepositoryService):
         # to query for the PR details and discover the PR is 404, not available for some reason.  Added retry
         # logic to retry a couple of times to address any timing issues.
 
-        # Get the pull request details from GitHub
-        cla.log.debug(f'{fn} - fetching pull request details for GH repo ID: {github_repository_id} '
-                        f'PR ID: {pull_request_id}...')
-        pull_request = self.get_pull_request_retry(installation_id, github_repository_id, pull_request_id, installation_id, retries=3)
+        try:
+            # Get the pull request details from GitHub
+            cla.log.debug(f'{fn} - fetching pull request details for GH repo ID: {github_repository_id} '
+                            f'PR ID: {pull_request_id}...')
+            pull_request = self.get_pull_request_retry(github_repository_id, pull_request_id, installation_id)
+        except Exception as e:
+            cla.log.warning(f'{fn} - unable to load PR {pull_request_id} from GitHub repository '
+                            f'{github_repository_id} using installation id {installation_id} - error: {e}')
+            return
 
-        # Get Commit authors
-        commit_authors = self.get_pull_request_commit_authors(pull_request, installation_id)
+        try :
+            # Get Commit authors
+            commit_authors = self.get_pull_request_commit_authors(pull_request, installation_id)
+            cla.log.debug(f'{fn} - commit authors: {commit_authors}')
+        except Exception as e:
+            cla.log.warning(f'{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository '
+                            f'{github_repository_id} using installation id {installation_id} - error: {e}')
+            return
 
         try:
             repository = self.get_existing_repository(installation_id, github_repository_id)
