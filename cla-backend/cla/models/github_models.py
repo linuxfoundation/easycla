@@ -494,8 +494,7 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.warning(f'{fn} - unable to locate repository by GH ID: {github_repository_id}')
             return 
         
-        project_id = repository.get_project_id()
-        cla.log.debug(f'{fn} - found project by GH ID: {github_repository_id}')
+        project_id = repository.get_repository_project_id()
         project = get_project_instance()
         project.load(project_id)
 
