@@ -380,12 +380,12 @@ class GitHub(repository_service_interface.RepositoryService):
         pull_request = self.get_pull_request(github_repository_id, change_request_id, installation_id)
         return pull_request.html_url
     
-    def get_existing_repository(self, installation_id, github_repository_id):
+    def get_existing_repository(self, github_repository_id):
         fn = 'get_existing_repository'
         # Queries GH for the complete repository details, see:
         # https://developer.github.com/v3/repos/#get-a-repository
         cla.log.debug(f'{fn} - fetching repository details for GH repo ID: {github_repository_id}...')
-        repository = cla.utils.get_repository_by_external_id(installation_id, github_repository_id)
+        repository =  Repository().get_repository_by_external_id(str(github_repository_id), 'github')
         if repository is None:
             cla.log.warning(f'{fn} - unable to locate repository by GH ID: {github_repository_id}')
             return None
@@ -479,20 +479,63 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.warning(f'{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository '
                             f'{github_repository_id} using installation id {installation_id} - error: {e}')
             return
-
-        try:
-            repository = self.get_existing_repository(installation_id, github_repository_id)
-            if repository is None:
-                cla.log.warning(f'{fn} - unable to locate repository by GH ID: {github_repository_id}')
-                return None
-            is_valid = self.check_org_validity(installation_id, repository)
-            if not is_valid:
-                cla.log.warning(f'{fn} - the organization is not valid, skipping: {github_repository_id}')
-                return None
         
-        except DoesNotExist as err:
-            cla.log.warning(f'{fn} - unable to locate repository by GH ID: {github_repository_id}')
-            return 
+        try:
+            # Get existing repository info using the repository's external ID,
+            # which is the repository ID assigned by github.
+            cla.log.debug(f'{fn} - PR: {pull_request.number}, Loading GitHub repository by id: {github_repository_id}')
+            repository = Repository().get_repository_by_external_id(github_repository_id, "github")
+            if repository is None:
+                cla.log.warning(f'{fn} - PR: {pull_request.number}, Failed to load GitHub repository by '
+                                f'id: {github_repository_id} in our DB - repository reference is None - '
+                                'Is this org/repo configured in the Project Console?'
+                                ' Unable to update status.')
+                # Optionally, we could add a comment or add a status to the PR informing the users that the EasyCLA
+                # app/bot is enabled in GitHub (which is why we received the event in the first place), but the
+                # repository is not setup/configured in EasyCLA from the administration console
+                return
+
+            # If the repository is not enabled in our database, we don't process it.
+            if not repository.get_enabled():
+                cla.log.warning(f'{fn} - repository {repository.get_repository_url()} associated with '
+                                f'PR: {pull_request.number} is NOT enabled'
+                                ' - ignoring PR request')
+                # Optionally, we could add a comment or add a status to the PR informing the users that the EasyCLA
+                # app/bot is enabled in GitHub (which is why we received the event in the first place), but the
+                # repository is NOT enabled in the administration console
+                return
+
+        except DoesNotExist:
+            cla.log.warning(f'{fn} - PR: {pull_request.number}, could not find repository with the '
+                            f'repository ID: {github_repository_id}')
+            cla.log.warning(f'{fn} - PR: {pull_request.number}, failed to update change request of '
+                            f'repository {github_repository_id} - returning')
+            return
+
+        # Get GitHub Organization name that the repository is configured to.
+        organization_name = repository.get_repository_organization_name()
+        cla.log.debug(f'{fn} - PR: {pull_request.number}, determined github organization is: {organization_name}')
+
+        # Check that the GitHub Organization exists.
+        github_org = GitHubOrg()
+        try:
+            github_org.load(organization_name)
+        except DoesNotExist:
+            cla.log.warning(f'{fn} - PR: {pull_request.number}, Could not find Github Organization '
+                            f'with the following organization name: {organization_name}')
+            cla.log.warning(f'{fn}- PR: {pull_request.number}, Failed to update change request of '
+                            f'repository {github_repository_id} - returning')
+            return
+
+            # Ensure that installation ID for this organization matches the given installation ID
+        if github_org.get_organization_installation_id() != installation_id:
+            cla.log.warning(f'{fn} - PR: {pull_request.number}, '
+                            f'the installation ID: {github_org.get_organization_installation_id()} '
+                            f'of this organization does not match installation ID: {installation_id} '
+                            'given by the pull request.')
+            cla.log.error(f'{fn} - PR: {pull_request.number}, Failed to update change request '
+                          f'of repository {github_repository_id} - returning')
+            return
         
         project_id = repository.get_project_id()
         cla.log.debug(f'{fn} - found project by GH ID: {github_repository_id}')
