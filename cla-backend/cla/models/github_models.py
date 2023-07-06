@@ -68,7 +68,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
     def received_activity(self, data):
         cla.log.debug('github_models.received_activity - Received GitHub activity: %s', data)
-        if 'pull_request' not in data or 'merge_group' not in data:
+        if 'pull_request' not in data and 'merge_group' not in data:
             cla.log.debug('github_models.received_activity - Activity not related to pull request - ignoring')
             return {'message': 'Not a pull request nor a merge group  - no action performed'}
         if data['action'] == 'opened':
