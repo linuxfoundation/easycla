@@ -142,6 +142,9 @@ AUTH0_PLATFORM_AUDIENCE = os.getenv("AUTH0_PLATFORM_CLIENT_AUDIENCE", "")
 # property on class construction
 GITHUB_PRIVATE_KEY = ""
 
+# DocuSign Private Key
+DOCUSIGN_PRIVATE_KEY = ""
+
 # reference to this module, cla.config
 this = sys.modules[__name__]
 
@@ -169,7 +172,8 @@ def load_ssm_keys():
         f'cla-auth0-platform-url-{stage}',
         f'cla-auth0-platform-client-id-{stage}',
         f'cla-auth0-platform-client-secret-{stage}',
-        f'cla-auth0-platform-audience-{stage}'
+        f'cla-auth0-platform-audience-{stage}',
+        f'cla-docusign-private-key-{stage}'
     ]
     config_keys = [
         "GITHUB_PRIVATE_KEY",
@@ -177,7 +181,8 @@ def load_ssm_keys():
         "AUTH0_PLATFORM_URL",
         "AUTH0_PLATFORM_CLIENT_ID",
         "AUTH0_PLATFORM_CLIENT_SECRET",
-        "AUTH0_PLATFORM_AUDIENCE"
+        "AUTH0_PLATFORM_AUDIENCE",
+        "DOCUSIGN_PRIVATE_KEY"
     ]
 
     # thread pool of 5 to load fetch the keys
