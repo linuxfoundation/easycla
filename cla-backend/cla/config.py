@@ -185,15 +185,9 @@ def load_ssm_keys():
         "DOCUSIGN_PRIVATE_KEY"
     ]
 
-    # # thread pool of 7 to load fetch the keys
-    # pool = ThreadPool(7)
-    # results = pool.map(_load_single_key, keys)
-    # pool.close()
-    # pool.join()
-
-    with ThreadPool(processes=3) as pool:
-        results = [pool.apply_async(_load_single_key, (key,)) for key in keys]
-
+    # thread pool of 7 to load fetch the keys
+    pool = ThreadPool(6)
+    results = pool.map(_load_single_key, keys)
     pool.close()
     pool.join()
     
