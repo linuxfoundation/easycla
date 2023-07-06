@@ -39,7 +39,6 @@ api_base_url = os.environ.get('CLA_API_BASE', '')
 ds_user_id = os.environ.get('DOCUSIGN_USER_ID', '')
 ds_auth_url = os.environ.get('DOCUSIGN_AUTH_SERVER', '')
 ds_client_id = os.environ.get('DOCUSIGN_INTEGRATOR_KEY', '')
-ds_private_key = cla.config.DOCUSIGN_PRIVATE_KEY
 
 lf_group_client_url = os.environ.get('LF_GROUP_CLIENT_URL', '')
 lf_group_client_id = os.environ.get('LF_GROUP_CLIENT_ID', '')
@@ -107,6 +106,9 @@ class DocuSign(signing_service_interface.SigningService):
         self.ds_account_id = ""
         self.s3storage = None
 
+    def get_private_key(self):
+        return cla.config.DOCUSIGN_PRIVATE_KEY
+    
     def initialize(self, config):
         api_client = docusign_esign.ApiClient()
         api_client.set_base_path(ds_auth_url)
@@ -118,9 +120,11 @@ class DocuSign(signing_service_interface.SigningService):
         self.s3storage = S3Storage()
         self.s3storage.initialize(None)
 
+
     def setAuthToken(self):
         api_client = docusign_esign.ApiClient()
         api_client.set_base_path(ds_auth_url)
+        ds_private_key = self.get_private_key()
         response = api_client.request_jwt_user_token(
             client_id=ds_client_id,
             user_id=ds_user_id,
