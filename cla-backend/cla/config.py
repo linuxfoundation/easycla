@@ -194,7 +194,7 @@ def load_ssm_keys():
     # set the variable values at the module level so can be imported as cla.config.{VAR_NAME}
     for config_key, result in zip(config_keys, results):
         if result:
-            setattr(this, config_key, result.get())
+            setattr(this, config_key, result)
         else:
             logging.warning(f"skipping {config_key} setting the ssm was empty")
         # # set the variable values at the module level so can be imported as cla.config.{VAR_NAME}
