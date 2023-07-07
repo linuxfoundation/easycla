@@ -547,10 +547,10 @@ class GitHub(repository_service_interface.RepositoryService):
         # Check if the user has signed the CLA
         cla.log.debug(f'{fn} - checking if the user has signed the CLA...')
         for user_commit_summary in commit_authors:
-            handle_commit_from_user(user_commit_summary, signed, missing, project)
+            handle_commit_from_user(project, user_commit_summary, signed, missing)
         
         #update Merge group status
-        update_merge_group_status(installation_id, github_repository_id, merge_group_sha, signed, missing, project.get_version())
+        update_merge_group_status(installation_id, github_repository_id, pull_request, merge_group_sha, signed, missing, project.get_version())
 
 
         
