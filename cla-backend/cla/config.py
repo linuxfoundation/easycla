@@ -142,6 +142,9 @@ AUTH0_PLATFORM_AUDIENCE = os.getenv("AUTH0_PLATFORM_CLIENT_AUDIENCE", "")
 # property on class construction
 GITHUB_PRIVATE_KEY = ""
 
+# DocuSign Private Key
+DOCUSIGN_PRIVATE_KEY = ""
+
 # reference to this module, cla.config
 this = sys.modules[__name__]
 
@@ -169,7 +172,8 @@ def load_ssm_keys():
         f'cla-auth0-platform-url-{stage}',
         f'cla-auth0-platform-client-id-{stage}',
         f'cla-auth0-platform-client-secret-{stage}',
-        f'cla-auth0-platform-audience-{stage}'
+        f'cla-auth0-platform-audience-{stage}',
+        f'cla-docusign-private-key-{stage}'
     ]
     config_keys = [
         "GITHUB_PRIVATE_KEY",
@@ -177,27 +181,22 @@ def load_ssm_keys():
         "AUTH0_PLATFORM_URL",
         "AUTH0_PLATFORM_CLIENT_ID",
         "AUTH0_PLATFORM_CLIENT_SECRET",
-        "AUTH0_PLATFORM_AUDIENCE"
+        "AUTH0_PLATFORM_AUDIENCE",
+        "DOCUSIGN_PRIVATE_KEY"
     ]
 
     # thread pool of 7 to load fetch the keys
-    pool = ThreadPool(6)
+    pool = ThreadPool(7)
     results = pool.map(_load_single_key, keys)
     pool.close()
     pool.join()
-    
+
     # set the variable values at the module level so can be imported as cla.config.{VAR_NAME}
     for config_key, result in zip(config_keys, results):
         if result:
             setattr(this, config_key, result)
         else:
             logging.warning(f"skipping {config_key} setting the ssm was empty")
-        # # set the variable values at the module level so can be imported as cla.config.{VAR_NAME}
-        # for config_key, result in zip(config_keys, results):
-        #     if result:
-        #         setattr(this, config_key, result)
-        #     else:
-        #         logging.warning(f"skipping {config_key} setting the ssm was empty")
 
 
 # when imported this will be called to load ssm keys
