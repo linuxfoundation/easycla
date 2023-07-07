@@ -1345,12 +1345,32 @@ def update_merge_group_status(installation_id, repository_id, pull_request,merge
                 'github', str(installation_id), repository_id, pull_request.number, project_version)
         cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
                           f'signing url: {sign_url}')
-        create_commit_status_for_merge_group(installation_id, repository_id,merge_commit_sha, state, sign_url, body, context)
-    else:
+    elif signed is not None and len(signed) > 0:
         state = 'success'
+        # For status, we change the context from author_name to 'communitybridge/cla' or the
+        # specified default value per issue #166
         context, body = cla.utils.assemble_cla_status(context_name, signed=True)
-        cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed')
-        create_commit_status_for_merge_group(installation_id, repository_id,merge_commit_sha, state, sign_url, body, context)
+        sign_url = cla.conf["CLA_LANDING_PAGE"]  # Remove this once signature detail page ready.
+        sign_url = os.path.join(sign_url, "#/")
+        sign_url = append_project_version_to_url(address=sign_url, project_version=project_version)
+        cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
+                        f'signing url: {sign_url}')
+    else:
+        # error condition - should have at least one committer, and they would be in one of the above
+        # lists: missing or signed
+        state = 'failure'
+        # For status, we change the context from author_name to 'communitybridge/cla' or the
+        # specified default value per issue #166
+        context, body = cla.utils.assemble_cla_status(context_name, signed=False)
+        sign_url = cla.utils.get_full_sign_url(
+            'github', str(installation_id), repository_id, pull_request.number, project_version)
+        cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
+                        f'signing url: {sign_url}')
+        cla.log.warning('{fn} - This is an error condition - '
+                        f'should have at least one committer in one of these lists: '
+                        f'{len(signed)} passed, {missing}')
+
+    create_commit_status_for_merge_group(installation_id, repository_id,merge_commit_sha, state, sign_url, body, context)
 
 
 
