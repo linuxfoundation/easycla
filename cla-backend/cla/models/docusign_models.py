@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 """
-Easily perform signing workflows using DocuSign signing service with pydocusign.
+Easily perform signing workflows using DocuSign signing service with docusign_esign.
 
 NOTE: This integration uses DocuSign's Legacy Authentication REST API Integration.
 https://developers.docusign.com/esign-rest-api/guides/post-go-live
@@ -14,30 +14,32 @@ import json
 import os
 import urllib.request
 import uuid
+import base64
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import cla
-import pydocusign  # type: ignore
 import requests
 from attr import dataclass
 from cla.controllers.lf_group import LFGroup
 from cla.models import DoesNotExist, signing_service_interface
 from cla.models.dynamo_models import (Company, Document, Event, Gerrit,
                                       Project, Signature, User)
+import docusign_esign
+from docusign_esign.client.api_exception import ApiException
 from cla.models.event_types import EventType
 from cla.models.s3_storage import S3Storage
 from cla.user_service import UserService
 from cla.utils import (append_email_help_sign_off_content, get_corporate_url,
                        get_email_help_content, get_project_cla_group_instance)
-from pydocusign.exceptions import DocuSignException  # type: ignore
 
 api_base_url = os.environ.get('CLA_API_BASE', '')
-root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
-username = os.environ.get('DOCUSIGN_USERNAME', '')
-password = os.environ.get('DOCUSIGN_PASSWORD', '')
-integrator_key = os.environ.get('DOCUSIGN_INTEGRATOR_KEY', '')
+
+ds_user_id = os.environ.get('DOCUSIGN_USER_ID', '')
+ds_auth_url = os.environ.get('DOCUSIGN_AUTH_SERVER', '')
+ds_client_id = os.environ.get('DOCUSIGN_INTEGRATOR_KEY', '')
+ds_private_key = os.environ.get('DOCUSIGN_PRIVATE_KEY', '')
 
 lf_group_client_url = os.environ.get('LF_GROUP_CLIENT_URL', '')
 lf_group_client_id = os.environ.get('LF_GROUP_CLIENT_ID', '')
@@ -96,35 +98,55 @@ class DocuSign(signing_service_interface.SigningService):
             'signed_date': '{http://www.docusign.net/API/3.0}Signed',
             }
 
+    SCOPES = [
+        "signature", "impersonation"
+    ]
     def __init__(self):
-        self.client = None
+        self.ds_access_token = ""
+        self.ds_base_url = ""
+        self.ds_account_id = ""
         self.s3storage = None
 
     def initialize(self, config):
-        self.client = pydocusign.DocuSignClient(root_url=root_url,
-                                                username=username,
-                                                password=password,
-                                                integrator_key=integrator_key)
+        api_client = docusign_esign.ApiClient()
+        api_client.set_base_path(ds_auth_url)
+        api_client.set_oauth_host_name(ds_auth_url)
+        err = self.setAuthToken()
+        if err != None:
+            return err
 
+        self.s3storage = S3Storage()
+        self.s3storage.initialize(None)
+
+    def setAuthToken(self):
+        api_client = docusign_esign.ApiClient()
+        api_client.set_base_path(ds_auth_url)
+        response = api_client.request_jwt_user_token(
+            client_id=ds_client_id,
+            user_id=ds_user_id,
+            oauth_host_name=ds_auth_url,
+            private_key_bytes=ds_private_key,
+            expires_in=4000,
+            scopes=self.SCOPES
+        )
+        self.ds_access_token = response.access_token
         try:
-            login_data = self.client.login_information()
-            login_account = login_data['loginAccounts'][0]
-            base_url = login_account['baseUrl']
-            account_id = login_account['accountId']
-            url = urlparse(base_url)
-            parsed_root_url = '{}://{}/restapi/v2'.format(url.scheme, url.netloc)
+            user_info = api_client.get_user_info(self.ds_access_token)
+            accounts = user_info.get_accounts()
+            self.ds_base_url = accounts[0].base_uri + "/restapi"
+            self.ds_account_id = accounts[0].account_id
         except Exception as e:
             cla.log.error('Error logging in to DocuSign: {}'.format(e))
             return {'errors': {'Error initializing DocuSign'}}
+        return None
 
-        self.client = pydocusign.DocuSignClient(root_url=parsed_root_url,
-                                                account_url=base_url,
-                                                account_id=account_id,
-                                                username=username,
-                                                password=password,
-                                                integrator_key=integrator_key)
-        self.s3storage = S3Storage()
-        self.s3storage.initialize(None)
+    def get_api_client(self):
+        """Create api client and construct API headers"""
+        api_client = docusign_esign.ApiClient()
+        api_client.host = self.ds_base_url
+        api_client.set_default_header(header_name="Authorization", header_value=f"Bearer {self.ds_access_token}")
+
+        return api_client
 
     def request_individual_signature(self, project_id, user_id, return_url=None, return_url_type="github", callback_url=None,
                                      preferred_email=None):
@@ -1293,7 +1315,16 @@ class DocuSign(signing_service_interface.SigningService):
                            f'for project {project.get_project_name()} expired. A new session will be in place for '
                            'your signing process.')
                 cla.log.debug(message)
-                self.client.void_envelope(envelope_id, message)
+                env = docusign_esign.Envelope()
+                env.status = 'voided'
+                env.voided_reason = message
+                api_client = self.get_api_client()
+                envelope_api = docusign_esign.EnvelopesApi(api_client)
+                envelope_api.update(
+                    account_id=self.ds_account_id,
+                    envelope_id=envelope_id,
+                    envelope=env
+                )
             except Exception as e:
                 cla.log.warning(f'{fn} - {sig_type} - DocuSign error while voiding the envelope - '
                                 f'regardless, continuing on..., error: {e}')
@@ -1333,13 +1364,15 @@ class DocuSign(signing_service_interface.SigningService):
                                         project_names=project_names))
             cla.log.debug(f'populate_sign_url - {sig_type} - generating a docusign signer object form email with'
                           f'name: {signatory_name}, email: {signatory_email}, subject: {email_subject}')
-            signer = pydocusign.Signer(email=signatory_email,
+            signer = docusign_esign.Signer(email=signatory_email,
                                        name=signatory_name,
-                                       recipientId=1,
+                                       recipient_id=1,
                                        tabs=tabs,
-                                       emailSubject=email_subject,
-                                       emailBody=email_body,
-                                       supportedLanguage='en',
+                                       email_notification = {
+                                            'emailBody': email_body,
+                                            'emailSubject': email_subject,
+                                            'supportedLanguage': 'en',
+                                            }
                                        )
         else:
             # This will be the Initial CLA Manager
@@ -1364,12 +1397,14 @@ class DocuSign(signing_service_interface.SigningService):
                     user_identifier = signatory_email
                 else:
                     user_identifier = signatory_name
-            signer = pydocusign.Signer(email=signatory_email, name=signatory_name,
-                                       recipientId=1, clientUserId=signature.get_signature_id(),
+            signer = docusign_esign.Signer(email=signatory_email, name=signatory_name,
+                                       recipient_id=1, client_user_id=signature.get_signature_id(),
                                        tabs=tabs,
-                                       emailSubject=email_subject,
-                                       emailBody='CLA Sign Request for {}'.format(user_identifier),
-                                       supportedLanguage='en',
+                                       email_notification = {
+                                            'emailBody': 'CLA Sign Request for {}'.format(user_identifier),
+                                            'emailSubject': email_subject,
+                                            'supportedLanguage': 'en',
+                                        }
                                        )
 
         content_type = document.get_document_content_type()
@@ -1381,53 +1416,53 @@ class DocuSign(signing_service_interface.SigningService):
         else:
             content = document.get_document_content()
             pdf = io.BytesIO(content)
-
+        content_bytes = pdf.read()
+        base64_file_content = base64.b64encode(content_bytes).decode("ascii")
         doc_name = document.get_document_name()
         cla.log.debug(f'{fn} - {sig_type} - docusign document '
                       f'name: {doc_name}, id: {document_id}, content type: {content_type}')
-        document = pydocusign.Document(name=doc_name, documentId=document_id, data=pdf)
+        document = docusign_esign.Document(name=doc_name, document_id=document_id, document_base64=base64_file_content, file_extension="pdf")
 
         if callback_url is not None:
             # Webhook properties for callbacks after the user signs the document.
             # Ensure that a webhook is returned on the status "Completed" where
             # all signers on a document finish signing the document.
             recipient_events = [{"recipientEventStatusCode": "Completed"}]
-            event_notification = pydocusign.EventNotification(url=callback_url,
-                                                              loggingEnabled=True,
-                                                              recipientEvents=recipient_events)
-            envelope = pydocusign.Envelope(
+            event_notification = docusign_esign.EventNotification(url=callback_url,
+                                                              logging_enabled=True,
+                                                              recipient_events=recipient_events)
+            envelope = docusign_esign.EnvelopeDefinition(
                 documents=[document],
-                emailSubject=f'EasyCLA: CLA Signature Request for {project.get_project_name()}',
-                emailBlurb='CLA Sign Request',
-                eventNotification=event_notification,
-                status=pydocusign.Envelope.STATUS_SENT,
+                email_subject=f'EasyCLA: CLA Signature Request for {project.get_project_name()}',
+                email_blurb='CLA Sign Request',
+                event_notification=event_notification,
+                status="sent",
                 recipients=[signer])
         else:
-            envelope = pydocusign.Envelope(
+            envelope = docusign_esign.EnvelopeDefinition(
                 documents=[document],
-                emailSubject=f'EasyCLA: CLA Signature Request for {project.get_project_name()}',
-                emailBlurb='CLA Sign Request',
-                status=pydocusign.Envelope.STATUS_SENT,
+                email_subject=f'EasyCLA: CLA Signature Request for {project.get_project_name()}',
+                email_blurb='CLA Sign Request',
+                status="sent",
                 recipients=[signer])
-
-        envelope = self.prepare_sign_request(envelope)
+        envelope_result = self.prepare_sign_request(envelope)
 
         if not send_as_email:
             recipient = envelope.recipients[0]
 
             # The URL the user will be redirected to after signing.
             # This route will be in charge of extracting the signature's return_url and redirecting.
-            return_url = os.path.join(api_base_url, 'v2/return-url', str(recipient.clientUserId))
+            return_url = os.path.join(api_base_url, 'v2/return-url', str(recipient.client_user_id))
 
             cla.log.debug(f'populate_sign_url - {sig_type} - generating signature sign_url, '
                           f'using return-url as: {return_url}')
-            sign_url = self.get_sign_url(envelope, recipient, return_url)
+            sign_url = self.get_sign_url(envelope_result.envelope_id, recipient, return_url)
             cla.log.debug(f'populate_sign_url - {sig_type} - setting signature sign_url as: {sign_url}')
             signature.set_signature_sign_url(sign_url)
 
         # Save Envelope ID in signature.
         cla.log.debug(f'{fn} - {sig_type} - saving signature to database...')
-        signature.set_signature_envelope_id(envelope.envelopeId)
+        signature.set_signature_envelope_id(envelope_result.envelope_id)
         signature.save()
         cla.log.debug(f'{fn} - {sig_type} - saved signature to database - id: {signature.get_signature_id()}...')
         cla.log.debug(f'populate_sign_url - {sig_type} - complete')
@@ -1897,11 +1932,11 @@ class DocuSign(signing_service_interface.SigningService):
 
         fn = 'models.docusign_models.get_signed_document'
         cla.log.debug(f'{fn} - fetching signed CLA document for envelope: {envelope_id}')
-        envelope = pydocusign.Envelope()
-        envelope.envelopeId = envelope_id
-
+        
         try:
-            documents = envelope.get_document_list(self.client)
+            api_client = self.get_api_client()
+            envelope_api = docusign_esign.EnvelopesApi(api_client)
+            documents = envelope_api.list_documents(account_id=self.ds_account_id, envelope_id=envelope_id)
         except Exception as err:
             cla.log.error(f'{fn} - unknown error when trying to load signed document: {err}')
             return
@@ -1912,17 +1947,17 @@ class DocuSign(signing_service_interface.SigningService):
             return
 
         document = documents[0]
-        if 'documentId' not in document:
+        if 'document_id' not in document:
             cla.log.error(f'{fn} - not document ID found in document response: {document}')
             return
 
         try:
             # TODO: Also send the signature certificate? envelope.get_certificate()
-            document_file = envelope.get_document(document['documentId'], self.client)
+            document_file = envelope_api.get_document(account_id=self.ds_account_id,document_id=document['document_id'],envelope_id=envelope_id)
             return document_file.read()
         except Exception as err:
             cla.log.error('{fn} - unknown error when trying to fetch signed document content '
-                          f'for document ID {document["documentId"]}, error: {err}')
+                          f'for document ID {document["document_id"]}, error: {err}')
             return
 
     def send_signed_document(self, signature, document_data, user, icla=True):
@@ -1969,37 +2004,51 @@ class DocuSign(signing_service_interface.SigningService):
         """
         return urllib.request.urlopen(url)
 
-    def prepare_sign_request(self, envelope):
+    def prepare_sign_request(self, envelope_definition):
         """
         Mockable method for sending a signature request to DocuSign.
 
         :param envelope: The envelope to send to DocuSign.
-        :type envelope: pydocusign.Envelope
+        :type envelope: docusign_esign.Envelope
         :return: The new envelope to work with after the request has been sent.
-        :rtype: pydocusign.Envelope
+        :rtype: docusign_esign.Envelope
         """
         try:
-            self.client.create_envelope_from_documents(envelope)
-            envelope.get_recipients()
-            return envelope
-        except DocuSignException as err:
+            api_client = self.get_api_client()
+            envelope_api = docusign_esign.EnvelopesApi(api_client)
+            result = envelope_api.create_envelope(account_id=self.ds_account_id, envelope_definition=envelope_definition)
+            return result
+        except ApiException as err:
             cla.log.error(f'prepare_sign_request - error while fetching DocuSign envelope recipients: {err}')
 
-    def get_sign_url(self, envelope, recipient, return_url):  # pylint:disable=no-self-use
+    def get_sign_url(self, envelope_id, recipient, return_url):  # pylint:disable=no-self-use
         """
         Mockable method for getting a signing url.
 
         :param envelope: The envelope in question.
-        :type envelope: pydocusign.Envelope
+        :type envelope: docusign_esign.Envelope
         :param recipient: The recipient inside this envelope.
-        :type recipient: pydocusign.Recipient
+        :type recipient: docusign_esign.Recipient
         :param return_url: The URL to return the user after successful signing.
         :type return_url: string
         :return: A URL for the recipient to hit for signing.
         :rtype: string
         """
-        return envelope.post_recipient_view(recipient, returnUrl=return_url)
-
+        recipient_view_request = docusign_esign.RecipientViewRequest(
+            authentication_method="None",
+            client_user_id=recipient.client_user_id,
+            recipient_id="1",
+            return_url=return_url,
+            user_name=recipient.name,
+            email=recipient.email
+        )
+        api_client = self.get_api_client()
+        envelope_api = docusign_esign.EnvelopesApi(api_client)
+        return envelope_api.create_recipient_view(
+            account_id=self.ds_account_id,
+            envelope_id=envelope_id,
+            recipient_view_request=recipient_view_request
+        )
 
 class MockDocuSign(DocuSign):
     """
@@ -2083,29 +2132,29 @@ def get_docusign_tabs_from_document(document: Document,
     :type document: cla.models.model_interfaces.Document
     :param document_id: The ID of the document to use for grouping of the tabs.
     :type document_id: int
-    :return: List of formatted tabs for consumption by pydocusign.
-    :rtype: [pydocusign.Tab]
+    :return: List of formatted tabs for consumption by docusign_esign.
+    :rtype: [docusign_esign.Tabs]
     """
     tabs = []
     for tab in document.get_document_tabs():
         args = {
-            'documentId': document_id,
-            'pageNumber': tab.get_document_tab_page(),
-            'xPosition': tab.get_document_tab_position_x(),
-            'yPosition': tab.get_document_tab_position_y(),
+            'document_id': document_id,
+            'page_number': tab.get_document_tab_page(),
+            'x_position': tab.get_document_tab_position_x(),
+            'y_position': tab.get_document_tab_position_y(),
             'width': tab.get_document_tab_width(),
             'height': tab.get_document_tab_height(),
-            'customTabId': tab.get_document_tab_id(),
-            'tabLabel': tab.get_document_tab_id(),
+            'custom_tab_id': tab.get_document_tab_id(),
+            'tab_label': tab.get_document_tab_id(),
             'name': tab.get_document_tab_name()
         }
 
         if tab.get_document_tab_anchor_string() is not None:
             # Set only when anchor string exists
-            args['anchorString'] = tab.get_document_tab_anchor_string()
-            args['anchorIgnoreIfNotPresent'] = tab.get_document_tab_anchor_ignore_if_not_present()
-            args['anchorXOffset'] = tab.get_document_tab_anchor_x_offset()
-            args['anchorYOffset'] = tab.get_document_tab_anchor_y_offset()
+            args['anchor_string'] = tab.get_document_tab_anchor_string()
+            args['anchor_ignore_if_not_present'] = tab.get_document_tab_anchor_ignore_if_not_present()
+            args['anchor_x_offset'] = tab.get_document_tab_anchor_x_offset()
+            args['anchor_y_offset'] = tab.get_document_tab_anchor_y_offset()
             # Remove x,y coordinates since offsets will define them
         # del args['xPosition']
         # del args['yPosition']
@@ -2116,27 +2165,27 @@ def get_docusign_tabs_from_document(document: Document,
 
         tab_type = tab.get_document_tab_type()
         if tab_type == 'text':
-            tab_class = pydocusign.TextTab
+            tab_class = docusign_esign.Text
         elif tab_type == 'text_unlocked':
-            tab_class = TextUnlockedTab
-            args['locked'] = False
+            tab_class = docusign_esign.Text
+            args['locked'] = "false"
         elif tab_type == 'text_optional':
-            tab_class = TextOptionalTab
+            tab_class = docusign_esign.Text
             # https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/enveloperecipienttabs/create/#schema__enveloperecipienttabs_texttabs_required
             # required: string - When true, the signer is required to fill out this tab.
-            args['required'] = False
+            args['required'] = "false"
         elif tab_type == 'number':
-            tab_class = pydocusign.NumberTab
+            tab_class = docusign_esign.Number
         elif tab_type == 'sign':
-            tab_class = pydocusign.SignHereTab
+            tab_class = docusign_esign.SignHere
         elif tab_type == 'sign_optional':
-            tab_class = pydocusign.SignHereTab
+            tab_class = docusign_esign.SignHere
             # https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/enveloperecipienttabs/create/#schema__enveloperecipienttabs_signheretabs_optional
             # optional: string - When true, the recipient does not need to complete this tab to
             # complete the signing process.
             args['optional'] = True
         elif tab_type == 'date':
-            tab_class = pydocusign.DateSignedTab
+            tab_class = docusign_esign.DateSigned
         else:
             cla.log.warning('Invalid tab type specified (%s) in document file ID %s',
                             tab_type, document.get_document_file_id())
@@ -2297,34 +2346,6 @@ def create_default_individual_values(user: User, preferred_email: str = None) ->
         values['email'] = user.get_user_email()
 
     return values
-
-
-class TextOptionalTab(pydocusign.Tab):
-    """Tab to show a free-form text field on the document.
-    """
-    attributes = pydocusign.Tab._common_attributes + pydocusign.Tab._formatting_attributes + [
-        'name',
-        'value',
-        'height',
-        'width',
-        'locked',
-        'required'
-    ]
-    tabs_name = 'textTabs'
-
-
-class TextUnlockedTab(pydocusign.Tab):
-    """Tab to show a free-form text field on the document.
-    """
-    attributes = pydocusign.Tab._common_attributes + pydocusign.Tab._formatting_attributes + [
-        'name',
-        'value',
-        'height',
-        'width',
-        'locked'
-    ]
-    tabs_name = 'textTabs'
-
 
 # managers and contributors are tuples of (name, email)
 def generate_manager_and_contributor_list(managers, contributors=None):
