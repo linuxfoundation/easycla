@@ -452,7 +452,67 @@ class GitHub(repository_service_interface.RepositoryService):
 
         return pull_request
 
+    def update_merge_group_status(self,installation_id, repository_id, pull_request,merge_commit_sha,signed, missing, project_version):
+        """
+        Helper function to update a merge queue entrys status based on the list of signers.
+        :param installation_id: The ID of the GitHub installation
+        :type installation_id: int
+        :param repository_id: The ID of the GitHub repository this PR belongs to.
+        :type repository_id: int
+        :param pull_request: The GitHub PullRequest object for this PR.
+        """
+        fn = 'update_merge_group_status'
+        context_name = os.environ.get('GH_STATUS_CTX_NAME')
+        if context_name is None:
+                context_name = 'communitybridge/cla'
+        if missing is not None and len(missing) > 0:
+            state = 'failure'
+            context, body = cla.utils.assemble_cla_status(context_name, signed=False)
+            sign_url = cla.utils.get_full_sign_url(
+                    'github', str(installation_id), repository_id, pull_request.number, project_version)
+            cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
+                            f'signing url: {sign_url}')
+        elif signed is not None and len(signed) > 0:
+            state = 'success'
+            # For status, we change the context from author_name to 'communitybridge/cla' or the
+            # specified default value per issue #166
+            context, body = cla.utils.assemble_cla_status(context_name, signed=True)
+            sign_url = cla.conf["CLA_LANDING_PAGE"]  # Remove this once signature detail page ready.
+            sign_url = os.path.join(sign_url, "#/")
+            sign_url = append_project_version_to_url(address=sign_url, project_version=project_version)
+            cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
+                            f'signing url: {sign_url}')
+        else:
+            # error condition - should have at least one committer, and they would be in one of the above
+            # lists: missing or signed
+            state = 'failure'
+            # For status, we change the context from author_name to 'communitybridge/cla' or the
+            # specified default value per issue #166
+            context, body = cla.utils.assemble_cla_status(context_name, signed=False)
+            sign_url = cla.utils.get_full_sign_url(
+                'github', str(installation_id), repository_id, pull_request.number, project_version)
+            cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
+                            f'signing url: {sign_url}')
+            cla.log.warning('{fn} - This is an error condition - '
+                            f'should have at least one committer in one of these lists: '
+                            f'{len(signed)} passed, {missing}')
+        
+        # Create the commit status on the merge commit
+        if self.client is None:
+            self.client = self._get_github_client(installation_id)
+        
+        # Get repository
+        cla.log.debug(f'{fn} - Getting repository by ID: {repository_id}')
+        repository = self.client.get_repo(int(repository_id))
 
+        # Get the commit object
+        cla.log.debug(f'{fn} - Getting commit by SHA: {merge_commit_sha}')
+        commit_obj = repository.get_commit(merge_commit_sha)
+
+        cla.log.debug(f'{fn} - Creating commit status for merge commit: {merge_commit_sha} '
+                        f'with state: {state}, context: {context}, body: {body}')
+
+        create_commit_status_for_merge_group(commit_obj,merge_commit_sha, state, sign_url, body, context)
 
     def update_merge_group(self, installation_id, github_repository_id, merge_group_sha, pull_request_id):
         fn = 'update_queue_entry'
@@ -550,7 +610,7 @@ class GitHub(repository_service_interface.RepositoryService):
             handle_commit_from_user(project, user_commit_summary, signed, missing)
         
         #update Merge group status
-        update_merge_group_status(installation_id, github_repository_id, pull_request, merge_group_sha, signed, missing, project.get_version())
+        self.update_merge_group_status(installation_id, github_repository_id, pull_request, merge_group_sha, signed, missing, project.get_version())
 
 
         
@@ -1325,54 +1385,6 @@ def has_check_previously_passed_or_failed(pull_request: PullRequest):
             return True, comment
     return False, None
 
-def update_merge_group_status(installation_id, repository_id, pull_request,merge_commit_sha,signed, missing, project_version):
-    """
-    Helper function to update a merge queue entrys status based on the list of signers.
-    :param installation_id: The ID of the GitHub installation
-    :type installation_id: int
-    :param repository_id: The ID of the GitHub repository this PR belongs to.
-    :type repository_id: int
-    :param pull_request: The GitHub PullRequest object for this PR.
-    """
-    fn = 'update_merge_group_status'
-    context_name = os.environ.get('GH_STATUS_CTX_NAME')
-    if context_name is None:
-            context_name = 'communitybridge/cla'
-    if missing is not None and len(missing) > 0:
-        state = 'failure'
-        context, body = cla.utils.assemble_cla_status(context_name, signed=False)
-        sign_url = cla.utils.get_full_sign_url(
-                'github', str(installation_id), repository_id, pull_request.number, project_version)
-        cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
-                          f'signing url: {sign_url}')
-    elif signed is not None and len(signed) > 0:
-        state = 'success'
-        # For status, we change the context from author_name to 'communitybridge/cla' or the
-        # specified default value per issue #166
-        context, body = cla.utils.assemble_cla_status(context_name, signed=True)
-        sign_url = cla.conf["CLA_LANDING_PAGE"]  # Remove this once signature detail page ready.
-        sign_url = os.path.join(sign_url, "#/")
-        sign_url = append_project_version_to_url(address=sign_url, project_version=project_version)
-        cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
-                        f'signing url: {sign_url}')
-    else:
-        # error condition - should have at least one committer, and they would be in one of the above
-        # lists: missing or signed
-        state = 'failure'
-        # For status, we change the context from author_name to 'communitybridge/cla' or the
-        # specified default value per issue #166
-        context, body = cla.utils.assemble_cla_status(context_name, signed=False)
-        sign_url = cla.utils.get_full_sign_url(
-            'github', str(installation_id), repository_id, pull_request.number, project_version)
-        cla.log.debug(f'{fn} - Creating new CLA \'{state}\' status - {len(signed)} passed, {missing} failed, '
-                        f'signing url: {sign_url}')
-        cla.log.warning('{fn} - This is an error condition - '
-                        f'should have at least one committer in one of these lists: '
-                        f'{len(signed)} passed, {missing}')
-
-    create_commit_status_for_merge_group(installation_id, repository_id,merge_commit_sha, state, sign_url, body, context)
-
-
 
 def update_pull_request(installation_id, github_repository_id, pull_request, repository_name,
                         signed: List[UserCommitSummary],
@@ -1505,12 +1517,12 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
             create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
 
 
-def create_commit_status_for_merge_group(installation_id, repository_id,merge_commit_sha, state, sign_url, body, context):
+def create_commit_status_for_merge_group(commit_obj,merge_commit_sha, state, sign_url, body, context):
     """
     Helper function to create a pull request commit status message.
 
-    :param repository_id: The GitHub repository ID.
-    :type repository_id: string
+    :param commit_obj: The commit object to post a status on.
+    :type commit_obj: Commit
     :param merge_commit_sha: The commit hash to post a status on.
     :type merge_commit_sha: string
     :param state: The state of the status.
@@ -1521,16 +1533,12 @@ def create_commit_status_for_merge_group(installation_id, repository_id,merge_co
     :type body: string
     """
     try:
-        client = GitHubInstallation(installation_id)
-        repository = client.get_repository(repository_id)
-        # Get Commit object
-        commit_obj = repository.get_commit(merge_commit_sha)
         # Create status
-        cla.log.debug(f'Creating commit status for repository {repository_id} and merge commit {merge_commit_sha}')
+        cla.log.debug(f'Creating commit status for merge commit {merge_commit_sha}')
         commit_obj.create_status(state=state, target_url=sign_url, description=body, context=context)
 
     except Exception as e:
-        cla.log.warning(f'Unable to create commit status for repository {repository_id} '
+        cla.log.warning(f'Unable to create commit status for  '
                         f'and merge commit {merge_commit_sha}: {e}')
 
 def create_commit_status(pull_request, commit_hash, state, sign_url, body, context):
