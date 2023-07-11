@@ -101,8 +101,7 @@ class DocuSign(signing_service_interface.SigningService):
         "signature", "impersonation"
     ]
     def __init__(self):
-        self.ds_access_token = ""
-        self.ds_base_url = ""
+        self.client = None
         self.ds_account_id = ""
         self.s3storage = None
 
@@ -113,21 +112,10 @@ class DocuSign(signing_service_interface.SigningService):
         api_client = docusign_esign.ApiClient()
         api_client.set_base_path(ds_auth_url)
         api_client.set_oauth_host_name(ds_auth_url)
-        err = self.setAuthToken()
-        if err != None:
-            return err
-
-        self.s3storage = S3Storage()
-        self.s3storage.initialize(None)
-
-    def get_access_token(self):
+      
         try:
-            """Get the jwt token"""
-            api_client = docusign_esign.ApiClient()
-            api_client.set_base_path(ds_auth_url)
             ds_private_key = self.get_private_key()
-         
-            response = api_client.request_jwt_user_token(
+            token_response = api_client.request_jwt_user_token(
                 client_id=ds_client_id,
                 user_id=ds_user_id,
                 oauth_host_name=ds_auth_url,
@@ -135,44 +123,23 @@ class DocuSign(signing_service_interface.SigningService):
                 expires_in=4000,
                 scopes=self.SCOPES
             )
-            
-            return response
-        except Exception as e:
-            cla.log.error('Error logging in to DocuSign: {}'.format(e))
-            return {'errors': {'Error initializing DocuSign'}}
-       
-    def setAuthToken(self):
-        api_client = docusign_esign.ApiClient()
-        api_client.set_base_path(ds_auth_url)
-        api_client.set_oauth_host_name(ds_auth_url)
-       
-        token_response = self.get_access_token()
-        try:
             if token_response.access_token != None and token_response.access_token!= "":
-                self.ds_access_token = token_response.access_token
+                user_info = api_client.get_user_info(token_response.access_token)
+                accounts = user_info.get_accounts()
+                ds_base_url = accounts[0].base_uri + "/restapi"
+                self.ds_account_id = accounts[0].account_id
+                api_client.host = ds_base_url
+                api_client.set_default_header(header_name="Authorization", header_value=f"Bearer {token_response.access_token}")
+                self.client = api_client
             else:
                 return {'errors': {'Error initializing DocuSign'}}
         except Exception as e:
             cla.log.error('could not gnerate access_token: {}'.format(e))
             return {'errors': {'Error initializing DocuSign'}}
         
-        try:
-            user_info = api_client.get_user_info(token_response.access_token)
-            accounts = user_info.get_accounts()
-            self.ds_base_url = accounts[0].base_uri + "/restapi"
-            self.ds_account_id = accounts[0].account_id
-        except Exception as e:
-            cla.log.error('Error logging in to DocuSign: {}'.format(e))
-            return {'errors': {'Error initializing DocuSign'}}
+        self.s3storage = S3Storage()
+        self.s3storage.initialize(None)
         return None
-
-    def get_api_client(self):
-        """Create api client and construct API headers"""
-        api_client = docusign_esign.ApiClient()
-        api_client.host = self.ds_base_url
-        api_client.set_default_header(header_name="Authorization", header_value=f"Bearer {self.ds_access_token}")
-
-        return api_client
 
     def request_individual_signature(self, project_id, user_id, return_url=None, return_url_type="github", callback_url=None,
                                      preferred_email=None):
@@ -1344,8 +1311,7 @@ class DocuSign(signing_service_interface.SigningService):
                 env = docusign_esign.Envelope()
                 env.status = 'voided'
                 env.voided_reason = message
-                api_client = self.get_api_client()
-                envelope_api = docusign_esign.EnvelopesApi(api_client)
+                envelope_api = docusign_esign.EnvelopesApi(self.client)
                 envelope_api.update(
                     account_id=self.ds_account_id,
                     envelope_id=envelope_id,
@@ -1957,8 +1923,7 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.debug(f'{fn} - fetching signed CLA document for envelope: {envelope_id}')
         
         try:
-            api_client = self.get_api_client()
-            envelope_api = docusign_esign.EnvelopesApi(api_client)
+            envelope_api = docusign_esign.EnvelopesApi(self.client)
             documents = envelope_api.list_documents(account_id=self.ds_account_id, envelope_id=envelope_id)
         except Exception as err:
             cla.log.error(f'{fn} - unknown error when trying to load signed document: {err}')
@@ -2037,8 +2002,7 @@ class DocuSign(signing_service_interface.SigningService):
         :rtype: docusign_esign.Envelope
         """
         try:
-            api_client = self.get_api_client()
-            envelope_api = docusign_esign.EnvelopesApi(api_client)
+            envelope_api = docusign_esign.EnvelopesApi(self.client)
             result = envelope_api.create_envelope(account_id=self.ds_account_id, envelope_definition=envelope_definition)
             return result
         except ApiException as err:
@@ -2065,8 +2029,7 @@ class DocuSign(signing_service_interface.SigningService):
             user_name=recipient.name,
             email=recipient.email
         )
-        api_client = self.get_api_client()
-        envelope_api = docusign_esign.EnvelopesApi(api_client)
+        envelope_api = docusign_esign.EnvelopesApi(self.client)
         return envelope_api.create_recipient_view(
             account_id=self.ds_account_id,
             envelope_id=envelope_id,
