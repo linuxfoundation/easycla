@@ -1358,7 +1358,7 @@ class DocuSign(signing_service_interface.SigningService):
         # Not sure what should be put in as documentId.
         document_id = uuid.uuid4().int & (1 << 16) - 1  # Random 16bit integer -.pylint: disable=no-member
         tabs = get_docusign_tabs_from_document(document, document_id, default_values=default_values)
-
+        
         if send_as_email:
             cla.log.warning(f'{fn} - {sig_type} - assigning signatory name/email: '
                             f'{authority_or_signatory_name} / {authority_or_signatory_email}')
@@ -1398,7 +1398,7 @@ class DocuSign(signing_service_interface.SigningService):
                                             'emailBody': email_body,
                                             'emailSubject': email_subject,
                                             'supportedLanguage': 'en',
-                                            })
+                                        })
         else:
             # This will be the Initial CLA Manager
             signatory_name = user_signature_name
@@ -1483,7 +1483,7 @@ class DocuSign(signing_service_interface.SigningService):
             signature.set_signature_sign_url(sign_url.url)
 
         # Save Envelope ID in signature.
-        print(envelope_result)
+       
         cla.log.debug(f'{fn} - {sig_type} - saving signature to database...')
         signature.set_signature_envelope_id(envelope_result.envelope_id)
         signature.save()
@@ -2145,6 +2145,7 @@ def get_org_from_return_url(repo_provider_type, return_url, orgs):
         raise Exception('Repo service: {} not supported'.format(repo_provider_type))
 
 
+
 def get_docusign_tabs_from_document(document: Document,
                                     document_id: int,
                                     default_values: Optional[Dict[str, Any]] = None):
@@ -2158,67 +2159,165 @@ def get_docusign_tabs_from_document(document: Document,
     :return: List of formatted tabs for consumption by docusign_esign.
     :rtype: [docusign_esign.Tabs]
     """
-    tabs = []
+    text_tabs = []
+    num_tabs = []
+    sign_here_tabs = []
+    date_tabs = [];
     for tab in document.get_document_tabs():
-        args = {
-            'document_id': document_id,
-            'page_number': tab.get_document_tab_page(),
-            'x_position': tab.get_document_tab_position_x(),
-            'y_position': tab.get_document_tab_position_y(),
-            'width': tab.get_document_tab_width(),
-            'height': tab.get_document_tab_height(),
-            'custom_tab_id': tab.get_document_tab_id(),
-            'tab_label': tab.get_document_tab_id(),
-            'name': tab.get_document_tab_name()
-        }
-
-        if tab.get_document_tab_anchor_string() is not None:
-            # Set only when anchor string exists
-            args['anchor_string'] = tab.get_document_tab_anchor_string()
-            args['anchor_ignore_if_not_present'] = tab.get_document_tab_anchor_ignore_if_not_present()
-            args['anchor_x_offset'] = tab.get_document_tab_anchor_x_offset()
-            args['anchor_y_offset'] = tab.get_document_tab_anchor_y_offset()
-            # Remove x,y coordinates since offsets will define them
-        # del args['xPosition']
-        # del args['yPosition']
-
-        if default_values is not None and \
-                default_values.get(tab.get_document_tab_id()) is not None:
-            args['value'] = default_values[tab.get_document_tab_id()]
-
+       
         tab_type = tab.get_document_tab_type()
         if tab_type == 'text':
-            tab_class = docusign_esign.Text
+            text_tab = docusign_esign.Text(
+                document_id=document_id,
+                page_number=tab.get_document_tab_page(),
+                x_position = tab.get_document_tab_position_x(),
+                y_position = tab.get_document_tab_position_y(),
+                width= tab.get_document_tab_width(),
+                height= tab.get_document_tab_height(),
+                custom_tab_id= tab.get_document_tab_id(),
+                tab_label= tab.get_document_tab_id(),
+                name=tab.get_document_tab_name()
+            )
+            if tab.get_document_tab_anchor_string() is not None:
+                text_tab.anchor_string = tab.get_document_tab_anchor_string()
+                text_tab.anchor_ignore_if_not_present = tab.get_document_tab_anchor_ignore_if_not_present()
+                text_tab.anchor_x_offset = tab.get_document_tab_anchor_x_offset()
+                text_tab.anchor_y_offset = tab.get_document_tab_anchor_y_offset()
+            if default_values is not None and default_values.get(tab.get_document_tab_id()) is not None:
+                text_tab.value = default_values[tab.get_document_tab_id()]
+            text_tabs.append(text_tab)
         elif tab_type == 'text_unlocked':
-            tab_class = docusign_esign.Text
-            args['locked'] = "false"
+            text_tab = docusign_esign.Text(
+                document_id=document_id,
+                page_number=tab.get_document_tab_page(),
+                x_position = tab.get_document_tab_position_x(),
+                y_position = tab.get_document_tab_position_y(),
+                width= tab.get_document_tab_width(),
+                height= tab.get_document_tab_height(),
+                custom_tab_id= tab.get_document_tab_id(),
+                tab_label= tab.get_document_tab_id(),
+                name=tab.get_document_tab_name(),
+                locked=False
+            )
+            if tab.get_document_tab_anchor_string() is not None:
+                text_tab.anchor_string = tab.get_document_tab_anchor_string()
+                text_tab.anchor_ignore_if_not_present = tab.get_document_tab_anchor_ignore_if_not_present()
+                text_tab.anchor_x_offset = tab.get_document_tab_anchor_x_offset()
+                text_tab.anchor_y_offset = tab.get_document_tab_anchor_y_offset()
+            if default_values is not None and default_values.get(tab.get_document_tab_id()) is not None:
+                text_tab.value = default_values[tab.get_document_tab_id()]
+            text_tabs.append(text_tab)
         elif tab_type == 'text_optional':
-            tab_class = docusign_esign.Text
-            # https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/enveloperecipienttabs/create/#schema__enveloperecipienttabs_texttabs_required
-            # required: string - When true, the signer is required to fill out this tab.
-            args['required'] = "false"
+            text_tab = docusign_esign.Text(
+                document_id=document_id,
+                page_number=tab.get_document_tab_page(),
+                x_position = tab.get_document_tab_position_x(),
+                y_position = tab.get_document_tab_position_y(),
+                width= tab.get_document_tab_width(),
+                height= tab.get_document_tab_height(),
+                custom_tab_id= tab.get_document_tab_id(),
+                tab_label= tab.get_document_tab_id(),
+                name=tab.get_document_tab_name(),
+                required=False
+            )
+            if tab.get_document_tab_anchor_string() is not None:
+                text_tab.anchor_string = tab.get_document_tab_anchor_string()
+                text_tab.anchor_ignore_if_not_present = tab.get_document_tab_anchor_ignore_if_not_present()
+                text_tab.anchor_x_offset = tab.get_document_tab_anchor_x_offset()
+                text_tab.anchor_y_offset = tab.get_document_tab_anchor_y_offset()
+            if default_values is not None and default_values.get(tab.get_document_tab_id()) is not None:
+                text_tab.value = default_values[tab.get_document_tab_id()]
+            text_tabs.append(text_tab)
         elif tab_type == 'number':
-            tab_class = docusign_esign.Number
+            num_tab = docusign_esign.Number(
+                document_id=document_id,
+                page_number=tab.get_document_tab_page(),
+                x_position = tab.get_document_tab_position_x(),
+                y_position = tab.get_document_tab_position_y(),
+                width= tab.get_document_tab_width(),
+                height= tab.get_document_tab_height(),
+                custom_tab_id= tab.get_document_tab_id(),
+                tab_label= tab.get_document_tab_id(),
+                name=tab.get_document_tab_name(),
+                required="false"
+            )
+            if tab.get_document_tab_anchor_string() is not None:
+                num_tab.anchor_string = tab.get_document_tab_anchor_string()
+                num_tab.anchor_ignore_if_not_present = tab.get_document_tab_anchor_ignore_if_not_present()
+                num_tab.anchor_x_offset = tab.get_document_tab_anchor_x_offset()
+                num_tab.anchor_y_offset = tab.get_document_tab_anchor_y_offset()
+            if default_values is not None and default_values.get(tab.get_document_tab_id()) is not None:
+                num_tab.value = default_values[tab.get_document_tab_id()]
+            num_tabs.append(num_tab)
         elif tab_type == 'sign':
-            tab_class = docusign_esign.SignHere
+            sign_here_tab = docusign_esign.SignHere(
+                document_id=document_id,
+                page_number=tab.get_document_tab_page(),
+                x_position = tab.get_document_tab_position_x(),
+                y_position = tab.get_document_tab_position_y(),
+                width= tab.get_document_tab_width(),
+                height= tab.get_document_tab_height(),
+                custom_tab_id= tab.get_document_tab_id(),
+                tab_label= tab.get_document_tab_id(),
+                name=tab.get_document_tab_name()
+            )
+
+            if tab.get_document_tab_anchor_string() is not None:
+                sign_here_tab.anchor_string = tab.get_document_tab_anchor_string()
+                sign_here_tab.anchor_ignore_if_not_present = tab.get_document_tab_anchor_ignore_if_not_present()
+                sign_here_tab.anchor_x_offset = tab.get_document_tab_anchor_x_offset()
+                sign_here_tab.anchor_y_offset = tab.get_document_tab_anchor_y_offset()
+            sign_here_tabs.append(sign_here_tab)
         elif tab_type == 'sign_optional':
-            tab_class = docusign_esign.SignHere
-            # https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/enveloperecipienttabs/create/#schema__enveloperecipienttabs_signheretabs_optional
-            # optional: string - When true, the recipient does not need to complete this tab to
-            # complete the signing process.
-            args['optional'] = True
+            sign_here_tab = docusign_esign.SignHere(
+                document_id=document_id,
+                page_number=tab.get_document_tab_page(),
+                x_position = tab.get_document_tab_position_x(),
+                y_position = tab.get_document_tab_position_y(),
+                width= tab.get_document_tab_width(),
+                height= tab.get_document_tab_height(),
+                custom_tab_id= tab.get_document_tab_id(),
+                tab_label= tab.get_document_tab_id(),
+                name=tab.get_document_tab_name(),
+                Optional="true"
+            )
+            if tab.get_document_tab_anchor_string() is not None:
+                sign_here_tab.anchor_string = tab.get_document_tab_anchor_string()
+                sign_here_tab.anchor_ignore_if_not_present = tab.get_document_tab_anchor_ignore_if_not_present()
+                sign_here_tab.anchor_x_offset = tab.get_document_tab_anchor_x_offset()
+                sign_here_tab.anchor_y_offset = tab.get_document_tab_anchor_y_offset()
+            sign_here_tabs.append(sign_here_tab)
         elif tab_type == 'date':
-            tab_class = docusign_esign.DateSigned
+            date_tab = docusign_esign.DateSigned(
+                document_id=document_id,
+                page_number=tab.get_document_tab_page(),
+                x_position = tab.get_document_tab_position_x(),
+                y_position = tab.get_document_tab_position_y(),
+                width= tab.get_document_tab_width(),
+                height= tab.get_document_tab_height(),
+                custom_tab_id= tab.get_document_tab_id(),
+                tab_label= tab.get_document_tab_id(),
+                name=tab.get_document_tab_name(),
+            )
+            if tab.get_document_tab_anchor_string() is not None:
+                date_tab.anchor_string = tab.get_document_tab_anchor_string()
+                date_tab.anchor_ignore_if_not_present = tab.get_document_tab_anchor_ignore_if_not_present()
+                date_tab.anchor_x_offset = tab.get_document_tab_anchor_x_offset()
+                date_tab.anchor_y_offset = tab.get_document_tab_anchor_y_offset()
+            if default_values is not None and default_values.get(tab.get_document_tab_id()) is not None:
+                date_tab.value = default_values[tab.get_document_tab_id()]
+            date_tabs.append(date_tab)
         else:
             cla.log.warning('Invalid tab type specified (%s) in document file ID %s',
                             tab_type, document.get_document_file_id())
             continue
-
-        tab_obj = tab_class(**args)
-        tabs.append(tab_obj)
    
-    return docusign_esign.Tabs(tabs)
-
+    return docusign_esign.Tabs(
+        sign_here_tabs=sign_here_tabs,
+        text_tabs=text_tabs,
+        date_tabs=date_tabs,
+        num_tabs=num_tabs
+    )
 
 def populate_signature_from_icla_callback(content: str, icla_tree: ET, signature: Signature):
     """
