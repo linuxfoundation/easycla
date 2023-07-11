@@ -33,8 +33,6 @@ packaging==20.5
 pluggy==0.13.1
 py==1.10.0
 pyasn1==0.4.8
-pydocusign==2.2
-docusign-esign==3.22.0
 PyGithub==1.55
 PyJWT==2.7.0
 pylint==1.5.2
@@ -61,3 +59,4 @@ Werkzeug==0.15.5
 wrapt==1.11.2
 zipp==3.15.0
 markupsafe==2.0.1
+docusign-esign==3.22.0
