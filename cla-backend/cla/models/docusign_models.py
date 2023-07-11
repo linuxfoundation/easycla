@@ -2239,7 +2239,6 @@ def get_docusign_tabs_from_document(document: Document,
                 custom_tab_id= tab.get_document_tab_id(),
                 tab_label= tab.get_document_tab_id(),
                 name=tab.get_document_tab_name(),
-                required="false"
             )
             if tab.get_document_tab_anchor_string() is not None:
                 num_tab.anchor_string = tab.get_document_tab_anchor_string()
@@ -2279,7 +2278,7 @@ def get_docusign_tabs_from_document(document: Document,
                 custom_tab_id= tab.get_document_tab_id(),
                 tab_label= tab.get_document_tab_id(),
                 name=tab.get_document_tab_name(),
-                Optional="true"
+                Optional=True
             )
             if tab.get_document_tab_anchor_string() is not None:
                 sign_here_tab.anchor_string = tab.get_document_tab_anchor_string()
@@ -2297,7 +2296,7 @@ def get_docusign_tabs_from_document(document: Document,
                 height= tab.get_document_tab_height(),
                 custom_tab_id= tab.get_document_tab_id(),
                 tab_label= tab.get_document_tab_id(),
-                name=tab.get_document_tab_name(),
+                name=tab.get_document_tab_name()
             )
             if tab.get_document_tab_anchor_string() is not None:
                 date_tab.anchor_string = tab.get_document_tab_anchor_string()
@@ -2315,8 +2314,8 @@ def get_docusign_tabs_from_document(document: Document,
     return docusign_esign.Tabs(
         sign_here_tabs=sign_here_tabs,
         text_tabs=text_tabs,
-        date_tabs=date_tabs,
-        num_tabs=num_tabs
+        date_signed_tabs=date_tabs,
+        number_tabs=num_tabs
     )
 
 def populate_signature_from_icla_callback(content: str, icla_tree: ET, signature: Signature):
