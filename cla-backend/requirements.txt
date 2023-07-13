@@ -9,7 +9,6 @@ botocore==1.12.253
 certifi==2022.12.7
 chardet==3.0.4
 colorama==0.4.3
-cryptography==39.0.0
 coverage==4.5.4
 Deprecated==1.2.7
 docraptor==1.2.0
@@ -34,6 +33,7 @@ packaging==20.5
 pluggy==0.13.1
 py==1.10.0
 pyasn1==0.4.8
+pydocusign==2.2
 PyGithub==1.55
 PyJWT==2.7.0
 pylint==1.5.2
