@@ -68,7 +68,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
     def received_activity(self, data):
         cla.log.debug('github_models.received_activity - Received GitHub activity: %s', data)
-        if 'pull_request' not in data and 'merge_group' not in data:
+        if 'pull_request' not in data:
             cla.log.debug('github_models.received_activity - Activity not related to pull request - ignoring')
             return {'message': 'Not a pull request nor a merge group  - no action performed'}
         if data['action'] == 'opened':
@@ -83,9 +83,9 @@ class GitHub(repository_service_interface.RepositoryService):
         elif data['action'] == 'synchronize':
             cla.log.debug('github_models.received_activity - Handling synchronized pull request')
             return self.process_synchronized_pull_request(data)
-        elif data['action'] == 'checks_requested':
+        elif data['action'] == 'enqueued': # Handle new github feature for merge queue
             cla.log.debug('github_models.received_activity - Handling checks requested pull request')
-            return self.process_checks_requested_merge_group(data)
+            return self.process_checks_enqueued_entry(data)
         else:
             cla.log.debug('github_models.received_activity - Ignoring unsupported action: {}'.format(data['action']))
 
@@ -327,21 +327,19 @@ class GitHub(repository_service_interface.RepositoryService):
         installation_id = data['installation']['id']
         self.update_change_request(installation_id, github_repository_id, pull_request_id)
     
-    def process_checks_requested_merge_group(self, data):
+    def process_checks_enqueued_entry(self, data):
         """
         Helper method to handle a webhook fired from GitHub for a merge group event.
 
         :param data: The data returned from GitHub on this webhook.
         :type data: dict
         """
-        merge_group_sha = data['merge_group']['head_sha']
+        pull_request_id = data['pull_request']['number']
+        merge_commit_sha = data['pull_request']['merge_commit_sha']
         github_repository_id = data['repository']['id']
         installation_id = data['installation']['id']
-        pull_request_message = data['merge_group']['head_commit']['message']
 
-        # Extract the pull request number from the message
-        pull_request_id = cla.utils.extract_pull_request_number(pull_request_message)
-        self.update_merge_group(installation_id, github_repository_id, merge_group_sha, pull_request_id)
+        self.update_queue_entry(installation_id, github_repository_id, merge_commit_sha, pull_request_id)
 
     def process_easycla_command_comment(self, data):
         """
@@ -514,7 +512,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
         create_commit_status_for_merge_group(commit_obj,merge_commit_sha, state, sign_url, body, context)
 
-    def update_merge_group(self, installation_id, github_repository_id, merge_group_sha, pull_request_id):
+    def update_queue_entry(self, installation_id, github_repository_id, merge_group_sha, pull_request_id):
         fn = 'update_queue_entry'
 
         # Note: late 2021/early 2022 we observed that sometimes we get the event for a PR, then go back to GitHub
