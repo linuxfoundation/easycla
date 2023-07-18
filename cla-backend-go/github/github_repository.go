@@ -140,21 +140,32 @@ func (u UserCommitSummary) GetDisplayText(tagUser bool) string {
 }
 
 func (u UserCommitSummary) getUserInfo(tagUser bool) string {
+
+	f := logrus.Fields{
+		"functionName": "github.github_repository.getUserInfo",
+		"tagUser":      tagUser,
+	}
+
 	userInfo := ""
 	tagValue := ""
 	var sb strings.Builder
 	sb.WriteString(userInfo)
 
+	log.WithFields(f).Debugf("author: %+v", u.CommitAuthor)
+
 	if tagUser {
 		tagValue = "@"
 	}
-	if *u.CommitAuthor.Login != "" {
-		sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, *u.CommitAuthor.Login))
+	if u.CommitAuthor != nil {
+		if *u.CommitAuthor.Login != "" {
+			sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, *u.CommitAuthor.Login))
+		}
+
+		if u.CommitAuthor.Name != nil {
+			sb.WriteString(fmt.Sprintf("%sname: %s / ", userInfo, utils.StringValue(u.CommitAuthor.Name)))
+		}
 	}
 
-	if u.CommitAuthor.Name != nil {
-		sb.WriteString(fmt.Sprintf("%sname: %s / ", userInfo, utils.StringValue(u.CommitAuthor.Name)))
-	}
 	return strings.Replace(sb.String(), "/ $", "", -1)
 }
 

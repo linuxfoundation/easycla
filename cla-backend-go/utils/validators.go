@@ -96,7 +96,7 @@ func ValidGitHubUsername(githubUsername string) (string, bool) {
 	}
 
 	// For now, we only allow alphanumeric values
-	re := regexp.MustCompile("^[a-zA-Z0-9_-]*$")
+	re := regexp.MustCompile("^[a-zA-Z0-9._-]*$")
 	valid := re.MatchString(strings.TrimSpace(githubUsername))
 	if !valid {
 		return fmt.Sprintf("invalid GitHub username: %s", githubUsername), false
@@ -113,7 +113,7 @@ func ValidGitlabUsername(gitlabUsername string) (string, bool) {
 	}
 
 	// For now, we only allow alphanumeric values
-	re := regexp.MustCompile("^[a-zA-Z0-9_-]*$")
+	re := regexp.MustCompile("^[a-zA-Z0-9._-]*$")
 	valid := re.MatchString(strings.TrimSpace(gitlabUsername))
 	if !valid {
 		return fmt.Sprintf("invalid Gitlab username: %s", gitlabUsername), false
