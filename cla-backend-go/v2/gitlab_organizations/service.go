@@ -19,8 +19,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/company"
+	"github.com/communitybridge/easycla/cla-backend-go/signatures/interfaces"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
-	"github.com/communitybridge/easycla/cla-backend-go/utils/interfaces"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"

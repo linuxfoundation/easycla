@@ -17,8 +17,8 @@ import (
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
 	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
-	"github.com/communitybridge/easycla/cla-backend-go/utils/interfaces"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/github_activity/interfaces"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 	"github.com/xanzy/go-gitlab"
 
