@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
+	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -18,7 +19,7 @@ func TestCCLAInvalidateSignatureTemplate(t *testing.T) {
 		ClaManager:      "claManager",
 		CLAGroupName:    "claGroup test",
 		RemovalCriteria: "email removal",
-		CLAManagers: []signatures.ClaManagerInfoParams{
+		CLAManagers: []signatureModels.ClaManagerInfoParams{
 			{Username: "mgr_one", Email: "mgr_one_email"},
 			{Username: "mgr_two", Email: "mgr_two_email"},
 		},

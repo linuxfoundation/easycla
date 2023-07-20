@@ -148,6 +148,9 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 	if tagUser {
 		tagValue = "@"
 	}
+	if u.CommitAuthor == nil {
+		return ""
+	}
 	if *u.CommitAuthor.Login != "" {
 		sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, *u.CommitAuthor.Login))
 	}

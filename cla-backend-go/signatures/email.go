@@ -10,15 +10,10 @@ import (
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/logging"
+	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
-
-// ClaManagerInfoParams represents the CLAManagerInfo used inside of the Email Templates
-type ClaManagerInfoParams struct {
-	Username string
-	Email    string
-}
 
 // InvalidateSignatureTemplateParams representing params when invalidating icla/ecla
 type InvalidateSignatureTemplateParams struct {
@@ -28,7 +23,7 @@ type InvalidateSignatureTemplateParams struct {
 	RemovalCriteria string
 	ProjectName     string
 	ProjectManager  string
-	CLAManagers     []ClaManagerInfoParams
+	CLAManagers     []signatureModels.ClaManagerInfoParams
 	CLaManager      string
 	CLAGroupName    string
 	Company         string

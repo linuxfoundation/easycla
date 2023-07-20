@@ -19,8 +19,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/communitybridge/easycla/cla-backend-go/utils/interfaces"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
@@ -73,12 +73,12 @@ type Service struct {
 	gitLabApp          *gitlabApi.App
 	storeRepo          store.Repository
 	userService        users.Service
-	signatureRepo      signatures.SignatureRepository
+	signatureRepo      interfaces.SignatureRepository
 	companyRepository  company.IRepository
 }
 
 // NewService creates a new gitlab organization service
-func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceInterface, claGroupRepository projects_cla_groups.Repository, storeRepo store.Repository, userService users.Service, signaturesRepo signatures.SignatureRepository, companyRepository company.IRepository) ServiceInterface {
+func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceInterface, claGroupRepository projects_cla_groups.Repository, storeRepo store.Repository, userService users.Service, signaturesRepo interfaces.SignatureRepository, companyRepository company.IRepository) ServiceInterface {
 	return &Service{
 		repo:               repo,
 		v2GitRepoService:   v2GitRepoService,
