@@ -1,3 +1,6 @@
+// Copyright The Linux Foundation and each contributor to CommunityBridge.
+// SPDX-License-Identifier: MIT
+
 package utils
 
 import (
@@ -39,17 +42,19 @@ func PrepareMrCommentContent(missingUsers []*GatedGitlabUser, signedUsers []*git
 
 	var body string
 
+	const startUl = "<ul>"
+	const endUl = "<ul>"
 	result := ""
 	failed := ":x:"
 	success := ":white_check_mark:"
 
 	if len(signedUsers) > 0 {
-		result += "<ul>"
+		result += startUl
 		for _, signed := range signedUsers {
 			authorInfo := GetAuthorInfo(signed)
 			result += fmt.Sprintf("<li>%s %s</li>", success, authorInfo)
 		}
-		result += "</ul>"
+		result += endUl
 		body = coveredBadge
 	}
 
@@ -58,7 +63,7 @@ func PrepareMrCommentContent(missingUsers []*GatedGitlabUser, signedUsers []*git
 	// faq := "https://docs.linuxfoundation.org/lfx/easycla/v2-current/getting-started/easycla-troubleshooting#github-unable-to-contribute-to-easycla-enforced-repositories"
 
 	if len(missingUsers) > 0 {
-		result += "<ul>"
+		result += startUl
 		for _, missingUser := range missingUsers {
 			authorInfo := GetAuthorInfo(missingUser.User)
 			if errors.Is(missingUser.Err, missingCompanyAffiliation) {
@@ -79,7 +84,7 @@ func PrepareMrCommentContent(missingUsers []*GatedGitlabUser, signedUsers []*git
 				body = failedBadge
 			}
 		}
-		result += "</ul>"
+		result += endUl
 	}
 
 	if result != "" {
