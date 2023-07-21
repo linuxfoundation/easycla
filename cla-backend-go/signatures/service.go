@@ -18,7 +18,6 @@ import (
 	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
 	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/github_activity/interfaces"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 	"github.com/xanzy/go-gitlab"
 
@@ -77,6 +76,11 @@ type SignatureService interface {
 	handleGitHubStatusUpdate(ctx context.Context, employeeUserModel *models.User) error
 }
 
+// GitlabActivityService is a redefine the interface here to avoid circular dependency issues
+type GitlabActivityService interface {
+	HasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error)
+}
+
 type service struct {
 	repo                  SignatureRepository
 	companyService        company.IService
@@ -91,11 +95,11 @@ type service struct {
 	claBaseAPIURL         string
 	claLandingPage        string
 	claLogoURL            string
-	gitlabActivityService interfaces.GitlabActivityService
+	gitlabActivityService GitlabActivityService
 }
 
 // NewService creates a new signature service
-func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, gitlabOrgService gitlab_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string, gitlabActivityService interfaces.GitlabActivityService) SignatureService {
+func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, gitlabOrgService gitlab_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string, gitlabActivityService GitlabActivityService) SignatureService {
 	return service{
 		repo,
 		companyService,

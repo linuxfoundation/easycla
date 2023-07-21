@@ -19,7 +19,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/signatures/interfaces"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 
@@ -65,6 +64,13 @@ type ServiceInterface interface {
 	RefreshGitLabOrganizationAuth(ctx context.Context, gitLabOrg *common.GitLabOrganization) (*string, error)
 }
 
+// SignatureRepo is a redefine the interface here to avoid circular dependency issues
+type SignatureRepo interface {
+	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
+	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
+	ActivateSignature(ctx context.Context, signatureID string) error
+}
+
 // Service data modelffGetGitLabOrganizationByID
 type Service struct {
 	repo               RepositoryInterface
@@ -73,12 +79,12 @@ type Service struct {
 	gitLabApp          *gitlabApi.App
 	storeRepo          store.Repository
 	userService        users.Service
-	signatureRepo      interfaces.SignatureRepository
+	signatureRepo      SignatureRepo
 	companyRepository  company.IRepository
 }
 
 // NewService creates a new gitlab organization service
-func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceInterface, claGroupRepository projects_cla_groups.Repository, storeRepo store.Repository, userService users.Service, signaturesRepo interfaces.SignatureRepository, companyRepository company.IRepository) ServiceInterface {
+func NewService(repo RepositoryInterface, v2GitRepoService repositories.ServiceInterface, claGroupRepository projects_cla_groups.Repository, storeRepo store.Repository, userService users.Service, signaturesRepo SignatureRepo, companyRepository company.IRepository) ServiceInterface {
 	return &Service{
 		repo:               repo,
 		v2GitRepoService:   v2GitRepoService,
