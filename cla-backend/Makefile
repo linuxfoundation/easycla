@@ -7,14 +7,14 @@ setup:
 	pip3 install virtualenv;
 	virtualenv -p python3 ~/.env/lf-cla;
 	source ~/.env/lf-cla/bin/activate; \
+	pip3 install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages cryptography;  \
 	pip3 install -r requirements.txt; \
-	pip install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages -r requirements-docusign.txt;  \
 
 .PHONY: setup_circle
 setup_circle:
 	npm install; \
+	sudo pip install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages cryptography;  \
 	sudo pip install -r requirements.txt; \
-	sudo pip install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages -r requirements-docusign.txt;  \
 
 # username: LFID username
 # projects: quoted list of SFDC project IDs. e.g. '\"abcd\",\"1234\"' 
