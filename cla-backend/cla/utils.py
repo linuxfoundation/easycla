@@ -346,7 +346,9 @@ def get_signing_service(conf=None, initialize=True):
         raise Exception('Invalid signing service selected in configuration: %s' % signing_service)
     signing_service_instance = signing()
     if initialize:
-        signing_service_instance.initialize(conf)
+        resp = signing_service_instance.initialize(conf)
+        if resp != None:
+            raise Exception('docusign authentication error : %s' % resp["errors"])
     return signing_service_instance
 
 
