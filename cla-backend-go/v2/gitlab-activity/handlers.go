@@ -19,7 +19,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	gitlabModels "github.com/communitybridge/easycla/cla-backend-go/v2/gitlab-activity/models"
+
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/gofrs/uuid"
@@ -107,7 +107,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
 
-		err = service.ProcessMergeActivity(ctx, gitlabOrg.AuthState, &gitlabModels.ProcessMergeActivityInput{
+		err = service.ProcessMergeActivity(ctx, gitlabOrg.AuthState, &ProcessMergeActivityInput{
 			ProjectName:      gitlabProject.Name,
 			ProjectPath:      gitlabProject.PathWithNamespace,
 			ProjectNamespace: gitlabProject.Namespace.Name,

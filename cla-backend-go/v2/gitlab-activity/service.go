@@ -28,7 +28,6 @@ import (
 	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
-	gitlabModels "github.com/communitybridge/easycla/cla-backend-go/v2/gitlab-activity/models"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 	gitV2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
@@ -49,7 +48,7 @@ var (
 type Service interface {
 	ProcessMergeCommentActivity(ctx context.Context, secretToken string, commentEvent *gitlab.MergeEvent) error
 	ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error
-	ProcessMergeActivity(ctx context.Context, secretToken string, input *gitlabModels.ProcessMergeActivityInput) error
+	ProcessMergeActivity(ctx context.Context, secretToken string, input *ProcessMergeActivityInput) error
 	IsUserApprovedForSignature(ctx context.Context, f logrus.Fields, corporateSignature *models.Signature, user *models.User, gitlabUser *gitlab.User) bool
 	HasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error)
 }
@@ -92,7 +91,7 @@ func (s *service) ProcessMergeOpenedActivity(ctx context.Context, secretToken st
 	repositoryPath := mergeEvent.Project.PathWithNamespace
 	lastCommitSha := mergeEvent.ObjectAttributes.LastCommit.ID
 
-	input := &gitlabModels.ProcessMergeActivityInput{
+	input := &ProcessMergeActivityInput{
 		ProjectName:      projectName,
 		ProjectPath:      projectPath,
 		ProjectNamespace: projectNamespace,
@@ -139,7 +138,7 @@ func (s *service) ProcessMergeCommentActivity(ctx context.Context, secretToken s
 	authorUserName := commentEvent.User.Username
 	authorEmail := commentEvent.User.Email
 
-	input := &gitlabModels.ProcessMergeActivityInput{
+	input := &ProcessMergeActivityInput{
 		ProjectName:      projectName,
 		ProjectPath:      projectPath,
 		ProjectNamespace: projectNamespace,
@@ -154,7 +153,7 @@ func (s *service) ProcessMergeCommentActivity(ctx context.Context, secretToken s
 	return s.ProcessMergeActivity(ctx, secretToken, input)
 }
 
-func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, input *gitlabModels.ProcessMergeActivityInput) error {
+func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, input *ProcessMergeActivityInput) error {
 	projectName := input.ProjectName
 	projectPath := input.ProjectPath
 	projectNamespace := input.ProjectNamespace

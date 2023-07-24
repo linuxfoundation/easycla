@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
 
-package models
+package gitlab_activity
 
 // ProcessMergeActivityInput is used to pass the data needed to trigger a gitlab mr check
 type ProcessMergeActivityInput struct {
