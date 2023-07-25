@@ -7,13 +7,13 @@ setup:
 	pip3 install virtualenv;
 	virtualenv -p python3 ~/.env/lf-cla;
 	source ~/.env/lf-cla/bin/activate; \
-	pip3 install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages cryptography -r requirements-docusign.txt;  \
+	pip3 install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages cryptography;  \
 	pip3 install -r requirements.txt; \
 
 .PHONY: setup_circle
 setup_circle:
 	npm install; \
-	sudo pip install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages cryptography -r requirements-docusign.txt;  \
+	sudo pip install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages cryptography;  \
 	sudo pip install -r requirements.txt; \
 
 # username: LFID username
