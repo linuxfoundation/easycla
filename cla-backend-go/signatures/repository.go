@@ -19,9 +19,8 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/sirupsen/logrus"
-
 	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 
@@ -72,6 +71,7 @@ type SignatureRepository interface {
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
 	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
+	GetGitLabActiveMergeRequestMetadata(ctx context.Context, gitLabAuthorUsername, gitLabAuthorEmail string) (*ActiveGitLabPullRequest, error)
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
 	GetSignatureACL(ctx context.Context, signatureID string) ([]string, error)
@@ -697,6 +697,89 @@ func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubA
 	}
 
 	var activeSignature ActivePullRequest
+	for _, key := range keys {
+		itemInput := &dynamodb.GetItemInput{
+			Key: map[string]*dynamodb.AttributeValue{
+				"key": {S: aws.String(key)},
+			},
+			ExpressionAttributeNames: expr.Names(),
+			ProjectionExpression:     expr.Projection(),
+			TableName:                aws.String(fmt.Sprintf("cla-%s-store", repo.stage)),
+		}
+
+		// Make the DynamoDb Query API call
+		// log.WithFields(f).Debugf("loading active signature using key: %s", key)
+		result, queryErr := repo.dynamoDBClient.GetItem(itemInput)
+		if queryErr != nil {
+			if queryErr.Error() == dynamodb.ErrCodeResourceNotFoundException {
+				continue
+			}
+			log.WithFields(f).WithError(queryErr).Warnf("error retrieving active signature metadata using key: %s", key)
+			return nil, queryErr
+		}
+
+		if result == nil || result.Item == nil || result.Item["value"] == nil || result.Item["value"].S == nil {
+			log.WithFields(f).Debugf("query result is empty for key: %s", key)
+			continue
+		}
+		if result.Item["value"] == nil || result.Item["value"].S == nil {
+			log.WithFields(f).Debugf("query result value is empty for key: %s", key)
+			continue
+		}
+
+		// Clean up the JSON string
+		strValue := utils.StringValue(result.Item["value"].S)
+		// log.WithFields(f).Debugf("decoding value: %s", strValue)
+		if strings.HasSuffix(strValue, "\"") {
+			// Trim the leading and trailing quotes from the JSON record
+			strValue = strValue[1 : len(strValue)-1]
+		}
+		// Unescape the JSON string
+		strValue = strings.Replace(strValue, "\\\"", "\"", -1)
+		// log.WithFields(f).Debugf("decoding value: %s", strValue)
+
+		jsonUnMarshallErr := json.Unmarshal([]byte(strValue), &activeSignature)
+		if jsonUnMarshallErr != nil {
+			log.WithFields(f).WithError(jsonUnMarshallErr).Warn("unable to convert model for active signature ")
+			return nil, jsonUnMarshallErr
+		}
+
+		return &activeSignature, nil
+	}
+
+	return nil, nil
+}
+
+// GetGitLabActiveMergeRequestMetadata returns the pull request metadata for the given user ID
+func (repo repository) GetGitLabActiveMergeRequestMetadata(ctx context.Context, gitLabAuthorUsername, gitLabAuthorEmail string) (*ActiveGitLabPullRequest, error) {
+	f := logrus.Fields{
+		"functionName":         "v1.signatures.repository.GetGitLabActiveMergeRequestMetadata",
+		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
+		"gitLabAuthorUsername": gitLabAuthorUsername,
+		"gitLabAuthorEmail":    gitLabAuthorEmail,
+	}
+
+	if gitLabAuthorUsername == "" && gitLabAuthorEmail == "" {
+		return nil, nil
+	}
+
+	expr, err := expression.NewBuilder().WithProjection(buildSignatureMetadata()).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building expression for user ID query")
+		return nil, err
+	}
+
+	// Try to lookup based on the following keys - could be indexed by either or both (depends if user shared their
+	// email and went through the GitHub authorization flow)
+	var keys []string
+	if gitLabAuthorUsername != "" {
+		keys = append(keys, fmt.Sprintf("active_mr:u:%s", gitLabAuthorUsername))
+	}
+	if gitLabAuthorEmail != "" {
+		keys = append(keys, fmt.Sprintf("active_mr:e:%s", gitLabAuthorEmail))
+	}
+
+	var activeSignature ActiveGitLabPullRequest
 	for _, key := range keys {
 		itemInput := &dynamodb.GetItemInput{
 			Key: map[string]*dynamodb.AttributeValue{
@@ -1794,11 +1877,6 @@ func getLatestSignatures(signatures []*models.Signature) []*models.Signature {
 	return result
 }
 
-type EmployeeModel struct {
-	Signature *models.Signature
-	User      *models.User
-}
-
 func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User, wg *sync.WaitGroup, resultChannel chan<- *EmployeeModel, errorChannel chan<- error) {
 	defer wg.Done()
 
@@ -2660,14 +2738,14 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		log.WithFields(f).Debug("waiting on gerrit user query results from 2 go routines...")
 		for i := 0; i < goRoutines; i++ {
 			results := <-gerritResultChannel
-			log.WithFields(f).Debugf("received gerrit user query results response for %s - took: %+v", results.queryType, time.Since(gerritQueryStartTime))
+			log.WithFields(f).Debugf("received gerrit user query results response for %s - took: %+v", results.QueryType, time.Since(gerritQueryStartTime))
 			if results.Error != nil {
-				log.WithFields(f).WithError(results.Error).Warnf("problem retrieving gerrit users for %s, error: %+v", results.queryType, results.Error)
+				log.WithFields(f).WithError(results.Error).Warnf("problem retrieving gerrit users for %s, error: %+v", results.QueryType, results.Error)
 			} else {
-				for _, member := range results.gerritGroupResponse.Members {
+				for _, member := range results.GerritGroupResponse.Members {
 					gerritICLAECLAs = append(gerritICLAECLAs, member.Username)
 				}
-				log.WithFields(f).Debugf("updated gerrit user query results response for %s - list size is %d...", results.queryType, len(gerritICLAECLAs))
+				log.WithFields(f).Debugf("updated gerrit user query results response for %s - list size is %d...", results.QueryType, len(gerritICLAECLAs))
 			}
 		}
 		log.WithFields(f).Debugf("received the gerrit user query results from %d go routines...", goRoutines)
@@ -3035,7 +3113,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				// Get ICLAs
 				var wg sync.WaitGroup
 				wg.Add(len(params.RemoveGitlabUsernameApprovalList))
-				for _, ghUsername := range params.RemoveGitlabUsernameApprovalList {
+				for _, glUsername := range params.RemoveGitlabUsernameApprovalList {
 					go func(gitLabUsername string) {
 						defer wg.Done()
 						var iclas []*models.IclaSignature
@@ -3068,7 +3146,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							if icla != nil {
 								// Convert to IclSignature instance to leverage invalidateSignatures helper function
 								approvalList.ICLAs = []*models.IclaSignature{{
-									GitlabUsername: icla.UserGHUsername,
+									GitlabUsername: icla.UserGitlabUsername,
 									LfUsername:     icla.UserLFID,
 									SignatureID:    icla.SignatureID,
 								}}
@@ -3080,7 +3158,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						// Send Email
 						repo.sendEmail(ctx, getBestEmail(claUser), &approvalList, iclas, eclas)
 
-					}(ghUsername)
+					}(glUsername)
 				}
 				wg.Wait()
 			}
@@ -4224,8 +4302,8 @@ func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, 
 		msg := fmt.Sprintf("unable to fetch gerrit users for claGroup: %s , claType: %s ", projectSFID, claType)
 		log.WithFields(f).WithError(getGerritQueryErr).Warn(msg)
 		gerritResultChannel <- &GerritUserResponse{
-			gerritGroupResponse: nil,
-			queryType:           claType,
+			GerritGroupResponse: nil,
+			QueryType:           claType,
 			Error:               errors.New(msg),
 		}
 		return
@@ -4233,8 +4311,8 @@ func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, 
 
 	log.WithFields(f).Debugf("retrieved %d gerrit users for CLA type: %s...", len(gerritIclaUsers.Members), claType)
 	gerritResultChannel <- &GerritUserResponse{
-		gerritGroupResponse: gerritIclaUsers,
-		queryType:           claType,
+		GerritGroupResponse: gerritIclaUsers,
+		QueryType:           claType,
 		Error:               nil,
 	}
 }
