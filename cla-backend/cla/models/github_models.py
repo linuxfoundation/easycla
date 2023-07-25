@@ -1383,6 +1383,8 @@ def has_check_previously_passed_or_failed(pull_request: PullRequest):
             return True, comment
         if 'are authorized under a signed CLA' in comment.body:
             return True, comment
+        if 'is not linked to the GitHub account' in comment.body:
+            return True, comment
     return False, None
 
 
