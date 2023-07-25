@@ -77,7 +77,7 @@ setup-dev:
 	echo "golangci-lint version:" && golangci-lint version
 
 	@echo "==> Installing multi-file-swagger tool..."
-	cd $(dir $(realpath $(firstword $(MAKEFILE_LIST))))swagger && pip3 install virtualenv && virtualenv .venv && source .venv/bin/activate && python -m pip install --upgrade pip && pip3 install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages cryptography && pip3 install -r requirements.txt
+	cd $(dir $(realpath $(firstword $(MAKEFILE_LIST))))swagger && pip3 install virtualenv && virtualenv .venv && source .venv/bin/activate && python -m pip install --upgrade pip && pip3 install -r requirements.txt && pip install --platform manylinux2014_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages -r requirements-docusign.txt
 
 setup_deploy: setup-deploy
 setup-deploy:
