@@ -19,7 +19,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/sirupsen/logrus"
 
@@ -71,8 +70,8 @@ type SignatureRepository interface {
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
-	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*signatureModels.ActivePullRequest, error)
-	GetGitLabActiveMergeRequestMetadata(ctx context.Context, gitLabAuthorUsername, gitLabAuthorEmail string) (*signatureModels.ActiveGitLabPullRequest, error)
+	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
+	GetGitLabActiveMergeRequestMetadata(ctx context.Context, gitLabAuthorUsername, gitLabAuthorEmail string) (*ActiveGitLabPullRequest, error)
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
 	GetSignatureACL(ctx context.Context, signatureID string) ([]string, error)
@@ -80,11 +79,11 @@ type SignatureRepository interface {
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, sortOrder *string, pageSize *int64) (*models.Signatures, error)
-	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *signatureModels.ApprovalCriteria) (*models.Signatures, error)
-	GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User, wg *sync.WaitGroup, resultChannel chan<- *signatureModels.EmployeeModel, errorChannel chan<- error)
+	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
+	GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User, wg *sync.WaitGroup, resultChannel chan<- *EmployeeModel, errorChannel chan<- error)
 	CreateProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) error
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams, pageSize int64, loadACL bool) (*models.Signatures, error)
-	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]signatureModels.SignatureCompanyID, error)
+	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64) (*models.Signatures, error)
 	ProjectSignatures(ctx context.Context, projectID string) (*models.Signatures, error)
 	UpdateApprovalList(ctx context.Context, claManager *models.User, claGroupModel *models.ClaGroup, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error)
@@ -669,7 +668,7 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 }
 
 // GetActivePullRequestMetadata returns the pull request metadata for the given user ID
-func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*signatureModels.ActivePullRequest, error) {
+func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error) {
 	f := logrus.Fields{
 		"functionName":         "v1.signatures.repository.GetActivePullRequestMetadata",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -697,7 +696,7 @@ func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubA
 		keys = append(keys, fmt.Sprintf("active_pr:e:%s", gitHubAuthorEmail))
 	}
 
-	var activeSignature signatureModels.ActivePullRequest
+	var activeSignature ActivePullRequest
 	for _, key := range keys {
 		itemInput := &dynamodb.GetItemInput{
 			Key: map[string]*dynamodb.AttributeValue{
@@ -752,7 +751,7 @@ func (repo repository) GetActivePullRequestMetadata(ctx context.Context, gitHubA
 }
 
 // GetGitLabActiveMergeRequestMetadata returns the pull request metadata for the given user ID
-func (repo repository) GetGitLabActiveMergeRequestMetadata(ctx context.Context, gitLabAuthorUsername, gitLabAuthorEmail string) (*signatureModels.ActiveGitLabPullRequest, error) {
+func (repo repository) GetGitLabActiveMergeRequestMetadata(ctx context.Context, gitLabAuthorUsername, gitLabAuthorEmail string) (*ActiveGitLabPullRequest, error) {
 	f := logrus.Fields{
 		"functionName":         "v1.signatures.repository.GetGitLabActiveMergeRequestMetadata",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -780,7 +779,7 @@ func (repo repository) GetGitLabActiveMergeRequestMetadata(ctx context.Context, 
 		keys = append(keys, fmt.Sprintf("active_mr:e:%s", gitLabAuthorEmail))
 	}
 
-	var activeSignature signatureModels.ActiveGitLabPullRequest
+	var activeSignature ActiveGitLabPullRequest
 	for _, key := range keys {
 		itemInput := &dynamodb.GetItemInput{
 			Key: map[string]*dynamodb.AttributeValue{
@@ -1694,7 +1693,7 @@ func (repo repository) ValidateProjectRecord(ctx context.Context, signatureID, n
 }
 
 // GetProjectCompanyEmployeeSignatures returns a list of employee signatures for the specified project and specified company
-func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *signatureModels.ApprovalCriteria) (*models.Signatures, error) {
+func (repo repository) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetProjectCompanyEmployeeSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -1878,7 +1877,7 @@ func getLatestSignatures(signatures []*models.Signature) []*models.Signature {
 	return result
 }
 
-func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User, wg *sync.WaitGroup, resultChannel chan<- *signatureModels.EmployeeModel, errorChannel chan<- error) {
+func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User, wg *sync.WaitGroup, resultChannel chan<- *EmployeeModel, errorChannel chan<- error) {
 	defer wg.Done()
 
 	f := logrus.Fields{
@@ -1944,7 +1943,7 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 		return
 	}
 	if results == nil || len(results.Items) == 0 {
-		resultChannel <- &signatureModels.EmployeeModel{
+		resultChannel <- &EmployeeModel{
 			Signature: nil,
 			User:      employeeUserModel,
 		}
@@ -1970,7 +1969,7 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 			companyModel, claGroupModel, employeeUserModel)
 	}
 
-	resultChannel <- &signatureModels.EmployeeModel{
+	resultChannel <- &EmployeeModel{
 		Signature: signatureList[0],
 		User:      employeeUserModel,
 	}
@@ -1997,7 +1996,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 	}
 
 	var wg sync.WaitGroup
-	resultChan := make(chan *signatureModels.EmployeeModel)
+	resultChan := make(chan *EmployeeModel)
 	errorChan := make(chan error)
 
 	wg.Add(1)
@@ -2047,7 +2046,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		return err
 	}
 
-	newSignature := &signatureModels.SignatureDynamoDB{
+	newSignature := &SignatureDynamoDB{
 		SignatureID:                   newSignatureID.String(),
 		SignatureProjectID:            claGroupModel.ProjectID,
 		AutoCreateECLA:                false,
@@ -2116,7 +2115,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 }
 
 // getProjectCompanyEmployeeSignatureCount returns the total count of employee signatures for the specified project and specified company
-func (repo repository) getProjectCompanyEmployeeSignatureCount(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *signatureModels.ApprovalCriteria, responseChannel chan int64) {
+func (repo repository) getProjectCompanyEmployeeSignatureCount(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria, responseChannel chan int64) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.getProjectCompanyEmployeeSignatureCount",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -2329,7 +2328,7 @@ func (repo repository) GetCompanySignatures(ctx context.Context, params signatur
 }
 
 // GetCompanyIDsWithSignedCorporateSignatures returns a list of company IDs that have signed a CLA agreement
-func (repo repository) GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]signatureModels.SignatureCompanyID, error) {
+func (repo repository) GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error) {
 	f := logrus.Fields{
 		"functionName":             "v1.signatures.repository.GetCompanyIDsWithSignedCorporateSignatures",
 		"claGroupID":               claGroupID,
@@ -2377,7 +2376,7 @@ func (repo repository) GetCompanyIDsWithSignedCorporateSignatures(ctx context.Co
 		Limit:                     aws.Int64(limit),
 	}
 
-	var companyIDs []signatureModels.SignatureCompanyID
+	var companyIDs []SignatureCompanyID
 	var lastEvaluatedKey string
 
 	// Loop until we have all the records
@@ -2684,16 +2683,16 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	}
 
 	// Get CLA Manager
-	var cclaManagers []signatureModels.ClaManagerInfoParams
+	var cclaManagers []ClaManagerInfoParams
 	for i := range cclaSignature.SignatureACL {
-		cclaManagers = append(cclaManagers, signatureModels.ClaManagerInfoParams{
+		cclaManagers = append(cclaManagers, ClaManagerInfoParams{
 			Username: utils.GetBestUsername(&cclaSignature.SignatureACL[i]),
 			Email:    getBestEmail(&cclaSignature.SignatureACL[i]),
 		})
 	}
 
 	// Keep track of existing company approvals
-	approvalList := signatureModels.ApprovalList{
+	approvalList := ApprovalList{
 		EmailApprovals:          cclaSignature.EmailApprovalList,
 		DomainApprovals:         cclaSignature.DomainApprovalList,
 		GitHubUsernameApprovals: cclaSignature.GithubUsernameApprovalList,
@@ -2731,7 +2730,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	if (params.RemoveEmailApprovalList != nil && len(params.RemoveEmailApprovalList) > 0) || (params.RemoveDomainApprovalList != nil && len(params.RemoveDomainApprovalList) > 0) {
 
 		goRoutines := 2
-		gerritResultChannel := make(chan *signatureModels.GerritUserResponse, goRoutines)
+		gerritResultChannel := make(chan *GerritUserResponse, goRoutines)
 		gerritQueryStartTime, _ := utils.CurrentTime()
 		go repo.getGerritUsers(ctx, &authUser, projectID, utils.ClaTypeICLA, gerritResultChannel)
 		go repo.getGerritUsers(ctx, &authUser, projectID, utils.ClaTypeECLA, gerritResultChannel)
@@ -2793,7 +2792,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						log.WithFields(f).Debugf("error getting user by email: %s ", email)
 						return
 					}
-					criteria := &signatureModels.ApprovalCriteria{
+					criteria := &ApprovalCriteria{
 						UserEmail: email,
 					}
 					log.WithFields(f).Debugf("Updating signature records for email approval list: %+v ", params.RemoveEmailApprovalList)
@@ -2814,13 +2813,13 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 					if len(userSearch.Users) > 0 {
 						// Try and grab iclaSignature records for users
-						results := make(chan *signatureModels.ICLAUserResponse, len(userSearch.Users))
+						results := make(chan *ICLAUserResponse, len(userSearch.Users))
 						go func() {
 							defer close(results)
 							for _, user := range userSearch.Users {
 								icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, user.UserID, &approved, &signed)
 								if iclaErr != nil || icla == nil {
-									results <- &signatureModels.ICLAUserResponse{
+									results <- &ICLAUserResponse{
 										Error: fmt.Errorf("unable to get icla for user: %s ", user.UserID),
 									}
 								} else {
@@ -2838,7 +2837,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 											log.WithFields(f).WithError(eclaErr).Warn(msg)
 										}
 									}
-									results <- &signatureModels.ICLAUserResponse{
+									results <- &ICLAUserResponse{
 										ICLASignature: &models.IclaSignature{
 											GithubUsername: icla.UserGHUsername,
 											LfUsername:     user.LfUsername,
@@ -2906,7 +2905,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				PageSize:  utils.Int64(10),
 			}
 
-			criteria := signatureModels.ApprovalCriteria{}
+			criteria := ApprovalCriteria{}
 			eclas, eclaErr := repo.GetProjectCompanyEmployeeSignatures(ctx, companyProjectParams, &criteria)
 			if eclaErr != nil {
 				log.WithFields(f).Warnf("unable to get cclas for company: %s and project: %s ", approvalList.CompanyID, approvalList.ClaGroupID)
@@ -2968,7 +2967,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						var iclas []*models.IclaSignature
 						var eclas []*models.Signature
 
-						criteria := &signatureModels.ApprovalCriteria{
+						criteria := &ApprovalCriteria{
 							GitHubUsername: ghUsername,
 						}
 						log.WithFields(f).Debugf("Updating signature records for github username apporval list: %+v ", params.RemoveGithubUsernameApprovalList)
@@ -3120,7 +3119,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						var iclas []*models.IclaSignature
 						var eclas []*models.Signature
 
-						criteria := &signatureModels.ApprovalCriteria{
+						criteria := &ApprovalCriteria{
 							GitlabUsername: gitLabUsername,
 						}
 						log.WithFields(f).Debugf("Updating signature records for gitlab username apporval list: %+v ", params.RemoveGitlabUsernameApprovalList)
@@ -3275,7 +3274,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 }
 
 // sendEmail is a helper function used to render email for (CCLA, ICLA, ECLA cases)
-func (repo repository) sendEmail(ctx context.Context, email string, approvalList *signatureModels.ApprovalList, iclas []*models.IclaSignature, eclas []*models.Signature) {
+func (repo repository) sendEmail(ctx context.Context, email string, approvalList *ApprovalList, iclas []*models.IclaSignature, eclas []*models.Signature) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.sendEmail",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -3302,17 +3301,17 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 
 	// case 1 CCLA
 	if len(iclas) == 0 && len(eclas) == 0 {
-		removalType = signatureModels.CCLA
+		removalType = CCLA
 	} else if len(iclas) > 0 && len(eclas) == 0 {
 		// case 2 ccla + icla
-		removalType = signatureModels.CCLAICLA
+		removalType = CCLAICLA
 	} else if len(iclas) > 0 && len(eclas) > 0 {
 		// case 3 ccla + icla + ecla
-		removalType = signatureModels.CCLAICLAECLA
+		removalType = CCLAICLAECLA
 	}
 
 	// Send CCLA Email
-	if removalType == signatureModels.CCLA {
+	if removalType == CCLA {
 		subject := fmt.Sprintf("EasyCLA: CCLA invalidated  for :%s ", approvalList.ClaGroupName)
 		log.WithFields(f).Debugf("sending ccla invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLASignatureTemplateName, InvalidateCCLASignatureTemplate, params)
@@ -3324,7 +3323,7 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 				log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
 			}
 		}
-	} else if removalType == signatureModels.ICLA {
+	} else if removalType == ICLA {
 		subject := fmt.Sprintf("EasyCLA: ICLA invalidated  for :%s ", approvalList.ClaGroupName)
 		log.WithFields(f).Debugf("sending icla invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateICLASignatureTemplateName, InvalidateICLASignatureTemplate, params)
@@ -3336,7 +3335,7 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 				log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
 			}
 		}
-	} else if removalType == signatureModels.CCLAICLA {
+	} else if removalType == CCLAICLA {
 		subject := fmt.Sprintf("EasyCLA: ICLA invalidated  for :%s ", approvalList.ClaGroupName)
 		log.WithFields(f).Debugf("sending icla invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAICLASignatureTemplateName, InvalidateCCLASignatureTemplate, params)
@@ -3348,7 +3347,7 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 				log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
 			}
 		}
-	} else if removalType == signatureModels.CCLAICLAECLA {
+	} else if removalType == CCLAICLAECLA {
 		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated  for :%s ", approvalList.ClaGroupName)
 		log.WithFields(f).Debugf("sending employee acknowledgement invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAICLAECLASignatureTemplateName, InvalidateCCLAICLAECLASignatureTemplate, params)
@@ -3364,7 +3363,7 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 }
 
 // invalidateSignatures is a helper function that invalidates signature records based on approval list
-func (repo repository) invalidateSignatures(ctx context.Context, approvalList *signatureModels.ApprovalList, claManager *models.User, eventArgs *events.LogEventArgs) {
+func (repo repository) invalidateSignatures(ctx context.Context, approvalList *ApprovalList, claManager *models.User, eventArgs *events.LogEventArgs) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.invalidateSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -3446,7 +3445,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *s
 }
 
 // verify UserApprovals checks user
-func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatureID string, claManager *models.User, approvalList *signatureModels.ApprovalList) (*models.User, error) {
+func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatureID string, claManager *models.User, approvalList *ApprovalList) (*models.User, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.verifyUserApprovals",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -4291,7 +4290,7 @@ func (repo repository) ActivateSignature(ctx context.Context, signatureID string
 }
 
 // getGerritUsers is a helper function to fetch the list of gerrit users for the specified type - results are returned through the specified results channel
-func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, projectSFID string, claType string, gerritResultChannel chan *signatureModels.GerritUserResponse) {
+func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, projectSFID string, claType string, gerritResultChannel chan *GerritUserResponse) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.getGerritUsers",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -4302,7 +4301,7 @@ func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, 
 	if getGerritQueryErr != nil || gerritIclaUsers == nil {
 		msg := fmt.Sprintf("unable to fetch gerrit users for claGroup: %s , claType: %s ", projectSFID, claType)
 		log.WithFields(f).WithError(getGerritQueryErr).Warn(msg)
-		gerritResultChannel <- &signatureModels.GerritUserResponse{
+		gerritResultChannel <- &GerritUserResponse{
 			GerritGroupResponse: nil,
 			QueryType:           claType,
 			Error:               errors.New(msg),
@@ -4311,7 +4310,7 @@ func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, 
 	}
 
 	log.WithFields(f).Debugf("retrieved %d gerrit users for CLA type: %s...", len(gerritIclaUsers.Members), claType)
-	gerritResultChannel <- &signatureModels.GerritUserResponse{
+	gerritResultChannel <- &GerritUserResponse{
 		GerritGroupResponse: gerritIclaUsers,
 		QueryType:           claType,
 		Error:               nil,

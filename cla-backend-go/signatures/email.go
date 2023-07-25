@@ -10,7 +10,6 @@ import (
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/logging"
-	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -23,7 +22,7 @@ type InvalidateSignatureTemplateParams struct {
 	RemovalCriteria string
 	ProjectName     string
 	ProjectManager  string
-	CLAManagers     []signatureModels.ClaManagerInfoParams
+	CLAManagers     []ClaManagerInfoParams
 	CLaManager      string
 	CLAGroupName    string
 	Company         string

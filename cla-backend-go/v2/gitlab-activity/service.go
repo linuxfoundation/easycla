@@ -25,7 +25,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
-	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
@@ -496,7 +495,7 @@ func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroup
 
 	log.WithFields(f).Debugf("loaded corporate signature id: %s for claGroupID: %s and companyID: %s", corporateSignature.SignatureID, claGroupID, companyID)
 
-	approvalCriteria := &signatureModels.ApprovalCriteria{}
+	approvalCriteria := &signatures.ApprovalCriteria{}
 	if gitlabUser.Email != "" {
 		approvalCriteria.UserEmail = gitlabUser.Email
 	} else if gitlabUser.Username != "" {

@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
 
-package models
+package signatures
 
 import (
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"

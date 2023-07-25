@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
-	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 	"github.com/xanzy/go-gitlab"
@@ -53,9 +52,9 @@ type SignatureService interface {
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, params signatures.GetProjectCompanySignaturesParams) (*models.Signatures, error)
-	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *signatureModels.ApprovalCriteria) (*models.Signatures, error)
+	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams) (*models.Signatures, error)
-	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]signatureModels.SignatureCompanyID, error)
+	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams) (*models.Signatures, error)
 	InvalidateProjectRecords(ctx context.Context, projectID, note string) (int, error)
 
@@ -182,7 +181,7 @@ func (s service) GetProjectCompanySignatures(ctx context.Context, params signatu
 }
 
 // GetProjectCompanyEmployeeSignatures returns the list of employee signatures associated with the specified project
-func (s service) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *signatureModels.ApprovalCriteria) (*models.Signatures, error) {
+func (s service) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error) {
 
 	if params.PageSize == nil {
 		params.PageSize = utils.Int64(10)
@@ -214,7 +213,7 @@ func (s service) GetCompanySignatures(ctx context.Context, params signatures.Get
 }
 
 // GetCompanyIDsWithSignedCorporateSignatures returns a list of company IDs that have signed a CLA agreement
-func (s service) GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]signatureModels.SignatureCompanyID, error) {
+func (s service) GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error) {
 	return s.repo.GetCompanyIDsWithSignedCorporateSignatures(ctx, claGroupID)
 }
 
@@ -609,22 +608,22 @@ func (s service) createOrGetEmployeeModels(ctx context.Context, claGroupModel *m
 	// Most of the following business logic is all the same - however, we need to handle the different types of approval lists entries and process them in the same way
 	// We build a list of users to process - this is a list of simple user models that contain the email, GitHub username, and GitLab username - typically only one of the values in the model will be set
 	//userList := make([]simpleUserInfoModel, len(corporateSignatureModel.EmailApprovalList)+len(corporateSignatureModel.GithubUsernameApprovalList)+len(corporateSignatureModel.GitlabUsernameApprovalList))
-	var userList []signatureModels.SimpleUserInfoModel
+	var userList []SimpleUserInfoModel
 	for _, email := range corporateSignatureModel.EmailApprovalList {
 		log.WithFields(f).Debugf("adding email: %s", email)
-		userList = append(userList, signatureModels.SimpleUserInfoModel{
+		userList = append(userList, SimpleUserInfoModel{
 			Email: email,
 		})
 	}
 	for _, gitHubUserName := range corporateSignatureModel.GithubUsernameApprovalList {
 		log.WithFields(f).Debugf("adding GitHub username: %s", gitHubUserName)
-		userList = append(userList, signatureModels.SimpleUserInfoModel{
+		userList = append(userList, SimpleUserInfoModel{
 			GitHubUserName: gitHubUserName,
 		})
 	}
 	for _, gitLabUserName := range corporateSignatureModel.GitlabUsernameApprovalList {
 		log.WithFields(f).Debugf("adding GitLab username: %s", gitLabUserName)
-		userList = append(userList, signatureModels.SimpleUserInfoModel{
+		userList = append(userList, SimpleUserInfoModel{
 			GitLabUserName: gitLabUserName,
 		})
 	}
@@ -834,7 +833,7 @@ func (s service) processEmployeeSignatures(ctx context.Context, companyModel *mo
 
 	var responseErr error
 	var wg sync.WaitGroup
-	resultChan := make(chan *signatureModels.EmployeeModel)
+	resultChan := make(chan *EmployeeModel)
 	errChan := make(chan error)
 
 	// For each item in the email approval list...
@@ -1205,7 +1204,7 @@ func (s service) processEmployeeSignature(ctx context.Context, companyModel *mod
 		"userID":         user.UserID,
 	}
 	var wg sync.WaitGroup
-	resultChannel := make(chan *signatureModels.EmployeeModel)
+	resultChannel := make(chan *EmployeeModel)
 	errorChannel := make(chan error)
 	hasSigned := false
 	projectID := claGroupModel.ProjectID

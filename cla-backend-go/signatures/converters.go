@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	signatureModels "github.com/communitybridge/easycla/cla-backend-go/signatures/models"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -349,12 +348,12 @@ func buildApprovalAttributeList(ctx context.Context, existingList, addEntries, r
 }
 
 // buildCompanyIDList is a helper function to convert the DB response models into a simple list of company IDs
-func (repo repository) buildCompanyIDList(ctx context.Context, results *dynamodb.QueryOutput) ([]signatureModels.SignatureCompanyID, error) {
+func (repo repository) buildCompanyIDList(ctx context.Context, results *dynamodb.QueryOutput) ([]SignatureCompanyID, error) {
 	f := logrus.Fields{
 		"functionName":   "buildCompanyIDList",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
-	var response []signatureModels.SignatureCompanyID
+	var response []SignatureCompanyID
 
 	// The DB signature model
 	var dbSignatures []ItemSignature
@@ -369,7 +368,7 @@ func (repo repository) buildCompanyIDList(ctx context.Context, results *dynamodb
 		// Lookup the company by ID - try to get more information like the external ID and name
 		companyModel, companyLookupErr := repo.companyRepo.GetCompany(ctx, item.SignatureReferenceID)
 		// Start building a model for this entry in the list
-		signatureCompanyID := signatureModels.SignatureCompanyID{
+		signatureCompanyID := SignatureCompanyID{
 			SignatureID: item.SignatureID,
 			CompanyID:   item.SignatureReferenceID,
 		}
