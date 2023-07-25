@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,9 +15,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
-	"github.com/xanzy/go-gitlab"
 
 	"github.com/communitybridge/easycla/cla-backend-go/github"
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
@@ -38,7 +34,6 @@ import (
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	githubpkg "github.com/google/go-github/v37/github"
 	"golang.org/x/oauth2"
 )
@@ -75,30 +70,23 @@ type SignatureService interface {
 	handleGitHubStatusUpdate(ctx context.Context, employeeUserModel *models.User) error
 }
 
-// GitlabActivityService is a redefine the interface here to avoid circular dependency issues
-type GitlabActivityService interface {
-	HasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error)
-}
-
 type service struct {
-	repo                  SignatureRepository
-	companyService        company.IService
-	usersService          users.Service
-	eventsService         events.Service
-	githubOrgValidation   bool
-	repositoryService     repositories.Service
-	githubOrgService      github_organizations.ServiceInterface
-	gitlabOrgService      gitlab_organizations.ServiceInterface
-	claGroupService       service2.Service
-	gitLabApp             *gitlab_api.App
-	claBaseAPIURL         string
-	claLandingPage        string
-	claLogoURL            string
-	gitlabActivityService GitlabActivityService
+	repo                SignatureRepository
+	companyService      company.IService
+	usersService        users.Service
+	eventsService       events.Service
+	githubOrgValidation bool
+	repositoryService   repositories.Service
+	githubOrgService    github_organizations.ServiceInterface
+	claGroupService     service2.Service
+	gitLabApp           *gitlab_api.App
+	claBaseAPIURL       string
+	claLandingPage      string
+	claLogoURL          string
 }
 
 // NewService creates a new signature service
-func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, gitlabOrgService gitlab_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string, gitlabActivityService GitlabActivityService) SignatureService {
+func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string) SignatureService {
 	return service{
 		repo,
 		companyService,
@@ -107,13 +95,11 @@ func NewService(repo SignatureRepository, companyService company.IService, users
 		githubOrgValidation,
 		repositoryService,
 		githubOrgService,
-		gitlabOrgService,
 		claGroupService,
 		gitLabApp,
 		CLABaseAPIURL,
 		CLALandingPage,
 		CLALogoURL,
-		gitlabActivityService,
 	}
 }
 
@@ -489,13 +475,6 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		UserModel:     userModel,
 		ProjectSFID:   projectSFID,
 	}
-	// Get CCLA signature - For Approval List info
-	cclaSignature, err := s.repo.GetCorporateSignature(ctx, claGroupModel.ProjectID, companyModel.CompanyID, &approved, &signed)
-	if err != nil || cclaSignature == nil {
-		msg := fmt.Sprintf("unable to get corporate signature for CLA Group: %s and company: %s", claGroupModel.ProjectID, companyModel.CompanyID)
-		log.WithFields(f).Warn(msg)
-		return nil, errors.New(msg)
-	}
 
 	updatedCorporateSignature, err := s.repo.UpdateApprovalList(ctx, userModel, claGroupModel, companyModel.CompanyID, params, eventArgs)
 	if err != nil {
@@ -503,34 +482,18 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		return updatedCorporateSignature, err
 	}
 
-	for _, email := range updatedCorporateSignature.EmailApprovalList {
-		if !contains(cclaSignature.EmailApprovalList, email) {
-			cclaSignature.EmailApprovalList = append(cclaSignature.EmailApprovalList, email)
-		}
-	}
-	for _, ghUserName := range updatedCorporateSignature.GithubUsernameApprovalList {
-		if !contains(cclaSignature.GithubUsernameApprovalList, ghUserName) {
-			cclaSignature.GithubUsernameApprovalList = append(cclaSignature.GithubUsernameApprovalList, ghUserName)
-		}
-	}
-	for _, glUserName := range updatedCorporateSignature.GitlabUsernameApprovalList {
-		if !contains(cclaSignature.GitlabUsernameApprovalList, glUserName) {
-			cclaSignature.GitlabUsernameApprovalList = append(cclaSignature.GitlabUsernameApprovalList, glUserName)
-		}
-	}
-
 	// If auto create ECLA is enabled for this Corporate Agreement, then create an ECLA for each employee that was added to the approval list
 	// we get the complete user list as output from the processing of the approval list
 	var userModelList []*models.User
 	if corporateSigModel.AutoCreateECLA {
 		log.WithFields(f).Debug("auto-create ECLA option is enabled - processing auto-enable request for all items on the approval list...")
-		userList, processErr := s.CreateOrUpdateEmployeeSignature(ctx, claGroupModel, companyModel, cclaSignature)
+		userList, processErr := s.CreateOrUpdateEmployeeSignature(ctx, claGroupModel, companyModel, updatedCorporateSignature)
 		if processErr != nil {
 			log.WithFields(f).WithError(processErr).Warnf("problem processing auto-enable request for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
 		}
 		userModelList = userList
 	} else {
-		userList, processErr := s.createOrGetEmployeeModels(ctx, claGroupModel, companyModel, cclaSignature)
+		userList, processErr := s.createOrGetEmployeeModels(ctx, claGroupModel, companyModel, updatedCorporateSignature)
 		if processErr != nil {
 			log.WithFields(f).WithError(processErr).Warnf("problem processing user list for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
 		}
@@ -577,11 +540,6 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 			if handleStatusErr != nil {
 				log.WithFields(f).WithError(handleStatusErr).Warnf("problem updating GitHub status for user: %+v", employeeUserModel)
 			}
-			handleStatusErr = s.handleGitLabStatusUpdate(ctx, employeeUserModel)
-			if handleStatusErr != nil {
-				log.WithFields(f).WithError(handleStatusErr).Warnf("problem updating GitLabb status for user: %+v", employeeUserModel)
-			}
-
 		}(utils.NewContextFromParent(ctx), employeeUserModel)
 	}
 
@@ -608,22 +566,22 @@ func (s service) createOrGetEmployeeModels(ctx context.Context, claGroupModel *m
 	// Most of the following business logic is all the same - however, we need to handle the different types of approval lists entries and process them in the same way
 	// We build a list of users to process - this is a list of simple user models that contain the email, GitHub username, and GitLab username - typically only one of the values in the model will be set
 	//userList := make([]simpleUserInfoModel, len(corporateSignatureModel.EmailApprovalList)+len(corporateSignatureModel.GithubUsernameApprovalList)+len(corporateSignatureModel.GitlabUsernameApprovalList))
-	var userList []SimpleUserInfoModel
+	var userList []simpleUserInfoModel
 	for _, email := range corporateSignatureModel.EmailApprovalList {
 		log.WithFields(f).Debugf("adding email: %s", email)
-		userList = append(userList, SimpleUserInfoModel{
+		userList = append(userList, simpleUserInfoModel{
 			Email: email,
 		})
 	}
 	for _, gitHubUserName := range corporateSignatureModel.GithubUsernameApprovalList {
 		log.WithFields(f).Debugf("adding GitHub username: %s", gitHubUserName)
-		userList = append(userList, SimpleUserInfoModel{
+		userList = append(userList, simpleUserInfoModel{
 			GitHubUserName: gitHubUserName,
 		})
 	}
 	for _, gitLabUserName := range corporateSignatureModel.GitlabUsernameApprovalList {
 		log.WithFields(f).Debugf("adding GitLab username: %s", gitLabUserName)
-		userList = append(userList, SimpleUserInfoModel{
+		userList = append(userList, simpleUserInfoModel{
 			GitLabUserName: gitLabUserName,
 		})
 	}
@@ -696,7 +654,7 @@ func (s service) createOrGetEmployeeModels(ctx context.Context, claGroupModel *m
 		if simpleUserInfoModelEntry.GitLabUserName != "" {
 			employeeUserModel, userLookupErr = s.usersService.GetUserByGitLabUsername(simpleUserInfoModelEntry.GitLabUserName)
 			if userLookupErr != nil {
-				log.WithFields(f).WithError(userLookupErr).Warnf("problem looking up user by GitLab username: %s", simpleUserInfoModelEntry.GitLabUserName)
+				log.WithFields(f).WithError(userLookupErr).Warnf("problem looking up user by GitLab username: %s", simpleUserInfoModelEntry.GitHubUserName)
 			} else if userLookupErr == nil && employeeUserModel != nil {
 				updatedEmployeeUserModel, updateErr := s.updateUserCompanyID(ctx, employeeUserModel, companyModel)
 				if updatedEmployeeUserModel != nil && updateErr == nil {
@@ -732,7 +690,7 @@ func (s service) createOrGetEmployeeModels(ctx context.Context, claGroupModel *m
 				}
 
 				if gitLabUserModel.ID != 0 {
-					simpleUserInfoModelEntry.GitLabUserID = strconv.FormatInt(int64(gitLabUserModel.ID), 10)
+					simpleUserInfoModelEntry.GitHubUserID = strconv.FormatInt(int64(gitLabUserModel.ID), 10)
 				}
 				// User may not have a public email
 				if gitLabUserModel.Email != "" {
@@ -1435,189 +1393,4 @@ func (s service) handleGitHubStatusUpdate(ctx context.Context, employeeUserModel
 	}
 
 	return nil
-}
-
-func (s service) handleGitLabStatusUpdate(ctx context.Context, employeeUserModel *models.User) error {
-	if employeeUserModel == nil {
-		return fmt.Errorf("employee user model is nil")
-	}
-
-	f := logrus.Fields{
-		"functionName":   "v1.signatures.service.handleGitLabStatusUpdate",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"userID":         employeeUserModel.UserID,
-		"GitLabUsername": employeeUserModel.GitlabUsername,
-		"GitLabID":       employeeUserModel.GitlabID,
-		"userEmail":      employeeUserModel.LfEmail.String(),
-	}
-
-	log.WithFields(f).Debugf("processing GitLab status check request for user: %s", employeeUserModel.GitlabUsername)
-	activeMrMetadata, activeSigErr := s.repo.GetGitLabActiveMergeRequestMetadata(ctx, employeeUserModel.GitlabUsername, employeeUserModel.LfEmail.String())
-	if activeSigErr != nil {
-		log.WithFields(f).WithError(activeSigErr).Warnf("unable to get active pull request metadata for user: %+v - unable to update GitLab status", employeeUserModel)
-		return activeSigErr
-	}
-	if activeMrMetadata == nil {
-		log.WithFields(f).Debugf("unable to get gitlab active merge requst metadata for user: %+v - unable to update gitlab status", employeeUserModel)
-		return nil
-	}
-
-	// Fetch easycla repository
-	claRepository, repoErr := s.repositoryService.GetRepositoryByExternalID(ctx, activeMrMetadata.RepositoryID)
-	if repoErr != nil {
-		log.WithFields(f).WithError(repoErr).Warnf("unable to fetch repository by ID: %s - unable to update GitLab status", activeMrMetadata.RepositoryID)
-		return repoErr
-	}
-
-	if !claRepository.Enabled {
-		log.WithFields(f).Debugf("repository: %s associated with PR: %s is NOT enabled - unable to update GitLab status", claRepository.RepositoryURL, activeMrMetadata.MergeRequestID)
-		return nil
-	}
-
-	// fetch GitLab org details
-	gitlabOrg, gitlabOrgErr := s.gitlabOrgService.GetGitLabOrganizationByName(ctx, claRepository.RepositoryOrganizationName)
-	if gitlabOrgErr != nil {
-		log.WithFields(f).WithError(gitlabOrgErr).Warnf("unable to lookup GitLab organization by name: %s - unable to update GitLab status", claRepository.RepositoryOrganizationName)
-		return gitlabOrgErr
-	}
-
-	repositoryID, idErr := strconv.Atoi(activeMrMetadata.RepositoryID)
-	if idErr != nil {
-		log.WithFields(f).WithError(idErr).Warnf("unable to convert repository ID: %s to integer - unable to update GitLab status", activeMrMetadata.RepositoryID)
-		return idErr
-	}
-
-	mergeRequestID, idErr := strconv.Atoi(activeMrMetadata.MergeRequestID)
-	if idErr != nil {
-		log.WithFields(f).WithError(idErr).Warnf("unable to convert pull request ID: %s to integer - unable to update GitLab status", activeMrMetadata.RepositoryID)
-		return idErr
-	}
-	projectID, idErr := strconv.Atoi(activeMrMetadata.ProjectID)
-	if idErr != nil {
-		log.WithFields(f).WithError(idErr).Warnf("unable to convert pull request ID: %s to integer - unable to update GitLab status", activeMrMetadata.RepositoryID)
-		return idErr
-	}
-
-	// Update change request
-	log.WithFields(f).Debugf("updating change request for repository: %d, merge request: %d", repositoryID, mergeRequestID)
-	updateErr := s.updateGitlabChangeRequest(ctx, gitlabOrg, int64(repositoryID), mergeRequestID, projectID, activeMrMetadata.ClaGroupID)
-	if updateErr != nil {
-		log.WithFields(f).WithError(updateErr).Warnf("unable to update merge request: %d", mergeRequestID)
-		return updateErr
-	}
-
-	return nil
-}
-
-// updateChangeRequest is a helper function that updates PR - typically after the auto ecla update
-func (s service) updateGitlabChangeRequest(ctx context.Context, gitlabOrg *v2Models.GitlabOrganization, repositoryID int64, mergeRequestID int, projectID int, claGroupID string) error {
-	f := logrus.Fields{
-		"functionName":   "v1.signatures.service.updateGitlabChangeRequest",
-		"repositoryID":   repositoryID,
-		"mergeRequestID": mergeRequestID,
-		"claGroupID":     claGroupID,
-	}
-
-	log.WithFields(f).Debugf("internal gitlab org : %s:%s is associated with repository id : %d", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName, repositoryID)
-
-	// fetch updated token info
-	log.WithFields(f).Debugf("refreshing gitlab org : %s:%s auth info", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName)
-	oauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, common.ToCommonModel(gitlabOrg))
-	if err != nil {
-		return fmt.Errorf("refreshing gitlab org auth info failed : %v", err)
-	}
-
-	gitlabClient, err := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
-	if err != nil {
-		return fmt.Errorf("initializing gitlab client : %v", err)
-	}
-
-	log.WithFields(f).Debugf("loading GitLab merge request info for merge request: %d", mergeRequestID)
-	lastSha, err := gitlab_api.GetLatestCommit(gitlabClient, projectID, mergeRequestID)
-	if err != nil {
-		return fmt.Errorf("fetching info for mr : %d and project : %d, failed : %v", mergeRequestID, projectID, err)
-	}
-	lastCommitSha := lastSha.ID
-
-	f["lastCommitSha"] = lastCommitSha
-	log.WithFields(f).Debugf("last commit sha for merge request: %d is %s", mergeRequestID, lastCommitSha)
-
-	_, err = gitlab_api.FetchMrInfo(gitlabClient, projectID, mergeRequestID)
-	if err != nil {
-		return fmt.Errorf("fetching info for mr : %d and project : %d, failed : %v", mergeRequestID, projectID, err)
-	}
-
-	log.WithFields(f).Debugf("loading GitLab merge request participatants for merge request: %d", mergeRequestID)
-	participants, err := gitlab_api.FetchMrParticipants(gitlabClient, projectID, mergeRequestID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem loading GitLab merge request participants for merge request: %d", mergeRequestID)
-		return fmt.Errorf("problem loading GitLab merge request participants for merge request: %d - error: %+v", mergeRequestID, err)
-	}
-
-	if len(participants) == 0 {
-		return fmt.Errorf("no participants found in GitLab mr : %d, and gitlab project : %d", mergeRequestID, projectID)
-	}
-
-	log.WithFields(f).Debugf("found %d participants for the MR ", len(participants))
-	missingCLAMsg := "Missing CLA Authorization"
-	signedCLAMsg := "EasyCLA check passed. You are authorized to contribute."
-
-	var missingUsers []*utils.GatedGitlabUser
-	var signedUsers []*gitlab.User
-	for _, gitlabUser := range participants {
-		log.WithFields(f).Debugf("checking if GitLab user: %s (%d) with email: %s has signed", gitlabUser.Username, gitlabUser.ID, gitlabUser.Email)
-		userSigned, signedCheckErr := s.gitlabActivityService.HasUserSigned(ctx, claGroupID, gitlabUser)
-		if signedCheckErr != nil {
-			log.WithFields(f).WithError(signedCheckErr).Warnf("problem checking if user : %s (%d) has signed - assuming not signed", gitlabUser.Username, gitlabUser.ID)
-			missingUsers = append(missingUsers, &utils.GatedGitlabUser{
-				User: gitlabUser,
-				Err:  err,
-			})
-			continue
-		}
-		if userSigned {
-			log.WithFields(f).Infof("gitlabUser: %s (%d) has signed", gitlabUser.Username, gitlabUser.ID)
-			signedUsers = append(signedUsers, gitlabUser)
-		} else {
-			log.WithFields(f).Infof("gitlabUser: %s (%d) has NOT signed", gitlabUser.Username, gitlabUser.ID)
-			missingUsers = append(missingUsers, &utils.GatedGitlabUser{
-				User: gitlabUser,
-				Err:  err,
-			})
-		}
-	}
-
-	signURL := utils.GetFullSignURL(gitlabOrg.OrganizationID, strconv.Itoa(int(repositoryID)), strconv.Itoa(mergeRequestID))
-	mrCommentContent := utils.PrepareMrCommentContent(missingUsers, signedUsers, signURL)
-	if len(missingUsers) > 0 {
-		log.WithFields(f).Errorf("merge request faild with 1 or more users not passing authorization - failed users : %+v", missingUsers)
-		if statusErr := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Failed, missingCLAMsg, signURL); statusErr != nil {
-			log.WithFields(f).WithError(statusErr).Warnf("problem setting the commit status for merge request ID: %d, sha: %s", mergeRequestID, lastCommitSha)
-			return fmt.Errorf("setting commit status failed : %v", statusErr)
-		}
-
-		if mrCommentErr := gitlab_api.SetMrComment(gitlabClient, projectID, mergeRequestID, mrCommentContent); mrCommentErr != nil {
-			log.WithFields(f).WithError(mrCommentErr).Warnf("problem setting the commit merge request comment for merge request ID: %d", mergeRequestID)
-			return fmt.Errorf("setting comment failed : %v", mrCommentErr)
-		}
-
-		return nil
-	}
-
-	commitStatusErr := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Success, signedCLAMsg, "")
-	if commitStatusErr != nil {
-		log.WithFields(f).WithError(commitStatusErr).Warnf("problem setting the commit status for merge request ID: %d, sha: %s", mergeRequestID, lastCommitSha)
-		return fmt.Errorf("setting commit status failed : %v", commitStatusErr)
-	}
-
-	if mrCommentErr := gitlab_api.SetMrComment(gitlabClient, projectID, mergeRequestID, mrCommentContent); mrCommentErr != nil {
-		log.WithFields(f).WithError(mrCommentErr).Warnf("problem setting the commit merge request comment for merge request ID: %d", mergeRequestID)
-		return fmt.Errorf("setting comment failed : %v", mrCommentErr)
-	}
-	return nil
-}
-
-func contains(s []string, searchterm string) bool {
-	i := sort.SearchStrings(s, searchterm)
-	return i < len(s) && s[i] == searchterm
 }

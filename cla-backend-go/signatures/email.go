@@ -14,6 +14,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// ClaManagerInfoParams represents the CLAManagerInfo used inside of the Email Templates
+type ClaManagerInfoParams struct {
+	Username string
+	Email    string
+}
+
 // InvalidateSignatureTemplateParams representing params when invalidating icla/ecla
 type InvalidateSignatureTemplateParams struct {
 	RecipientName   string

@@ -8,14 +8,8 @@ import (
 	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 )
 
-// ClaManagerInfoParams represents the CLAManagerInfo used inside of the Email Templates
-type ClaManagerInfoParams struct {
-	Username string
-	Email    string
-}
-
-// SimpleUserInfoModel is a  simple/temp user model to consolidate the email list, GitHub username list, and GitLab username list
-type SimpleUserInfoModel struct {
+// simpleUserInfoModel is a  simple/temp user model to consolidate the email list, GitHub username list, and GitLab username list
+type simpleUserInfoModel struct {
 	Email          string
 	GitHubUserName string
 	GitHubUserID   string
@@ -36,11 +30,6 @@ type ApprovalCriteria struct {
 	UserEmail      string
 	GitHubUsername string
 	GitlabUsername string
-}
-
-type EmployeeModel struct {
-	Signature *models.Signature
-	User      *models.User
 }
 
 // ApprovalList data model
@@ -70,8 +59,8 @@ type ApprovalList struct {
 
 // GerritUserResponse is a data structure to hold the gerrit user query response
 type GerritUserResponse struct {
-	GerritGroupResponse *v2Models.GerritGroupResponse
-	QueryType           string
+	gerritGroupResponse *v2Models.GerritGroupResponse
+	queryType           string
 	Error               error
 }
 
@@ -142,14 +131,4 @@ type ActivePullRequest struct {
 	CLAGroupID           string `json:"cla_group_id"`
 	RepositoryID         string `json:"repository_id"`
 	PullRequestID        string `json:"pull_request_id"`
-}
-
-// ActiveGitLabPullRequest data model
-type ActiveGitLabPullRequest struct {
-	GitLabAuthorUserName string `json:"gitlab_author_username"`
-	GitLabAuthorEmail    string `json:"gitlab_author_email"`
-	ClaGroupID           string `json:"cla_group_id"`
-	RepositoryID         string `json:"repository_id"`
-	MergeRequestID       string `json:"merge_request_id"`
-	ProjectID            string `json:"project_id"`
 }
