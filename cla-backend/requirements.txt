@@ -58,6 +58,6 @@ vintage==0.4.1
 wcwidth==0.1.7
 Werkzeug==0.15.5
 wrapt==1.11.2
-docusign-esign==3.22.0
 zipp==3.15.0
 markupsafe==2.0.1
+docusign-esign==3.22.0
