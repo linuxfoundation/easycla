@@ -5,13 +5,11 @@ package gitlab_activity
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 
@@ -29,7 +27,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 	gitV2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -44,12 +41,27 @@ var (
 	secretTokenMismatch       = errors.New("secret token mismatch")
 )
 
+// ProcessMergeActivityInput is used to pass the data needed to trigger a gitlab mr check
+type ProcessMergeActivityInput struct {
+	ProjectName      string
+	ProjectPath      string
+	ProjectNamespace string
+	ProjectID        int
+	MergeID          int
+	RepositoryPath   string
+	LastCommitSha    string
+}
+
+type gatedGitlabUser struct {
+	*gitlab.User
+	err error
+}
+
 type Service interface {
 	ProcessMergeCommentActivity(ctx context.Context, secretToken string, commentEvent *gitlab.MergeEvent) error
 	ProcessMergeOpenedActivity(ctx context.Context, secretToken string, mergeEvent *gitlab.MergeEvent) error
 	ProcessMergeActivity(ctx context.Context, secretToken string, input *ProcessMergeActivityInput) error
 	IsUserApprovedForSignature(ctx context.Context, f logrus.Fields, corporateSignature *models.Signature, user *models.User, gitlabUser *gitlab.User) bool
-	HasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error)
 }
 
 type service struct {
@@ -62,11 +74,10 @@ type service struct {
 	companyRepository           company.IRepository
 	signatureRepository         signatures.SignatureRepository
 	gitLabApp                   *gitlab_api.App
-	storeRepository             store.Repository
 }
 
 func NewService(gitRepository repositories.RepositoryInterface, gitV2Repository gitV2Repositories.RepositoryInterface, usersRepository users.UserRepository, signaturesRepository signatures.SignatureRepository, projectsCLAGroupsRepository projects_cla_groups.Repository,
-	companyRepository company.IRepository, signatureRepository signatures.SignatureRepository, gitlabOrgService gitlab_organizations.ServiceInterface, storeRepository store.Repository) Service {
+	companyRepository company.IRepository, signatureRepository signatures.SignatureRepository, gitlabOrgService gitlab_organizations.ServiceInterface) Service {
 	return &service{
 		gitRepository:               gitRepository,
 		gitV2Repository:             gitV2Repository,
@@ -77,7 +88,6 @@ func NewService(gitRepository repositories.RepositoryInterface, gitV2Repository 
 		signatureRepository:         signatureRepository,
 		gitLabApp:                   gitlab_api.Init(config.GetConfig().Gitlab.AppClientID, config.GetConfig().Gitlab.AppClientSecret, config.GetConfig().Gitlab.AppPrivateKey),
 		gitlabOrgService:            gitlabOrgService,
-		storeRepository:             storeRepository,
 	}
 }
 
@@ -134,8 +144,6 @@ func (s *service) ProcessMergeCommentActivity(ctx context.Context, secretToken s
 	projectNamespace := commentEvent.Project.Namespace
 	projectID := commentEvent.Project.ID
 	repositoryPath := commentEvent.Project.PathWithNamespace
-	authorUserName := commentEvent.User.Username
-	authorEmail := commentEvent.User.Email
 
 	input := &ProcessMergeActivityInput{
 		ProjectName:      projectName,
@@ -145,8 +153,6 @@ func (s *service) ProcessMergeCommentActivity(ctx context.Context, secretToken s
 		MergeID:          mergeIDInt,
 		RepositoryPath:   repositoryPath,
 		LastCommitSha:    commentEvent.ObjectAttributes.LastCommit.ID,
-		AuthorUserName:   authorUserName,
-		AuthorEmail:      authorEmail,
 	}
 
 	return s.ProcessMergeActivity(ctx, secretToken, input)
@@ -242,16 +248,16 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 	missingCLAMsg := "Missing CLA Authorization"
 	signedCLAMsg := "EasyCLA check passed. You are authorized to contribute."
 
-	var missingUsers []*utils.GatedGitlabUser
+	var missingUsers []*gatedGitlabUser
 	var signedUsers []*gitlab.User
 	for _, gitlabUser := range participants {
 		log.WithFields(f).Debugf("checking if GitLab user: %s (%d) with email: %s has signed", gitlabUser.Username, gitlabUser.ID, gitlabUser.Email)
 		userSigned, signedCheckErr := s.hasUserSigned(ctx, claGroupID, gitlabUser)
 		if signedCheckErr != nil {
 			log.WithFields(f).WithError(signedCheckErr).Warnf("problem checking if user : %s (%d) has signed - assuming not signed", gitlabUser.Username, gitlabUser.ID)
-			missingUsers = append(missingUsers, &utils.GatedGitlabUser{
+			missingUsers = append(missingUsers, &gatedGitlabUser{
 				User: gitlabUser,
-				Err:  err,
+				err:  err,
 			})
 			continue
 		}
@@ -261,20 +267,15 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 			signedUsers = append(signedUsers, gitlabUser)
 		} else {
 			log.WithFields(f).Infof("gitlabUser: %s (%d) has NOT signed", gitlabUser.Username, gitlabUser.ID)
-			missingUsers = append(missingUsers, &utils.GatedGitlabUser{
+			missingUsers = append(missingUsers, &gatedGitlabUser{
 				User: gitlabUser,
-				Err:  err,
+				err:  err,
 			})
 		}
 	}
 
-	err = s.setActiveMrMetadata(ctx, input.AuthorUserName, input.AuthorEmail, claGroupID, strconv.Itoa(int(gitlabRepo.RepositoryExternalID)), strconv.Itoa(mergeID), strconv.Itoa(projectID))
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem setting active merge request for merge id: %d", mergeID)
-		return fmt.Errorf("setting commit status failed : %v", err)
-	}
-	signURL := utils.GetFullSignURL(gitlabOrg.OrganizationID, strconv.Itoa(int(gitlabRepo.RepositoryExternalID)), strconv.Itoa(mergeID))
-	mrCommentContent := utils.PrepareMrCommentContent(missingUsers, signedUsers, signURL)
+	signURL := GetFullSignURL(gitlabOrg.OrganizationID, strconv.Itoa(int(gitlabRepo.RepositoryExternalID)), strconv.Itoa(mergeID))
+	mrCommentContent := PrepareMrCommentContent(missingUsers, signedUsers, signURL)
 	if len(missingUsers) > 0 {
 		log.WithFields(f).Errorf("merge request faild with 1 or more users not passing authorization - failed users : %+v", missingUsers)
 		if statusErr := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Failed, missingCLAMsg, signURL); statusErr != nil {
@@ -304,62 +305,102 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 	return nil
 }
 
-// setActiveMrMetadata set active gitlab merge request metadata
-func (s *service) setActiveMrMetadata(ctx context.Context, authorUserName string, authorEmail string, claGroupID string, repositoryID string, mrID string, projectID string) error {
-	f := logrus.Fields{
-		"functionName": "setActiveMrMetadata",
-		"authorEmail":  authorEmail,
-		"claGroupID":   claGroupID,
-		"repositoryID": repositoryID,
-		"mrID":         mrID,
-		"projectID":    projectID,
+func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*gitlab.User, signURL string) string {
+	landingPage := config.GetConfig().CLALandingPage
+	landingPage += "/#/?version=2"
+
+	var badgeHyperlink string
+	if len(missingUsers) > 0 {
+		badgeHyperlink = signURL
+	} else {
+		badgeHyperlink = landingPage
 	}
 
-	type StoreValue struct {
-		GitLabAuthorUserName string `json:"gitlab_author_username"`
-		GitLabAuthorEmail    string `json:"gitlab_author_email"`
-		ClaGroupID           string `json:"cla_group_id"`
-		RepositoryID         string `json:"repository_id"`
-		MergeRequestID       string `json:"merge_request_id"`
-		ProjectID            string `json:"project_id"`
-	}
+	coveredBadge := fmt.Sprintf(`<a href="%s">
+	<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-signed.svg" alt="CLA Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+	failedBadge := fmt.Sprintf(`<a href="%s">
+<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-not-signed.svg" alt="CLA Not Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+	// 	missingUserIDBadge := fmt.Sprintf(`<a href="%s">
+	// <img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-missing-id.svg" alt="CLA Missing ID" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+	confirmationNeededBadge := fmt.Sprintf(`<a href="%s">
+<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-confirmation-needed.svg" alt="CLA Confirmation Needed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
 
-	log.WithFields(f).Debugf("setting active merge request metadata")
-	// set active signature metadata to track the user signing process
+	var body string
 
-	storeValue := StoreValue{
-		GitLabAuthorUserName: authorUserName,
-		GitLabAuthorEmail:    authorEmail,
-		ClaGroupID:           claGroupID,
-		RepositoryID:         repositoryID,
-		MergeRequestID:       mrID,
-		ProjectID:            projectID,
-	}
+	var result string
+	failed := ":x:"
+	success := ":white_check_mark:"
 
-	json_data, err := json.Marshal(storeValue)
-	if err != nil {
-		msg := fmt.Sprintf("unable to marshall storeValue object: %+v", storeValue)
-		log.WithFields(f).Warn(msg)
-		return err
-	}
-	expire := time.Now().AddDate(0, 0, 7).Unix()
-	log.WithFields(f).Debugf("setting expiry for active merge request data to : %d", expire)
-	log.WithFields(f).Debugf("json data: %s", string(json_data))
-	keyUName := fmt.Sprintf("active_mr:u:%s", authorUserName)
-	err = s.storeRepository.SetActiveSignatureMetaData(ctx, keyUName, expire, string(json_data))
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to save merge request metadata")
-		return err
-	}
-	if authorEmail != "" && authorEmail != "[REDACTED]" {
-		keyEmail := fmt.Sprintf("active_mr:e:%s", authorEmail)
-		err = s.storeRepository.SetActiveSignatureMetaData(ctx, keyEmail, expire, string(json_data))
-		if err != nil {
-			log.WithFields(f).WithError(err).Warn("unable to save merge request metadata")
-			return err
+	if len(signedUsers) > 0 {
+		result = "<ul>"
+		for _, signed := range signedUsers {
+			authorInfo := getAuthorInfo(signed)
+			result += fmt.Sprintf("<li>%s %s</li>", success, authorInfo)
 		}
+		result += "</ul>"
+		body = coveredBadge
 	}
-	return nil
+
+	// gitlabSupportURL := "https://about.gitlab.com/support"
+	easyCLASupportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
+	// faq := "https://docs.linuxfoundation.org/lfx/easycla/v2-current/getting-started/easycla-troubleshooting#github-unable-to-contribute-to-easycla-enforced-repositories"
+
+	if len(missingUsers) > 0 {
+		result += "<ul>"
+		for _, missingUser := range missingUsers {
+			authorInfo := getAuthorInfo(missingUser.User)
+			if errors.Is(missingUser.err, missingCompanyAffiliation) {
+				msg := fmt.Sprintf(`<li> %s %s. This user is authorized, but they must confirm their affiliation with their company. 
+								  Start the authorization process <a href='%s'> by clicking here</a>, click "Corporate", 
+								  select the appropriate company from the list, then confirm your affiliation on the page that appears.
+								  For further assistance with EasyCLA,
+								  <a href='%s' target='_blank'>please submit a support request ticket</a>. </li>`, failed, authorInfo, signURL, easyCLASupportURL)
+				result += msg
+				body = confirmationNeededBadge
+			} else {
+				msg := fmt.Sprintf(`<li><a href='%s' target='_blank'>%s</a> - %s. The commit is not authorized under a signed CLA.
+									<a href='%s' target='_blank'>Please click here to be authorized</a>.
+									For further assistance with EasyCLA,
+									<a href='%s' target='_blank'>please submit a support request ticket</a>.
+									</li>`, signURL, failed, authorInfo, signURL, easyCLASupportURL)
+				result += msg
+				body = failedBadge
+			}
+		}
+		result += "</ul>"
+	}
+
+	if result != "" {
+		body += "<br/><br/>" + result
+	}
+
+	return body
+}
+
+func GetFullSignURL(gitlabOrganizationID string, gitlabRepositoryID string, mrID string) string {
+	return fmt.Sprintf("%s/v4/repository-provider/%s/sign/%s/%s/%s/#/",
+		config.GetConfig().ClaAPIV4Base,
+		utils.GitLabLower,
+		gitlabOrganizationID,
+		gitlabRepositoryID,
+		mrID,
+	)
+}
+
+func getAuthorInfo(gitlabUser *gitlab.User) string {
+	f := logrus.Fields{
+		"functionName":   "getAuthorInfo",
+		"gitlabUsername": gitlabUser.Username,
+		"gitlabName":     gitlabUser.Name,
+		"gitlabEmail":    gitlabUser.Email,
+	}
+	log.WithFields(f).Debug("getting author info")
+	if gitlabUser.Username != "" {
+		return fmt.Sprintf("login:@%s/name:%s", gitlabUser.Username, gitlabUser.Name)
+	} else if gitlabUser.Email != "" {
+		return fmt.Sprintf("email:%s/name:%s", gitlabUser.Email, gitlabUser.Name)
+	}
+	return fmt.Sprintf("name:%s", gitlabUser.Name)
 }
 
 func (s *service) getGitlabOrganizationFromProjectPath(ctx context.Context, projectPath, projectNameSpace string) (*v2Models.GitlabOrganization, error) {
@@ -403,10 +444,6 @@ func (s *service) getGitlabRepoByName(ctx context.Context, repoNameWithPath stri
 type UserSigned struct {
 	signed bool
 	err    error
-}
-
-func (s *service) HasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error) {
-	return s.hasUserSigned(ctx, claGroupID, gitlabUser)
 }
 
 func (s *service) hasUserSigned(ctx context.Context, claGroupID string, gitlabUser *gitlab.User) (bool, error) {
