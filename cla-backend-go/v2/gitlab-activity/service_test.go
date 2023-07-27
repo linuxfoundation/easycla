@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/xanzy/go-gitlab"
@@ -94,7 +95,7 @@ func TestIsUserApprovedForSignature(t *testing.T) {
 				expected: true,
 			},
 		}
-		activityService := NewService(nil, nil, nil, nil, nil, nil, nil, nil)
+		activityService := NewService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(tt *testing.T) {
@@ -121,7 +122,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 		testCases := []struct {
 			name          string
 			signed        []*gitlab.User
-			missing       []*gatedGitlabUser
+			missing       []*utils.GatedGitlabUser
 			expectedMsgs  []string
 			expectedBadge string
 		}{
@@ -139,8 +140,8 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				signed: []*gitlab.User{
 					{ID: 1, Username: "neo"},
 				},
-				missing: []*gatedGitlabUser{
-					{err: missingID, User: &gitlab.User{ID: 3, Username: "missing"}},
+				missing: []*utils.GatedGitlabUser{
+					{Err: missingID, User: &gitlab.User{ID: 3, Username: "missing"}},
 				},
 				expectedMsgs:  []string{signedContains, missingUserContains},
 				expectedBadge: "cla-missing-id.svg",
@@ -150,8 +151,8 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				signed: []*gitlab.User{
 					{ID: 1, Username: "neo"},
 				},
-				missing: []*gatedGitlabUser{
-					{err: missingCompanyAffiliation, User: &gitlab.User{ID: 4, Username: "affiliationUser"}},
+				missing: []*utils.GatedGitlabUser{
+					{Err: missingCompanyAffiliation, User: &gitlab.User{ID: 4, Username: "affiliationUser"}},
 				},
 				expectedMsgs:  []string{signedContains, missingAffiliationContains},
 				expectedBadge: "cla-confirmation-needed.svg",
@@ -161,8 +162,8 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				signed: []*gitlab.User{
 					{ID: 1, Username: "neo"},
 				},
-				missing: []*gatedGitlabUser{
-					{err: missingCompanyApproval, User: &gitlab.User{ID: 5, Username: "approvalUser"}},
+				missing: []*utils.GatedGitlabUser{
+					{Err: missingCompanyApproval, User: &gitlab.User{ID: 5, Username: "approvalUser"}},
 				},
 				expectedMsgs:  []string{signedContains, missingApprovalContains},
 				expectedBadge: "cla-not-signed.svg",
@@ -171,7 +172,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(tt *testing.T) {
-				result := PrepareMrCommentContent(tc.missing, tc.signed, "https://sign.com")
+				result := utils.PrepareMrCommentContent(tc.missing, tc.signed, "https://sign.com")
 				tt.Logf("the result is : %s", result)
 				parts := strings.Split(result, "<li>")
 				assert.Len(tt, parts, len(tc.expectedMsgs)+1)
@@ -191,7 +192,7 @@ func TestPrepareMrCommentContent(t *testing.T) {
 				}
 
 				for i, p := range parts[1:] {
-					expected := fmt.Sprintf(tc.expectedMsgs[i], getAuthorInfo(allUsers[i]))
+					expected := fmt.Sprintf(tc.expectedMsgs[i], utils.GetAuthorInfo(allUsers[i]))
 					assert.Contains(tt, p, expected)
 				}
 
