@@ -132,3 +132,13 @@ type ActivePullRequest struct {
 	RepositoryID         string `json:"repository_id"`
 	PullRequestID        string `json:"pull_request_id"`
 }
+
+// ActiveGitLabPullRequest data model
+type ActiveGitLabPullRequest struct {
+	GitLabAuthorUserName string `json:"gitlab_author_username"`
+	GitLabAuthorEmail    string `json:"gitlab_author_email"`
+	ClaGroupID           string `json:"cla_group_id"`
+	RepositoryID         string `json:"repository_id"`
+	MergeRequestID       string `json:"merge_request_id"`
+	ProjectID            string `json:"project_id"`
+}

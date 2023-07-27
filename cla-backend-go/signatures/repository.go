@@ -96,6 +96,7 @@ type SignatureRepository interface {
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error)
 	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
 	ActivateSignature(ctx context.Context, signatureID string) error
+	GetGitLabActiveMergeRequestMetadata(ctx context.Context, gitLabAuthorUsername, gitLabAuthorEmail string) (*ActiveGitLabPullRequest, error)
 }
 
 type iclaSignatureWithDetails struct {
@@ -3035,7 +3036,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				// Get ICLAs
 				var wg sync.WaitGroup
 				wg.Add(len(params.RemoveGitlabUsernameApprovalList))
-				for _, ghUsername := range params.RemoveGitlabUsernameApprovalList {
+				for _, glUsername := range params.RemoveGitlabUsernameApprovalList {
 					go func(gitLabUsername string) {
 						defer wg.Done()
 						var iclas []*models.IclaSignature
@@ -3068,7 +3069,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							if icla != nil {
 								// Convert to IclSignature instance to leverage invalidateSignatures helper function
 								approvalList.ICLAs = []*models.IclaSignature{{
-									GitlabUsername: icla.UserGHUsername,
+									GitlabUsername: icla.UserGitlabUsername,
 									LfUsername:     icla.UserLFID,
 									SignatureID:    icla.SignatureID,
 								}}
@@ -3080,7 +3081,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						// Send Email
 						repo.sendEmail(ctx, getBestEmail(claUser), &approvalList, iclas, eclas)
 
-					}(ghUsername)
+					}(glUsername)
 				}
 				wg.Wait()
 			}
@@ -4300,4 +4301,87 @@ func decodeNextKey(str string) (map[string]*dynamodb.AttributeValue, error) {
 	}
 
 	return m, nil
+}
+
+// GetGitLabActiveMergeRequestMetadata returns the pull request metadata for the given user ID
+func (repo repository) GetGitLabActiveMergeRequestMetadata(ctx context.Context, gitLabAuthorUsername, gitLabAuthorEmail string) (*ActiveGitLabPullRequest, error) {
+	f := logrus.Fields{
+		"functionName":         "v1.signatures.repository.GetGitLabActiveMergeRequestMetadata",
+		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
+		"gitLabAuthorUsername": gitLabAuthorUsername,
+		"gitLabAuthorEmail":    gitLabAuthorEmail,
+	}
+
+	if gitLabAuthorUsername == "" && gitLabAuthorEmail == "" {
+		return nil, nil
+	}
+
+	expr, err := expression.NewBuilder().WithProjection(buildSignatureMetadata()).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building expression for user ID query")
+		return nil, err
+	}
+
+	// Try to lookup based on the following keys - could be indexed by either or both (depends if user shared their
+	// email and went through the GitHub authorization flow)
+	var keys []string
+	if gitLabAuthorUsername != "" {
+		keys = append(keys, fmt.Sprintf("active_mr:u:%s", gitLabAuthorUsername))
+	}
+	if gitLabAuthorEmail != "" {
+		keys = append(keys, fmt.Sprintf("active_mr:e:%s", gitLabAuthorEmail))
+	}
+
+	var activeSignature ActiveGitLabPullRequest
+	for _, key := range keys {
+		itemInput := &dynamodb.GetItemInput{
+			Key: map[string]*dynamodb.AttributeValue{
+				"key": {S: aws.String(key)},
+			},
+			ExpressionAttributeNames: expr.Names(),
+			ProjectionExpression:     expr.Projection(),
+			TableName:                aws.String(fmt.Sprintf("cla-%s-store", repo.stage)),
+		}
+
+		// Make the DynamoDb Query API call
+		// log.WithFields(f).Debugf("loading active signature using key: %s", key)
+		result, queryErr := repo.dynamoDBClient.GetItem(itemInput)
+		if queryErr != nil {
+			if queryErr.Error() == dynamodb.ErrCodeResourceNotFoundException {
+				continue
+			}
+			log.WithFields(f).WithError(queryErr).Warnf("error retrieving active signature metadata using key: %s", key)
+			return nil, queryErr
+		}
+
+		if result == nil || result.Item == nil || result.Item["value"] == nil || result.Item["value"].S == nil {
+			log.WithFields(f).Debugf("query result is empty for key: %s", key)
+			continue
+		}
+		if result.Item["value"] == nil || result.Item["value"].S == nil {
+			log.WithFields(f).Debugf("query result value is empty for key: %s", key)
+			continue
+		}
+
+		// Clean up the JSON string
+		strValue := utils.StringValue(result.Item["value"].S)
+		// log.WithFields(f).Debugf("decoding value: %s", strValue)
+		if strings.HasSuffix(strValue, "\"") {
+			// Trim the leading and trailing quotes from the JSON record
+			strValue = strValue[1 : len(strValue)-1]
+		}
+		// Unescape the JSON string
+		strValue = strings.Replace(strValue, "\\\"", "\"", -1)
+		// log.WithFields(f).Debugf("decoding value: %s", strValue)
+
+		jsonUnMarshallErr := json.Unmarshal([]byte(strValue), &activeSignature)
+		if jsonUnMarshallErr != nil {
+			log.WithFields(f).WithError(jsonUnMarshallErr).Warn("unable to convert model for active signature ")
+			return nil, jsonUnMarshallErr
+		}
+
+		return &activeSignature, nil
+	}
+
+	return nil, nil
 }
