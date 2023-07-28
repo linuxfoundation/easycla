@@ -51,7 +51,6 @@ jobs:
       - name: Python Setup
         working-directory: cla-backend
         run: |
-          pip install --platform manylinux_2_12_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages cryptography 
           pip install -r requirements.txt
 
       - name: Python Lint

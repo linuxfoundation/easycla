@@ -12,7 +12,6 @@ setup:
 .PHONY: setup_circle
 setup_circle:
 	npm install; \
-	sudo pip install --platform manylinux_2_12_x86_64 --only-binary=:all: --target=/opt/hostedtoolcache/Python/3.7.17/x64/lib/python3.7/site-packages cryptography; \
 	sudo pip install -r requirements.txt; \
 
 # username: LFID username
