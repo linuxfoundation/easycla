@@ -2975,6 +2975,10 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         cla.log.debug(f'{fn} - performing signature_reference_id query using: {reference_id}')
         # TODO: Optimize this query to use filters properly.
         signature_generator = self.model.signature_reference_index.query(str(reference_id))
+        last_evaluated_key = signature_generator.last_evaluated_key
+        if last_evaluated_key is None:
+            cla.log.debug(f'{fn} - no last evaluated key found')
+            return []
         cla.log.debug(f'{fn} - generator.last_evaluated_key: {signature_generator.last_evaluated_key}')
 
         signatures = []

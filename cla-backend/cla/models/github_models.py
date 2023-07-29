@@ -8,6 +8,7 @@ import json
 import os
 import time
 import uuid
+import multiprocessing
 from typing import List, Union, Optional
 
 import falcon
@@ -1241,7 +1242,107 @@ def get_merge_group_commit_authors(merge_group_sha, installation_id=None) -> Lis
 
     return commit_authors
     
-
+def get_author_summary(commit,pr) -> UserCommitSummary:
+    """
+    Helper function to extract author information from a GitHub commit.
+    :param commit: A GitHub commit object.
+    :type commit: github.Commit.Commit
+    :param pr: PR number
+    :type pr: int
+    """
+    fn = 'cla.models.github_models.get_author_summary'
+    if commit.author:
+        try:
+            commit_author_summary = UserCommitSummary(
+                    commit.sha,
+                    commit.author.id,
+                    commit.author.login,
+                    commit.author.name,
+                    commit.author.email,
+                    False, False  # default not authorized - will be evaluated and updated later
+            )
+            cla.log.debug(f'{fn} - PR: {pr}, {commit_author_summary}')
+            # check for co-author details
+            # issue # 3884
+            # co_authors = cla.utils.get_co_authors_from_commit(commit)
+            # for co_author in co_authors:
+            #     # check if co-author is a github user
+            #     login, github_id = None, None
+            #     email = co_author[1]
+            #     name = co_author[0]
+            #     # get repository service
+            #     github = cla.utils.get_repository_service('github')
+            #     cla.log.debug(f'{fn} - getting co-author details: {co_author}, email: {email}, name: {name}')
+            #     try:
+            #         user = github.get_github_user_by_email(email, installation_id)
+            #     except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
+            #         # user not found
+            #         cla.log.debug(f'{fn} - co-author github user not found : {co_author} with exception: {ex}')
+            #         user = None
+            #     cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
+            #     if user:
+            #         cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
+            #         login = user.login
+            #         github_id = user.id
+            #         co_author_summary = UserCommitSummary(
+            #             commit.sha,
+            #             github_id,
+            #             login,
+            #             name,
+            #             email,
+            #             False, False  # default not authorized - will be evaluated and updated later
+            #         )
+            #         cla.log.debug(f'{fn} - PR: {pull_request.number}, {co_author_summary}')
+            #         commit_authors.append(co_author_summary)
+            #     else:
+            #         cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
+            return commit_author_summary
+        except (GithubException, IncompletableObject) as exc:
+            cla.log.warning(f'{fn} - PR: {pr}, unable to get commit author summary: {exc}')
+            try:
+                # commit.commit.author is a github.GitAuthor.GitAuthor object type - object
+                # only has date, name and email attributes - no ID attribute/value
+                # https://pygithub.readthedocs.io/en/latest/github_objects/GitAuthor.html
+                commit_author_summary = UserCommitSummary(
+                    commit.sha,
+                    None,
+                    None,
+                    commit.commit.author.name,
+                    commit.commit.author.email,
+                    False, False  # default not authorized - will be evaluated and updated later
+                )
+                cla.log.debug(f'{fn} - github.GitAuthor.GitAuthor object: {commit.commit.author}')
+                cla.log.debug(f'{fn} - PR: {pr}, '
+                                f'GitHub NamedUser author NOT found for commit SHA {commit_author_summary} '
+                                f'however, we did find GitAuthor info')
+                cla.log.debug(f'{fn} - PR: {pr}, {commit_author_summary}')
+                return commit_author_summary
+            except (GithubException, IncompletableObject) as exc:
+                cla.log.warning(f'{fn} - PR: {pr}, unable to get commit author summary: {exc}')
+                commit_author_summary = UserCommitSummary(
+                    commit.sha,
+                    None,
+                    None,
+                    None,
+                    None,
+                    False, False
+                )
+                cla.log.warning(f'{fn} - PR: {pr}, '
+                f'could not find any commit author for SHA {commit_author_summary}')
+    else:
+        cla.log.warning(f'{fn} - PR: {pr}, '
+                        f'could not find any commit author for SHA {commit.sha}')
+        commit_author_summary = UserCommitSummary(
+            commit.sha,
+            None,
+            None,
+            None,
+            None,
+            False, False
+        )
+        return commit_author_summary
+            
+            
 
 def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[UserCommitSummary]:
     """
@@ -1262,101 +1363,14 @@ def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[
 
     fn = 'cla.models.github_models.get_pull_request_commit_authors'
     cla.log.debug('Querying pull request commits for author information...')
+
+    num_processes = multiprocessing.cpu_count()
+    cla.log.debug(f'{fn} - Number of CPUs: {num_processes}')
+    
     commit_authors = []
-    for commit in pull_request.get_commits():
-        cla.log.debug(f'{fn} - Processing commit while looking for authors, commit: {commit.sha}')
-        # Note: we can get the author info in two different ways:
-        # https://pygithub.readthedocs.io/en/latest/github_objects/NamedUser.html
-        if commit.author :
-            try:
-                commit_author_summary = UserCommitSummary(
-                    commit.sha,
-                    commit.author.id,
-                    commit.author.login,
-                    commit.author.name,
-                    commit.author.email,
-                    False, False  # default not authorized - will be evaluated and updated later
-                )
-                cla.log.debug(f'{fn} - PR: {pull_request.number}, {commit_author_summary}')
-                commit_authors.append(commit_author_summary)
-                # check for co-author details
-                # issue # 3884
-                co_authors = cla.utils.get_co_authors_from_commit(commit)
-                for co_author in co_authors:
-                    # check if co-author is a github user
-                    login, github_id = None, None
-                    email = co_author[1]
-                    name = co_author[0]
-                    # get repository service
-                    github = cla.utils.get_repository_service('github')
-                    cla.log.debug(f'{fn} - getting co-author details: {co_author}, email: {email}, name: {name}')
-                    try:
-                        user = github.get_github_user_by_email(email, installation_id)
-                    except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
-                        # user not found
-                        cla.log.debug(f'{fn} - co-author github user not found : {co_author} with exception: {ex}')
-                        user = None
-                    cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
-                    if user:
-                        cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
-                        login = user.login
-                        github_id = user.id
-                        co_author_summary = UserCommitSummary(
-                            commit.sha,
-                            github_id,
-                            login,
-                            name,
-                            email,
-                            False, False  # default not authorized - will be evaluated and updated later
-                        )
-                        cla.log.debug(f'{fn} - PR: {pull_request.number}, {co_author_summary}')
-                        commit_authors.append(co_author_summary)
-                    else:
-                        cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
-                    
-            except (GithubException, IncompletableObject) as ex:
-                cla.log.debug(f'Commit sha: {commit.sha} exception: {ex}')
-                try:
-                    # commit.commit.author is a github.GitAuthor.GitAuthor object type - object
-                    # only has date, name and email attributes - no ID attribute/value
-                    # https://pygithub.readthedocs.io/en/latest/github_objects/GitAuthor.html
-                    commit_author_summary = UserCommitSummary(
-                        commit.sha,
-                        None,
-                        None,
-                        commit.commit.author.name,
-                        commit.commit.author.email,
-                        False, False  # default not authorized - will be evaluated and updated later
-                    )
-                    cla.log.debug(f'{fn} - github.GitAuthor.GitAuthor object: {commit.commit.author}')
-                    cla.log.debug(f'{fn} - PR: {pull_request.number}, '
-                                  f'GitHub NamedUser author NOT found for commit SHA {commit_author_summary} '
-                                  f'however, we did find GitAuthor info')
-                    commit_authors.append(commit_author_summary)
-                except (GithubException, IncompletableObject):
-                    commit_author_summary = UserCommitSummary(
-                        commit.sha,
-                        None,
-                        None,
-                        None,
-                        None,
-                        False, False  # default not authorized - will be evaluated and updated later
-                    )
-                    cla.log.warning(f'{fn} - PR: {pull_request.number}, '
-                                    f'could not find any commit author for SHA {commit_author_summary}')
-                    commit_authors.append(commit_author_summary)
-        else:
-            commit_author_summary = UserCommitSummary(
-                commit.sha,
-                None,
-                None,
-                None,
-                None,
-                False, False  # default not authorized - will be evaluated and updated later
-            )
-            cla.log.warning(f'{fn} - PR: {pull_request.number}, '
-                            f'could not find any commit author for SHA {commit_author_summary}')
-            commit_authors.append(commit_author_summary)
+
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        commit_authors = pool.starmap(get_author_summary, zip(pull_request.get_commits(), pull_request.number))
 
     return commit_authors
 
