@@ -649,7 +649,7 @@ class GitHub(repository_service_interface.RepositoryService):
         cla.log.debug(f'{fn} - retrieved pull request: {pull_request}')
 
         # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
-        commit_authors = get_pull_request_commit_authors(pull_request, installation_id)
+        commit_authors = get_pull_request_commit_authors(pull_request)
 
         try:
             # Get existing repository info using the repository's external ID,
@@ -1344,7 +1344,7 @@ def get_author_summary(commit,pr) -> UserCommitSummary:
             
             
 
-def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[UserCommitSummary]:
+def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
     """
     Helper function to extract all committer information for a GitHub PR.
 
@@ -1370,7 +1370,7 @@ def get_pull_request_commit_authors(pull_request, installation_id=None) -> List[
     commit_authors = []
 
     with multiprocessing.Pool(processes=num_processes) as pool:
-        commit_authors = pool.starmap(get_author_summary, zip(pull_request.get_commits(), pull_request.number))
+        commit_authors = pool.starmap(get_author_summary, [(commit, pull_request.number) for commit in pull_request.get_commits()])
 
     return commit_authors
 
