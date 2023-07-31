@@ -8,7 +8,7 @@ import json
 import os
 import time
 import uuid
-import multiprocessing
+import concurrent.futures
 from typing import List, Union, Optional
 
 import falcon
@@ -1367,17 +1367,26 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
     
     commit_authors = []
 
-    try:
-        num_processes = multiprocessing.cpu_count()
-        cla.log.debug(f'{fn} - Number of CPUs: {num_processes}')
+    # try:
+    #     num_processes = multiprocessing.cpu_count()
+    #     cla.log.debug(f'{fn} - Number of CPUs: {num_processes}')
 
-        with multiprocessing.Pool(processes=num_processes) as pool:
-            commit_authors = pool.starmap(get_author_summary, [(commit, pull_request.number) for commit in pull_request.get_commits()])
+    #     with multiprocessing.Pool(processes=num_processes) as pool:
+    #         commit_authors = pool.starmap(get_author_summary, [(commit, pull_request.number) for commit in pull_request.get_commits()])
     
-    except Exception as e:
-        cla.log.warning(f'{fn} - Exception while querying pull request commits for author information: {e}')
-        raise e
-
+    # except Exception as e:
+    #     cla.log.warning(f'{fn} - Exception while querying pull request commits for author information: {e}')
+    #     raise e
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_commit = {executor.submit(get_author_summary, commit, pull_request.number): commit for commit in pull_request.get_commits()}
+        for future in concurrent.futures.as_completed(future_to_commit):
+            future_to_commit[future]
+            try:
+                commit_authors.append(future.result())
+            except Exception as exc:
+                cla.log.warning(f'{fn} - PR: {pull_request.number}, get_author_summary generated an exception: {exc}')
+                raise exc
+            
     return commit_authors
 
 
