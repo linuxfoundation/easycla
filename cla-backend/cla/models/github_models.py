@@ -1360,17 +1360,23 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
     :return: A list of User Commit Summary objects containing the commit sha and available user information
     :rtype: List[UserCommitSummary]
     """
-
     fn = 'cla.models.github_models.get_pull_request_commit_authors'
-    cla.log.debug('Querying pull request commits for author information...')
-
-    num_processes = multiprocessing.cpu_count()
-    cla.log.debug(f'{fn} - Number of CPUs: {num_processes}')
+    cla.log.debug(f'{fn} - Querying pull request commits for author information...')
+    no_commits = pull_request.get_commits().totalCount
+    cla.log.debug(f'{fn} - PR: {pull_request.number}, number of commits: {no_commits}')
     
     commit_authors = []
 
-    with multiprocessing.Pool(processes=num_processes) as pool:
-        commit_authors = pool.starmap(get_author_summary, [(commit, pull_request.number) for commit in pull_request.get_commits()])
+    try:
+        num_processes = multiprocessing.cpu_count()
+        cla.log.debug(f'{fn} - Number of CPUs: {num_processes}')
+
+        with multiprocessing.Pool(processes=num_processes) as pool:
+            commit_authors = pool.starmap(get_author_summary, [(commit, pull_request.number) for commit in pull_request.get_commits()])
+    
+    except Exception as e:
+        cla.log.warning(f'{fn} - Exception while querying pull request commits for author information: {e}')
+        raise e
 
     return commit_authors
 
