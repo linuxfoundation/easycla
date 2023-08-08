@@ -8,7 +8,7 @@ import json
 import os
 import time
 import uuid
-import multiprocessing
+import concurrent.futures
 from typing import List, Union, Optional
 
 import falcon
@@ -534,7 +534,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
         try :
             # Get Commit authors
-            commit_authors = get_pull_request_commit_authors(pull_request, installation_id)
+            commit_authors = get_pull_request_commit_authors(pull_request)
             cla.log.debug(f'{fn} - commit authors: {commit_authors}')
         except Exception as e:
             cla.log.warning(f'{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository '
@@ -650,6 +650,9 @@ class GitHub(repository_service_interface.RepositoryService):
 
         # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
         commit_authors = get_pull_request_commit_authors(pull_request)
+
+        cla.log.debug(f'{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit authors '
+                        f'for pull request: {pull_request.number}')
 
         try:
             # Get existing repository info using the repository's external ID,
@@ -1360,18 +1363,23 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
     :return: A list of User Commit Summary objects containing the commit sha and available user information
     :rtype: List[UserCommitSummary]
     """
-
     fn = 'cla.models.github_models.get_pull_request_commit_authors'
-    cla.log.debug('Querying pull request commits for author information...')
-
-    num_processes = multiprocessing.cpu_count()
-    cla.log.debug(f'{fn} - Number of CPUs: {num_processes}')
+    cla.log.debug(f'{fn} - Querying pull request commits for author information...')
+    no_commits = pull_request.get_commits().totalCount
+    cla.log.debug(f'{fn} - PR: {pull_request.number}, number of commits: {no_commits}')
     
     commit_authors = []
 
-    with multiprocessing.Pool(processes=num_processes) as pool:
-        commit_authors = pool.starmap(get_author_summary, [(commit, pull_request.number) for commit in pull_request.get_commits()])
-
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_commit = {executor.submit(get_author_summary, commit, pull_request.number): commit for commit in pull_request.get_commits()}
+        for future in concurrent.futures.as_completed(future_to_commit):
+            future_to_commit[future]
+            try:
+                commit_authors.append(future.result())
+            except Exception as exc:
+                cla.log.warning(f'{fn} - PR: {pull_request.number}, get_author_summary generated an exception: {exc}')
+                raise exc
+            
     return commit_authors
 
 
