@@ -17,6 +17,9 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+import jwt
+import requests
+import time
 
 import cla
 import pydocusign  # type: ignore
@@ -35,9 +38,12 @@ from pydocusign.exceptions import DocuSignException  # type: ignore
 
 api_base_url = os.environ.get('CLA_API_BASE', '')
 root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
-username = os.environ.get('DOCUSIGN_USERNAME', '')
-password = os.environ.get('DOCUSIGN_PASSWORD', '')
 integrator_key = os.environ.get('DOCUSIGN_INTEGRATOR_KEY', '')
+user_id = os.environ.get('DOCUSIGN_USER_ID', '')
+private_key = os.environ.get('DOCUSIGN_PRIVATE_KEY', '')
+auth_server = os.environ.get('DOCUSIGN_AUTH_SERVER')
+token_endpoint = f'https://{auth_server}/oauth/token'
+
 
 lf_group_client_url = os.environ.get('LF_GROUP_CLIENT_URL', '')
 lf_group_client_id = os.environ.get('LF_GROUP_CLIENT_ID', '')
@@ -101,28 +107,50 @@ class DocuSign(signing_service_interface.SigningService):
         self.s3storage = None
 
     def initialize(self, config):
-        self.client = pydocusign.DocuSignClient(root_url=root_url,
-                                                username=username,
-                                                password=password,
-                                                integrator_key=integrator_key)
+        
+        expiration_time = int(time.time()) + 3600  # 1 hour
+
+        payload = {
+            "iss": integrator_key,
+            "sub": user_id,
+            "aud": auth_server,
+            "scope": "signature_impersonation",
+            "iat": int(time.time()),
+            "exp": expiration_time
+        }
+
+        cla.log.debug(f"jwt data claims: {payload}")
 
         try:
-            login_data = self.client.login_information()
-            login_account = login_data['loginAccounts'][0]
-            base_url = login_account['baseUrl']
-            account_id = login_account['accountId']
-            url = urlparse(base_url)
-            parsed_root_url = '{}://{}/restapi/v2'.format(url.scheme, url.netloc)
-        except Exception as e:
-            cla.log.error('Error logging in to DocuSign: {}'.format(e))
-            return {'errors': {'Error initializing DocuSign'}}
+            #sign the JWT
+            encoded_jwt = jwt.encode(payload, private_key, algorithm='RS256')
 
-        self.client = pydocusign.DocuSignClient(root_url=parsed_root_url,
-                                                account_url=base_url,
-                                                account_id=account_id,
-                                                username=username,
-                                                password=password,
-                                                integrator_key=integrator_key)
+            # Request an access token using the JWT
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+            data = {
+                'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                'assertion': encoded_jwt,
+                'client_id': integrator_key,
+                'client_secret': private_key
+            }
+
+
+            cla.log.debug(f"docusign token_endpoint : {token_endpoint}")
+
+            response = requests.post(token_endpoint, headers=headers, data=data)
+            access_token = response.json().get('access_token')
+            cla.log.debug(f"access_token for docusign: {access_token}")
+
+            cla.log.debug("Initializing docusign ...")
+            self.client = pydocusign.DocuSignClient(root_url=root_url,oauth2_token=access_token)
+
+
+        except Exception as ex:
+            cla.log.error("Error authenticating Docusign: {}".format(ex))
+            return {'errors': {'Error authenticating Docusign'}}
+
         self.s3storage = S3Storage()
         self.s3storage.initialize(None)
 
