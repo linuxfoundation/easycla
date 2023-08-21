@@ -1,0 +1,13 @@
+{
+  
+  "include": [
+    "./**/*.ts"
+  ],
+  "compilerOptions": {
+    "baseUrl": "integration",
+    "types": [
+      "cypress",
+      "node"
+    ]
+  }
+}
