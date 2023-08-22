@@ -1,0 +1,129 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "autoEnabled": {
+        "type": "boolean"
+      },
+      "autoEnabledClaGroupID": {
+        "type": "string"
+      },
+      "branchProtectionEnabled": {
+        "type": "boolean"
+      },
+      "dateCreated": {
+        "type": "string"
+      },
+      "dateModified": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "githubInfo": {
+        "type": "object",
+        "properties": {
+          "details": {
+            "type": "object",
+            "properties": {
+              "bio": {
+                "type": "string"
+              },
+              "htmlUrl": {
+                "type": "string"
+              },
+              "id": {
+                "type": "integer"
+              },
+              "installationURL": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bio",
+              "htmlUrl",
+              "id",
+              "installationURL"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "details",
+          "error"
+        ]
+      },
+      "organizationInstallationID": {
+        "type": "integer"
+      },
+      "organizationName": {
+        "type": "string"
+      },
+      "organizationSfid": {
+        "type": "string"
+      },
+      "projectSFID": {
+        "type": "string"
+      },
+      "repositories": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "list": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "repositoryGithubID": {
+                    "type": "integer"
+                  },
+                  "repositoryName": {
+                    "type": "string"
+                  },
+                  "repositoryType": {
+                    "type": "string"
+                  },
+                  "repositoryUrl": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "repositoryGithubID",
+                  "repositoryName",
+                  "repositoryType",
+                  "repositoryUrl"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "error",
+          "list"
+        ]
+      },
+      "version": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "autoEnabled",
+      "autoEnabledClaGroupID",
+      "branchProtectionEnabled",
+      "dateCreated",
+      "dateModified",
+      "enabled",
+      "githubInfo",
+      "organizationInstallationID",
+      "organizationName",
+      "organizationSfid",
+      "projectSFID",
+      "repositories",
+      "version"
+    ]
+  }
