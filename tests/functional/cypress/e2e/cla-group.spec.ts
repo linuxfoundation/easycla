@@ -1,6 +1,8 @@
 // import {getBearerToken,bearerToken } from '../../support/commands.js';
 
 describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on child project", function () {
+  //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/cla-group
+
   const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4`;
   const Ajv = require('ajv');
   let bearerToken: string = "";
@@ -16,9 +18,11 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   const updated_cla_group_name='Cypress_Updated_ClaGroup1';
   const update_cla_group_description='CLA group created and updated for easy cla automation child project 1'
  
+  
   //Variable for GitHub
   const gitHubOrgName='Sun-lfxfoundationOrgTest';
   const projectSfidOrg='a09P000000DsCE5IAN'; //project name: sun
+  
 
   //Enroll /unEnroll projects 
   const EnrollProjectsSFID='a09P000000DsNHCIA3' //project name: easyAutomChild1-GrandChild1
@@ -108,7 +112,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
      //To validate schema of response
         const ajv = new Ajv();
         // Load the JSON schema
-        cy.fixture("create_claGroup2.json").then(
+        cy.fixture("claGroup/create_claGroup2.json").then(
           (schema) => {
             console.log(schema)
       const validate = ajv.compile(schema);
@@ -142,7 +146,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
            //To validate schema of response
         const ajv = new Ajv();
              // Load the JSON schema
-        cy.fixture("list_claGroup.json").then(
+        cy.fixture("claGroup/list_claGroup.json").then(
           (schema) => {
             console.log(schema)
       const validate = ajv.compile(schema);
@@ -178,7 +182,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           //To validate schema of response
        const ajv = new Ajv();
             // Load the JSON schema
-       cy.fixture("update_claGroup2.json").then(
+       cy.fixture("claGroup/update_claGroup2.json").then(
          (schema) => {
            console.log(schema)
      const validate = ajv.compile(schema);
@@ -240,7 +244,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
      expect(response.status).to.eq(200);
    });
   });
-
+  
   it("Get list of Github organization associated with project - Record should Returns 200 Response", function () {
     cy.request({
       method: 'GET',
@@ -256,12 +260,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         expect(response.body).to.have.property('list');
         let list = response.body.list;
         expect(list[2].github_organization_name).to.eql('Sun-lfxfoundationOrgTest')    
-        expect(list[2].connection_status).to.eql('partial_connection')  
-            //  Set the authentication token as a cookie
-          //    cy.setCookie('BearerToken', 'bearer '+bearerToken); 
-          //    console.log('bearer '+bearerToken)
-          //    cy.getCookie('BearerToken').should('exist');
-          // cy.visit('https://v2.pcc.dev.platform.linuxfoundation.org/project/a0941000002wBz9AAE');      
+        expect(list[2].connection_status).to.eql('partial_connection')   
     });
   });
 
@@ -282,9 +281,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       expect(response.status).to.eq(200);
     }); 
   });
-
+  
   it("Deletes the CLA Group - Record should Returns 204 Response", function () {
-    console.log('claGroupId is : '+ claGroupId)
+    console.log('claGroupId: '+ claGroupId)
     if(claGroupId!=null){
     cy.request({
       method: 'DELETE',
@@ -295,6 +294,25 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       },
     }).then((response) => {
       expect(response.status).to.eq(204);
+      // Check if the first API response status is 200
+      if (response.status === 204) {
+        // Run the second API request
+        cy.request({
+          method: 'GET',
+          url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
+          headers: optionalHeaders,
+          auth: {
+            'bearer': bearerToken,
+          },
+        }).then((secondResponse) => {       
+          // Validate specific data in the response
+          cy.wrap(secondResponse.body.list)
+          .should('be.an', 'array') // Check if the response is an array
+          .and('have.length', 0);
+        });
+      } else {
+        console.log('First API request did not return a 204 status.');
+      }    
     }); 
   }else{
 console.log('claGroupId is null'+ claGroupId)
