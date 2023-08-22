@@ -1,7 +1,8 @@
 
+
 /*
-const Ajv = require('ajv');
-Cypress.Commands.add('schemaValidate', (schemaPath,body) => { 
+Cypress.Commands.add('schemaValidate', (schemaPath,body) => {  
+  
     cy.fixture(schemaPath).then(
         (schema) => {
           console.log(schema)

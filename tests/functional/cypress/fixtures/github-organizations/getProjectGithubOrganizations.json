@@ -1,0 +1,94 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "autoEnableCLAGroupID": {
+                "type": "string"
+              },
+              "autoEnabledCLAGroupName": {
+                "type": "string"
+              },
+              "auto_enabled": {
+                "type": "boolean"
+              },
+              "branchProtectionEnabled": {
+                "type": "boolean"
+              },
+              "connection_status": {
+                "type": "string"
+              },
+              "github_organization_name": {
+                "type": "string"
+              },
+              "installationURL": {
+                "type": "string"
+              },
+              "repositories": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "cla_group_id": {
+                        "type": "string"
+                      },
+                      "connection_status": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "parent_project_id": {
+                        "type": "string"
+                      },
+                      "project_id": {
+                        "type": "string"
+                      },
+                      "repository_github_id": {
+                        "type": "integer"
+                      },
+                      "repository_id": {
+                        "type": "string"
+                      },
+                      "repository_name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "cla_group_id",
+                      "connection_status",
+                      "enabled",
+                      "parent_project_id",
+                      "project_id",
+                      "repository_github_id",
+                      "repository_id",
+                      "repository_name"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "autoEnableCLAGroupID",
+              "autoEnabledCLAGroupName",
+              "auto_enabled",
+              "branchProtectionEnabled",
+              "connection_status",
+              "github_organization_name",
+              "installationURL",
+              "repositories"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "list"
+    ]
+  }
