@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 import jwt
 import requests
-import time
+import time 
 
 import cla
 import pydocusign  # type: ignore
@@ -38,9 +38,9 @@ from pydocusign.exceptions import DocuSignException  # type: ignore
 
 api_base_url = os.environ.get('CLA_API_BASE', '')
 root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
-integrator_key = os.environ.get('DOCUSIGN_INTEGRATOR_KEY', '')
-user_id = os.environ.get('DOCUSIGN_USER_ID', '')
-private_key = os.environ.get('DOCUSIGN_PRIVATE_KEY', '')
+integrator_key = cla.config.DOCUSIGN_INTEGRATOR_KEY
+user_id = cla.config.DOCUSIGN_USER_ID
+private_key = cla.config.DOCUSIGN_PRIVATE_KEY
 auth_server = os.environ.get('DOCUSIGN_AUTH_SERVER')
 token_endpoint = f'https://{auth_server}/oauth/token'
 
@@ -115,7 +115,6 @@ class DocuSign(signing_service_interface.SigningService):
             "sub": user_id,
             "aud": auth_server,
             "scope": "signature_impersonation",
-            "iat": int(time.time()),
             "exp": expiration_time
         }
 
@@ -123,6 +122,7 @@ class DocuSign(signing_service_interface.SigningService):
 
         try:
             #sign the JWT
+            cla.log.debug(f'private key: {private_key}')
             encoded_jwt = jwt.encode(payload, private_key, algorithm='RS256')
 
             # Request an access token using the JWT
@@ -132,14 +132,14 @@ class DocuSign(signing_service_interface.SigningService):
             data = {
                 'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
                 'assertion': encoded_jwt,
-                'client_id': integrator_key,
-                'client_secret': private_key
             }
-
 
             cla.log.debug(f"docusign token_endpoint : {token_endpoint}")
 
             response = requests.post(token_endpoint, headers=headers, data=data)
+            if response.status_code != 200:
+                cla.log.debug(f'response: {response.content} {response.status_code}')
+                response.raise_for_status()
             access_token = response.json().get('access_token')
             cla.log.debug(f"access_token for docusign: {access_token}")
 
@@ -147,7 +147,7 @@ class DocuSign(signing_service_interface.SigningService):
             self.client = pydocusign.DocuSignClient(root_url=root_url,oauth2_token=access_token)
 
 
-        except Exception as ex:
+        except (Exception, requests.exceptions.HTTPError) as ex:
             cla.log.error("Error authenticating Docusign: {}".format(ex))
             return {'errors': {'Error authenticating Docusign'}}
 

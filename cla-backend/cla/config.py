@@ -145,6 +145,12 @@ GITHUB_PRIVATE_KEY = ""
 # DocuSign Private Key
 DOCUSIGN_PRIVATE_KEY = ""
 
+#Docusign Integration Key
+DOCUSIGN_INTEGRATOR_KEY = ""
+
+#Oocusign user id
+DOCUSIGN_USER_ID = ""
+
 # reference to this module, cla.config
 this = sys.modules[__name__]
 
@@ -173,7 +179,9 @@ def load_ssm_keys():
         f'cla-auth0-platform-client-id-{stage}',
         f'cla-auth0-platform-client-secret-{stage}',
         f'cla-auth0-platform-audience-{stage}',
-        f'cla-docusign-private-key-{stage}'
+        f'cla-docusign-private-key-{stage}',
+        f'cla-docusign-integrator-key-{stage}',
+        f'cla-docusign-user-id-{stage}'
     ]
     config_keys = [
         "GITHUB_PRIVATE_KEY",
@@ -182,7 +190,9 @@ def load_ssm_keys():
         "AUTH0_PLATFORM_CLIENT_ID",
         "AUTH0_PLATFORM_CLIENT_SECRET",
         "AUTH0_PLATFORM_AUDIENCE",
-        "DOCUSIGN_PRIVATE_KEY"
+        "DOCUSIGN_PRIVATE_KEY",
+        "DOCUSIGN_INTEGRATOR_KEY",
+        "DOCUSIGN_USER_ID"
     ]
 
     # thread pool of 7 to load fetch the keys
