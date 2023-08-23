@@ -1,0 +1,81 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "date_created": {
+                "type": "string"
+              },
+              "date_modified": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "is_remote_deleted": {
+                "type": "boolean"
+              },
+              "note": {
+                "type": "string"
+              },
+              "repository_cla_group_id": {
+                "type": "string"
+              },
+              "repository_external_id": {
+                "type": "integer"
+              },
+              "repository_id": {
+                "type": "string"
+              },
+              "repository_name": {
+                "type": "string"
+              },
+              "repository_organization_name": {
+                "type": "string"
+              },
+              "repository_project_sfid": {
+                "type": "string"
+              },
+              "repository_type": {
+                "type": "string"
+              },
+              "repository_url": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "was_cla_enforced": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "date_created",
+              "date_modified",
+              "enabled",
+              "is_remote_deleted",
+              "note",
+              "repository_cla_group_id",
+              "repository_external_id",
+              "repository_id",
+              "repository_name",
+              "repository_organization_name",
+              "repository_project_sfid",
+              "repository_type",
+              "repository_url",
+              "version",
+              "was_cla_enforced"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "list"
+    ]
+  }

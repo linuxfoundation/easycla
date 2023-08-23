@@ -102,20 +102,16 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       // expect(response.duration).to.be.lessThan(20000);
       expect(response.status).to.eq(200);
       expect(response.body).to.not.be.null;
-      let list = response.body
-     console.log('Create cla group body: '+list)
         // Validate specific data in the response
         expect(response.body).to.have.property('cla_group_name', cla_group_name);
         claGroupId = response.body.cla_group_id;
-       console.log(claGroupId)  
        
      //To validate schema of response
         const ajv = new Ajv();
         // Load the JSON schema
         cy.fixture("claGroup/create_claGroup2.json").then(
           (schema) => {
-            console.log(schema)
-      const validate = ajv.compile(schema);
+          const validate = ajv.compile(schema);
       const isValid = validate(response.body);
 
       // Assert that the response matches the schema
@@ -148,8 +144,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
              // Load the JSON schema
         cy.fixture("claGroup/list_claGroup.json").then(
           (schema) => {
-            console.log(schema)
-      const validate = ajv.compile(schema);
+        const validate = ajv.compile(schema);
       const isValid = validate(response.body);
 
       // Assert that the response matches the schema
@@ -174,7 +169,6 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
      // expect(response.duration).to.be.lessThan(20000);
      expect(response.status).to.eq(200);
      expect(response.body).to.not.be.null;
-     console.log('Updates a CLA Group details API Response:', response.body);
        // Validate specific data in the response
        expect(response.body).to.have.property('cla_group_name', updated_cla_group_name);
        expect(response.body).to.have.property('cla_group_description', update_cla_group_description);       
@@ -184,7 +178,6 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
             // Load the JSON schema
        cy.fixture("claGroup/update_claGroup2.json").then(
          (schema) => {
-           console.log(schema)
      const validate = ajv.compile(schema);
      const isValid = validate(response.body);
 
@@ -283,7 +276,6 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   });
   
   it("Deletes the CLA Group - Record should Returns 204 Response", function () {
-    console.log('claGroupId: '+ claGroupId)
     if(claGroupId!=null){
     cy.request({
       method: 'DELETE',
