@@ -1,0 +1,41 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "branch_name": {
+        "type": "string"
+      },
+      "enforce_admin": {
+        "type": "boolean"
+      },
+      "protection_enabled": {
+        "type": "boolean"
+      },
+      "status_checks": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "enabled",
+              "name"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "branch_name",
+      "enforce_admin",
+      "protection_enabled",
+      "status_checks"
+    ]
+  }
