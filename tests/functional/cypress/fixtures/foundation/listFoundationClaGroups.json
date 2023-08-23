@@ -1,0 +1,51 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "cla_groups": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "cla_group_id": {
+                        "type": "string"
+                      },
+                      "project_sfid_list": {
+                        "type": "array",
+                        "items": [
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "cla_group_id",
+                      "project_sfid_list"
+                    ]
+                  }
+                ]
+              },
+              "foundation_sfid": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cla_groups",
+              "foundation_sfid"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "list"
+    ]
+  }
