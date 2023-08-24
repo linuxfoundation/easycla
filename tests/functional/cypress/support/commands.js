@@ -1,7 +1,6 @@
-
-
 /*
-Cypress.Commands.add('schemaValidate', (schemaPath,body) => {  
+// const Ajv = require('ajv');
+export function schemaValidate(schemaPath,body,ajv){  
   
     cy.fixture(schemaPath).then(
         (schema) => {
@@ -10,9 +9,9 @@ Cypress.Commands.add('schemaValidate', (schemaPath,body) => {
     const isValid = validate(body);
     // Assert that the response matches the schema
     expect(isValid, 'API response schema is valid').to.be.true;
-
+        
 })
-});
+};
 */
 // let bearerToken={};
 

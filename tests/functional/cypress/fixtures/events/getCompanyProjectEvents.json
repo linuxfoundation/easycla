@@ -1,0 +1,437 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "Events": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "EventCLAGroupID": {
+                "type": "string"
+              },
+              "EventCLAGroupName": {
+                "type": "string"
+              },
+              "EventCLAGroupNameLower": {
+                "type": "string"
+              },
+              "EventCompanyID": {
+                "type": "string"
+              },
+              "EventCompanyName": {
+                "type": "string"
+              },
+              "EventCompanySFID": {
+                "type": "string"
+              },
+              "EventData": {
+                "type": "string"
+              },
+              "EventID": {
+                "type": "string"
+              },
+              "EventParentProjectName": {
+                "type": "string"
+              },
+              "EventParentProjectSFID": {
+                "type": "string"
+              },
+              "EventProjectID": {
+                "type": "string"
+              },
+              "EventProjectName": {
+                "type": "string"
+              },
+              "EventProjectSFID": {
+                "type": "string"
+              },
+              "EventSummary": {
+                "type": "string"
+              },
+              "EventTime": {
+                "type": "string"
+              },
+              "EventTimeEpoch": {
+                "type": "integer"
+              },
+              "EventType": {
+                "type": "string"
+              },
+              "LfUsername": {
+                "type": "string"
+              },
+              "UserID": {
+                "type": "string"
+              },
+              "UserName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "EventCLAGroupID",
+              "EventCLAGroupName",
+              "EventCLAGroupNameLower",
+              "EventCompanyID",
+              "EventCompanyName",
+              "EventCompanySFID",
+              "EventData",
+              "EventID",
+              "EventParentProjectName",
+              "EventParentProjectSFID",
+              "EventProjectID",
+              "EventProjectName",
+              "EventProjectSFID",
+              "EventSummary",
+              "EventTime",
+              "EventTimeEpoch",
+              "EventType",
+              "LfUsername",
+              "UserID",
+              "UserName"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "EventCLAGroupID": {
+                "type": "string"
+              },
+              "EventCLAGroupName": {
+                "type": "string"
+              },
+              "EventCLAGroupNameLower": {
+                "type": "string"
+              },
+              "EventCompanyID": {
+                "type": "string"
+              },
+              "EventCompanyName": {
+                "type": "string"
+              },
+              "EventCompanySFID": {
+                "type": "string"
+              },
+              "EventData": {
+                "type": "string"
+              },
+              "EventID": {
+                "type": "string"
+              },
+              "EventSummary": {
+                "type": "string"
+              },
+              "EventTime": {
+                "type": "string"
+              },
+              "EventTimeEpoch": {
+                "type": "integer"
+              },
+              "EventType": {
+                "type": "string"
+              },
+              "LfUsername": {
+                "type": "string"
+              },
+              "UserID": {
+                "type": "string"
+              },
+              "UserName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "EventCLAGroupID",
+              "EventCLAGroupName",
+              "EventCLAGroupNameLower",
+              "EventCompanyID",
+              "EventCompanyName",
+              "EventCompanySFID",
+              "EventData",
+              "EventID",
+              "EventSummary",
+              "EventTime",
+              "EventTimeEpoch",
+              "EventType",
+              "LfUsername",
+              "UserID",
+              "UserName"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "EventCLAGroupID": {
+                "type": "string"
+              },
+              "EventCLAGroupName": {
+                "type": "string"
+              },
+              "EventCLAGroupNameLower": {
+                "type": "string"
+              },
+              "EventCompanyID": {
+                "type": "string"
+              },
+              "EventCompanyName": {
+                "type": "string"
+              },
+              "EventCompanySFID": {
+                "type": "string"
+              },
+              "EventData": {
+                "type": "string"
+              },
+              "EventID": {
+                "type": "string"
+              },
+              "EventParentProjectName": {
+                "type": "string"
+              },
+              "EventParentProjectSFID": {
+                "type": "string"
+              },
+              "EventProjectID": {
+                "type": "string"
+              },
+              "EventProjectName": {
+                "type": "string"
+              },
+              "EventProjectSFID": {
+                "type": "string"
+              },
+              "EventSummary": {
+                "type": "string"
+              },
+              "EventTime": {
+                "type": "string"
+              },
+              "EventTimeEpoch": {
+                "type": "integer"
+              },
+              "EventType": {
+                "type": "string"
+              },
+              "LfUsername": {
+                "type": "string"
+              },
+              "UserID": {
+                "type": "string"
+              },
+              "UserName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "EventCLAGroupID",
+              "EventCLAGroupName",
+              "EventCLAGroupNameLower",
+              "EventCompanyID",
+              "EventCompanyName",
+              "EventCompanySFID",
+              "EventData",
+              "EventID",
+              "EventParentProjectName",
+              "EventParentProjectSFID",
+              "EventProjectID",
+              "EventProjectName",
+              "EventProjectSFID",
+              "EventSummary",
+              "EventTime",
+              "EventTimeEpoch",
+              "EventType",
+              "LfUsername",
+              "UserID",
+              "UserName"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "EventCLAGroupID": {
+                "type": "string"
+              },
+              "EventCLAGroupName": {
+                "type": "string"
+              },
+              "EventCLAGroupNameLower": {
+                "type": "string"
+              },
+              "EventCompanyID": {
+                "type": "string"
+              },
+              "EventCompanyName": {
+                "type": "string"
+              },
+              "EventCompanySFID": {
+                "type": "string"
+              },
+              "EventData": {
+                "type": "string"
+              },
+              "EventID": {
+                "type": "string"
+              },
+              "EventParentProjectName": {
+                "type": "string"
+              },
+              "EventParentProjectSFID": {
+                "type": "string"
+              },
+              "EventProjectID": {
+                "type": "string"
+              },
+              "EventProjectName": {
+                "type": "string"
+              },
+              "EventProjectSFID": {
+                "type": "string"
+              },
+              "EventSummary": {
+                "type": "string"
+              },
+              "EventTime": {
+                "type": "string"
+              },
+              "EventTimeEpoch": {
+                "type": "integer"
+              },
+              "EventType": {
+                "type": "string"
+              },
+              "LfUsername": {
+                "type": "string"
+              },
+              "UserID": {
+                "type": "string"
+              },
+              "UserName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "EventCLAGroupID",
+              "EventCLAGroupName",
+              "EventCLAGroupNameLower",
+              "EventCompanyID",
+              "EventCompanyName",
+              "EventCompanySFID",
+              "EventData",
+              "EventID",
+              "EventParentProjectName",
+              "EventParentProjectSFID",
+              "EventProjectID",
+              "EventProjectName",
+              "EventProjectSFID",
+              "EventSummary",
+              "EventTime",
+              "EventTimeEpoch",
+              "EventType",
+              "LfUsername",
+              "UserID",
+              "UserName"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "EventCLAGroupID": {
+                "type": "string"
+              },
+              "EventCLAGroupName": {
+                "type": "string"
+              },
+              "EventCLAGroupNameLower": {
+                "type": "string"
+              },
+              "EventCompanyID": {
+                "type": "string"
+              },
+              "EventCompanyName": {
+                "type": "string"
+              },
+              "EventCompanySFID": {
+                "type": "string"
+              },
+              "EventData": {
+                "type": "string"
+              },
+              "EventID": {
+                "type": "string"
+              },
+              "EventParentProjectName": {
+                "type": "string"
+              },
+              "EventParentProjectSFID": {
+                "type": "string"
+              },
+              "EventProjectID": {
+                "type": "string"
+              },
+              "EventProjectName": {
+                "type": "string"
+              },
+              "EventProjectSFID": {
+                "type": "string"
+              },
+              "EventSummary": {
+                "type": "string"
+              },
+              "EventTime": {
+                "type": "string"
+              },
+              "EventTimeEpoch": {
+                "type": "integer"
+              },
+              "EventType": {
+                "type": "string"
+              },
+              "LfUsername": {
+                "type": "string"
+              },
+              "UserID": {
+                "type": "string"
+              },
+              "UserName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "EventCLAGroupID",
+              "EventCLAGroupName",
+              "EventCLAGroupNameLower",
+              "EventCompanyID",
+              "EventCompanyName",
+              "EventCompanySFID",
+              "EventData",
+              "EventID",
+              "EventParentProjectName",
+              "EventParentProjectSFID",
+              "EventProjectID",
+              "EventProjectName",
+              "EventProjectSFID",
+              "EventSummary",
+              "EventTime",
+              "EventTimeEpoch",
+              "EventType",
+              "LfUsername",
+              "UserID",
+              "UserName"
+            ]
+          }
+        ]
+      },
+      "NextKey": {
+        "type": "string"
+      },
+      "ResultCount": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "Events",
+      "NextKey",
+      "ResultCount"
+    ]
+  }
