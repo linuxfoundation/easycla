@@ -1,4 +1,4 @@
-// import {schemaValidate} from '../support/commands.js';
+import {validateApiResponse} from '../support/commands'
 describe("To Validate github-organizations API call", function () {
 //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-organizations
 
@@ -13,10 +13,6 @@ const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/project/${projectSf
 let bearerToken: string = "";
 const claGroupId: string ="1baf67ab-d894-4edf-b6fc-c5f939db59f7";
 
-//Headers
-let optionalHeaders: Headers = {
-    "X-LFX-CACHE": false,
-  }
 
 before(() => {   
    
@@ -44,7 +40,7 @@ it("Get list of Github organization associated with project - Record should Retu
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       }
@@ -57,7 +53,7 @@ it("Get list of Github organization associated with project - Record should Retu
         expect(list[0].github_organization_name).to.eql('ApiAutomStandaloneOrg')    
         expect(list[0].connection_status).to.eql('connected')   
                //To validate schema of response
-               schemaValidate("github-organizations/getProjectGithubOrganizations.json",response.body);
+               validateApiResponse("github-organizations/getProjectGithubOrganizations.json",response.body);
     });
   });
 
@@ -65,7 +61,7 @@ it("Get list of Github organization associated with project - Record should Retu
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/${gitHubOrgName}/config`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       },
@@ -83,7 +79,7 @@ it("Get list of Github organization associated with project - Record should Retu
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       },
@@ -102,7 +98,7 @@ it("Get list of Github organization associated with project - Record should Retu
         expect(list[1].github_organization_name).to.eql(gitHubOrg)    
         expect(list[1].connection_status).to.eql('connected')   
         //To validate schema of response  
-        schemaValidate("github-organizations/addProjectGithubOrganization.json",response.body);
+        validateApiResponse("github-organizations/addProjectGithubOrganization.json",response.body);
     });
   });
 
@@ -110,7 +106,7 @@ it("Get list of Github organization associated with project - Record should Retu
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${gitHubOrg}`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       },
@@ -120,16 +116,4 @@ it("Get list of Github organization associated with project - Record should Retu
     });
   });
 
-  function schemaValidate(schemaPath,body){
-    //To validate schema of response
-    const ajv = new Ajv();
-    // Load the JSON schema
-      cy.fixture(schemaPath).then(
-       (schema) => {
-           const validate = ajv.compile(schema);
-           const isValid = validate(body);
-            // Assert that the response matches the schema
-            expect(isValid, 'API response schema is valid').to.be.true;
-          });
-}
 })

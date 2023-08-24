@@ -1,3 +1,4 @@
+import {validateApiResponse} from '../support/commands'
 describe("To Validate github-organizations API call", function () {
     //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-repositories
     
@@ -14,10 +15,6 @@ describe("To Validate github-organizations API call", function () {
   let gitHubOrgName: string="";
   let branch_name: string="";
   
-  //Headers
-  let optionalHeaders: Headers = {
-      "X-LFX-CACHE": false,
-    }
   
   before(() => {   
      
@@ -45,7 +42,7 @@ describe("To Validate github-organizations API call", function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
-      headers: optionalHeaders,
+      
       auth: {
         'bearer': bearerToken,
       }
@@ -62,7 +59,7 @@ describe("To Validate github-organizations API call", function () {
         repository_external_id2=list[1].repository_external_id;
            expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/repo01')     
                //To validate schema of response
-               schemaValidate("github-repositories/getRepositories.json",response.body);
+               validateApiResponse("github-repositories/getRepositories.json",response.body);
     });
   });
 
@@ -70,7 +67,7 @@ describe("To Validate github-organizations API call", function () {
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${repository_id}`,
-      headers: optionalHeaders,
+      
       auth: {
         'bearer': bearerToken,
       }
@@ -84,7 +81,7 @@ describe("To Validate github-organizations API call", function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
-      headers: optionalHeaders,
+      
       auth: {
         'bearer': bearerToken,
       },
@@ -110,7 +107,7 @@ describe("To Validate github-organizations API call", function () {
         expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/repo01')    
  
                //To validate schema of response
-               schemaValidate("github-repositories/getRepositories.json",response.body);
+               validateApiResponse("github-repositories/getRepositories.json",response.body);
 });
   });
 
@@ -118,7 +115,7 @@ describe("To Validate github-organizations API call", function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/${repository_id}/branch-protection`,
-      headers: optionalHeaders,
+      
       auth: {
         'bearer': bearerToken,
       }
@@ -129,7 +126,7 @@ describe("To Validate github-organizations API call", function () {
       if(list.protection_enabled){
      
           //To validate schema of response
-          schemaValidate("github-repositories/getBranchProtection.json",response.body);
+          validateApiResponse("github-repositories/getBranchProtection.json",response.body);
 }
 else{
     console.log('branch protection is false')
@@ -141,7 +138,7 @@ it("Update github branch protection for given repository - Record should Returns
     cy.request({
       method: 'POST',
       url: `${claEndpoint}/${repository_id}/branch-protection`,
-      headers: optionalHeaders,
+      
       auth: {
         'bearer': bearerToken,
       },
@@ -158,22 +155,8 @@ it("Update github branch protection for given repository - Record should Returns
     }).then((response) => {
       expect(response.status).to.eq(200);
           //To validate schema of response
-          schemaValidate("github-repositories/getBranchProtection.json",response.body);
-        
+          validateApiResponse("github-repositories/getBranchProtection.json",response.body);        
  });
   });
-
-  function schemaValidate(schemaPath,body){
-    //To validate schema of response
-    const ajv = new Ajv();
-    // Load the JSON schema
-      cy.fixture(schemaPath).then(
-       (schema) => {
-           const validate = ajv.compile(schema);
-           const isValid = validate(body);
-            // Assert that the response matches the schema
-            expect(isValid, 'API response schema is valid').to.be.true;
-          });
-}
 
 })    
