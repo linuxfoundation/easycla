@@ -57,17 +57,7 @@ it("Get list of Github organization associated with project - Record should Retu
         expect(list[0].github_organization_name).to.eql('ApiAutomStandaloneOrg')    
         expect(list[0].connection_status).to.eql('connected')   
                //To validate schema of response
-        const ajv = new Ajv();
-        // Load the JSON schema
-   cy.fixture("github-organizations/getProjectGithubOrganizations.json").then(
-     (schema) => {
-       console.log(schema)
- const validate = ajv.compile(schema);
- const isValid = validate(response.body);
-
- // Assert that the response matches the schema
- expect(isValid, 'API response schema is valid').to.be.true;
-});
+               schemaValidate("github-organizations/getProjectGithubOrganizations.json",response.body);
     });
   });
 
@@ -111,18 +101,8 @@ it("Get list of Github organization associated with project - Record should Retu
         let list = response.body.list;
         expect(list[1].github_organization_name).to.eql(gitHubOrg)    
         expect(list[1].connection_status).to.eql('connected')   
-        //To validate schema of response
-        const ajv = new Ajv();
-        // Load the JSON schema
-   cy.fixture("github-organizations/addProjectGithubOrganization.json").then(
-     (schema) => {
-       console.log(schema)
- const validate = ajv.compile(schema);
- const isValid = validate(response.body);
-
- // Assert that the response matches the schema
- expect(isValid, 'API response schema is valid').to.be.true;
-});    
+        //To validate schema of response  
+        schemaValidate("github-organizations/addProjectGithubOrganization.json",response.body);
     });
   });
 
@@ -140,4 +120,16 @@ it("Get list of Github organization associated with project - Record should Retu
     });
   });
 
+  function schemaValidate(schemaPath,body){
+    //To validate schema of response
+    const ajv = new Ajv();
+    // Load the JSON schema
+      cy.fixture(schemaPath).then(
+       (schema) => {
+           const validate = ajv.compile(schema);
+           const isValid = validate(body);
+            // Assert that the response matches the schema
+            expect(isValid, 'API response schema is valid').to.be.true;
+          });
+}
 })
