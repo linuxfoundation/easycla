@@ -107,16 +107,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         claGroupId = response.body.cla_group_id;
        
      //To validate schema of response
-        const ajv = new Ajv();
-        // Load the JSON schema
-        cy.fixture("claGroup/create_claGroup2.json").then(
-          (schema) => {
-          const validate = ajv.compile(schema);
-      const isValid = validate(response.body);
-
-      // Assert that the response matches the schema
-      expect(isValid, 'API response schema is valid').to.be.true;
-    });
+     schemaValidate("claGroup/create_claGroup2.json",response.body);
     });
   });
 
@@ -140,16 +131,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
             expect(list[0].cla_group_name).to.eql(cla_group_name)     
             
            //To validate schema of response
-        const ajv = new Ajv();
-             // Load the JSON schema
-        cy.fixture("claGroup/list_claGroup.json").then(
-          (schema) => {
-        const validate = ajv.compile(schema);
-      const isValid = validate(response.body);
-
-      // Assert that the response matches the schema
-      expect(isValid, 'API response schema is valid').to.be.true;
-    });
+    schemaValidate("claGroup/list_claGroup.json",response.body);
     });
   });
 
@@ -174,16 +156,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
        expect(response.body).to.have.property('cla_group_description', update_cla_group_description);       
            
           //To validate schema of response
-       const ajv = new Ajv();
-            // Load the JSON schema
-       cy.fixture("claGroup/update_claGroup2.json").then(
-         (schema) => {
-     const validate = ajv.compile(schema);
-     const isValid = validate(response.body);
-
-     // Assert that the response matches the schema
-     expect(isValid, 'API response schema is valid').to.be.true;
-   });
+             schemaValidate("claGroup/update_claGroup2.json",response.body);
    });
   });
 
@@ -307,8 +280,21 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       }    
     }); 
   }else{
-console.log('claGroupId is null'+ claGroupId)
+      console.log('claGroupId is null'+ claGroupId)
   }
   });
+
+  function schemaValidate(schemaPath,body){
+    //To validate schema of response
+    const ajv = new Ajv();
+    // Load the JSON schema
+      cy.fixture(schemaPath).then(
+       (schema) => {
+           const validate = ajv.compile(schema);
+           const isValid = validate(body);
+            // Assert that the response matches the schema
+            expect(isValid, 'API response schema is valid').to.be.true;
+          });
+}
 
 })

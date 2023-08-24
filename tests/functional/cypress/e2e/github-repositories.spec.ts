@@ -62,16 +62,7 @@ describe("To Validate github-organizations API call", function () {
         repository_external_id2=list[1].repository_external_id;
            expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/repo01')     
                //To validate schema of response
-        const ajv = new Ajv();
-        // Load the JSON schema
-   cy.fixture("github-repositories/getRepositories.json").then(
-     (schema) => {
- const validate = ajv.compile(schema);
- const isValid = validate(response.body);
-
- // Assert that the response matches the schema
- expect(isValid, 'API response schema is valid').to.be.true;
-});
+               schemaValidate("github-repositories/getRepositories.json",response.body);
     });
   });
 
@@ -119,16 +110,7 @@ describe("To Validate github-organizations API call", function () {
         expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/repo01')    
  
                //To validate schema of response
-        const ajv = new Ajv();
-        // Load the JSON schema
-   cy.fixture("github-repositories/getRepositories.json").then(
-     (schema) => {
- const validate = ajv.compile(schema);
- const isValid = validate(response.body);
-
- // Assert that the response matches the schema
- expect(isValid, 'API response schema is valid').to.be.true;
-});
+               schemaValidate("github-repositories/getRepositories.json",response.body);
 });
   });
 
@@ -147,16 +129,7 @@ describe("To Validate github-organizations API call", function () {
       if(list.protection_enabled){
      
           //To validate schema of response
-          const ajv = new Ajv();
-          // Load the JSON schema
-     cy.fixture("github-repositories/getBranchProtection.json").then(
-       (schema) => {
-   const validate = ajv.compile(schema);
-   const isValid = validate(response.body);
-  
-   // Assert that the response matches the schema
-   expect(isValid, 'API response schema is valid').to.be.true;
-  });
+          schemaValidate("github-repositories/getBranchProtection.json",response.body);
 }
 else{
     console.log('branch protection is false')
@@ -185,17 +158,22 @@ it("Update github branch protection for given repository - Record should Returns
     }).then((response) => {
       expect(response.status).to.eq(200);
           //To validate schema of response
-          const ajv = new Ajv();
-          // Load the JSON schema
-     cy.fixture("github-repositories/getBranchProtection.json").then(
-       (schema) => {
-   const validate = ajv.compile(schema);
-   const isValid = validate(response.body);
-  
-   // Assert that the response matches the schema
-   expect(isValid, 'API response schema is valid').to.be.true;
-  });
+          schemaValidate("github-repositories/getBranchProtection.json",response.body);
+        
  });
   });
+
+  function schemaValidate(schemaPath,body){
+    //To validate schema of response
+    const ajv = new Ajv();
+    // Load the JSON schema
+      cy.fixture(schemaPath).then(
+       (schema) => {
+           const validate = ajv.compile(schema);
+           const isValid = validate(body);
+            // Assert that the response matches the schema
+            expect(isValid, 'API response schema is valid').to.be.true;
+          });
+}
 
 })    
