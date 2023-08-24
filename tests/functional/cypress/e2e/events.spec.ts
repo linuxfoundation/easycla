@@ -1,3 +1,4 @@
+import {validateApiResponse} from '../support/commands'
 describe("To Validate events are properly capture via API call", function () {
     //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/events
       const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/events`;
@@ -54,8 +55,7 @@ it("Get recent events of company and project - Record should Returns 200 Respons
         expect(Events).to.be.an('array');
           // Assert that the array has at least one item
         expect(Events.length).to.be.greaterThan(0);
-        // schemaValidate("events/getFoundationEvents.json",list);
-        schemaValidate("events/getCompanyProjectEvents.json",list);
+            validateApiResponse("events/getCompanyProjectEvents.json",response);
         fetchNextRecords(claEndpointForNextKey,NextKey);  
         });
   });
@@ -82,8 +82,7 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         expect(Events).to.be.an('array');
           // Assert that the array has at least one item
         expect(Events.length).to.be.greaterThan(0);
-        // schemaValidate("events/getFoundationEvents.json",list);
-        schemaValidate("events/getFoundationEvents.json",list);
+        validateApiResponse("events/getFoundationEvents.json",list);
         fetchNextRecords(claEndpointForNextKey,NextKey);  
         });
   });
@@ -110,7 +109,7 @@ it("Get events of foundation project - Record should Returns 200 Response", func
           // Assert that the array has at least one item
         expect(Events.length).to.be.greaterThan(0);
           //To validate schema of response
-       schemaValidate("events/getProjectEvents",list)
+       validateApiResponse("events/getProjectEvents",list)
        fetchNextRecords(claEndpointForNextKey,NextKey);  
         });
   });
@@ -136,7 +135,7 @@ it("Get events of foundation project - Record should Returns 200 Response", func
           // Assert that the array has at least one item
         expect(Events.length).to.be.greaterThan(0);
           //To validate schema of response
-             schemaValidate("events/getProjectEvents.json",list)
+             validateApiResponse("events/getProjectEvents.json",list)
         });
   });
 
@@ -182,18 +181,4 @@ it("Get events of foundation project - Record should Returns 200 Response", func
        }
       });
   }
-
-  function schemaValidate(schemaPath,body){
-           //To validate schema of response
-           const ajv = new Ajv();
-           // Load the JSON schema
-             cy.fixture(schemaPath).then(
-              (schema) => {
-                  const validate = ajv.compile(schema);
-                  const isValid = validate(body);
-                   // Assert that the response matches the schema
-                   expect(isValid, 'API response schema is valid').to.be.true;
-                 });
-  }
-
 })

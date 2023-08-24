@@ -1,9 +1,9 @@
+import {validateApiResponse} from '../support/commands'
 describe("To Validate & get list of Foundation ClaGroups via API call", function () {
     //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/foundation
     const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/foundation-mapping`;
     let bearerToken: string = "";
     const foundationSFID='a09P000000DsNGsIAN'; //project name: easyAutom foundation
-    const Ajv = require('ajv');
 
 before(() => {   
    
@@ -46,15 +46,7 @@ it("Get CLA Groups under a foundation- Record should Returns 200 Response", func
           // Assert that the array has at least one item
         expect(list[0].cla_groups.length).to.be.greaterThan(0);
           //To validate schema of response
-        const ajv = new Ajv();
-          // Load the JSON schema
-            cy.fixture("foundation/listFoundationClaGroups.json").then(
-             (schema) => {
-                 const validate = ajv.compile(schema);
-                 const isValid = validate(response.body);
-                  // Assert that the response matches the schema
-                  expect(isValid, 'API response schema is valid').to.be.true;
-                });
+             validateApiResponse("foundation/listFoundationClaGroups.json",response)
         });
   });
 

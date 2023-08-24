@@ -1,18 +1,21 @@
-/*
-// const Ajv = require('ajv');
-export function schemaValidate(schemaPath,body,ajv){  
-  
-    cy.fixture(schemaPath).then(
-        (schema) => {
-          console.log(schema)
-    const validate = ajv.compile(schema);
-    const isValid = validate(body);
-    // Assert that the response matches the schema
-    expect(isValid, 'API response schema is valid').to.be.true;
-        
-})
-};
-*/
+import Ajv from 'ajv';
+
+const ajv = new Ajv();
+ //To validate API response using schema
+export function validateApiResponse (schemaPath,response) {
+  cy.fixture(schemaPath).then(
+    (schema) => {
+  const validate = ajv.compile(schema);
+  const isValid = validate(response.body);
+
+  // Assert that the response matches the schema
+  if (isValid) {
+} else {
+    console.log('Data is not valid.', validate.errors);
+}
+expect(isValid, 'API response schema is valid').to.be.true; 
+});
+}
 // let bearerToken={};
 
 // Cypress.Commands.add('setBearerToken', (value) => {

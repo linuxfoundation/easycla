@@ -1,4 +1,4 @@
-// import {getBearerToken,bearerToken } from '../../support/commands.js';
+import {validateApiResponse} from '../support/commands'
 
 describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on child project", function () {
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/cla-group
@@ -28,10 +28,6 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   const EnrollProjectsSFID='a09P000000DsNHCIA3' //project name: easyAutomChild1-GrandChild1
   const child_Project_name='easyAutomChild1-GrandChild1'
  
-  //Headers
-  let optionalHeaders: Headers = {
-    "X-LFX-CACHE": false,
-  }
   
   before(() => {   
    
@@ -59,7 +55,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'POST',
       url: `${claEndpoint}/cla-group`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       },
@@ -107,7 +103,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         claGroupId = response.body.cla_group_id;
        
      //To validate schema of response
-     schemaValidate("claGroup/create_claGroup2.json",response.body);
+     validateApiResponse("claGroup/create_claGroup2.json",response.body);
     });
   });
 
@@ -115,7 +111,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       }
@@ -131,7 +127,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
             expect(list[0].cla_group_name).to.eql(cla_group_name)     
             
            //To validate schema of response
-    schemaValidate("claGroup/list_claGroup.json",response.body);
+    validateApiResponse("claGroup/list_claGroup.json",response.body);
     });
   });
 
@@ -139,7 +135,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/cla-group/${claGroupId}`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       },
@@ -156,7 +152,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
        expect(response.body).to.have.property('cla_group_description', update_cla_group_description);       
            
           //To validate schema of response
-             schemaValidate("claGroup/update_claGroup2.json",response.body);
+             validateApiResponse("claGroup/update_claGroup2.json",response.body);
    });
   });
 
@@ -164,7 +160,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/cla-group/${claGroupId}/enroll-projects`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       },
@@ -178,7 +174,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       cy.request({
         method: 'GET',
         url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
-        headers: optionalHeaders,
+       
         auth: {
           'bearer': bearerToken,
         },
@@ -200,7 +196,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/cla-group/${claGroupId}/unenroll-projects`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       },
@@ -215,7 +211,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfidOrg}/github/organizations`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       }
@@ -234,7 +230,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/project/${projectSfidOrg}/github/organizations/${gitHubOrgName}/config`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       },
@@ -253,7 +249,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/cla-group/${claGroupId}`,
-      headers: optionalHeaders,
+     
       auth: {
         'bearer': bearerToken,
       },
@@ -265,7 +261,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         cy.request({
           method: 'GET',
           url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
-          headers: optionalHeaders,
+         
           auth: {
             'bearer': bearerToken,
           },
@@ -283,18 +279,5 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       console.log('claGroupId is null'+ claGroupId)
   }
   });
-
-  function schemaValidate(schemaPath,body){
-    //To validate schema of response
-    const ajv = new Ajv();
-    // Load the JSON schema
-      cy.fixture(schemaPath).then(
-       (schema) => {
-           const validate = ajv.compile(schema);
-           const isValid = validate(body);
-            // Assert that the response matches the schema
-            expect(isValid, 'API response schema is valid').to.be.true;
-          });
-}
 
 })
