@@ -87,7 +87,7 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         });
   });
 
-  it.only("Get events of child project - Record should Returns 200 Response", function () {
+  it("Get events of child project - Record should Returns 200 Response", function () {
     claEndpointForNextKey=`${claEndpoint}/project/${projectSfid}`;
     cy.request({
       method: 'GET',
