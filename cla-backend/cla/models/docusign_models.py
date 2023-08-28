@@ -17,14 +17,14 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
-import jwt
-import requests
-import time 
 
-import cla
 import pydocusign  # type: ignore
 import requests
 from attr import dataclass
+from docusign_esign import ApiClient
+from pydocusign.exceptions import DocuSignException  # type: ignore
+
+import cla
 from cla.controllers.lf_group import LFGroup
 from cla.models import DoesNotExist, signing_service_interface
 from cla.models.dynamo_models import (Company, Document, Event, Gerrit,
@@ -34,7 +34,6 @@ from cla.models.s3_storage import S3Storage
 from cla.user_service import UserService
 from cla.utils import (append_email_help_sign_off_content, get_corporate_url,
                        get_email_help_content, get_project_cla_group_instance)
-from pydocusign.exceptions import DocuSignException  # type: ignore
 
 api_base_url = os.environ.get('CLA_API_BASE', '')
 root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
@@ -107,47 +106,26 @@ class DocuSign(signing_service_interface.SigningService):
         self.s3storage = None
 
     def initialize(self, config):
-        
-        expiration_time = int(time.time()) + 3600  # 1 hour
-
-        payload = {
-            "iss": integrator_key,
-            "sub": user_id,
-            "aud": auth_server,
-            "scope": "signature_impersonation",
-            "exp": expiration_time
-        }
-
-        cla.log.debug(f"jwt data claims: {payload}")
-
         try:
-            #sign the JWT
-            cla.log.debug(f'private key: {private_key}')
-            encoded_jwt = jwt.encode(payload, private_key, algorithm='RS256')
+            self.api_client = ApiClient()
+            self.api_client.set_base_path(auth_server)
+            response = self.api_client.request_jwt_user_token(
+                client_id=integrator_key,
+                user_id=user_id,
+                oauth_host_name=auth_server,
+                private_key_bytes=private_key.encode(),
+                expires_in=3600,
+                scopes=['signature', 'impersonation']
+            )
 
-            # Request an access token using the JWT
-            headers = {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-            data = {
-                'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                'assertion': encoded_jwt,
-            }
+            token = response.access_token
 
-            cla.log.debug(f"docusign token_endpoint : {token_endpoint}")
+            cla.log.debug(f"token: {token}")
 
-            response = requests.post(token_endpoint, headers=headers, data=data)
-            if response.status_code != 200:
-                cla.log.debug(f'response: {response.content} {response.status_code}')
-                response.raise_for_status()
-            access_token = response.json().get('access_token')
-            cla.log.debug(f"access_token for docusign: {access_token}")
-
-            cla.log.debug("Initializing docusign ...")
-            self.client = pydocusign.DocuSignClient(root_url=root_url,oauth2_token=access_token)
+            self.client = pydocusign.DocuSignClient(root_url=root_url,oauth2_token=token)
 
 
-        except (Exception, requests.exceptions.HTTPError) as ex:
+        except (Exception) as ex:
             cla.log.error("Error authenticating Docusign: {}".format(ex))
             return {'errors': {'Error authenticating Docusign'}}
 
@@ -1399,16 +1377,26 @@ class DocuSign(signing_service_interface.SigningService):
                                        emailBody='CLA Sign Request for {}'.format(user_identifier),
                                        supportedLanguage='en',
                                        )
-
+            
+        
         content_type = document.get_document_content_type()
-        if document.get_document_s3_url() is not None:
-            pdf = self.get_document_resource(document.get_document_s3_url())
-        elif content_type.startswith('url+'):
-            pdf_url = document.get_document_content()
-            pdf = self.get_document_resource(pdf_url)
-        else:
-            content = document.get_document_content()
-            pdf = io.BytesIO(content)
+        try:
+            cla.log.debug(f'{fn} - {sig_type} - docusign document content type: {content_type}')
+            if document.get_document_s3_url() is not None:
+                pdf = self.get_document_resource(document.get_document_s3_url())
+            elif content_type.startswith('url+'):
+                pdf_url = document.get_document_content()
+                pdf = self.get_document_resource(pdf_url)
+            else:
+                cla.log.debug(f'{fn} - getting document content...')
+                content = document.get_document_content()
+                pdf = io.BytesIO(content)
+        
+        except Exception as e:
+            cla.log.warning(f'{fn} - {sig_type} - error getting document resource: {e}')
+            return
+        
+    
 
         doc_name = document.get_document_name()
         cla.log.debug(f'{fn} - {sig_type} - docusign document '
@@ -1438,6 +1426,7 @@ class DocuSign(signing_service_interface.SigningService):
                 status=pydocusign.Envelope.STATUS_SENT,
                 recipients=[signer])
 
+        cla.log.debug(f'{fn} - {sig_type} - sending signature request to DocuSign...')
         envelope = self.prepare_sign_request(envelope)
 
         if not send_as_email:
@@ -1995,7 +1984,8 @@ class DocuSign(signing_service_interface.SigningService):
         :return: A resource that can be read()'d.
         :rtype: Resource
         """
-        return urllib.request.urlopen(url)
+        return requests.get(url, stream=True).raw
+        # return urllib.request.urlopen(url)
 
     def prepare_sign_request(self, envelope):
         """
