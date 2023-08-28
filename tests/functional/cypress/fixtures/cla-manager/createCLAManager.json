@@ -1,0 +1,64 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "added_on": {
+        "type": "string"
+      },
+      "approved_on": {
+        "type": "string"
+      },
+      "cla_group_name": {
+        "type": "string"
+      },
+      "email": {
+        "type": "string"
+      },
+      "lf_username": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "organization_id": {
+        "type": "string"
+      },
+      "organization_name": {
+        "type": "string"
+      },
+      "organization_sfid": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "project_name": {
+        "type": "string"
+      },
+      "project_sfid": {
+        "type": "string"
+      },
+      "signing_entity_name": {
+        "type": "string"
+      },
+      "user_sfid": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "added_on",
+      "approved_on",
+      "cla_group_name",
+      "email",
+      "lf_username",
+      "name",
+      "organization_id",
+      "organization_name",
+      "organization_sfid",
+      "project_id",
+      "project_name",
+      "project_sfid",
+      "signing_entity_name",
+      "user_sfid"
+    ]
+  }

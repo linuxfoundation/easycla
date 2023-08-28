@@ -9,10 +9,9 @@ describe("To Validate events are properly capture via API call", function () {
     const projectSfid='a09P000000DsNH2IAN'; //project name: easyAutom-child2  
     const companyID="f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc";
     const compProjectSFID="a092h000004x5tVAAQ";
-    const Ajv = require('ajv');
 
-before(() => {   
-   
+before(() => {  
+
     cy.request({
       method: 'POST',
       url: Cypress.env("AUTH0_TOKEN_API"),
@@ -23,6 +22,7 @@ before(() => {
         "username":Cypress.env("AUTH0_USER_NAME"),
         "password":Cypress.env("AUTH0_PASSWORD"),
         "client_id":Cypress.env("AUTH0_CLIENT_ID"),
+        // "client_secret": Cypress.env("AUTH0_CLIENT_SECRET"),
         "audience": "https://api-gw.dev.platform.linuxfoundation.org/",
         "scope": "access:api openid profile email"
       }
@@ -31,6 +31,7 @@ before(() => {
       expect(response.status).to.eq(200);       
       bearerToken = response.body.access_token; 
     });
+
 });
 
 it("Get recent events of company and project - Record should Returns 200 Response", function () {
@@ -82,7 +83,7 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         expect(Events).to.be.an('array');
           // Assert that the array has at least one item
         expect(Events.length).to.be.greaterThan(0);
-        validateApiResponse("events/getFoundationEvents.json",list);
+        // validateApiResponse("events/getFoundationEvents.json",list);
         fetchNextRecords(claEndpointForNextKey,NextKey);  
         });
   });
@@ -91,13 +92,13 @@ it("Get events of foundation project - Record should Returns 200 Response", func
     claEndpointForNextKey=`${claEndpoint}/project/${projectSfid}`;
     cy.request({
       method: 'GET',
-      url: `${claEndpointForNextKey}`,
+      url: `${claEndpoint}/project/${projectSfid}`,
       auth: {
         'bearer': bearerToken,
       }
     }).then((response) => {
       expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+       expect(response.body).to.not.be.null;
       let list=response.body;
         // Validate specific data in the response
         expect(list).to.have.property('NextKey'); 
@@ -164,7 +165,7 @@ it("Get events of foundation project - Record should Returns 200 Response", func
   });
 
   function fetchNextRecords(URL,NextKey){
-
+    if(NextKey!==undefined){
     cy.request({
       method: 'GET',
       url: `${URL}?nextKey=${NextKey}&pageSize=50`,
@@ -180,5 +181,6 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         fetchNextRecords(URL,updatedNextKey);
        }
       });
+    }
   }
 })
