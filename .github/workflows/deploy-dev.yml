@@ -90,6 +90,16 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Install Cryptography
+        working-directory: cla-backend
+        run: |
+          pip install \
+            --platform manylinux2014_x86_64 \
+            --target ./cla-backend \
+            --implementation cp \
+            --only-binary=:all: --upgrade \
+            cryptography
+
       - name: Python Lint
         working-directory: cla-backend
         run: |
