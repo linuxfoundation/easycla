@@ -146,6 +146,9 @@ jobs:
           cp ../cla-backend-go/bin/zipbuilder-scheduler-lambda bin/
           cp ../cla-backend-go/bin/zipbuilder-lambda bin/
           cp ../cla-backend-go/bin/gitlab-repository-check-lambda bin/
+          mkdir -p packages
+          docker run --rm -v $(pwd)/packages:/packages -w /packages lambci/lambda:build-python3.7 pip install cryptography -t .
+
 
       - name: EasyCLA v1 Deployment us-east-1
         working-directory: cla-backend
