@@ -40,13 +40,4 @@ for i in "${golang_files[@]}"; do
 done
 
 
-# Create a directory for Python packages
-mkdir -p packages
-
-# Use Docker to install the dependencies for the Amazon Linux environment (compatible with AWS Lambda)
-docker run --rm -v $(pwd)/packages:/packages -w /packages lambci/lambda:build-python3.7 pip install cryptography -t .
-
-echo "Dependencies installed in the 'packages' directory."
-
-
 yarn deploy:dev
