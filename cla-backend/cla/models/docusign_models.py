@@ -21,12 +21,12 @@ from urllib.parse import urlparse
 import pydocusign  # type: ignore
 import requests
 from attr import dataclass
-from docusign_esign import ApiClient
 from pydocusign.exceptions import DocuSignException  # type: ignore
 
 import cla
 from cla.controllers.lf_group import LFGroup
 from cla.models import DoesNotExist, signing_service_interface
+from cla.docusign_auth import request_access_token
 from cla.models.dynamo_models import (Company, Document, Event, Gerrit,
                                       Project, Signature, User)
 from cla.models.event_types import EventType
@@ -107,24 +107,9 @@ class DocuSign(signing_service_interface.SigningService):
 
     def initialize(self, config):
         try:
-            self.api_client = ApiClient()
-            self.api_client.set_base_path(auth_server)
-            response = self.api_client.request_jwt_user_token(
-                client_id=integrator_key,
-                user_id=user_id,
-                oauth_host_name=auth_server,
-                private_key_bytes=private_key.encode(),
-                expires_in=3600,
-                scopes=['signature', 'impersonation']
-            )
-
-            token = response.access_token
-
-            cla.log.debug(f"token: {token}")
-
+            cla.log.debug('Initializing DocuSign client...')
+            token = request_access_token()
             self.client = pydocusign.DocuSignClient(root_url=root_url,oauth2_token=token)
-
-
         except (Exception) as ex:
             cla.log.error("Error authenticating Docusign: {}".format(ex))
             return {'errors': {'Error authenticating Docusign'}}
