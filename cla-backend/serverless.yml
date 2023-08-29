@@ -33,10 +33,7 @@ custom:
   wsgi:
     app: cla.routes.__hug_wsgi__
     pythonBin: python
-    pythonRequirements:
-      dockerizePip: 'non-linux'
-      dockerImage: public.ecr.aws/sam/build-python3.9:latest
-      dockerRunCmdExtraArgs: ['--platform', 'linux/amd64']
+    pythonRequirements: false
   # Config for serverless-prune-plugin - remove all but the 10 most recent
   # versions to avoid the "Code storage limit exceeded" error
   prune:
@@ -601,6 +598,8 @@ functions:
           method: ANY
           path: v2/{proxy+}
           cors: true
+    layers:
+      - Ref : CryptographyLayerLambdaLayer
 
   salesforceprojects:
     handler: cla.salesforce.get_projects
@@ -637,6 +636,12 @@ functions:
       - http:
           method: POST
           path: v2/github/activity
+
+layers:
+  CryptographyLayerLambdaLayer:
+    package:
+      individually: true
+      artifact: cryptography-layer.zip
 
 resources:
   Conditions:
