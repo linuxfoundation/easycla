@@ -26,6 +26,7 @@ package:
     - '!package-lock.json'
     - '!yarn.lock'
     - '.serverless-wsgi'
+    - '.packages/**'
 
 custom:
   allowed_origins: ${file(./env.json):cla-allowed-origins-${sls:stage}, ssm:/cla-allowed-origins-${sls:stage}}
