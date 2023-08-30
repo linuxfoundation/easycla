@@ -43,6 +43,7 @@
     "minimist": "^1.2.6",
     "normalize-url": "^4.5.1",
     "qs": "^6.11.0",
+    "semver": "^7.5.4",
     "set-value": "^4.0.1",
     "simple-git": "^3.16.0",
     "ws": "^7.4.6",
