@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 service: cla-backend
-frameworkVersion: '^3.28.1'
+frameworkVersion: '^3.34.0'
 
 package:
   # Exclude all first - selectively add in lambda functions
@@ -25,6 +25,15 @@ package:
     - '!node_modules/**'
     - '!package-lock.json'
     - '!yarn.lock'
+    - '!**/test/**'
+    - '!**/tests/**'
+    - '!**/*test*.py'
+    - '!tests/**'
+    - '!**/_pytest/**'
+    - '!**/pytest*/**'
+    - '!**/test_*'
+    - '!**/LICENSE'
+    - '!**/README*'
     - '.serverless-wsgi'
 
 custom:
@@ -39,6 +48,10 @@ custom:
     automatic: true
     number: 3
   userEventsSNSTopicARN: arn:aws:sns:us-east-2:${aws:accountId}:userservice-triggers-${sls:stage}-user-sns-topic
+
+  # For the python requirements add layer:true to put them into a Lambda Layer.
+  pythonRequirements:
+    layer: true
 
   certificate:
     arn:
@@ -320,7 +333,7 @@ provider:
     DOCRAPTOR_API_KEY: ${file(./env.json):doc-raptor-api-key, ssm:/cla-doc-raptor-api-key-${sls:stage}}
     DOCUSIGN_ROOT_URL: ${file(./env.json):docusign-root-url, ssm:/cla-docusign-root-url-${sls:stage}}
     DOCUSIGN_USERNAME: ${file(./env.json):docusign-username, ssm:/cla-docusign-username-${sls:stage}}
-    DOCUSIGN_PASSWORD: ${file(./env.json):docusign-password, ssm:/cla-docusign-password-${sls:stage}} 
+    DOCUSIGN_PASSWORD: ${file(./env.json):docusign-password, ssm:/cla-docusign-password-${sls:stage}}
     DOCUSIGN_AUTH_SERVER: ${file(./env.json):docusign-auth-server, ssm:/cla-docusign-auth-server-${sls:stage}}
     CLA_API_BASE: ${file(./env.json):cla-api-base, ssm:/cla-api-base-${sls:stage}}
     CLA_CONTRIBUTOR_BASE: ${file(./env.json):cla-contributor-base, ssm:/cla-contributor-base-${sls:stage}}
@@ -583,6 +596,8 @@ functions:
   apiv1:
     handler: wsgi_handler.handler
     description: "EasyCLA Python API handler for the /v1 endpoints"
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
     events:
       - http:
           method: ANY
@@ -592,6 +607,8 @@ functions:
   apiv2:
     handler: wsgi_handler.handler
     description: "EasyCLA Python API handler for the /v2 endpoints"
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
     events:
       - http:
           method: ANY
@@ -601,6 +618,8 @@ functions:
   salesforceprojects:
     handler: cla.salesforce.get_projects
     description: "EasyCLA API Callback Handler for fetching all SalesForce projects"
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
     events:
       - http:
           method: ANY
@@ -610,6 +629,8 @@ functions:
   salesforceprojectbyID:
     handler: cla.salesforce.get_project
     description: "EasyCLA API Callback Handler for fetching SalesForce projects by ID"
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
     events:
       - http:
           method: ANY
@@ -620,6 +641,8 @@ functions:
   githubinstall:
     handler: wsgi_handler.handler
     description: "EasyCLA API Callback Handler for GitHub bot installations"
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
     events:
       - http:
           method: ANY
@@ -629,6 +652,8 @@ functions:
   githubactivity:
     handler: wsgi_handler.handler
     description: "EasyCLA API Callback Handler for GitHub activity"
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
     events:
       - http:
           method: POST

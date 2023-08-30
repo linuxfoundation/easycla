@@ -39,6 +39,9 @@ def request_access_token() -> str:
             "scope": "signature impersonation"
         }
         cla.log.debug(f'Claims: {claims}')
+        # Note from the docs: If you are planning on encoding or decoding tokens using certain digital signature
+        # algorithms # (like RSA or ECDSA), you will need to install the cryptography library. This can be installed
+        # explicitly, or as a required extra in the pyjwt requirement: $ pip install pyjwt[crypto]
         encoded_jwt = jwt.encode(claims, INTEGRATION_SECRET.encode(), algorithm='RS256')
 
         payload = {
@@ -54,7 +57,7 @@ def request_access_token() -> str:
         else:
             cla.log.error('Unable to request access token from DocuSign OAuth2 service: ' + str(data))
             raise Exception('Unable to request access token from DocuSign OAuth2 service: ' + str(data))
-        
+
     except Exception as err:
         cla.log.error('Unable to request access token from DocuSign OAuth2 service: ' + str(err))
         raise err
