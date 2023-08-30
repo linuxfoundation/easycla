@@ -1,0 +1,131 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "averageCompanyClaManagers": {
+        "type": "integer"
+      },
+      "averageCompanyCorporateContributors": {
+        "type": "integer"
+      },
+      "averageCompanyProjectCount": {
+        "type": "integer"
+      },
+      "topCompaniesByClaManagers": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "claManagersCount": {
+                "type": "integer"
+              },
+              "companyName": {
+                "type": "string"
+              },
+              "corporateContributorsCount": {
+                "type": "integer"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "projectsCount": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "claManagersCount",
+              "companyName",
+              "corporateContributorsCount",
+              "createdAt",
+              "id",
+              "projectsCount"
+            ]
+          }
+        ]
+      },
+      "topCompaniesByCorporateContributors": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "claManagersCount": {
+                "type": "integer"
+              },
+              "companyName": {
+                "type": "string"
+              },
+              "corporateContributorsCount": {
+                "type": "integer"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "projectsCount": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "claManagersCount",
+              "companyName",
+              "corporateContributorsCount",
+              "createdAt",
+              "id",
+              "projectsCount"
+            ]
+          }
+        ]
+      },
+      "topCompaniesByProjectCount": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "claManagersCount": {
+                "type": "integer"
+              },
+              "companyName": {
+                "type": "string"
+              },
+              "corporateContributorsCount": {
+                "type": "integer"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "projectsCount": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "claManagersCount",
+              "companyName",
+              "corporateContributorsCount",
+              "createdAt",
+              "id",
+              "projectsCount"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "averageCompanyClaManagers",
+      "averageCompanyCorporateContributors",
+      "averageCompanyProjectCount",
+      "topCompaniesByClaManagers",
+      "topCompaniesByCorporateContributors",
+      "topCompaniesByProjectCount"
+    ]
+  }

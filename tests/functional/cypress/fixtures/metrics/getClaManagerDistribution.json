@@ -1,0 +1,28 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "createdAt": {
+        "type": "string"
+      },
+      "fourOrMoreClaManagers": {
+        "type": "integer"
+      },
+      "oneClaManager": {
+        "type": "integer"
+      },
+      "threeClaManagers": {
+        "type": "integer"
+      },
+      "twoClaManagers": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "createdAt",
+      "fourOrMoreClaManagers",
+      "oneClaManager",
+      "threeClaManagers",
+      "twoClaManagers"
+    ]
+  }

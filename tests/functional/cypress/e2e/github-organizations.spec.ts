@@ -1,8 +1,8 @@
-import {validateApiResponse} from '../support/commands'
+import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate github-organizations API call", function () {
 //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-organizations
 
-const Ajv = require('ajv');
+
   //Variable for GitHub
   const gitHubOrgName='ApiAutomStandaloneOrg';
   const projectSfidOrg='a09P000000DsNH2IAN'; //project name: easyAutom-child2
@@ -10,30 +10,17 @@ const Ajv = require('ajv');
 
 
 const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/project/${projectSfidOrg}/github/organizations`;
-let bearerToken: string = "";
 const claGroupId: string ="1baf67ab-d894-4edf-b6fc-c5f939db59f7";
 
 
-before(() => {   
-   
-    cy.request({
-      method: 'POST',
-      url: Cypress.env("AUTH0_TOKEN_API"),
-     
-      body: {
-        "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
-        "realm": "Username-Password-Authentication",
-        "username":Cypress.env("AUTH0_USER_NAME"),
-        "password":Cypress.env("AUTH0_PASSWORD"),
-        "client_id":Cypress.env("AUTH0_CLIENT_ID"),
-        "audience": "https://api-gw.dev.platform.linuxfoundation.org/",
-        "scope": "access:api openid profile email"
-      }
-    }).then(response => {        
-      expect(response.status).to.eq(200);       
-      bearerToken = response.body.access_token;    
-
-    });
+let bearerToken: string = null;
+before(() => { 
+    if(bearerToken==null){
+    getTokenKey(bearerToken);
+    cy.window().then((win) => {
+        bearerToken = win.localStorage.getItem('bearerToken');
+      });
+    }
 });
 
 it("Get list of Github organization associated with project - Record should Returns 200 Response", function () {
@@ -45,8 +32,8 @@ it("Get list of Github organization associated with project - Record should Retu
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         expect(response.body).to.have.property('list');
         let list = response.body.list;
@@ -71,7 +58,7 @@ it("Get list of Github organization associated with project - Record should Retu
         "branchProtectionEnabled": true
       },
     }).then((response) => {
-      expect(response.status).to.eq(200);
+      validate_200_Status(response);
     }); 
   });
 
@@ -90,8 +77,8 @@ it("Get list of Github organization associated with project - Record should Retu
         "organizationName": gitHubOrg
       },
     }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         expect(response.body).to.have.property('list');
         let list = response.body.list;

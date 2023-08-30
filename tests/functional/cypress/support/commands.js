@@ -24,3 +24,28 @@ export function validate_200_Status(response){
   const jsonResponse = JSON.stringify(response.body, null, 2);
   cy.log(jsonResponse);
 };
+
+let bearerToken = "";
+export function getTokenKey(){
+  
+  cy.request({
+    method: 'POST',
+    url: Cypress.env("AUTH0_TOKEN_API"),
+   
+    body: {
+      "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
+      "realm": "Username-Password-Authentication",
+      "username":Cypress.env("AUTH0_USER_NAME"),
+      "password":Cypress.env("AUTH0_PASSWORD"),
+      "client_id":Cypress.env("AUTH0_CLIENT_ID"),
+      "audience": "https://api-gw.dev.platform.linuxfoundation.org/",
+      "scope": "access:api openid profile email"
+    }
+  }).then(response => {        
+    expect(response.status).to.eq(200);       
+    bearerToken = response.body.access_token;    
+    cy.window().then((win) => {
+      win.localStorage.setItem('bearerToken', response.body.access_token);
+    });
+  });
+};

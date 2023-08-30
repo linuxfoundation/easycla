@@ -1,0 +1,32 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "companiesProjectContributionCount": {
+        "type": "integer"
+      },
+      "contributorsCount": {
+        "type": "integer"
+      },
+      "createdAt": {
+        "type": "string"
+      },
+      "individualContributorsCount": {
+        "type": "integer"
+      },
+      "projectsCount": {
+        "type": "integer"
+      },
+      "repositoriesCount": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "companiesProjectContributionCount",
+      "contributorsCount",
+      "createdAt",
+      "individualContributorsCount",
+      "projectsCount",
+      "repositoriesCount"
+    ]
+  }
