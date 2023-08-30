@@ -1,4 +1,4 @@
-import {validateApiResponse} from '../support/commands'
+import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate github-organizations API call", function () {
     //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-repositories
     
@@ -7,7 +7,6 @@ describe("To Validate github-organizations API call", function () {
     const projectSfidOrg='a09P000000DsNH2IAN'; //project name: easyAutom-child2  
   
   const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/project/${projectSfidOrg}/github/repositories`;
-  let bearerToken: string = "";
   let claGroupId: string ="1baf67ab-d894-4edf-b6fc-c5f939db59f7";
   let repository_id: string="";
   let repository_external_id: string="";
@@ -16,27 +15,15 @@ describe("To Validate github-organizations API call", function () {
   let branch_name: string="";
   
   
-  before(() => {   
-     
-      cy.request({
-        method: 'POST',
-        url: Cypress.env("AUTH0_TOKEN_API"),
-       
-        body: {
-          "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
-          "realm": "Username-Password-Authentication",
-          "username":Cypress.env("AUTH0_USER_NAME"),
-          "password":Cypress.env("AUTH0_PASSWORD"),
-          "client_id":Cypress.env("AUTH0_CLIENT_ID"),
-          "audience": "https://api-gw.dev.platform.linuxfoundation.org/",
-          "scope": "access:api openid profile email"
+  let bearerToken: string = null;
+    before(() => { 
+        if(bearerToken==null){
+        getTokenKey(bearerToken);
+        cy.window().then((win) => {
+            bearerToken = win.localStorage.getItem('bearerToken');
+          });
         }
-      }).then(response => {        
-        expect(response.status).to.eq(200);       
-        bearerToken = response.body.access_token;    
-  
-      });
-  });
+    });
 
   it("Get the GitHub repositories of the project which are CLA Enforced- Record should Returns 200 Response", function () {
     cy.request({
@@ -47,8 +34,8 @@ describe("To Validate github-organizations API call", function () {
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         expect(response.body).to.have.property('list');
         let list = response.body.list;
@@ -96,8 +83,8 @@ describe("To Validate github-organizations API call", function () {
           
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         expect(response.body).to.have.property('list');
         let list = response.body.list;
@@ -120,7 +107,7 @@ describe("To Validate github-organizations API call", function () {
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
+      validate_200_Status(response);
       let list = response.body
       branch_name=list.branch_name;
       if(list.protection_enabled){
@@ -153,7 +140,7 @@ it("Update github branch protection for given repository - Record should Returns
         ]
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
+      validate_200_Status(response);
           //To validate schema of response
           validateApiResponse("github-repositories/getBranchProtection.json",response.body);        
  });

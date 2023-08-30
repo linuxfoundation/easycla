@@ -1,0 +1,82 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "list": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "claManagersCount": {
+                        "type": "integer"
+                      },
+                      "companiesCount": {
+                        "type": "integer"
+                      },
+                      "corporateContributorsCount": {
+                        "type": "integer"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "externalProjectID": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "individualContributorsCount": {
+                        "type": "integer"
+                      },
+                      "projectName": {
+                        "type": "string"
+                      },
+                      "repositoriesCount": {
+                        "type": "integer"
+                      },
+                      "totalContributorsCount": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "claManagersCount",
+                      "companiesCount",
+                      "corporateContributorsCount",
+                      "createdAt",
+                      "externalProjectID",
+                      "id",
+                      "individualContributorsCount",
+                      "projectName",
+                      "repositoriesCount",
+                      "totalContributorsCount"
+                    ]
+                  }
+                ]
+              },
+              "projectExternalId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "list",
+              "projectExternalId"
+            ]
+          }
+        ]
+      },
+      "nextKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "list",
+      "nextKey"
+    ]
+  }

@@ -1,11 +1,9 @@
-import {validateApiResponse} from '../support/commands'
+import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 
 describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on child project", function () {
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/cla-group
 
   const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4`;
-  const Ajv = require('ajv');
-  let bearerToken: string = "";
   let claGroupId: string ="";
     
   //Variable for create cla group
@@ -29,26 +27,14 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   const child_Project_name='easyAutomChild1-GrandChild1'
  
   
-  before(() => {   
-   
-      cy.request({
-        method: 'POST',
-        url: Cypress.env("AUTH0_TOKEN_API"),
-       
-        body: {
-          "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
-          "realm": "Username-Password-Authentication",
-          "username":Cypress.env("AUTH0_USER_NAME"),
-          "password":Cypress.env("AUTH0_PASSWORD"),
-          "client_id":Cypress.env("AUTH0_CLIENT_ID"),
-          "audience": "https://api-gw.dev.platform.linuxfoundation.org/",
-          "scope": "access:api openid profile email"
-        }
-      }).then(response => {        
-        expect(response.status).to.eq(200);       
-        bearerToken = response.body.access_token;    
-  
-      });
+  let bearerToken: string = null;
+  before(() => { 
+      if(bearerToken==null){
+      getTokenKey(bearerToken);
+      cy.window().then((win) => {
+          bearerToken = win.localStorage.getItem('bearerToken');
+        });
+      }
   });
 
   it("Creates a new CLA Group at child level - Record should Returns 200 Response", function () {
@@ -96,8 +82,8 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       },
     }).then((response) => {
       // expect(response.duration).to.be.lessThan(20000);
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         expect(response.body).to.have.property('cla_group_name', cla_group_name);
         claGroupId = response.body.cla_group_id;
@@ -117,8 +103,8 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       }
     }).then((response) => {
       // expect(response.duration).to.be.lessThan(20000);
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
      
         // Validate specific data in the response
         expect(response.body).to.have.property('list');
@@ -145,8 +131,8 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       },
     }).then((response) => {
      // expect(response.duration).to.be.lessThan(20000);
-     expect(response.status).to.eq(200);
-     expect(response.body).to.not.be.null;
+     validate_200_Status(response);
+     
        // Validate specific data in the response
        expect(response.body).to.have.property('cla_group_name', updated_cla_group_name);
        expect(response.body).to.have.property('cla_group_description', update_cla_group_description);       
@@ -167,7 +153,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       body: [EnrollProjectsSFID],
     }).then((response) => {
      // expect(response.duration).to.be.lessThan(20000);
-     expect(response.status).to.eq(200);
+     validate_200_Status(response);
      // Check if the first API response status is 200
      if (response.status === 200) {
       // Run the second API request
@@ -203,7 +189,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       body: [EnrollProjectsSFID],
     }).then((response) => {
      // expect(response.duration).to.be.lessThan(20000);
-     expect(response.status).to.eq(200);
+     validate_200_Status(response);
    });
   });
   
@@ -216,8 +202,8 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         expect(response.body).to.have.property('list');
         let list = response.body.list;
@@ -240,7 +226,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         "branchProtectionEnabled": true
       },
     }).then((response) => {
-      expect(response.status).to.eq(200);
+      validate_200_Status(response);
     }); 
   });
   

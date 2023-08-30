@@ -1,0 +1,53 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "claGroupName": {
+                "type": "string"
+              },
+              "claManagersCount": {
+                "type": "integer"
+              },
+              "companyID": {
+                "type": "string"
+              },
+              "companyName": {
+                "type": "string"
+              },
+              "contributorsCount": {
+                "type": "integer"
+              },
+              "projectID": {
+                "type": "string"
+              },
+              "projectName": {
+                "type": "string"
+              },
+              "projectSFID": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "claGroupName",
+              "claManagersCount",
+              "companyID",
+              "companyName",
+              "contributorsCount",
+              "projectID",
+              "projectName",
+              "projectSFID"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "list"
+    ]
+  }

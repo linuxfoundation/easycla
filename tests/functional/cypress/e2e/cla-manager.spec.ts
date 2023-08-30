@@ -1,4 +1,4 @@
-import {validateApiResponse,validate_200_Status} from '../support/commands'
+import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate cla-manager API call", function () {
     //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/cla-manager
 /* 
@@ -6,11 +6,11 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/UserRole
 https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operation/getRoles
 */
     //Variable for GitHub    
-   const companyID="f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc";
+   const companyID="f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc";//infosys limited
    const projectSFID="a09P000000DsCE5IAN";//sun
    const projectSFID_Designee="a09P000000DsNH2IAN"
   const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/`;
-  let bearerToken: string = "";
+  let bearerToken: string = null;
   const claGroupID="1baf67ab-d894-4edf-b6fc-c5f939db59f7";
   const sun_claGroupID="01af041c-fa69-4052-a23c-fb8c1d3bef24"
   const userEmail="veerendrat@proximabiz.com";
@@ -23,24 +23,12 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
   
   before(() => {   
      
-      cy.request({
-        method: 'POST',
-        url: Cypress.env("AUTH0_TOKEN_API"),
-       
-        body: {
-          "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
-          "realm": "Username-Password-Authentication",
-          "username":Cypress.env("AUTH0_USER_NAME"),
-          "password":Cypress.env("AUTH0_PASSWORD"),
-          "client_id":Cypress.env("AUTH0_CLIENT_ID"),
-          "audience": "https://api-gw.dev.platform.linuxfoundation.org/",
-          "scope": "access:api openid profile email"
-        }
-      }).then(response => {        
-        expect(response.status).to.eq(200);       
-        bearerToken = response.body.access_token;    
-  
-      });
+    if(bearerToken==null){
+      getTokenKey(bearerToken);
+      cy.window().then((win) => {
+          bearerToken = win.localStorage.getItem('bearerToken');
+        });
+      }
   });
 
   it("Assigns CLA Manager designee to a given user.", function () {

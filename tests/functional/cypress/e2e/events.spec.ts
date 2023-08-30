@@ -1,38 +1,23 @@
-import {validateApiResponse} from '../support/commands'
+import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate events are properly capture via API call", function () {
     //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/events
       const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/events`;
       let claEndpointForNextKey="";
-    let bearerToken: string = "";
     let NextKey: string="";
     const foundationSFID='a09P000000DsNGsIAN'; //project name: easyAutom foundation
     const projectSfid='a09P000000DsNH2IAN'; //project name: easyAutom-child2  
     const companyID="f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc";
     const compProjectSFID="a092h000004x5tVAAQ";
 
-before(() => {  
-
-    cy.request({
-      method: 'POST',
-      url: Cypress.env("AUTH0_TOKEN_API"),
-     
-      body: {
-        "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
-        "realm": "Username-Password-Authentication",
-        "username":Cypress.env("AUTH0_USER_NAME"),
-        "password":Cypress.env("AUTH0_PASSWORD"),
-        "client_id":Cypress.env("AUTH0_CLIENT_ID"),
-        // "client_secret": Cypress.env("AUTH0_CLIENT_SECRET"),
-        "audience": "https://api-gw.dev.platform.linuxfoundation.org/",
-        "scope": "access:api openid profile email"
-      }
-
-    }).then(response => {        
-      expect(response.status).to.eq(200);       
-      bearerToken = response.body.access_token; 
+    let bearerToken: string = null;
+    before(() => { 
+        if(bearerToken==null){
+        getTokenKey(bearerToken);
+        cy.window().then((win) => {
+            bearerToken = win.localStorage.getItem('bearerToken');
+          });
+        }
     });
-
-});
 
 it("Get recent events of company and project - Record should Returns 200 Response", function () {
   claEndpointForNextKey=`${Cypress.env("APP_URL")}cla-service/v4/company/${companyID}/project/${compProjectSFID}/events`
@@ -43,8 +28,8 @@ it("Get recent events of company and project - Record should Returns 200 Respons
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         let list=response.body;
         NextKey=list.NextKey;
@@ -70,8 +55,8 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         let list=response.body;
         NextKey=list.NextKey;
@@ -97,8 +82,8 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
-       expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+       
       let list=response.body;
         // Validate specific data in the response
         expect(list).to.have.property('NextKey'); 
@@ -123,8 +108,8 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         let list=response.body;
         expect(list).to.have.property('NextKey'); 
@@ -148,7 +133,7 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
+      validate_200_Status(response);
         });
   });
 
@@ -160,7 +145,7 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
+      validate_200_Status(response);
         });
   });
 
@@ -173,8 +158,8 @@ it("Get events of foundation project - Record should Returns 200 Response", func
         'bearer': bearerToken,
       }
     }).then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.not.be.null;
+      validate_200_Status(response);
+      
         // Validate specific data in the response
         let updatedNextKey=response.body.NextKey;
        if(updatedNextKey!==undefined){
