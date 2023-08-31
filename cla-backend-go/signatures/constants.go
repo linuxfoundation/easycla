@@ -19,7 +19,7 @@ const SignatureGitHubOrgApprovalListColumn = "github_org_whitelist" // TODO: ren
 const SignatureGitlabUsernameApprovalListColumn = "gitlab_username_approval_list"
 
 // SignatureGitlabOrgApprovalListColumn is the name of the signature column for gitlab organization approval lists
-const SignatureGitlabOrgApprovalListColumn = "gitlab_org_approval_list"
+const SignatureGitlabOrgApprovalListColumn = "gitlab_org_approval_list" // nolint G101: Potential hardcoded credentials (gosec)
 
 // SignatureUserGitHubUsername is the name of the signature column for user gitlab username
 const SignatureUserGitHubUsername = "user_github_username"

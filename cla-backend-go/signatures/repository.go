@@ -556,7 +556,7 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 		log.WithFields(f).Warnf("found multiple matching ICLA signatures - found %d total", len(sigs))
 	}
 
-	return sigs[0], nil
+	return sigs[0], nil // nolint G602: Potentially accessing slice out of bounds (gosec)
 }
 
 // GetCorporateSignature returns the signature record for the specified CLA Group and Company ID
@@ -665,7 +665,7 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 		log.WithFields(f).Warnf("found multiple matching ICLA signatures - found %d total", len(sigs))
 	}
 
-	return sigs[0], nil
+	return sigs[0], nil // nolint G602: Potentially accessing slice out of bounds (gosec)
 }
 
 // GetActivePullRequestMetadata returns the pull request metadata for the given user ID

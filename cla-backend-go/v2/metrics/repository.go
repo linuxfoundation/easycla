@@ -88,10 +88,10 @@ const (
 	MetricTypeCompany                = "company"
 	MetricTypeProject                = "project"
 	MetricTypeCompanyProject         = "company_project"
-	MetricTypeClaManagerDistribution = "cla_manager_distribution"
+	MetricTypeClaManagerDistribution = "cla_manager_distribution" // nolint G101: Potential hardcoded credentials (gosec)
 
 	IDTotalCount             = "total_count"
-	IDClaManagerDistribution = "cla_manager_distribution"
+	IDClaManagerDistribution = "cla_manager_distribution" // nolint G101: Potential hardcoded credentials (gosec)
 )
 
 func newMetrics() *Metrics {
