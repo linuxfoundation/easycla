@@ -1,6 +1,6 @@
 import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate & get GitHub Activity Callback via API call", function () {
-    //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-activity
+    //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/company
     const claBaseEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/`;
     const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/company/`;
     let companyName="Infosys Limited";
