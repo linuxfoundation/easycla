@@ -187,7 +187,7 @@ it("Returns a list of Company Admins (salesforce)", function () {
         });
   });
 
-it.skip("Associates a contributor with a company", function () {
+it("Associates a contributor with a company", function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}${companyExternalID}/contributorAssociation`,
@@ -226,7 +226,7 @@ it("Creates a new salesforce company", function () {
         });
   });
 
-it.skip("Deletes the company by the SFID", function () {   
+it("Deletes the company by the SFID", function () {   
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}sfid/${companyExternalID}`,
@@ -238,7 +238,30 @@ it.skip("Deletes the company by the SFID", function () {
         });
   });
 
-it.skip("Deletes the company by ID", function () {   
+
+  it("Creates a new salesforce company", function () {
+    cy.request({
+      method: 'POST',
+      url: `${claBaseEndpoint}user/${user_id}/company`,
+      auth: {
+        'bearer': bearerToken,
+      },
+      body:{
+        "companyName": "lfx dev Test",
+        "companyWebsite": "https://lfxdevtest.org",
+        "note": "Added via automation",
+        "signingEntityName": "lfx dev Test",
+        "userEmail": userEmail
+      }
+    }).then((response) => {
+      validate_200_Status(response);
+      companyName="lfx dev Test";
+      companyID=response.body.companyID;
+      getCompanyByName();
+        });
+  });
+
+it("Deletes the company by ID", function () {   
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}id/${companyID}`,
@@ -250,28 +273,25 @@ it.skip("Deletes the company by ID", function () {
         });
   });
 
-it.skip("Request Company Admin based on user request to sign CLA", function () {
+it("Request Company Admin based on user request to sign CLA", function () {
     cy.request({
       method: 'POST',
-      url: `${claBaseEndpoint}user/${user_id2}/company`,
+      url: `${claBaseEndpoint}user/${user_id2}/request-company-admin`,
       auth: {
         'bearer': bearerToken,
       },
+      failOnStatusCode: false,
       body:{
         "claManagerEmail": "vthakur@contractor.linuxfoundation.org",
         "claManagerName": "veerendra thakur",
-        "companyName": "Infosys Limited",
-        "companyWebsite":"wwww.infosys.com",
+        "companyName": "lfx dev Test1",
         "contributorEmail": "vthakur+lfitstaff@contractor.linuxfoundation.org",
         "contributorName": "vthakur lfitstaff",
-        "projectName": "SUN",
+        "projectName": "Sun foundation cla group",
         "version": "v1"
       }
     }).then((response) => {
       validate_200_Status(response);
-      companyName="lfx dev Test";
-      companyID=response.body.companyID;
-      getCompanyByName();
         });
   });
 
