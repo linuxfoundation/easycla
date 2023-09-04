@@ -1,0 +1,111 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "ccla_url": {
+                "type": "string"
+              },
+              "cla_group_id": {
+                "type": "string"
+              },
+              "cla_group_name": {
+                "type": "string"
+              },
+              "company_id": {
+                "type": "string"
+              },
+              "company_name": {
+                "type": "string"
+              },
+              "company_sfid": {
+                "type": "string"
+              },
+              "project_id": {
+                "type": "string"
+              },
+              "project_logo": {
+                "type": "string"
+              },
+              "project_name": {
+                "type": "string"
+              },
+              "project_sfid": {
+                "type": "string"
+              },
+              "project_type": {
+                "type": "string"
+              },
+              "signatory_name": {
+                "type": "string"
+              },
+              "signature_acl": {
+                "type": "object",
+                "properties": {
+                  "username_list": {
+                    "type": "array",
+                    "items": [
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "username_list"
+                ]
+              },
+              "signature_id": {
+                "type": "string"
+              },
+              "signed_on": {
+                "type": "string"
+              },
+              "signing_entity_id": {
+                "type": "string"
+              },
+              "signing_entity_name": {
+                "type": "string"
+              },
+              "sub_projects": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "ccla_url",
+              "cla_group_id",
+              "cla_group_name",
+              "company_id",
+              "company_name",
+              "company_sfid",
+              "project_id",
+              "project_logo",
+              "project_name",
+              "project_sfid",
+              "project_type",
+              "signatory_name",
+              "signature_acl",
+              "signature_id",
+              "signed_on",
+              "signing_entity_id",
+              "signing_entity_name",
+              "sub_projects"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "list"
+    ]
+  }

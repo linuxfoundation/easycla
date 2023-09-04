@@ -1,0 +1,36 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "Employees": {
+        "type": "string"
+      },
+      "ID": {
+        "type": "string"
+      },
+      "Industry": {
+        "type": "string"
+      },
+      "Link": {
+        "type": "string"
+      },
+      "Name": {
+        "type": "string"
+      },
+      "Sector": {
+        "type": "string"
+      },
+      "Source": {
+        "type": "string"
+      }
+  
+        
+      
+    },
+    "required": [
+      "Employees",
+      "ID",
+       "Link",
+      "Name"
+    ]
+  }
