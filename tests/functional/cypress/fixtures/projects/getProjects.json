@@ -1,0 +1,212 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "lastKeyScanned": {
+        "type": "string"
+      },
+      "pageSize": {
+        "type": "integer"
+      },
+      "projects": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "dateCreated": {
+                "type": "string"
+              },
+              "dateModified": {
+                "type": "string"
+              },
+              "foundationLevelCLA": {
+                "type": "boolean"
+              },
+              "foundationSFID": {
+                "type": "string"
+              },
+             
+          
+              "projectACL": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "projectCCLAEnabled": {
+                "type": "boolean"
+              },
+              "projectCCLARequiresICLA": {
+                "type": "boolean"
+              },
+              "projectCorporateDocuments": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "documentAuthorName": {
+                        "type": "string"
+                      },
+                      "documentContentType": {
+                        "type": "string"
+                      },
+                      "documentCreationDate": {
+                        "type": "string"
+                      },
+                      "documentFileID": {
+                        "type": "string"
+                      },
+                      "documentLegalEntityName": {
+                        "type": "string"
+                      },
+                      "documentMajorVersion": {
+                        "type": "string"
+                      },
+                      "documentMinorVersion": {
+                        "type": "string"
+                      },
+                      "documentName": {
+                        "type": "string"
+                      },
+                      "documentPreamble": {
+                        "type": "string"
+                      },
+                      "documentS3URL": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "documentAuthorName",
+                      "documentContentType",
+                      "documentCreationDate",
+                      "documentFileID",
+                      "documentLegalEntityName",
+                      "documentMajorVersion",
+                      "documentMinorVersion",
+                      "documentName",
+                      "documentPreamble",
+                      "documentS3URL"
+                    ]
+                  }
+                ]
+              },
+              "projectDescription": {
+                "type": "string"
+              },
+              "projectExternalID": {
+                "type": "string"
+              },
+              "projectICLAEnabled": {
+                "type": "boolean"
+              },
+              "projectID": {
+                "type": "string"
+              },
+              "projectIndividualDocuments": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "documentAuthorName": {
+                        "type": "string"
+                      },
+                      "documentContentType": {
+                        "type": "string"
+                      },
+                      "documentCreationDate": {
+                        "type": "string"
+                      },
+                      "documentFileID": {
+                        "type": "string"
+                      },
+                      "documentLegalEntityName": {
+                        "type": "string"
+                      },
+                      "documentMajorVersion": {
+                        "type": "string"
+                      },
+                      "documentMinorVersion": {
+                        "type": "string"
+                      },
+                      "documentName": {
+                        "type": "string"
+                      },
+                      "documentPreamble": {
+                        "type": "string"
+                      },
+                      "documentS3URL": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "documentAuthorName",
+                      "documentContentType",
+                      "documentCreationDate",
+                      "documentFileID",
+                      "documentLegalEntityName",
+                      "documentMajorVersion",
+                      "documentMinorVersion",
+                      "documentName",
+                      "documentPreamble",
+                      "documentS3URL"
+                    ]
+                  }
+                ]
+              },
+              "projectLive": {
+                "type": "boolean"
+              },
+             
+              "projectName": {
+                "type": "string"
+              },
+              "projectTemplateID": {
+                "type": "string"
+              },
+              "rootProjectRepositoriesCount": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dateCreated",
+              "dateModified",
+              "foundationLevelCLA",
+              "foundationSFID",
+              "gerrits",
+              "githubRepositories",
+              "projectACL",
+              "projectCCLAEnabled",
+              "projectCCLARequiresICLA",
+              "projectCorporateDocuments",
+              "projectExternalID",
+              "projectICLAEnabled",
+              "projectID",
+              "projectIndividualDocuments",
+              "projectLive",
+              "projectMemberDocuments",
+              "projectName",
+              "projectTemplateID",
+              "version"
+            ]
+          }
+        ]
+      },
+      "resultCount": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "lastKeyScanned",
+      "pageSize",
+      "projects",
+      "resultCount"
+    ]
+  }
