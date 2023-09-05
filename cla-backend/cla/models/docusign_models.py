@@ -18,15 +18,12 @@ import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+import cla
 import pydocusign  # type: ignore
 import requests
 from attr import dataclass
-from pydocusign.exceptions import DocuSignException  # type: ignore
-
-import cla
 from cla.controllers.lf_group import LFGroup
 from cla.models import DoesNotExist, signing_service_interface
-from cla.docusign_auth import request_access_token
 from cla.models.dynamo_models import (Company, Document, Event, Gerrit,
                                       Project, Signature, User)
 from cla.models.event_types import EventType
@@ -34,15 +31,13 @@ from cla.models.s3_storage import S3Storage
 from cla.user_service import UserService
 from cla.utils import (append_email_help_sign_off_content, get_corporate_url,
                        get_email_help_content, get_project_cla_group_instance)
+from pydocusign.exceptions import DocuSignException  # type: ignore
 
 api_base_url = os.environ.get('CLA_API_BASE', '')
 root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
-integrator_key = cla.config.DOCUSIGN_INTEGRATOR_KEY
-user_id = cla.config.DOCUSIGN_USER_ID
-private_key = cla.config.DOCUSIGN_PRIVATE_KEY
-auth_server = os.environ.get('DOCUSIGN_AUTH_SERVER')
-token_endpoint = f'https://{auth_server}/oauth/token'
-
+username = os.environ.get('DOCUSIGN_USERNAME', '')
+password = os.environ.get('DOCUSIGN_PASSWORD', '')
+integrator_key = os.environ.get('DOCUSIGN_INTEGRATOR_KEY', '')
 
 lf_group_client_url = os.environ.get('LF_GROUP_CLIENT_URL', '')
 lf_group_client_id = os.environ.get('LF_GROUP_CLIENT_ID', '')
@@ -106,14 +101,28 @@ class DocuSign(signing_service_interface.SigningService):
         self.s3storage = None
 
     def initialize(self, config):
-        try:
-            cla.log.debug('Initializing DocuSign client...')
-            token = request_access_token()
-            self.client = pydocusign.DocuSignClient(root_url=root_url,oauth2_token=token)
-        except (Exception) as ex:
-            cla.log.error("Error authenticating Docusign: {}".format(ex))
-            return {'errors': {'Error authenticating Docusign'}}
+        self.client = pydocusign.DocuSignClient(root_url=root_url,
+                                                username=username,
+                                                password=password,
+                                                integrator_key=integrator_key)
 
+        try:
+            login_data = self.client.login_information()
+            login_account = login_data['loginAccounts'][0]
+            base_url = login_account['baseUrl']
+            account_id = login_account['accountId']
+            url = urlparse(base_url)
+            parsed_root_url = '{}://{}/restapi/v2'.format(url.scheme, url.netloc)
+        except Exception as e:
+            cla.log.error('Error logging in to DocuSign: {}'.format(e))
+            return {'errors': {'Error initializing DocuSign'}}
+
+        self.client = pydocusign.DocuSignClient(root_url=parsed_root_url,
+                                                account_url=base_url,
+                                                account_id=account_id,
+                                                username=username,
+                                                password=password,
+                                                integrator_key=integrator_key)
         self.s3storage = S3Storage()
         self.s3storage.initialize(None)
 
@@ -1362,26 +1371,16 @@ class DocuSign(signing_service_interface.SigningService):
                                        emailBody='CLA Sign Request for {}'.format(user_identifier),
                                        supportedLanguage='en',
                                        )
-            
-        
+
         content_type = document.get_document_content_type()
-        try:
-            cla.log.debug(f'{fn} - {sig_type} - docusign document content type: {content_type}')
-            if document.get_document_s3_url() is not None:
-                pdf = self.get_document_resource(document.get_document_s3_url())
-            elif content_type.startswith('url+'):
-                pdf_url = document.get_document_content()
-                pdf = self.get_document_resource(pdf_url)
-            else:
-                cla.log.debug(f'{fn} - getting document content...')
-                content = document.get_document_content()
-                pdf = io.BytesIO(content)
-        
-        except Exception as e:
-            cla.log.warning(f'{fn} - {sig_type} - error getting document resource: {e}')
-            return
-        
-    
+        if document.get_document_s3_url() is not None:
+            pdf = self.get_document_resource(document.get_document_s3_url())
+        elif content_type.startswith('url+'):
+            pdf_url = document.get_document_content()
+            pdf = self.get_document_resource(pdf_url)
+        else:
+            content = document.get_document_content()
+            pdf = io.BytesIO(content)
 
         doc_name = document.get_document_name()
         cla.log.debug(f'{fn} - {sig_type} - docusign document '
@@ -1411,7 +1410,6 @@ class DocuSign(signing_service_interface.SigningService):
                 status=pydocusign.Envelope.STATUS_SENT,
                 recipients=[signer])
 
-        cla.log.debug(f'{fn} - {sig_type} - sending signature request to DocuSign...')
         envelope = self.prepare_sign_request(envelope)
 
         if not send_as_email:
@@ -1969,8 +1967,7 @@ class DocuSign(signing_service_interface.SigningService):
         :return: A resource that can be read()'d.
         :rtype: Resource
         """
-        return requests.get(url, stream=True).raw
-        # return urllib.request.urlopen(url)
+        return urllib.request.urlopen(url)
 
     def prepare_sign_request(self, envelope):
         """
