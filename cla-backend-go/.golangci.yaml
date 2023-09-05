@@ -33,10 +33,10 @@ linters-settings:
     # default is false: such cases aren't reported by default.
     check-blank: true
   govet:
-    enable-all: true
-    #check-shadowing: true
-    #fieldalignment: true
-  revive: # golint was replaced by revive
+    check-shadowing: true
+    fieldalignment: true
+  revive:
+    ignore-generated-header: true
     min-confidence: 0
     rules:
       # Recommended in Revive docs
@@ -48,14 +48,12 @@ linters-settings:
   goconst:
     min-len: 2
     min-occurrences: 2
-  gocyclo:
-    min-complexity: 40
 
 linters:
   disable-all: true
   enable:
-    - revive # 'golint' is deprecated (since v1.41.0), replaced by revive
-    #  - govet
+    - revive
+    - govet
     - errcheck
     - ineffassign
     - typecheck
@@ -65,13 +63,14 @@ linters:
     - goimports
     - gosec
     - megacheck # (staticcheck + gosimple + unused in one linter)
+    - depguard
     - unconvert
     - unparam
     - unused
     - nakedret
-    # - depguard # recently, this error is showing up: import '....' is not allowed from list 'Main' (depguard) for all the packages
-    #- maligned is deprecated (since v1.38.0), replaced by govet 'fieldalignment'.
+    #- maligned # The repository of the linter has been archived by the owner.  Replaced by govet 'fieldalignment'.
     #- dupl
+    - bodyclose
 
 issues:
   exclude-use-default: false

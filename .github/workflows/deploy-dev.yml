@@ -89,7 +89,8 @@ jobs:
         working-directory: cla-backend
         run: |
           pip install -r requirements.txt
-          pip install -r requirements-test.txt
+
+
 
       - name: Python Lint
         working-directory: cla-backend
