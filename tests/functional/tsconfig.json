@@ -2,7 +2,7 @@
   
   "include": [
     "./**/*.ts"
-  ],
+, "cypress/config.dev.js"  ],
   "compilerOptions": {
     "baseUrl": "integration",
     "types": [

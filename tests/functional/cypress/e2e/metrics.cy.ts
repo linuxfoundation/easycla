@@ -1,14 +1,27 @@
 import { isNull } from 'cypress/types/lodash';
 import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate cla-manager API call", function () {
-    //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/metrics
+  
+ // Define a variable for the environment
+ const environment = Cypress.env("CYPRESS_ENV");
+
+ // Import the appropriate configuration based on the environment
+ let appConfig;
+ if (environment === 'dev') {
+   appConfig = require('../appConfig/config.dev.ts').appConfig;
+ } else if (environment === 'production') {
+   appConfig = require('../appConfig/config.production.ts').appConfig;
+ }
+  
+  //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/metrics
     const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/metrics/`;
-    const companyID="f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc";//infosys limited
-    const companyName="Infosys Limited";
-    const projectSFID="a09P000000DsCE5IAN";//SUN
-    let projectID="01af041c-fa69-4052-a23c-fb8c1d3bef24";
+    const companyID=appConfig.companyID;//infosys limited
+    const companyName=appConfig.companyName;//Infosys Limited
+    const projectSFID=appConfig.projectSFID;//SUN
+    let projectID=appConfig.projectID;
     let claEndpointForNextKey="";
     let bearerToken: string = null;
+   
     before(() => { 
         if(bearerToken==null){
         getTokenKey(bearerToken);

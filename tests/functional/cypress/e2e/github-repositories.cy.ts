@@ -1,13 +1,24 @@
 import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate github-organizations API call", function () {
-    //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-repositories
+  
+ // Define a variable for the environment
+ const environment = Cypress.env("CYPRESS_ENV");
+
+ // Import the appropriate configuration based on the environment
+ let appConfig;
+ if (environment === 'dev') {
+   appConfig = require('../appConfig/config.dev.ts').appConfig;
+ } else if (environment === 'production') {
+   appConfig = require('../appConfig/config.production.ts').appConfig;
+ }
+  
+  //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-repositories
     
-    const Ajv = require('ajv');
     //Variable for GitHub    
-    const projectSfidOrg='a09P000000DsNH2IAN'; //project name: easyAutom-child2  
+    const projectSfidOrg=appConfig.childProjectSFID; //project name: easyAutom-child2  
   
   const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/project/${projectSfidOrg}/github/repositories`;
-  let claGroupId: string ="1baf67ab-d894-4edf-b6fc-c5f939db59f7";
+  let claGroupId: string =appConfig.claGroupId;
   let repository_id: string="";
   let repository_external_id: string="";
   let repository_external_id2: string="";

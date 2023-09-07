@@ -1,19 +1,31 @@
 import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate & get Company Activity Callback via API call", function () {
-    //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/company
+    
+  // Define a variable for the environment
+  const environment = Cypress.env("CYPRESS_ENV");
+
+  // Import the appropriate configuration based on the environment
+  let appConfig;
+  if (environment === 'dev') {
+    appConfig = require('../appConfig/config.dev.ts').appConfig;
+  } else if (environment === 'production') {
+    appConfig = require('../appConfig/config.production.ts').appConfig;
+  }
+  
+  //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/company
     const claBaseEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/`;
     const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/company/`;
-    let companyName="Infosys Limited";
+    
     let companyExternalID="";
-    let companyID="fcf59557-9708-4b2f-8200-4e6448761c0a";//Microsoft Corporation
-
-    let signingEntityName="";
-    const projectSFID="a09P000000DsCE5IAN";
-    let claGroupId="";    
-
-    const user_id="8f3e52b8-0072-11ee-9def-0ef17207dfe8";//vthakur+lfstaff@contractor.linuxfoundation.org
-    const userEmail= "vthakur+lfstaff@contractor.linuxfoundation.org";
-    const user_id2="4a4c1dba-407f-11ed-8c58-a6b0f8fb81a9"//vthakur+lfitstaff@contractor.linuxfoundation.org
+    let companyID="";
+    let signingEntityName="";    
+    let claGroupId="";   
+    
+    let companyName=appConfig.companyName; 
+    const projectSFID=appConfig.projectSFID; //project name: sun
+    const user_id=appConfig.user_id;//vthakur+lfstaff@contractor.linuxfoundation.org
+    const userEmail=appConfig.userEmail;
+    const user_id2=appConfig.user_id2//vthakur+lfitstaff@contractor.linuxfoundation.org
 
     let bearerToken: string = null;
     before(() => { 

@@ -1,12 +1,26 @@
 import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate & get projects Activity Callback via API call", function () {
-    //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/project
-        const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/project`;
-let foundationSFID='a09P000000DsNGsIAN'; //project name: easyAutom foundation
+
+ // Define a variable for the environment
+ const environment = Cypress.env("CYPRESS_ENV");
+
+ // Import the appropriate configuration based on the environment
+ let appConfig;
+ if (environment === 'dev') {
+   appConfig = require('../appConfig/config.dev.ts').appConfig;
+ } else if (environment === 'production') {
+   appConfig = require('../appConfig/config.production.ts').appConfig;
+ }
+
+  //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/project
+    const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/project`;
+    
+    let foundationSFID=appConfig.foundationSFID ; //project name: easyAutom foundation
     let bearerToken: string = null;
-    let projectSfid="a09P000000DsNGsIAN";
-    let externalID="a09P000000DsNGsIAN";
-    let projectName="easyAutom-child2";
+    let projectSfid=appConfig.foundationSFID ; //project name: easyAutom foundation
+    let externalID=appConfig.foundationSFID ; //project name: easyAutom foundation
+    let projectName=appConfig.projectName;
+   
     before(() => { 
         if(bearerToken==null){
         getTokenKey(bearerToken);
@@ -46,7 +60,7 @@ it("Get CLA enabled projects", function () {
         });
   });
 
-it.skip("Get CLA Groups By SFDC ID", function () {
+it("Get CLA Groups By SFDC ID", function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/external/${externalID}}`,
@@ -59,7 +73,7 @@ it.skip("Get CLA Groups By SFDC ID", function () {
         });
   });
 
-it.skip("Get Project By Name", function () {
+it("Get Project By Name", function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/name/${projectName}`,
@@ -71,7 +85,7 @@ it.skip("Get Project By Name", function () {
         });
   });
 
-it.skip("Get Project by ID", function () {
+it("Get Project by ID", function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/${projectSfid}`,

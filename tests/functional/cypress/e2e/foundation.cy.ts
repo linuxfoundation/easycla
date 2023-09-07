@@ -1,8 +1,21 @@
 import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
+//import {appConfig} from  '../support/config.${Cypress.env("CYPRESS_ENV")}'
 describe("To Validate & get list of Foundation ClaGroups via API call", function () {
-    //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/foundation
+  
+ // Define a variable for the environment
+ const environment = Cypress.env("CYPRESS_ENV");
+
+ // Import the appropriate configuration based on the environment
+ let appConfig;
+ if (environment === 'dev') {
+   appConfig = require('../appConfig/config.dev.ts').appConfig;
+ } else if (environment === 'production') {
+   appConfig = require('../appConfig/config.production.ts').appConfig;
+ }
+  
+  //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/foundation
     const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/foundation-mapping`;
-    const foundationSFID='a09P000000DsNGsIAN'; //project name: easyAutom foundation
+    const foundationSFID=appConfig.foundationSFID; //project name: easyAutom foundation
 
     let bearerToken: string = null;
     before(() => { 
