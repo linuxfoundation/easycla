@@ -1,13 +1,25 @@
 import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate events are properly capture via API call", function () {
-    //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/events
+  
+  // Define a variable for the environment
+  const environment = Cypress.env("CYPRESS_ENV");
+
+  // Import the appropriate configuration based on the environment
+  let appConfig;
+  if (environment === 'dev') {
+    appConfig = require('../appConfig/config.dev.ts').appConfig;
+  } else if (environment === 'production') {
+    appConfig = require('../appConfig/config.production.ts').appConfig;
+  }
+  
+  //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/events
       const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/events`;
       let claEndpointForNextKey="";
     let NextKey: string="";
-    const foundationSFID='a09P000000DsNGsIAN'; //project name: easyAutom foundation
-    const projectSfid='a09P000000DsNH2IAN'; //project name: easyAutom-child2  
-    const companyID="f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc";
-    const compProjectSFID="a092h000004x5tVAAQ";
+    const foundationSFID=appConfig.foundationSFID; //project name: easyAutom foundation
+    const projectSfid=appConfig.childProjectSFID; //project name: easyAutom-child2  
+    const companyID=appConfig.companyID;//Infosys Limited
+    const compProjectSFID=appConfig.projectSFID; //sun
 
     let bearerToken: string = null;
     before(() => { 

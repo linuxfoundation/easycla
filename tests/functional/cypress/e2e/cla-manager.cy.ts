@@ -1,25 +1,35 @@
 import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 describe("To Validate cla-manager API call", function () {
-    //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/cla-manager
+
+ // Define a variable for the environment
+ const environment = Cypress.env("CYPRESS_ENV");
+
+ // Import the appropriate configuration based on the environment
+ let appConfig;
+ if (environment === 'dev') {
+   appConfig = require('../appConfig/config.dev.ts').appConfig;
+ } else if (environment === 'production') {
+   appConfig = require('../appConfig/config.production.ts').appConfig;
+ }
+
+  //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/cla-manager
 /* 
 https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/UserRole
 https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operation/getRoles
 */
     //Variable for GitHub    
-   const companyID="f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc";//infosys limited
-   const projectSFID="a09P000000DsCE5IAN";//sun
-   const projectSFID_Designee="a09P000000DsNH2IAN"
+   const companyID=appConfig.companyID;//infosys limited
+   const projectSFID=appConfig.projectSFID;//sun
+   const projectSFID_Designee=appConfig.childProjectSFID//EASYAUTOM-CHILD2
   const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/`;
   let bearerToken: string = null;
-  const claGroupID="1baf67ab-d894-4edf-b6fc-c5f939db59f7";
-  const sun_claGroupID="01af041c-fa69-4052-a23c-fb8c1d3bef24"
+  const claGroupID=appConfig.claGroupId;
+  const sun_claGroupID=appConfig.claGroupId_projectSFID //sun
   const userEmail="veerendrat@proximabiz.com";
-  let companyName="Infosys limited";
-  let organization_id="";
-  let organization_name="";
+  let companyName=appConfig.companyName//"Infosys limited";
   let companySFID="";
   let userLFID="veerendrat";
-  let userId="c5ac2857-c263-11ed-94d1-d2349de32229";//veerendrat
+  let userId=appConfig.userIdclaManager//"c5ac2857-c263-11ed-94d1-d2349de32229";//veerendrat
   
   before(() => {   
      
@@ -81,8 +91,6 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
         validate_200_Status(response);      
         // Validate specific data in the response       
         let list = response.body;
-        organization_id=list.organization_id;
-        organization_name=list.organization_name;
         expect(list.project_sfid).to.eql(projectSFID)    
            //To validate schema of response
       }else{

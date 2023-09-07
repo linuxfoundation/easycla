@@ -1,0 +1,77 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "email": {
+                "type": "string"
+              },
+              "github_id": {
+                "type": "string"
+              },
+              "linux_foundation_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "signatureApproved": {
+                "type": "boolean"
+              },
+              "signatureID": {
+                "type": "string"
+              },
+              "signatureModified": {
+                "type": "string"
+              },
+              "signatureSigned": {
+                "type": "boolean"
+              },
+              "signature_version": {
+                "type": "string"
+              },
+              "timestamp": {
+                "type": "string"
+              },
+              "userDocusignDateSigned": {
+                "type": "string"
+              },
+              "userDocusignName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "email",
+              "github_id",
+              "linux_foundation_id",
+              "name",
+              "signatureApproved",
+              "signatureID",
+              "signatureSigned",
+              "signature_version",
+              "timestamp"
+            ]
+          }
+        ]
+      },
+      "nextKey": {
+        "type": "string"
+      },
+      "resultCount": {
+        "type": "integer"
+      },
+      "totalCount": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "list",
+      "resultCount",
+      "totalCount"
+    ]
+  }

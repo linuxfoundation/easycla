@@ -1,0 +1,57 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "foundationLevelCLA": {
+        "type": "boolean"
+      },
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "ccla_enabled": {
+                "type": "boolean"
+              },
+              "ccla_requires_icla": {
+                "type": "boolean"
+              },
+              "foundation_sfid": {
+                "type": "string"
+              },
+              "icla_enabled": {
+                "type": "boolean"
+              },
+              "project_logo": {
+                "type": "string"
+              },
+              "project_name": {
+                "type": "string"
+              },
+              "project_sfid": {
+                "type": "string"
+              },
+              "project_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ccla_enabled",
+              "ccla_requires_icla",
+              "foundation_sfid",
+              "icla_enabled",
+              "project_logo",
+              "project_name",
+              "project_sfid",
+              "project_type"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "foundationLevelCLA",
+      "list"
+    ]
+  }

@@ -1,0 +1,52 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "companyACL": {
+        "type": "array",
+        "items": [
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "companyExternalID": {
+        "type": "string"
+      },
+      "companyID": {
+        "type": "string"
+      },
+      "companyManagerID": {
+        "type": "string"
+      },
+      "companyName": {
+        "type": "string"
+      },
+      "created": {
+        "type": "string"
+      },
+      "note": {
+        "type": "string"
+      },
+      "signingEntityName": {
+        "type": "string"
+      },
+      "updated": {
+        "type": "string"
+      },
+      "version": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "companyACL",
+      "companyExternalID",
+      "companyID",
+      "companyName",
+      "created",
+      "note",
+      "signingEntityName",
+      "updated",
+      "version"
+    ]
+  }

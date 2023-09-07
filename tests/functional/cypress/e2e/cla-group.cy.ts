@@ -1,30 +1,42 @@
 import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
 
 describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on child project", function () {
+ 
+   // Define a variable for the environment
+   const environment = Cypress.env("CYPRESS_ENV");
+
+   // Import the appropriate configuration based on the environment
+   let appConfig;
+   if (environment === 'dev') {
+     appConfig = require('../appConfig/config.dev.ts').appConfig;
+   } else if (environment === 'production') {
+     appConfig = require('../appConfig/config.production.ts').appConfig;
+   }
+
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/cla-group
 
   const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4`;
   let claGroupId: string ="";
     
   //Variable for create cla group
-  const foundation_sfid='a09P000000DsNGsIAN'; //project name: easyAutom foundation
-  const projectSfid='a09P000000DsNGxIAN'; //project name: easyAutom-child1
-  const cla_group_name='CypressClaGroup';
+  const foundation_sfid=appConfig.foundationSFID; //project name: easyAutom foundation
+  const projectSfid=appConfig.createNewClaGroupSFID;  //project name: easyAutom-child1
+  const cla_group_name=appConfig.claGroupName;
   const cla_group_description='Added via cypress script';
 
   //variable for update cla group
-  const updated_cla_group_name='Cypress_Updated_ClaGroup1';
+  const updated_cla_group_name='Cypress_Updated_ClaGroup';
   const update_cla_group_description='CLA group created and updated for easy cla automation child project 1'
  
   
   //Variable for GitHub
-  const gitHubOrgName='Sun-lfxfoundationOrgTest';
-  const projectSfidOrg='a09P000000DsCE5IAN'; //project name: sun
+  const gitHubOrgName=appConfig.gitHubOrgPartialStatus;
+  const projectSfidOrg=appConfig.projectSFID; //project name: sun
   
 
   //Enroll /unEnroll projects 
-  const EnrollProjectsSFID='a09P000000DsNHCIA3' //project name: easyAutomChild1-GrandChild1
-  const child_Project_name='easyAutomChild1-GrandChild1'
+  const enrollProjectsSFID=appConfig.enrollProjectsSFID //project name: easyAutomChild1-GrandChild1
+  const child_Project_name=appConfig.child_Project_name
  
   
   let bearerToken: string = null;
@@ -45,6 +57,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       auth: {
         'bearer': bearerToken,
       },
+      failOnStatusCode: false,
       body: {
         "icla_enabled": true,
     "ccla_enabled": true,
@@ -81,6 +94,8 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     }
       },
     }).then((response) => {
+      const jsonResponse = JSON.stringify(response.body, null, 2);
+      cy.log(jsonResponse);
       // expect(response.duration).to.be.lessThan(20000);
       validate_200_Status(response);
       
@@ -150,7 +165,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       auth: {
         'bearer': bearerToken,
       },
-      body: [EnrollProjectsSFID],
+      body: [enrollProjectsSFID],
     }).then((response) => {
      // expect(response.duration).to.be.lessThan(20000);
      validate_200_Status(response);
@@ -169,7 +184,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         expect(secondResponse.body).to.have.property('list');
         let list = secondResponse.body.list;     
             expect(list[0].project_list[1].project_name).to.eql(child_Project_name)   
-            expect(list[0].project_list[1].project_sfid).to.eql(EnrollProjectsSFID)
+            expect(list[0].project_list[1].project_sfid).to.eql(enrollProjectsSFID)
             expect(list[0].project_list[0].project_sfid).to.eql(projectSfid)
       });
     } else {
@@ -186,7 +201,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       auth: {
         'bearer': bearerToken,
       },
-      body: [EnrollProjectsSFID],
+      body: [enrollProjectsSFID],
     }).then((response) => {
      // expect(response.duration).to.be.lessThan(20000);
      validate_200_Status(response);
