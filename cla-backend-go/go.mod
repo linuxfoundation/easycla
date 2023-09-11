@@ -74,6 +74,7 @@ require (
 	github.com/ProtonMail/go-crypto v0.0.0-20230321155629-9a39f2531310 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d // indirect
 	github.com/cloudflare/circl v1.3.2 // indirect
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
