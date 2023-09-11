@@ -1,0 +1,126 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "auto_enable_cla_group_id": {
+                "type": "string"
+              },
+              "auto_enabled": {
+                "type": "boolean"
+              },
+              "auto_enabled_cla_group_name": {
+                "type": "string"
+              },
+              "branch_protection_enabled": {
+                "type": "boolean"
+              },
+              "connection_status": {
+                "type": "string"
+              },
+              "connection_status_message": {
+                "type": "string"
+              },
+              "installation_url": {
+                "type": "string"
+              },
+              "organization_external_id": {
+                "type": "integer"
+              },
+              "organization_full_path": {
+                "type": "string"
+              },
+              "organization_name": {
+                "type": "string"
+              },
+              "organization_url": {
+                "type": "string"
+              },
+              "parent_project_sfid": {
+                "type": "string"
+              },
+              "project_sfid": {
+                "type": "string"
+              },
+              "repositories": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "cla_group_id": {
+                        "type": "string"
+                      },
+                      "connection_status": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "parent_project_id": {
+                        "type": "string"
+                      },
+                      "project_id": {
+                        "type": "string"
+                      },
+                      "repository_full_path": {
+                        "type": "string"
+                      },
+                      "repository_gitlab_id": {
+                        "type": "integer"
+                      },
+                      "repository_id": {
+                        "type": "string"
+                      },
+                      "repository_name": {
+                        "type": "string"
+                      },
+                      "repository_url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "cla_group_id",
+                      "connection_status",
+                      "enabled",
+                      "parent_project_id",
+                      "project_id",
+                      "repository_full_path",
+                      "repository_gitlab_id",
+                      "repository_id",
+                      "repository_name",
+                      "repository_url"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "auto_enable_cla_group_id",
+              "auto_enabled",
+              "auto_enabled_cla_group_name",
+              "branch_protection_enabled",
+              "connection_status",
+              "connection_status_message",
+              "installation_url",
+              "organization_external_id",
+              "organization_full_path",
+              "organization_name",
+              "organization_url",
+              "parent_project_sfid",
+              "project_sfid",
+              "repositories"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "list"
+    ]
+  }

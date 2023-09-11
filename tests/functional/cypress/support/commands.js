@@ -13,8 +13,14 @@ export function validateApiResponse (schemaPath,response) {
   if (isValid) {
     cy.log('API response schema is valid');
     expect(isValid, 'API response schema is valid').to.be.true;
-  } else {
-    cy.log('API response schema is not valid, but the test will continue.', validate.errors);
+  } else {    
+    Cypress.on('test:after:run', (test, runnable) => {
+        const testName = `${runnable.parent.title} - ${test.title}`
+        cy.log(`API response schema is not valid for Test Case : ${testName}`)
+        console.log(`API response schema is not valid for Test Case : ${testName}`)
+        cy.log('Schema Error : ', validate.errors);
+        console.error('Schema Error : ', validate.errors);    
+    })
   }
 
 });
