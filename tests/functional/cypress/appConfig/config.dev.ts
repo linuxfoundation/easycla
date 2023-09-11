@@ -34,4 +34,9 @@ export const appConfig = {
 
     /* project */
      projectName:'easyAutom-child2',
+
+    /* GitLab-Organization*/
+     gitLabOrganizationName:'sunGitlabGroup',
+     gitLabOrganizationFullPath:'https://gitlab.com/cla_dev_automationgroup',
+     groupId:'72539854',
   };

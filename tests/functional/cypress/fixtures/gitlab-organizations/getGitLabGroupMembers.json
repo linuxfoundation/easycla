@@ -1,0 +1,61 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "access_level": {
+                "type": "string"
+              },
+              "avatar_url": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string"
+              },
+              "expired_at": {
+                "type": "string"
+              },
+              "group_saml_identity": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              },
+              "web_url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "access_level",
+              "avatar_url",
+              "created_at",
+              "expired_at",
+              "group_saml_identity",
+              "id",
+              "name",
+              "state",
+              "username",
+              "web_url"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "list"
+    ]
+  }
