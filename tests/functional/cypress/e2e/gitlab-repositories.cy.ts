@@ -13,7 +13,7 @@ if (environment === 'dev') {
   appConfig = require('../appConfig/config.production.ts').appConfig;
 }
 
-    //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/gitlab-organizations
+    //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/gitlab-repositories
     const projectSFID=appConfig.projectSFID; //project name: sun
     const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/project/${projectSFID}/gitlab/repositories`;
   
