@@ -1,0 +1,77 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "date_created": {
+                "type": "string"
+              },
+              "date_modified": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "note": {
+                "type": "string"
+              },
+              "repositoryID": {
+                "type": "string"
+              },
+              "repository_cla_group_id": {
+                "type": "string"
+              },
+              "repository_external_id": {
+                "type": "integer"
+              },
+              "repository_full_path": {
+                "type": "string"
+              },
+              "repository_name": {
+                "type": "string"
+              },
+              "repository_organization_name": {
+                "type": "string"
+              },
+              "repository_project_sfid": {
+                "type": "string"
+              },
+              "repository_type": {
+                "type": "string"
+              },
+              "repository_url": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "date_created",
+              "date_modified",
+              "enabled",
+              "note",
+              "repositoryID",
+              "repository_cla_group_id",
+              "repository_external_id",
+              "repository_full_path",
+              "repository_name",
+              "repository_organization_name",
+              "repository_project_sfid",
+              "repository_type",
+              "repository_url",
+              "version"
+            ]
+          }
+        ]
+      }
+    },
+    "required": [
+      "list"
+    ]
+  }
