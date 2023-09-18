@@ -4,7 +4,9 @@
 package docusignauth
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,7 +18,7 @@ import (
 )
 
 var (
-	baseURL           = os.Getenv("DOCUSIGN_BASE_URL")
+	baseURL           = os.Getenv("DOCUSIGN_AUTH_SERVER")
 	oauthTokenURL     = baseURL + "/oauth/token"
 	jwtGrantAssertion = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 )
@@ -27,8 +29,18 @@ type TokenResponse struct {
 }
 
 func GetAccessToken(integrationKey, userGUID, privateKey string) (string, error) {
+	block, _ := pem.Decode([]byte(privateKey))
+	if block == nil {
+		return "", fmt.Errorf("failed to parse private key")
+	}
+
+	privateKeyParsed, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return "", err
+	}
+
 	// Generate the JWT token
-	tokenString, err := generateJWT(integrationKey, userGUID, privateKey)
+	tokenString, err := generateJWT(integrationKey, userGUID, privateKeyParsed.D.String())
 	if err != nil {
 		return "", err
 	}
