@@ -1,0 +1,294 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "lastKeyScanned": {
+        "type": "string"
+      },
+      "projectID": {
+        "type": "string"
+      },
+      "resultCount": {
+        "type": "integer"
+      },
+      "signatures": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "autoCreateECLA": {
+                "type": "boolean"
+              },
+              "claType": {
+                "type": "string"
+              },
+              "companyName": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string"
+              },
+              "domainApprovalList": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "emailApprovalList": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "githubOrgApprovalList": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "githubUsernameApprovalList": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "gitlabOrgApprovalList": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "gitlabUsernameApprovalList": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "modified": {
+                "type": "string"
+              },
+              "projectID": {
+                "type": "string"
+              },
+              "signatoryName": {
+                "type": "string"
+              },
+              "signatureACL": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "admin": {
+                        "type": "boolean"
+                      },
+                      "companyID": {
+                        "type": "string"
+                      },
+                      "dateCreated": {
+                        "type": "string"
+                      },
+                      "dateModified": {
+                        "type": "string"
+                      },
+                      "emails": {
+                        "type": "array",
+                        "items": [
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "githubID": {
+                        "type": "string"
+                      },
+                      "githubUsername": {
+                        "type": "string"
+                      },
+                      "gitlabID": {
+                        "type": "string"
+                      },
+                      "gitlabUsername": {
+                        "type": "string"
+                      },
+                      "lfEmail": {
+                        "type": "string"
+                      },
+                      "lfUsername": {
+                        "type": "string"
+                      },
+                      "note": {
+                        "type": "string"
+                      },
+                      "userCompanyID": {
+                        "type": "string"
+                      },
+                      "userExternalID": {
+                        "type": "string"
+                      },
+                      "userID": {
+                        "type": "string"
+                      },
+                      "username": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "admin",
+                      "companyID",
+                      "dateCreated",
+                      "dateModified",
+                      "emails",
+                      "githubID",
+                      "githubUsername",
+                      "gitlabID",
+                      "gitlabUsername",
+                      "lfEmail",
+                      "lfUsername",
+                      "note",
+                      "userCompanyID",
+                      "userExternalID",
+                      "userID",
+                      "username",
+                      "version"
+                    ]
+                  }
+                ]
+              },
+              "signatureApproved": {
+                "type": "boolean"
+              },
+              "signatureCreated": {
+                "type": "string"
+              },
+              "signatureID": {
+                "type": "string"
+              },
+              "signatureMajorVersion": {
+                "type": "string"
+              },
+              "signatureMinorVersion": {
+                "type": "string"
+              },
+              "signatureModified": {
+                "type": "string"
+              },
+              "signatureReferenceID": {
+                "type": "string"
+              },
+              "signatureReferenceName": {
+                "type": "string"
+              },
+              "signatureReferenceNameLower": {
+                "type": "string"
+              },
+              "signatureReferenceType": {
+                "type": "string"
+              },
+              "signatureSigned": {
+                "type": "boolean"
+              },
+              "signatureType": {
+                "type": "string"
+              },
+              "signedOn": {
+                "type": "string"
+              },
+              "signingEntityName": {
+                "type": "string"
+              },
+              "userDocusignDateSigned": {
+                "type": "string"
+              },
+              "userDocusignName": {
+                "type": "string"
+              },
+              "userGHID": {
+                "type": "string"
+              },
+              "userGHUsername": {
+                "type": "string"
+              },
+              "userGitlabID": {
+                "type": "string"
+              },
+              "userGitlabUsername": {
+                "type": "string"
+              },
+              "userLFID": {
+                "type": "string"
+              },
+              "userName": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "autoCreateECLA",
+              "claType",
+              "companyName",
+              "created",
+              "domainApprovalList",
+              "emailApprovalList",
+              "githubOrgApprovalList",
+              "githubUsernameApprovalList",
+              "gitlabOrgApprovalList",
+              "gitlabUsernameApprovalList",
+              "modified",
+              "projectID",
+              "signatoryName",
+              "signatureACL",
+              "signatureApproved",
+              "signatureCreated",
+              "signatureID",
+              "signatureMajorVersion",
+              "signatureMinorVersion",
+              "signatureModified",
+              "signatureReferenceID",
+              "signatureReferenceName",
+              "signatureReferenceNameLower",
+              "signatureReferenceType",
+              "signatureSigned",
+              "signatureType",
+              "signedOn",
+              "signingEntityName",
+              "userDocusignDateSigned",
+              "userDocusignName",
+              "userGHUsername",
+              "userGitlabID",
+              "userGitlabUsername",
+              "userLFID",
+              "userName",
+              "version"
+            ]
+          }
+        ]
+      },
+      "totalCount": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "resultCount",
+      "signatures",
+      "totalCount"
+    ]
+  }

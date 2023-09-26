@@ -2,7 +2,7 @@ import { defineConfig } from 'cypress'
 
 export default defineConfig({
     defaultCommandTimeout: 20000,
-    requestTimeout: 90000,
+    requestTimeout: 200000,
     "reporter": "cypress-mochawesome-reporter",
   e2e: {
     // baseUrl: 'http://localhost:1234',

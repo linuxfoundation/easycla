@@ -1,0 +1,85 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "lastKeyScanned": {
+        "type": "string"
+      },
+      "list": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "github_username": {
+                "type": "string"
+              },
+              "gitlab_username": {
+                "type": "string"
+              },
+              "lf_username": {
+                "type": "string"
+              },
+              "signatureApproved": {
+                "type": "boolean"
+              },
+              "signatureModified": {
+                "type": "string"
+              },
+              "signatureSigned": {
+                "type": "boolean"
+              },
+              "signature_id": {
+                "type": "string"
+              },
+              "signed_on": {
+                "type": "string"
+              },
+              "userDocusignDateSigned": {
+                "type": "string"
+              },
+              "userDocusignName": {
+                "type": "string"
+              },
+              "user_email": {
+                "type": "string"
+              },
+              "user_id": {
+                "type": "string"
+              },
+              "user_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "github_username",
+              "gitlab_username",
+              "lf_username",
+              "signatureApproved",
+              "signatureModified",
+              "signatureSigned",
+              "signature_id",
+              "signed_on",
+              "userDocusignDateSigned",
+              "userDocusignName",
+              "user_email",
+              "user_id",
+              "user_name"
+            ]
+          }
+        ]
+      },
+      "pageSize": {
+        "type": "integer"
+      },
+      "resultCount": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "lastKeyScanned",
+      "list",
+      "pageSize",
+      "resultCount"
+    ]
+  }

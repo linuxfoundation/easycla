@@ -1,0 +1,59 @@
+{
+    "list": [
+      {
+        "gitlab_username": "umeshlumbhani",
+        "signatureApproved": true,
+        "signatureModified": "2023-07-27T13:22:59.515786+0000",
+        "signatureSigned": true,
+        "signature_id": "a72d4abb-3fd1-43e8-9348-10d831d6759d",
+        "signed_on": "2023-07-25T08:43:58Z",
+        "userDocusignDateSigned": "2023-07-25T08:43:58Z",
+        "userDocusignName": "Umesh Lumbhani",
+        "user_email": "umeshl@proximabiz.com",
+        "user_id": "23121f2a-d48b-11ed-b70f-d2f23b35d89e",
+        "user_name": "Umesh Lumbhani"
+      },
+      {
+        "github_username": "amolsontakke3576",
+        "lf_username": "amolsontakke",
+        "signatureApproved": true,
+        "signatureModified": "2023-05-25T06:49:50.974023+0000",
+        "signatureSigned": true,
+        "signature_id": "0659b09a-4b9c-4572-a4db-6956b6560070",
+        "signed_on": "2023-05-24T23:49:02Z",
+        "userDocusignDateSigned": "2023-05-24T23:49:02Z",
+        "userDocusignName": "Amol Santakke",
+        "user_email": "amols@proximabiz.com",
+        "user_id": "55c63095-b85b-11eb-944f-969fa02c1e82",
+        "user_name": "Amol Santakke"
+      },
+      {
+        "github_username": "nickmango",
+        "signatureApproved": false,
+        "signatureModified": "2023-07-21T14:16:33.859402+0000",
+        "signatureSigned": true,
+        "signature_id": "ae1a8237-c3f5-41f7-adc6-c017dd0c817d",
+        "signed_on": "2023-07-21T07:15:47Z",
+        "userDocusignDateSigned": "2023-07-21T07:15:47Z",
+        "userDocusignName": "Harold Wanyama",
+        "user_email": "hwanyama@contractor.linuxfoundation.org",
+        "user_id": "1f8e6c78-162f-485e-bc35-368abd1b075a",
+        "user_name": "Harold Wanyama"
+      },
+      {
+        "github_username": "nickmango",
+        "signatureApproved": false,
+        "signatureModified": "2023-08-31T14:47:23.179401+0000",
+        "signatureSigned": true,
+        "signature_id": "9eb97c78-8cf9-47ae-8410-0990e8680d8b",
+        "signed_on": "2023-08-01T09:11:20Z",
+        "userDocusignDateSigned": "2023-08-01T09:11:20Z",
+        "userDocusignName": "Harold Wanyama",
+        "user_email": "hwanyama@contractor.linuxfoundation.org",
+        "user_id": "1f8e6c78-162f-485e-bc35-368abd1b075a",
+        "user_name": "Harold Wanyama"
+      }
+    ],
+    "pageSize": 100,
+    "resultCount": 4
+  }
