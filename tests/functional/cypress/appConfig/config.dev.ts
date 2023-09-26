@@ -17,7 +17,8 @@ export const appConfig = {
      user_id2: "4a4c1dba-407f-11ed-8c58-a6b0f8fb81a9",//vthakur+lfitstaff@contractor.linuxfoundation.org
 
     /*events*/
-     companyID:"f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc",
+     companyID:"f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc",//infosys limited
+     companyExternalID:'0014100000Te0G7AAJ',//
      childProjectSFID:'a09P000000DsNH2IAN', //project name: easyAutom-child2
 
     /*github-organizations*/
@@ -30,7 +31,7 @@ export const appConfig = {
 
     /*cla-manager*/
      userIdclaManager:'c5ac2857-c263-11ed-94d1-d2349de32229',//veerendrat
-     claGroupId_projectSFID:'01af041c-fa69-4052-a23c-fb8c1d3bef24',
+     claGroupId_projectSFID:'01af041c-fa69-4052-a23c-fb8c1d3bef24',//sun project claGroupID
 
     /* project */
      projectName:'easyAutom-child2',
@@ -39,4 +40,12 @@ export const appConfig = {
      gitLabOrganizationName:'sunGitlabGroup',
      gitLabOrganizationFullPath:'https://gitlab.com/cla_dev_automationgroup',
      groupId:'72539854',
+
+     /* Signature */
+     lfid:'veerendrat',
+     emailApprovalList:'veerendrat@proximabiz.com',
+     gitOrgApprovalList:'proximabiz.com',
+     gitUsernameApprovalList:'vrthakur',
+     gitLabOrgApprovalList:'https://gitlab.com/veerendrat1',
+     domainApprovalList:'proximabiz.com',
   };
