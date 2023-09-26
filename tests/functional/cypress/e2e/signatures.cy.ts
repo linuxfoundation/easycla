@@ -680,7 +680,7 @@ it("Updates CCLA signature record for the auto_create_ecla flag to true", functi
     //Invalidates a given ICLA record for a user
     //worked only ine time, So skiping this test case, Refer screenshot: https://prnt.sc/ti6ERw8XZur0
 
-it.only("Invalidates a given ICLA record for a user", function () {
+it("Invalidates a given ICLA record for a user", function () {
   let user_id= "23121f2a-d48b-11ed-b70f-d2f23b35d89e";
   cy.request({
     method: 'PUT',
