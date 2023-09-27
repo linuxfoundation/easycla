@@ -1,0 +1,65 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "Branch": {
+        "type": "string"
+      },
+      "BuildTimeStamp": {
+        "type": "string"
+      },
+      "Githash": {
+        "type": "string"
+      },
+      "Healths": {
+        "type": "array",
+        "items": [
+          {
+            "type": "object",
+            "properties": {
+              "Duration": {
+                "type": "string"
+              },
+              "Error": {
+                "type": "string"
+              },
+              "Healthy": {
+                "type": "boolean"
+              },
+              "Name": {
+                "type": "string"
+              },
+              "TimeStamp": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "Duration",
+        
+              "Healthy",
+              "Name",
+              "TimeStamp"
+            ]
+          }
+        ]
+      },
+      "Status": {
+        "type": "string"
+      },
+      "TimeStamp": {
+        "type": "string"
+      },
+      "Version": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "Branch",
+      "BuildTimeStamp",
+      "Githash",
+      "Healths",
+      "Status",
+      "TimeStamp",
+      "Version"
+    ]
+  }
