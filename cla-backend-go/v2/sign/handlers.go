@@ -4,6 +4,7 @@
 package sign
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	"github.com/go-openapi/runtime/middleware"
+	
 )
 
 // Configure API call
@@ -75,6 +77,28 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 			}
 			return sign.NewRequestCorporateSignatureOK().WithPayload(resp)
 		})
+
+	api.SignRequestIndividualSignatureHandler = sign.RequestIndividualSignatureHandlerFunc(
+		func(params sign.RequestIndividualSignatureParams) middleware.Responder {
+			reqId := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqId)
+			f := logrus.Fields{
+				"functionName":   "v2.sign.handlers.SignRequestIndividualSignatureHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"CompanyID":      params.Input.CompanySfid,
+				"ProjectSFID":    params.Input.ProjectSfid,
+				"authorityName":  params.Input.AuthorityName,
+				"authorityEmail": params.Input.AuthorityEmail,
+			}
+			log.WithFields(f).Debug("processing request")
+			resp, err := service.RequestIndividualSignature(ctx, params.Input)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("problem requesting individual signature")
+				return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, err))
+			}
+			return sign.NewRequestIndividualSignatureOK().WithPayload(resp)
+		})
+
 }
 
 type codedResponse interface {

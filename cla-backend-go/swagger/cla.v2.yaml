@@ -4125,6 +4125,36 @@ paths:
       tags:
         - gitlab-sign
 
+ 
+  /request-individual-signature:
+    post:
+      summary: Request for icla sign 
+      description: Initiate the icla signing with docusign
+      security: []
+      operationId: requestIndividualSignature
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: input
+          in: body
+          schema:
+            $ref: '#/definitions/icla-signature-input'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/individual-signature-output'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - sign
+
 responses:
   unauthorized:
     description: Unauthorized
@@ -5497,6 +5527,40 @@ definitions:
   corporate-contributor:
     $ref: './common/corporate-contributor.yaml'
 
+  icla-signature-input:
+    type: object
+    required:
+      - project_sfid
+      - company_sfid
+    properties:
+      project_sfid:
+        type: string
+        example: 'a0941000005ouJFAAY'
+        description: salesforce id of the project
+      company_sfid:
+        type: string
+        example: '0014100000Te0fMAAR'
+        description: salesforce id of the company
+      send_as_email:
+        type: boolean
+        example: false
+        description: send signing request as email. This should be set to true when requestor is not signatory.
+      authority_name:
+        type: string
+        example: "Derk Miyamoto"
+        description: the name of the CLA signatory
+        minLength: 2
+        maxLength: 255
+      authority_email:
+        $ref: './common/properties/email.yaml'
+        description: the email of the CLA Signatory
+      return_url:
+        type: string
+        example: 'https://corporate.dev.lfcla.com/#/company/eb4d7d71-693f-4047-bf8d-10d0e7764969'
+        description: on signing the document, page will get redirected to this url. This is valid only when send_as_email is false
+        format: uri
+
+
   corporate-signature-input:
     type: object
     required:
@@ -5535,6 +5599,16 @@ definitions:
         format: uri
 
   corporate-signature-output:
+    type: object
+    properties:
+      signature_id:
+        type: string
+        description: id of the signature
+      sign_url:
+        type: string
+        description: signing url
+
+  individual-signature-output:
     type: object
     properties:
       signature_id:

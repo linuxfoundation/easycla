@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
@@ -32,6 +33,13 @@ import (
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/docusign_auth"
+)
+
+var (
+	integrationKey = os.Getenv("DOCUSIGN_INTEGRATOR_KEY")
+	userGUID       = os.Getenv("DOCUSIGN_USER_ID")
+	privateKey     = os.Getenv("DOCUSIGN_PRIVATE_KEY")
 )
 
 // constants
@@ -54,6 +62,7 @@ type ProjectRepo interface {
 // Service interface defines the sign service methods
 type Service interface {
 	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
+	RequestIndividualSignature(ctx context.Context, input *models.IclaSignatureInput) (*models.IndividualSignatureOutput, error)
 }
 
 // service
@@ -300,6 +309,27 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	}
 
 	return out.toModel(), nil
+}
+
+func (s *service) RequestIndividualSignature(ctx context.Context, input *models.IclaSignatureInput) (*models.IndividualSignatureOutput, error) {
+	f := logrus.Fields{
+		"functionName": "sign.RequestIndividualSignature",
+		"authorityEmail":     input.AuthorityEmail,
+		"authorityName":     input.AuthorityName,
+		"companySFID":    input.CompanySfid,
+		"projectSFID": input.ProjectSfid,
+	}
+
+	log.WithFields(f).Debug("Get Access Token for DocuSign")
+	accessToken, err := docusignauth.GetAccessToken(integrationKey, userGUID, privateKey)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to get access token for DocuSign")
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("access token: %s", accessToken)
+	return nil, nil
+
 }
 
 func requestCorporateSignature(authToken string, apiURL string, input *requestCorporateSignatureInput) (*requestCorporateSignatureOutput, error) {
