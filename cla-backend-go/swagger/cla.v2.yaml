@@ -4130,7 +4130,7 @@ paths:
     post:
       summary: Request for icla sign 
       description: Initiate the icla signing with docusign
-      security: []
+      security: [ ]
       operationId: requestIndividualSignature
       parameters:
         - $ref: "#/parameters/x-request-id"
