@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/cla_groups"
 
 	"github.com/sirupsen/logrus"
@@ -55,6 +56,7 @@ type ProjectRepo interface {
 type Service interface {
 	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
 	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
+	RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
 }
 
 // service
@@ -66,10 +68,11 @@ type service struct {
 	companyService       company.IService
 	claGroupService      cla_groups.Service
 	docsignPrivateKey    string
+	userService          users.Service
 }
 
 // NewService returns an instance of v2 project service
-func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string) Service {
+func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service) Service {
 	return &service{
 		ClaV1ApiURL:          apiURL,
 		companyRepo:          compRepo,
@@ -78,6 +81,7 @@ func NewService(apiURL string, compRepo company.IRepository, projectRepo Project
 		companyService:       compService,
 		claGroupService:      claGroupService,
 		docsignPrivateKey:    docsignPrivateKey,
+		userService:          userService,
 	}
 }
 
@@ -315,13 +319,43 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		"userID":         input.UserID,
 	}
 
-	log.WithFields(f).Debug("Get Access Token for DocuSign")
-	accessToken, err := s.getAccessToken(ctx)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to get access token")
+	/**
+	1. Ensure this is a valid user
+	2. Ensure this is a valid project
+	3. Check for active signature object with this project. If the user has signed the most recent version they should not be able to sign again.
+	4. Generate signature callback url
+	5. Get signature return URL
+	6. Get latest document
+	7. if the CCLA/ICLA template is missing we wont have a document and return an error
+	8. Create new signature object
+	9. Set signature ACL
+	10. Populate sign url
+	11. Save signature
+	**/
+
+	// 1. Ensure this is a valid user
+	log.WithFields(f).Debugf("looking up user by ID: %s", *input.UserID)
+	user, err := s.userService.GetUser(*input.UserID)
+	if err != nil || user == nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup user by ID: %s", *input.UserID)
 		return nil, err
 	}
-	log.WithFields(f).Debugf("access token: %s", accessToken)
+
+	// 2. Ensure this is a valid project
+	log.WithFields(f).Debugf("looking up project by ID: %s", *input.ProjectID)
+	claGroup, err := s.claGroupService.GetCLAGroup(ctx, *input.ProjectID)
+	if err != nil || claGroup == nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup project by ID: %s", *input.ProjectID)
+		return nil, err
+	}
+
+	// 3. Check for active signature object with this project. If the user has signed the most recent version they should not be able to sign again.
+	log.WithFields(f).Debugf("checking for active signature object with this project...")
+
+	return nil, nil
+}
+
+func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error) {
 	return nil, nil
 }
 

@@ -89,10 +89,20 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 				"returnURLType":  params.Input.ReturnURLType,
 				"userID":         params.Input.UserID,
 			}
-			log.WithFields(f).Debug("processing request")
-			resp, err := service.RequestIndividualSignature(ctx, params.Input)
+			var resp *models.IndividualSignatureOutput
+			var err error
+			if strings.ToLower(params.Input.ReturnURLType) == "github" || strings.ToLower(params.Input.ReturnURLType) == "gitlab" {
+				log.WithFields(f).Debug("requesting individual signature for github/gitlab")
+				resp, err = service.RequestIndividualSignature(ctx, params.Input)
+			} else if strings.ToLower(params.Input.ReturnURLType) == "gerrit" {
+				log.WithFields(f).Debug("requesting individual signature for gerrit")
+				resp, err = service.RequestIndividualSignatureGerrit(ctx, params.Input)
+			} else {
+				msg := fmt.Sprintf("invalid return URL type: %s", params.Input.ReturnURLType)
+				log.WithFields(f).Warn(msg)
+				return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
+			}
 			if err != nil {
-				log.WithFields(f).WithError(err).Warn("problem requesting individual signature")
 				return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, err))
 			}
 			return sign.NewRequestIndividualSignatureOK().WithPayload(resp)

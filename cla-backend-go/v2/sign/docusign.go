@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -41,7 +42,7 @@ func (s *service) getAccessToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	url := utils.GetProperty("DOCUSIGN_AUTH_SERVER") + "/oauth/token"
+	url := fmt.Sprintf("https://%s/oauth/token", utils.GetProperty("DOCUSIGN_AUTH_SERVER"))
 	req, err := http.NewRequest("POST", url, strings.NewReader(string(tokenRequestBodyJSON)))
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem creating the HTTP request")
