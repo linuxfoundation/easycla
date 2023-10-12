@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
@@ -33,12 +32,6 @@ import (
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
-)
-
-var (
-	integrationKey = os.Getenv("DOCUSIGN_INTEGRATOR_KEY")
-	userGUID       = os.Getenv("DOCUSIGN_USER_ID")
-	privateKey     = os.Getenv("DOCUSIGN_PRIVATE_KEY")
 )
 
 // constants
