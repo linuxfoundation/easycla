@@ -338,7 +338,7 @@ func buildSFProjectSummary(sfProject *v2ProjectServiceModels.ProjectOutputDetail
 	return &models.SfProjectSummary{
 		EntityName:   utils.StringValue(sfProject.EntityName),
 		EntityType:   sfProject.EntityType,
-		Funding:      sfProject.Funding,
+		Funding:      *sfProject.Funding,
 		ID:           sfProject.ID,
 		LfSupported:  sfProject.LFSponsored,
 		Name:         sfProject.Name,

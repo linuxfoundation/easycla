@@ -21,7 +21,6 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	"github.com/go-openapi/runtime/middleware"
-	
 )
 
 // Configure API call
@@ -85,10 +84,10 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 			f := logrus.Fields{
 				"functionName":   "v2.sign.handlers.SignRequestIndividualSignatureHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-				"CompanyID":      params.Input.CompanySfid,
-				"ProjectSFID":    params.Input.ProjectSfid,
-				"authorityName":  params.Input.AuthorityName,
-				"authorityEmail": params.Input.AuthorityEmail,
+				"projectID":      params.Input.ProjectID,
+				"returnURL":      params.Input.ReturnURL,
+				"returnURLType":  params.Input.ReturnURLType,
+				"userID":         params.Input.UserID,
 			}
 			log.WithFields(f).Debug("processing request")
 			resp, err := service.RequestIndividualSignature(ctx, params.Input)
