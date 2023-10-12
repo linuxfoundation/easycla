@@ -106,6 +106,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-api-v4-base-%s", stage),
 		fmt.Sprintf("cla-landing-page-%s", stage),
 		fmt.Sprintf("cla-logo-url-%s", stage),
+		fmt.Sprintf("cla-docusign-private-key-%s", stage),
 	}
 
 	// For each key to lookup
@@ -263,6 +264,8 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 			} else {
 				config.SignatureQueryDefault = resp.value
 			}
+		case fmt.Sprintf("cla-docusign-private-key-%s", stage):
+			config.DocuSignPrivateKey = resp.value
 		}
 	}
 

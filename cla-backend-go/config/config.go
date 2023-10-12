@@ -96,6 +96,9 @@ type Config struct {
 
 	// MetricsReport has the transport config to send the metrics data
 	MetricsReport MetricsReport `json:"metrics_report"`
+
+	// DocuSignPrivateKey is the private key for the DocuSign API
+	DocuSignPrivateKey string `json:"docuSignPrivateKey"`
 }
 
 // Auth0 model

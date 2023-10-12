@@ -23,7 +23,7 @@ func (s *service) getAccessToken(ctx context.Context) (string, error) {
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
-	jwtAssertion, err := jwtToken()
+	jwtAssertion, err := jwtToken(s.docsignPrivateKey)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem generating the JWT token")
 		return "", err
