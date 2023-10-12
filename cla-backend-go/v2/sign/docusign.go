@@ -59,7 +59,11 @@ func (s *service) getAccessToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem closing the response body")
+		}
+	}()
 
 	// Parse the response
 	responsePayload, err := io.ReadAll(resp.Body)

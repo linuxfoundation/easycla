@@ -80,7 +80,7 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 	api.SignRequestIndividualSignatureHandler = sign.RequestIndividualSignatureHandlerFunc(
 		func(params sign.RequestIndividualSignatureParams) middleware.Responder {
 			reqId := utils.GetRequestID(params.XREQUESTID)
-			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqId)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTIDKey, reqId)
 			f := logrus.Fields{
 				"functionName":   "v2.sign.handlers.SignRequestIndividualSignatureHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),

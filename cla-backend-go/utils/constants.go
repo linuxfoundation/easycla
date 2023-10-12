@@ -219,3 +219,8 @@ const GitLabRepositoryType = "GitLab"
 
 // GitHubRepositoryType representing the GitLab repository type
 const GitHubRepositoryType = "GitHub"
+
+// ContextKey is the key for the context
+type contextKey string
+
+const XREQUESTIDKey contextKey = "x-request-id"
