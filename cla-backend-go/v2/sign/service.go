@@ -65,10 +65,11 @@ type service struct {
 	projectClaGroupsRepo projects_cla_groups.Repository
 	companyService       company.IService
 	claGroupService      cla_groups.Service
+	docsignPrivateKey    string
 }
 
 // NewService returns an instance of v2 project service
-func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service) Service {
+func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string) Service {
 	return &service{
 		ClaV1ApiURL:          apiURL,
 		companyRepo:          compRepo,
@@ -76,6 +77,7 @@ func NewService(apiURL string, compRepo company.IRepository, projectRepo Project
 		projectClaGroupsRepo: pcgRepo,
 		companyService:       compService,
 		claGroupService:      claGroupService,
+		docsignPrivateKey:    docsignPrivateKey,
 	}
 }
 
