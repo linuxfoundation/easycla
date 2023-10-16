@@ -156,7 +156,7 @@ class DocuSign(signing_service_interface.SigningService):
             return {'errors': {'project_id': str(err)}}
 
         # Check for active signature object with this project. If the user has
-        # signed the most recent major version, they do not need to sign again.
+        # signed the most recent major version, they do not need to fsign again.
         cla.log.debug('Individual Signature - loading latest user signature for user: {}, project: {}'.
                       format(user, project))
         latest_signature = user.get_latest_signature(str(project_id))

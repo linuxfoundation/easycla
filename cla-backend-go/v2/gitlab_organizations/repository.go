@@ -49,6 +49,7 @@ type RepositoryInterface interface {
 	GetGitLabOrganizationsEnabled(ctx context.Context) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganizationsEnabledWithAutoEnabled(ctx context.Context) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganizationsByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganizations, error)
+	GetGitLabOrganizationByProjectID(ctx context.Context, projectSFID string) (*v2Models.GitlabOrganization, error)
 	GetGitLabOrganizationsByFoundationSFID(ctx context.Context, foundationSFID string) (*v2Models.GitlabOrganizations, error)
 	GetGitLabOrganization(ctx context.Context, gitlabOrganizationID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*common.GitLabOrganization, error)
@@ -201,6 +202,17 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, input *common
 	}
 
 	return common.ToModel(gitlabOrg), nil
+}
+
+func (repo *Repository) GetGitLabOrganizationByProjectID(ctx context.Context, projectID string) (*v2Models.GitlabOrganization, error) {
+	// f := logrus.Fields{
+	// 	"functionName":   "v2.gitlab_organizations.repository.GetGitLabOrganizationsByProjectID",
+	// 	utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	// 	"projectID":      projectID,
+	// }
+
+	// condition := expression.Key(GitLabOrganizationsProjectSFIDColumn).Equal(expression.Value(projectID))
+	return nil, nil
 }
 
 // GetGitLabOrganizations returns the complete list of GitLab groups/organizations

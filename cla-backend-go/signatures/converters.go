@@ -98,6 +98,10 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 			UserDocusignName:            dbSignature.UserDocusignName,
 			UserDocusignDateSigned:      dbSignature.UserDocusignDateSigned,
 			AutoCreateECLA:              dbSignature.AutoCreateECLA,
+			SignatureSignURL:            dbSignature.SignatureSignURL,
+			SignatureCallbackURL:        dbSignature.SignatureCallbackURL,
+			SignatureReturnURL:          dbSignature.SignatureReturnURL,
+			SignatureReturnURLType:      dbSignature.SignatureReturnURLType,
 		}
 
 		sigs = append(sigs, sig)

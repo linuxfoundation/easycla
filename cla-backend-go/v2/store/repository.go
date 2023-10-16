@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -27,6 +28,7 @@ type DBStore struct {
 // Repository interface
 type Repository interface {
 	SetActiveSignatureMetaData(ctx context.Context, key string, expire int64, value string) error
+	GetActiveSignatureMetaData(ctx context.Context, UserId string) (map[string]interface{}, error)
 }
 
 type repo struct {
@@ -42,6 +44,57 @@ func NewRepository(awsSession *session.Session, stage string) Repository {
 		dynamoDBClient: dynamodb.New(awsSession),
 		storeTableName: fmt.Sprintf("cla-%s-store", stage),
 	}
+}
+
+// GetActiveSignatureMetaData returns active signature meta data
+func (r repo) GetActiveSignatureMetaData(ctx context.Context, userId string) (map[string]interface{}, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.store.repository.GetActiveSignatureMetaData",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"userId":         userId,
+	}
+	var metadata map[string]interface{}
+
+	log.WithFields(f).Debugf("querying for user: %s", userId)
+
+	key := fmt.Sprintf("active_signature:%s", userId)
+
+	result, err := r.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
+		TableName: &r.storeTableName,
+		Key: map[string]*dynamodb.AttributeValue{
+			"key": {
+				S: &key,
+			},
+		},
+	})
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem querying store table")
+		return metadata, err
+	}
+
+	if result.Item == nil {
+		log.WithFields(f).Warn("no record found")
+		return metadata, nil
+	}
+
+	var store DBStore
+
+	err = dynamodbattribute.UnmarshalMap(result.Item, &store)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem unmarshalling store record")
+		return metadata, err
+	}
+
+	log.WithFields(f).Debugf("Signature meta record data found: %+v ", store)
+
+	err = json.Unmarshal([]byte(store.Value), &metadata)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem unmarshalling store record")
+		return metadata, err
+	}
+
+	return metadata, nil
 }
 
 // SetActiveSignatureMetaData sets active signature meta data

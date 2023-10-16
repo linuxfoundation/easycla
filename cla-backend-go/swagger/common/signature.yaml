@@ -116,6 +116,24 @@ properties:
     type: string
     description: the signature minor version number
     example: '1'
+  signatureDocumentMajorVersion:
+    type: string
+    description: the signature documentt major version
+  signatureDocumentMinorVersion:
+    type: string
+    description: the signature document minor version
+  signatureSignURL:
+    type: string
+    description: the signature Document Sign URL
+  signatureCallbackURL:
+    type: string
+    description: the signature callback URL
+  signatureReturnURL:
+    type: string
+    description: the signature return URL
+  signatureReturnURLType:
+    type: string
+    description: the signature return URL type
   emailApprovalList:
     type: array
     description: a list of zero or more email addresses in the approval list

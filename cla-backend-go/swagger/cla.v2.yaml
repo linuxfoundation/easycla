@@ -5605,6 +5605,12 @@ definitions:
       sign_url:
         type: string
         description: signing url
+      user_id:
+        type: string
+        description: easyCLA user identification
+      project_id:
+        type: string
+        description: clagroup ID
 
   signed_document:
     type: object

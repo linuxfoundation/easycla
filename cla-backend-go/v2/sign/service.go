@@ -11,11 +11,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
+	"github.com/communitybridge/easycla/cla-backend-go/project/common"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/cla_groups"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
+	"github.com/go-openapi/strfmt"
+	"github.com/gofrs/uuid"
 
 	"github.com/sirupsen/logrus"
 
@@ -55,7 +64,7 @@ type ProjectRepo interface {
 // Service interface defines the sign service methods
 type Service interface {
 	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
-	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
+	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error)
 	RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
 }
 
@@ -69,10 +78,16 @@ type service struct {
 	claGroupService      cla_groups.Service
 	docsignPrivateKey    string
 	userService          users.Service
+	signatureService     signatures.SignatureService
+	storeRepository      store.Repository
+	repositoryService    repositories.Service
+	githubOrgService     github_organizations.Service
+	gitlabOrgService     gitlab_organizations.Service
 }
 
 // NewService returns an instance of v2 project service
-func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service) Service {
+func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
+	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.Service) Service {
 	return &service{
 		ClaV1ApiURL:          apiURL,
 		companyRepo:          compRepo,
@@ -82,6 +97,10 @@ func NewService(apiURL string, compRepo company.IRepository, projectRepo Project
 		claGroupService:      claGroupService,
 		docsignPrivateKey:    docsignPrivateKey,
 		userService:          userService,
+		signatureService:     signatureService,
+		storeRepository:      storeRepository,
+		githubOrgService:     githubOrgService,
+		gitlabOrgService:     gitlabOrgService,
 	}
 }
 
@@ -309,7 +328,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	return out.toModel(), nil
 }
 
-func (s *service) RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error) {
+func (s *service) RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error) {
 	f := logrus.Fields{
 		"functionName":   "sign.RequestIndividualSignature",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -351,8 +370,308 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 	// 3. Check for active signature object with this project. If the user has signed the most recent version they should not be able to sign again.
 	log.WithFields(f).Debugf("checking for active signature object with this project...")
+	approved := true
+	signed := true
 
-	return nil, nil
+	userSignatures, err := s.signatureService.GetIndividualSignatures(ctx, *input.ProjectID, *input.UserID, &approved, &signed)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup user signatures by user ID: %s", *input.UserID)
+		return nil, err
+	}
+	latestSignature := getLatestSignature(userSignatures)
+
+	// loading latest document
+	log.WithFields(f).Debugf("loading latest individual document for project: %s", *input.ProjectID)
+	latestDocument, err := common.GetCurrentDocument(ctx, claGroup.ProjectIndividualDocuments)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup latest individual document for project: %s", *input.ProjectID)
+		return nil, err
+	}
+
+	if &latestDocument == nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup latest individual document for project: %s", *input.ProjectID)
+		return nil, errors.New("unable to lookup latest individual document for project")
+	}
+
+	// creating individual default values
+	log.WithFields(f).Debugf("creating individual default values...")
+	defaultValues, err := s.createDefaultIndiviualValues(user, preferredEmail)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to create default values for user: %s", *input.UserID)
+		return nil, err
+	}
+
+	// 4. Generate signature callback url
+	log.WithFields(f).Debugf("generating signature callback url...")
+	activeSignatureMetadata, err := s.storeRepository.GetActiveSignatureMetaData(ctx, *input.UserID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", *input.UserID)
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("active signature metadata: %+v", activeSignatureMetadata)
+
+	log.WithFields(f).Debugf("generating signature callback url...")
+	var callBackURL string
+
+	if strings.ToLower(input.ReturnURLType) == "github" {
+		callBackURL, err = s.getIndividualSignatureCallbackURL(ctx, *input.UserID, activeSignatureMetadata)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get signature callback url for user: %s", *input.UserID)
+			return nil, err
+		}
+	} else if strings.ToLower(input.ReturnURLType) == "gitlab" {
+		callBackURL, err = s.getIndividualSignatureCallbackURLGitlab(ctx, *input.UserID, activeSignatureMetadata)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get signature callback url for user: %s", *input.UserID)
+			return nil, err
+		}
+	}
+
+	log.WithFields(f).Debugf("signature callback url: %s", callBackURL)
+
+	if latestSignature != nil {
+		if latestDocument.DocumentMajorVersion == latestSignature.SignatureDocumentMajorVersion {
+
+			log.WithFields(f).Warnf("user: already has a signature with this project: %s", *input.ProjectID)
+
+			// Regenerate and set the signing URL - This will update the signature record
+			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
+			err := s.populateSignURL(latestSignature, callBackURL, defaultValues, preferredEmail)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
+				return nil, err
+			}
+
+			return &models.IndividualSignatureOutput{
+				SignURL:     latestSignature.SignatureReferenceID,
+				SignatureID: latestSignature.SignatureID,
+				UserID:      latestSignature.SignatureReferenceID,
+				ProjectID:   *input.ProjectID,
+			}, nil
+		}
+	}
+
+	// 5. Get signature return URL
+	log.WithFields(f).Debugf("getting signature return url...")
+	if input.ReturnURL.String() == "" {
+		return &models.IndividualSignatureOutput{
+			ProjectID:   *input.ProjectID,
+			SignURL:     "",
+			SignatureID: "",
+			UserID:      *input.UserID,
+		}, errors.New("signature return url is empty")
+	}
+
+	// 6. Get latest document
+	log.WithFields(f).Debugf("getting latest document...")
+	document, err := common.GetCurrentDocument(ctx, claGroup.ProjectIndividualDocuments)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get latest document for project: %s", *input.ProjectID)
+		return nil, err
+	}
+
+	// 7. if the CCLA/ICLA template is missing we wont have a document and return an error
+	if &document == nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get latest document for project: %s", *input.ProjectID)
+		return nil, errors.New("unable to get latest document for project")
+	}
+
+	// 8. Create new signature object
+	log.WithFields(f).Debugf("creating new signature object...")
+	signatureID := uuid.Must(uuid.NewV4()).String()
+	_, currentTime := utils.CurrentTime()
+
+	signatureModel := &v1Models.Signature{
+		SignatureID:                   signatureID,
+		SignatureDocumentMajorVersion: document.DocumentMajorVersion,
+		SignatureDocumentMinorVersion: document.DocumentMinorVersion,
+		SignatureReferenceID:          *input.UserID,
+		SignatureReferenceType:        "user",
+		ProjectID:                     *input.ProjectID,
+		SignatureType:                 utils.SignatureTypeCLA,
+		SignatureCreated:              currentTime,
+		SignatureModified:             currentTime,
+	}
+
+	// 9. Set signature ACL
+	log.WithFields(f).Debugf("setting signature ACL...")
+	signatureModel.SignatureACL = []v1Models.User{
+		*user,
+	}
+
+	// 10. Populate sign url
+	log.WithFields(f).Debugf("populating sign url...")
+	err = s.populateSignURL(signatureModel, callBackURL, defaultValues, preferredEmail)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
+		return nil, err
+	}
+
+	// 11. Save signature
+	signature, err := s.signatureService.CreateOrUpdateSignature(ctx, signatureModel)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to create signature for user: %s", *input.UserID)
+		return nil, err
+	}
+
+	return &models.IndividualSignatureOutput{
+		UserID:      signature.SignatureReferenceID,
+		ProjectID:   signature.ProjectID,
+		SignatureID: signature.SignatureID,
+	}, nil
+}
+
+func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, userID string, metadata map[string]interface{}) (string, error) {
+	f := logrus.Fields{
+		"functionName": "sign.getIndividualSignatureCallbackURLGitlab",
+		"userID":       userID,
+	}
+
+	log.WithFields(f).Debugf("generating signature callback url...")
+	var err error
+
+	if metadata == nil {
+		metadata, err = s.storeRepository.GetActiveSignatureMetaData(ctx, userID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
+			return "", err
+		}
+	}
+
+	githubRepositoryID := metadata["repository_id"].(string)
+	mergeRequestID := metadata["pull_request_id"].(string)
+
+	// # Get organization id
+	// organization_id = get_organization_id_from_gitlab_repository(gitlab_repository_id)
+
+	// if organization_id is None:
+	//     cla.log.error('Could not find GitLab organization ID that is configured for this repository ID: %s',
+	//                   gitlab_repository_id)
+	//     return None
+
+	// return os.path.join(API_BASE_URL, 'v2/signed/gitlab/individual', str(user_id), str(organization_id),
+	//                     str(metadata['repository_id']),
+	//                     str(metadata['merge_request_id']))
+
+	gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganization(ctx, githubRepositoryID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", githubRepositoryID)
+		return "", err
+	}
+
+	if gitlabOrg.OrganizationID == "" {
+		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", githubRepositoryID)
+		return "", err
+	}
+
+	return fmt.Sprintf("%s/v2/signed/gitlab/individual/%s/%s/%s/%s", s.ClaV1ApiURL, userID, gitlabOrg.OrganizationID, githubRepositoryID, mergeRequestID), nil
+
+}
+
+func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID string, metadata map[string]interface{}) (string, error) {
+	f := logrus.Fields{
+		"functionName": "sign.getIndividualSignatureCallbackURL",
+		"userID":       userID,
+	}
+
+	log.WithFields(f).Debugf("generating signature callback url...")
+	var err error
+	var installationId int64 = 0 // default to 0
+
+	if metadata == nil {
+		metadata, err = s.storeRepository.GetActiveSignatureMetaData(ctx, userID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
+			return "", err
+		}
+	}
+
+	githubRepositoryID := metadata["repository_id"].(string)
+	pullRequestID, err := strconv.Atoi(metadata["pull_request_id"].(string))
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
+		return "", err
+	}
+
+	// Get installation ID through a helper function
+	log.WithFields(f).Debugf("getting repository...")
+	githubRepository, err := s.repositoryService.GetRepositoryByExternalID(ctx, githubRepositoryID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", githubRepositoryID)
+		return "", err
+	}
+	// Get github organization
+	log.WithFields(f).Debugf("getting github organization...")
+	githubOrg, err := s.githubOrgService.GetGitHubOrganizationByName(ctx, githubRepository.RepositoryOrganizationName)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get github organization for repository ID: %s", githubRepositoryID)
+		return "", err
+	}
+
+	installationId = githubOrg.OrganizationInstallationID
+	if installationId == 0 {
+		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", githubRepositoryID)
+		return "", err
+	}
+
+	return fmt.Sprintf("%s/v2/signed/individual/%d/%s/%d", s.ClaV1ApiURL, installationId, githubRepositoryID, pullRequestID), nil
+
+}
+
+func (s *service) populateSignURL(latestSignature *v1Models.Signature, callbackURL string, defaultValues map[string]interface{}, preferredEmail string) error {
+	f := logrus.Fields{
+		"functionName": "sign.populateSignURL",
+	}
+
+	log.WithFields(f).Debugf("populating sign url...")
+	return nil
+}
+
+func (s *service) createDefaultIndiviualValues(user *v1Models.User, preferredEmail string) (map[string]interface{}, error) {
+	f := logrus.Fields{
+		"functionName": "sign.createDefaultIndiviualValues",
+	}
+	log.WithFields(f).Debugf("creating individual default values...")
+
+	defaultValues := make(map[string]interface{})
+
+	if user != nil {
+		if user.Username != "" {
+			defaultValues["user_name"] = user.Username
+			defaultValues["public_name"] = user.Username
+		}
+	}
+
+	if preferredEmail != "" {
+		if utils.StringInSlice(preferredEmail, user.Emails) || user.LfEmail == strfmt.Email(preferredEmail) {
+			defaultValues["user_email"] = preferredEmail
+		}
+	}
+
+	return defaultValues, nil
+}
+
+func getLatestSignature(signatures []*v1Models.Signature) *v1Models.Signature {
+	var latestSignature *v1Models.Signature
+	for _, signature := range signatures {
+		if latestSignature == nil {
+			latestSignature = signature
+		} else {
+			if signature.SignatureMajorVersion > latestSignature.SignatureMajorVersion {
+				latestSignature = signature
+			} else if signature.SignatureMajorVersion == latestSignature.SignatureMajorVersion {
+				if signature.SignatureMinorVersion > latestSignature.SignatureMinorVersion {
+					latestSignature = signature
+				}
+			}
+		}
+	}
+	return latestSignature
 }
 
 func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error) {

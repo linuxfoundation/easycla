@@ -12,6 +12,10 @@ type ItemSignature struct {
 	SignatureSigned               bool     `json:"signature_signed"`
 	SignatureDocumentMajorVersion string   `json:"signature_document_major_version"`
 	SignatureDocumentMinorVersion string   `json:"signature_document_minor_version"`
+	SignatureSignURL              string   `json:"signature_sign_url"`
+	SignatureReturnURL            string   `json:"signature_return_url"`
+	SignatureReturnURLType        string   `json:"signature_return_url_type"`
+	SignatureCallbackURL          string   `json:"signature_callback_url"`
 	SignatureReferenceID          string   `json:"signature_reference_id"`
 	SignatureReferenceName        string   `json:"signature_reference_name"`
 	SignatureReferenceNameLower   string   `json:"signature_reference_name_lower"`
