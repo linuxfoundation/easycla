@@ -82,12 +82,12 @@ type service struct {
 	storeRepository      store.Repository
 	repositoryService    repositories.Service
 	githubOrgService     github_organizations.Service
-	gitlabOrgService     gitlab_organizations.Service
+	gitlabOrgService     gitlab_organizations.ServiceInterface
 }
 
 // NewService returns an instance of v2 project service
 func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
-	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.Service) Service {
+	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface) Service {
 	return &service{
 		ClaV1ApiURL:          apiURL,
 		companyRepo:          compRepo,
@@ -494,6 +494,9 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		SignatureType:                 utils.SignatureTypeCLA,
 		SignatureCreated:              currentTime,
 		SignatureModified:             currentTime,
+		SignatureReturnURL:            input.ReturnURL.String(),
+		SignatureCallbackURL:          callBackURL,
+		SignatureReturnURLType:        input.ReturnURLType,
 	}
 
 	// 9. Set signature ACL

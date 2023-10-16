@@ -48,7 +48,6 @@ type ServiceInterface interface {
 	AddGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization) (*v2Models.GitlabProjectOrganizations, error)
 	GetGitLabOrganization(ctx context.Context, gitLabOrganizationID string) (*v2Models.GitlabOrganization, error)
 	GetGitLabOrganizationByID(ctx context.Context, gitLabOrganizationID string) (*common.GitLabOrganization, error)
-	GetGitLabOrganizationByProjectID(ctx context.Context, gitLabRepositoryID string) (*common.GitLabOrganization, error)
 	GetGitLabOrganizationByName(ctx context.Context, gitLabOrganizationName string) (*v2Models.GitlabOrganization, error)
 	GetGitLabOrganizationByFullPath(ctx context.Context, gitLabOrganizationFullPath string) (*v2Models.GitlabOrganization, error)
 	GetGitLabOrganizationByURL(ctx context.Context, url string) (*v2Models.GitlabOrganization, error)
@@ -1058,20 +1057,4 @@ func (s *Service) updateRepositoryStatus(glClient *goGitLab.Client, gitLabProjec
 	}
 
 	return gitLabProjectRepos
-}
-
-func (s *Service) GetGitLabOrganizationByProjectID(ctx context.Context, gitLabRepositoryID string) (*common.GitLabOrganization, error) {
-	// f := logrus.Fields{
-	// 	"functionName":       "v2.gitlab_organizations.service.GetGitLabOrganizationByProjectID",
-	// 	utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
-	// 	"gitLabRepositoryID": gitLabRepositoryID,
-	// }
-
-	// log.WithFields(f).Debugf("fetching gitlab organization for gitlab repository id : %s", gitLabRepositoryID)
-	// dbModel, err := s.repo.GetGitLabOrganizationByProjectID(ctx, gitLabRepositoryID)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	return nil, nil
 }
