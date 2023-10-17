@@ -5680,6 +5680,9 @@ definitions:
 
   cla-group-summary:
     $ref: './common/cla-group-summary.yaml'
+  
+  document-tab:
+    $ref: './common/document-tab.yaml'
 
   cla-group-project:
     type: object

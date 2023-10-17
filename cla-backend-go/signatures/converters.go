@@ -102,6 +102,7 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 			SignatureCallbackURL:        dbSignature.SignatureCallbackURL,
 			SignatureReturnURL:          dbSignature.SignatureReturnURL,
 			SignatureReturnURLType:      dbSignature.SignatureReturnURLType,
+			SignatureEnvelopeID:         dbSignature.SignatureEnvelopeID,
 		}
 
 		sigs = append(sigs, sig)

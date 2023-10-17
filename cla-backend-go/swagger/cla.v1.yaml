@@ -2854,6 +2854,9 @@ definitions:
 
   cla-group-document:
     $ref: './common/cla-group-document.yaml'
+    
+  document-tab:
+    $ref: './common/document-tab.yaml'
 
   create-cla-group-template:
     $ref: './common/create-cla-group-template.yaml'

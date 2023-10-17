@@ -112,8 +112,8 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 			if strings.ToLower(params.Input.ReturnURLType) == "github" || strings.ToLower(params.Input.ReturnURLType) == "gitlab" {
 				if strings.ToLower(params.Input.ReturnURLType) == "github" {
 					log.WithFields(f).Debug("fetching github emails")
-					emails, err := fetchGithubEmails(session, clientID)
-					if err != nil {
+					emails, fetchErr := fetchGithubEmails(session, clientID)
+					if fetchErr != nil {
 						return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, err))
 					}
 
@@ -124,7 +124,9 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 					}
 					for _, email := range emails {
 						if email["verified"].(bool) && email["primary"].(bool) {
-							preferredEmail = email["email"].(string)
+							if emailVal, ok := email["email"].(string); ok {
+								preferredEmail = emailVal
+							}
 							break
 						}
 					}
@@ -180,7 +182,14 @@ func getRequestSession(req *http.Request) map[string]interface{} {
 
 func fetchGithubEmails(session map[string]interface{}, clientID string) ([]map[string]interface{}, error) {
 	var emails []map[string]interface{}
-	token := session["github_oauth2_token"].(string)
+	var token string
+
+	if tokenVal, ok := session["token"].(string); ok {
+		token = tokenVal
+	} else {
+		return emails, nil
+	}
+
 	if token == "" {
 		return emails, nil
 	}

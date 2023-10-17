@@ -30,6 +30,9 @@ properties:
     description: the document content type
     example: 'storage+pdf'
     type: string
+  documentContent:
+    description: the document content
+    type: string
   documentS3URL:
     description: the document S3 URL
     example: "https://cla-signature-files-dev.s3.amazonaws.com/contract-group/f7222222-7777-4444-aaaa-1c1c1c1c1c1c/template/ccla.pdf"
@@ -46,3 +49,7 @@ properties:
     description: the document creation date
     example: '2019-08-01T06:55:09Z'
     type: string
+  documentTabs:
+    type: array
+    items:
+      $ref: '#/definitions/document-tab'

@@ -134,6 +134,9 @@ properties:
   signatureReturnURLType:
     type: string
     description: the signature return URL type
+  signatureEnvelopeId:
+    type: string
+    description: the signature envelope ID
   emailApprovalList:
     type: array
     description: a list of zero or more email addresses in the approval list

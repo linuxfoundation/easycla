@@ -212,8 +212,8 @@ func (s ProjectService) GetCLAGroupCurrentICLATemplateURLByID(ctx context.Contex
 		}
 	}
 
-	if currentDoc == (models.ClaGroupDocument{}) {
-		log.WithFields(f).WithError(err).Warn("problem determining current ICLA for this CLA Group")
+	if common.AreClaGroupDocumentsEqual(currentDoc, models.ClaGroupDocument{}) {
+		log.WithFields(f).WithError(err).Warn("problem determining current ICLA for this CLA Group - document is empty")
 		return "", &utils.CLAGroupICLANotConfigured{
 			CLAGroupID:   claGroupID,
 			CLAGroupName: claGroupModel.ProjectName,
@@ -288,8 +288,8 @@ func (s ProjectService) GetCLAGroupCurrentCCLATemplateURLByID(ctx context.Contex
 		}
 	}
 
-	if currentDoc == (models.ClaGroupDocument{}) {
-		log.WithFields(f).WithError(err).Warn("problem determining current CCLA for this CLA Group")
+	if common.AreClaGroupDocumentsEqual(currentDoc, models.ClaGroupDocument{}) {
+		log.WithFields(f).WithError(err).Warn("problem determining current CCLA for this CLA Group - document is empty")
 		return "", &utils.CLAGroupCCLANotConfigured{
 			CLAGroupID:   claGroupID,
 			CLAGroupName: claGroupModel.ProjectName,

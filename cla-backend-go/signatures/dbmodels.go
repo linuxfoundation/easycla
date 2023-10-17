@@ -22,6 +22,7 @@ type ItemSignature struct {
 	SignatureProjectID            string   `json:"signature_project_id"`
 	SignatureReferenceType        string   `json:"signature_reference_type"`
 	SignatureType                 string   `json:"signature_type"`
+	SignatureEnvelopeID           string   `json:"signature_envelope_id"`
 	SignatureUserCompanyID        string   `json:"signature_user_ccla_company_id"`
 	EmailApprovalList             []string `json:"email_whitelist"`
 	EmailDomainApprovalList       []string `json:"domain_whitelist"`

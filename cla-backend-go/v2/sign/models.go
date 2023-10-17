@@ -40,17 +40,18 @@ type DocuSignUserInfoResponse struct {
 
 // DocuSignEnvelopeRequest is the request body for an envelope from DocuSign, see: https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/create/
 type DocuSignEnvelopeRequest struct {
-	EnvelopeId           string                 `json:"envelopeId,omitempty"`           // The envelope ID of the envelope
-	EnvelopeIdStamping   string                 `json:"envelopeIdStamping,omitempty"`   // When true, Envelope ID Stamping is enabled. After a document or attachment is stamped with an Envelope ID, the ID is seen by all recipients and becomes a permanent part of the document and cannot be removed.
-	TemplateId           string                 `json:"templateId,omitempty"`           // The ID of the template. If a value is not provided, DocuSign generates a value.
-	Documents            []DocuSignDocument     `json:"document,omitempty"`             // A data model containing details about the documents associated with the envelope
-	DocumentBase64       string                 `json:"documentBase64,omitempty"`       // The document's bytes. This field can be used to include a base64 version of the document bytes within an envelope definition instead of sending the document using a multi-part HTTP request. The maximum document size is smaller if this field is used due to the overhead of the base64 encoding.
-	DocumentsCombinedUri string                 `json:"documentsCombinedUri,omitempty"` // The URI for retrieving all of the documents associated with the envelope as a single PDF file.
-	DocumentsUri         string                 `json:"documentsUri,omitempty"`         // The URI for retrieving all of the documents associated with the envelope as separate files.
-	EmailSubject         string                 `json:"emailSubject,omitempty"`         // EmailSubject - The subject line of the email message that is sent to all recipients.
-	EmailBlurb           string                 `json:"emailBlurb,omitempty"`           // EmailBlurb - This is the same as the email body. If specified it is included in email body for all envelope recipients.
-	Recipients           DocuSignRecipientType  `json:"recipients,omitempty"`
-	TemplateRoles        []DocuSignTemplateRole `json:"templateRoles,omitempty"`
+	EnvelopeId           string                    `json:"envelopeId,omitempty"`           // The envelope ID of the envelope
+	EnvelopeIdStamping   string                    `json:"envelopeIdStamping,omitempty"`   // When true, Envelope ID Stamping is enabled. After a document or attachment is stamped with an Envelope ID, the ID is seen by all recipients and becomes a permanent part of the document and cannot be removed.
+	TemplateId           string                    `json:"templateId,omitempty"`           // The ID of the template. If a value is not provided, DocuSign generates a value.
+	Documents            []DocuSignDocument        `json:"document,omitempty"`             // A data model containing details about the documents associated with the envelope
+	DocumentBase64       string                    `json:"documentBase64,omitempty"`       // The document's bytes. This field can be used to include a base64 version of the document bytes within an envelope definition instead of sending the document using a multi-part HTTP request. The maximum document size is smaller if this field is used due to the overhead of the base64 encoding.
+	DocumentsCombinedUri string                    `json:"documentsCombinedUri,omitempty"` // The URI for retrieving all of the documents associated with the envelope as a single PDF file.
+	DocumentsUri         string                    `json:"documentsUri,omitempty"`         // The URI for retrieving all of the documents associated with the envelope as separate files.
+	EmailSubject         string                    `json:"emailSubject,omitempty"`         // EmailSubject - The subject line of the email message that is sent to all recipients.
+	EmailBlurb           string                    `json:"emailBlurb,omitempty"`           // EmailBlurb - This is the same as the email body. If specified it is included in email body for all envelope recipients.
+	Recipients           DocuSignRecipientType     `json:"recipients,omitempty"`
+	TemplateRoles        []DocuSignTemplateRole    `json:"templateRoles,omitempty"`
+	EventNotification    DocuSignEventNotification `json:"eventNotification,omitempty"`
 
 	/* Status
 	Indicates the envelope status. Valid values when creating an envelope are:
@@ -129,6 +130,17 @@ type DocuSignRecipient struct {
 	Tabs DocuSignTab `json:"tabs"` // The tabs associated with the recipient. The tabs property enables you to programmatically position tabs on the document. For example, you can specify that the SIGN_HERE tab is placed at a given (x,y) location on the document. You can also specify the font, font color, font size, and other properties of the text in the tab. You can also specify the location and size of the tab. For example, you can specify that the tab is 50 pixels wide and 20 pixels high. You can also specify the page number on which the tab is located and whether the tab is located in a document, a template, or an inline template. For more information about tabs, see the Tabs section of the REST API documentation.
 }
 
+// TextOptionalTab
+
+type TextOptionalTab struct {
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	Height   int    `json:"height"`
+	Width    int    `json:"width"`
+	Locked   bool   `json:"locked"`
+	Required bool   `json:"required"`
+}
+
 // DocuSignTab is the data model for a tab from DocuSign
 type DocuSignTab struct {
 	ApproveTabs              []DocuSignTabDetails `json:"approveTabs,omitempty"`
@@ -170,6 +182,8 @@ type DocuSignTab struct {
 	TitleTabs                []DocuSignTabDetails `json:"titleTabs,omitempty"`
 	ViewTabs                 []DocuSignTabDetails `json:"viewTabs,omitempty"`
 	ZipTabs                  []DocuSignTabDetails `json:"zipTabs,omitempty"`
+	TextOptionalTabs         []DocuSignTabDetails `json:"textOptionalTabs,omitempty"`
+	SignHereOptionalTabs     []DocuSignTabDetails `json:"signHereOptionalTabs,omitempty"`
 }
 
 // DocuSignTabDetails is the data model for a tab from DocuSign
@@ -204,6 +218,7 @@ type DocuSignTabDetails struct {
 	YPosition                 string `json:"yPosition,omitempty"`                 // x position
 	ValidationType            string `json:"validationType,omitempty"`            // validation type, "string", "number", "date", "zipcode", "currency"
 	Value                     string `json:"value,omitempty"`
+	CustomTabId               string `json:"customTabId,omitempty"`
 }
 
 // DocuSignTemplateRole is the request body for a template role from DocuSign
@@ -217,7 +232,8 @@ type DocuSignTemplateRole struct {
 
 // DocuSignEnvelopeResponse is the response body for an envelope from DocuSign, see: https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/update/
 type DocuSignEnvelopeResponse struct {
-	EnvelopeId   string `json:"envelopeId,omitempty"`
+	EnvelopeId   string              `json:"envelopeId,omitempty"`
+	Recipients   []DocuSignRecipient `json:"recipients,omitempty"`
 	ErrorDetails struct {
 		ErrorCode string `json:"errorCode,omitempty"`
 		Message   string `json:"message,omitempty"`
@@ -289,4 +305,30 @@ type IndividualMembershipDocuSignDBSummaryModel struct {
 	DocuSignEnvelopeSigningUpdatedAt time.Time      `db:"docusign_envelope_signing_updated_at"`
 	Memo                             sql.NullString `db:"memo"`
 	//DocuSignEnvelopeSignedDate       time.Time `json:"docusign_envelope_signed_date"`
+}
+
+type ClaSignatoryEmailParams struct {
+	ClaGroupName    string
+	SignatoryName   string
+	ClaManagerName  string
+	ClaManagerEmail string
+	CompanyName     string
+	ProjectVersion  string
+	ProjectNames    []string
+}
+
+type DocuSignRecipientEvent struct {
+	RecipientEventStatusCode string `json:"recipientEventStatusCode"`
+}
+
+type DocuSignEventNotification struct {
+	URL             string
+	LoggingEnabled  bool
+	RecipientEvents []DocuSignRecipientEvent
+}
+
+type Recipient struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	// Other recipient-specific fields
 }

@@ -6,6 +6,7 @@ package sign
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/communitybridge/easycla/cla-backend-go/github"
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/project/common"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
@@ -63,6 +65,10 @@ type ProjectRepo interface {
 
 // Service interface defines the sign service methods
 type Service interface {
+	VoidEnvelope(ctx context.Context, envelopeID, message string) error
+	PrepareSignRequest(ctx context.Context, signRequest *DocuSignEnvelopeRequest) (*DocuSignEnvelopeResponse, error)
+	GetSignURL(envelopeID, recipientID, returnURL string) (string, error)
+
 	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
 	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error)
 	RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
@@ -389,14 +395,14 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		return nil, err
 	}
 
-	if &latestDocument == nil {
+	if common.AreClaGroupDocumentsEqual(latestDocument, v1Models.ClaGroupDocument{}) {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup latest individual document for project: %s", *input.ProjectID)
 		return nil, errors.New("unable to lookup latest individual document for project")
 	}
 
 	// creating individual default values
 	log.WithFields(f).Debugf("creating individual default values...")
-	defaultValues, err := s.createDefaultIndiviualValues(user, preferredEmail)
+	defaultValues, err := s.createDefaultIndividualValues(user, preferredEmail)
 
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to create default values for user: %s", *input.UserID)
@@ -439,14 +445,14 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 			// Regenerate and set the signing URL - This will update the signature record
 			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
-			err := s.populateSignURL(latestSignature, callBackURL, defaultValues, preferredEmail)
+			err = s.populateSignURL(ctx, latestSignature, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
 				return nil, err
 			}
 
 			return &models.IndividualSignatureOutput{
-				SignURL:     latestSignature.SignatureReferenceID,
+				SignURL:     latestSignature.SignatureSignURL,
 				SignatureID: latestSignature.SignatureID,
 				UserID:      latestSignature.SignatureReferenceID,
 				ProjectID:   *input.ProjectID,
@@ -456,13 +462,22 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 	// 5. Get signature return URL
 	log.WithFields(f).Debugf("getting signature return url...")
+	var returnURL string
 	if input.ReturnURL.String() == "" {
-		return &models.IndividualSignatureOutput{
-			ProjectID:   *input.ProjectID,
-			SignURL:     "",
-			SignatureID: "",
-			UserID:      *input.UserID,
-		}, errors.New("signature return url is empty")
+		log.WithFields(f).Warnf("signature return url is empty")
+		returnURL, err = getActiveSignatureReturnURL(activeSignatureMetadata)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get active signature return url for user: %s", *input.UserID)
+			return nil, err
+		}
+		if returnURL == "" {
+			log.WithFields(f).Warnf("signature return url is empty")
+			return &models.IndividualSignatureOutput{
+				UserID:    *input.UserID,
+				ProjectID: *input.ProjectID,
+			}, nil
+		}
+
 	}
 
 	// 6. Get latest document
@@ -474,7 +489,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	}
 
 	// 7. if the CCLA/ICLA template is missing we wont have a document and return an error
-	if &document == nil {
+	if common.AreClaGroupDocumentsEqual(document, v1Models.ClaGroupDocument{}) {
 		log.WithFields(f).WithError(err).Warnf("unable to get latest document for project: %s", *input.ProjectID)
 		return nil, errors.New("unable to get latest document for project")
 	}
@@ -507,7 +522,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 	// 10. Populate sign url
 	log.WithFields(f).Debugf("populating sign url...")
-	err = s.populateSignURL(signatureModel, callBackURL, defaultValues, preferredEmail)
+	err = s.populateSignURL(ctx, signatureModel, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
 		return nil, err
@@ -547,18 +562,6 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 	githubRepositoryID := metadata["repository_id"].(string)
 	mergeRequestID := metadata["pull_request_id"].(string)
 
-	// # Get organization id
-	// organization_id = get_organization_id_from_gitlab_repository(gitlab_repository_id)
-
-	// if organization_id is None:
-	//     cla.log.error('Could not find GitLab organization ID that is configured for this repository ID: %s',
-	//                   gitlab_repository_id)
-	//     return None
-
-	// return os.path.join(API_BASE_URL, 'v2/signed/gitlab/individual', str(user_id), str(organization_id),
-	//                     str(metadata['repository_id']),
-	//                     str(metadata['merge_request_id']))
-
 	gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganization(ctx, githubRepositoryID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", githubRepositoryID)
@@ -582,7 +585,7 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 
 	log.WithFields(f).Debugf("generating signature callback url...")
 	var err error
-	var installationId int64 = 0 // default to 0
+	var installationId int64
 
 	if metadata == nil {
 		metadata, err = s.storeRepository.GetActiveSignatureMetaData(ctx, userID)
@@ -626,16 +629,535 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 
 }
 
-func (s *service) populateSignURL(latestSignature *v1Models.Signature, callbackURL string, defaultValues map[string]interface{}, preferredEmail string) error {
+func (s *service) populateSignURL(ctx context.Context,
+	latestSignature *v1Models.Signature, callbackURL string,
+	authorityOrSignatoryName, authorityOrSignatoryEmail string,
+	sendAsEmail bool,
+	claManagerName, claManagerEmail string,
+	defaultValues map[string]interface{}, preferredEmail string) error {
+
 	f := logrus.Fields{
 		"functionName": "sign.populateSignURL",
 	}
-
 	log.WithFields(f).Debugf("populating sign url...")
+	signatureReferenceType := latestSignature.SignatureReferenceType
+
+	log.WithFields(f).Debugf("signatureReferenceType: %s", signatureReferenceType)
+	log.WithFields(f).Debugf("processing signing request...")
+
+	userSignatureName := "Unknown"
+	userSignatureEmail := "Unknown"
+	var document v1Models.ClaGroupDocument
+	var project *v1Models.ClaGroup
+	var companyModel *v1Models.Company
+	var err error
+	var signer DocuSignRecipient
+	var emailBody string
+	var emailSubject string
+
+	if signatureReferenceType == utils.SignatureReferenceTypeCompany {
+		companyModel, err = s.companyRepo.GetCompany(ctx, latestSignature.SignatureReferenceID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup company by ID: %s", latestSignature.SignatureReferenceID)
+			return err
+		}
+		if companyModel == nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup company by ID: %s", latestSignature.SignatureReferenceID)
+			return errors.New("No CLA manager lookup error")
+		}
+		userSignatureName = claManagerName
+		userSignatureEmail = claManagerEmail
+	} else if signatureReferenceType == utils.SignatureReferenceTypeUser {
+		if !sendAsEmail {
+			userModel, userErr := s.userService.GetUser(latestSignature.SignatureReferenceID)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", latestSignature.SignatureReferenceID)
+				return userErr
+			}
+			log.WithFields(f).Debugf("loaded user : %+v", userModel)
+
+			if userModel == nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", latestSignature.SignatureReferenceID)
+				msg := fmt.Sprintf("No user lookup error for user ID: %s", latestSignature.SignatureReferenceID)
+				return errors.New(msg)
+			}
+
+			if userModel.Username != "" {
+				userSignatureName = userModel.Username
+			}
+			if getUserEmail(userModel, preferredEmail) != "" {
+				userSignatureEmail = getUserEmail(userModel, preferredEmail)
+			}
+		}
+	} else {
+		log.WithFields(f).Warnf("unknown signature reference type: %s", signatureReferenceType)
+		return errors.New("unknown signature reference type")
+	}
+
+	// Get the document template to sign
+	log.WithFields(f).Debugf("getting document template to sign...")
+	project, err = s.projectRepo.GetCLAGroupByID(ctx, latestSignature.ProjectID, DontLoadRepoDetails)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup project by ID: %s", latestSignature.ProjectID)
+		return err
+	}
+
+	if project == nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup project by ID: %s", latestSignature.ProjectID)
+		return errors.New("No project lookup error")
+	}
+
+	if signatureReferenceType == utils.SignatureReferenceTypeCompany {
+		log.WithFields(f).Debugf("loading project corporate document...")
+		document, err = common.GetCurrentDocument(ctx, project.ProjectCorporateDocuments)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup project corporate document for project: %s", latestSignature.ProjectID)
+			return err
+		}
+	} else {
+		log.WithFields(f).Debugf("loading project individual document...")
+		document, err = common.GetCurrentDocument(ctx, project.ProjectIndividualDocuments)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup project individual document for project: %s", latestSignature.ProjectID)
+			return err
+		}
+	}
+
+	// Void the existing envelope to prevent multiple envelopes pending for a signer
+	envelopeID := latestSignature.SignatureEnvelopeID
+	if envelopeID != "" {
+		message := fmt.Sprintf("You are getting this message because your DocuSign Session for project %s expired. A new session will be in place for your signing process.", project.ProjectName)
+		log.WithFields(f).Debug(message)
+		err = s.VoidEnvelope(ctx, envelopeID, message)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("DocuSign error while voiding the envelope - regardless, continuing on..., error: %s", err)
+		}
+	}
+
+	// # Not sure what should be put in as documentId.
+	// document_id = uuid.uuid4().int & (1 << 16) - 1  # Random 16bit integer -.pylint: disable=no-member
+
+	randomUuid := uuid.Must(uuid.NewV4()).String()
+
+	documentID := int(randomUuid[0])<<8 + int(randomUuid[1])
+	log.WithFields(f).Debugf("documentID: %d", documentID)
+	tab := getTabsFromDocument(&document, strconv.Itoa(documentID), defaultValues)
+
+	// # Create the envelope request object
+
+	if sendAsEmail {
+		log.WithFields(f).Warnf("assigning signatory name/email: %s/%s", authorityOrSignatoryName, authorityOrSignatoryEmail)
+		signatoryEmail := authorityOrSignatoryEmail
+		signatoryName := authorityOrSignatoryName
+
+		var projectName string
+		var companyName string
+
+		if project != nil {
+			projectName = project.ProjectName
+		}
+
+		if companyModel != nil {
+			companyName = companyModel.CompanyName
+		}
+
+		pcgs, err := s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, project.ProjectID)
+		if err != nil {
+			log.WithFields(f).Debugf("problem fetching project cla groups by id :%s, err: %+v", project.ProjectID)
+			return err
+		}
+
+		if len(pcgs) == 0 {
+			log.WithFields(f).Debugf("no project cla groups found for project id :%s", project.ProjectID)
+			return errors.New("no project cla groups found for project id")
+		}
+
+		var projectNames []string
+		for _, pcg := range pcgs {
+			projectNames = append(projectNames, pcg.ProjectName)
+		}
+
+		if len(projectNames) == 0 {
+			projectNames = []string{projectName}
+		}
+
+		claSignatoryParams := &ClaSignatoryEmailParams{
+			ClaGroupName:    project.ProjectName,
+			SignatoryName:   signatoryName,
+			CompanyName:     companyName,
+			ProjectNames:    projectNames,
+			ProjectVersion:  project.Version,
+			ClaManagerName:  claManagerName,
+			ClaManagerEmail: claManagerEmail,
+		}
+
+		log.WithFields(f).Debugf("claSignatoryParams: %+v", claSignatoryParams)
+		emailSubject, emailBody = claSignatoryEmailContent(*claSignatoryParams)
+		log.WithFields(f).Debugf("subject: %s, body: %s", emailSubject, emailBody)
+
+		signer = DocuSignRecipient{
+			Email:       signatoryEmail,
+			Name:        signatoryName,
+			Tabs:        tab,
+			RecipientId: "1",
+			RoleName:    "signer",
+		}
+
+	} else {
+		// This will be the Initial CLA Manager
+		signatoryName := userSignatureName
+		signatoryEmail := userSignatureEmail
+
+		// Assigning a clientUserId does not send an email.
+		// It assumes that the user handles the communication with the client.
+		// In this case, the user opened the docusign document to manually sign it.
+		// Thus the email does not need to be sent.
+
+		log.WithFields(f).Debugf("signatoryName: %s, signatoryEmail: %s", signatoryName, signatoryEmail)
+
+		// # Max length for emailSubject is 100 characters - guard/truncate if necessary
+		emailSubject = fmt.Sprintf("EasyCLA: CLA Signature Request for %s", project.ProjectName)
+		if len(emailSubject) > 100 {
+			emailSubject = emailSubject[:97] + "..."
+		}
+
+		// # Update Signed for label according to signature_type (company or name)
+		var userIdentifier string
+		if signatureReferenceType == utils.SignatureReferenceTypeCompany {
+			userIdentifier = companyModel.CompanyName
+		} else {
+			if signatoryName == "Unknown" || signatoryName == "" {
+				userIdentifier = signatoryEmail
+			} else {
+				userIdentifier = signatoryName
+			}
+		}
+
+		log.WithFields(f).Debugf("userIdentifier: %s", userIdentifier)
+
+		emailBody = fmt.Sprintf("CLA Sign Request for %s", userIdentifier)
+
+		signer = DocuSignRecipient{
+			Email:        signatoryEmail,
+			Name:         signatoryName,
+			Tabs:         tab,
+			RecipientId:  "1",
+			ClientUserId: latestSignature.SignatureID,
+			RoleName:     "signer",
+		}
+	}
+
+	// content_type = document.get_document_content_type()
+	// if document.get_document_s3_url() is not None:
+	// 	pdf = self.get_document_resource(document.get_document_s3_url())
+	// elif content_type.startswith('url+'):
+	// 	pdf_url = document.get_document_content()
+	// 	pdf = self.get_document_resource(pdf_url)
+	// else:
+	// 	content = document.get_document_content()
+	// 	pdf = io.BytesIO(content)
+
+	// doc_name = document.get_document_name()
+	// cla.log.debug(f'{fn} - {sig_type} - docusign document '
+	// 			  f'name: {doc_name}, id: {document_id}, content type: {content_type}')
+	// document = pydocusign.Document(name=doc_name, documentId=document_id, data=pdf)
+
+	// if callback_url is not None:
+	// 	# Webhook properties for callbacks after the user signs the document.
+	// 	# Ensure that a webhook is returned on the status "Completed" where
+	// 	# all signers on a document finish signing the document.
+	// 	recipient_events = [{"recipientEventStatusCode": "Completed"}]
+	// 	event_notification = pydocusign.EventNotification(url=callback_url,
+	// 													  loggingEnabled=True,
+	// 													  recipientEvents=recipient_events)
+	// 	envelope = pydocusign.Envelope(
+	// 		documents=[document],
+	// 		emailSubject=f'EasyCLA: CLA Signature Request for {project.get_project_name()}',
+	// 		emailBlurb='CLA Sign Request',
+	// 		eventNotification=event_notification,
+	// 		status=pydocusign.Envelope.STATUS_SENT,
+	// 		recipients=[signer])
+	// else:
+	// 	envelope = pydocusign.Envelope(
+	// 		documents=[document],
+	// 		emailSubject=f'EasyCLA: CLA Signature Request for {project.get_project_name()}',
+	// 		emailBlurb='CLA Sign Request',
+	// 		status=pydocusign.Envelope.STATUS_SENT,
+	// 		recipients=[signer])
+
+	// envelope = self.prepare_sign_request(envelope)
+
+	// if not send_as_email:
+	// 	recipient = envelope.recipients[0]
+
+	// 	# The URL the user will be redirected to after signing.
+	// 	# This route will be in charge of extracting the signature's return_url and redirecting.
+	// 	return_url = os.path.join(api_base_url, 'v2/return-url', str(recipient.clientUserId))
+
+	// 	cla.log.debug(f'populate_sign_url - {sig_type} - generating signature sign_url, '
+	// 				  f'using return-url as: {return_url}')
+	// 	sign_url = self.get_sign_url(envelope, recipient, return_url)
+	// 	cla.log.debug(f'populate_sign_url - {sig_type} - setting signature sign_url as: {sign_url}')
+	// 	signature.set_signature_sign_url(sign_url)
+
+	// # Save Envelope ID in signature.
+	// cla.log.debug(f'{fn} - {sig_type} - saving signature to database...')
+	// signature.set_signature_envelope_id(envelope.envelopeId)
+	// signature.save()
+	// cla.log.debug(f'{fn} - {sig_type} - saved signature to database - id: {signature.get_signature_id()}...')
+	// cla.log.debug(f'populate_sign_url - {sig_type} - complete')
+
+	contentType := document.DocumentContentType
+	var pdf []byte
+
+	if document.DocumentS3URL != "" {
+		log.WithFields(f).Debugf("getting document resource from s3...")
+		pdf, err = s.getDocumentResource(document.DocumentS3URL)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get document resource from s3 for document: %s", document.DocumentS3URL)
+			return err
+		}
+	} else if strings.HasPrefix(contentType, "url+") {
+		log.WithFields(f).Debugf("getting document resource from url...")
+		pdfURL := document.DocumentContent
+		pdf, err = s.getDocumentResource(pdfURL)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get document resource from url: %s", pdfURL)
+			return err
+		}
+	} else {
+		log.WithFields(f).Debugf("getting document resource from content...")
+		content := document.DocumentContent
+		pdf = []byte(content)
+	}
+
+	documentName := document.DocumentName
+	log.WithFields(f).Debugf("documentName: %s", documentName)
+	log.WithFields(f).Debugf("documentID: %d", documentID)
+	log.WithFields(f).Debugf("contentType: %s", contentType)
+
+	docusignDocument := DocuSignDocument{
+		Name:           documentName,
+		DocumentId:     strconv.Itoa(documentID),
+		DocumentBase64: base64.StdEncoding.EncodeToString(pdf),
+	}
+
+	var envelopeRequest DocuSignEnvelopeRequest
+
+	if callbackURL != "" {
+		// Webhook properties for callbacks after the user signs the document.
+		// Ensure that a webhook is returned on the status "Completed" where
+		// all signers on a document finish signing the document.
+		recipientEvents := []DocuSignRecipientEvent{
+			{
+				RecipientEventStatusCode: "Completed",
+			},
+		}
+
+		eventNotification := DocuSignEventNotification{
+			URL:             callbackURL,
+			LoggingEnabled:  true,
+			RecipientEvents: recipientEvents,
+		}
+
+		envelopeRequest = DocuSignEnvelopeRequest{
+			Documents: []DocuSignDocument{
+				docusignDocument,
+			},
+			EmailSubject:      emailSubject,
+			EmailBlurb:        emailBody,
+			EventNotification: eventNotification,
+			Status:            "sent",
+			Recipients: DocuSignRecipientType{
+				Signers: []DocuSignRecipient{
+					signer,
+				},
+			},
+		}
+
+	} else {
+		envelopeRequest = DocuSignEnvelopeRequest{
+			Documents: []DocuSignDocument{
+				docusignDocument,
+			},
+			EmailSubject: emailSubject,
+			EmailBlurb:   emailBody,
+			Status:       "sent",
+			Recipients: DocuSignRecipientType{
+				Signers: []DocuSignRecipient{
+					signer,
+				},
+			},
+		}
+
+	}
+
+	log.WithFields(f).Debugf("envelopeRequest: %+v", envelopeRequest)
+
+	envelopeResponse, err := s.PrepareSignRequest(ctx, &envelopeRequest)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to create envelope for user: %s", latestSignature.SignatureReferenceID)
+		return err
+	}
+
+	if !sendAsEmail {
+		// The URL the user will be redirected to after signing.
+		// This route will be in charge of extracting the signature's return_url and redirecting.
+		recipient := envelopeResponse.Recipients[0]
+		returnURL := fmt.Sprintf("%s/v2/return-url/%s", s.ClaV1ApiURL, recipient.ClientUserId)
+
+		log.WithFields(f).Debugf("generating signature sign_url, using return-url as: %s", returnURL)
+		signURL, err := s.GetSignURL(envelopeID, recipient.RecipientId, returnURL)
+
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get sign url for user: %s", latestSignature.SignatureReferenceID)
+			return err
+		}
+
+		log.WithFields(f).Debugf("setting signature sign_url as: %s", signURL)
+		latestSignature.SignatureSignURL = signURL
+	}
+
+	// Save Envelope ID in signature.
+	log.WithFields(f).Debugf("saving signature to database...")
+	latestSignature.SignatureEnvelopeID = envelopeResponse.EnvelopeId
+
+	latestSignature, err = s.signatureService.CreateOrUpdateSignature(ctx, latestSignature)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to save signature to database for user: %s", latestSignature.SignatureReferenceID)
+		return err
+	}
+
+	log.WithFields(f).Debugf("saved signature to database - id: %s", latestSignature.SignatureID)
+	log.WithFields(f).Debugf("populate_sign_url - complete")
+
 	return nil
 }
 
-func (s *service) createDefaultIndiviualValues(user *v1Models.User, preferredEmail string) (map[string]interface{}, error) {
+func (s *service) getDocumentResource(url string) ([]byte, error) {
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get document resource from url: %s, status code: %d", url, resp.StatusCode)
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+// Helper function to extract the docusign tabs from the document
+func getTabsFromDocument(document *v1Models.ClaGroupDocument, documentID string, defaultValues map[string]interface{}) DocuSignTab {
+	var docTab DocuSignTab
+	f := logrus.Fields{
+		"functionName": "sign.getTabsFromDocument",
+		"documentID":   documentID,
+	}
+	log.WithFields(f).Debugf("getting tabs from document...")
+	for _, tab := range document.DocumentTabs {
+		var args DocuSignTabDetails
+		args.DocumentId = documentID
+		args.PageNumber = strconv.FormatInt(tab.DocumentTabPage, 10)
+		args.XPosition = strconv.FormatInt(tab.DocumentTabPositionx, 10)
+		args.YPosition = strconv.FormatInt(tab.DocumentTabPositiony, 10)
+		args.Width = strconv.FormatInt(tab.DocumentTabWidth, 10)
+		args.Height = strconv.FormatInt(tab.DocumentTabHeight, 10)
+		args.CustomTabId = tab.DocumentTabID
+		args.TabLabel = tab.DocumentTabID
+		args.Name = tab.DocumentTabName
+
+		if tab.DocumentTabAnchorString != "" {
+			args.AnchorString = tab.DocumentTabAnchorString
+			args.AnchorIgnoreIfNotPresent = strconv.FormatBool(tab.DocumentTabAnchorIgnoreIfNotPresent)
+			args.AnchorXOffset = strconv.FormatInt(tab.DocumentTabAnchorxOffset, 10)
+			args.AnchorYOffset = strconv.FormatInt(tab.DocumentTabAnchoryOffset, 10)
+		}
+
+		if defaultValues != nil {
+			if value, ok := defaultValues[tab.DocumentTabID]; ok {
+				args.Value = value.(string)
+			}
+		}
+
+		switch tab.DocumentTabType {
+		case "text":
+			docTab.TextTabs = append(docTab.TextTabs, args)
+		case "text_unlocked":
+			args.Locked = "false"
+			docTab.TextTabs = append(docTab.TextTabs, args)
+		case "text_optional":
+			args.Required = "false"
+			docTab.TextOptionalTabs = append(docTab.TextOptionalTabs, args)
+		case "number":
+			docTab.NumberTabs = append(docTab.NumberTabs, args)
+		case "sign":
+			docTab.SignHereTabs = append(docTab.SignHereTabs, args)
+		case "sign_optional":
+			args.Optional = "true"
+			docTab.SignHereOptionalTabs = append(docTab.SignHereOptionalTabs, args)
+		case "date":
+			docTab.DateSignedTabs = append(docTab.DateSignedTabs, args)
+		default:
+			log.WithFields(f).Warnf("unknown document tab type: %s", tab.DocumentTabType)
+			continue
+		}
+	}
+
+	return docTab
+}
+
+// helper function to get user email
+func getUserEmail(user *v1Models.User, preferredEmail string) string {
+	if preferredEmail != "" {
+		if utils.StringInSlice(preferredEmail, user.Emails) || user.LfEmail == strfmt.Email(preferredEmail) {
+			return preferredEmail
+		}
+	}
+	if user.LfEmail != "" {
+		return string(user.LfEmail)
+	}
+	if len(user.Emails) > 0 {
+		return user.Emails[0]
+	}
+	return ""
+}
+
+func getActiveSignatureReturnURL(metadata map[string]interface{}) (string, error) {
+
+	f := logrus.Fields{
+		"functionName": "sign.getActiveSignatureReturnURL",
+	}
+
+	var returnURL string
+	var err error
+
+	if _, ok := metadata["merge_request_id"]; ok {
+		return "", nil
+
+	} else if _, ok := metadata["pull_request_id"]; ok {
+		log.WithFields(f).Debugf("pull request id found")
+		installationID := metadata["installation_id"].(int64)
+		repositoryID := metadata["repository_id"].(int64)
+		pullRequestID := metadata["pull_request_id"].(int)
+		returnURL, err = github.GetReturnURL(context.Background(), installationID, repositoryID, pullRequestID)
+	} else {
+		return "", errors.New("invalid metadata")
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	return returnURL, nil
+
+}
+
+func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEmail string) (map[string]interface{}, error) {
 	f := logrus.Fields{
 		"functionName": "sign.createDefaultIndiviualValues",
 	}
@@ -846,4 +1368,17 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 	}
 
 	return nil
+}
+
+func claSignatoryEmailContent(params ClaSignatoryEmailParams) (string, string) {
+	projectNamesList := strings.Join(params.ProjectNames, ", ")
+
+	emailSubject := fmt.Sprintf("EasyCLA: CLA Signature Request for %s", params.ClaGroupName)
+	emailBody := fmt.Sprintf("<p>Hello %s,<p>", params.SignatoryName)
+	emailBody += fmt.Sprintf("<p>This is a notification email from EasyCLA regarding the project(s) %s associated with the CLA Group %s. %s has designated you as an authorized signatory for the organization %s. In order for employees of your company to contribute to any of the above project(s), they must do so under a Contributor License Agreement signed by someone with authority on behalf of your company.</p>", projectNamesList, params.ClaGroupName, params.ClaManagerName, params.CompanyName)
+	emailBody += fmt.Sprintf("<p>After you sign, %s (as the initial CLA Manager for your company) will be able to maintain the list of specific employees authorized to contribute to the project(s) under this signed CLA.</p>", params.ClaManagerName)
+	emailBody += fmt.Sprintf("<p>If you are authorized to sign on your company’s behalf, and if you approve %s as your initial CLA Manager, please review the document and sign the CLA. If you have questions, or if you are not an authorized signatory of this company, please contact the requester at %s.</p>", params.ClaManagerName, params.ClaManagerEmail)
+	// You would need to implement the appendEmailHelpSignOffContent function in Go separately
+
+	return emailSubject, emailBody
 }
