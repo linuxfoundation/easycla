@@ -109,8 +109,8 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 				return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
 			}
 
-			if strings.ToLower(params.Input.ReturnURLType) == "github" || strings.ToLower(params.Input.ReturnURLType) == "gitlab" {
-				if strings.ToLower(params.Input.ReturnURLType) == "github" {
+			if strings.ToLower(params.Input.ReturnURLType) == Github || strings.ToLower(params.Input.ReturnURLType) == Gitlab {
+				if strings.ToLower(params.Input.ReturnURLType) == Github {
 					log.WithFields(f).Debug("fetching github emails")
 					emails, fetchErr := fetchGithubEmails(session, clientID)
 					if fetchErr != nil {
@@ -209,7 +209,11 @@ func fetchGithubEmails(session map[string]interface{}, clientID string) ([]map[s
 		return emails, err
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.Warnf("problem closing the response body")
+		}
+	}()
 
 	if resp.StatusCode != 200 {
 		return emails, err

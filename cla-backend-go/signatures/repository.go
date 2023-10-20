@@ -447,23 +447,23 @@ func (repo repository) GetSignature(ctx context.Context, signatureID string) (*m
 
 // CreateOrUpdateSignature either creates or updates the signature record
 func (repo repository) CreateOrUpdateSignature(ctx context.Context, signature *models.Signature) (*models.Signature, error) {
-	// f := logrus.Fields{
-	// 	"functionName":   "v1.signatures.repository.CreateOrUpdateSignature",
-	// 	utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	// }
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.CreateOrUpdateSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
 
-	// // Check if we have an existing signature record
-	// existingSignature, sigErr := repo.GetSignature(ctx, signature.SignatureID)
-	// if sigErr != nil {
-	// 	log.WithFields(f).Warnf("error retrieving signature by ID: %s, error: %v", signature.SignatureID, sigErr)
-	// 	return nil, sigErr
-	// }
+	// Check if we have an existing signature record
+	existingSignature, sigErr := repo.GetSignature(ctx, signature.SignatureID)
+	if sigErr != nil {
+		log.WithFields(f).Warnf("error retrieving signature by ID: %s, error: %v", signature.SignatureID, sigErr)
+		return nil, sigErr
+	}
 
-	// // If we have an existing signature record, we need to update it
-	// if existingSignature != nil {
-	// 	log.WithFields(f).Debugf("updating existing signature record for signature ID: %s", signature.SignatureID)
-	// 	return repo.updateSignature(ctx, signature)
-	// }
+	// If we have an existing signature record, we need to update it
+	if existingSignature != nil {
+		log.WithFields(f).Debugf("updating existing signature record for signature ID: %s", signature.SignatureID)
+		return repo.updateSignature(ctx, signature)
+	}
 
 	return nil, nil
 }

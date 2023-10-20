@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -49,6 +50,7 @@ import (
 // constants
 const (
 	DontLoadRepoDetails = false
+	DocSignFalse        = "false"
 )
 
 // errors
@@ -402,12 +404,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 	// creating individual default values
 	log.WithFields(f).Debugf("creating individual default values...")
-	defaultValues, err := s.createDefaultIndividualValues(user, preferredEmail)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to create default values for user: %s", *input.UserID)
-		return nil, err
-	}
+	defaultValues := s.createDefaultIndividualValues(user, preferredEmail)
 
 	// 4. Generate signature callback url
 	log.WithFields(f).Debugf("generating signature callback url...")
@@ -465,7 +462,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	var returnURL string
 	if input.ReturnURL.String() == "" {
 		log.WithFields(f).Warnf("signature return url is empty")
-		returnURL, err = getActiveSignatureReturnURL(activeSignatureMetadata)
+		returnURL, err = getActiveSignatureReturnURL(*input.UserID, activeSignatureMetadata)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get active signature return url for user: %s", *input.UserID)
 			return nil, err
@@ -550,6 +547,8 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 
 	log.WithFields(f).Debugf("generating signature callback url...")
 	var err error
+	var repositoryID string
+	var mergeRequestID string
 
 	if metadata == nil {
 		metadata, err = s.storeRepository.GetActiveSignatureMetaData(ctx, userID)
@@ -559,21 +558,32 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 		}
 	}
 
-	githubRepositoryID := metadata["repository_id"].(string)
-	mergeRequestID := metadata["pull_request_id"].(string)
+	if found, ok := metadata["repository_id"].(string); ok {
+		repositoryID = found
+	} else {
+		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
+		return "", err
+	}
 
-	gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganization(ctx, githubRepositoryID)
+	if found, ok := metadata["pull_request_id"].(string); ok {
+		mergeRequestID = found
+	} else {
+		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
+		return "", err
+	}
+
+	gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganization(ctx, repositoryID)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", githubRepositoryID)
+		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", repositoryID)
 		return "", err
 	}
 
 	if gitlabOrg.OrganizationID == "" {
-		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", githubRepositoryID)
+		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", repositoryID)
 		return "", err
 	}
 
-	return fmt.Sprintf("%s/v2/signed/gitlab/individual/%s/%s/%s/%s", s.ClaV1ApiURL, userID, gitlabOrg.OrganizationID, githubRepositoryID, mergeRequestID), nil
+	return fmt.Sprintf("%s/v2/signed/gitlab/individual/%s/%s/%s/%s", s.ClaV1ApiURL, userID, gitlabOrg.OrganizationID, repositoryID, mergeRequestID), nil
 
 }
 
@@ -586,6 +596,8 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 	log.WithFields(f).Debugf("generating signature callback url...")
 	var err error
 	var installationId int64
+	var repositoryID string
+	var pullRequestID int
 
 	if metadata == nil {
 		metadata, err = s.storeRepository.GetActiveSignatureMetaData(ctx, userID)
@@ -595,19 +607,25 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		}
 	}
 
-	githubRepositoryID := metadata["repository_id"].(string)
-	pullRequestID, err := strconv.Atoi(metadata["pull_request_id"].(string))
+	if found, ok := metadata["repository_id"].(string); ok {
+		repositoryID = found
+	} else {
+		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
+		return "", err
+	}
 
-	if err != nil {
+	if found, ok := metadata["pull_request_id"].(int); ok {
+		pullRequestID = found
+	} else {
 		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
 		return "", err
 	}
 
 	// Get installation ID through a helper function
 	log.WithFields(f).Debugf("getting repository...")
-	githubRepository, err := s.repositoryService.GetRepositoryByExternalID(ctx, githubRepositoryID)
+	githubRepository, err := s.repositoryService.GetRepositoryByExternalID(ctx, repositoryID)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", githubRepositoryID)
+		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
 		return "", err
 	}
 	// Get github organization
@@ -615,17 +633,17 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 	githubOrg, err := s.githubOrgService.GetGitHubOrganizationByName(ctx, githubRepository.RepositoryOrganizationName)
 
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to get github organization for repository ID: %s", githubRepositoryID)
+		log.WithFields(f).WithError(err).Warnf("unable to get github organization for repository ID: %s", repositoryID)
 		return "", err
 	}
 
 	installationId = githubOrg.OrganizationInstallationID
 	if installationId == 0 {
-		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", githubRepositoryID)
+		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
 		return "", err
 	}
 
-	return fmt.Sprintf("%s/v2/signed/individual/%d/%s/%d", s.ClaV1ApiURL, installationId, githubRepositoryID, pullRequestID), nil
+	return fmt.Sprintf("%s/v2/signed/individual/%d/%s/%d", s.ClaV1ApiURL, installationId, repositoryID, pullRequestID), nil
 
 }
 
@@ -634,7 +652,7 @@ func (s *service) populateSignURL(ctx context.Context,
 	authorityOrSignatoryName, authorityOrSignatoryEmail string,
 	sendAsEmail bool,
 	claManagerName, claManagerEmail string,
-	defaultValues map[string]interface{}, preferredEmail string) error {
+	defaultValues map[string]interface{}, preferredEmail string)  error {
 
 	f := logrus.Fields{
 		"functionName": "sign.populateSignURL",
@@ -645,8 +663,8 @@ func (s *service) populateSignURL(ctx context.Context,
 	log.WithFields(f).Debugf("signatureReferenceType: %s", signatureReferenceType)
 	log.WithFields(f).Debugf("processing signing request...")
 
-	userSignatureName := "Unknown"
-	userSignatureEmail := "Unknown"
+	userSignatureName := Unknown
+	userSignatureEmail := Unknown
 	var document v1Models.ClaGroupDocument
 	var project *v1Models.ClaGroup
 	var companyModel *v1Models.Company
@@ -663,7 +681,7 @@ func (s *service) populateSignURL(ctx context.Context,
 		}
 		if companyModel == nil {
 			log.WithFields(f).WithError(err).Warnf("unable to lookup company by ID: %s", latestSignature.SignatureReferenceID)
-			return errors.New("No CLA manager lookup error")
+			return errors.New("no CLA manager lookup error")
 		}
 		userSignatureName = claManagerName
 		userSignatureEmail = claManagerEmail
@@ -704,7 +722,7 @@ func (s *service) populateSignURL(ctx context.Context,
 
 	if project == nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup project by ID: %s", latestSignature.ProjectID)
-		return errors.New("No project lookup error")
+		return errors.New("no project lookup error")
 	}
 
 	if signatureReferenceType == utils.SignatureReferenceTypeCompany {
@@ -761,10 +779,10 @@ func (s *service) populateSignURL(ctx context.Context,
 			companyName = companyModel.CompanyName
 		}
 
-		pcgs, err := s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, project.ProjectID)
-		if err != nil {
-			log.WithFields(f).Debugf("problem fetching project cla groups by id :%s, err: %+v", project.ProjectID)
-			return err
+		pcgs, pcgErr := s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, project.ProjectID)
+		if pcgErr != nil {
+			log.WithFields(f).Debugf("problem fetching project cla groups by id :%s, err: %+v", project.ProjectID, pcgErr)
+			return pcgErr
 		}
 
 		if len(pcgs) == 0 {
@@ -846,66 +864,6 @@ func (s *service) populateSignURL(ctx context.Context,
 			RoleName:     "signer",
 		}
 	}
-
-	// content_type = document.get_document_content_type()
-	// if document.get_document_s3_url() is not None:
-	// 	pdf = self.get_document_resource(document.get_document_s3_url())
-	// elif content_type.startswith('url+'):
-	// 	pdf_url = document.get_document_content()
-	// 	pdf = self.get_document_resource(pdf_url)
-	// else:
-	// 	content = document.get_document_content()
-	// 	pdf = io.BytesIO(content)
-
-	// doc_name = document.get_document_name()
-	// cla.log.debug(f'{fn} - {sig_type} - docusign document '
-	// 			  f'name: {doc_name}, id: {document_id}, content type: {content_type}')
-	// document = pydocusign.Document(name=doc_name, documentId=document_id, data=pdf)
-
-	// if callback_url is not None:
-	// 	# Webhook properties for callbacks after the user signs the document.
-	// 	# Ensure that a webhook is returned on the status "Completed" where
-	// 	# all signers on a document finish signing the document.
-	// 	recipient_events = [{"recipientEventStatusCode": "Completed"}]
-	// 	event_notification = pydocusign.EventNotification(url=callback_url,
-	// 													  loggingEnabled=True,
-	// 													  recipientEvents=recipient_events)
-	// 	envelope = pydocusign.Envelope(
-	// 		documents=[document],
-	// 		emailSubject=f'EasyCLA: CLA Signature Request for {project.get_project_name()}',
-	// 		emailBlurb='CLA Sign Request',
-	// 		eventNotification=event_notification,
-	// 		status=pydocusign.Envelope.STATUS_SENT,
-	// 		recipients=[signer])
-	// else:
-	// 	envelope = pydocusign.Envelope(
-	// 		documents=[document],
-	// 		emailSubject=f'EasyCLA: CLA Signature Request for {project.get_project_name()}',
-	// 		emailBlurb='CLA Sign Request',
-	// 		status=pydocusign.Envelope.STATUS_SENT,
-	// 		recipients=[signer])
-
-	// envelope = self.prepare_sign_request(envelope)
-
-	// if not send_as_email:
-	// 	recipient = envelope.recipients[0]
-
-	// 	# The URL the user will be redirected to after signing.
-	// 	# This route will be in charge of extracting the signature's return_url and redirecting.
-	// 	return_url = os.path.join(api_base_url, 'v2/return-url', str(recipient.clientUserId))
-
-	// 	cla.log.debug(f'populate_sign_url - {sig_type} - generating signature sign_url, '
-	// 				  f'using return-url as: {return_url}')
-	// 	sign_url = self.get_sign_url(envelope, recipient, return_url)
-	// 	cla.log.debug(f'populate_sign_url - {sig_type} - setting signature sign_url as: {sign_url}')
-	// 	signature.set_signature_sign_url(sign_url)
-
-	// # Save Envelope ID in signature.
-	// cla.log.debug(f'{fn} - {sig_type} - saving signature to database...')
-	// signature.set_signature_envelope_id(envelope.envelopeId)
-	// signature.save()
-	// cla.log.debug(f'{fn} - {sig_type} - saved signature to database - id: {signature.get_signature_id()}...')
-	// cla.log.debug(f'populate_sign_url - {sig_type} - complete')
 
 	contentType := document.DocumentContentType
 	var pdf []byte
@@ -1008,11 +966,11 @@ func (s *service) populateSignURL(ctx context.Context,
 		returnURL := fmt.Sprintf("%s/v2/return-url/%s", s.ClaV1ApiURL, recipient.ClientUserId)
 
 		log.WithFields(f).Debugf("generating signature sign_url, using return-url as: %s", returnURL)
-		signURL, err := s.GetSignURL(envelopeID, recipient.RecipientId, returnURL)
+		signURL, signErr := s.GetSignURL(envelopeID, recipient.RecipientId, returnURL)
 
-		if err != nil {
+		if signErr != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get sign url for user: %s", latestSignature.SignatureReferenceID)
-			return err
+			return signErr
 		}
 
 		log.WithFields(f).Debugf("setting signature sign_url as: %s", signURL)
@@ -1036,16 +994,27 @@ func (s *service) populateSignURL(ctx context.Context,
 	return nil
 }
 
-func (s *service) getDocumentResource(url string) ([]byte, error) {
+func (s *service) getDocumentResource(urlString string) ([]byte, error) {
 
-	resp, err := http.Get(url)
+	// validate the URL
+	u, err := url.ParseRequestURI(urlString)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+
+	resp, err := http.Get(u.String())
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Warnf("error closing response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get document resource from url: %s, status code: %d", url, resp.StatusCode)
+		return nil, fmt.Errorf("failed to get document resource from url: %s, status code: %d", urlString, resp.StatusCode)
 	}
 
 	return io.ReadAll(resp.Body)
@@ -1079,8 +1048,8 @@ func getTabsFromDocument(document *v1Models.ClaGroupDocument, documentID string,
 		}
 
 		if defaultValues != nil {
-			if value, ok := defaultValues[tab.DocumentTabID]; ok {
-				args.Value = value.(string)
+			if value, ok := defaultValues[tab.DocumentTabID].(string); ok {
+				args.Value = value
 			}
 		}
 
@@ -1088,10 +1057,10 @@ func getTabsFromDocument(document *v1Models.ClaGroupDocument, documentID string,
 		case "text":
 			docTab.TextTabs = append(docTab.TextTabs, args)
 		case "text_unlocked":
-			args.Locked = "false"
+			args.Locked = DocSignFalse
 			docTab.TextTabs = append(docTab.TextTabs, args)
 		case "text_optional":
-			args.Required = "false"
+			args.Required = DocSignFalse
 			docTab.TextOptionalTabs = append(docTab.TextOptionalTabs, args)
 		case "number":
 			docTab.NumberTabs = append(docTab.NumberTabs, args)
@@ -1127,7 +1096,7 @@ func getUserEmail(user *v1Models.User, preferredEmail string) string {
 	return ""
 }
 
-func getActiveSignatureReturnURL(metadata map[string]interface{}) (string, error) {
+func getActiveSignatureReturnURL(userID string, metadata map[string]interface{}) (string, error) {
 
 	f := logrus.Fields{
 		"functionName": "sign.getActiveSignatureReturnURL",
@@ -1135,19 +1104,32 @@ func getActiveSignatureReturnURL(metadata map[string]interface{}) (string, error
 
 	var returnURL string
 	var err error
+	var pullRequestID int
+	var installationID int64
+	var repositoryID int64
 
-	if _, ok := metadata["merge_request_id"]; ok {
-		return "", nil
-
-	} else if _, ok := metadata["pull_request_id"]; ok {
-		log.WithFields(f).Debugf("pull request id found")
-		installationID := metadata["installation_id"].(int64)
-		repositoryID := metadata["repository_id"].(int64)
-		pullRequestID := metadata["pull_request_id"].(int)
-		returnURL, err = github.GetReturnURL(context.Background(), installationID, repositoryID, pullRequestID)
+	if found, ok := metadata["pull_request_id"].(int); ok {
+		pullRequestID = found
 	} else {
-		return "", errors.New("invalid metadata")
+		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
+		return "", err
 	}
+
+	if found, ok := metadata["installation_id"].(int64); ok {
+		installationID = found
+	} else {
+		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for user: %s", userID)
+		return "", err
+	}
+
+	if found, ok := metadata["repository_id"].(int64); ok {
+		repositoryID = found
+	} else {
+		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
+		return "", err
+	}
+
+	returnURL, err = github.GetReturnURL(context.Background(), installationID, repositoryID, pullRequestID)
 
 	if err != nil {
 		return "", err
@@ -1157,7 +1139,7 @@ func getActiveSignatureReturnURL(metadata map[string]interface{}) (string, error
 
 }
 
-func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEmail string) (map[string]interface{}, error) {
+func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEmail string) map[string]interface{} {
 	f := logrus.Fields{
 		"functionName": "sign.createDefaultIndiviualValues",
 	}
@@ -1178,7 +1160,7 @@ func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEm
 		}
 	}
 
-	return defaultValues, nil
+	return defaultValues
 }
 
 func getLatestSignature(signatures []*v1Models.Signature) *v1Models.Signature {
