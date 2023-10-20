@@ -1,0 +1,41 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Docusign Document Tab
+description: Docusign Document Tab
+properties:
+  document_tab_type:
+    type: string
+  document_tab_id:
+    type: string
+  document_tab_name:
+    type: string
+  document_tab_page:
+    type: integer
+  document_tab_position_x:
+    type: integer
+  document_tab_position_y:
+    type: integer
+  document_tab_width:
+    type: integer
+  document_tab_height:
+    type: integer
+  document_tab_is_locked:
+    type: boolean
+  document_tab_is_required:
+    type: boolean
+  document_tab_anchor_string:
+    type: string
+  document_tab_anchor_ignore_if_not_present:
+    type: boolean
+  document_tab_anchor_x_offset:
+    type: integer
+  document_tab_anchor_y_offset:
+    type: integer
+
+
+
+  
+  

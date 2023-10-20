@@ -643,3 +643,38 @@ func CreateStatus(ctx context.Context, client *github.Client, owner, repo, sha s
 
 	return c, resp, nil
 }
+
+func GetReturnURL(ctx context.Context, installationID, repositoryID int64, pullRequestID int) (string, error) {
+	f := logrus.Fields{
+		"functionName":   "github.github_repository.GetReturnURL",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"installationID": installationID,
+		"repositoryID":   repositoryID,
+		"pullRequestID":  pullRequestID,
+	}
+
+	client, err := NewGithubAppClient(installationID)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to create Github client")
+		return "", err
+	}
+
+	log.WithFields(f).Debugf("getting github repository by id: %d", repositoryID)
+	repo, _, err := client.Repositories.GetByID(ctx, repositoryID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get repository by ID: %d", repositoryID)
+		return "", err
+	}
+
+	log.WithFields(f).Debugf("getting pull request by id: %d", pullRequestID)
+	pullRequest, _, err := client.PullRequests.Get(ctx, *repo.Owner.Login, *repo.Name, pullRequestID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get pull request by ID: %d", pullRequestID)
+		return "", err
+	}
+
+	log.WithFields(f).Debugf("returning pull request html url: %s", *pullRequest.HTMLURL)
+
+	return *pullRequest.HTMLURL, nil
+}

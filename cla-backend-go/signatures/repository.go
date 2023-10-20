@@ -69,10 +69,12 @@ type SignatureRepository interface {
 	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
 	ValidateProjectRecord(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
+	CreateOrUpdateSignature(ctx context.Context, signature *models.Signature) (*models.Signature, error)
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
 	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
+	GetIndividualSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error)
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
 	GetSignatureACL(ctx context.Context, signatureID string) ([]string, error)
 	GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error)
@@ -443,6 +445,40 @@ func (repo repository) GetSignature(ctx context.Context, signatureID string) (*m
 	return signatureList[0], nil
 }
 
+// CreateOrUpdateSignature either creates or updates the signature record
+func (repo repository) CreateOrUpdateSignature(ctx context.Context, signature *models.Signature) (*models.Signature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.CreateOrUpdateSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	// Check if we have an existing signature record
+	existingSignature, sigErr := repo.GetSignature(ctx, signature.SignatureID)
+	if sigErr != nil {
+		log.WithFields(f).Warnf("error retrieving signature by ID: %s, error: %v", signature.SignatureID, sigErr)
+		return nil, sigErr
+	}
+
+	// If we have an existing signature record, we need to update it
+	if existingSignature != nil {
+		log.WithFields(f).Debugf("updating existing signature record for signature ID: %s", signature.SignatureID)
+		return repo.updateSignature(ctx, signature)
+	}
+
+	return nil, nil
+}
+
+// updateSignature updates the specified signature record
+func (repo repository) updateSignature(ctx context.Context, signature *models.Signature) (*models.Signature, error) {
+	// f := logrus.Fields{
+	// 	"functionName":   "v1.signatures.repository.updateSignature",
+	// 	utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	// }
+
+	// // Update the record in the database
+	return nil, nil
+}
+
 // GetIndividualSignature returns the signature record for the specified CLA Group and User
 func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error) {
 	f := logrus.Fields{
@@ -556,6 +592,121 @@ func (repo repository) GetIndividualSignature(ctx context.Context, claGroupID, u
 	}
 
 	return sigs[0], nil // nolint G602: Potentially accessing slice out of bounds (gosec)
+}
+
+// GetIndividualSignature returns the signature record for the specified CLA Group and User
+func (repo repository) GetIndividualSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error) {
+	f := logrus.Fields{
+		"functionName":           "v1.signatures.repository.GetIndividualSignature",
+		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
+		"tableName":              repo.signatureTableName,
+		"claGroupID":             claGroupID,
+		"userID":                 userID,
+		"signatureType":          utils.SignatureTypeCLA,
+		"signatureReferenceType": utils.SignatureReferenceTypeUser,
+		"signatureApproved":      "true",
+		"signatureSigned":        "true",
+	}
+
+	log.WithFields(f).Debug("querying signature for icla records ...")
+
+	var filterAdded bool
+	// These are the keys we want to match for an ICLA Signature with a given CLA Group and User ID
+	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID)).
+		And(expression.Key("signature_reference_id").Equal(expression.Value(userID)))
+	var filter expression.ConditionBuilder
+	filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeUser)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
+
+	if approved != nil {
+		filterAdded = true
+		searchTermExpression := expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved)))
+		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
+	}
+	if signed != nil {
+		filterAdded = true
+		log.WithFields(f).Debugf("adding filter signature_signed: %t", aws.BoolValue(signed))
+		searchTermExpression := expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed)))
+		filter = addAndCondition(filter, searchTermExpression, &filterAdded)
+	}
+
+	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
+	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
+		filterAdded = true
+		// log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
+		filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+		filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
+	}
+
+	builder := expression.NewBuilder().
+		WithKeyCondition(condition).
+		WithFilter(filter).
+		WithProjection(buildProjection())
+
+	// Use the nice builder to create the expression
+	expr, err := builder.Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for project ICLA signature query, error: %v", err)
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		FilterExpression:          expr.Filter(),
+		TableName:                 aws.String(repo.signatureTableName),
+		Limit:                     aws.Int64(100),                             // The maximum number of items to evaluate (not necessarily the number of matching items)
+		IndexName:                 aws.String(SignatureProjectReferenceIndex), // Name of a secondary index to scan
+	}
+
+	sigs := make([]*models.Signature, 0)
+	var lastEvaluatedKey string
+
+	// Loop until we have all the records
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
+		// Make the DynamoDB Query API call
+		results, errQuery := repo.dynamoDBClient.Query(queryInput)
+		//log.WithFields(f).Debugf("Ran signature project query, results: %+v, error: %+v", results, errQuery)
+		if errQuery != nil {
+			log.WithFields(f).Warnf("error retrieving project ICLA signature ID, error: %v", errQuery)
+			return nil, errQuery
+		}
+
+		// Convert the list of DB models to a list of response models
+		//log.WithFields(f).Debug("Building response models...")
+		signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, claGroupID, LoadACLDetails)
+		if modelErr != nil {
+			log.WithFields(f).Warnf("error converting DB model to response model for signatures, error: %v",
+				modelErr)
+			return nil, modelErr
+		}
+
+		// Add to the signatures response model to the list
+		sigs = append(sigs, signatureList...)
+
+		//log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey)
+		if results.LastEvaluatedKey["signature_id"] != nil {
+			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			lastEvaluatedKey = ""
+		}
+	}
+
+	// Didn't find a matching record
+	if len(sigs) == 0 {
+		return nil, nil
+	}
+
+	if len(sigs) > 1 {
+		log.WithFields(f).Warnf("found multiple matching ICLA signatures - found %d total", len(sigs))
+	}
+
+	return sigs, nil
 }
 
 // GetCorporateSignature returns the signature record for the specified CLA Group and Company ID

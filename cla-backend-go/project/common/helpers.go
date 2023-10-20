@@ -102,13 +102,13 @@ func GetCurrentDocument(ctx context.Context, docs []models.ClaGroupDocument) (mo
 			continue
 		}
 
-		// No previous, use the first...
-		if currentDoc == (models.ClaGroupDocument{}) {
-			currentDoc = doc
-			currentDocVersion = version
-			currentDocDateTime = dateTime
-			continue
-		}
+		// // No previous, use the first...
+		// if currentDoc == (models.ClaGroupDocument{}) {
+		// 	currentDoc = doc
+		// 	currentDocVersion = version
+		// 	currentDocDateTime = dateTime
+		// 	continue
+		// }
 
 		// Newer version...
 		if version > currentDocVersion {
@@ -126,4 +126,17 @@ func GetCurrentDocument(ctx context.Context, docs []models.ClaGroupDocument) (mo
 	}
 
 	return currentDoc, nil
+}
+
+func AreClaGroupDocumentsEqual(doc1, doc2 models.ClaGroupDocument) bool {
+	return doc1.DocumentName == doc2.DocumentName &&
+		doc1.DocumentAuthorName == doc2.DocumentAuthorName &&
+		doc1.DocumentContentType == doc2.DocumentContentType &&
+		doc1.DocumentFileID == doc2.DocumentFileID &&
+		doc1.DocumentLegalEntityName == doc2.DocumentLegalEntityName &&
+		doc1.DocumentPreamble == doc2.DocumentPreamble &&
+		doc1.DocumentS3URL == doc2.DocumentS3URL &&
+		doc1.DocumentMajorVersion == doc2.DocumentMajorVersion &&
+		doc1.DocumentMinorVersion == doc2.DocumentMinorVersion &&
+		doc1.DocumentCreationDate == doc2.DocumentCreationDate
 }

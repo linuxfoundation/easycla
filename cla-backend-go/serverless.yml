@@ -239,6 +239,7 @@ provider:
     DOCUSIGN_INTEGRATOR_KEY: ${file(./env.json):docusign-integrator-key, ssm:/cla-docusign-integrator-key-${opt:stage}}
     DOCUSIGN_AUTH_SERVER: ${file(./env.json):docusign-auth-server, ssm:/cla-docusign-auth-server-${opt:stage}}
     DOCUSIGN_USER_ID: ${file(./env.json):docusign-auth-server, ssm:/cla-docusign-user-id-${opt:stage}}
+    DOCUSIGN_ACCOUNT_ID: ${file(./env.json):docusign-account-id, ssm:/cla-docusign-account-id-${opt:stage}}
     CLA_API_BASE: ${file(./env.json):cla-api-base, ssm:/cla-api-base-${opt:stage}}
     CLA_CONTRIBUTOR_BASE: ${file(./env.json):cla-contributor-base, ssm:/cla-contributor-base-${opt:stage}}
     CLA_CONTRIBUTOR_V2_BASE: ${file(./env.json):cla-contributor-v2-base, ssm:/cla-contributor-v2-base-${opt:stage}}
