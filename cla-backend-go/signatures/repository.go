@@ -76,6 +76,7 @@ type SignatureRepository interface {
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
 	GetIndividualSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error)
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
+	GetCorporateSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error)
 	GetSignatureACL(ctx context.Context, signatureID string) ([]string, error)
 	GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error)
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
@@ -816,6 +817,115 @@ func (repo repository) GetCorporateSignature(ctx context.Context, claGroupID, co
 	}
 
 	return sigs[0], nil // nolint G602: Potentially accessing slice out of bounds (gosec)
+}
+
+// GetCorporateSignatures returns the list signature record for the specified CLA Group and Company ID
+func (repo repository) GetCorporateSignatures(ctx context.Context, claGroupID, companyID string, approved, signed *bool) ([]*models.Signature, error) {
+	f := logrus.Fields{
+		"functionName":           "v1.signatures.repository.GetCorporateSignatures",
+		utils.XREQUESTID:         ctx.Value(utils.XREQUESTID),
+		"tableName":              repo.signatureTableName,
+		"claGroupID":             claGroupID,
+		"companyID":              companyID,
+		"signatureType":          "ccla",
+		"signatureReferenceType": "company",
+		"signatureApproved":      utils.BoolValue(approved),
+		"signatureSigned":        utils.BoolValue(signed),
+	}
+
+	var filterAdded bool
+	// These are the keys we want to match for an CCLA Signature with a given CLA Group and Company ID
+	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID)).
+		And(expression.Key("signature_reference_id").Equal(expression.Value(companyID)))
+	var filter expression.ConditionBuilder
+	filter = addAndCondition(filter, expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCCLA)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_reference_type").Equal(expression.Value(utils.SignatureReferenceTypeCompany)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").AttributeNotExists(), &filterAdded)
+
+	if approved != nil {
+		filterAdded = true
+		filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(aws.BoolValue(approved))), &filterAdded)
+	}
+	if signed != nil {
+		filterAdded = true
+		filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(aws.BoolValue(signed))), &filterAdded)
+	}
+
+	// If no query option was provided for approved and signed and our configuration default is to only show active signatures then we add the required query filters
+	if approved == nil && signed == nil && config.GetConfig().SignatureQueryDefault == utils.SignatureQueryDefaultActive {
+		filterAdded = true
+		//log.WithFields(f).Debug("adding filter signature_approved: true and signature_signed: true")
+		filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+		filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
+	}
+
+	builder := expression.NewBuilder().
+		WithKeyCondition(condition).
+		WithFilter(filter).
+		WithProjection(buildProjection())
+
+	// Use the nice builder to create the expression
+	expr, err := builder.Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for project CCLA signature query, error: %v", err)
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		FilterExpression:          expr.Filter(),
+		TableName:                 aws.String(repo.signatureTableName),
+		Limit:                     aws.Int64(100),                             // The maximum number of items to evaluate (not necessarily the number of matching items)
+		IndexName:                 aws.String(SignatureProjectReferenceIndex), // Name of a secondary index to scan
+	}
+
+	sigs := make([]*models.Signature, 0)
+	var lastEvaluatedKey string
+
+	// Loop until we have all the records
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
+		// Make the DynamoDB Query API call
+		results, errQuery := repo.dynamoDBClient.Query(queryInput)
+		if errQuery != nil {
+			log.WithFields(f).Warnf("error retrieving project CCLA signature, error: %v", errQuery)
+			return nil, errQuery
+		}
+
+		// Convert the list of DB models to a list of response models
+		//log.WithFields(f).Debug("Building response models...")
+		signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, claGroupID, LoadACLDetails)
+		if modelErr != nil {
+			log.WithFields(f).Warnf("error converting DB model to response model for signatures, error: %v",
+				modelErr)
+			return nil, modelErr
+		}
+
+		// Add to the signatures response model to the list
+		sigs = append(sigs, signatureList...)
+
+		//log.WithFields(f).Debugf("LastEvaluatedKey: %+v", results.LastEvaluatedKey)
+		if results.LastEvaluatedKey["signature_id"] != nil {
+			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			lastEvaluatedKey = ""
+		}
+	}
+
+	// Didn't find a matching record
+	if len(sigs) == 0 {
+		return nil, nil
+	}
+
+	if len(sigs) > 1 {
+		log.WithFields(f).Warnf("found multiple matching ICLA signatures - found %d total", len(sigs))
+	}
+
+	return sigs, nil
 }
 
 // GetActivePullRequestMetadata returns the pull request metadata for the given user ID
