@@ -687,8 +687,8 @@ func (s *service) populateSignURL(ctx context.Context,
 	log.WithFields(f).Debugf("signatureReferenceType: %s", signatureReferenceType)
 	log.WithFields(f).Debugf("processing signing request...")
 
-	userSignatureName := Unknown
-	userSignatureEmail := Unknown
+	var userSignatureName string
+	var userSignatureEmail string
 	var document v1Models.ClaGroupDocument
 	var project *v1Models.ClaGroup
 	var companyModel *v1Models.Company
@@ -697,44 +697,20 @@ func (s *service) populateSignURL(ctx context.Context,
 	var emailBody string
 	var emailSubject string
 
-	if signatureReferenceType == utils.SignatureReferenceTypeCompany {
-		companyModel, err = s.companyRepo.GetCompany(ctx, latestSignature.SignatureReferenceID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup company by ID: %s", latestSignature.SignatureReferenceID)
-			return err
-		}
-		if companyModel == nil {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup company by ID: %s", latestSignature.SignatureReferenceID)
-			return errors.New("no CLA manager lookup error")
-		}
-		userSignatureName = claManagerName
-		userSignatureEmail = claManagerEmail
-	} else if signatureReferenceType == utils.SignatureReferenceTypeUser {
-		if !sendAsEmail {
-			userModel, userErr := s.userService.GetUser(latestSignature.SignatureReferenceID)
-			if userErr != nil {
-				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", latestSignature.SignatureReferenceID)
-				return userErr
-			}
-			log.WithFields(f).Debugf("loaded user : %+v", userModel)
+	// companyModel, userSignatureName, userSignatureEmail, shouldReturn, returnValue := newFunction(ctx, signatureReferenceType, companyModel, err, s, latestSignature, f, userSignatureName, claManagerName, userSignatureEmail, claManagerEmail, sendAsEmail, preferredEmail)
+	// if shouldReturn {
+	// 	return returnValue
+	// }
 
-			if userModel == nil {
-				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", latestSignature.SignatureReferenceID)
-				msg := fmt.Sprintf("No user lookup error for user ID: %s", latestSignature.SignatureReferenceID)
-				return errors.New(msg)
-			}
-
-			if userModel.Username != "" {
-				userSignatureName = userModel.Username
-			}
-			if getUserEmail(userModel, preferredEmail) != "" {
-				userSignatureEmail = getUserEmail(userModel, preferredEmail)
-			}
-		}
-	} else {
-		log.WithFields(f).Warnf("unknown signature reference type: %s", signatureReferenceType)
-		return errors.New("unknown signature reference type")
+	// populate user details
+	userDetails, err := s.populateUserDetails(ctx, signatureReferenceType, latestSignature, claManagerName, claManagerEmail, sendAsEmail, preferredEmail)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to populate user details for signatureReferenceType: %s", signatureReferenceType)
+		return err
 	}
+
+	userSignatureName = userDetails.userSignatureName
+	userSignatureEmail = userDetails.userSignatureEmail
 
 	// Get the document template to sign
 	log.WithFields(f).Debugf("getting document template to sign...")
@@ -1016,6 +992,63 @@ func (s *service) populateSignURL(ctx context.Context,
 	log.WithFields(f).Debugf("populate_sign_url - complete")
 
 	return nil
+}
+
+type UserSignDetails struct {
+	userSignatureName  string
+	userSignatureEmail string
+}
+
+func (s *service) populateUserDetails(ctx context.Context, signatureReferenceType string, latestSignature *v1Models.Signature, claManagerName, claManagerEmail string, sendAsEmail bool, preferredEmail string) (*UserSignDetails, error) {
+	f := logrus.Fields{
+		"functionName": "sign.populateUserDetails",
+	}
+	log.WithFields(f).Debugf("populating user details...")
+	userSignDetails := &UserSignDetails{
+		userSignatureName:  Unknown,
+		userSignatureEmail: Unknown,
+	}
+
+	if signatureReferenceType == utils.SignatureReferenceTypeCompany {
+		companyModel, err := s.companyRepo.GetCompany(ctx, latestSignature.SignatureReferenceID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup company by ID: %s", latestSignature.SignatureReferenceID)
+			return nil, err
+		}
+		if companyModel == nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup company by ID: %s", latestSignature.SignatureReferenceID)
+			return nil, errors.New("no CLA manager lookup error")
+		}
+		userSignDetails.userSignatureEmail = claManagerEmail
+		userSignDetails.userSignatureName = claManagerName
+
+	} else if signatureReferenceType == utils.SignatureReferenceTypeUser {
+		if !sendAsEmail {
+			userModel, userErr := s.userService.GetUser(latestSignature.SignatureReferenceID)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", latestSignature.SignatureReferenceID)
+				return nil, userErr
+			}
+			log.WithFields(f).Debugf("loaded user : %+v", userModel)
+
+			if userModel == nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", latestSignature.SignatureReferenceID)
+				msg := fmt.Sprintf("No user lookup error for user ID: %s", latestSignature.SignatureReferenceID)
+				return nil, errors.New(msg)
+			}
+
+			if userModel.Username != "" {
+				userSignDetails.userSignatureName = userModel.Username
+			}
+			if getUserEmail(userModel, preferredEmail) != "" {
+				userSignDetails.userSignatureEmail = getUserEmail(userModel, preferredEmail)
+			}
+		}
+	} else {
+		log.WithFields(f).Warnf("unknown signature reference type: %s", signatureReferenceType)
+		return nil, errors.New("unknown signature reference type")
+	}
+	return userSignDetails, nil
 }
 
 func (s *service) getDocumentResource(urlString string) ([]byte, error) {
