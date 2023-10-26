@@ -4,10 +4,8 @@
 package sign
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -122,20 +120,6 @@ type requestCorporateSignatureInput struct {
 	ReturnURL         string `json:"return_url,omitempty"`
 }
 
-type requestCorporateSignatureOutput struct {
-	ProjectID   string `json:"project_id"`
-	CompanyID   string `json:"company_id"`
-	SignatureID string `json:"signature_id"`
-	SignURL     string `json:"sign_url"`
-}
-
-func (in *requestCorporateSignatureOutput) toModel() *models.CorporateSignatureOutput {
-	return &models.CorporateSignatureOutput{
-		SignURL:     in.SignURL,
-		SignatureID: in.SignatureID,
-	}
-}
-
 func validateCorporateSignatureInput(input *models.CorporateSignatureInput) error {
 	if input.SendAsEmail {
 		log.Debugf("input.AuthorityName validation %s", input.AuthorityName)
@@ -173,6 +157,12 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		"sendAsEmail":       input.SendAsEmail,
 		"returnURL":         input.ReturnURL,
 	}
+
+	/**
+		1. Ensure Company Exists
+		2. Ensure this is a valid project
+	**/
+
 	usc := userService.GetClient()
 
 	log.WithFields(f).Debug("validating input parameters...")
@@ -182,6 +172,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		return nil, err
 	}
 
+	// 1. Ensure Company Exists
 	var comp *v1Models.Company
 	// Backwards compatible - if the signing entity name is not set, then we fall back to using the CompanySFID lookup
 	// which will return the company record where the company name == signing entity name
@@ -201,6 +192,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 	}
 
+	// 2. Ensure this is a valid project
 	psc := projectService.GetClient()
 	log.WithFields(f).Debug("looking up project by SFID...")
 	project, err := psc.GetProject(utils.StringValue(input.ProjectSfid))
@@ -266,7 +258,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		log.WithFields(f).Warn("unable to request corporate signature - missing corporate documents in the CLA Group configuration")
 		return nil, ErrTemplateNotConfigured
 	}
-
+	var currentUserEmail string
 	// Email flow
 	if input.SendAsEmail {
 		log.WithFields(f).Debugf("Sending request as an email to: %s...", input.AuthorityEmail.String())
@@ -280,7 +272,6 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 	} else {
 		// Direct to DocuSign flow...
-		var currentUserEmail string
 
 		log.WithFields(f).Debugf("Loading user by username: %s...", lfUsername)
 		userModel, userErr := usc.GetUserByUsername(lfUsername)
@@ -305,8 +296,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 	}
 
-	log.WithFields(f).Debug("Forwarding request to v1 API for requestCorporateSignature...")
-	out, err := requestCorporateSignature(authorizationHeader, s.ClaV1ApiURL, &requestCorporateSignatureInput{
+	signature, err := s.requestCorporateSignature(ctx, s.ClaV1ApiURL, &requestCorporateSignatureInput{
 		ProjectID:         proj.ProjectID,
 		CompanyID:         comp.CompanyID,
 		SigningEntityName: input.SigningEntityName,
@@ -314,7 +304,8 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		AuthorityName:     input.AuthorityName,
 		AuthorityEmail:    input.AuthorityEmail.String(),
 		ReturnURL:         input.ReturnURL.String(),
-	})
+	}, comp, proj, lfUsername, currentUserEmail)
+
 	if err != nil {
 		if input.AuthorityEmail.String() != "" {
 			// remove role
@@ -333,7 +324,14 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		log.WithFields(f).WithError(companyACLError).Warnf("Unable to add user with LFID: %s to company ACL, companyID: %s", lfUsername, *input.CompanySfid)
 	}
 
-	return out.toModel(), nil
+	return &models.CorporateSignatureOutput{
+		SignURL:     signature.SignatureSignURL,
+		SignatureID: signature.SignatureID,
+	}, nil
+}
+
+func (s *service) getCorporateSignatureCallbackUrl(companyId, projectId string) string {
+	return fmt.Sprintf("%s/v2/signed/corporate/%s/%s", s.ClaV1ApiURL, companyId, projectId)
 }
 
 func (s *service) RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error) {
@@ -817,7 +815,7 @@ func (s *service) populateSignURL(ctx context.Context,
 
 		// # Update Signed for label according to signature_type (company or name)
 		var userIdentifier string
-		if signatureReferenceType == utils.SignatureReferenceTypeCompany {
+		if signatureReferenceType == utils.SignatureReferenceTypeCompany && companyModel != nil {
 			userIdentifier = companyModel.CompanyName
 		} else {
 			if signatoryName == "Unknown" || signatoryName == "" {
@@ -1196,6 +1194,48 @@ func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEm
 	return defaultValues
 }
 
+func (s *service) createDefaultCorporateValues(company *v1Models.Company, signatoryName string, signatoryEmail string, managerName string, managerEmail string) map[string]interface{} {
+	f := logrus.Fields{
+		"functionName": "sign.createDefaultCorporateValues",
+	}
+	log.WithFields(f).Debugf("creating corporate default values...")
+
+	defaultValues := make(map[string]interface{})
+
+	if company != nil {
+		if company.CompanyName != "" {
+			defaultValues["corporation"] = company.CompanyName
+		}
+		if company.SigningEntityName != "" {
+			defaultValues["corporation_name"] = company.SigningEntityName
+		} else {
+			defaultValues["corporation_name"] = company.CompanyName
+		}
+	}
+	if signatoryName != "" {
+		defaultValues["signatory_name"] = signatoryName
+	}
+	if signatoryEmail != "" {
+		defaultValues["signatory_email"] = signatoryEmail
+	}
+
+	if managerName != "" {
+		defaultValues["point_of_contact"] = managerName
+		defaultValues["cla_manager_name"] = managerName
+	}
+
+	if managerEmail != "" {
+		defaultValues["email"] = managerEmail
+		defaultValues["cla_manager_email"] = managerEmail
+	}
+
+	if signatoryName != "" && signatoryEmail != "" {
+		defaultValues["scheduleA"] = fmt.Sprintf("CLA Manager: %s, %s", signatoryName, signatoryEmail)
+	}
+
+	return defaultValues
+}
+
 func getLatestSignature(signatures []*v1Models.Signature) *v1Models.Signature {
 	var latestSignature *v1Models.Signature
 	for _, signature := range signatures {
@@ -1218,7 +1258,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 	return nil, nil
 }
 
-func requestCorporateSignature(authToken string, apiURL string, input *requestCorporateSignatureInput) (*requestCorporateSignatureOutput, error) {
+func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, input *requestCorporateSignatureInput, comp *v1Models.Company, proj *v1Models.ClaGroup, lfUsername string, currentUserEmail string) (*v1Models.Signature, error) {
 	f := logrus.Fields{
 		"functionName":      "requestCorporateSignature",
 		"apiURL":            apiURL,
@@ -1230,64 +1270,153 @@ func requestCorporateSignature(authToken string, apiURL string, input *requestCo
 		"ReturnURL":         input.ReturnURL,
 		"SendAsEmail":       input.SendAsEmail,
 	}
-	log.WithFields(f).Debug("Processing request...")
-	requestBody, err := json.Marshal(input)
+	/**
+		1. Ensure User exists in easycla db, if not then create one by getting user by user service
+	   	2. Create individual default values
+		3. Load latest document
+		4. Check for active corporate signature record for this project/company combination
+		5. if signature doesn't exists then Create new signature object
+		6. Set signature ACL
+		7. Populate sign url
+		8. Save signature
+	**/
+	// 1. Ensure User exists in easycla db, if not then create one by getting user by user service
+	usc := userService.GetClient()
+	log.WithFields(f).Debugf("Get UserProfile from easycla: %s...", lfUsername)
+	claUser, err := s.userService.GetUserByUserName(lfUsername, true)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem marshalling input request - error: %+v", err)
 		return nil, err
 	}
-
-	client := http.Client{}
-	log.WithFields(f).Debugf("requesting corporate signatures: %#v", string(requestBody))
-	req, err := http.NewRequest("POST", apiURL+"/v1/request-corporate-signature", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", authToken)
-	resp, err := client.Do(req)
-	if err != nil {
-		log.WithFields(f).Warnf("client request error: %+v", err)
-		return nil, err
-	}
-	defer func() {
-		closeErr := resp.Body.Close()
-		if closeErr != nil {
-			log.WithFields(f).Warnf("error closing response body: %+v", closeErr)
+	if claUser == nil {
+		log.WithFields(f).Debugf("Loading user by username from username: %s...", lfUsername)
+		userModel, userErr := usc.GetUserByUsername(lfUsername)
+		if userErr != nil {
+			return nil, userErr
 		}
-	}()
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.WithFields(f).Warnf("error reading response body: %+v", err)
-		return nil, err
-	}
-	log.WithFields(f).Debugf("corporate signature response: %#v\n", string(responseBody))
-	log.WithFields(f).Debugf("corporate signature response headers :%#v\n", resp.Header)
-
-	if strings.Contains(string(responseBody), "Company has already signed CCLA with this project") {
-		log.WithFields(f).Warnf("response contains error: %+v", responseBody)
-		return nil, errors.New("company has already signed CCLA with this project")
-	} else if strings.Contains(string(responseBody), "Contract Group does not support CCLAs.") {
-		log.WithFields(f).Warnf("response contains error: %+v", responseBody)
-		return nil, errors.New("contract Group does not support CCLAs")
-	} else if strings.Contains(string(responseBody), "user_error': 'user does not exist") {
-		log.WithFields(f).Warnf("response contains error: %+v", responseBody)
-		return nil, errors.New("user_error': 'user does not exist")
-	} else if strings.Contains(string(responseBody), "Internal server error") {
-		log.WithFields(f).Warnf("response contains error: %+v", responseBody)
-		return nil, errors.New("internal server error")
-	}
-
-	var out requestCorporateSignatureOutput
-	err = json.Unmarshal(responseBody, &out)
-	if err != nil {
-		if _, ok := err.(*json.UnmarshalTypeError); ok {
-			return nil, errors.New(string(responseBody))
+		var lfEmail string
+		var emailList []string
+		emails := userModel.Emails
+		if len(emails) > 0 {
+			for _, email := range emails {
+				if *email.IsPrimary {
+					lfEmail = *email.EmailAddress
+				}
+				emailList = append(emailList, *email.EmailAddress)
+			}
 		}
+
+		claUser, err = s.userService.CreateUser(&v1Models.User{
+			Username:       userModel.Name,
+			UserExternalID: userModel.ID,
+			LfUsername:     lfUsername,
+			Admin:          false,
+			LfEmail:        strfmt.Email(lfEmail),
+			Emails:         emailList,
+		}, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	signatoryName := input.AuthorityName
+	signatoryEmail := input.AuthorityEmail
+
+	if input.AuthorityName == "" || input.AuthorityEmail == "" {
+		signatoryName = claUser.Username
+		signatoryEmail = currentUserEmail
+	}
+
+	// 2. Create individual default values
+	log.WithFields(f).Debugf("creating individual default values...")
+	defaultValues := s.createDefaultCorporateValues(comp, signatoryName, signatoryEmail, claUser.Username, currentUserEmail)
+
+	// 3. Load latest document
+	log.WithFields(f).Debugf("loading latest individual document for project: %s", input.ProjectID)
+	latestDocument, err := common.GetCurrentDocument(ctx, proj.ProjectCorporateDocuments)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup latest corporate document for project: %s", input.ProjectID)
 		return nil, err
 	}
 
-	return &out, nil
+	if common.AreClaGroupDocumentsEqual(latestDocument, v1Models.ClaGroupDocument{}) {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup latest corporate document for project: %s", input.ProjectID)
+		return nil, errors.New("unable to lookup latest corporate document for project")
+	}
+
+	// 4. Check for active corporate signature record for this project/company combination
+	approved := true
+	log.WithFields(f).Debug("Forwarding request to v1 API for requestCorporateSignature...")
+	companySignatures, err := s.signatureService.GetCorporateSignatures(ctx, input.ProjectID, input.CompanyID, &approved, nil)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup user signatures by Company ID: %s, Project ID: %s", input.CompanyID, input.ProjectID)
+		return nil, err
+	}
+
+	haveSigned := false
+	for _, s := range companySignatures {
+		if s.SignatureSigned {
+			haveSigned = true
+			break
+		}
+	}
+	if haveSigned {
+		haveSignedErr := fmt.Errorf("one or more corporate valid signature exists for Company ID: %s, Project ID: %s", input.CompanyID, input.ProjectID)
+		log.WithFields(f).WithError(err).Warnf(haveSignedErr.Error())
+		return nil, haveSignedErr
+	}
+	callbackURL := s.getCorporateSignatureCallbackUrl(input.ProjectID, input.CompanyID)
+	var companySignature *v1Models.Signature
+	if len(companySignatures) > 0 {
+		companySignature = companySignatures[0]
+	} else {
+		// 5. if signature doesn't exists then Create new signature object
+		log.WithFields(f).Debugf("creating new signature object...")
+		signatureID := uuid.Must(uuid.NewV4()).String()
+		_, currentTime := utils.CurrentTime()
+
+		companySignature = &v1Models.Signature{
+			SignatureID:                   signatureID,
+			SignatureDocumentMajorVersion: latestDocument.DocumentMajorVersion,
+			SignatureDocumentMinorVersion: latestDocument.DocumentMinorVersion,
+			SignatureReferenceID:          comp.CompanyID,
+			SignatureReferenceType:        "company",
+			SignatureReferenceName:        comp.CompanyName,
+			ProjectID:                     input.ProjectID,
+			SignatureCreated:              currentTime,
+			SignatureModified:             currentTime,
+			SignatureType:                 utils.SignatureTypeCCLA,
+			SignatoryName:                 signatoryName,
+			SigningEntityName:             comp.SigningEntityName,
+			SignatureSigned:               false,
+			SignatureApproved:             true,
+		}
+	}
+	companySignature.SignatureCallbackURL = callbackURL
+
+	if !input.SendAsEmail {
+		companySignature.SignatureReturnURL = input.ReturnURL
+	}
+
+	// 6. Set signature ACL
+	log.WithFields(f).Debugf("setting signature ACL...")
+	companySignature.SignatureACL = []v1Models.User{
+		*claUser,
+	}
+
+	// 7. Populate sign url
+	log.WithFields(f).Debugf("populating sign url...")
+	err = s.populateSignURL(ctx, companySignature, callbackURL, input.AuthorityName, input.AuthorityEmail, input.SendAsEmail, claUser.Username, currentUserEmail, defaultValues, currentUserEmail)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to populate sign url for company: %s", input.CompanyID)
+		return nil, err
+	}
+
+	// 8. Save signature
+	signature, err := s.signatureService.CreateOrUpdateSignature(ctx, companySignature)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to create signature for company: %s", input.CompanyID)
+		return nil, err
+	}
+	return signature, nil
 }
 
 func removeSignatoryRole(ctx context.Context, userEmail string, companySFID string, projectSFID string) error {
