@@ -1359,9 +1359,9 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 		}
 	}
 	if haveSigned {
-		err := fmt.Errorf("one or more corporate valid signature exists for Company ID: %s, Project ID: %s", input.CompanyID, input.ProjectID)
-		log.WithFields(f).WithError(err).Warnf(err.Error())
-		return nil, err
+		haveSignedErr := fmt.Errorf("one or more corporate valid signature exists for Company ID: %s, Project ID: %s", input.CompanyID, input.ProjectID)
+		log.WithFields(f).WithError(err).Warnf(haveSignedErr.Error())
+		return nil, haveSignedErr
 	}
 	callbackURL := s.getCorporateSignatureCallbackUrl(input.ProjectID, input.CompanyID)
 	var companySignature *v1Models.Signature
