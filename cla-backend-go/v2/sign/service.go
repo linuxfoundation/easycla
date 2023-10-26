@@ -815,7 +815,7 @@ func (s *service) populateSignURL(ctx context.Context,
 
 		// # Update Signed for label according to signature_type (company or name)
 		var userIdentifier string
-		if signatureReferenceType == utils.SignatureReferenceTypeCompany {
+		if signatureReferenceType == utils.SignatureReferenceTypeCompany && companyModel != nil {
 			userIdentifier = companyModel.CompanyName
 		} else {
 			if signatoryName == "Unknown" || signatoryName == "" {
