@@ -11,6 +11,7 @@ import uuid
 import concurrent.futures
 from typing import List, Union, Optional
 
+import threading
 import falcon
 import github
 from github import PullRequest
@@ -731,12 +732,19 @@ class GitHub(repository_service_interface.RepositoryService):
         # Find users who have signed and who have not signed.
         signed = []
         missing = []
+        threads = []
 
         cla.log.debug(f'{fn} - PR: {pull_request.number}, scanning users - '
                       'determining who has signed a CLA an who has not.')
         for user_commit_summary in commit_authors:
             cla.log.debug(f'{fn} - PR: {pull_request.number} for user: {user_commit_summary}')
-            handle_commit_from_user(project, user_commit_summary, signed, missing)
+            thread = threading.Thread(target=handle_commit_from_user, args=(project,user_commit_summary,signed,missing))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
 
         # At this point, the signed and missing lists are now filled and updated with the commit user info
 
