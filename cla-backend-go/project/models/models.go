@@ -3,6 +3,10 @@
 
 package models
 
+import (
+	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+)
+
 // DBProjectModel data model
 type DBProjectModel struct {
 	DateCreated                      string                   `dynamodbav:"date_created"`
@@ -28,14 +32,15 @@ type DBProjectModel struct {
 
 // DBProjectDocumentModel is a data model for the CLA Group Project documents
 type DBProjectDocumentModel struct {
-	DocumentName            string `dynamodbav:"document_name"`
-	DocumentFileID          string `dynamodbav:"document_file_id"`
-	DocumentPreamble        string `dynamodbav:"document_preamble"`
-	DocumentLegalEntityName string `dynamodbav:"document_legal_entity_name"`
-	DocumentAuthorName      string `dynamodbav:"document_author_name"`
-	DocumentContentType     string `dynamodbav:"document_content_type"`
-	DocumentS3URL           string `dynamodbav:"document_s3_url"`
-	DocumentMajorVersion    string `dynamodbav:"document_major_version"`
-	DocumentMinorVersion    string `dynamodbav:"document_minor_version"`
-	DocumentCreationDate    string `dynamodbav:"document_creation_date"`
+	DocumentName            string                 `dynamodbav:"document_name"`
+	DocumentFileID          string                 `dynamodbav:"document_file_id"`
+	DocumentPreamble        string                 `dynamodbav:"document_preamble"`
+	DocumentLegalEntityName string                 `dynamodbav:"document_legal_entity_name"`
+	DocumentAuthorName      string                 `dynamodbav:"document_author_name"`
+	DocumentContentType     string                 `dynamodbav:"document_content_type"`
+	DocumentS3URL           string                 `dynamodbav:"document_s3_url"`
+	DocumentMajorVersion    string                 `dynamodbav:"document_major_version"`
+	DocumentMinorVersion    string                 `dynamodbav:"document_minor_version"`
+	DocumentCreationDate    string                 `dynamodbav:"document_creation_date"`
+	DocumentTabs            []v1Models.DocumentTab `dynamodbav:"document_tabs"`
 }

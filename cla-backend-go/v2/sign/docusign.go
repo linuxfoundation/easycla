@@ -4,11 +4,13 @@
 package sign
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 
@@ -90,6 +92,64 @@ func (s *service) getAccessToken(ctx context.Context) (string, error) {
 
 }
 
+func getAccountID(accessToken string) (string, error) {
+	f := logrus.Fields{
+		"functionName": "v2.getAccountID",
+	}
+
+	// Create the request
+	url := fmt.Sprintf("https://%s/oauth/userinfo", utils.GetProperty("DOCUSIGN_AUTH_SERVER"))
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem creating the HTTP request")
+		return "", err
+	}
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+	req.Header.Add("Accept", "application/json")
+
+	// Make the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem making the HTTP request")
+		return "", err
+	}
+
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem closing the response body")
+		}
+	}()
+
+	// Parse the response
+	responsePayload, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem reading the response body")
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.WithFields(f).Warnf("problem making the HTTP request - status code: %d", resp.StatusCode)
+		return "", errors.New("problem making the HTTP request")
+	}
+
+	var accountResponse DocuSignUserInfoResponse
+	err = json.Unmarshal(responsePayload, &accountResponse)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem unmarshalling the response body")
+		return "", err
+	}
+
+	accountID := accountResponse.Accounts[0].AccountId
+
+	log.WithFields(f).Debugf("account ID: %s", accountID)
+
+	return accountID, nil
+}
+
 // Void envelope
 func (s *service) VoidEnvelope(ctx context.Context, envelopeID, message string) error {
 	f := logrus.Fields{
@@ -118,7 +178,16 @@ func (s *service) VoidEnvelope(ctx context.Context, envelopeID, message string) 
 		return err
 	}
 
-	url := fmt.Sprintf("https://%s/restapi/v2.1/accounts/%s/envelopes/%s/void", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"), envelopeID)
+	accountID, err := getAccountID(accessToken)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
+		return err
+	}
+
+	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
+
+	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/void", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID, envelopeID)
 
 	req, err := http.NewRequest("PUT", url, strings.NewReader(string(voidRequestJSON)))
 
@@ -158,8 +227,284 @@ func (s *service) VoidEnvelope(ctx context.Context, envelopeID, message string) 
 
 }
 
+func (s *service) createEnvelope(ctx context.Context, payload *DocuSignEnvelopeRequest) (string, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.createEnvelope",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	// Serialize the signRequest into JSON
+	requestJSON, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	log.WithFields(f).Debugf("sign request: %+v", string(requestJSON))
+
+	// Get the access token
+	accessToken, err := s.getAccessToken(ctx)
+
+	if err != nil {
+		return "", err
+	}
+
+	// Get Account ID
+
+	accountID, err := getAccountID(accessToken)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
+		return "", err
+	}
+
+	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
+
+	// Create the request
+	url := fmt.Sprintf("%s/accounts/%s/envelopes", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID)
+
+	req, err := http.NewRequest("POST", url, strings.NewReader(string(requestJSON)))
+
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Accept", "application/json")
+
+	// Make the request
+	client := &http.Client{}
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem making the HTTP request")
+		return "", err
+	}
+
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem closing the response body")
+		}
+	}()
+
+	responsePayload, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem reading the response body")
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		log.WithFields(f).Warnf("problem making the HTTP request - status code: %d - response : %s", resp.StatusCode, string(responsePayload))
+		return "", errors.New("problem making the HTTP request")
+	}
+
+	var response DocuSignEnvelopeResponse
+
+	err = json.Unmarshal(responsePayload, &response)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem unmarshalling the response body")
+		return "", err
+	}
+
+	return response.EnvelopeId, nil
+
+}
+
+func (s *service) addDocumentToEnvelope(ctx context.Context, envelopeID, documentName string, document []byte) error {
+	f := logrus.Fields{
+		"functionName": "v2.addDocumentToEnvelope",
+	}
+
+	const method = "PUT"
+
+	// Get the access token
+	accessToken, err := s.getAccessToken(ctx)
+
+	if err != nil {
+		return err
+	}
+
+	// Get Account ID
+
+	accountID, err := getAccountID(accessToken)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
+		return err
+	}
+
+	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
+
+	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/documents/1", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID, envelopeID)
+
+	log.WithFields(f).Debugf("url: %s", url)
+
+	body := &bytes.Buffer{}
+
+	writer := multipart.NewWriter(body)
+
+	part, partErr := writer.CreateFormFile("file", documentName)
+	if partErr != nil {
+		return partErr
+	}
+
+	_, copyErr := io.Copy(part, bytes.NewReader(document))
+
+	if copyErr != nil {
+		return copyErr
+	}
+
+	closeErr := writer.Close()
+	if closeErr != nil {
+		return closeErr
+	}
+
+	// create the http request
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return err
+	}
+
+	// Set headers
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+	req.Header.Set("Content-Disposition", fmt.Sprintf("filename=\"%s\"", documentName))
+	req.Header.Set("Content-Type", "application/pdf")
+	req.Header.Set("Accept", "application/json")
+
+	log.WithFields(f).Debugf("adding document to envelope with url: %s %s", method, url)
+
+	// Send HTTP request
+	client := &http.Client{}
+	resp, clientErr := client.Do(req)
+	if clientErr != nil {
+		log.WithFields(f).WithError(clientErr).Warnf("problem invoking envelope document upload request to %s %s", method, url)
+		return clientErr
+	}
+
+	//log.WithFields(f).Debugf("response: %+v", resp)
+	responsePayload, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		log.WithFields(f).WithError(readErr).Warnf("problem reading response body %+v", resp.Body)
+		return readErr
+	}
+
+	// Expecting a 200 response
+	if resp.StatusCode != 200 {
+		msg := fmt.Sprintf("problem invoking http %s request to %s - response status code is not 200: %d - response is: %+v", method, url, resp.StatusCode, string(responsePayload))
+		log.WithFields(f).Warn(msg)
+		return errors.New(msg)
+	}
+
+	defer func() {
+		closeErr = resp.Body.Close()
+		if closeErr != nil {
+			log.WithFields(f).WithError(closeErr).Warnf("problem closing response body")
+		}
+	}()
+
+	var documentUpdateResponseModel DocuSignUpdateDocumentResponse
+	unmarshalErr := json.Unmarshal(responsePayload, &documentUpdateResponseModel)
+	if unmarshalErr != nil {
+		log.WithFields(f).WithError(unmarshalErr).Warnf("problem unmarshalling document update to the envelope response model JSON data")
+		return unmarshalErr
+	}
+
+	log.WithFields(f).Debugf("successfully added document to envelope response body, uri: %s, documentGuid: %s, response: %+v", documentUpdateResponseModel.Uri, documentUpdateResponseModel.DocumentIdGuid, documentUpdateResponseModel)
+
+	return nil
+
+}
+
+func (s *service) getEnvelopeRecipients(ctx context.Context, envelopeID string) ([]Signer, error) {
+	f := logrus.Fields{
+		"functionName": "v2.getEnvelopeRecipients",
+		"envelopeID":   envelopeID,
+	}
+
+	// Get the access token
+	accessToken, err := s.getAccessToken(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("access token: %s", accessToken)
+
+	// Get Account ID
+
+	accountID, err := getAccountID(accessToken)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
+
+	// Create the request
+	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/recipients", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID, envelopeID)
+
+	req, err := http.NewRequest("GET", url, nil)
+
+	if err != nil {
+		log.WithFields(f).Debugf("%+v", err)
+		return nil, err
+	}
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Accept", "application/json")
+
+	// Make the request
+	client := &http.Client{}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem making the HTTP request")
+		return nil, err
+	}
+
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem closing the response body")
+		}
+	}()
+
+	responsePayload, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem reading the response body")
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New("problem getting getting recipients ")
+	}
+
+	var response *DocusignRecipientResponse
+
+	err = json.Unmarshal(responsePayload, &response)
+
+	if err != nil {
+		log.WithFields(f).Debugf("unable to unmarshall response: %+v", err)
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("got %d recipients", len(response.Signers))
+
+	return response.Signers, nil
+}
+
 // Function to create a DocuSign envelope
-func (s *service) PrepareSignRequest(ctx context.Context, signRequest *DocuSignEnvelopeRequest) (*DocuSignEnvelopeResponse, error) {
+func (s *service) PrepareSignRequest(ctx context.Context, signRequest *DocuSignEnvelopeRequest) (*DocusignEnvelopeResponse, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.PrepareSignRequest",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
 	// Serialize the signRequest into JSON
 	requestJSON, err := json.Marshal(signRequest)
 	if err != nil {
@@ -173,9 +518,21 @@ func (s *service) PrepareSignRequest(ctx context.Context, signRequest *DocuSignE
 		return nil, err
 	}
 
-	// Create the request
+	log.WithFields(f).Debugf("access token: %s", accessToken)
 
-	url := fmt.Sprintf("https://%s/restapi/v2.1/accounts/%s/envelopes", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"))
+	// Get Account ID
+
+	accountID, err := getAccountID(accessToken)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
+
+	// Create the request
+	url := fmt.Sprintf("%s/accounts/%s/envelopes", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID)
 
 	req, err := http.NewRequest("POST", url, strings.NewReader(string(requestJSON)))
 
@@ -185,51 +542,59 @@ func (s *service) PrepareSignRequest(ctx context.Context, signRequest *DocuSignE
 
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
 	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Accept", "application/json")
 
 	// Make the request
 	client := &http.Client{}
 
 	resp, err := client.Do(req)
-
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem making the HTTP request")
 		return nil, err
 	}
 
 	defer func() {
 		if err = resp.Body.Close(); err != nil {
-			log.Warnf("problem closing the response body")
+			log.WithFields(f).WithError(err).Warnf("problem closing the response body")
 		}
 	}()
 
-	// Parse the response
 	responsePayload, err := io.ReadAll(resp.Body)
 
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem reading the response body")
 		return nil, err
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusCreated {
+		log.WithFields(f).Warnf("problem making the HTTP request - status code: %d - response : %s", resp.StatusCode, string(responsePayload))
 		return nil, errors.New("problem making the HTTP request")
 	}
 
-	var envelopeResponse DocuSignEnvelopeResponse
+	var response DocusignEnvelopeResponse
 
-	err = json.Unmarshal(responsePayload, &envelopeResponse)
+	err = json.Unmarshal(responsePayload, &response)
 
 	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem unmarshalling the response body")
 		return nil, err
 	}
 
-	return &envelopeResponse, nil
+	return &response, nil
+
+}
+
+// Define a struct to represent the response from the DocuSign API.
+type RecipientViewResponse struct {
+	URL string `json:"url"`
 }
 
 // GetSignURL fetches the signing URL for the specified envelope and recipient
 
-func (s *service) GetSignURL(envelopeID, recipientID, returnURL string) (string, error) {
+func (s *service) GetSignURL(email, recipientID, userName, clientUserId, envelopeID, returnURL string) (string, error) {
 
 	f := logrus.Fields{
 		"functionName": "v2.GetSignURL",
-		"envelopeID":   envelopeID,
 		"recipientID":  recipientID,
 		"returnURL":    returnURL,
 	}
@@ -241,11 +606,40 @@ func (s *service) GetSignURL(envelopeID, recipientID, returnURL string) (string,
 		return "", err
 	}
 
+	// Get Account ID
+	accountID, err := getAccountID(accessToken)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
+		return "", err
+	}
+
 	// Create the request
 
-	url := fmt.Sprintf("https://%s/restapi/v2.1/accounts/%s/envelopes/%s/views/recipient", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"), envelopeID)
+	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/views/recipient", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID, envelopeID)
 
-	req, err := http.NewRequest("POST", url, nil)
+	viewRecipientRequest := DocusignRecipientView{
+		Email:               email,
+		Username:            userName,
+		RecipientID:         recipientID,
+		ReturnURL:           returnURL,
+		AuthenticaionMethod: "None",
+	}
+
+	if clientUserId != "" {
+		viewRecipientRequest.ClientUserId = clientUserId
+	}
+
+	jsonRequest, err := json.Marshal(viewRecipientRequest)
+
+	if err != nil {
+		log.WithFields(f).Debugf("unable to marshal http request")
+		return "", err
+	}
+
+	log.WithFields(f).Debugf("payload: %s", string(jsonRequest))
+
+	req, err := http.NewRequest("POST", url, strings.NewReader(string(jsonRequest)))
 
 	if err != nil {
 		return "", err
@@ -254,31 +648,12 @@ func (s *service) GetSignURL(envelopeID, recipientID, returnURL string) (string,
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
 	req.Header.Add("Content-Type", "application/json")
 
-	// Create the request body
-	requestBody := struct {
-		ReturnURL    string `json:"returnUrl"`
-		ClientUserID string `json:"clientUserId"`
-		RecipientID  string `json:"recipientId"`
-	}{
-		ReturnURL:    returnURL,
-		ClientUserID: recipientID,
-		RecipientID:  recipientID,
-	}
-
-	requestBodyJSON, err := json.Marshal(requestBody)
-
-	if err != nil {
-		return "", err
-	}
-
-	req.Body = io.NopCloser(strings.NewReader(string(requestBodyJSON)))
-
-	// Make the request
 	client := &http.Client{}
 
 	resp, err := client.Do(req)
 
 	if err != nil {
+		log.WithFields(f).Debugf("%+v", err)
 		return "", err
 	}
 
@@ -288,24 +663,24 @@ func (s *service) GetSignURL(envelopeID, recipientID, returnURL string) (string,
 		}
 	}()
 
-	// Parse the response
-
-	// Parse the response JSON
-	var response struct {
-		Url string `json:"url"`
-	}
-
-	responsePayload, err := io.ReadAll(resp.Body)
-
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.WithFields(f).Debugf("%+v", err)
 		return "", err
 	}
 
-	err = json.Unmarshal(responsePayload, &response)
+	if resp.StatusCode != http.StatusCreated {
+		log.WithFields(f).Debugf("response: %+s and status code: %d", string(body), resp.StatusCode)
+		return "", errors.New("failed to get signing URL")
+	}
 
-	if err != nil {
+	var viewResponse RecipientViewResponse
+	if err := json.Unmarshal(body, &viewResponse); err != nil {
+		log.WithFields(f).Debug("failed to unmarshall response")
 		return "", err
 	}
 
-	return response.Url, nil
+	log.WithFields(f).Debugf("View response: %+v", viewResponse)
+
+	return viewResponse.URL, nil
 }

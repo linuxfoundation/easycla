@@ -5,16 +5,14 @@ package sign
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/oauth2"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
@@ -26,7 +24,7 @@ import (
 )
 
 // Configure API call
-func Configure(api *operations.EasyclaAPI, service Service) {
+func Configure(api *operations.EasyclaAPI, service Service, userService users.Service) {
 	// Retrieve a list of available templates
 	api.SignRequestCorporateSignatureHandler = sign.RequestCorporateSignatureHandlerFunc(
 		func(params sign.RequestCorporateSignatureParams, user *auth.User) middleware.Responder {
@@ -93,48 +91,20 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 			}
 			var resp *models.IndividualSignatureOutput
 			var err error
-			var preferredEmail string = ""
-
-			session := getRequestSession(params.HTTPRequest)
-			if session == nil {
-				msg := "session not found"
-				log.WithFields(f).Warn(msg)
-				return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
-			}
-
-			clientID := utils.GetProperty("GH_OAUTH_CLIENT_ID")
-			if clientID == "" {
-				msg := "client id not found"
-				log.WithFields(f).Warn(msg)
-				return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
-			}
+			var preferredEmail string
 
 			if strings.ToLower(params.Input.ReturnURLType) == Github || strings.ToLower(params.Input.ReturnURLType) == Gitlab {
-				if strings.ToLower(params.Input.ReturnURLType) == Github {
-					log.WithFields(f).Debug("fetching github emails")
-					emails, fetchErr := fetchGithubEmails(session, clientID)
-					if fetchErr != nil {
-						return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, err))
-					}
-
-					if len(emails) == 0 {
-						msg := "no emails found"
-						log.WithFields(f).Warn(msg)
-						return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
-					}
-					for _, email := range emails {
-						if email["verified"].(bool) && email["primary"].(bool) {
-							if emailVal, ok := email["email"].(string); ok {
-								preferredEmail = emailVal
-							}
-							break
-						}
-					}
-				} else {
-					log.WithFields(f).Debug("fetching gitlab emails")
-					preferredEmail = "" //TODO: fetch gitlab emails for gitlab
+				log.WithFields(f).Debug("fetching user emails")
+				user, userErr := userService.GetUser(*params.Input.UserID)
+				if userErr != nil {
+					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, userErr))
 				}
-
+				if len(user.Emails) == 0 {
+					msg := "no emails found"
+					log.WithFields(f).Warn(msg)
+					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
+				}
+				preferredEmail = user.Emails[0]
 				log.WithFields(f).Debug("requesting individual signature for github/gitlab")
 				resp, err = service.RequestIndividualSignature(ctx, params.Input, preferredEmail)
 			} else if strings.ToLower(params.Input.ReturnURLType) == "gerrit" {
@@ -170,59 +140,4 @@ func errorResponse(reqID string, err error) *models.ErrorResponse {
 	}
 
 	return &e
-}
-
-func getRequestSession(req *http.Request) map[string]interface{} {
-	session := req.Context().Value("session")
-	if session == nil {
-		return nil
-	}
-	return session.(map[string]interface{})
-}
-
-func fetchGithubEmails(session map[string]interface{}, clientID string) ([]map[string]interface{}, error) {
-	var emails []map[string]interface{}
-	var token string
-
-	if tokenVal, ok := session["token"].(string); ok {
-		token = tokenVal
-	} else {
-		return emails, nil
-	}
-
-	if token == "" {
-		return emails, nil
-	}
-
-	oauth2Config := oauth2.Config{
-		ClientID: clientID,
-	}
-
-	oauth2Token := &oauth2.Token{
-		AccessToken: token,
-	}
-
-	client := oauth2Config.Client(context.Background(), oauth2Token)
-
-	resp, err := client.Get("https://api.github.com/user/emails")
-	if err != nil {
-		return emails, err
-	}
-
-	defer func() {
-		if err = resp.Body.Close(); err != nil {
-			log.Warnf("problem closing the response body")
-		}
-	}()
-
-	if resp.StatusCode != 200 {
-		return emails, err
-	}
-
-	err = json.NewDecoder(resp.Body).Decode(&emails)
-	if err != nil {
-		return emails, err
-	}
-
-	return emails, err
 }

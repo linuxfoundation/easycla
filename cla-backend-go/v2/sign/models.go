@@ -43,7 +43,7 @@ type DocuSignEnvelopeRequest struct {
 	EnvelopeId           string                    `json:"envelopeId,omitempty"`           // The envelope ID of the envelope
 	EnvelopeIdStamping   string                    `json:"envelopeIdStamping,omitempty"`   // When true, Envelope ID Stamping is enabled. After a document or attachment is stamped with an Envelope ID, the ID is seen by all recipients and becomes a permanent part of the document and cannot be removed.
 	TemplateId           string                    `json:"templateId,omitempty"`           // The ID of the template. If a value is not provided, DocuSign generates a value.
-	Documents            []DocuSignDocument        `json:"document,omitempty"`             // A data model containing details about the documents associated with the envelope
+	Documents            []DocuSignDocument        `json:"documents,omitempty"`            // A data model containing details about the documents associated with the envelope
 	DocumentBase64       string                    `json:"documentBase64,omitempty"`       // The document's bytes. This field can be used to include a base64 version of the document bytes within an envelope definition instead of sending the document using a multi-part HTTP request. The maximum document size is smaller if this field is used due to the overhead of the base64 encoding.
 	DocumentsCombinedUri string                    `json:"documentsCombinedUri,omitempty"` // The URI for retrieving all of the documents associated with the envelope as a single PDF file.
 	DocumentsUri         string                    `json:"documentsUri,omitempty"`         // The URI for retrieving all of the documents associated with the envelope as separate files.
@@ -69,6 +69,14 @@ type DocuSignEnvelopeRequest struct {
 
 	*/
 	Status string `json:"status,omitempty"`
+}
+
+// DocusignEnvelopeResponse
+type DocusignEnvelopeResponse struct {
+	EnvelopeId     string `json:"envelopeId,omitempty"`
+	Status         string `json:"status,omitempty"`
+	StatusDateTime string `json:"statusDateTime,omitempty"`
+	Uri            string `json:"uri,omitempty"`
 }
 
 // DocuSignDocument is the data model for a document from DocuSign
@@ -318,17 +326,65 @@ type ClaSignatoryEmailParams struct {
 }
 
 type DocuSignRecipientEvent struct {
-	RecipientEventStatusCode string `json:"recipientEventStatusCode"`
+	EnvelopeEventStatusCode string `json:"envelopeEventStatusCode"`
 }
 
 type DocuSignEventNotification struct {
-	URL             string
-	LoggingEnabled  bool
-	RecipientEvents []DocuSignRecipientEvent
+	URL            string                   `json:"url"`
+	LoggingEnabled bool                     `json:"loggingEnabled"`
+	EnvelopeEvents []DocuSignRecipientEvent `json:"envelopeEvents"`
 }
 
 type Recipient struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 	// Other recipient-specific fields
+}
+
+// DocuSignUpdateDocumentResponse is the response body for adding/updating a document to an envelope from DocuSign
+type DocuSignUpdateDocumentResponse struct {
+	/*
+		{"documentId":"1","documentIdGuid":"2c205f31-4c6b-4237-b6bc-d79457b949a5","name":"document.pdf","type":"content","uri":"/envelopes/ebeee6a6-c17f-4d05-8441-38d5c1ad9675/documents/1","order":"1","containsPdfFormFields":"false","templateRequired":"false","authoritativeCopy":"false"}
+	*/
+	DocumentId            string `json:"documentId,omitempty"`
+	DocumentIdGuid        string `json:"documentIdGuid,omitempty"`
+	Name                  string `json:"name,omitempty"`
+	Type                  string `json:"type,omitempty"`
+	Uri                   string `json:"uri,omitempty"`
+	Order                 string `json:"order,omitempty"`
+	ContainsPdfFormFields string `json:"containsPdfFormFields,omitempty"`
+	TemplateRequired      string `json:"templateRequired,omitempty"`
+	AuthoritativeCopy     string `json:"authoritativeCopy,omitempty"`
+}
+
+type Signer struct {
+	CreationReason  string `json:"creationReason"`
+	IsBulkRecipient string `json:"isBulkRecipient"`
+	Name            string `json:"name"`
+	Email           string `json:"email"`
+	RecipientId     string `json:"recipientId"`
+	RecipientIdGuid string `json:"recipientIdGuid"`
+	RequireIdLookup string `json:"requireIdLookup"`
+	UserId          string `json:"userId"`
+	ClientUserId    string `json:"clientUserId"`
+	RoutingOrder    string `json:"routingOrder"`
+	RoleName        string `json:"roleName"`
+	Status          string `json:"status"`
+}
+
+type DocusignRecipientResponse struct {
+	Signers []Signer `json:"signers"`
+}
+
+type DocusignRecipientView struct {
+	Email               string `json:"email"`
+	Username            string `json:"userName"`
+	ReturnURL           string `json:"returnUrl"`
+	RecipientID         string `json:"recipientId"`
+	ClientUserId        string `json:"clientUserId,omitempty"`
+	AuthenticaionMethod string `json:"authenticationMethod"`
+}
+
+type DocusignRecipientViewResponse struct {
+	URL string `json:"url"`
 }
