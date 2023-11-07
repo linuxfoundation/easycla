@@ -1448,6 +1448,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
     if missing:
         text = ''
         help_url = ''
+        
         for user_commit_summary in missing:
             # Check for valid GitHub id
             # old tuple: (sha, (author_id, author_login_or_name, author_email, optionalTrue))
@@ -1457,7 +1458,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
                 help_url = cla.utils.get_full_sign_url('github', str(installation_id), github_repository_id,
                                                        pull_request.number, project_version)
 
-            client = GitHubInstallation(installation_id)
+           
             # check if unsigned user is whitelisted
             if user_commit_summary.commit_sha != last_commit.sha:
                 continue
@@ -1476,6 +1477,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
                 "text": text,
             },
         }
+        client = GitHubInstallation(installation_id)
         client.create_check_run(repository_name, json.dumps(payload))
 
     # Update the comment
