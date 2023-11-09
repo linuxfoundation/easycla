@@ -69,7 +69,7 @@ type SignatureRepository interface {
 	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
 	ValidateProjectRecord(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
-	CreateOrUpdateSignature(ctx context.Context, signature *models.Signature) (*models.Signature, error)
+	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
 	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
@@ -447,37 +447,65 @@ func (repo repository) GetSignature(ctx context.Context, signatureID string) (*m
 }
 
 // CreateOrUpdateSignature either creates or updates the signature record
-func (repo repository) CreateOrUpdateSignature(ctx context.Context, signature *models.Signature) (*models.Signature, error) {
+func (repo repository) UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error) {
 	f := logrus.Fields{
-		"functionName":   "v1.signatures.repository.CreateOrUpdateSignature",
+		"functionName":   "v1.signatures.repository.UpdateEnvelopeDetails",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+		"envelopeID":     envelopeID,
 	}
 
-	// Check if we have an existing signature record
-	existingSignature, sigErr := repo.GetSignature(ctx, signature.SignatureID)
-	if sigErr != nil {
-		log.WithFields(f).Warnf("error retrieving signature by ID: %s, error: %v", signature.SignatureID, sigErr)
-		return nil, sigErr
+	log.WithFields(f).Debugf("setting envelope details....")
+
+	updateExpression := "SET signature_envelope_id = :envelopeId "
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
+		":envelopeId": {
+			S: aws.String(envelopeID),
+		},
 	}
 
-	// If we have an existing signature record, we need to update it
-	if existingSignature != nil {
-		log.WithFields(f).Debugf("updating existing signature record for signature ID: %s", signature.SignatureID)
-		return repo.updateSignature(ctx, signature)
+	if signURL != nil {
+		updateExpression += ",signature_sign_url = :signUrl "
+		expressionAttributeValues[":signUrl"] = &dynamodb.AttributeValue{
+			S: aws.String(*signURL),
+		}
 	}
 
-	return nil, nil
-}
+	// Create the update input
+	input := &dynamodb.UpdateItemInput{
+		TableName: aws.String(repo.signatureTableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: aws.String(signatureID),
+			},
+		},
+		UpdateExpression:          aws.String(updateExpression),
+		ExpressionAttributeValues: expressionAttributeValues,
+		ReturnValues:              aws.String("ALL_NEW"),
+	}
 
-// updateSignature updates the specified signature record
-func (repo repository) updateSignature(ctx context.Context, signature *models.Signature) (*models.Signature, error) {
-	// f := logrus.Fields{
-	// 	"functionName":   "v1.signatures.repository.updateSignature",
-	// 	utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	// }
+	// Update the record in the DynamoDB table
+	result, err := repo.dynamoDBClient.UpdateItem(input)
+	if err != nil {
+		log.WithFields(f).Errorf("Error updating signature record: %v", err)
+		return nil, err
+	}
 
-	// // Update the record in the database
-	return nil, nil
+	// Update the record in the DynamoDB table
+	var updatedItem ItemSignature
+
+	if err := dynamodbattribute.UnmarshalMap(result.Attributes, &updatedItem); err != nil {
+		log.WithFields(f).Errorf("Error unmarshalling updated item: %v", err)
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("updated signature record for: %s", signatureID)
+	return &models.Signature{
+		SignatureID:          updatedItem.SignatureID,
+		SignatureSignURL:     updatedItem.SignatureSignURL,
+		ProjectID:            updatedItem.SignatureProjectID,
+		SignatureReferenceID: updatedItem.SignatureReferenceID,
+	}, nil
 }
 
 // GetIndividualSignature returns the signature record for the specified CLA Group and User

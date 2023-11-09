@@ -125,6 +125,8 @@ properties:
   signatureSignURL:
     type: string
     description: the signature Document Sign URL
+  sigTypeSignedApprovedId:
+    type: string
   signatureCallbackURL:
     type: string
     description: the signature callback URL

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -20,9 +21,9 @@ import (
 
 // DBStore represents DB Model for the store table
 type DBStore struct {
-	Key    string `dynamodbav:"key"`
-	Value  string `dynamodbav:"value"`
-	Expire int64  `dynamodbav:"expire"`
+	Key    string  `dynamodbav:"key"`
+	Value  string  `dynamodbav:"value"`
+	Expire float64 `dynamodbav:"expire"`
 }
 
 // Repository interface
@@ -78,24 +79,60 @@ func (r repo) GetActiveSignatureMetaData(ctx context.Context, userId string) (ma
 		return metadata, nil
 	}
 
-	var store DBStore
+	var jsonStr string
 
-	err = dynamodbattribute.UnmarshalMap(result.Item, &store)
+	err = dynamodbattribute.Unmarshal(result.Item["value"], &jsonStr)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem unmarshalling store record")
 		return metadata, err
 	}
 
-	log.WithFields(f).Debugf("Signature meta record data found: %+v ", store)
+	formatJson := strings.ReplaceAll(jsonStr, "\\\"", "\"")
 
-	err = json.Unmarshal([]byte(store.Value), &metadata)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem unmarshalling store record")
-		return metadata, err
+	formatJson = strings.Trim(formatJson, "\"")
+
+	log.WithFields(f).Debugf("format: %s", formatJson)
+
+	jsonErr := json.Unmarshal([]byte(formatJson), &metadata)
+
+	if jsonErr != nil {
+		log.WithFields(f).WithError(jsonErr).Warn("problem unmarshalling json string for metadata")
+		return nil, jsonErr
 	}
 
+	log.WithFields(f).Debugf("metadata: %+v", metadata)
 	return metadata, nil
 }
+
+// func findDifferences(str1, str2 string) string {
+// 	f := logrus.Fields{
+// 		"functionName": "findDifference",
+// 	}
+// 	var differences string
+
+// 	// Find the minimum length of the two strings
+// 	minLength := len(str1)
+// 	if len(str2) < minLength {
+// 		minLength = len(str2)
+// 	}
+
+// 	// Compare each character and append the differences to the result string
+// 	for i := 0; i < minLength; i++ {
+// 		if str1[i] != str2[i] {
+// 			differences += string(str1[i]) + string(str2[i]) + " "
+// 			log.WithFields(f).Debugf("%s and %s", string(str1[i]), string(str2[i]))
+// 		}
+// 	}
+
+// 	// If the strings have different lengths, append the remaining characters
+// 	if len(str1) > len(str2) {
+// 		differences += str1[minLength:]
+// 	} else if len(str2) > len(str1) {
+// 		differences += str2[minLength:]
+// 	}
+
+// 	return differences
+// }
 
 // SetActiveSignatureMetaData sets active signature meta data
 func (r repo) SetActiveSignatureMetaData(ctx context.Context, key string, expire int64, value string) error {
@@ -110,7 +147,7 @@ func (r repo) SetActiveSignatureMetaData(ctx context.Context, key string, expire
 	store := DBStore{
 		Key:    key,
 		Value:  value,
-		Expire: expire,
+		Expire: float64(expire),
 	}
 
 	log.WithFields(f).Debugf("key: %s ", store.Key)

@@ -62,6 +62,7 @@ func BuildCLAGroupDocumentModels(dbDocumentModels []models2.DBProjectDocumentMod
 			DocumentMajorVersion:    dbDocumentModel.DocumentMajorVersion,
 			DocumentMinorVersion:    dbDocumentModel.DocumentMinorVersion,
 			DocumentCreationDate:    dbDocumentModel.DocumentCreationDate,
+			DocumentTabs:            dbDocumentModel.DocumentTabs,
 		})
 	}
 

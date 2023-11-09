@@ -69,7 +69,7 @@ type SignatureService interface {
 
 	createOrGetEmployeeModels(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error)
 	CreateOrUpdateEmployeeSignature(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error)
-	CreateOrUpdateSignature(ctx context.Context, signature *models.Signature) (*models.Signature, error)
+	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	handleGitHubStatusUpdate(ctx context.Context, employeeUserModel *models.User) error
 }
 
@@ -143,8 +143,8 @@ func (s service) GetProjectSignatures(ctx context.Context, params signatures.Get
 }
 
 // CreateOrUpdateEmployeeSignature creates or updates the specified  signature
-func (s service) CreateOrUpdateSignature(ctx context.Context, signature *models.Signature) (*models.Signature, error) {
-	return s.repo.CreateOrUpdateSignature(ctx, signature)
+func (s service) UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error) {
+	return s.repo.UpdateEnvelopeDetails(ctx, signatureID, envelopeID, signURL)
 }
 
 // CreateProjectSummaryReport generates a project summary report based on the specified input
