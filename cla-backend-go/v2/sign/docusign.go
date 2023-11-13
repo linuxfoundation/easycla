@@ -92,64 +92,6 @@ func (s *service) getAccessToken(ctx context.Context) (string, error) {
 
 }
 
-func getAccountID(accessToken string) (string, error) {
-	f := logrus.Fields{
-		"functionName": "v2.getAccountID",
-	}
-
-	// Create the request
-	url := fmt.Sprintf("https://%s/oauth/userinfo", utils.GetProperty("DOCUSIGN_AUTH_SERVER"))
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem creating the HTTP request")
-		return "", err
-	}
-
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
-	req.Header.Add("Accept", "application/json")
-
-	// Make the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem making the HTTP request")
-		return "", err
-	}
-
-	defer func() {
-		if err = resp.Body.Close(); err != nil {
-			log.WithFields(f).WithError(err).Warnf("problem closing the response body")
-		}
-	}()
-
-	// Parse the response
-	responsePayload, err := io.ReadAll(resp.Body)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem reading the response body")
-		return "", err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		log.WithFields(f).Warnf("problem making the HTTP request - status code: %d", resp.StatusCode)
-		return "", errors.New("problem making the HTTP request")
-	}
-
-	var accountResponse DocuSignUserInfoResponse
-	err = json.Unmarshal(responsePayload, &accountResponse)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem unmarshalling the response body")
-		return "", err
-	}
-
-	accountID := accountResponse.Accounts[0].AccountId
-
-	log.WithFields(f).Debugf("account ID: %s", accountID)
-
-	return accountID, nil
-}
-
 // Void envelope
 func (s *service) VoidEnvelope(ctx context.Context, envelopeID, message string) error {
 	f := logrus.Fields{
@@ -178,16 +120,7 @@ func (s *service) VoidEnvelope(ctx context.Context, envelopeID, message string) 
 		return err
 	}
 
-	accountID, err := getAccountID(accessToken)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
-		return err
-	}
-
-	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
-
-	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/void", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID, envelopeID)
+	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/void", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"), envelopeID)
 
 	req, err := http.NewRequest("PUT", url, strings.NewReader(string(voidRequestJSON)))
 
@@ -248,19 +181,8 @@ func (s *service) createEnvelope(ctx context.Context, payload *DocuSignEnvelopeR
 		return "", err
 	}
 
-	// Get Account ID
-
-	accountID, err := getAccountID(accessToken)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
-		return "", err
-	}
-
-	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
-
 	// Create the request
-	url := fmt.Sprintf("%s/accounts/%s/envelopes", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID)
+	url := fmt.Sprintf("%s/accounts/%s/envelopes", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"))
 
 	req, err := http.NewRequest("POST", url, strings.NewReader(string(requestJSON)))
 
@@ -327,18 +249,7 @@ func (s *service) addDocumentToEnvelope(ctx context.Context, envelopeID, documen
 		return err
 	}
 
-	// Get Account ID
-
-	accountID, err := getAccountID(accessToken)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
-		return err
-	}
-
-	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
-
-	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/documents/1", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID, envelopeID)
+	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/documents/1", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"), envelopeID)
 
 	log.WithFields(f).Debugf("url: %s", url)
 
@@ -433,19 +344,8 @@ func (s *service) getEnvelopeRecipients(ctx context.Context, envelopeID string) 
 
 	log.WithFields(f).Debugf("access token: %s", accessToken)
 
-	// Get Account ID
-
-	accountID, err := getAccountID(accessToken)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
-		return nil, err
-	}
-
-	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
-
 	// Create the request
-	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/recipients", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID, envelopeID)
+	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/recipients", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"), envelopeID)
 
 	req, err := http.NewRequest("GET", url, nil)
 
@@ -520,19 +420,8 @@ func (s *service) PrepareSignRequest(ctx context.Context, signRequest *DocuSignE
 
 	log.WithFields(f).Debugf("access token: %s", accessToken)
 
-	// Get Account ID
-
-	accountID, err := getAccountID(accessToken)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
-		return nil, err
-	}
-
-	log.WithFields(f).Debugf("docusign account ID: %s", accountID)
-
 	// Create the request
-	url := fmt.Sprintf("%s/accounts/%s/envelopes", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID)
+	url := fmt.Sprintf("%s/accounts/%s/envelopes", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"))
 
 	req, err := http.NewRequest("POST", url, strings.NewReader(string(requestJSON)))
 
@@ -606,17 +495,9 @@ func (s *service) GetSignURL(email, recipientID, userName, clientUserId, envelop
 		return "", err
 	}
 
-	// Get Account ID
-	accountID, err := getAccountID(accessToken)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem getting the account ID")
-		return "", err
-	}
-
 	// Create the request
 
-	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/views/recipient", utils.GetProperty("DOCUSIGN_ROOT_URL"), accountID, envelopeID)
+	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/views/recipient", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"), envelopeID)
 
 	viewRecipientRequest := DocusignRecipientView{
 		Email:               email,
