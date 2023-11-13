@@ -18,9 +18,9 @@ func jwtToken(docusignPrivateKey string) (string, error) {
 	}
 
 	claims := jwt.MapClaims{
-		"iss":   utils.GetProperty("DOCUSIGN_INTEGRATION_KEY"),     // integration key / client_id
-		"sub":   utils.GetProperty("DOCUSIGN_INTEGRATION_USER_ID"), // user_id, in PROD should be the EasyCLA Admin user account
-		"aud":   utils.GetProperty("DOCUSIGN_AUTH_SERVER"),         // account.docusign.com or account-d.docusign.com (for dev)
+		"iss":   utils.GetProperty("DOCUSIGN_INTEGRATOR_KEY"), // integration key / client_id
+		"sub":   utils.GetProperty("DOCUSIGN_USER_ID"),        // user_id, in PROD should be the EasyCLA Admin user account
+		"aud":   utils.GetProperty("DOCUSIGN_AUTH_SERVER"),    // account.docusign.com or account-d.docusign.com (for dev)
 		"iat":   time.Now().Unix(),
 		"exp":   time.Now().Add(time.Hour).Unix(), // one hour appears to be the max, minus 60 seconds
 		"scope": "signature impersonation",
