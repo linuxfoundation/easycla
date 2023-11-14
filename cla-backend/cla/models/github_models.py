@@ -737,7 +737,7 @@ class GitHub(repository_service_interface.RepositoryService):
         cla.log.debug(f'{fn} - PR: {pull_request.number}, scanning users - '
                       'determining who has signed a CLA an who has not.')
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             for user_commit_summary in commit_authors:
                 cla.log.debug(f'{fn} - PR: {pull_request.number} for user: {user_commit_summary}')
                 futures.append(executor.submit(handle_commit_from_user, project,user_commit_summary,signed,missing))
@@ -1376,7 +1376,7 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
     
     commit_authors = []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         future_to_commit = {executor.submit(get_author_summary, commit, pull_request.number): commit for commit in pull_request.get_commits()}
         for future in concurrent.futures.as_completed(future_to_commit):
             future_to_commit[future]
