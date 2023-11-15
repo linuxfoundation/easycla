@@ -54,6 +54,7 @@ type SignatureService interface {
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
 	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams) (*models.Signatures, error)
 	InvalidateProjectRecords(ctx context.Context, projectID, note string) (int, error)
+	CreateSignature(ctx context.Context, signature *ItemSignature) error
 
 	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error)
 	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
@@ -161,6 +162,11 @@ func (s service) CreateProjectSummaryReport(ctx context.Context, params signatur
 // GetProjectCompanySignature returns the signature associated with the specified project and company
 func (s service) GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error) {
 	return s.repo.GetProjectCompanySignature(ctx, companyID, projectID, approved, signed, nextKey, pageSize)
+}
+
+// CreateIndividualSignature creates a new individual signature
+func (s service) CreateSignature(ctx context.Context, signature *ItemSignature) error {
+	return s.repo.CreateSignature(ctx, signature)
 }
 
 // GetProjectCompanySignatures returns the list of signatures associated with the specified project
