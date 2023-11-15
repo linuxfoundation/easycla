@@ -420,13 +420,13 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	log.WithFields(f).Debugf("generating signature callback url...")
 	var callBackURL string
 
-	if strings.ToLower(input.ReturnURLType) == "github" {
+	if strings.ToLower(input.ReturnURLType) == utils.GitHubType {
 		callBackURL, err = s.getIndividualSignatureCallbackURL(ctx, *input.UserID, activeSignatureMetadata)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get signature callback url for user: %s", *input.UserID)
 			return nil, err
 		}
-	} else if strings.ToLower(input.ReturnURLType) == "gitlab" {
+	} else if strings.ToLower(input.ReturnURLType) == utils.GitLabLower {
 		callBackURL, err = s.getIndividualSignatureCallbackURLGitlab(ctx, *input.UserID, activeSignatureMetadata)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get signature callback url for user: %s", *input.UserID)
@@ -443,11 +443,15 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 			// Regenerate and set the signing URL - This will update the signature record
 			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
-			var signURL string
-			signURL, err = s.populateSignURL(ctx, latestSignature, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
-			if err != nil {
+			_, currentTime := utils.CurrentTime()
+			itemSignature := signatures.ItemSignature{
+				SignatureID:  latestSignature.SignatureID,
+				DateModified: currentTime,
+			}
+			signURL, signErr := s.populateSignURL(ctx, &itemSignature, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
+			if signErr != nil {
 				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
-				return nil, err
+				return nil, signErr
 			}
 
 			return &models.IndividualSignatureOutput{
@@ -497,44 +501,50 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	log.WithFields(f).Debugf("creating new signature object...")
 	signatureID := uuid.Must(uuid.NewV4()).String()
 	_, currentTime := utils.CurrentTime()
+	var acl string
+	if input.ReturnURLType == "github" {
+		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GithubID)
+	} else if input.ReturnURLType == "gitlab" {
+		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GitlabID)
+	}
 
-	signatureModel := &v1Models.Signature{
+	itemSignature := signatures.ItemSignature{
 		SignatureID:                   signatureID,
+		DateCreated:                   currentTime,
+		DateModified:                  currentTime,
+		SignatureSigned:               false,
+		SignatureApproved:             true,
 		SignatureDocumentMajorVersion: document.DocumentMajorVersion,
 		SignatureDocumentMinorVersion: document.DocumentMinorVersion,
 		SignatureReferenceID:          *input.UserID,
-		SignatureReferenceType:        "user",
-		ProjectID:                     *input.ProjectID,
+		SignatureReferenceName:        user.Username,
 		SignatureType:                 utils.SignatureTypeCLA,
-		SignatureCreated:              currentTime,
-		SignatureModified:             currentTime,
+		SignatureReturnURLType:        input.ReturnURLType,
+		SignatureProjectID:            *input.ProjectID,
 		SignatureReturnURL:            input.ReturnURL.String(),
 		SignatureCallbackURL:          callBackURL,
-		SignatureReturnURLType:        input.ReturnURLType,
-	}
-
-	// 9. Set signature ACL
-	log.WithFields(f).Debugf("setting signature ACL...")
-	signatureModel.SignatureACL = []v1Models.User{
-		*user,
+		SignatureReferenceType:        "user",
+		SignatureACL:                  []string{acl},
+		SigtypeSignedApprovedID:       fmt.Sprintf("%s#%v#%v#%s", utils.ClaTypeICLA, signed, approved, signatureID),
+		SignatureUserCompanyID:        user.CompanyID,
+		SignatureReferenceNameLower:   strings.ToLower(user.Username),
 	}
 
 	// 10. Populate sign url
 	log.WithFields(f).Debugf("populating sign url...")
-	var signURL string
-	signURL, err = s.populateSignURL(ctx, signatureModel, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
+	_, err = s.populateSignURL(ctx, &itemSignature, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
 		return nil, err
 	}
 
-	log.WithFields(f).Debugf("Updated signature: %+v", signatureModel)
+	log.WithFields(f).Debugf("Updated signature: %+v", itemSignature)
 
 	return &models.IndividualSignatureOutput{
-		UserID:      signatureModel.SignatureReferenceID,
-		ProjectID:   signatureModel.ProjectID,
-		SignatureID: signatureModel.SignatureID,
-		SignURL:     signURL,
+		UserID:      itemSignature.SignatureReferenceID,
+		ProjectID:   itemSignature.SignatureProjectID,
+		SignatureID: itemSignature.SignatureID,
+		SignURL:     itemSignature.SignatureSignURL,
 	}, nil
 }
 
@@ -647,7 +657,7 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 
 //nolint:gocyclo
 func (s *service) populateSignURL(ctx context.Context,
-	latestSignature *v1Models.Signature, callbackURL string,
+	latestSignature *signatures.ItemSignature, callbackURL string,
 	authorityOrSignatoryName, authorityOrSignatoryEmail string,
 	sendAsEmail bool,
 	claManagerName, claManagerEmail string,
@@ -689,14 +699,14 @@ func (s *service) populateSignURL(ctx context.Context,
 
 	// Get the document template to sign
 	log.WithFields(f).Debugf("getting document template to sign...")
-	project, err = s.projectRepo.GetCLAGroupByID(ctx, latestSignature.ProjectID, DontLoadRepoDetails)
+	project, err = s.projectRepo.GetCLAGroupByID(ctx, latestSignature.SignatureProjectID, DontLoadRepoDetails)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to lookup project by ID: %s", latestSignature.ProjectID)
+		log.WithFields(f).WithError(err).Warnf("unable to lookup project by ID: %s", latestSignature.SignatureProjectID)
 		return "", err
 	}
 
 	if project == nil {
-		log.WithFields(f).WithError(err).Warnf("unable to lookup project by ID: %s", latestSignature.ProjectID)
+		log.WithFields(f).WithError(err).Warnf("unable to lookup project by ID: %s", latestSignature.SignatureProjectID)
 		return "", errors.New("no project lookup error")
 	}
 
@@ -704,14 +714,14 @@ func (s *service) populateSignURL(ctx context.Context,
 		log.WithFields(f).Debugf("loading project corporate document...")
 		document, err = common.GetCurrentDocument(ctx, project.ProjectCorporateDocuments)
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup project corporate document for project: %s", latestSignature.ProjectID)
+			log.WithFields(f).WithError(err).Warnf("unable to lookup project corporate document for project: %s", latestSignature.SignatureProjectID)
 			return "", err
 		}
 	} else {
 		log.WithFields(f).Debugf("loading project individual document...")
 		document, err = common.GetCurrentDocument(ctx, project.ProjectIndividualDocuments)
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup project individual document for project: %s", latestSignature.ProjectID)
+			log.WithFields(f).WithError(err).Warnf("unable to lookup project individual document for project: %s", latestSignature.SignatureProjectID)
 			return "", err
 		}
 	}
@@ -727,7 +737,7 @@ func (s *service) populateSignURL(ctx context.Context,
 		}
 	}
 
-	documentID := "1"
+	documentID := uuid.Must(uuid.NewV4()).String()
 	tab := getTabsFromDocument(&document, documentID, defaultValues)
 
 	// # Create the envelope request object
@@ -877,6 +887,7 @@ func (s *service) populateSignURL(ctx context.Context,
 		// Webhook properties for callbacks after the user signs the document.
 		// Ensure that a webhook is returned on the status "Completed" where
 		// all signers on a document finish signing the document.
+		log.WithFields(f).Debugf("setting up webhook properties with callback url: %s", callbackURL)
 		recipientEvents := []DocuSignRecipientEvent{
 			{
 				EnvelopeEventStatusCode: "Completed",
@@ -963,15 +974,22 @@ func (s *service) populateSignURL(ctx context.Context,
 	// Save Envelope ID in signature.
 	log.WithFields(f).Debugf("saving signature to database...")
 	latestSignature.SignatureEnvelopeID = envelopeResponse.EnvelopeId
+	latestSignature.SignatureSignURL = *signatureSignURL
 
 	log.WithFields(f).Debugf("signature: %+v", latestSignature)
-
-	latestSignature, err = s.signatureService.UpdateEnvelopeDetails(ctx, latestSignature.SignatureID, envelopeResponse.EnvelopeId, signatureSignURL)
 
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to save signature to database for user: %s", latestSignature.SignatureID)
 		return "", err
 	}
+
+	err = s.signatureService.CreateSignature(ctx, latestSignature)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to save signature to database for user: %s", latestSignature.SignatureID)
+		return "", err
+	}
+
+	log.WithFields(f).Debug("signature saved to database")
 
 	log.WithFields(f).Debugf("populate_sign_url - complete: %s", *signatureSignURL)
 
@@ -983,7 +1001,7 @@ type UserSignDetails struct {
 	userSignatureEmail string
 }
 
-func (s *service) populateUserDetails(ctx context.Context, signatureReferenceType string, latestSignature *v1Models.Signature, claManagerName, claManagerEmail string, sendAsEmail bool, preferredEmail string) (*UserSignDetails, error) {
+func (s *service) populateUserDetails(ctx context.Context, signatureReferenceType string, latestSignature *signatures.ItemSignature, claManagerName, claManagerEmail string, sendAsEmail bool, preferredEmail string) (*UserSignDetails, error) {
 	f := logrus.Fields{
 		"functionName": "sign.populateUserDetails",
 	}
@@ -1375,30 +1393,40 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 	}
 	callbackURL := s.getCorporateSignatureCallbackUrl(input.ProjectID, input.CompanyID)
 	var companySignature *v1Models.Signature
+	var itemSignature *signatures.ItemSignature
+	var signed bool
 	if len(companySignatures) > 0 {
 		companySignature = companySignatures[0]
+		itemSignature = &signatures.ItemSignature{
+			SignatureID:  companySignature.SignatureID,
+			DateModified: companySignature.Modified,
+		}
+		signed = companySignature.SignatureSigned
+		approved = companySignature.SignatureApproved
 	} else {
 		// 5. if signature doesn't exists then Create new signature object
 		log.WithFields(f).Debugf("creating new signature object...")
 		signatureID := uuid.Must(uuid.NewV4()).String()
 		_, currentTime := utils.CurrentTime()
-
-		companySignature = &v1Models.Signature{
+		signed = false
+		approved = true
+		itemSignature = &signatures.ItemSignature{
 			SignatureID:                   signatureID,
 			SignatureDocumentMajorVersion: latestDocument.DocumentMajorVersion,
 			SignatureDocumentMinorVersion: latestDocument.DocumentMinorVersion,
 			SignatureReferenceID:          comp.CompanyID,
 			SignatureReferenceType:        "company",
 			SignatureReferenceName:        comp.CompanyName,
-			ProjectID:                     input.ProjectID,
-			SignatureCreated:              currentTime,
-			SignatureModified:             currentTime,
+			SignatureProjectID:            input.ProjectID,
+			DateCreated:                   currentTime,
+			DateModified:                  currentTime,
 			SignatureType:                 utils.SignatureTypeCCLA,
 			SignatoryName:                 signatoryName,
-			SigningEntityName:             comp.SigningEntityName,
 			SignatureSigned:               false,
 			SignatureApproved:             true,
+			SigtypeSignedApprovedID:       fmt.Sprintf("%s#%v#%v#%s", utils.SignatureTypeCCLA, signed, approved, signatureID),
 		}
+
 	}
 	companySignature.SignatureCallbackURL = callbackURL
 
@@ -1414,9 +1442,16 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 
 	// 7. Populate sign url
 	log.WithFields(f).Debugf("populating sign url...")
-	_, err = s.populateSignURL(ctx, companySignature, callbackURL, input.AuthorityName, input.AuthorityEmail, input.SendAsEmail, claUser.Username, currentUserEmail, defaultValues, currentUserEmail)
+	_, err = s.populateSignURL(ctx, itemSignature, callbackURL, input.AuthorityName, input.AuthorityEmail, input.SendAsEmail, claUser.Username, currentUserEmail, defaultValues, currentUserEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to populate sign url for company: %s", input.CompanyID)
+		return nil, err
+	}
+
+	companySignature, err = s.signatureService.GetCorporateSignature(ctx, input.ProjectID, input.CompanyID, &approved, &signed)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup user signatures by Company ID: %s, Project ID: %s", input.CompanyID, input.ProjectID)
 		return nil, err
 	}
 

@@ -70,6 +70,7 @@ type SignatureRepository interface {
 	ValidateProjectRecord(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
+	CreateSignature(ctx context.Context, signature *ItemSignature) error
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
 	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
@@ -132,6 +133,36 @@ func NewRepository(awsSession *session.Session, stage string, companyRepo compan
 		gerritService:      gerritService,
 		signatureTableName: fmt.Sprintf("cla-%s-signatures", stage),
 	}
+}
+
+// CreateIndividualSignature creates a new individual signature
+func (repo repository) CreateSignature(ctx context.Context, signature *ItemSignature) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.CreateIndividualSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	av, err := dynamodbattribute.MarshalMap(signature)
+	if err != nil {
+		log.WithFields(f).Warnf("error marshalling signature, error: %v", err)
+		return err
+	}
+
+	// Add the signature to the database
+	_, err = repo.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
+		Item:      av,
+		TableName: aws.String(repo.signatureTableName),
+	})
+
+	if err != nil {
+		log.WithFields(f).Warnf("error adding signature to database, error: %v", err)
+		return err
+	}
+
+	log.WithFields(f).Debugf("successfully added signature to database")
+
+	return nil
+
 }
 
 // GetGithubOrganizationsFromApprovalList returns a list of GH organizations stored in the approval list
