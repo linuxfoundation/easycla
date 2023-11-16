@@ -517,7 +517,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		SignatureDocumentMajorVersion: document.DocumentMajorVersion,
 		SignatureDocumentMinorVersion: document.DocumentMinorVersion,
 		SignatureReferenceID:          *input.UserID,
-		SignatureReferenceName:        user.Username,
+		SignatureReferenceName:        getUserName(user),
 		SignatureType:                 utils.SignatureTypeCLA,
 		SignatureReturnURLType:        input.ReturnURLType,
 		SignatureProjectID:            *input.ProjectID,
@@ -527,7 +527,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		SignatureACL:                  []string{acl},
 		SigtypeSignedApprovedID:       fmt.Sprintf("%s#%v#%v#%s", utils.ClaTypeICLA, signed, approved, signatureID),
 		SignatureUserCompanyID:        user.CompanyID,
-		SignatureReferenceNameLower:   strings.ToLower(user.Username),
+		SignatureReferenceNameLower:   strings.ToLower(getUserName(user)),
 	}
 
 	// 10. Populate sign url
@@ -546,6 +546,24 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		SignatureID: itemSignature.SignatureID,
 		SignURL:     itemSignature.SignatureSignURL,
 	}, nil
+}
+
+func getUserName(user *v1Models.User) string {
+
+	if user.Username != "" {
+		return user.Username
+	}
+	if user.LfUsername != "" {
+		return user.LfUsername
+	}
+
+	if user.GithubUsername != "" {
+		return user.GithubUsername
+	}
+	if user.GitlabUsername != "" {
+		return user.GitlabUsername
+	}
+	return ""
 }
 
 func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, userID string, metadata map[string]interface{}) (string, error) {
@@ -664,7 +682,9 @@ func (s *service) populateSignURL(ctx context.Context,
 	defaultValues map[string]interface{}, preferredEmail string) (string, error) {
 
 	f := logrus.Fields{
-		"functionName": "sign.populateSignURL",
+		"functionName":              "sign.populateSignURL",
+		"authorityOrSignatoryName":  authorityOrSignatoryName,
+		"authorityOrSignatoryEmail": authorityOrSignatoryEmail,
 	}
 	log.WithFields(f).Debugf("populating sign url...")
 	signatureReferenceType := latestSignature.SignatureReferenceType
@@ -1425,6 +1445,7 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 			SignatureSigned:               false,
 			SignatureApproved:             true,
 			SigtypeSignedApprovedID:       fmt.Sprintf("%s#%v#%v#%s", utils.SignatureTypeCCLA, signed, approved, signatureID),
+			SignatureReferenceNameLower:   strings.ToLower(comp.CompanyName),
 		}
 
 	}
