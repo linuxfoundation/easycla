@@ -5,6 +5,7 @@ package sign
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -121,6 +122,94 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			return sign.NewRequestIndividualSignatureOK().WithPayload(resp)
 		})
 
+	api.SignIclaCallbackGithubHandler = sign.IclaCallbackGithubHandlerFunc(
+		func(params sign.IclaCallbackGithubParams) middleware.Responder {
+			reqId := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTIDKey, reqId)
+			f := logrus.Fields{
+				"functionName":   "v2.sign.handlers.SignIclaCallbackGithubHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			}
+			log.WithFields(f).Debug("github callback")
+
+			payload, marshalErr := json.Marshal(params.Body)
+			if marshalErr != nil {
+				log.WithFields(f).WithError(marshalErr).Warn("unable to marshal github callback body")
+				return sign.NewIclaCallbackGithubBadRequest()
+			}
+
+			err := service.SignedIndividualCallbackGithub(ctx, payload, params.InstallationID, params.ChangeRequestID, params.GithubRepositoryID)
+			if err != nil {
+				return sign.NewIclaCallbackGithubBadRequest()
+			}
+			return sign.NewCclaCallbackOK()
+		})
+
+	api.SignIclaCallbackGitlabHandler = sign.IclaCallbackGitlabHandlerFunc(
+		func(params sign.IclaCallbackGitlabParams) middleware.Responder {
+			reqId := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTIDKey, reqId)
+			f := logrus.Fields{
+				"functionName":   "v2.sign.handlers.SignIclaCallbackGitlabHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			}
+			log.WithFields(f).Debug("gitlab callback")
+			payload, marshalErr := json.Marshal(params.Body)
+			if marshalErr != nil {
+				log.WithFields(f).WithError(marshalErr).Warn("unable to marshal github callback body")
+				return sign.NewIclaCallbackGithubBadRequest()
+			}
+
+			err := service.SignedIndividualCallbackGitlab(ctx, payload, params.UserID, params.OrganizationID, params.GitlabRepositoryID, params.MergeRequestID)
+			if err != nil {
+				return sign.NewIclaCallbackGitlabBadRequest()
+			}
+			return sign.NewCclaCallbackOK()
+		})
+
+	api.SignIclaCallbackGerritHandler = sign.IclaCallbackGerritHandlerFunc(
+		func(params sign.IclaCallbackGerritParams) middleware.Responder {
+			reqId := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTIDKey, reqId)
+			f := logrus.Fields{
+				"functionName":   "v2.sign.handlers.SignIclaCallbackGerritHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			}
+			log.WithFields(f).Debug("gerrit callback")
+			payload, marshalErr := json.Marshal(params.Body)
+			if marshalErr != nil {
+				log.WithFields(f).WithError(marshalErr).Warn("unable to marshal github callback body")
+				return sign.NewIclaCallbackGithubBadRequest()
+			}
+
+			err := service.SignedIndividualCallbackGerrit(ctx, payload, params.UserID)
+			if err != nil {
+				return sign.NewIclaCallbackGerritBadRequest()
+			}
+			return sign.NewCclaCallbackOK()
+		})
+
+	api.SignCclaCallbackHandler = sign.CclaCallbackHandlerFunc(
+		func(params sign.CclaCallbackParams) middleware.Responder {
+			reqId := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTIDKey, reqId)
+			f := logrus.Fields{
+				"functionName":   "v2.sign.handlers.SignCclaCallbackHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			}
+			payload, marshalErr := json.Marshal(params.Body)
+			if marshalErr != nil {
+				log.WithFields(f).WithError(marshalErr).Warn("unable to marshal github callback body")
+				return sign.NewIclaCallbackGithubBadRequest()
+			}
+
+			log.WithFields(f).Debug("ccla callback")
+			err := service.SignedCorporateCallback(ctx, payload, params.CompanyID, params.ProjectID)
+			if err != nil {
+				return sign.NewCclaCallbackBadRequest()
+			}
+			return sign.NewCclaCallbackOK()
+		})
 }
 
 type codedResponse interface {

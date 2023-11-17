@@ -4155,6 +4155,131 @@ paths:
       tags:
         - sign
 
+  /signed/individual/{installation_id}/{github_repository_id}/{change_request_id}:
+    post:
+      summary: Endpoint to receive DocuSign callback for signed documents.
+      description: Receives XML data when an individual signs a document in DocuSign.
+      security: [ ]
+      operationId: iclaCallbackGithub
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: installation_id
+          in: path
+          required: true
+          type: string
+        - name: github_repository_id
+          in: path
+          required: true
+          type: string
+        - name: change_request_id
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully received and processed the callback data.
+        '400':
+          description: Invalid request.
+      tags:
+        - sign
+  
+  /signed/gerrit/individual/{user_id}:
+    post:
+      summary: Endpoint to receive DocuSign callback for signed documents from Gerrit.
+      description: Receives XML data when an individual signs a document in DocuSign linked to Gerrit.
+      operationId: iclaCallbackGerrit
+      security: [ ]
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: user_id
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully received and processed the Gerrit callback data.
+        '400':
+          description: Invalid request.
+      tags:
+        - sign 
+    
+  /signed/corporate/{project_id}/{company_id}:
+    post:
+      summary: Endpoint to receive DocuSign callback for signed corporate documents.
+      description: Receives XML data when a corporate entity signs a document in DocuSign associated with a specific project.
+      operationId: cclaCallback
+      security: [ ]
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: project_id
+          in: path
+          required: true
+          type: string
+        - name: company_id
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully received and processed the callback data for corporate signatures.
+        '400':
+          description: Invalid request.
+      tags:
+        - sign
+    
+  /signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}:
+    post:
+      summary: Endpoint for DocuSign callback for GitLab individual signatures.
+      description: Receives XML data when an individual signs a document in DocuSign linked to GitLab.
+      operationId: iclaCallbackGitlab
+      security: [ ]
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: user_id
+          in: path
+          required: true
+          type: string
+        - name: organization_id
+          in: path
+          required: true
+          type: string
+        - name: gitlab_repository_id
+          in: path
+          required: true
+          type: string
+        - name: merge_request_id
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Callback data for GitLab successfully received and processed.
+        '400':
+          description: Invalid request.
+      tags:
+        - sign
+
+
 responses:
   unauthorized:
     description: Unauthorized

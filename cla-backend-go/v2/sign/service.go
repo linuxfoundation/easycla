@@ -74,6 +74,10 @@ type Service interface {
 	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
 	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error)
 	RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
+	SignedIndividualCallbackGithub(ctx context.Context, payload []byte, installationID, changeRequestID, repositoryID string) error
+	SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, mergeRequestID, repositoryID string) error
+	SignedIndividualCallbackGerrit(ctx context.Context, payload []byte, userID string) error
+	SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error
 }
 
 // service
@@ -335,6 +339,128 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 
 func (s *service) getCorporateSignatureCallbackUrl(companyId, projectId string) string {
 	return fmt.Sprintf("%s/v2/signed/corporate/%s/%s", s.ClaV1ApiURL, companyId, projectId)
+}
+
+func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []byte, installationID, changeRequestID, repositoryID string) error {
+	f := logrus.Fields{
+		"functionName":    "sign.SignedIndividualCallbackGithub",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"installationID":  installationID,
+		"changeRequestID": changeRequestID,
+		"repositoryID":    repositoryID,
+	}
+
+	log.WithFields(f).Debug("processing signed individual callback...")
+
+	// """
+	// Will be called on ICLA signature callback, but also when a document has been
+	// opened by a user - no action required then.
+	// """
+	// fn = 'models.docusign_models.signed_individual_callback'
+	// cla.log.debug(f'{fn} - Docusign ICLA signed callback POST data: {content}')
+	// tree = ET.fromstring(content)
+	// # Get envelope ID.
+	// envelope_id = tree.find('.//' + self.TAGS['envelope_id']).text
+	// # Assume only one signature per signature.
+	// signature_id = tree.find('.//' + self.TAGS['client_user_id']).text
+	// signature = cla.utils.get_signature_instance()
+	// try:
+	// 	signature.load(signature_id)
+	// except DoesNotExist:
+	// 	cla.log.error(f'{fn} - DocuSign ICLA callback returned signed info on '
+	// 				  f'invalid signature: {content}')
+	// 	return
+	// # Iterate through recipients and update the signature signature status if changed.
+	// elem = tree.find('.//' + self.TAGS['recipient_statuses'] + '/' + self.TAGS['recipient_status'])
+	// status = elem.find(self.TAGS['status']).text
+	// if status == 'Completed' and not signature.get_signature_signed():
+	// 	cla.log.info(f'{fn} - ICLA signature signed ({signature_id}) - '
+	// 				 'Notifying repository service provider')
+	// 	signature.set_signature_signed(True)
+	// 	populate_signature_from_icla_callback(content, tree, signature)
+	// 	# Save signature
+	// 	signature.save()
+
+	// 	# Update the repository provider with this change - this will update the comment (if necessary)
+	// 	# and the status - do this early in the flow as the user will be immediately redirected back
+	// 	update_repository_provider(installation_id, github_repository_id, change_request_id)
+	// 	# Send user their signed document.
+	// 	user = User()
+	// 	user.load(signature.get_signature_reference_id())
+	// 	# Update user name in case is empty.
+	// 	if not user.get_user_name():
+	// 		full_name_field = tree.find(".//*[@name='full_name']")
+	// 		if full_name_field is not None:
+	// 			full_name = full_name_field.find(self.TAGS['field_value'])
+	// 			if full_name:
+	// 				cla.log.info(f'{fn} - updating user: {user.get_user_github_id()} with name : {full_name.text}')
+	// 				user.set_user_name(full_name.text)
+	// 				user.save()
+	// 			else:
+	// 				cla.log.warning(f'{fn} - unable to locate full_name value in the docusign callback - '
+	// 								f'unable to update user record.')
+	// 	# Remove the active signature metadata.
+	// 	cla.utils.delete_active_signature_metadata(user.get_user_id())
+	// 	# Get signed document
+	// 	document_data = self.get_signed_document(envelope_id, user)
+	// 	# Send email with signed document.
+	// 	self.send_signed_document(signature, document_data, user, icla=True)
+
+	// 	# Verify user id exist for saving on storage
+	// 	user_id = user.get_user_id()
+	// 	if user_id is None:
+	// 		cla.log.warning(f'{fn} - missing user_id on ICLA for saving signed file on s3 storage.')
+	// 		raise SigningError('Missing user_id on ICLA for saving signed file on s3 storage.')
+
+	// 	# Store document on S3
+	// 	project_id = signature.get_signature_project_id()
+	// 	self.send_to_s3(document_data, project_id, signature_id, 'icla', user_id)
+
+	// 	# Log the event
+	// 	try:
+	// 		# Load the Project by ID and send audit event
+	// 		cla.log.debug(f'{fn} - creating an event log entry for event_type: {EventType.IndividualSignatureSigned}')
+	// 		project = Project()
+	// 		project.load(signature.get_signature_project_id())
+	// 		event_data = (f'The user {user.get_user_name()} signed an individual CLA for '
+	// 					  f'project {project.get_project_name()}.')
+	// 		event_summary = (f'The user {user.get_user_name()} signed an individual CLA for '
+	// 						 f'project {project.get_project_name()} with project ID: {project.get_project_id()}.')
+	// 		Event.create_event(
+	// 			event_type=EventType.IndividualSignatureSigned,
+	// 			event_cla_group_id=signature.get_signature_project_id(),
+	// 			event_company_id=None,
+	// 			event_user_id=signature.get_signature_reference_id(),
+	// 			event_user_name=user.get_user_name() if user else None,
+	// 			event_data=event_data,
+	// 			event_summary=event_summary,
+	// 			contains_pii=False,
+	// 		)
+	// 		cla.log.debug(f'{fn} - created an event log entry for event_type: {EventType.IndividualSignatureSigned}')
+	// 	except DoesNotExist as err:
+	// 		msg = (f'{fn} - unable to load project by CLA Group ID: {signature.get_signature_project_id()}, '
+	// 			   f'unable to send audit event, error: {err}')
+	// 		cla.log.warning(msg)
+	// 		return
+
+	// log.WithFields(f).Debugf("Docusign ICLA signed callback POST data: %s", body)
+
+	//parse xml content
+
+	return nil
+
+}
+
+func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, mergeRequestID, repositoryID string) error {
+	return nil
+}
+
+func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []byte, userID string) error {
+	return nil
+}
+
+func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error {
+	return nil
 }
 
 func (s *service) RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error) {
@@ -685,6 +811,7 @@ func (s *service) populateSignURL(ctx context.Context,
 		"functionName":              "sign.populateSignURL",
 		"authorityOrSignatoryName":  authorityOrSignatoryName,
 		"authorityOrSignatoryEmail": authorityOrSignatoryEmail,
+		"preferredEmail":            preferredEmail,
 	}
 	log.WithFields(f).Debugf("populating sign url...")
 	signatureReferenceType := latestSignature.SignatureReferenceType
@@ -702,11 +829,6 @@ func (s *service) populateSignURL(ctx context.Context,
 	var emailBody string
 	var emailSubject string
 
-	// companyModel, userSignatureName, userSignatureEmail, shouldReturn, returnValue := newFunction(ctx, signatureReferenceType, companyModel, err, s, latestSignature, f, userSignatureName, claManagerName, userSignatureEmail, claManagerEmail, sendAsEmail, preferredEmail)
-	// if shouldReturn {
-	// 	return returnValue
-	// }
-
 	// populate user details
 	userDetails, err := s.populateUserDetails(ctx, signatureReferenceType, latestSignature, claManagerName, claManagerEmail, sendAsEmail, preferredEmail)
 	if err != nil {
@@ -716,6 +838,8 @@ func (s *service) populateSignURL(ctx context.Context,
 
 	userSignatureName = userDetails.userSignatureName
 	userSignatureEmail = userDetails.userSignatureEmail
+
+	log.WithFields(f).Debugf("userSignatureName: %s, userSignatureEmail: %s", userSignatureName, userSignatureEmail)
 
 	// Get the document template to sign
 	log.WithFields(f).Debugf("getting document template to sign...")
@@ -894,7 +1018,7 @@ func (s *service) populateSignURL(ctx context.Context,
 
 	docusignDocument := DocuSignDocument{
 		Name:           documentName,
-		DocumentId:     "1",
+		DocumentId:     documentID,
 		FileExtension:  "pdf",
 		FileFormatHint: "pdf",
 		Order:          "1",
