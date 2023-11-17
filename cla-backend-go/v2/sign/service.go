@@ -1417,9 +1417,10 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 	var signed bool
 	if len(companySignatures) > 0 {
 		companySignature = companySignatures[0]
+		_, currentTime := utils.CurrentTime()
 		itemSignature = &signatures.ItemSignature{
 			SignatureID:  companySignature.SignatureID,
-			DateModified: companySignature.Modified,
+			DateModified: currentTime,
 		}
 		signed = companySignature.SignatureSigned
 		approved = companySignature.SignatureApproved
@@ -1444,22 +1445,21 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 			SignatoryName:                 signatoryName,
 			SignatureSigned:               false,
 			SignatureApproved:             true,
+			SignatureCallbackURL:          callbackURL,
+			SignatureReturnURL:            input.ReturnURL,
 			SigtypeSignedApprovedID:       fmt.Sprintf("%s#%v#%v#%s", utils.SignatureTypeCCLA, signed, approved, signatureID),
 			SignatureReferenceNameLower:   strings.ToLower(comp.CompanyName),
 		}
 
 	}
-	companySignature.SignatureCallbackURL = callbackURL
 
 	if !input.SendAsEmail {
-		companySignature.SignatureReturnURL = input.ReturnURL
+		itemSignature.SignatureReturnURL = input.ReturnURL
 	}
 
 	// 6. Set signature ACL
 	log.WithFields(f).Debugf("setting signature ACL...")
-	companySignature.SignatureACL = []v1Models.User{
-		*claUser,
-	}
+	itemSignature.SignatureACL = []string{claUser.LfUsername}
 
 	// 7. Populate sign url
 	log.WithFields(f).Debugf("populating sign url...")
