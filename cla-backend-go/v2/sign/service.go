@@ -9,10 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/communitybridge/easycla/cla-backend-go/github"
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
@@ -338,7 +340,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 }
 
 func (s *service) getCorporateSignatureCallbackUrl(companyId, projectId string) string {
-	return fmt.Sprintf("%s/v2/signed/corporate/%s/%s", s.ClaV4ApiURL, companyId, projectId)
+	return fmt.Sprintf("%s/v4/signed/corporate/%s/%s", s.ClaV4ApiURL, companyId, projectId)
 }
 
 func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []byte, installationID, changeRequestID, repositoryID string) error {
@@ -796,7 +798,7 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		return "", err
 	}
 
-	return fmt.Sprintf("%s/v2/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID), nil
+	return fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID), nil
 }
 
 //nolint:gocyclo
@@ -881,7 +883,12 @@ func (s *service) populateSignURL(ctx context.Context,
 		}
 	}
 
-	documentID := uuid.Must(uuid.NewV4()).String()
+	// seed the random number generator
+	rand.Seed(time.Now().UnixNano())
+
+	randomInteger := rand.Intn(1000000)
+	documentID := strconv.Itoa(randomInteger)
+
 	tab := getTabsFromDocument(&document, documentID, defaultValues)
 
 	// # Create the envelope request object
