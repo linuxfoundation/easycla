@@ -132,13 +132,14 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			}
 			log.WithFields(f).Debug("github callback")
 
+			log.WithFields(f).Debugf("body: %+v", params.Body)
+
 			payload, marshalErr := json.Marshal(params.Body)
+
 			if marshalErr != nil {
 				log.WithFields(f).WithError(marshalErr).Warn("unable to marshal github callback body")
 				return sign.NewIclaCallbackGithubBadRequest()
 			}
-
-			log.WithFields(f).Debugf("body: %+v", payload)
 
 			err := service.SignedIndividualCallbackGithub(ctx, payload, params.InstallationID, params.ChangeRequestID, params.GithubRepositoryID)
 			if err != nil {
