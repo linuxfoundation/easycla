@@ -883,10 +883,11 @@ func (s *service) populateSignURL(ctx context.Context,
 		}
 	}
 
-	// seed the random number generator
-	rand.Seed(time.Now().UnixNano())
+	// create a new source and rand object
+	src := rand.NewSource(time.Now().UnixNano())
+	r := rand.New(src) //nolint:gosec
 
-	randomInteger := rand.Intn(1000000) //nolint:gosec
+	randomInteger := r.Intn(1000000) //nolint:gosec
 	documentID := strconv.Itoa(randomInteger)
 
 	tab := getTabsFromDocument(&document, documentID, defaultValues)
