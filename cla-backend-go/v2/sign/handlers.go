@@ -138,6 +138,8 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				return sign.NewIclaCallbackGithubBadRequest()
 			}
 
+			log.WithFields(f).Debugf("body: %+v", payload)
+
 			err := service.SignedIndividualCallbackGithub(ctx, payload, params.InstallationID, params.ChangeRequestID, params.GithubRepositoryID)
 			if err != nil {
 				return sign.NewIclaCallbackGithubBadRequest()

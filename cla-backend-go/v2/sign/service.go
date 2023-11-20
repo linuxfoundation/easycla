@@ -82,7 +82,7 @@ type Service interface {
 
 // service
 type service struct {
-	ClaV1ApiURL          string
+	ClaV4ApiURL          string
 	companyRepo          company.IRepository
 	projectRepo          ProjectRepo
 	projectClaGroupsRepo projects_cla_groups.Repository
@@ -101,7 +101,7 @@ type service struct {
 func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
 	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface) Service {
 	return &service{
-		ClaV1ApiURL:          apiURL,
+		ClaV4ApiURL:          apiURL,
 		companyRepo:          compRepo,
 		projectRepo:          projectRepo,
 		projectClaGroupsRepo: pcgRepo,
@@ -303,7 +303,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 	}
 
-	signature, err := s.requestCorporateSignature(ctx, s.ClaV1ApiURL, &requestCorporateSignatureInput{
+	signature, err := s.requestCorporateSignature(ctx, s.ClaV4ApiURL, &requestCorporateSignatureInput{
 		ProjectID:         proj.ProjectID,
 		CompanyID:         comp.CompanyID,
 		SigningEntityName: input.SigningEntityName,
@@ -338,7 +338,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 }
 
 func (s *service) getCorporateSignatureCallbackUrl(companyId, projectId string) string {
-	return fmt.Sprintf("%s/v2/signed/corporate/%s/%s", s.ClaV1ApiURL, companyId, projectId)
+	return fmt.Sprintf("%s/v2/signed/corporate/%s/%s", s.ClaV4ApiURL, companyId, projectId)
 }
 
 func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []byte, installationID, changeRequestID, repositoryID string) error {
@@ -736,7 +736,7 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 		return "", err
 	}
 
-	return fmt.Sprintf("%s/v2/signed/gitlab/individual/%s/%s/%s/%s", s.ClaV1ApiURL, userID, gitlabOrg.OrganizationID, repositoryID, mergeRequestID), nil
+	return fmt.Sprintf("%s/v4/signed/gitlab/individual/%s/%s/%s/%s", s.ClaV4ApiURL, userID, gitlabOrg.OrganizationID, repositoryID, mergeRequestID), nil
 
 }
 
@@ -796,7 +796,7 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		return "", err
 	}
 
-	return fmt.Sprintf("%s/v2/signed/individual/%d/%s/%s", s.ClaV1ApiURL, installationId, repositoryID, pullRequestID), nil
+	return fmt.Sprintf("%s/v2/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID), nil
 }
 
 //nolint:gocyclo
@@ -1101,7 +1101,7 @@ func (s *service) populateSignURL(ctx context.Context,
 			return "", errors.New("no envelope recipients found")
 		}
 		recipient := recipients[0]
-		returnURL := fmt.Sprintf("%s/v2/return-url/%s", s.ClaV1ApiURL, recipient.ClientUserId)
+		returnURL := fmt.Sprintf("%s/v2/return-url/%s", s.ClaV4ApiURL, recipient.ClientUserId)
 
 		log.WithFields(f).Debugf("generating signature sign_url, using return-url as: %s", returnURL)
 		signURL, signErr := s.GetSignURL(signer.Email, signer.RecipientId, signer.Name, signer.ClientUserId, envelopeResponse.EnvelopeId, returnURL)

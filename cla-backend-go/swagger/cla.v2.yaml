@@ -4179,7 +4179,8 @@ paths:
           in: body
           required: true
           schema:
-            type: string
+            type: object
+            additionalProperties: true
       responses:
         '200':
           description: Successfully received and processed the callback data.
@@ -4204,7 +4205,8 @@ paths:
           in: body
           required: true
           schema:
-            type: string
+            type: object
+            additionalProperties: true
       responses:
         '200':
           description: Successfully received and processed the Gerrit callback data.
@@ -4233,7 +4235,8 @@ paths:
           in: body
           required: true
           schema:
-            type: string
+            type: object
+            additionalProperties: true
       responses:
         '200':
           description: Successfully received and processed the callback data for corporate signatures.
@@ -4270,7 +4273,8 @@ paths:
           in: body
           required: true
           schema:
-            type: string
+            type: object
+            additionalProperties: true
       responses:
         '200':
           description: Callback data for GitLab successfully received and processed.
