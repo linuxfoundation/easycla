@@ -85,6 +85,7 @@ type Service interface {
 // service
 type service struct {
 	ClaV4ApiURL          string
+	ClaV1ApiURL          string
 	companyRepo          company.IRepository
 	projectRepo          ProjectRepo
 	projectClaGroupsRepo projects_cla_groups.Repository
@@ -100,10 +101,11 @@ type service struct {
 }
 
 // NewService returns an instance of v2 project service
-func NewService(apiURL string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
+func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
 	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface) Service {
 	return &service{
 		ClaV4ApiURL:          apiURL,
+		ClaV1ApiURL:          v1API,
 		companyRepo:          compRepo,
 		projectRepo:          projectRepo,
 		projectClaGroupsRepo: pcgRepo,
@@ -1114,7 +1116,7 @@ func (s *service) populateSignURL(ctx context.Context,
 			return "", errors.New("no envelope recipients found")
 		}
 		recipient := recipients[0]
-		returnURL := fmt.Sprintf("%s/v2/return-url/%s", s.ClaV4ApiURL, recipient.ClientUserId)
+		returnURL := fmt.Sprintf("%s/v2/return-url/%s", s.ClaV1ApiURL, recipient.ClientUserId)
 
 		log.WithFields(f).Debugf("generating signature sign_url, using return-url as: %s", returnURL)
 		signURL, signErr := s.GetSignURL(signer.Email, signer.RecipientId, signer.Name, signer.ClientUserId, envelopeResponse.EnvelopeId, returnURL)
