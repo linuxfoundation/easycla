@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -4326,7 +4327,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 				}
 			}
 
-			signatureVersion := fmt.Sprintf("v%s.%s", sig.SignatureDocumentMajorVersion, sig.SignatureDocumentMinorVersion)
+			signatureVersion := fmt.Sprintf("v%s.%s", strconv.Itoa(sig.SignatureDocumentMajorVersion), strconv.Itoa(sig.SignatureDocumentMinorVersion))
 
 			sigName := sig.UserName
 			user, userErr := repo.usersRepo.GetUser(sig.SignatureReferenceID)

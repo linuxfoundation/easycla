@@ -10,8 +10,8 @@ type ItemSignature struct {
 	DateModified                  string   `json:"date_modified"`
 	SignatureApproved             bool     `json:"signature_approved"`
 	SignatureSigned               bool     `json:"signature_signed"`
-	SignatureDocumentMajorVersion string   `json:"signature_document_major_version"`
-	SignatureDocumentMinorVersion string   `json:"signature_document_minor_version"`
+	SignatureDocumentMajorVersion int      `json:"signature_document_major_version"`
+	SignatureDocumentMinorVersion int      `json:"signature_document_minor_version"`
 	SignatureSignURL              string   `json:"signature_sign_url"`
 	SignatureReturnURL            string   `json:"signature_return_url"`
 	SignatureReturnURLType        string   `json:"signature_return_url_type"`

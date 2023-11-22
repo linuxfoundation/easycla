@@ -5,6 +5,7 @@ package signatures
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -74,9 +75,9 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 			SignatureReferenceNameLower: dbSignature.SignatureReferenceNameLower,
 			SignatureSigned:             dbSignature.SignatureSigned,
 			SignatureApproved:           dbSignature.SignatureApproved,
-			SignatureMajorVersion:       dbSignature.SignatureDocumentMajorVersion,
-			SignatureMinorVersion:       dbSignature.SignatureDocumentMinorVersion,
-			Version:                     dbSignature.SignatureDocumentMajorVersion + "." + dbSignature.SignatureDocumentMinorVersion,
+			SignatureMajorVersion:       strconv.Itoa(dbSignature.SignatureDocumentMajorVersion),
+			SignatureMinorVersion:       strconv.Itoa(dbSignature.SignatureDocumentMinorVersion),
+			Version:                     strconv.Itoa(dbSignature.SignatureDocumentMajorVersion) + "." + strconv.Itoa(dbSignature.SignatureDocumentMinorVersion),
 			SignatureReferenceType:      dbSignature.SignatureReferenceType,
 			ProjectID:                   dbSignature.SignatureProjectID,
 			Created:                     dbSignature.DateCreated,

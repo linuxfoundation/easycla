@@ -638,14 +638,28 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GitlabID)
 	}
 
+	majorVersion, err := strconv.Atoi(document.DocumentMajorVersion)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert document major version to int: %s", document.DocumentMajorVersion)
+		return nil, err
+	}
+
+	minorVersion, err := strconv.Atoi(document.DocumentMinorVersion)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert document minor version to int: %s", document.DocumentMinorVersion)
+		return nil, err
+	}
+
 	itemSignature := signatures.ItemSignature{
 		SignatureID:                   signatureID,
 		DateCreated:                   currentTime,
 		DateModified:                  currentTime,
 		SignatureSigned:               false,
 		SignatureApproved:             true,
-		SignatureDocumentMajorVersion: document.DocumentMajorVersion,
-		SignatureDocumentMinorVersion: document.DocumentMinorVersion,
+		SignatureDocumentMajorVersion: majorVersion,
+		SignatureDocumentMinorVersion: minorVersion,
 		SignatureReferenceID:          *input.UserID,
 		SignatureReferenceName:        getUserName(user),
 		SignatureType:                 utils.SignatureTypeCLA,
@@ -1569,10 +1583,20 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 		_, currentTime := utils.CurrentTime()
 		signed = false
 		approved = true
+		majorVersion, majorErr := strconv.Atoi(latestDocument.DocumentMajorVersion)
+		if majorErr != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to convert document major version to int: %s", latestDocument.DocumentMajorVersion)
+			return nil, majorErr
+		}
+		minorVersion, minorErr := strconv.Atoi(latestDocument.DocumentMinorVersion)
+		if minorErr != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to convert document minor version to int: %s", latestDocument.DocumentMinorVersion)
+			return nil, minorErr
+		}
 		itemSignature = &signatures.ItemSignature{
 			SignatureID:                   signatureID,
-			SignatureDocumentMajorVersion: latestDocument.DocumentMajorVersion,
-			SignatureDocumentMinorVersion: latestDocument.DocumentMinorVersion,
+			SignatureDocumentMajorVersion: majorVersion,
+			SignatureDocumentMinorVersion: minorVersion,
 			SignatureReferenceID:          comp.CompanyID,
 			SignatureReferenceType:        "company",
 			SignatureReferenceName:        comp.CompanyName,
