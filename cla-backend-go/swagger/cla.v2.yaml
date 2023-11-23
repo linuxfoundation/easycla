@@ -4161,6 +4161,8 @@ paths:
       description: Receives XML data when an individual signs a document in DocuSign.
       security: [ ]
       operationId: iclaCallbackGithub
+      consumes:
+        - application/xml
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: installation_id
