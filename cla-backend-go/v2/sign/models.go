@@ -331,19 +331,9 @@ type DocuSignRecipientEvent struct {
 }
 
 type DocuSignEventNotification struct {
-	URL                               string                   `json:"url"`
-	LoggingEnabled                    bool                     `json:"loggingEnabled"`
-	RequireAcknowledgment             string                   `json:"requireAcknowledgment"`
-	UseSoapInterface                  string                   `json:"useSoapInterface"`
-	IncludeCertificateWithSoap        string                   `json:"includeCertificateWithSoap"`
-	SignMessageWithX509Cert           string                   `json:"signMessageWithX509Cert"`
-	IncludeDocuments                  string                   `json:"includeDocuments"`
-	IncludeEnvelopeVoidReason         string                   `json:"includeEnvelopeVoidReason"`
-	IncludeTimeZone                   string                   `json:"includeTimeZone"`
-	IncludeSenderAccountAsCustomField string                   `json:"includeSenderAccountAsCustomField"`
-	IncludeDocumentFields             string                   `json:"includeDocumentFields"`
-	IncludeCertificateOfCompletion    string                   `json:"includeCertificateOfCompletion"`
-	EnvelopeEvents                    []DocuSignRecipientEvent `json:"envelopeEvents"`
+	URL            string                   `json:"url"`
+	LoggingEnabled bool                     `json:"loggingEnabled"`
+	EnvelopeEvents []DocuSignRecipientEvent `json:"envelopeEvents"`
 }
 
 type Recipient struct {
@@ -411,74 +401,65 @@ type DocusignRecipientViewResponse struct {
 	URL string `json:"url"`
 }
 
-type Payload struct {
-	APIVersion        string `json:"apiVersion"`
-	ConfigurationID   int    `json:"configurationId"`
-	Data              Data   `json:"data"`
-	Event             string `json:"event"`
-	GeneratedDateTime string `json:"generatedDateTime"`
-	RetryCount        int    `json:"retryCount"`
-	URI               string `json:"uri"`
+// DocuSignWebhookModel represents the webhook callback data model from DocuSign
+type DocuSignWebhookModel struct {
+	APIVersion        string              `json:"apiVersion"`      // v2.1
+	ConfigurationID   int                 `json:"configurationId"` // 10418598
+	Data              DocuSignWebhookData `json:"data"`
+	Event             string              `json:"event"`             // envelope-sent, envelope-completed
+	GeneratedDateTime time.Time           `json:"generatedDateTime"` // generated_date_time
+	URI               string              `json:"uri"`               // /restapi/v2.1/accounts/77c754e9-4016-4ccc-957f-15eaa18f2d22/envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a
 }
 
-type Data struct {
-	AccountID       string          `json:"accountId"`
-	EnvelopeID      string          `json:"envelopeId"`
-	EnvelopeSummary EnvelopeSummary `json:"envelopeSummary"`
-	UserID          string          `json:"userId"`
+type DocuSignWebhookData struct {
+	AccountID       string                  `json:"accountId"`  // 77c754e9-4016-4ccc-957f-15eaa18f2d22
+	EnvelopeID      string                  `json:"envelopeId"` // 016d4678-bf5c-41f3-b7c9-5c58606cdb4a
+	EnvelopeSummary DocuSignEnvelopeSummary `json:"envelopeSummary"`
+	UserID          string                  `json:"userId"` // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
 }
 
-type EnvelopeSummary struct {
-	AllowComments               string           `json:"allowComments"`
-	AllowMarkup                 string           `json:"allowMarkup"`
-	AllowReassign               string           `json:"allowReassign"`
-	AllowViewHistory            string           `json:"allowViewHistory"`
-	AnySigner                   interface{}      `json:"anySigner"`
-	AttachmentsURI              string           `json:"attachmentsUri"`
-	AutoNavigation              string           `json:"autoNavigation"`
-	BurnDefaultTabData          string           `json:"burnDefaultTabData"`
-	CertificateURI              string           `json:"certificateUri"`
-	CompletedDateTime           string           `json:"completedDateTime"`
-	CreatedDateTime             string           `json:"createdDateTime"`
-	CustomFieldsURI             string           `json:"customFieldsUri"`
-	DeliveredDateTime           string           `json:"deliveredDateTime"`
-	DocumentsCombinedURI        string           `json:"documentsCombinedUri"`
-	DocumentsURI                string           `json:"documentsUri"`
-	EmailBlurb                  string           `json:"emailBlurb"`
-	EmailSubject                string           `json:"emailSubject"`
-	EnableWetSign               string           `json:"enableWetSign"`
-	EnvelopeID                  string           `json:"envelopeId"`
-	EnvelopeIdStamping          string           `json:"envelopeIdStamping"`
-	EnvelopeLocation            string           `json:"envelopeLocation"`
+type DocuSignEnvelopeSummary struct {
+	AllowComments               string           `json:"allowComments"`        // "true"
+	AllowMarkup                 string           `json:"allowMarkup"`          // "false"
+	AllowReassign               string           `json:"allowReassign"`        // "true"
+	AllowViewHistory            string           `json:"allowViewHistory"`     // "true"
+	AnySigner                   interface{}      `json:"anySigner"`            // <nil>
+	AttachmentsURI              string           `json:"attachmentsUri"`       // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/attachments
+	AutoNavigation              string           `json:"autoNavigation"`       // "true"
+	BurnDefaultTabData          string           `json:"burnDefaultTabData"`   // "false"
+	CertificateURI              string           `json:"certificateUri"`       // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/documents/summary
+	CreatedDateTime             time.Time        `json:"createdDateTime"`      // 2023-05-26T18:55:47.18Z
+	CustomFieldsURI             string           `json:"customFieldsUri"`      // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/custom_fields
+	DocumentsCombinedURI        string           `json:"documentsCombinedUri"` // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/documents/combined
+	DocumentsURI                string           `json:"documentsUri"`         // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/documents
+	EmailSubject                string           `json:"emailSubject"`         // Please DocuSign this document: Test DocuSign
+	EnableWetSign               string           `json:"enableWetSign"`        // "false"
+	EnvelopeID                  string           `json:"envelopeId"`           // 016d4678-bf5c-41f3-b7c9-5c58606cdb4a
+	EnvelopeIDStamping          string           `json:"envelopeIdStamping"`   // "true"
+	EnvelopeLocation            string           `json:"envelopeLocation"`     // current_site
 	EnvelopeMetadata            EnvelopeMetadata `json:"envelopeMetadata"`
-	EnvelopeURI                 string           `json:"envelopeUri"`
-	ExpireAfter                 string           `json:"expireAfter"`
-	ExpireDateTime              string           `json:"expireDateTime"`
-	ExpireEnabled               string           `json:"expireEnabled"`
-	HasComments                 string           `json:"hasComments"`
-	HasFormDataChanged          string           `json:"hasFormDataChanged"`
-	InitialSentDateTime         string           `json:"initialSentDateTime"`
-	Is21CFRPart11               string           `json:"is21CFRPart11"`
-	IsDynamicEnvelope           string           `json:"isDynamicEnvelope"`
-	IsSignatureProviderEnvelope string           `json:"isSignatureProviderEnvelope"`
-	LastModifiedDateTime        string           `json:"lastModifiedDateTime"`
-	NotificationURI             string           `json:"notificationUri"`
-	PurgeState                  string           `json:"purgeState"`
+	EnvelopeURI                 string           `json:"envelopeUri"`                 // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a
+	ExpiresAfter                string           `json:"expiresAfter"`                // 120
+	ExpireDateTime              time.Time        `json:"expireDateTime"`              // 2023-05-26T18:55:48.257Z
+	ExpireEnabled               string           `json:"expireEnabled"`               // "true"
+	HasComments                 string           `json:"hasComments"`                 // "false"
+	HasFormDataChanged          string           `json:"hasFormDataChanged"`          // "false"
+	InitialSendDateTime         time.Time        `json:"initialSendDateTime"`         // 2023-05-26T18:55:48.257Z
+	Is21CFRPart11               string           `json:"is21CFRPart11"`               // "false"
+	IsDynamicEnvelope           string           `json:"isDynamicEnvelope"`           // "false"
+	IsSignatureProviderEnvelope string           `json:"isSignatureProviderEnvelope"` // "false"
+	LastModifiedDateTime        time.Time        `json:"lastModifiedDateTime"`        // 2023-05-26T18:55:48.257Z
+	NotificationURI             string           `json:"notificationUri"`             // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/notification
+	PurgeState                  string           `json:"purgeState"`                  // unpurged
 	Recipients                  Recipients       `json:"recipients"`
-	RecipientsURI               string           `json:"recipientsUri"`
+	RecipientsURI               string           `json:"recipientsUri"` // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/recipients
 	Sender                      Sender           `json:"sender"`
-	SentDateTime                string           `json:"sentDateTime"`
-	SignerCanSignOnMobile       string           `json:"signerCanSignOnMobile"`
-	SigningLocation             string           `json:"signingLocation"`
-	Status                      string           `json:"status"`
-	StatusChangedDateTime       string           `json:"statusChangedDateTime"`
-	TemplatesURI                string           `json:"templatesUri"`
-}
-
-type EnvelopeMetadata struct {
-	AllowAdvancedCorrect string `json:"allowAdvancedCorrect"`
-	AllowCorrect         string `json:"allowCorrect"`
-	EnableSignWithNotary string `json:"enableSignWithNotary"`
+	SentDateTime                time.Time        `json:"sentDateTime"`          // 2023-05-26T18:55:48.257Z
+	SignerCanSignOnMobile       string           `json:"signerCanSignOnMobile"` // "true"
+	SignerLocation              string           `json:"signerLocation"`        // online
+	Status                      string           `json:"status"`                // sent
+	StatusChangedDateTime       time.Time        `json:"statusChangedDateTime"` // 2023-05-26T18:55:48.257Z
+	TemplatesURI                string           `json:"templatesUri"`          // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/templates0:w
 }
 
 type Recipients struct {
@@ -494,6 +475,12 @@ type Recipients struct {
 	Seals               []interface{}   `json:"seals"`               // <nil>
 	Signers             []WebhookSigner `json:"signers"`
 	Witnesses           []interface{}   `json:"witnesses"` // <nil>
+}
+
+type EnvelopeMetadata struct {
+	AllowAdvancedCorrect string `json:"allowAdvancedCorrect"` // "false"
+	AllowCorrect         string `json:"allowCorrect"`         // "true"
+	EnableSignWithNotary string `json:"enableSignWithNotary"` // "false"
 }
 
 type WebhookSigner struct {
