@@ -984,9 +984,9 @@ func (s *service) populateSignURL(ctx context.Context,
 		}
 
 		eventNotification := DocuSignEventNotification{
-			URL:            callbackURL,
-			LoggingEnabled: true,
-			EnvelopeEvents: recipientEvents,
+			URL:              callbackURL,
+			LoggingEnabled:   true,
+			EnvelopeEvents:   recipientEvents,
 			UseSoapInterface: "true",
 			IncludeDocuments: "true",
 		}
