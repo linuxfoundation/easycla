@@ -359,14 +359,14 @@ type DocuSignUpdateDocumentResponse struct {
 }
 
 type DocuSignXMLData struct {
-    XMLName        xml.Name `xml:"EnvelopeStatus"`
-    EnvelopeID     string   `xml:"EnvelopeID"`
-    Status         string   `xml:"Status"`
-    Subject        string   `xml:"Subject"`
-    UserName       string   `xml:"UserName"`
-    Email          string   `xml:"Email"`
-    SignedDateTime string   `xml:"SignedDateTime"`
-    // Include other fields as necessary
+	XMLName        xml.Name `xml:"EnvelopeStatus"`
+	EnvelopeID     string   `xml:"EnvelopeID"`
+	Status         string   `xml:"Status"`
+	Subject        string   `xml:"Subject"`
+	UserName       string   `xml:"UserName"`
+	Email          string   `xml:"Email"`
+	SignedDateTime string   `xml:"SignedDateTime"`
+	// Include other fields as necessary
 }
 
 type Signer struct {
