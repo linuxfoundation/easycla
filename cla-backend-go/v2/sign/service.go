@@ -357,7 +357,9 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 	log.WithFields(f).Debug("processing signed individual callback...")
 
-	var dataModel Payload
+	var dataModel DocuSignWebhookModel
+
+	// var dataModel Payload
 
 	err := json.Unmarshal(payload, &dataModel)
 	if err != nil {
@@ -984,11 +986,9 @@ func (s *service) populateSignURL(ctx context.Context,
 		}
 
 		eventNotification := DocuSignEventNotification{
-			URL:              callbackURL,
-			LoggingEnabled:   true,
-			EnvelopeEvents:   recipientEvents,
-			UseSoapInterface: "true",
-			IncludeDocuments: "true",
+			URL:            callbackURL,
+			LoggingEnabled: true,
+			EnvelopeEvents: recipientEvents,
 		}
 
 		envelopeRequest = DocuSignEnvelopeRequest{
