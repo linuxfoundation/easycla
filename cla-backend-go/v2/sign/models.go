@@ -331,9 +331,19 @@ type DocuSignRecipientEvent struct {
 }
 
 type DocuSignEventNotification struct {
-	URL            string                   `json:"url"`
-	LoggingEnabled bool                     `json:"loggingEnabled"`
-	EnvelopeEvents []DocuSignRecipientEvent `json:"envelopeEvents"`
+	URL                               string                   `json:"url"`
+	LoggingEnabled                    bool                     `json:"loggingEnabled"`
+	RequireAcknowledgment             string                   `json:"requireAcknowledgment"`
+	UseSoapInterface                  string                   `json:"useSoapInterface"`
+	IncludeCertificateWithSoap        string                   `json:"includeCertificateWithSoap"`
+	SignMessageWithX509Cert           string                   `json:"signMessageWithX509Cert"`
+	IncludeDocuments                  string                   `json:"includeDocuments"`
+	IncludeEnvelopeVoidReason         string                   `json:"includeEnvelopeVoidReason"`
+	IncludeTimeZone                   string                   `json:"includeTimeZone"`
+	IncludeSenderAccountAsCustomField string                   `json:"includeSenderAccountAsCustomField"`
+	IncludeDocumentFields             string                   `json:"includeDocumentFields"`
+	IncludeCertificateOfCompletion    string                   `json:"includeCertificateOfCompletion"`
+	EnvelopeEvents                    []DocuSignRecipientEvent `json:"envelopeEvents"`
 }
 
 type Recipient struct {
@@ -399,4 +409,115 @@ type DocusignRecipientView struct {
 
 type DocusignRecipientViewResponse struct {
 	URL string `json:"url"`
+}
+
+type Payload struct {
+	APIVersion        string `json:"apiVersion"`
+	ConfigurationID   int    `json:"configurationId"`
+	Data              Data   `json:"data"`
+	Event             string `json:"event"`
+	GeneratedDateTime string `json:"generatedDateTime"`
+	RetryCount        int    `json:"retryCount"`
+	URI               string `json:"uri"`
+}
+
+type Data struct {
+	AccountID       string          `json:"accountId"`
+	EnvelopeID      string          `json:"envelopeId"`
+	EnvelopeSummary EnvelopeSummary `json:"envelopeSummary"`
+	UserID          string          `json:"userId"`
+}
+
+type EnvelopeSummary struct {
+	AllowComments               string           `json:"allowComments"`
+	AllowMarkup                 string           `json:"allowMarkup"`
+	AllowReassign               string           `json:"allowReassign"`
+	AllowViewHistory            string           `json:"allowViewHistory"`
+	AnySigner                   interface{}      `json:"anySigner"`
+	AttachmentsURI              string           `json:"attachmentsUri"`
+	AutoNavigation              string           `json:"autoNavigation"`
+	BurnDefaultTabData          string           `json:"burnDefaultTabData"`
+	CertificateURI              string           `json:"certificateUri"`
+	CompletedDateTime           string           `json:"completedDateTime"`
+	CreatedDateTime             string           `json:"createdDateTime"`
+	CustomFieldsURI             string           `json:"customFieldsUri"`
+	DeliveredDateTime           string           `json:"deliveredDateTime"`
+	DocumentsCombinedURI        string           `json:"documentsCombinedUri"`
+	DocumentsURI                string           `json:"documentsUri"`
+	EmailBlurb                  string           `json:"emailBlurb"`
+	EmailSubject                string           `json:"emailSubject"`
+	EnableWetSign               string           `json:"enableWetSign"`
+	EnvelopeID                  string           `json:"envelopeId"`
+	EnvelopeIdStamping          string           `json:"envelopeIdStamping"`
+	EnvelopeLocation            string           `json:"envelopeLocation"`
+	EnvelopeMetadata            EnvelopeMetadata `json:"envelopeMetadata"`
+	EnvelopeURI                 string           `json:"envelopeUri"`
+	ExpireAfter                 string           `json:"expireAfter"`
+	ExpireDateTime              string           `json:"expireDateTime"`
+	ExpireEnabled               string           `json:"expireEnabled"`
+	HasComments                 string           `json:"hasComments"`
+	HasFormDataChanged          string           `json:"hasFormDataChanged"`
+	InitialSentDateTime         string           `json:"initialSentDateTime"`
+	Is21CFRPart11               string           `json:"is21CFRPart11"`
+	IsDynamicEnvelope           string           `json:"isDynamicEnvelope"`
+	IsSignatureProviderEnvelope string           `json:"isSignatureProviderEnvelope"`
+	LastModifiedDateTime        string           `json:"lastModifiedDateTime"`
+	NotificationURI             string           `json:"notificationUri"`
+	PurgeState                  string           `json:"purgeState"`
+	Recipients                  Recipients       `json:"recipients"`
+	RecipientsURI               string           `json:"recipientsUri"`
+	Sender                      Sender           `json:"sender"`
+	SentDateTime                string           `json:"sentDateTime"`
+	SignerCanSignOnMobile       string           `json:"signerCanSignOnMobile"`
+	SigningLocation             string           `json:"signingLocation"`
+	Status                      string           `json:"status"`
+	StatusChangedDateTime       string           `json:"statusChangedDateTime"`
+	TemplatesURI                string           `json:"templatesUri"`
+}
+
+type EnvelopeMetadata struct {
+	AllowAdvancedCorrect string `json:"allowAdvancedCorrect"`
+	AllowCorrect         string `json:"allowCorrect"`
+	EnableSignWithNotary string `json:"enableSignWithNotary"`
+}
+
+type Recipients struct {
+	Agents              []interface{}   `json:"agents"`              // <nil>
+	CarbonCopies        []interface{}   `json:"carbonCopies"`        // <nil>
+	CertifiedDeliveries []interface{}   `json:"certifiedDeliveries"` // <nil>
+	CurrentRoutingOrder string          `json:"currentRoutingOrder"` // 1
+	Editors             []interface{}   `json:"editors"`             // <nil>
+	InPersonSigners     []interface{}   `json:"inPersonSigners"`     // <nil>
+	Intermediaries      []interface{}   `json:"intermediaries"`      // <nil>
+	Notaries            []interface{}   `json:"notaries"`            // <nil>
+	RecipientCount      string          `json:"recipientCount"`      // 1
+	Seals               []interface{}   `json:"seals"`               // <nil>
+	Signers             []WebhookSigner `json:"signers"`
+	Witnesses           []interface{}   `json:"witnesses"` // <nil>
+}
+
+type WebhookSigner struct {
+	CompletedCount         string    `json:"completedCount"`         // 0
+	CreationReason         string    `json:"creationReason"`         // sender
+	DeliveryMethod         string    `json:"deliveryMethod"`         // email
+	Email                  string    `json:"email"`                  // test@test
+	IsBulkRecipient        string    `json:"isBulkRecipient"`        // "false"
+	Name                   string    `json:"name"`                   // Test DocuSign
+	RecipientID            string    `json:"recipientId"`            // 1
+	RecipientIDGuid        string    `json:"recipientIdGuid"`        // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
+	ReceipientType         string    `json:"recipientType"`          // signer
+	RequireIdLookup        string    `json:"requireIdLookup"`        // "false"
+	RequireUploadSignature string    `json:"requireUploadSignature"` // "false"
+	RoutingOrder           string    `json:"routingOrder"`           // 1
+	SentDateTime           time.Time `json:"sentDateTime"`           // 2023-05-26T18:55:48.257Z
+	Status                 string    `json:"status"`                 // sent
+	UserId                 string    `json:"userId"`                 // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
+}
+
+type Sender struct {
+	AccountID string `json:"accountId"` // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
+	Email     string `json:"email"`     // test@test
+	IPAddress string `json:"ipAddress"` // 35.11.11.111
+	UserName  string `json:"userName"`  // Test DocuSign
+	UserID    string `json:"userId"`    // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
 }
