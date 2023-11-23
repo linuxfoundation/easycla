@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -153,7 +152,6 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 
 			log.WithFields(f).Debugf("data: %+v", data)
 
-		
 			// err := service.SignedIndividualCallbackGithub(ctx, payload, params.InstallationID, params.ChangeRequestID, params.GithubRepositoryID)
 			// if err != nil {
 			// 	return sign.NewIclaCallbackGithubBadRequest()
