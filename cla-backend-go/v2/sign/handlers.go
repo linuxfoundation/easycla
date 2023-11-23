@@ -6,10 +6,8 @@ package sign
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -128,34 +126,24 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 		func(params sign.IclaCallbackGithubParams) middleware.Responder {
 			reqId := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTIDKey, reqId)
+
 			f := logrus.Fields{
 				"functionName":   "v2.sign.handlers.SignIclaCallbackGithubHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			}
+			jsonBytes, marshalErr := json.Marshal(params.Body)
+			if marshalErr != nil {
+				log.WithFields(f).WithError(marshalErr).Warn("unable to marshal github callback body")
+				return sign.NewIclaCallbackGithubBadRequest()
+			}
+
+			err := service.SignedIndividualCallbackGithub(ctx, jsonBytes, params.InstallationID, params.ChangeRequestID, params.GithubRepositoryID)
+			if err != nil {
+				return sign.NewIclaCallbackGithubBadRequest()
+			}
+
 			log.WithFields(f).Debug("github callback")
-
-			log.WithFields(f).Debugf("body: %+v", params.Body)
-
-			body, err := io.ReadAll(params.HTTPRequest.Body)
-			if err != nil {
-				log.WithFields(f).WithError(err).Warn("unable to read github callback body")
-				return sign.NewIclaCallbackGithubBadRequest()
-			}
-
-			var data DocuSignXMLData
-			err = xml.Unmarshal(body, &data)
-
-			if err != nil {
-				log.WithFields(f).WithError(err).Warn("unable to unmarshal github callback body")
-				return sign.NewIclaCallbackGithubBadRequest()
-			}
-
-			log.WithFields(f).Debugf("data: %+v", data)
-
-			// err := service.SignedIndividualCallbackGithub(ctx, payload, params.InstallationID, params.ChangeRequestID, params.GithubRepositoryID)
-			// if err != nil {
-			// 	return sign.NewIclaCallbackGithubBadRequest()
-			// }
+			// err := service.SignedIndividualCallbackGithub(ctx, payload, params.UserID)
 			return sign.NewCclaCallbackOK()
 		})
 
