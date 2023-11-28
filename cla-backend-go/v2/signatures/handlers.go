@@ -681,7 +681,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			PageSize:    params.PageSize,
 			UserName:    params.UserName,
 			UserID:      params.UserID,
-		})
+		}, nil)
 		if err != nil {
 			msg := fmt.Sprintf("error retrieving user signatures for userID: %s", params.UserID)
 			log.WithFields(f).WithError(err).Warn(msg)

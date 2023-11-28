@@ -35,6 +35,7 @@ import (
 type UserRepository interface {
 	CreateUser(user *models.User) (*models.User, error)
 	Save(user *models.UserUpdate) (*models.User, error)
+	UpdateUser(userID string, updates map[string]interface{}) (*models.User, error)
 	Delete(userID string) error
 	GetUser(userID string) (*models.User, error)
 	GetUserByLFUserName(lfUserName string) (*models.User, error)
@@ -211,6 +212,63 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 
 	log.WithFields(f).Debugf("Created new user: %+v", user)
 	return user, err
+}
+
+func (repo repository) UpdateUser(userID string, updates map[string]interface{}) (*models.User, error) {
+	f := logrus.Fields{
+		"functionName": "users.repository.UpdateUser",
+		"userID":       userID,
+	}
+
+	log.WithFields(f).Debugf("Updating user: %s with updates: %+v", userID, updates)
+
+	if len(updates) == 0 {
+		return nil, errors.New(400, "no updates provided")
+	}
+
+	var updateExpression strings.Builder
+	updateExpression.WriteString("SET ")
+	attributeValues := make(map[string]*dynamodb.AttributeValue)
+	attributeNames := make(map[string]*string)
+
+	count := 1
+	for key, value := range updates {
+		attrPlaceholder := fmt.Sprintf("#A%d", count)
+		valPlaceholder := fmt.Sprintf(":v%d", count)
+
+		if count > 1 {
+			updateExpression.WriteString(", ")
+		}
+		updateExpression.WriteString(fmt.Sprintf("%s = %s", attrPlaceholder, valPlaceholder))
+		attributeNames[attrPlaceholder] = aws.String(key)
+
+		av, err := dynamodbattribute.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		attributeValues[valPlaceholder] = av
+
+		count++
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames:  attributeNames,
+		ExpressionAttributeValues: attributeValues,
+		Key: map[string]*dynamodb.AttributeValue{
+			"user_id": {
+				S: aws.String(userID),
+			},
+		},
+		TableName:        aws.String(repo.tableName),
+		UpdateExpression: aws.String(updateExpression.String()),
+	}
+
+	_, err := repo.dynamoDBClient.UpdateItem(input)
+	if err != nil {
+		return nil, err
+	}
+
+	return repo.GetUser(userID)
 }
 
 func (repo repository) getUserByUpdateModel(user *models.UserUpdate) (*models.User, error) {

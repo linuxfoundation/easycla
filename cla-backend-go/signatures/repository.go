@@ -72,6 +72,7 @@ type SignatureRepository interface {
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
+	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
 	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
@@ -89,7 +90,7 @@ type SignatureRepository interface {
 	CreateProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) error
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams, pageSize int64, loadACL bool) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
-	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64) (*models.Signatures, error)
+	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64, projectID *string) (*models.Signatures, error)
 	ProjectSignatures(ctx context.Context, projectID string) (*models.Signatures, error)
 	UpdateApprovalList(ctx context.Context, claManager *models.User, claGroupModel *models.ClaGroup, companyID string, params *models.ApprovalList, eventArgs *events.LogEventArgs) (*models.Signature, error)
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
@@ -161,6 +162,73 @@ func (repo repository) CreateSignature(ctx context.Context, signature *ItemSigna
 	}
 
 	log.WithFields(f).Debugf("successfully added signature to database")
+
+	return nil
+
+}
+
+// UpdateSignature updates an existing signature
+func (repo repository) UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.UpdateSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+	}
+
+	if len(updates) == 0 {
+		log.WithFields(f).Warnf("no updates provided")
+		return errors.New("no updates provided")
+	}
+
+	var updateExpression strings.Builder
+	updateExpression.WriteString("SET ")
+	attributeValues := make(map[string]*dynamodb.AttributeValue)
+	expressionAttributeNames := make(map[string]*string)
+
+	count := 1
+	for attr, val := range updates {
+		attrPlaceholder := fmt.Sprintf("#A%d", count)
+		valPlaceholder := fmt.Sprintf(":v%d", count)
+
+		if count > 1 && count <= len(updates) {
+			updateExpression.WriteString(", ")
+		}
+		updateExpression.WriteString(fmt.Sprintf("%s = %s", attrPlaceholder, valPlaceholder))
+
+		expressionAttributeNames[attrPlaceholder] = aws.String(attr)
+		av, err := dynamodbattribute.Marshal(val)
+		if err != nil {
+			return err
+		}
+		attributeValues[valPlaceholder] = av
+
+		count++
+	}
+
+	log.WithFields(f).Debugf("updating signature using expression: %s", updateExpression.String())
+	log.WithFields(f).Debugf("expression attribute names : %+v", expressionAttributeNames)
+
+	input := &dynamodb.UpdateItemInput{
+		ExpressionAttributeValues: attributeValues,
+		TableName:                 aws.String(repo.signatureTableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: aws.String(signatureID),
+			},
+		},
+		UpdateExpression:         aws.String(updateExpression.String()),
+		ExpressionAttributeNames: expressionAttributeNames,
+		ReturnValues:             aws.String("UPDATED_NEW"),
+	}
+
+	// perform the update
+	_, err := repo.dynamoDBClient.UpdateItem(input)
+	if err != nil {
+		log.WithFields(f).Warnf("error updating signature, error: %v", err)
+		return err
+	}
+
+	log.WithFields(f).Debugf("successfully updated signature")
 
 	return nil
 
@@ -2659,7 +2727,7 @@ func (repo repository) GetCompanyIDsWithSignedCorporateSignatures(ctx context.Co
 }
 
 // GetUserSignatures returns a list of user signatures for the specified user
-func (repo repository) GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64) (*models.Signatures, error) {
+func (repo repository) GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, pageSize int64, projectID *string) (*models.Signatures, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetUserSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -2667,8 +2735,15 @@ func (repo repository) GetUserSignatures(ctx context.Context, params signatures.
 	// This is the keys we want to match
 	condition := expression.Key("signature_reference_id").Equal(expression.Value(params.UserID))
 
+	expressionBuilder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildProjection())
+
+	if projectID != nil {
+		filterExpression := expression.Name("signature_project_id").Equal(expression.Value(*projectID))
+		expressionBuilder = expressionBuilder.WithFilter(filterExpression)
+	}
+
 	// Use the nice builder to create the expression
-	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildProjection()).Build()
+	expr, err := expressionBuilder.Build()
 	if err != nil {
 		log.WithFields(f).Warnf("error building expression for user signature query, userID: %s, error: %v",
 			params.UserID, err)
@@ -2714,6 +2789,8 @@ func (repo repository) GetUserSignatures(ctx context.Context, params signatures.
 				params.UserID, *params.UserName, errQuery)
 			return nil, errQuery
 		}
+
+		log.WithFields(f).Debugf("query results count: %d", len(results.Items))
 
 		// Convert the list of DB models to a list of response models
 		signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, "", LoadACLDetails)

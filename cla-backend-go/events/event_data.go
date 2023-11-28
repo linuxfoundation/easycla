@@ -445,6 +445,12 @@ type SignatureAutoCreateECLAUpdatedEventData struct {
 	AutoCreateECLA bool
 }
 
+type IndividualSignatureSignedEventData struct {
+	ProjectName string
+	Username    string
+	ProjectID   string
+}
+
 // GetEventDetailsString returns the details string for this event
 func (ed *SignatureAutoCreateECLAUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 
@@ -2723,5 +2729,17 @@ func (ed *SignatureAutoCreateECLAUpdatedEventData) GetEventSummaryString(args *L
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
 	data = data + "."
+	return data, false
+}
+
+func (ed *IndividualSignatureSignedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The user %s signed an individual CLA for project %s with project ID: %s",
+		args.LfUsername, ed.ProjectName, ed.ProjectID)
+	return data, false
+}
+
+func (ed *IndividualSignatureSignedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The user %s signed an individual CLA for project %s",
+		args.LfUsername, ed.ProjectName)
 	return data, false
 }

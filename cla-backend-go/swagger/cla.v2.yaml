@@ -4161,8 +4161,30 @@ paths:
       description: Receives XML data when an individual signs a document in DocuSign.
       security: [ ]
       operationId: iclaCallbackGithub
+      consumes:
+        - text/xml
       parameters:
         - $ref: "#/parameters/x-request-id"
+        - in: header
+          name: accept-encoding
+          type: string
+          required: false
+          default: gzip
+        - in: header
+          name: connection
+          type: string
+          required: false
+          default: Keep-Alive
+        - in: header
+          name: content-type
+          type: string
+          required: true
+          default: 'text/xml; charset=utf-8'
+        - in: header
+          name: user-agent
+          type: string
+          required: false
+          default: docusign
         - name: installation_id
           in: path
           required: true
@@ -4175,17 +4197,19 @@ paths:
           in: path
           required: true
           type: string
-        - name: body
+        - name: envelopeInformation
           in: body
           required: true
+          description: XML payload with DocuSign envelope information
           schema:
-            type: object
-            additionalProperties: true
+            $ref: '#/definitions/DocuSignEnvelopeInformation'
       responses:
         '200':
           description: Successfully received and processed the callback data.
         '400':
           description: Invalid request.
+        '415':
+          description: Invalid format.
       tags:
         - sign
   
@@ -4649,6 +4673,62 @@ definitions:
 
   event:
     $ref: './common/event.yaml'
+
+  #--------------------------------------
+  # Docusign Webhook Payload
+  #____________________________________________
+  DocuSignEnvelopeInformation:
+    type: object
+    properties:
+      EnvelopeStatus:
+        type: object
+        properties:
+          EnvelopeID:
+            type: string
+          Status:
+            type: string
+          RecipientStatuses:
+            type: array
+            items:
+              $ref: '#/definitions/RecipientStatus'      
+          FormData:
+            type: object
+            properties:
+              xfdf:
+                type: object
+                properties:
+                  fields:
+                    type: array
+                    items:
+                      $ref: '#/definitions/Field'
+    xml:
+      name: DocuSignEnvelopeInformation
+
+  RecipientStatus:
+    type: object
+    properties:
+      Type:
+        type: string
+      Email:
+        type: string
+      UserName:
+        type: string
+      Status:
+        type: string
+      ClientUserId:
+        type: string
+    xml:
+      name: RecipientStatus
+
+  Field:
+    type: object
+    properties:
+      name:
+        type: string
+      value:
+        type: string
+    xml:
+      name: field
 
   # ---------------------------------------------------------------------------
   # GitHub Definitions

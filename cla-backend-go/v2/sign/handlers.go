@@ -4,10 +4,13 @@
 package sign
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -23,6 +26,32 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	"github.com/go-openapi/runtime/middleware"
 )
+
+var (
+	// payload is the payload for the docusign callback
+	iclaGitHubPayload []byte
+)
+
+// docusignMiddleware is used to get access to xml request body
+func docusignMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f := logrus.Fields{
+			"functionName": "v2.sign.handlers.docusignMiddleware",
+		}
+		var err error
+		log.WithFields(f).Debug("docusign middleware...")
+		iclaGitHubPayload, err = io.ReadAll(r.Body)
+		if err != nil {
+			log.Warnf("unable to read request body")
+			return
+		}
+		r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewBuffer(iclaGitHubPayload))
+		log.WithFields(f).Debugf("docusign middleware...payload: %s", string(iclaGitHubPayload))
+		// call the next middleware
+		next.ServeHTTP(w, r)
+	})
+}
 
 // Configure API call
 func Configure(api *operations.EasyclaAPI, service Service, userService users.Service) {
@@ -131,13 +160,8 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				"functionName":   "v2.sign.handlers.SignIclaCallbackGithubHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			}
-			jsonBytes, marshalErr := json.Marshal(params.Body)
-			if marshalErr != nil {
-				log.WithFields(f).WithError(marshalErr).Warn("unable to marshal github callback body")
-				return sign.NewIclaCallbackGithubBadRequest()
-			}
 
-			err := service.SignedIndividualCallbackGithub(ctx, jsonBytes, params.InstallationID, params.ChangeRequestID, params.GithubRepositoryID)
+			err := service.SignedIndividualCallbackGithub(ctx, iclaGitHubPayload, params.InstallationID, params.ChangeRequestID, params.GithubRepositoryID)
 			if err != nil {
 				return sign.NewIclaCallbackGithubBadRequest()
 			}
@@ -177,6 +201,7 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				"functionName":   "v2.sign.handlers.SignIclaCallbackGerritHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			}
+
 			log.WithFields(f).Debug("gerrit callback")
 			payload, marshalErr := json.Marshal(params.Body)
 			if marshalErr != nil {
@@ -212,6 +237,8 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			}
 			return sign.NewCclaCallbackOK()
 		})
+
+	api.AddMiddlewareFor("POST", "/signed/individual/{installation_id}/{github_repository_id}/{change_request_id}", docusignMiddleware)
 }
 
 type codedResponse interface {

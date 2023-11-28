@@ -6,7 +6,6 @@ package sign
 import (
 	"database/sql"
 	"encoding/xml"
-	"time"
 )
 
 // DocuSignGetTokenRequest is the request body for getting a token from DocuSign
@@ -311,9 +310,9 @@ type IndividualMembershipDocuSignDBSummaryModel struct {
 	DocuSignEnvelopeID               string         `db:"docusign_envelope_id"`
 	DocuSignEnvelopeCreatedAt        string         `db:"docusign_envelope_created_at"`
 	DocuSignEnvelopeSigningStatus    string         `db:"docusign_envelope_signing_status"`
-	DocuSignEnvelopeSigningUpdatedAt time.Time      `db:"docusign_envelope_signing_updated_at"`
+	DocuSignEnvelopeSigningUpdatedAt string         `db:"docusign_envelope_signing_updated_at"`
 	Memo                             sql.NullString `db:"memo"`
-	//DocuSignEnvelopeSignedDate       time.Time `json:"docusign_envelope_signed_date"`
+	//DocuSignEnvelopeSignedDate       string `json:"docusign_envelope_signed_date"`
 }
 
 type ClaSignatoryEmailParams struct {
@@ -334,6 +333,15 @@ type DocuSignEventNotification struct {
 	URL            string                   `json:"url"`
 	LoggingEnabled bool                     `json:"loggingEnabled"`
 	EnvelopeEvents []DocuSignRecipientEvent `json:"envelopeEvents"`
+	// EventData             EventData                `json:"eventData"`
+	// RequireAcknowledgment string                   `json:"requireAcknowledgment"`
+}
+
+// EventData represents the eventData attribute in DocusignEventNotification.
+type EventData struct {
+	Version     string   `json:"version,omitempty"`
+	Format      string   `json:"format,omitempty"`
+	IncludeData []string `json:"includeData,omitempty"`
 }
 
 type Recipient struct {
@@ -407,7 +415,7 @@ type DocuSignWebhookModel struct {
 	ConfigurationID   int                 `json:"configurationId"` // 10418598
 	Data              DocuSignWebhookData `json:"data"`
 	Event             string              `json:"event"`             // envelope-sent, envelope-completed
-	GeneratedDateTime time.Time           `json:"generatedDateTime"` // generated_date_time
+	GeneratedDateTime string              `json:"generatedDateTime"` // generated_date_time
 	URI               string              `json:"uri"`               // /restapi/v2.1/accounts/77c754e9-4016-4ccc-957f-15eaa18f2d22/envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a
 }
 
@@ -428,7 +436,7 @@ type DocuSignEnvelopeSummary struct {
 	AutoNavigation              string           `json:"autoNavigation"`       // "true"
 	BurnDefaultTabData          string           `json:"burnDefaultTabData"`   // "false"
 	CertificateURI              string           `json:"certificateUri"`       // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/documents/summary
-	CreatedDateTime             time.Time        `json:"createdDateTime"`      // 2023-05-26T18:55:47.18Z
+	CreatedDateTime             string           `json:"createdDateTime"`      // 2023-05-26T18:55:47.18Z
 	CustomFieldsURI             string           `json:"customFieldsUri"`      // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/custom_fields
 	DocumentsCombinedURI        string           `json:"documentsCombinedUri"` // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/documents/combined
 	DocumentsURI                string           `json:"documentsUri"`         // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/documents
@@ -440,25 +448,25 @@ type DocuSignEnvelopeSummary struct {
 	EnvelopeMetadata            EnvelopeMetadata `json:"envelopeMetadata"`
 	EnvelopeURI                 string           `json:"envelopeUri"`                 // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a
 	ExpiresAfter                string           `json:"expiresAfter"`                // 120
-	ExpireDateTime              time.Time        `json:"expireDateTime"`              // 2023-05-26T18:55:48.257Z
+	ExpireDateTime              string           `json:"expireDateTime"`              // 2023-05-26T18:55:48.257Z
 	ExpireEnabled               string           `json:"expireEnabled"`               // "true"
 	HasComments                 string           `json:"hasComments"`                 // "false"
 	HasFormDataChanged          string           `json:"hasFormDataChanged"`          // "false"
-	InitialSendDateTime         time.Time        `json:"initialSendDateTime"`         // 2023-05-26T18:55:48.257Z
+	InitialSendDateTime         string           `json:"initialSendDateTime"`         // 2023-05-26T18:55:48.257Z
 	Is21CFRPart11               string           `json:"is21CFRPart11"`               // "false"
 	IsDynamicEnvelope           string           `json:"isDynamicEnvelope"`           // "false"
 	IsSignatureProviderEnvelope string           `json:"isSignatureProviderEnvelope"` // "false"
-	LastModifiedDateTime        time.Time        `json:"lastModifiedDateTime"`        // 2023-05-26T18:55:48.257Z
+	LastModifiedDateTime        string           `json:"lastModifiedDateTime"`        // 2023-05-26T18:55:48.257Z
 	NotificationURI             string           `json:"notificationUri"`             // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/notification
 	PurgeState                  string           `json:"purgeState"`                  // unpurged
 	Recipients                  Recipients       `json:"recipients"`
 	RecipientsURI               string           `json:"recipientsUri"` // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/recipients
 	Sender                      Sender           `json:"sender"`
-	SentDateTime                time.Time        `json:"sentDateTime"`          // 2023-05-26T18:55:48.257Z
+	SentDateTime                string           `json:"sentDateTime"`          // 2023-05-26T18:55:48.257Z
 	SignerCanSignOnMobile       string           `json:"signerCanSignOnMobile"` // "true"
 	SignerLocation              string           `json:"signerLocation"`        // online
 	Status                      string           `json:"status"`                // sent
-	StatusChangedDateTime       time.Time        `json:"statusChangedDateTime"` // 2023-05-26T18:55:48.257Z
+	StatusChangedDateTime       string           `json:"statusChangedDateTime"` // 2023-05-26T18:55:48.257Z
 	TemplatesURI                string           `json:"templatesUri"`          // /envelopes/016d4678-bf5c-41f3-b7c9-5c58606cdb4a/templates0:w
 }
 
@@ -484,21 +492,21 @@ type EnvelopeMetadata struct {
 }
 
 type WebhookSigner struct {
-	CompletedCount         string    `json:"completedCount"`         // 0
-	CreationReason         string    `json:"creationReason"`         // sender
-	DeliveryMethod         string    `json:"deliveryMethod"`         // email
-	Email                  string    `json:"email"`                  // test@test
-	IsBulkRecipient        string    `json:"isBulkRecipient"`        // "false"
-	Name                   string    `json:"name"`                   // Test DocuSign
-	RecipientID            string    `json:"recipientId"`            // 1
-	RecipientIDGuid        string    `json:"recipientIdGuid"`        // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
-	ReceipientType         string    `json:"recipientType"`          // signer
-	RequireIdLookup        string    `json:"requireIdLookup"`        // "false"
-	RequireUploadSignature string    `json:"requireUploadSignature"` // "false"
-	RoutingOrder           string    `json:"routingOrder"`           // 1
-	SentDateTime           time.Time `json:"sentDateTime"`           // 2023-05-26T18:55:48.257Z
-	Status                 string    `json:"status"`                 // sent
-	UserId                 string    `json:"userId"`                 // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
+	CompletedCount         string `json:"completedCount"`         // 0
+	CreationReason         string `json:"creationReason"`         // sender
+	DeliveryMethod         string `json:"deliveryMethod"`         // email
+	Email                  string `json:"email"`                  // test@test
+	IsBulkRecipient        string `json:"isBulkRecipient"`        // "false"
+	Name                   string `json:"name"`                   // Test DocuSign
+	RecipientID            string `json:"recipientId"`            // 1
+	RecipientIDGuid        string `json:"recipientIdGuid"`        // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
+	ReceipientType         string `json:"recipientType"`          // signer
+	RequireIdLookup        string `json:"requireIdLookup"`        // "false"
+	RequireUploadSignature string `json:"requireUploadSignature"` // "false"
+	RoutingOrder           string `json:"routingOrder"`           // 1
+	SentDateTime           string `json:"sentDateTime"`           // 2023-05-26T18:55:48.257Z
+	Status                 string `json:"status"`                 // sent
+	UserId                 string `json:"userId"`                 // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
 }
 
 type Sender struct {
@@ -507,4 +515,120 @@ type Sender struct {
 	IPAddress string `json:"ipAddress"` // 35.11.11.111
 	UserName  string `json:"userName"`  // Test DocuSign
 	UserID    string `json:"userId"`    // 9fd66d5d-7396-4b80-a85e-2a7e536471b1
+}
+
+// DocuSignEnvelopeInformation is the root element
+type DocuSignEnvelopeInformation struct {
+	XMLName        xml.Name       `xml:"DocuSignEnvelopeInformation"`
+	EnvelopeStatus EnvelopeStatus `xml:"EnvelopeStatus"`
+	// Additional fields can be added here if needed
+	FormData string `xml:"FormData"`
+}
+
+// EnvelopeStatus represents the <EnvelopeStatus> element
+type EnvelopeStatus struct {
+	RecipientStatuses  []RecipientStatus `xml:"RecipientStatuses>RecipientStatus"`
+	TimeGenerated      string            `xml:"TimeGenerated"`
+	EnvelopeID         string            `xml:"EnvelopeID"`
+	Subject            string            `xml:"Subject"`
+	UserName           string            `xml:"UserName"`
+	Email              string            `xml:"Email"`
+	Status             string            `xml:"Status"`
+	Created            string            `xml:"Created"`
+	Sent               string            `xml:"Sent"`
+	Delivered          string            `xml:"Delivered"`
+	Signed             string            `xml:"Signed"`
+	Completed          string            `xml:"Completed"`
+	ACStatus           string            `xml:"ACStatus"`
+	ACStatusDate       string            `xml:"ACStatusDate"`
+	ACHolder           string            `xml:"ACHolder"`
+	ACHolderEmail      string            `xml:"ACHolderEmail"`
+	ACHolderLocation   string            `xml:"ACHolderLocation"`
+	SigningLocation    string            `xml:"SigningLocation"`
+	SenderIPAddress    string            `xml:"SenderIPAddress"`
+	EnvelopePDFHash    string            `xml:"EnvelopePDFHash"` // Assuming string, adjust as necessary
+	CustomFields       string            `xml:"CustomFields"`    // Assuming string, adjust as necessary
+	AutoNavigation     bool              `xml:"AutoNavigation"`
+	EnvelopeIdStamping bool              `xml:"EnvelopeIdStamping"`
+	AuthoritativeCopy  bool              `xml:"AuthoritativeCopy"`
+	DocumentStatuses   []DocumentStatus  `xml:"DocumentStatuses>DocumentStatus"`
+	// Additional fields can be added here if needed
+}
+
+// RecipientStatus represents the <RecipientStatus> element
+type RecipientStatus struct {
+	Type                      string         `xml:"Type"`
+	Email                     string         `xml:"Email"`
+	UserName                  string         `xml:"UserName"`
+	RoutingOrder              int            `xml:"RoutingOrder"`
+	Sent                      string         `xml:"Sent"`
+	Delivered                 string         `xml:"Delivered"`
+	Signed                    string         `xml:"Signed"`
+	DeclineReason             string         `xml:"DeclineReason"`
+	Status                    string         `xml:"Status"`
+	RecipientIPAddress        string         `xml:"RecipientIPAddress"`
+	ClientUserId              string         `xml:"ClientUserId"`
+	CustomFields              string         `xml:"CustomFields"`
+	TabStatuses               []TabStatus    `xml:"TabStatuses>TabStatus"`
+	RecipientAttachment       []Attachment   `xml:"RecipientAttachment>Attachment"`
+	AccountStatus             string         `xml:"AccountStatus"`
+	EsignAgreementInformation EsignAgreement `xml:"EsignAgreementInformation"`
+	FormData                  FormData       `xml:"FormData"`
+	RecipientId               string         `xml:"RecipientId"`
+	// Additional fields can be added here if needed
+}
+
+// TabStatus represents the <TabStatus> element
+type TabStatus struct {
+	TabType       string `xml:"TabType"`
+	Status        string `xml:"Status"`
+	XPosition     int    `xml:"XPosition"`
+	YPosition     int    `xml:"YPosition"`
+	TabLabel      string `xml:"TabLabel"`
+	TabName       string `xml:"TabName"`
+	TabValue      string `xml:"TabValue"`
+	DocumentID    string `xml:"DocumentID"`
+	PageNumber    int    `xml:"PageNumber"`
+	CustomTabType string `xml:"CustomTabType"`
+	// Additional fields can be added here if needed
+}
+
+// Attachment represents the <Attachment> element
+type Attachment struct {
+	Data  string `xml:"Data"`
+	Label string `xml:"Label"`
+	// Additional fields can be added here if needed
+}
+
+// EsignAgreement represents the <EsignAgreement> element
+type EsignAgreement struct {
+	AccountEsignId string `xml:"AccountEsignId"`
+}
+
+// FormData represents the <FormData> element
+type FormData struct {
+	XFDF XFDF `xml:"xfdf"`
+	// Additional fields can be added here if needed
+}
+
+// XFDF represents the <xfdf> element within <FormData>
+type XFDF struct {
+	Fields []Field `xml:"fields>field"`
+	// Additional fields can be added here if needed
+}
+
+// Field represents the <field> element within <xfdf>
+type Field struct {
+	Name  string `xml:"name,attr"`
+	Value string `xml:"value"`
+	// Additional fields can be added here if needed
+}
+
+// DocumentStatus represents the <DocumentStatus> element
+type DocumentStatus struct {
+	ID           string `xml:"ID"`
+	Name         string `xml:"Name"`
+	TemplateName string `xml:"TemplateName"`
+	Sequence     int    `xml:"Sequence"`
+	// Additional fields can be added here if needed
 }

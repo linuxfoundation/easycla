@@ -15,6 +15,7 @@ import (
 type Service interface {
 	CreateUser(user *models.User, claUser *user.CLAUser) (*models.User, error)
 	Save(user *models.UserUpdate, claUser *user.CLAUser) (*models.User, error)
+	UpdateUser(userID string, updates map[string]interface{}) (*models.User, error)
 	Delete(userID string, claUser *user.CLAUser) error
 	GetUser(userID string) (*models.User, error)
 	GetUserByLFUserName(lfUserName string) (*models.User, error)
@@ -60,6 +61,22 @@ func (s service) CreateUser(user *models.User, claUser *user.CLAUser) (*models.U
 		UserModel:  userModel,
 		LfUsername: lfUser,
 		EventData:  &events.UserCreatedEventData{},
+	})
+
+	return userModel, nil
+}
+
+func (s service) UpdateUser(userID string, updates map[string]interface{}) (*models.User, error) {
+	userModel, err := s.repo.UpdateUser(userID, updates)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log the event
+	s.events.LogEvent(&events.LogEventArgs{
+		EventType: events.UserUpdated,
+		UserID:    userID,
+		EventData: &events.UserUpdatedEventData{},
 	})
 
 	return userModel, nil

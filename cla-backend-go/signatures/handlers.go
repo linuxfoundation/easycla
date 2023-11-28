@@ -384,7 +384,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 	api.SignaturesGetUserSignaturesHandler = signatures.GetUserSignaturesHandlerFunc(func(params signatures.GetUserSignaturesParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-		userSignatures, err := service.GetUserSignatures(ctx, params)
+		userSignatures, err := service.GetUserSignatures(ctx, params, nil)
 		if err != nil {
 			log.Warnf("error retrieving user signatures for userID: %s, error: %+v", params.UserID, err)
 			return signatures.NewGetUserSignaturesBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))

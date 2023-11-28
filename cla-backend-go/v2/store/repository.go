@@ -30,6 +30,7 @@ type DBStore struct {
 type Repository interface {
 	SetActiveSignatureMetaData(ctx context.Context, key string, expire int64, value string) error
 	GetActiveSignatureMetaData(ctx context.Context, UserId string) (map[string]interface{}, error)
+	DeleteActiveSignatureMetaData(ctx context.Context, key string) error
 }
 
 type repo struct {
@@ -172,6 +173,34 @@ func (r repo) SetActiveSignatureMetaData(ctx context.Context, key string, expire
 	}
 
 	log.WithFields(f).Debugf("Signature meta record data saved: %+v ", store)
+
+	return nil
+}
+
+func (r repo) DeleteActiveSignatureMetaData(ctx context.Context, key string) error {
+	f := logrus.Fields{
+		"functionName":   "v2.store.repository.DeleteActiveSignatureMetaData",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"key":            key,
+	}
+
+	log.WithFields(f).Debugf("key: %s ", key)
+
+	_, err := r.dynamoDBClient.DeleteItem(&dynamodb.DeleteItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"key": {
+				S: &key,
+			},
+		},
+		TableName: &r.storeTableName,
+	})
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to delete store record")
+		return err
+	}
+
+	log.WithFields(f).Debugf("Signature meta record data deleted: %+v ", key)
 
 	return nil
 }

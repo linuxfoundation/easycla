@@ -565,3 +565,61 @@ func (s *service) GetSignURL(email, recipientID, userName, clientUserId, envelop
 
 	return viewResponse.URL, nil
 }
+
+func (s service) getSignedDocument(ctx context.Context, envelopeID, documentID string) ([]byte, error) {
+	f := logrus.Fields{
+		"functionName": "v2.getSignedDocument",
+		"envelopeID":   envelopeID,
+	}
+
+	// Get the access token
+	accessToken, err := s.getAccessToken(ctx)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem getting the access token")
+		return nil, err
+	}
+
+	// Create the request
+	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/documents/%s", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"), envelopeID, documentID)
+
+	req, err := http.NewRequest("GET", url, nil)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem creating the HTTP request")
+		return nil, err
+	}
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+	// Make the request
+	client := &http.Client{}
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem making the HTTP request")
+		return nil, err
+	}
+
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem closing the response body")
+		}
+	}()
+
+	responsePayload, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem reading the response body")
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.WithFields(f).Warnf("problem making the HTTP request - status code: %d - response : %s", resp.StatusCode, string(responsePayload))
+		return nil, errors.New("problem making the HTTP request")
+	}
+
+	return responsePayload, nil
+
+}

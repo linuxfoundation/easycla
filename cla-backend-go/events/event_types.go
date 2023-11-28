@@ -96,4 +96,6 @@ const (
 	ProjectServiceCLAEnabled       = "project.service.cla.enabled"
 	ProjectServiceCLADisabled      = "project.service.cla.disabled"
 	SignatureAutoCreateECLAUpdated = "signature.auto_create_ecla.updated"
+
+	IndividualSignatureSigned = "individual.signature.signed"
 )
