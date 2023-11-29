@@ -158,6 +158,7 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 			go func() {
 				defer swg.Done()
 				for _, userName := range sigACL {
+					log.WithFields(f).Debugf("looking up user by user name: %s", userName)
 					if loadACLDetails {
 						userModel, userErr := repo.usersRepo.GetUserByUserName(userName, true)
 						if userErr != nil {

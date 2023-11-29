@@ -52,9 +52,10 @@ type SignatureService interface {
 	GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *ApprovalCriteria) (*models.Signatures, error)
 	GetCompanySignatures(ctx context.Context, params signatures.GetCompanySignaturesParams) (*models.Signatures, error)
 	GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error)
-	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams) (*models.Signatures, error)
+	GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, projectID *string) (*models.Signatures, error)
 	InvalidateProjectRecords(ctx context.Context, projectID, note string) (int, error)
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
+	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
 
 	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error)
 	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
@@ -72,6 +73,7 @@ type SignatureService interface {
 	CreateOrUpdateEmployeeSignature(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error)
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	handleGitHubStatusUpdate(ctx context.Context, employeeUserModel *models.User) error
+	ProcessEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, user *models.User) (*bool, error)
 }
 
 type service struct {
@@ -110,6 +112,11 @@ func NewService(repo SignatureRepository, companyService company.IService, users
 // GetSignature returns the signature associated with the specified signature ID
 func (s service) GetSignature(ctx context.Context, signatureID string) (*models.Signature, error) {
 	return s.repo.GetSignature(ctx, signatureID)
+}
+
+// UpdateSignature updates the specified signature
+func (s service) UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error {
+	return s.repo.UpdateSignature(ctx, signatureID, updates)
 }
 
 // GetIndividualSignature returns the signature associated with the specified CLA Group and User ID
@@ -228,7 +235,7 @@ func (s service) GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context,
 }
 
 // GetUserSignatures returns the list of user signatures associated with the specified user
-func (s service) GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams) (*models.Signatures, error) {
+func (s service) GetUserSignatures(ctx context.Context, params signatures.GetUserSignaturesParams, projectID *string) (*models.Signatures, error) {
 
 	const defaultPageSize int64 = 10
 	var pageSize = defaultPageSize
@@ -236,7 +243,7 @@ func (s service) GetUserSignatures(ctx context.Context, params signatures.GetUse
 		pageSize = *params.PageSize
 	}
 
-	userSignatures, err := s.repo.GetUserSignatures(ctx, params, pageSize)
+	userSignatures, err := s.repo.GetUserSignatures(ctx, params, pageSize, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -1160,7 +1167,7 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 			return &hasSigned, &companyAffiliation, claGroupModelErr
 		}
 
-		employeeSigned, err := s.processEmployeeSignature(ctx, companyModel, claGroupModel, user)
+		employeeSigned, err := s.ProcessEmployeeSignature(ctx, companyModel, claGroupModel, user)
 
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("problem looking up employee signature for company: %s", companyID)
@@ -1177,7 +1184,7 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 	return &hasSigned, &companyAffiliation, nil
 }
 
-func (s service) processEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, user *models.User) (*bool, error) {
+func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, user *models.User) (*bool, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.signatures.service.processEmployeeSignature",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
