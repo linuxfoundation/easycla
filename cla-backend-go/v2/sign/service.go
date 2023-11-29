@@ -939,11 +939,7 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		return "", err
 	}
 
-	baseURL := "https://7de6-197-221-137-205.ngrok-free.app"
-
-	callbackURL := fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", baseURL, installationId, repositoryID, pullRequestID)
-
-	log.WithFields(f).Debugf("callback url: %s", callbackURL)
+	callbackURL := fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID)
 
 	return callbackURL, nil
 
