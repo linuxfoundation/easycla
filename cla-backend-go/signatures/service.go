@@ -56,6 +56,7 @@ type SignatureService interface {
 	InvalidateProjectRecords(ctx context.Context, projectID, note string) (int, error)
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
 	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
+	SaveOrUpdateSignature(ctx context.Context, signature *ItemSignature) error
 
 	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error)
 	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
@@ -112,6 +113,11 @@ func NewService(repo SignatureRepository, companyService company.IService, users
 // GetSignature returns the signature associated with the specified signature ID
 func (s service) GetSignature(ctx context.Context, signatureID string) (*models.Signature, error) {
 	return s.repo.GetSignature(ctx, signatureID)
+}
+
+// SaveOrUpdateSignature saves or updates the specified signature
+func (s service) SaveOrUpdateSignature(ctx context.Context, signature *ItemSignature) error {
+	return s.repo.SaveOrUpdateSignature(ctx, signature)
 }
 
 // UpdateSignature updates the specified signature
