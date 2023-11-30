@@ -399,16 +399,16 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 	if status == "Completed" {
 		log.WithFields(f).Debugf("envelope signed - status: %s", status)
-		updates := map[string]interface{}{
-			"signature_signed":          true,
-			"date_modified":             currentTime,
-			"signed_on":                 currentTime,
-			"user_docusign_raw_xml":     string(payload),
-			"user_docusign_name":        fullName,
-			"user_docusign_date_signed": signedDate,
+		itemSignature := signatures.ItemSignature{
+			SignatureID:            signatureID,
+			DateModified:           currentTime,
+			SignatureSigned:        true,
+			UserDocusignRawXML:     string(payload),
+			UserDocusignName:       fullName,
+			UserDocusignDateSigned: signedDate,
 		}
 
-		err = s.signatureService.UpdateSignature(ctx, signatureID, updates)
+		err := s.signatureService.SaveOrUpdateSignature(ctx, &itemSignature)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to update signature record with envelope ID: %s", envelopeID)
 			return err
@@ -452,7 +452,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 		if claUser.Username == "" {
 			if fullName != "" {
 				log.WithFields(f).Debugf("setting username for user with :%s", fullName)
-				updates = map[string]interface{}{
+				updates := map[string]interface{}{
 					"user_name": fullName,
 				}
 				log.WithFields(f).Debugf("updating user with username: %s", fullName)
@@ -754,11 +754,13 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	signatureID := uuid.Must(uuid.NewV4()).String()
 	_, currentTime := utils.CurrentTime()
 	var acl string
-	if input.ReturnURLType == "github" {
+	if strings.ToLower(input.ReturnURLType) == utils.GitHubType {
 		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GithubID)
-	} else if input.ReturnURLType == "gitlab" {
+	} else if strings.ToLower(input.ReturnURLType) == "gitlab" {
 		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GitlabID)
 	}
+
+	log.WithFields(f).Debugf("acl: %s", acl)
 
 	majorVersion, err := strconv.Atoi(document.DocumentMajorVersion)
 
@@ -773,9 +775,6 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		log.WithFields(f).WithError(err).Warnf("unable to convert document minor version to int: %s", document.DocumentMinorVersion)
 		return nil, err
 	}
-
-	signed := false
-	approved := true
 
 	itemSignature := signatures.ItemSignature{
 		SignatureID:                   signatureID,
@@ -794,8 +793,6 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		SignatureCallbackURL:          callBackURL,
 		SignatureReferenceType:        "user",
 		SignatureACL:                  []string{acl},
-		SigtypeSignedApprovedID:       fmt.Sprintf("%s#%v#%v#%s", utils.ClaTypeICLA, signed, approved, signatureID),
-		SignatureUserCompanyID:        user.CompanyID,
 		SignatureReferenceNameLower:   strings.ToLower(getUserName(user)),
 	}
 
@@ -938,6 +935,8 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
 		return "", err
 	}
+
+	// s.ClaV4ApiURL = "https://7de6-197-221-137-205.ngrok-free.app"
 
 	callbackURL := fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID)
 
@@ -1279,13 +1278,11 @@ func (s *service) populateSignURL(ctx context.Context,
 		return "", err
 	}
 
-	err = s.signatureService.CreateSignature(ctx, latestSignature)
+	err = s.signatureService.SaveOrUpdateSignature(ctx, latestSignature)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to save signature to database for user: %s", latestSignature.SignatureID)
 		return "", err
 	}
-
-	log.WithFields(f).Debug("signature saved to database")
 
 	log.WithFields(f).Debugf("populate_sign_url - complete: %s", *signatureSignURL)
 

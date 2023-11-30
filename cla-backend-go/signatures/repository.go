@@ -73,6 +73,7 @@ type SignatureRepository interface {
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
 	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
+	SaveOrUpdateSignature(ctx context.Context, signature *ItemSignature) error
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
 	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
@@ -165,6 +166,36 @@ func (repo repository) CreateSignature(ctx context.Context, signature *ItemSigna
 
 	return nil
 
+}
+
+// SaveOrUpdateSignature either creates or updates the signature record
+func (repo repository) SaveOrUpdateSignature(ctx context.Context, signature *ItemSignature) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.SaveOrUpdateSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	av, err := dynamodbattribute.MarshalMap(signature)
+
+	if err != nil {
+		log.WithFields(f).Warnf("error marshalling signature, error: %v", err)
+		return err
+	}
+
+	input := &dynamodb.PutItemInput{
+		Item:      av,
+		TableName: aws.String(repo.signatureTableName),
+	}
+
+	_, err = repo.dynamoDBClient.PutItem(input)
+	if err != nil {
+		log.WithFields(f).Warnf("error adding signature to database, error: %v", err)
+		return err
+	}
+
+	log.WithFields(f).Debugf("successfully added/updated  signature to database")
+
+	return nil
 }
 
 // UpdateSignature updates an existing signature
@@ -2735,12 +2766,16 @@ func (repo repository) GetUserSignatures(ctx context.Context, params signatures.
 	// This is the keys we want to match
 	condition := expression.Key("signature_reference_id").Equal(expression.Value(params.UserID))
 
+	filterExpression := expression.Name("signature_user_ccla_company_id").AttributeNotExists()
+
+	// Check for approved signatures
 	expressionBuilder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildProjection())
 
 	if projectID != nil {
-		filterExpression := expression.Name("signature_project_id").Equal(expression.Value(*projectID))
-		expressionBuilder = expressionBuilder.WithFilter(filterExpression)
+		filterExpression = filterExpression.And(expression.Name("signature_project_id").Equal(expression.Value(*projectID)))
 	}
+
+	expressionBuilder = expressionBuilder.WithFilter(filterExpression)
 
 	// Use the nice builder to create the expression
 	expr, err := expressionBuilder.Build()
