@@ -399,16 +399,15 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 	if status == "Completed" {
 		log.WithFields(f).Debugf("envelope signed - status: %s", status)
-		itemSignature := signatures.ItemSignature{
-			SignatureID:            signatureID,
-			DateModified:           currentTime,
-			SignatureSigned:        true,
-			UserDocusignRawXML:     string(payload),
-			UserDocusignName:       fullName,
-			UserDocusignDateSigned: signedDate,
+		updates := map[string]interface{}{
+			"signature_signed":          true,
+			"date_modified":             currentTime,
+			"signed_on":                 currentTime,
+			"user_docusign_raw_xml":     string(payload),
+			"user_docusign_name":        fullName,
+			"user_docusign_date_signed": signedDate,
 		}
-
-		err := s.signatureService.SaveOrUpdateSignature(ctx, &itemSignature)
+		err = s.signatureService.UpdateSignature(ctx, signatureID, updates)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to update signature record with envelope ID: %s", envelopeID)
 			return err
