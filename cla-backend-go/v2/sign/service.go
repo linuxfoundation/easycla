@@ -1401,6 +1401,9 @@ func getTabsFromDocument(document *v1Models.ClaGroupDocument, documentID string,
 		if defaultValues != nil {
 			if value, ok := defaultValues[tab.DocumentTabID].(string); ok {
 				args.Value = value
+				log.WithFields(f).Debugf("setting default value for tab: %s, value: %s", tab.DocumentTabID, value)
+			} else {
+				log.WithFields(f).Debugf("no default value found for tab: %s", tab.DocumentTabID)
 			}
 		}
 
@@ -1500,14 +1503,14 @@ func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEm
 
 	if user != nil {
 		if user.Username != "" {
-			defaultValues["user_name"] = user.Username
-			defaultValues["public_name"] = user.Username
+			defaultValues["sign"] = user.Username
+			defaultValues["full_name"] = user.Username
 		}
 	}
 
 	if preferredEmail != "" {
 		if utils.StringInSlice(preferredEmail, user.Emails) || user.LfEmail == strfmt.Email(preferredEmail) {
-			defaultValues["user_email"] = preferredEmail
+			defaultValues["email"] = preferredEmail
 		}
 	}
 
