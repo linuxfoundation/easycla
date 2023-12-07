@@ -451,6 +451,27 @@ type IndividualSignatureSignedEventData struct {
 	ProjectID   string
 }
 
+type CorporateSignatureSignedEventData struct {
+	ProjectName   string
+	CompanyName   string
+	SignatoryName string
+}
+
+func (ed *CorporateSignatureSignedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The signature was signed for the project %s and company %s by %s", args.ProjectName, ed.CompanyName, ed.SignatoryName)
+	if args.UserName != "" {
+		data = fmt.Sprintf("%s by the user %s", data, args.UserName)
+	}
+	data = fmt.Sprintf("%s.", data)
+	return data, true
+}
+
+func (ed *CorporateSignatureSignedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The signature was signed for the project %s and company %s by %s", args.ProjectName, ed.CompanyName, ed.SignatoryName)
+	data = fmt.Sprintf("%s.", data)
+	return data, true
+}
+
 // GetEventDetailsString returns the details string for this event
 func (ed *SignatureAutoCreateECLAUpdatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 
