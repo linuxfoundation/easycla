@@ -29,7 +29,8 @@ import (
 
 var (
 	// payload is the payload for the docusign callback
-	iclaGitHubPayload []byte
+	iclaGitHubPayload   []byte
+	cclaDocusignPayload []byte
 )
 
 // docusignMiddleware is used to get access to xml request body
@@ -48,6 +49,26 @@ func docusignMiddleware(next http.Handler) http.Handler {
 		r.Body.Close()
 		r.Body = io.NopCloser(bytes.NewBuffer(iclaGitHubPayload))
 		log.WithFields(f).Debugf("docusign middleware...payload: %s", string(iclaGitHubPayload))
+		// call the next middleware
+		next.ServeHTTP(w, r)
+	})
+}
+
+func cclaDocusignMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f := logrus.Fields{
+			"functionName": "v2.sign.handlers.cclaDocusignMiddleware",
+		}
+		var err error
+		log.WithFields(f).Debug("docusign middleware...")
+		cclaDocusignPayload, err = io.ReadAll(r.Body)
+		if err != nil {
+			log.Warnf("unable to read request body")
+			return
+		}
+		r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewBuffer(cclaDocusignPayload))
+		log.WithFields(f).Debugf("docusign middleware...payload: %s", string(cclaDocusignPayload))
 		// call the next middleware
 		next.ServeHTTP(w, r)
 	})
@@ -224,14 +245,9 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				"functionName":   "v2.sign.handlers.SignCclaCallbackHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			}
-			payload, marshalErr := json.Marshal(params.Body)
-			if marshalErr != nil {
-				log.WithFields(f).WithError(marshalErr).Warn("unable to marshal github callback body")
-				return sign.NewIclaCallbackGithubBadRequest()
-			}
 
 			log.WithFields(f).Debug("ccla callback")
-			err := service.SignedCorporateCallback(ctx, payload, params.CompanyID, params.ProjectID)
+			err := service.SignedCorporateCallback(ctx, cclaDocusignPayload, params.CompanyID, params.ProjectID)
 			if err != nil {
 				return sign.NewCclaCallbackBadRequest()
 			}
@@ -239,6 +255,7 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 		})
 
 	api.AddMiddlewareFor("POST", "/signed/individual/{installation_id}/{github_repository_id}/{change_request_id}", docusignMiddleware)
+	api.AddMiddlewareFor("POST", "/signed/corporate/{project_id}/{company_id}", cclaDocusignMiddleware)
 }
 
 type codedResponse interface {

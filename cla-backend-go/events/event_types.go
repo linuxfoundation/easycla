@@ -98,4 +98,5 @@ const (
 	SignatureAutoCreateECLAUpdated = "signature.auto_create_ecla.updated"
 
 	IndividualSignatureSigned = "individual.signature.signed"
+	CorporateSignatureSigned  = "corporate.signature.signed"
 )

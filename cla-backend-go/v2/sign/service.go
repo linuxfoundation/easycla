@@ -55,6 +55,7 @@ import (
 const (
 	DontLoadRepoDetails = false
 	DocSignFalse        = "false"
+	DocusignCompleted   = "Completed"
 )
 
 // errors
@@ -315,6 +316,8 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 			if _, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
 				return nil, err
 			}
+
+			log.WithFields(f).Debugf("User already has role assigned: %s", currentUserEmail)
 		}
 	}
 
@@ -336,6 +339,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 				log.WithFields(f).WithError(removeErr).Warnf("failed to remove signatory role. companySFID :%s, email :%s error: %+v", *input.CompanySfid, input.AuthorityEmail.String(), removeErr)
 			}
 		}
+		log.WithFields(f).WithError(err).Warnf("unable to request corporate signature")
 		return nil, err
 	}
 
@@ -346,6 +350,8 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		log.WithFields(f).WithError(companyACLError).Warnf("Unable to add user with LFID: %s to company ACL, companyID: %s", lfUsername, *input.CompanySfid)
 	}
 
+	log.WithFields(f).Debugf("Returning Signature: %+v", signature)
+
 	return &models.CorporateSignatureOutput{
 		SignURL:     signature.SignatureSignURL,
 		SignatureID: signature.SignatureID,
@@ -353,6 +359,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 }
 
 func (s *service) getCorporateSignatureCallbackUrl(companyId, projectId string) string {
+	// s.ClaV4ApiURL = "https://5501-197-221-137-205.ngrok-free.app" //testing
 	return fmt.Sprintf("%s/v4/signed/corporate/%s/%s", s.ClaV4ApiURL, companyId, projectId)
 }
 
@@ -397,7 +404,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 		return errors.New("unable to lookup signature by ID - signature not found")
 	}
 
-	if status == "Completed" {
+	if status == DocusignCompleted {
 		log.WithFields(f).Debugf("envelope signed - status: %s", status)
 		updates := map[string]interface{}{
 			"signature_signed":          true,
@@ -581,7 +588,169 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 }
 
 func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error {
+	f := logrus.Fields{
+		"functionName":   "sign.SignedCorporateCallback",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyID,
+		"projectID":      projectID,
+	}
+
+	log.WithFields(f).Debug("processing signed corporate callback...")
+	var info DocuSignEnvelopeInformation
+
+	err := xml.Unmarshal(payload, &info)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to unmarshal xml payload")
+		return err
+	}
+
+	envelopeID := info.EnvelopeStatus.EnvelopeID
+
+	log.WithFields(f).Debugf("envelopeID: %s", envelopeID)
+
+	// Get the CLA Group
+	log.WithFields(f).Debugf("loading CLA Group by ID: %s", projectID)
+	claGroup, err := s.claGroupService.GetCLAGroup(ctx, projectID)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup CLA Group by ID: %s", projectID)
+		return err
+	}
+
+	if claGroup == nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup CLA Group by ID: %s - not found", projectID)
+		return errors.New("unable to lookup CLA Group by ID - not found")
+	}
+
+	// Get the company
+	log.WithFields(f).Debugf("loading company by ID: %s", companyID)
+	companyModel, err := s.companyRepo.GetCompany(ctx, companyID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup company by ID: %s", companyID)
+		return err
+	}
+
+	// Assumme only one signature per company/project
+	var signatureID string
+	var signature *v1Models.Signature
+	clientUserID := info.EnvelopeStatus.RecipientStatuses[0].ClientUserId
+	if clientUserID == "" {
+		approved := true
+		signatures, sigErr := s.signatureService.GetCorporateSignatures(ctx, companyID, projectID, &approved, nil)
+		if sigErr != nil {
+			log.WithFields(f).WithError(sigErr).Warnf("unable to lookup corporate signatures by company ID: %s, project ID: %s", companyID, projectID)
+			return sigErr
+		}
+		if len(signatures) == 0 {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup corporate signatures by company ID: %s, project ID: %s - not found", companyID, projectID)
+			return errors.New("unable to lookup corporate signatures by company ID - not found")
+		}
+		signature = getLatestSignature(signatures)
+		log.WithFields(f).Debugf("signature: %+v", signature)
+		signatureID = signature.SignatureID
+	} else {
+		signatureID = clientUserID
+		signature, err = s.signatureService.GetSignature(ctx, signatureID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup signature by ID: %s", signatureID)
+			return err
+		}
+		if signature == nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup signature by ID: %s - not found", signatureID)
+			return errors.New("unable to lookup signature by ID - not found")
+		}
+	}
+
+	log.WithFields(f).Debugf("signatureID: %s", signatureID)
+	var user *v1Models.User
+	if signature.SignatureReferenceType == utils.SignatureReferenceTypeUser {
+		log.WithFields(f).Debugf("looking up user by ID: %s", signature.SignatureReferenceID)
+		user, err = s.userService.GetUser(signature.SignatureReferenceID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup user by ID: %s", signature.SignatureReferenceID)
+			return err
+		}
+		if user == nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup user by ID: %s - not found", signature.SignatureReferenceID)
+			return errors.New("unable to lookup user by ID - not found")
+		}
+	} else if signature.SignatureReferenceType == utils.SignatureReferenceTypeCompany {
+		claManagerList := signature.SignatureACL
+		if len(claManagerList) > 0 {
+			log.WithFields(f).Debugf("looking up user by LF Username: %s", claManagerList[0].LfUsername)
+			user, err = s.userService.GetUserByLFUserName(claManagerList[0].LfUsername)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to lookup user by LF Username: %s", claManagerList[0].LfUsername)
+				return err
+			}
+			if user == nil {
+				log.WithFields(f).WithError(err).Warnf("unable to lookup user by LFUsername: %s - not found", claManagerList[0].LfUsername)
+				return errors.New("unable to lookup user by ID - not found")
+			}
+
+			log.WithFields(f).Debugf("found cla manager: %+v", user)
+		}
+	}
+
+	// Update the signature status if changed
+	status := info.EnvelopeStatus.Status
+	if status == DocusignCompleted && !signature.SignatureSigned {
+		updates := map[string]interface{}{
+			"signature_signed": true,
+			"date_modified":    time.Now().String(),
+			"signed_on":        time.Now().String(),
+		}
+
+		userSignedDate := info.EnvelopeStatus.RecipientStatuses[0].Signed
+		if userSignedDate != "" {
+			updates["user_docusign_date_signed"] = userSignedDate
+		}
+
+		updates["user_docusign_raw_xml"] = string(payload)
+
+		// Update the signature record
+		log.WithFields(f).Debugf("updating signature record: %s", signatureID)
+		err = s.signatureService.UpdateSignature(ctx, signatureID, updates)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to update signature record: %s", signatureID)
+			return err
+		}
+
+		log.WithFields(f).Debugf("updated signature record: %s", signatureID)
+	}
+
+	// store document on S3
+	log.WithFields(f).Debugf("storing signed document on S3...")
+	signedDocument, err := s.getSignedDocument(ctx, envelopeID, info.EnvelopeStatus.DocumentStatuses[0].ID)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get signed document for envelope ID: %s", envelopeID)
+		return err
+	}
+
+	err = utils.UploadToS3(signedDocument, projectID, utils.ClaTypeCCLA, companyID, signatureID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to store signed document on S3")
+		return err
+	}
+
+	log.WithFields(f).Debugf("signed document stored on S3")
+
+	// Log the event
+	log.WithFields(f).Debugf("logging event...")
+	s.eventsService.LogEvent(&events.LogEventArgs{
+		EventType:   events.CorporateSignatureSigned,
+		ProjectName: claGroup.ProjectName,
+		EventData: &events.CorporateSignatureSignedEventData{
+			ProjectName:   claGroup.ProjectName,
+			CompanyName:   companyModel.CompanyName,
+			SignatoryName: getUserName(user),
+		},
+		CLAGroupID: projectID,
+	})
+
 	return nil
+
 }
 
 func (s *service) RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error) {
@@ -935,8 +1104,6 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		return "", err
 	}
 
-	// s.ClaV4ApiURL = "https://7de6-197-221-137-205.ngrok-free.app"
-
 	callbackURL := fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID)
 
 	return callbackURL, nil
@@ -962,6 +1129,7 @@ func (s *service) populateSignURL(ctx context.Context,
 
 	log.WithFields(f).Debugf("signatureReferenceType: %s", signatureReferenceType)
 	log.WithFields(f).Debugf("processing signing request...")
+	log.WithFields(f).Debugf("latestSignature: %+v", latestSignature)
 
 	var userSignatureName string
 	var userSignatureEmail string
@@ -1649,11 +1817,11 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 	}
 
 	// 2. Create individual default values
-	log.WithFields(f).Debugf("creating individual default values...")
+	log.WithFields(f).Debugf("creating corporate default values...")
 	defaultValues := s.createDefaultCorporateValues(comp, signatoryName, signatoryEmail, claUser.Username, currentUserEmail)
 
 	// 3. Load latest document
-	log.WithFields(f).Debugf("loading latest individual document for project: %s", input.ProjectID)
+	log.WithFields(f).Debugf("loading latest corporate document for project: %s", input.ProjectID)
 	latestDocument, err := common.GetCurrentDocument(ctx, proj.ProjectCorporateDocuments)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup latest corporate document for project: %s", input.ProjectID)
@@ -1667,12 +1835,14 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 
 	// 4. Check for active corporate signature record for this project/company combination
 	approved := true
-	log.WithFields(f).Debug("Forwarding request to v1 API for requestCorporateSignature...")
+	log.WithFields(f).Debug("requestCorporateSignature...")
 	companySignatures, err := s.signatureService.GetCorporateSignatures(ctx, input.ProjectID, input.CompanyID, &approved, nil)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup user signatures by Company ID: %s, Project ID: %s", input.CompanyID, input.ProjectID)
 		return nil, err
 	}
+
+	log.WithFields(f).Debugf("found %d corporate signatures", len(companySignatures))
 
 	haveSigned := false
 	for _, s := range companySignatures {
@@ -1692,13 +1862,47 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 	var signed bool
 	if len(companySignatures) > 0 {
 		companySignature = companySignatures[0]
+		log.WithFields(f).Debugf("found %d corporate signatures - using first one with signatureID: %s", len(companySignatures), companySignature.SignatureID)
 		_, currentTime := utils.CurrentTime()
-		itemSignature = &signatures.ItemSignature{
-			SignatureID:  companySignature.SignatureID,
-			DateModified: currentTime,
+		log.WithFields(f).Debugf("companySignature: %+v", companySignature)
+		majorVersion := 2
+		minorVersion := 0
+		var majorVersionErr error
+		var minorVersionErr error
+		if companySignature.SignatureDocumentMajorVersion != "" {
+			majorVersion, majorVersionErr = strconv.Atoi(companySignature.SignatureDocumentMajorVersion)
+			if majorVersionErr != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to convert document major version to int: %s", companySignature.SignatureDocumentMajorVersion)
+			}
 		}
-		signed = companySignature.SignatureSigned
-		approved = companySignature.SignatureApproved
+
+		if companySignature.SignatureDocumentMinorVersion != "" {
+			minorVersion, minorVersionErr = strconv.Atoi(companySignature.SignatureDocumentMinorVersion)
+			if minorVersionErr != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to convert document minor version to int: %s", companySignature.SignatureDocumentMinorVersion)
+			}
+		}
+
+		itemSignature = &signatures.ItemSignature{
+			SignatureID:                   companySignature.SignatureID,
+			SignatureReferenceType:        companySignature.SignatureReferenceType,
+			SignatureProjectID:            companySignature.ProjectID,
+			SignatureEnvelopeID:           companySignature.SignatureEnvelopeID,
+			SignatureCallbackURL:          companySignature.SignatureCallbackURL,
+			SignatureReturnURL:            companySignature.SignatureReturnURL,
+			SignatureType:                 companySignature.SignatureType,
+			SignatoryName:                 signatoryName,
+			SignatureSigned:               companySignature.SignatureSigned,
+			SignatureApproved:             companySignature.SignatureApproved,
+			DateCreated:                   companySignature.Created,
+			SignatureDocumentMajorVersion: majorVersion,
+			SignatureDocumentMinorVersion: minorVersion,
+			SignatureReferenceNameLower:   companySignature.SignatureReferenceNameLower,
+			SigtypeSignedApprovedID:       companySignature.SigTypeSignedApprovedID,
+			DateModified:                  currentTime,
+			SignatureReferenceID:          companySignature.SignatureReferenceID,
+		}
+
 	} else {
 		// 5. if signature doesn't exists then Create new signature object
 		log.WithFields(f).Debugf("creating new signature object...")
@@ -1721,7 +1925,7 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 			SignatureDocumentMajorVersion: majorVersion,
 			SignatureDocumentMinorVersion: minorVersion,
 			SignatureReferenceID:          comp.CompanyID,
-			SignatureReferenceType:        "company",
+			SignatureReferenceType:        utils.SignatureReferenceTypeCompany,
 			SignatureReferenceName:        comp.CompanyName,
 			SignatureProjectID:            input.ProjectID,
 			DateCreated:                   currentTime,
@@ -1735,7 +1939,6 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 			SigtypeSignedApprovedID:       fmt.Sprintf("%s#%v#%v#%s", utils.SignatureTypeCCLA, signed, approved, signatureID),
 			SignatureReferenceNameLower:   strings.ToLower(comp.CompanyName),
 		}
-
 	}
 
 	if !input.SendAsEmail {
@@ -1748,20 +1951,17 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 
 	// 7. Populate sign url
 	log.WithFields(f).Debugf("populating sign url...")
+	log.WithFields(f).Debugf("itemSignature: %+v", itemSignature)
 	_, err = s.populateSignURL(ctx, itemSignature, callbackURL, input.AuthorityName, input.AuthorityEmail, input.SendAsEmail, claUser.Username, currentUserEmail, defaultValues, currentUserEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to populate sign url for company: %s", input.CompanyID)
 		return nil, err
 	}
 
-	companySignature, err = s.signatureService.GetCorporateSignature(ctx, input.ProjectID, input.CompanyID, &approved, &signed)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to lookup user signatures by Company ID: %s, Project ID: %s", input.CompanyID, input.ProjectID)
-		return nil, err
-	}
-
-	return companySignature, nil
+	return &v1Models.Signature{
+		SignatureID:      itemSignature.SignatureID,
+		SignatureSignURL: itemSignature.SignatureSignURL,
+	}, nil
 }
 
 func removeSignatoryRole(ctx context.Context, userEmail string, companySFID string, projectSFID string) error {

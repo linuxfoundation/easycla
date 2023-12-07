@@ -4219,6 +4219,8 @@ paths:
       description: Receives XML data when an individual signs a document in DocuSign linked to Gerrit.
       operationId: iclaCallbackGerrit
       security: [ ]
+      consumes:
+        - text/xml
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: user_id
@@ -4245,6 +4247,8 @@ paths:
       description: Receives XML data when a corporate entity signs a document in DocuSign associated with a specific project.
       operationId: cclaCallback
       security: [ ]
+      consumes:
+        - text/xml
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: project_id
