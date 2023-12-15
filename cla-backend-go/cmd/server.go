@@ -363,8 +363,8 @@ func server(localMode bool) http.Handler {
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL, configFile.CorporateConsoleV1URL)
 	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)
 	v2ClaManager.Configure(v2API, v2ClaManagerService, v1CompanyService, configFile.LFXPortalURL, configFile.CorporateConsoleV2URL, v1ProjectClaGroupRepo, userRepo)
-	sign.Configure(v2API, v2SignService, usersService)
 	cla_groups.Configure(v2API, v2ClaGroupService, v1ProjectService, v1ProjectClaGroupRepo, eventsService)
+	sign.Configure(v2API, v2SignService, usersService)
 	v2GithubActivity.Configure(v2API, v2GithubActivityService)
 
 	userCreaterMiddleware := func(next http.Handler) http.Handler {
