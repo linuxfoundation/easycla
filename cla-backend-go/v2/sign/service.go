@@ -359,7 +359,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 }
 
 func (s *service) getCorporateSignatureCallbackUrl(companyId, projectId string) string {
-	// s.ClaV4ApiURL = "https://5501-197-221-137-205.ngrok-free.app" //testing
+	s.ClaV4ApiURL = "https://cf2e-154-227-128-74.ngrok-free.app" //testing
 	return fmt.Sprintf("%s/v4/signed/corporate/%s/%s", s.ClaV4ApiURL, companyId, projectId)
 }
 
@@ -812,6 +812,8 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	log.WithFields(f).Debugf("loading latest individual document for project: %s", *input.ProjectID)
 	latestDocument, err := common.GetCurrentDocument(ctx, claGroup.ProjectIndividualDocuments)
 
+	log.WithFields(f).Debugf("latest document discovered: %+v", latestDocument)
+
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup latest individual document for project: %s", *input.ProjectID)
 		return nil, err
@@ -855,8 +857,10 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	}
 
 	log.WithFields(f).Debugf("signature callback url: %s", callBackURL)
+	log.WithFields(f).Debugf("latest signature: %+v", latestSignature)
 
 	if latestSignature != nil {
+		log.WithFields(f).Debugf("comparing latest signature document version: %s to latest document version: %s", latestSignature.SignatureDocumentMajorVersion, latestDocument.DocumentMajorVersion)
 		if latestDocument.DocumentMajorVersion == latestSignature.SignatureDocumentMajorVersion {
 
 			log.WithFields(f).Warnf("user: already has a signature with this project: %s", *input.ProjectID)
@@ -865,8 +869,18 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
 			_, currentTime := utils.CurrentTime()
 			itemSignature := signatures.ItemSignature{
-				SignatureID:  latestSignature.SignatureID,
-				DateModified: currentTime,
+				SignatureID:                 latestSignature.SignatureID,
+				DateModified:                currentTime,
+				SignatureReferenceType:      latestSignature.SignatureReferenceType,
+				SignatureEnvelopeID:         latestSignature.SignatureEnvelopeID,
+				SignatureType:               latestSignature.SignatureType,
+				SignatureReferenceID:        latestSignature.SignatureReferenceID,
+				SignatureProjectID:          latestSignature.ProjectID,
+				SignatureApproved:           latestSignature.SignatureApproved,
+				SignatureSigned:             latestSignature.SignatureSigned,
+				SignatureReferenceName:      latestSignature.SignatureReferenceName,
+				SignatureReferenceNameLower: latestSignature.SignatureReferenceNameLower,
+				SignedOn:                    latestSignature.SignedOn,
 			}
 			signURL, signErr := s.populateSignURL(ctx, &itemSignature, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
 			if signErr != nil {
@@ -880,7 +894,10 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 				UserID:      latestSignature.SignatureReferenceID,
 				ProjectID:   *input.ProjectID,
 			}, nil
+		} else {
+			log.WithFields(f).Debugf("user does NOT have a signature with this project : %s", *input.ProjectID)
 		}
+
 	}
 
 	// 5. Get signature return URL
@@ -1103,6 +1120,8 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
 		return "", err
 	}
+
+	// s.ClaV4ApiURL = "https://67c8-102-217-56-29.ngrok-free.app"
 
 	callbackURL := fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID)
 
