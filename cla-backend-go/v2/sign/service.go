@@ -359,7 +359,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 }
 
 func (s *service) getCorporateSignatureCallbackUrl(companyId, projectId string) string {
-	s.ClaV4ApiURL = "https://cf2e-154-227-128-74.ngrok-free.app" //testing
+	// s.ClaV4ApiURL = "https://cf2e-154-227-128-74.ngrok-free.app" //testing
 	return fmt.Sprintf("%s/v4/signed/corporate/%s/%s", s.ClaV4ApiURL, companyId, projectId)
 }
 
