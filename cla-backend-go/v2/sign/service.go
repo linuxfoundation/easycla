@@ -858,7 +858,6 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	}
 
 	log.WithFields(f).Debugf("signature callback url: %s", callBackURL)
-	log.WithFields(f).Debugf("latest signature: %+v", latestSignature)
 
 	var acl string
 	if strings.ToLower(input.ReturnURLType) == utils.GitHubType {
@@ -907,12 +906,12 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 				SignedOn:                      latestSignature.SignedOn,
 				SignatureReturnURL:            string(input.ReturnURL),
 				SignatureReturnURLType:        input.ReturnURLType,
-				SignatureCallbackURL:          latestSignature.SignatureCallbackURL,
+				SignatureCallbackURL:          callBackURL,
 				SignatureACL:                  []string{acl},
 				SignatureDocumentMajorVersion: majorVersion,
 				SignatureDocumentMinorVersion: minorVersion,
 			}
-			signURL, signErr := s.populateSignURL(ctx, &itemSignature, latestSignature.SignatureCallbackURL, "", "", false, "", "", defaultValues, preferredEmail)
+			signURL, signErr := s.populateSignURL(ctx, &itemSignature, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
 			if signErr != nil {
 				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
 				return nil, signErr
@@ -1154,6 +1153,7 @@ func (s *service) populateSignURL(ctx context.Context,
 		"authorityOrSignatoryName":  authorityOrSignatoryName,
 		"authorityOrSignatoryEmail": authorityOrSignatoryEmail,
 		"preferredEmail":            preferredEmail,
+		"callbackURL":               callbackURL,
 	}
 	log.WithFields(f).Debugf("populating sign url...")
 	signatureReferenceType := latestSignature.SignatureReferenceType
