@@ -848,6 +848,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 			log.WithFields(f).WithError(err).Warnf("unable to get signature callback url for user: %s", *input.UserID)
 			return nil, err
 		}
+
 	} else if strings.ToLower(input.ReturnURLType) == utils.GitLabLower {
 		callBackURL, err = s.getIndividualSignatureCallbackURLGitlab(ctx, *input.UserID, activeSignatureMetadata)
 		if err != nil {
@@ -859,6 +860,29 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	log.WithFields(f).Debugf("signature callback url: %s", callBackURL)
 	log.WithFields(f).Debugf("latest signature: %+v", latestSignature)
 
+	var acl string
+	if strings.ToLower(input.ReturnURLType) == utils.GitHubType {
+		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GithubID)
+	} else if strings.ToLower(input.ReturnURLType) == "gitlab" {
+		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GitlabID)
+	}
+
+	log.WithFields(f).Debugf("acl: %s", acl)
+
+	majorVersion, err := strconv.Atoi(latestDocument.DocumentMajorVersion)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert document major version to int: %s", latestDocument.DocumentMajorVersion)
+		return nil, err
+	}
+
+	minorVersion, err := strconv.Atoi(latestDocument.DocumentMinorVersion)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert document minor version to int: %s", latestDocument.DocumentMinorVersion)
+		return nil, err
+	}
+
 	if latestSignature != nil {
 		log.WithFields(f).Debugf("comparing latest signature document version: %s to latest document version: %s", latestSignature.SignatureDocumentMajorVersion, latestDocument.DocumentMajorVersion)
 		if latestDocument.DocumentMajorVersion == latestSignature.SignatureDocumentMajorVersion {
@@ -869,20 +893,26 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
 			_, currentTime := utils.CurrentTime()
 			itemSignature := signatures.ItemSignature{
-				SignatureID:                 latestSignature.SignatureID,
-				DateModified:                currentTime,
-				SignatureReferenceType:      latestSignature.SignatureReferenceType,
-				SignatureEnvelopeID:         latestSignature.SignatureEnvelopeID,
-				SignatureType:               latestSignature.SignatureType,
-				SignatureReferenceID:        latestSignature.SignatureReferenceID,
-				SignatureProjectID:          latestSignature.ProjectID,
-				SignatureApproved:           latestSignature.SignatureApproved,
-				SignatureSigned:             latestSignature.SignatureSigned,
-				SignatureReferenceName:      latestSignature.SignatureReferenceName,
-				SignatureReferenceNameLower: latestSignature.SignatureReferenceNameLower,
-				SignedOn:                    latestSignature.SignedOn,
+				SignatureID:                   latestSignature.SignatureID,
+				DateModified:                  currentTime,
+				SignatureReferenceType:        latestSignature.SignatureReferenceType,
+				SignatureEnvelopeID:           latestSignature.SignatureEnvelopeID,
+				SignatureType:                 latestSignature.SignatureType,
+				SignatureReferenceID:          latestSignature.SignatureReferenceID,
+				SignatureProjectID:            latestSignature.ProjectID,
+				SignatureApproved:             latestSignature.SignatureApproved,
+				SignatureSigned:               latestSignature.SignatureSigned,
+				SignatureReferenceName:        latestSignature.SignatureReferenceName,
+				SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
+				SignedOn:                      latestSignature.SignedOn,
+				SignatureReturnURL:            string(input.ReturnURL),
+				SignatureReturnURLType:        input.ReturnURLType,
+				SignatureCallbackURL:          latestSignature.SignatureCallbackURL,
+				SignatureACL:                  []string{acl},
+				SignatureDocumentMajorVersion: majorVersion,
+				SignatureDocumentMinorVersion: minorVersion,
 			}
-			signURL, signErr := s.populateSignURL(ctx, &itemSignature, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
+			signURL, signErr := s.populateSignURL(ctx, &itemSignature, latestSignature.SignatureCallbackURL, "", "", false, "", "", defaultValues, preferredEmail)
 			if signErr != nil {
 				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
 				return nil, signErr
@@ -917,7 +947,6 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 				ProjectID: *input.ProjectID,
 			}, nil
 		}
-
 	}
 
 	// 6. Get latest document
@@ -938,28 +967,6 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	log.WithFields(f).Debugf("creating new signature object...")
 	signatureID := uuid.Must(uuid.NewV4()).String()
 	_, currentTime := utils.CurrentTime()
-	var acl string
-	if strings.ToLower(input.ReturnURLType) == utils.GitHubType {
-		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GithubID)
-	} else if strings.ToLower(input.ReturnURLType) == "gitlab" {
-		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GitlabID)
-	}
-
-	log.WithFields(f).Debugf("acl: %s", acl)
-
-	majorVersion, err := strconv.Atoi(document.DocumentMajorVersion)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to convert document major version to int: %s", document.DocumentMajorVersion)
-		return nil, err
-	}
-
-	minorVersion, err := strconv.Atoi(document.DocumentMinorVersion)
-
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to convert document minor version to int: %s", document.DocumentMinorVersion)
-		return nil, err
-	}
 
 	itemSignature := signatures.ItemSignature{
 		SignatureID:                   signatureID,
@@ -1092,12 +1099,16 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		return "", err
 	}
 
+	log.WithFields(f).Debugf("found repository ID: %s", repositoryID)
+
 	if found, ok := metadata["pull_request_id"].(string); ok {
 		pullRequestID = found
 	} else {
 		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
 		return "", err
 	}
+
+	log.WithFields(f).Debugf("found pull request ID: %s", pullRequestID)
 
 	// Get installation ID through a helper function
 	log.WithFields(f).Debugf("getting repository...")
@@ -1106,6 +1117,7 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
 		return "", err
 	}
+
 	// Get github organization
 	log.WithFields(f).Debugf("getting github organization...")
 	githubOrg, err := s.githubOrgService.GetGitHubOrganizationByName(ctx, githubRepository.RepositoryOrganizationName)
@@ -1121,7 +1133,7 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		return "", err
 	}
 
-	// s.ClaV4ApiURL = "https://67c8-102-217-56-29.ngrok-free.app"
+	// s.ClaV4ApiURL = "https://dc35-41-210-154-131.ngrok-free.app"
 
 	callbackURL := fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID)
 
