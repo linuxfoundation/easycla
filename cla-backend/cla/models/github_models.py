@@ -741,8 +741,12 @@ class GitHub(repository_service_interface.RepositoryService):
             for user_commit_summary in commit_authors:
                 cla.log.debug(f'{fn} - PR: {pull_request.number} for user: {user_commit_summary}')
                 futures.append(executor.submit(handle_commit_from_user, project,user_commit_summary,signed,missing))
-            for future in concurrent.futures.as_completed(futures):
-                cla.log.debug(f'{fn} - ThreadClosed for handle_commit_from_user')
+
+        #Wait for all threads to be finished before mobing on
+        executor.shutdown(wait=True)
+
+        for future in concurrent.futures.as_completed(futures):
+            cla.log.debug(f'{fn} - ThreadClosed for handle_commit_from_user')
 
         # At this point, the signed and missing lists are now filled and updated with the commit user info
 
