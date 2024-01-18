@@ -140,6 +140,22 @@ class SignatureCompanySignatoryIndex(GlobalSecondaryIndex):
     signature_company_signatory_id = UnicodeAttribute(hash_key=True)
 
 
+class SignatureProjectReferenceIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying signatures by project reference ID
+    """
+
+    class Meta:
+        """ Meta class for Signature Project Reference Index """
+
+        index_name = "signature-project-reference-index"
+        write_capacity_units = 10
+        read_capacity_units = 10
+        projection = AllProjection()
+
+    signature_project_id = UnicodeAttribute(hash_key=True)
+    signature_reference_id = UnicodeAttribute(range_key=True)
+
 class SignatureCompanyInitialManagerIndex(GlobalSecondaryIndex):
     """
     This class represents a global secondary index for querying signatures by signature company initial manager ID
@@ -2431,7 +2447,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_project_id = UnicodeAttribute()
     signature_document_minor_version = NumberAttribute()
     signature_document_major_version = NumberAttribute()
-    signature_reference_id = UnicodeAttribute()
+    signature_reference_id = UnicodeAttribute(range_key=True)
     signature_reference_name = UnicodeAttribute(null=True)
     signature_reference_name_lower = UnicodeAttribute(null=True)
     signature_reference_type = UnicodeAttribute()
@@ -2467,6 +2483,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_company_signatory_index = SignatureCompanySignatoryIndex()
     signature_company_initial_manager_index = SignatureCompanyInitialManagerIndex()
     project_signature_external_id_index = SignatureProjectExternalIndex()
+    signature_project_reference_index = SignatureProjectReferenceIndex()
 
     # approval lists (previously called whitelists) are only used by CCLAs
     domain_whitelist = ListAttribute(null=True)
@@ -2974,8 +2991,13 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
         cla.log.debug(f'{fn} - performing signature_reference_id query using: {reference_id}')
         # TODO: Optimize this query to use filters properly.
-        signature_generator = self.model.signature_reference_index.query(str(reference_id))
-        cla.log.debug(f'{fn} - generator.last_evaluated_key: {signature_generator.last_evaluated_key}')
+        # signature_generator = self.model.signature_reference_index.query(str(reference_id))
+        try:
+            signature_generator = self.model.signature_project_reference_index.query(str(project_id), range_key_condition=SignatureModel.signature_reference_id == str(reference_id))
+        except Exception as e:
+            cla.log.error(f'{fn} - error performing signature_reference_id query using: {reference_id} - '
+                          f'error: {e}')
+            raise e
 
         signatures = []
         for signature_model in signature_generator:
@@ -2999,12 +3021,12 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
                               f"versus {user_ccla_company_id}")
                 continue
 
-            # Skip signatures that are not of the same project
-            if project_id is not None and signature_model.signature_project_id != project_id:
-                cla.log.debug(f"{fn} - skipping signature - "
-                              f"project_id values do not match: {signature_model.signature_project_id} "
-                              f"versus {project_id}")
-                continue
+            # # Skip signatures that are not of the same project
+            # if project_id is not None and signature_model.signature_project_id != project_id:
+            #     cla.log.debug(f"{fn} - skipping signature - "
+            #                   f"project_id values do not match: {signature_model.signature_project_id} "
+            #                   f"versus {project_id}")
+            #     continue
 
             # Skip signatures that do not have the same signed flags
             # e.g. retrieving only signed / approved signatures

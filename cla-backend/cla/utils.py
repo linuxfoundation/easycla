@@ -698,7 +698,10 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
                 # Verify if user has been approved: https://github.com/communitybridge/easycla/issues/332
                 cla.log.debug(f'{fn} - CCLA signature check - '
                               'checking to see if the user is in one of the approval lists...')
-                if user.is_approved(signature):
+                if project.get_project_ccla_requires_icla_signature() is True:
+                    cla.log.debug(f'{fn} - CCLA signature check - '
+                                  'project requires ICLA signature as well as CCLA signature ')
+                elif user.is_approved(signature) :
                     ccla_pass = True
                 else:
                     # Set user signatures approved = false due to user failing whitelist checks
