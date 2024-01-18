@@ -27,6 +27,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/cla_groups"
+	gitlab_activity "github.com/communitybridge/easycla/cla-backend-go/v2/gitlab-activity"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
 	"github.com/go-openapi/strfmt"
@@ -48,6 +49,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/company"
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 )
 
@@ -82,54 +84,58 @@ type Service interface {
 	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error)
 	RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
 	SignedIndividualCallbackGithub(ctx context.Context, payload []byte, installationID, changeRequestID, repositoryID string) error
-	SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, mergeRequestID, repositoryID string) error
+	SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, repositoryID, mergeRequestID string) error
 	SignedIndividualCallbackGerrit(ctx context.Context, payload []byte, userID string) error
 	SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error
 }
 
 // service
 type service struct {
-	ClaV4ApiURL          string
-	ClaV1ApiURL          string
-	companyRepo          company.IRepository
-	projectRepo          ProjectRepo
-	projectClaGroupsRepo projects_cla_groups.Repository
-	companyService       company.IService
-	claGroupService      cla_groups.Service
-	docsignPrivateKey    string
-	userService          users.Service
-	signatureService     signatures.SignatureService
-	storeRepository      store.Repository
-	repositoryService    repositories.Service
-	githubOrgService     github_organizations.Service
-	gitlabOrgService     gitlab_organizations.ServiceInterface
-	claLandingPage       string
-	claLogoURL           string
-	emailTemplateService emails.EmailTemplateService
-	eventsService        events.Service
+	ClaV4ApiURL           string
+	ClaV1ApiURL           string
+	companyRepo           company.IRepository
+	projectRepo           ProjectRepo
+	projectClaGroupsRepo  projects_cla_groups.Repository
+	companyService        company.IService
+	claGroupService       cla_groups.Service
+	docsignPrivateKey     string
+	userService           users.Service
+	signatureService      signatures.SignatureService
+	storeRepository       store.Repository
+	repositoryService     repositories.Service
+	githubOrgService      github_organizations.Service
+	gitlabOrgService      gitlab_organizations.ServiceInterface
+	claLandingPage        string
+	claLogoURL            string
+	emailTemplateService  emails.EmailTemplateService
+	eventsService         events.Service
+	gitlabActivityService gitlab_activity.Service
+	gitlabApp             *gitlab_api.App
 }
 
 // NewService returns an instance of v2 project service
 func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
-	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface, claLandingPage string, claLogoURL string, emailTemplateService emails.EmailTemplateService, eventsService events.Service) Service {
+	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface, claLandingPage string, claLogoURL string, emailTemplateService emails.EmailTemplateService, eventsService events.Service, gitlabActivityService gitlab_activity.Service, gitlabApp *gitlab_api.App) Service {
 	return &service{
-		ClaV4ApiURL:          apiURL,
-		ClaV1ApiURL:          v1API,
-		companyRepo:          compRepo,
-		projectRepo:          projectRepo,
-		projectClaGroupsRepo: pcgRepo,
-		companyService:       compService,
-		claGroupService:      claGroupService,
-		docsignPrivateKey:    docsignPrivateKey,
-		userService:          userService,
-		signatureService:     signatureService,
-		storeRepository:      storeRepository,
-		githubOrgService:     githubOrgService,
-		gitlabOrgService:     gitlabOrgService,
-		repositoryService:    repositoryService,
-		claLandingPage:       claLandingPage,
-		claLogoURL:           claLogoURL,
-		emailTemplateService: emailTemplateService,
+		ClaV4ApiURL:           apiURL,
+		ClaV1ApiURL:           v1API,
+		companyRepo:           compRepo,
+		projectRepo:           projectRepo,
+		projectClaGroupsRepo:  pcgRepo,
+		companyService:        compService,
+		claGroupService:       claGroupService,
+		docsignPrivateKey:     docsignPrivateKey,
+		userService:           userService,
+		signatureService:      signatureService,
+		storeRepository:       storeRepository,
+		githubOrgService:      githubOrgService,
+		gitlabOrgService:      gitlabOrgService,
+		repositoryService:     repositoryService,
+		claLandingPage:        claLandingPage,
+		claLogoURL:            claLogoURL,
+		emailTemplateService:  emailTemplateService,
+		gitlabActivityService: gitlabActivityService,
+		gitlabApp:             gitlabApp,
 	}
 }
 
@@ -579,7 +585,239 @@ func fetchFullName(info DocuSignEnvelopeInformation) string {
 	return fullName
 }
 
-func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, mergeRequestID, repositoryID string) error {
+func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, repositoryID, mergeRequestID string) error {
+	f := logrus.Fields{
+		"functionName":   "sign.SignedIndividualCallbackGitlab",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"userID":         userID,
+		"organizationID": organizationID,
+		"mergeRequestID": mergeRequestID,
+		"repositoryID":   repositoryID,
+	}
+
+	log.WithFields(f).Debug("processing signed individual callback...")
+	var info DocuSignEnvelopeInformation
+
+	err := xml.Unmarshal(payload, &info)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to unmarshal xml payload")
+		return err
+	}
+
+	envelopeID := info.EnvelopeStatus.EnvelopeID
+	signatureID := info.EnvelopeStatus.RecipientStatuses[0].ClientUserId
+	status := info.EnvelopeStatus.RecipientStatuses[0].Status
+	signedDate := info.EnvelopeStatus.RecipientStatuses[0].Signed
+	documentID := info.EnvelopeStatus.DocumentStatuses[0].ID
+	fullName := fetchFullName(info)
+
+	log.WithFields(f).Debugf("envelopeID: %s, signatureID: %s, status: %s, signedDate: %s, fullName: %s", envelopeID, signatureID, status, signedDate, fullName)
+
+	_, currentTime := utils.CurrentTime()
+
+	signature, err := s.signatureService.GetSignature(ctx, signatureID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup signature by ID")
+		return err
+	}
+
+	if signature == nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup signature by ID - signature not found")
+		return errors.New("unable to lookup signature by ID - signature not found")
+	}
+
+	if status == DocusignCompleted {
+		log.WithFields(f).Debugf("envelope signed - status: %s", status)
+		updates := map[string]interface{}{
+			"signature_signed":          true,
+			"date_modified":             currentTime,
+			"signed_on":                 currentTime,
+			"user_docusign_raw_xml":     string(payload),
+			"user_docusign_name":        fullName,
+			"user_docusign_date_signed": signedDate,
+		}
+		err = s.signatureService.UpdateSignature(ctx, signatureID, updates)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to update signature record with envelope ID: %s", envelopeID)
+			return err
+		}
+
+		log.WithFields(f).Debugf("updated signature record: %s", signatureID)
+
+		gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganizationByID(ctx, organizationID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup gitlab organization by ID: %s", organizationID)
+			return err
+		}
+
+		repositoryIDInt, err := strconv.Atoi(repositoryID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to convert repository ID to int: %s", repositoryID)
+			return err
+		}
+
+		mergeRequestIDInt, err := strconv.Atoi(mergeRequestID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to convert merge request ID to int: %s", mergeRequestID)
+			return err
+		}
+
+		encryptedOauthResponse, err := s.gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to refresh gitlab organization auth for organization ID: %s", organizationID)
+			return err
+		}
+
+		gitlabClient, err := gitlab_api.NewGitlabOauthClient(*encryptedOauthResponse, s.gitlabApp)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to create gitlab client for organization ID: %s", organizationID)
+			return err
+		}
+
+		log.WithFields(f).Debugf("fetching repository info for repository ID: %d", repositoryIDInt)
+		gitlabProject, err := gitlab_api.GetProjectByID(ctx, gitlabClient, repositoryIDInt)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup gitlab project by ID: %s", repositoryID)
+			return err
+		}
+
+		log.WithFields(f).Debugf("fetching merge request info for merge request ID: %d", mergeRequestIDInt)
+		gitlabMr, err := gitlab_api.FetchMrInfo(gitlabClient, repositoryIDInt, mergeRequestIDInt)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to fetch merge request info for merge request ID: %s", mergeRequestID)
+			return err
+		}
+
+		tokenPlaceHolder := "token"
+		input := gitlab_activity.ProcessMergeActivityInput{
+			ProjectName:      gitlabProject.Name,
+			ProjectID:        gitlabProject.ID,
+			ProjectPath:      gitlabProject.PathWithNamespace,
+			ProjectNamespace: gitlabProject.Namespace.Name,
+			MergeID:          mergeRequestIDInt,
+			RepositoryPath:   gitlabProject.PathWithNamespace,
+			LastCommitSha:    gitlabMr.SHA,
+		}
+
+		log.WithFields(f).Debugf("processing merge activity for input: %+v", input)
+
+		err = s.gitlabActivityService.ProcessMergeActivity(ctx, tokenPlaceHolder, &input)
+
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to update change request: %s", mergeRequestID)
+			return err
+		}
+
+		claUser, userErr := s.userService.GetUser(signature.SignatureReferenceID)
+		if userErr != nil {
+			log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", signature.SignatureReferenceID)
+			return userErr
+		}
+
+		if claUser.Username == "" {
+			if fullName != "" {
+				log.WithFields(f).Debugf("setting username for user with :%s", fullName)
+				updates := map[string]interface{}{
+					"user_name": fullName,
+				}
+				log.WithFields(f).Debugf("updating user with username: %s", fullName)
+				_, err = s.userService.UpdateUser(signature.SignatureReferenceID, updates)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warnf("unable to update user with username: %s", fullName)
+					return err
+				}
+			}
+		}
+
+		// Remove the active signature
+		log.WithFields(f).Debugf("removing active signature metadata for user: %s", signature.SignatureReferenceID)
+		key := fmt.Sprintf("active_signature:%s", signature.SignatureReferenceID)
+		err = s.storeRepository.DeleteActiveSignatureMetaData(ctx, key)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to remove active signature metadata for user: %s", signature.SignatureReferenceID)
+			return err
+		}
+
+		//Get signed document
+		log.WithFields(f).Debugf("getting signed document for envelope ID: %s", envelopeID)
+		signedDocument, err := s.getSignedDocument(ctx, envelopeID, documentID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get signed document for envelope ID: %s", envelopeID)
+			return err
+		}
+
+		// send email to user
+		log.WithFields(f).Debugf("sending email to user... ")
+		log.WithFields(f).Debugf("getting claGroupID: %s", signature.ProjectID)
+		claGroup, err := s.claGroupService.GetCLAGroup(ctx, signature.ProjectID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup CLA Group by ID: %s", signature.ProjectID)
+			return err
+		}
+
+		subject := fmt.Sprintf("EasyCLA: Individual CLA Signed for %s", claGroup.ProjectName)
+		pdfLink := fmt.Sprintf("%s/v3/signatures/%s/%s/icla/pdf", s.ClaV1ApiURL, signature.ProjectID, signature.SignatureReferenceID)
+		emailParams := emails.DocumentSignedTemplateParams{
+			CommonEmailParams: emails.CommonEmailParams{
+				RecipientName: fullName,
+			},
+			PdfLink: pdfLink,
+			ICLA:    true,
+		}
+		email := utils.GetBestEmail(claUser)
+		if email == "" {
+			log.WithFields(f).Warnf("unable to find email for user: %+v", claUser)
+			return errors.New("unable to find email for user")
+		}
+
+		recipients := []string{utils.GetBestEmail(claUser)}
+
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectID, emailParams)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
+			return err
+		}
+
+		// send email to user
+		log.WithFields(f).Debugf("sending email to user... ")
+		err = utils.SendEmail(subject, body, recipients)
+
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to send email to user: %s", claUser.Username)
+			return err
+		}
+
+		log.WithFields(f).Debugf("email sent to user: %s", claUser.Username)
+
+		if claUser.UserID == "" {
+			return fmt.Errorf("user id is empty for user: %s", claUser.Username)
+		}
+
+		// store document on S3
+		log.WithFields(f).Debugf("storing signed document on S3...")
+		err = utils.UploadToS3(signedDocument, signature.ProjectID, utils.ClaTypeICLA, claUser.UserID, signature.SignatureID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to store signed document on S3")
+			return err
+		}
+
+		// Log the event
+		log.WithFields(f).Debugf("logging event...")
+		s.eventsService.LogEvent(&events.LogEventArgs{
+			EventType: events.IndividualSignatureSigned,
+			ProjectID: signature.ProjectID,
+			UserID:    claUser.UserID,
+			EventData: &events.IndividualSignatureSignedEventData{
+				ProjectName: claGroup.ProjectName,
+				Username:    fullName,
+				ProjectID:   signature.ProjectID,
+			},
+			CLAGroupID: signature.ProjectID,
+		})
+	} else {
+		log.WithFields(f).Debugf("envelope not signed - status: %s", status)
+	}
+
 	return nil
 }
 
@@ -1056,7 +1294,16 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 		return "", err
 	}
 
-	gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganization(ctx, repositoryID)
+	// Get repository
+	log.WithFields(f).Debugf("getting repository by external ID: %s", repositoryID)
+	gitlabRepo, err := s.repositoryService.GetRepositoryByExternalID(ctx, repositoryID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", repositoryID)
+		return "", err
+	}
+
+	log.WithFields(f).Debugf("searching for gitlab organization by name: %s", gitlabRepo.RepositoryOrganizationName)
+	gitlabOrg, err := s.gitlabOrgService.GetGitLabOrganizationByName(ctx, gitlabRepo.RepositoryOrganizationName)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", repositoryID)
 		return "", err
@@ -1067,6 +1314,7 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 		return "", err
 	}
 
+	s.ClaV4ApiURL = "https://a970-102-217-56-29.ngrok-free.app"
 	return fmt.Sprintf("%s/v4/signed/gitlab/individual/%s/%s/%s/%s", s.ClaV4ApiURL, userID, gitlabOrg.OrganizationID, repositoryID, mergeRequestID), nil
 
 }
