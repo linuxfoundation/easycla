@@ -4279,6 +4279,8 @@ paths:
       description: Receives XML data when an individual signs a document in DocuSign linked to GitLab.
       operationId: iclaCallbackGitlab
       security: [ ]
+      consumes:
+        - text/xml
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: user_id
@@ -4297,12 +4299,12 @@ paths:
           in: path
           required: true
           type: string
-        - name: body
+        - name: envelopeInformation
           in: body
           required: true
+          description: XML payload with DocuSign envelope information
           schema:
-            type: object
-            additionalProperties: true
+            $ref: '#/definitions/DocuSignEnvelopeInformation'
       responses:
         '200':
           description: Callback data for GitLab successfully received and processed.
