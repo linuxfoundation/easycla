@@ -48,6 +48,8 @@ SIGNATURE_TABLE_DATA = {
             {"AttributeName": "signature_company_project_external_id", "AttributeType": "S"},
             {"AttributeName": "signature_company_initial_manager_id", "AttributeType": "S"},
             {"AttributeName": "signature_company_secondary_manager_list", "AttributeType": "M"},
+            {"AttributeName": "signature_reference_id", "AttributeType": "S"},
+            {"AttributeName": "signature_project_id", "AttributeType": "S"},
         ],
         "KeySchema": [{"AttributeName": "signature_id", "KeyType": "HASH"}],
         "GlobalSecondaryIndexes": [
@@ -69,6 +71,13 @@ SIGNATURE_TABLE_DATA = {
                 "Projection": {"ProjectionType": "ALL"},
                 "ProvisionedThroughput": {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
             },
+            {
+                "IndexName": "signature-project-reference-index",
+                "KeySchema": [{"AttributeName": "signature_project_id", "KeyType": "HASH"},
+                              {"AttributeName": "signature_reference_id", "KeyType": "RANGE"}],
+                "Projection": {"ProjectionType": "ALL"},
+                "ProvisionedThroughput": {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
+            }
         ],
     }
 }

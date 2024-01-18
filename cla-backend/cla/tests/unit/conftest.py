@@ -26,30 +26,30 @@ from cla.models.dynamo_models import (
 PATCH_METHOD = "pynamodb.connection.Connection._make_api_call"
 
 
-@pytest.fixture()
-def signature_instance():
-    """
-    Mock signature instance
-    """
-    with patch(PATCH_METHOD) as req:
-        req.return_value = SIGNATURE_TABLE_DATA
-        instance = Signature()
-        instance.set_signature_id("sig_id")
-        instance.set_signature_project_id("proj_id")
-        instance.set_signature_reference_id("ref_id")
-        instance.set_signature_type("type")
-        instance.set_signature_project_external_id("proj_id")
-        instance.set_signature_company_signatory_id("comp_sig_id")
-        instance.set_signature_company_signatory_name("name")
-        instance.set_signature_company_signatory_email("email")
-        instance.set_signature_company_initial_manager_id("manager_id")
-        instance.set_signature_company_initial_manager_name("manager_name")
-        instance.set_signature_company_initial_manager_email("manager_email")
-        instance.set_signature_company_secondary_manager_list({"foo": "bar"})
-        instance.set_signature_document_major_version(1)
-        instance.set_signature_document_minor_version(2)
-        instance.save()
-        yield instance
+# @pytest.fixture()
+# def signature_instance():
+#     """
+#     Mock signature instance
+#     """
+#     with patch(PATCH_METHOD) as req:
+#         req.return_value = SIGNATURE_TABLE_DATA
+#         instance = Signature()
+#         instance.set_signature_id("sig_id")
+#         instance.set_signature_project_id("proj_id")
+#         instance.set_signature_reference_id("ref_id")
+#         instance.set_signature_type("type")
+#         instance.set_signature_project_external_id("proj_id")
+#         instance.set_signature_company_signatory_id("comp_sig_id")
+#         instance.set_signature_company_signatory_name("name")
+#         instance.set_signature_company_signatory_email("email")
+#         instance.set_signature_company_initial_manager_id("manager_id")
+#         instance.set_signature_company_initial_manager_name("manager_name")
+#         instance.set_signature_company_initial_manager_email("manager_email")
+#         instance.set_signature_company_secondary_manager_list({"foo": "bar"})
+#         instance.set_signature_document_major_version(1)
+#         instance.set_signature_document_minor_version(2)
+#         instance.save()
+#         yield instance
 
 
 @pytest.fixture()
