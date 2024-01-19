@@ -1314,7 +1314,7 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 		return "", err
 	}
 
-	s.ClaV4ApiURL = "https://a970-102-217-56-29.ngrok-free.app"
+	// s.ClaV4ApiURL = "https://a970-102-217-56-29.ngrok-free.app"
 	return fmt.Sprintf("%s/v4/signed/gitlab/individual/%s/%s/%s/%s", s.ClaV4ApiURL, userID, gitlabOrg.OrganizationID, repositoryID, mergeRequestID), nil
 
 }
