@@ -11,6 +11,7 @@ https://developers.docusign.com/esign-rest-api/guides/post-go-live
 
 import io
 import json
+import boto3
 import os
 import urllib.request
 import uuid
@@ -33,6 +34,7 @@ from cla.utils import (append_email_help_sign_off_content, get_corporate_url,
                        get_email_help_content, get_project_cla_group_instance)
 from pydocusign.exceptions import DocuSignException  # type: ignore
 
+stage = os.environ.get('STAGE', '')
 api_base_url = os.environ.get('CLA_API_BASE', '')
 root_url = os.environ.get('DOCUSIGN_ROOT_URL', '')
 username = os.environ.get('DOCUSIGN_USERNAME', '')
@@ -44,6 +46,8 @@ lf_group_client_id = os.environ.get('LF_GROUP_CLIENT_ID', '')
 lf_group_client_secret = os.environ.get('LF_GROUP_CLIENT_SECRET', '')
 lf_group_refresh_token = os.environ.get('LF_GROUP_REFRESH_TOKEN', '')
 lf_group = LFGroup(lf_group_client_url, lf_group_client_id, lf_group_client_secret, lf_group_refresh_token)
+
+signature_table = 'cla-{}-signatures'.format(stage)
 
 
 class ProjectDoesNotExist(Exception):
@@ -99,8 +103,10 @@ class DocuSign(signing_service_interface.SigningService):
     def __init__(self):
         self.client = None
         self.s3storage = None
+        self.dynamo_client = None
 
     def initialize(self, config):
+        self.dynamo_client = boto3.client('dynamodb')
         self.client = pydocusign.DocuSignClient(root_url=root_url,
                                                 username=username,
                                                 password=password,
@@ -712,7 +718,8 @@ class DocuSign(signing_service_interface.SigningService):
         new_signature.set_signature_acl(acl_value)
 
         # Save signature
-        new_signature.save()
+        # new_signature.save()
+        self._save_employee_signature(new_signature)
         cla.log.info(f'{fn} - saved signature for: {request_info}')
         event_data = (f'The user {user.get_user_name()} acknowledged the CLA employee affiliation for '
                       f'company {company.get_company_name()} with ID {company.get_company_id()}, '
@@ -762,6 +769,36 @@ class DocuSign(signing_service_interface.SigningService):
 
         cla.log.info(f'{fn} - returning new signature for: {request_info} - signature: {new_signature}')
         return new_signature.to_dict()
+    
+    def _save_employee_signature(self,signature):
+        cla.log.info(f'Saving signature record (boto3): {signature}')
+        item = {
+            'signature_id' : {'S': signature.get_signature_id()},
+            'signature_project_id': {'S': signature.get_signature_project_id()},
+            'signature_document_minor_version': {'N': str(signature.get_signature_document_minor_version())},
+            'signature_document_major_version': {'N': str(signature.get_signature_document_major_version())},
+            'signature_reference_id': {'S': signature.get_signature_reference_id()},
+            'signature_reference_type': {'S': signature.get_signature_reference_type()},
+            'signature_reference_name': {'S': signature.get_signature_reference_name()},
+            'signature_type': {'S': signature.get_signature_type()},
+            'signature_signed': {'BOOL': signature.get_signature_signed()},
+            'signature_approved': {'BOOL': signature.get_signature_approved()},
+            'signature_acl': {'SS': list(signature.get_signature_acl())},
+            'signature_user_ccla_company_id': {'S': signature.get_signature_user_ccla_company_id()},
+        }
+
+        if signature.get_signature_return_url() is not None:
+            item['signature_return_url'] = {'S': signature.get_signature_return_url()}
+
+        try:
+         self.dynamo_client.put_item(TableName=signature_table, Item=item)
+        except Exception as e:
+            cla.log.error(f'Error while saving signature record (boto3): {e}')
+            raise e
+        
+        cla.log.info(f'Saved signature record (boto3): {signature}')
+
+        return signature.get_signature_id()
 
     def request_employee_signature_gerrit(self, project_id, company_id, user_id, return_url=None):
 
