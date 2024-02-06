@@ -779,7 +779,6 @@ class DocuSign(signing_service_interface.SigningService):
             'signature_document_major_version': {'N': str(signature.get_signature_document_major_version())},
             'signature_reference_id': {'S': signature.get_signature_reference_id()},
             'signature_reference_type': {'S': signature.get_signature_reference_type()},
-            'signature_reference_name': {'S': signature.get_signature_reference_name()},
             'signature_type': {'S': signature.get_signature_type()},
             'signature_signed': {'BOOL': signature.get_signature_signed()},
             'signature_approved': {'BOOL': signature.get_signature_approved()},
@@ -789,6 +788,9 @@ class DocuSign(signing_service_interface.SigningService):
 
         if signature.get_signature_return_url() is not None:
             item['signature_return_url'] = {'S': signature.get_signature_return_url()}
+        
+        if signature.get_signature_reference_name() is not None:
+            item['signature_reference_name'] = {'S': signature.get_signature_reference_name()}
 
         try:
          self.dynamo_client.put_item(TableName=signature_table, Item=item)
