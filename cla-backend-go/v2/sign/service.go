@@ -933,10 +933,11 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 	// Update the signature status if changed
 	status := info.EnvelopeStatus.Status
 	if status == DocusignCompleted && !signature.SignatureSigned {
+		_, currentTime := utils.CurrentTime()
 		updates := map[string]interface{}{
 			"signature_signed": true,
-			"date_modified":    time.Now().String(),
-			"signed_on":        time.Now().String(),
+			"date_modified":    currentTime,
+			"signed_on":        currentTime,
 		}
 
 		userSignedDate := info.EnvelopeStatus.RecipientStatuses[0].Signed
