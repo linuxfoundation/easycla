@@ -48,6 +48,7 @@ type RepositoryInterface interface {
 	GitHubDisableRepository(ctx context.Context, repositoryID string) error
 	GitHubDisableRepositoriesByProjectID(ctx context.Context, projectID string) error
 	GitHubDisableRepositoriesOfOrganization(ctx context.Context, externalProjectID, githubOrgName string) error
+	GitHubDisableRepositoriesOfOrganizationParent(ctx context.Context, parentProjectSFID, githubOrgName string) error
 	GitHubGetRepository(ctx context.Context, repositoryID string) (*models.GithubRepository, error)
 	GitHubGetRepositoryByName(ctx context.Context, repositoryName string) (*models.GithubRepository, error)
 	GitHubGetRepositoryByExternalID(ctx context.Context, repositoryExternalID string) (*models.GithubRepository, error)
@@ -356,6 +357,23 @@ func (r *Repository) GitHubDisableRepositoriesOfOrganization(ctx context.Context
 	}
 	for _, repoModel := range repoModels {
 		if repoModel.RepositoryProjectSfid == projectSFID {
+			err = r.disableGithubRepository(ctx, repoModel.RepositoryID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// GitHubDisableRepositoriesOfOrganizationParent disables the repositories under the GitHub organization for the parent project
+func (r *Repository) GitHubDisableRepositoriesOfOrganizationParent(ctx context.Context, parentProjectSFID, githubOrgName string) error {
+	repoModels, err := r.getRepositoriesByGithubOrg(ctx, githubOrgName)
+	if err != nil {
+		return err
+	}
+	for _, repoModel := range repoModels {
+		if repoModel.RepositorySfdcID == parentProjectSFID {
 			err = r.disableGithubRepository(ctx, repoModel.RepositoryID)
 			if err != nil {
 				return err

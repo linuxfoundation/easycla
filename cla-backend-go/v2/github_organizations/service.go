@@ -360,6 +360,30 @@ func (s service) DeleteGithubOrganization(ctx context.Context, projectSFID strin
 		return projectErr
 	}
 
+	// check to see if ghorg to be deleted is fetched via parent or project sfid
+	// if it is fetched via parent sfid then we need to get the parent project sfid
+	// to delete the ghorg
+	pcg, pcgErr := s.projectsCLAGroupService.GetClaGroupIDForProject(ctx, projectSFID)
+	if pcgErr != nil {
+		if pcgErr == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
+			log.WithFields(f).Warnf("unable to locate project CLA Group mapping for project SFID: %s, error: %+v", projectSFID, pcgErr)
+		} else {
+			log.WithFields(f).WithError(pcgErr).Warnf("unable to load project CLA group for project SFID: %s", projectSFID)
+			return pcgErr
+		}
+	}
+
+	if pcg != nil && pcg.FoundationSFID != "" {
+		log.WithFields(f).Debug("disabling repositories for github organization...")
+		err := s.gitV1Repository.GitHubDisableRepositoriesOfOrganizationParent(ctx, pcg.FoundationSFID, githubOrgName)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem disabling repositories for github organization")
+			return err
+		}
+		log.WithFields(f).Debug("deleting github organization under foundation...")
+		return s.repo.DeleteGitHubOrganizationByParent(ctx, pcg.FoundationSFID, githubOrgName)
+	}
+
 	log.WithFields(f).Debug("disabling repositories for github organization...")
 	err := s.gitV1Repository.GitHubDisableRepositoriesOfOrganization(ctx, projectSFID, githubOrgName)
 	if err != nil {
@@ -367,6 +391,6 @@ func (s service) DeleteGithubOrganization(ctx context.Context, projectSFID strin
 		return err
 	}
 
-	log.WithFields(f).Debug("deleting github github organization...")
+	log.WithFields(f).Debug("deleting github organization under project...")
 	return s.repo.DeleteGitHubOrganization(ctx, projectSFID, githubOrgName)
 }
