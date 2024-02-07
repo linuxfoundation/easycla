@@ -380,6 +380,55 @@ func (repo Repository) GetGitHubOrganization(ctx context.Context, githubOrganiza
 	return ToModel(&org), nil
 }
 
+func (repo Repository) getGithubOrganization(ctx context.Context, projectSFID string, organizationName string) ([]*models.GithubOrganization, error) {
+	f := logrus.Fields{
+		"functionName":     "v1.github_organizations.repository.getGithubOrganization",
+		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
+		"projectSFID":      projectSFID,
+		"organizationName": organizationName,
+	}
+
+	log.WithFields(f).Debug("Querying for github organization by project and name...")
+
+	filter := expression.Key("project_sfid").Equal(expression.Value(projectSFID)).And(expression.Key("organization_name").Equal(expression.Value(organizationName)))
+
+	expr, err := expression.NewBuilder().WithKeyCondition(filter).Build()
+	if err != nil {
+		log.WithFields(f).Warnf("problem building query expression, error: %+v", err)
+		return nil, err
+	}
+
+	params := &dynamodb.QueryInput{
+		TableName:                 aws.String(repo.githubOrgTableName),
+		IndexName:                 aws.String(ProjectSFIDOrganizationNameIndex),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	}
+
+	results, queryErr := repo.dynamoDBClient.Query(params)
+	if queryErr != nil {
+		log.WithFields(f).Warnf("error retrieving github organization using project_sfid = %s and organization_name = %s, error: %+v", projectSFID, organizationName, queryErr)
+		return nil, queryErr
+	}
+
+	if len(results.Items) == 0 {
+		log.WithFields(f).Debug("no results from query")
+		return nil, nil
+	}
+
+	var resultOutput []*GithubOrganization
+	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &resultOutput)
+	if err != nil {
+		return nil, err
+	}
+
+	log.WithFields(f).Debug("building response model...")
+	ghOrgList := buildGithubOrganizationListModels(ctx, resultOutput)
+
+	return ghOrgList, nil
+}
+
 // UpdateGitHubOrganization updates the specified GitHub organization based on the update model provided
 func (repo Repository) UpdateGitHubOrganization(ctx context.Context, projectSFID string, organizationName string, autoEnabled bool, autoEnabledClaGroupID string, branchProtectionEnabled bool, enabled *bool) error {
 	f := logrus.Fields{
@@ -467,54 +516,64 @@ func (repo Repository) DeleteGitHubOrganization(ctx context.Context, projectSFID
 	}
 
 	var githubOrganizationName string
-	orgs, orgErr := repo.GetGitHubOrganizations(ctx, projectSFID)
+	// orgs, orgErr := repo.GetGitHubOrganizations(ctx, projectSFID)
+	// if orgErr != nil {
+	// 	errMsg := fmt.Sprintf("github organization is not found using projectSFID: %s, error: %+v", projectSFID, orgErr)
+	// 	log.WithFields(f).Warn(errMsg)
+	// 	return errors.New(errMsg)
+	// }
+
+	orgs, orgErr := repo.getGithubOrganization(ctx, projectSFID, githubOrgName)
 	if orgErr != nil {
 		errMsg := fmt.Sprintf("github organization is not found using projectSFID: %s, error: %+v", projectSFID, orgErr)
 		log.WithFields(f).Warn(errMsg)
 		return errors.New(errMsg)
 	}
 
-	for _, githubOrg := range orgs.List {
-		if strings.EqualFold(githubOrg.OrganizationName, githubOrgName) {
-			githubOrganizationName = githubOrg.OrganizationName
-		}
+	if orgs == nil {
+		errMsg := fmt.Sprintf("github organization: %s is not found using projectSFID: %s", githubOrgName, projectSFID)
+		log.WithFields(f).Warn(errMsg)
+		return errors.New(errMsg)
 	}
 
-	log.WithFields(f).Debug("Deleting GitHub organization...")
-	// Update enabled flag as false
-	_, currentTime := utils.CurrentTime()
-	note := fmt.Sprintf("Enabled set to false due to org deletion at %s ", currentTime)
-	_, err := repo.dynamoDBClient.UpdateItem(
-		&dynamodb.UpdateItemInput{
-			Key: map[string]*dynamodb.AttributeValue{
-				"organization_name": {
-					S: aws.String(githubOrganizationName),
+	for _, githubOrg := range orgs {
+		githubOrganizationName = githubOrg.OrganizationName
+		log.WithFields(f).Debugf("Deleting GitHub organization...: %s", githubOrganizationName)
+		// Update enabled flag as false
+		_, currentTime := utils.CurrentTime()
+		note := fmt.Sprintf("Enabled set to false due to org deletion at %s ", currentTime)
+		_, err := repo.dynamoDBClient.UpdateItem(
+			&dynamodb.UpdateItemInput{
+				Key: map[string]*dynamodb.AttributeValue{
+					"organization_name": {
+						S: aws.String(githubOrganizationName),
+					},
 				},
+				ExpressionAttributeNames: map[string]*string{
+					"#E": aws.String("enabled"),
+					"#N": aws.String("note"),
+					"#D": aws.String("date_modified"),
+				},
+				ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+					":e": {
+						BOOL: aws.Bool(false),
+					},
+					":n": {
+						S: aws.String(note),
+					},
+					":d": {
+						S: aws.String(currentTime),
+					},
+				},
+				UpdateExpression: aws.String("SET #E = :e, #N = :n, #D = :d"),
+				TableName:        aws.String(repo.githubOrgTableName),
 			},
-			ExpressionAttributeNames: map[string]*string{
-				"#E": aws.String("enabled"),
-				"#N": aws.String("note"),
-				"#D": aws.String("date_modified"),
-			},
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":e": {
-					BOOL: aws.Bool(false),
-				},
-				":n": {
-					S: aws.String(note),
-				},
-				":d": {
-					S: aws.String(currentTime),
-				},
-			},
-			UpdateExpression: aws.String("SET #E = :e, #N = :n, #D = :d"),
-			TableName:        aws.String(repo.githubOrgTableName),
-		},
-	)
-	if err != nil {
-		errMsg := fmt.Sprintf("error deleting github organization: %s - %+v", githubOrgName, err)
-		log.WithFields(f).Warnf(errMsg)
-		return errors.New(errMsg)
+		)
+		if err != nil {
+			errMsg := fmt.Sprintf("error deleting github organization: %s - %+v", githubOrgName, err)
+			log.WithFields(f).Warnf(errMsg)
+			return errors.New(errMsg)
+		}
 	}
 
 	return nil
