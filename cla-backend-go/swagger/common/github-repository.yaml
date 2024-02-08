@@ -14,6 +14,9 @@ properties:
   repository_project_sfid:
     description: Project SFID
     $ref: './common/properties/external-id.yaml'
+  repository_sfdc_id:
+    description: Parent Project SFID
+    $ref: './common/properties/external-id.yaml'
   repository_cla_group_id:
     description: CLA Group ID
     $ref: './common/properties/internal-id.yaml'

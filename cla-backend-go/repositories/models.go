@@ -58,6 +58,7 @@ func (gr *RepositoryDBModel) ToGitHubModel() *models.GithubRepository {
 		RepositoryName:             gr.RepositoryName,
 		RepositoryOrganizationName: gr.RepositoryOrganizationName,
 		RepositoryProjectSfid:      gr.ProjectSFID,
+		RepositorySfdcID:           gr.RepositorySfdcID,
 		RepositoryType:             gr.RepositoryType,
 		RepositoryURL:              gr.RepositoryURL,
 		RepositoryClaGroupID:       gr.RepositoryCLAGroupID,
