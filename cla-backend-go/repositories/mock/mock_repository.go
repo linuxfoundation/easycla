@@ -22,6 +22,11 @@ type MockRepositoryInterface struct {
 	recorder *MockRepositoryInterfaceMockRecorder
 }
 
+// GitHubDisableRepositoriesOfOrganizationParent implements repositories.RepositoryInterface.
+func (*MockRepositoryInterface) GitHubDisableRepositoriesOfOrganizationParent(ctx context.Context, parentProjectSFID string, githubOrgName string) error {
+	panic("unimplemented")
+}
+
 // MockRepositoryInterfaceMockRecorder is the mock recorder for MockRepositoryInterface.
 type MockRepositoryInterfaceMockRecorder struct {
 	mock *MockRepositoryInterface
