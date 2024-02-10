@@ -2214,7 +2214,8 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 		return nil, err
 	}
 
-	callbackURL := fmt.Sprintf("%s/v4/signed/gerit/individual/%s", s.ClaV4ApiURL, *input.UserID)
+	// s.ClaV4ApiURL = "https://e08f-102-219-103-105.ngrok-free.app"
+	callbackURL := fmt.Sprintf("%s/v4/signed/gerrit/individual/%s", s.ClaV4ApiURL, *input.UserID)
 
 	preferredEmail := ""
 	if user.Emails != nil && len(user.Emails) > 0 {
@@ -2265,6 +2266,21 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 		return nil, err
 	}
 
+	// Get gerrits by claGroupID
+	gerrits, err := s.gerritService.GetClaGroupGerrits(ctx, *input.ProjectID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup gerrits by project ID: %s", *input.ProjectID)
+		return nil, err
+	}
+
+	if len(gerrits.List) == 0 {
+		log.WithFields(f).Warnf("no gerrits found for project ID: %s", *input.ProjectID)
+		return nil, errors.New("no gerrits found for project")
+	}
+
+	returnURL := gerrits.List[0].GerritURL
+	log.WithFields(f).Debugf("returnURL: %s", returnURL)
+
 	if latestSignature != nil {
 		log.WithFields(f).Debugf("comparing latest signature document version: %s to latest document version: %s", latestSignature.SignatureDocumentMajorVersion, latestDocument.DocumentMajorVersion)
 		if latestDocument.DocumentMajorVersion == latestSignature.SignatureDocumentMajorVersion {
@@ -2287,7 +2303,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 				SignatureReferenceName:        latestSignature.SignatureReferenceName,
 				SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
 				SignedOn:                      latestSignature.SignedOn,
-				SignatureReturnURL:            string(input.ReturnURL),
+				SignatureReturnURL:            string(returnURL),
 				SignatureReturnURLType:        input.ReturnURLType,
 				SignatureCallbackURL:          callbackURL,
 				SignatureACL:                  []string{user.LfUsername},
@@ -2311,22 +2327,6 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 		}
 	}
 
-	// Get gerrits by claGroupID
-	gerrits, err := s.gerritService.GetClaGroupGerrits(ctx, *input.ProjectID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to lookup gerrits by project ID: %s", *input.ProjectID)
-		return nil, err
-	}
-
-	if len(gerrits.List) == 0 {
-		log.WithFields(f).Warnf("no gerrits found for project ID: %s", *input.ProjectID)
-		return nil, errors.New("no gerrits found for project")
-	}
-
-	returnURL := gerrits.List[0].GerritURL
-
-	log.WithFields(f).Debugf("returnURL: %s", returnURL)
-
 	// Create a new signature object
 	_, currentTime := utils.CurrentTime()
 	signatureID := uuid.Must(uuid.NewV4()).String()
@@ -2342,7 +2342,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 		SignatureReferenceID:          *input.UserID,
 		SignatureReturnURLType:        input.ReturnURLType,
 		SignatureProjectID:            *input.ProjectID,
-		SignatureReturnURL:            string(input.ReturnURL),
+		SignatureReturnURL:            string(returnURL),
 		SignatureCallbackURL:          callbackURL,
 		SignatureACL:                  []string{user.LfUsername},
 		SignatureDocumentMajorVersion: majorVersion,
