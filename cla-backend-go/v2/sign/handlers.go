@@ -6,7 +6,6 @@ package sign
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -219,13 +218,8 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			}
 
 			log.WithFields(f).Debug("gerrit callback")
-			payload, marshalErr := json.Marshal(params.Body)
-			if marshalErr != nil {
-				log.WithFields(f).WithError(marshalErr).Warn("unable to marshal github callback body")
-				return sign.NewIclaCallbackGithubBadRequest()
-			}
 
-			err := service.SignedIndividualCallbackGerrit(ctx, payload, params.UserID)
+			err := service.SignedIndividualCallbackGerrit(ctx, iclaGitHubPayload, params.UserID)
 			if err != nil {
 				return sign.NewIclaCallbackGerritBadRequest()
 			}
@@ -252,6 +246,7 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 	api.AddMiddlewareFor("POST", "/signed/individual/{installation_id}/{github_repository_id}/{change_request_id}", docusignMiddleware)
 	api.AddMiddlewareFor("POST", "/signed/corporate/{project_id}/{company_id}", cclaDocusignMiddleware)
 	api.AddMiddlewareFor("POST", "/signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}", docusignMiddleware)
+	api.AddMiddlewareFor("POST", "/signed/gerrit/individual/{user_id}", docusignMiddleware)
 }
 
 type codedResponse interface {
