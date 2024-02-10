@@ -19,6 +19,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/emails"
 	"github.com/communitybridge/easycla/cla-backend-go/events"
+	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
 	"github.com/communitybridge/easycla/cla-backend-go/github"
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/project/common"
@@ -111,11 +112,13 @@ type service struct {
 	eventsService         events.Service
 	gitlabActivityService gitlab_activity.Service
 	gitlabApp             *gitlab_api.App
+	gerritService         gerrits.Service
 }
 
 // NewService returns an instance of v2 project service
 func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
-	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface, claLandingPage string, claLogoURL string, emailTemplateService emails.EmailTemplateService, eventsService events.Service, gitlabActivityService gitlab_activity.Service, gitlabApp *gitlab_api.App) Service {
+	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface, claLandingPage string, claLogoURL string, emailTemplateService emails.EmailTemplateService, eventsService events.Service, gitlabActivityService gitlab_activity.Service, gitlabApp *gitlab_api.App,
+	gerritService gerrits.Service) Service {
 	return &service{
 		ClaV4ApiURL:           apiURL,
 		ClaV1ApiURL:           v1API,
@@ -136,6 +139,7 @@ func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo 
 		emailTemplateService:  emailTemplateService,
 		gitlabActivityService: gitlabActivityService,
 		gitlabApp:             gitlabApp,
+		gerritService:         gerritService,
 	}
 }
 
@@ -822,6 +826,166 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 }
 
 func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []byte, userID string) error {
+	f := logrus.Fields{
+		"functionName":   "sign.SignedIndividualCallbackGerrit",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"userID":         userID,
+	}
+
+	log.WithFields(f).Debug("processing signed individual callback...")
+	var info DocuSignEnvelopeInformation
+
+	err := xml.Unmarshal(payload, &info)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to unmarshal xml payload")
+		return err
+	}
+
+	envelopeID := info.EnvelopeStatus.EnvelopeID
+	signatureID := info.EnvelopeStatus.RecipientStatuses[0].ClientUserId
+	status := info.EnvelopeStatus.RecipientStatuses[0].Status
+	signedDate := info.EnvelopeStatus.RecipientStatuses[0].Signed
+	documentID := info.EnvelopeStatus.DocumentStatuses[0].ID
+	fullName := fetchFullName(info)
+
+	log.WithFields(f).Debugf("envelopeID: %s, signatureID: %s, status: %s, signedDate: %s, fullName: %s", envelopeID, signatureID, status, signedDate, fullName)
+
+	_, currentTime := utils.CurrentTime()
+
+	signature, err := s.signatureService.GetSignature(ctx, signatureID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup signature by ID")
+		return err
+	}
+
+	if signature == nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup signature by ID - signature not found")
+		return errors.New("unable to lookup signature by ID - signature not found")
+	}
+
+	if status == DocusignCompleted {
+		log.WithFields(f).Debugf("envelope signed - status: %s", status)
+		updates := map[string]interface{}{
+			"signature_signed":          true,
+			"date_modified":             currentTime,
+			"signed_on":                 currentTime,
+			"user_docusign_raw_xml":     string(payload),
+			"user_docusign_name":        fullName,
+			"user_docusign_date_signed": signedDate,
+		}
+		err = s.signatureService.UpdateSignature(ctx, signatureID, updates)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to update signature record with envelope ID: %s", envelopeID)
+			return err
+		}
+
+		log.WithFields(f).Debugf("updated signature record: %s", signatureID)
+
+		claUser, userErr := s.userService.GetUser(signature.SignatureReferenceID)
+		if userErr != nil {
+			log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", signature.SignatureReferenceID)
+			return userErr
+		}
+
+		if claUser.Username == "" {
+			if fullName != "" {
+				log.WithFields(f).Debugf("setting username for user with :%s", fullName)
+				updates := map[string]interface{}{
+					"user_name": fullName,
+				}
+				log.WithFields(f).Debugf("updating user with username: %s", fullName)
+				_, err = s.userService.UpdateUser(signature.SignatureReferenceID, updates)
+				if err != nil {
+					log.WithFields(f).WithError(err).Warnf("unable to update user with username: %s", fullName)
+					return err
+				}
+			}
+		}
+
+		//Get signed document
+		log.WithFields(f).Debugf("getting signed document for envelope ID: %s", envelopeID)
+		signedDocument, err := s.getSignedDocument(ctx, envelopeID, documentID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get signed document for envelope ID: %s", envelopeID)
+			return err
+		}
+
+		// send email to user
+		log.WithFields(f).Debugf("sending email to user... ")
+		claGroup, err := s.claGroupService.GetCLAGroup(ctx, signature.ProjectID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup CLA Group by ID: %s", signature.ProjectID)
+			return err
+		}
+
+		subject := fmt.Sprintf("EasyCLA: Individual CLA Signed for %s", claGroup.ProjectName)
+		pdfLink := fmt.Sprintf("%s/v3/signatures/%s/%s/icla/pdf", s.ClaV1ApiURL, signature.ProjectID, signature.SignatureReferenceID)
+		emailParams := emails.DocumentSignedTemplateParams{
+			CommonEmailParams: emails.CommonEmailParams{
+				RecipientName: fullName,
+			},
+			PdfLink: pdfLink,
+			ICLA:    true,
+		}
+
+		email := utils.GetBestEmail(claUser)
+		if email == "" {
+			log.WithFields(f).Warnf("unable to find email for user: %+v", claUser)
+			return errors.New("unable to find email for user")
+		}
+
+		recipients := []string{utils.GetBestEmail(claUser)}
+
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectID, emailParams)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
+			return err
+		}
+
+		// send email to user
+		log.WithFields(f).Debugf("sending email to user... ")
+		err = utils.SendEmail(subject, body, recipients)
+
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to send email to user: %s", claUser.Username)
+			return err
+		}
+
+		log.WithFields(f).Debugf("email sent to user: %s", claUser.Username)
+
+		if claUser.UserID == "" {
+			return fmt.Errorf("user id is empty for user: %s", claUser.Username)
+		}
+
+		// store document on S3
+		log.WithFields(f).Debugf("storing signed document on S3...")
+		err = utils.UploadToS3(signedDocument, signature.ProjectID, utils.ClaTypeICLA, claUser.UserID, signature.SignatureID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to store signed document on S3")
+			return err
+		}
+
+		// event data
+		eventData := &events.IndividualSignatureSignedEventData{
+			Username:    fullName,
+			ProjectID:   signature.ProjectID,
+			ProjectName: claGroup.ProjectName,
+		}
+
+		// Log the event
+		log.WithFields(f).Debugf("logging event...")
+		s.eventsService.LogEvent(&events.LogEventArgs{
+			EventType:  events.IndividualSignatureSigned,
+			ProjectID:  signature.ProjectID,
+			UserID:     claUser.UserID,
+			EventData:  eventData,
+			CLAGroupID: signature.ProjectID,
+		})
+
+	} else {
+		log.WithFields(f).Debugf("envelope not signed - status: %s", status)
+	}
+
 	return nil
 }
 
@@ -2026,7 +2190,181 @@ func getLatestSignature(signatures []*v1Models.Signature) *v1Models.Signature {
 }
 
 func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error) {
-	return nil, nil
+	f := logrus.Fields{
+		"functionName":  "sign.RequestIndividualSignatureGerrit",
+		"projectID":     input.ProjectID,
+		"userID":        input.UserID,
+		"returnURL":     input.ReturnURL,
+		"returnURLType": input.ReturnURLType,
+	}
+
+	log.WithFields(f).Debugf("requesting individual signature for user: %s...", *input.UserID)
+
+	// Get the user
+	user, err := s.userService.GetUser(*input.UserID)
+	if err != nil || user == nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup user by ID: %s", *input.UserID)
+		return nil, err
+	}
+
+	// Get the project
+	project, err := s.projectRepo.GetCLAGroupByID(ctx, *input.ProjectID, DontLoadRepoDetails)
+	if err != nil || project == nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup project by ID: %s", *input.ProjectID)
+		return nil, err
+	}
+
+	callbackURL := fmt.Sprintf("%s/v4/signed/gerit/individual/%s", s.ClaV4ApiURL, *input.UserID)
+
+	preferredEmail := ""
+	if user.Emails != nil && len(user.Emails) > 0 {
+		preferredEmail = user.Emails[0]
+	}
+
+	defaultValues := s.createDefaultIndividualValues(user, preferredEmail)
+
+	log.WithFields(f).Debugf("defaultValues: %+v", defaultValues)
+
+	sigParams := sigs.GetUserSignaturesParams{
+		UserID:   *input.UserID,
+		UserName: &user.Username,
+	}
+	userSignatures, err := s.signatureService.GetUserSignatures(ctx, sigParams, input.ProjectID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup user signatures by user ID: %s", *input.UserID)
+		return nil, err
+	}
+
+	latestSignature := getLatestSignature(userSignatures.Signatures)
+
+	//loading latest document
+	log.WithFields(f).Debugf("loading latest individual document for project: %s", *input.ProjectID)
+	latestDocument, err := common.GetCurrentDocument(ctx, project.ProjectIndividualDocuments)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup latest individual document for project: %s", *input.ProjectID)
+		return nil, err
+	}
+
+	if common.AreClaGroupDocumentsEqual(latestDocument, v1Models.ClaGroupDocument{}) {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup latest individual document for project: %s", *input.ProjectID)
+		return nil, errors.New("unable to lookup latest individual document for project")
+	}
+
+	majorVersion, err := strconv.Atoi(latestDocument.DocumentMajorVersion)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert document major version to int: %s", latestDocument.DocumentMajorVersion)
+		return nil, err
+	}
+
+	minorVersion, err := strconv.Atoi(latestDocument.DocumentMinorVersion)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert document minor version to int: %s", latestDocument.DocumentMinorVersion)
+		return nil, err
+	}
+
+	if latestSignature != nil {
+		log.WithFields(f).Debugf("comparing latest signature document version: %s to latest document version: %s", latestSignature.SignatureDocumentMajorVersion, latestDocument.DocumentMajorVersion)
+		if latestDocument.DocumentMajorVersion == latestSignature.SignatureDocumentMajorVersion {
+
+			log.WithFields(f).Warnf("user: already has a signature with this project: %s", *input.ProjectID)
+
+			// Regenerate and set the signing URL - This will update the signature record
+			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
+			_, currentTime := utils.CurrentTime()
+			itemSignature := signatures.ItemSignature{
+				SignatureID:                   latestSignature.SignatureID,
+				DateModified:                  currentTime,
+				SignatureReferenceType:        latestSignature.SignatureReferenceType,
+				SignatureEnvelopeID:           latestSignature.SignatureEnvelopeID,
+				SignatureType:                 latestSignature.SignatureType,
+				SignatureReferenceID:          latestSignature.SignatureReferenceID,
+				SignatureProjectID:            latestSignature.ProjectID,
+				SignatureApproved:             latestSignature.SignatureApproved,
+				SignatureSigned:               latestSignature.SignatureSigned,
+				SignatureReferenceName:        latestSignature.SignatureReferenceName,
+				SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
+				SignedOn:                      latestSignature.SignedOn,
+				SignatureReturnURL:            string(input.ReturnURL),
+				SignatureReturnURLType:        input.ReturnURLType,
+				SignatureCallbackURL:          callbackURL,
+				SignatureACL:                  []string{user.LfUsername},
+				SignatureDocumentMajorVersion: majorVersion,
+				SignatureDocumentMinorVersion: minorVersion,
+			}
+			signURL, signErr := s.populateSignURL(ctx, &itemSignature, callbackURL, "", "", false, "", "", defaultValues, preferredEmail)
+			if signErr != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
+				return nil, signErr
+			}
+
+			return &models.IndividualSignatureOutput{
+				SignURL:     signURL,
+				SignatureID: latestSignature.SignatureID,
+				UserID:      latestSignature.SignatureReferenceID,
+				ProjectID:   *input.ProjectID,
+			}, nil
+		} else {
+			log.WithFields(f).Debugf("user does NOT have a signature with this project : %s", *input.ProjectID)
+		}
+	}
+
+	// Get gerrits by claGroupID
+	gerrits, err := s.gerritService.GetClaGroupGerrits(ctx, *input.ProjectID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to lookup gerrits by project ID: %s", *input.ProjectID)
+		return nil, err
+	}
+
+	if len(gerrits.List) == 0 {
+		log.WithFields(f).Warnf("no gerrits found for project ID: %s", *input.ProjectID)
+		return nil, errors.New("no gerrits found for project")
+	}
+
+	returnURL := gerrits.List[0].GerritURL
+
+	log.WithFields(f).Debugf("returnURL: %s", returnURL)
+
+	// Create a new signature object
+	_, currentTime := utils.CurrentTime()
+	signatureID := uuid.Must(uuid.NewV4()).String()
+
+	itemSignature := signatures.ItemSignature{
+		SignatureID:                   signatureID,
+		DateCreated:                   currentTime,
+		DateModified:                  currentTime,
+		SignatureReferenceType:        utils.SignatureReferenceTypeUser,
+		SignatureSigned:               false,
+		SignatureApproved:             true,
+		SignatureType:                 utils.SignatureTypeCLA,
+		SignatureReferenceID:          *input.UserID,
+		SignatureReturnURLType:        input.ReturnURLType,
+		SignatureProjectID:            *input.ProjectID,
+		SignatureReturnURL:            string(input.ReturnURL),
+		SignatureCallbackURL:          callbackURL,
+		SignatureACL:                  []string{user.LfUsername},
+		SignatureDocumentMajorVersion: majorVersion,
+		SignatureDocumentMinorVersion: minorVersion,
+		SignatureReferenceNameLower:   strings.ToLower(getUserName(user)),
+	}
+
+	log.WithFields(f).Debugf("populating sign url for user: %s...", *input.UserID)
+
+	signURL, signErr := s.populateSignURL(ctx, &itemSignature, callbackURL, "", "", false, "", "", defaultValues, preferredEmail)
+	if signErr != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
+		return nil, signErr
+	}
+
+	return &models.IndividualSignatureOutput{
+		SignURL:     signURL,
+		SignatureID: signatureID,
+		UserID:      *input.UserID,
+		ProjectID:   *input.ProjectID,
+	}, nil
+
 }
 
 func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, input *requestCorporateSignatureInput, comp *v1Models.Company, proj *v1Models.ClaGroup, lfUsername string, currentUserEmail string) (*v1Models.Signature, error) {
