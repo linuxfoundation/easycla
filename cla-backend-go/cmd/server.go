@@ -305,7 +305,7 @@ func server(localMode bool) http.Handler {
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo)
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepository, usersService, signaturesRepo, v1CompanyRepo)
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation, v1RepositoriesService, githubOrganizationsService, v1ProjectService, gitlabApp, configFile.ClaV1ApiURL, configFile.CLALandingPage, configFile.CLALogoURL)
-	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService)
+	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, eventsService)
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV1URL)
 	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
 	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)

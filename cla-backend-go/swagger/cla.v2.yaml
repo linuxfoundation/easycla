@@ -2326,7 +2326,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/signatures'
+            $ref: '#/definitions/corporate-signatures'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -4916,6 +4916,15 @@ definitions:
 
   signature:
     $ref: './common/signature.yaml'
+  
+  corporate-signatures:
+    $ref: './common/corporate-signatures.yaml'
+  
+  corporate-signature:
+    $ref: './common/corporate-signature.yaml'
+  
+  approval-item:
+    $ref: './common/approval-item.yaml'
 
   icla-signatures:
     $ref: './common/icla-signatures.yaml'

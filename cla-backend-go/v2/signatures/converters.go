@@ -6,8 +6,11 @@ package signatures
 import (
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -48,6 +51,116 @@ func v2SignaturesReplaceCompanyID(src *v1Models.Signatures, internalID, external
 	}
 
 	return &dst, nil
+}
+
+func (s *Service) v2SignaturesToCorporateSignatures(src models.Signatures, projectSFID string) (*models.CorporateSignatures, error) {
+	var dst models.CorporateSignatures
+	err := copier.Copy(&dst, src)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert the individual signatures
+	for _, sigSrc := range src.Signatures {
+		for _, sigDest := range dst.Signatures {
+			err = s.TransformSignatureToCorporateSignature(sigSrc, sigDest, projectSFID)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return &dst, nil
+}
+
+// TransformSignatureToCorporateSignature transforms a Signature model into a CorporateSignature model
+func (s *Service) TransformSignatureToCorporateSignature(signature *models.Signature, corporateSignature *models.CorporateSignature, projectSFID string) error {
+	f := logrus.Fields{
+		"functionName": "TransformSignatureToCorporateSignature",
+		"signatureID":  signature.SignatureID,
+	}
+
+	var wg sync.WaitGroup
+	var errMutex sync.Mutex
+	var err error
+
+	transformApprovalList := func(approvalList []string, listType string, destinationList *[]*models.ApprovalItem) {
+		defer wg.Done()
+		for _, item := range approvalList {
+			searchTerm := fmt.Sprintf("%s was added to the approval list", item)
+
+			pageSize := int64(10000)
+			result, eventErr := s.eventService.SearchEvents(&events.SearchEventsParams{
+				SearchTerm: &searchTerm,
+				ProjectID:  &projectSFID,
+				PageSize:   &pageSize,
+			})
+			if eventErr != nil {
+				errMutex.Lock()
+				err = eventErr
+				errMutex.Unlock()
+				return
+			}
+			approvalItem := &models.ApprovalItem{
+				ApprovalItem: item,
+			}
+			if len(result.Events) > 0 {
+				event := getLatestEvent(result.Events)
+				approvalItem.DateAdded = event.EventTime
+			} else {
+				log.WithFields(f).Debugf("no events found for %s: %s", listType, item)
+			}
+			*destinationList = append(*destinationList, approvalItem)
+		}
+	}
+
+	// Transform domain approval list
+	wg.Add(1)
+	go transformApprovalList(signature.DomainApprovalList, "domain", &corporateSignature.DomainApprovalList)
+
+	// Transform email approval list
+	wg.Add(1)
+	go transformApprovalList(signature.EmailApprovalList, "email", &corporateSignature.EmailApprovalList)
+
+	// Transform GitHub org approval list
+	wg.Add(1)
+	go transformApprovalList(signature.GithubOrgApprovalList, "githubOrg", &corporateSignature.GithubOrgApprovalList)
+
+	// Transform GitHub username approval list
+	wg.Add(1)
+	go transformApprovalList(signature.GithubUsernameApprovalList, "githubUsername", &corporateSignature.GithubUsernameApprovalList)
+
+	// Transform GitLab org approval list
+	wg.Add(1)
+	go transformApprovalList(signature.GitlabOrgApprovalList, "gitlabOrg", &corporateSignature.GitlabOrgApprovalList)
+
+	// Transform GitLab username approval list
+	wg.Add(1)
+	go transformApprovalList(signature.GitlabUsernameApprovalList, "gitlabUsername", &corporateSignature.GitlabUsernameApprovalList)
+
+	wg.Wait()
+
+	return err
+}
+
+func getLatestEvent(events []*v1Models.Event) *v1Models.Event {
+	var latest *v1Models.Event
+	var latestTime time.Time
+
+	for _, item := range events {
+		t, err := utils.ParseDateTime(item.EventTime)
+		if err != nil {
+			log.Debugf("Error parsing time: %+v ", err)
+			continue
+		}
+
+		if latest == nil || t.After(latestTime) {
+			latest = item
+			latestTime = t
+		}
+	}
+
+	return latest
 }
 
 func iclaSigCsvHeader() string {
