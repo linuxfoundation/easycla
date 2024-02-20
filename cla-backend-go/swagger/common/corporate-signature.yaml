@@ -1,0 +1,188 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+title: A signature model
+description: A signature - may be an ICLA or CCLA signature
+properties:
+  signatureID:
+    description: the signature ID
+    $ref: './common/properties/internal-id.yaml'
+  claType:
+    type: string
+    description: >
+      CLA Type field - identifies the specify signature type - individual, employee or corporate signature, valid options:
+      * `icla` - for individual contributor signature records (individuals not associated with a corporation)
+      * `ecla` - for employee contributor signature records (acknowledgements from corporate contributors)
+      * `ccla` - for corporate contributor signature records (created by CLA Signatories and managed by CLA Managers)
+    enum: [ icla,ecla,ccla ]
+  signatureCreated:
+    type: string
+    description: the signature record created time
+    example: '2019-05-03T18:59:13.082304+0000'
+    minLength: 18
+    maxLength: 64
+  signatureModified:
+    type: string
+    description: the signature modified created time
+    example: '2019-05-03T18:59:13.082304+0000'
+    minLength: 18
+    maxLength: 64
+  signatureSigned:
+    type: boolean
+    description: the signature signed flag - true or false value
+    example: true
+    x-omitempty: false
+  signatureApproved:
+    type: boolean
+    description: the signature approved flag - true or false value
+    example: true
+    x-omitempty: false
+  signatureReferenceType:
+    type: string
+    description: the signature reference type - either user or company
+    example: 'user'
+    minLength: 2
+    maxLength: 12
+  signatureReferenceID:
+    description: the signature reference ID which references a compnay ID or user ID
+    $ref: './common/properties/internal-id.yaml'
+  signatureReferenceName:
+    type: string
+  signatureReferenceNameLower:
+    type: string
+  signatureType:
+    type: string
+    description: the signature type - either cla or ccla
+    example: 'ccla'
+    minLength: 2
+    maxLength: 12
+  signedOn:
+    type: string
+  signatoryName:
+    type: string
+  signatureACL:
+    type: array
+    items:
+      $ref: '#/definitions/user'
+  userName:
+    type: string
+  companyName:
+    $ref: './common/properties/company-name.yaml'
+  signingEntityName:
+    $ref: './common/properties/company-signing-entity-name.yaml'
+  projectID:
+    type: string
+    description: the CLA Group ID
+  userGHID:
+    type: string
+    description: the user's GitHub ID, when available
+    example: '13434323'
+  userGHUsername:
+    type: string
+    description: the user's GitHub username, when available
+    example: 'github-user'
+  userGitlabID:
+    type: string
+    description: the user's Gitlab ID, when available
+    example: '1864'
+  userGitlabUsername:
+    type: string
+    description: the user's Gitlab username, when available
+    example: 'gitlab-user'
+  userLFID:
+    type: string
+    description: the user's LF Login ID
+    example: abc1234
+  version:
+    type: string
+    description: the version of the signature record
+    example: v1
+    minLength: 2
+    maxLength: 12
+  created:
+    type: string
+    description: the date/time when this signature record was created
+    example: '2017-04-19T16:42:00.000000+0000'
+  modified:
+    type: string
+    description: the date/time when this signature record was last modified
+    example: '2019-07-15T15:28:33.127118+0000'
+  signatureMajorVersion:
+    type: string
+    description: the signature major version number
+    example: '2'
+  signatureMinorVersion:
+    type: string
+    description: the signature minor version number
+    example: '1'
+  signatureDocumentMajorVersion:
+    type: string
+    description: the signature documentt major version
+  signatureDocumentMinorVersion:
+    type: string
+    description: the signature document minor version
+  signatureSignURL:
+    type: string
+    description: the signature Document Sign URL
+  sigTypeSignedApprovedId:
+    type: string
+  signatureCallbackURL:
+    type: string
+    description: the signature callback URL
+  signatureReturnURL:
+    type: string
+    description: the signature return URL
+  signatureReturnURLType:
+    type: string
+    description: the signature return URL type
+  signatureEnvelopeId:
+    type: string
+    description: the signature envelope ID
+  emailApprovalList:
+    type: array
+    description: a list of zero or more email addresses in the approval list
+    x-nullable: true
+    items:
+      $ref: "#/definitions/approval-item"
+  domainApprovalList:
+    type: array
+    description: a list of zero or more domains in the approval list
+    x-nullable: true
+    items:
+      $ref: "#/definitions/approval-item"
+  githubUsernameApprovalList:
+    type: array
+    description: a list of zero or more GitHub user name values in the approval list
+    x-nullable: true
+    items:
+      $ref: "#/definitions/approval-item"
+  githubOrgApprovalList:
+    type: array
+    description: a list of zero or more GitHub organization values in the approval list
+    x-nullable: true
+    items:
+      $ref: "#/definitions/approval-item"
+  gitlabUsernameApprovalList:
+    type: array
+    description: a list of zero or more Gitlab user name values in the approval list
+    x-nullable: true
+    items:
+      $ref: "#/definitions/approval-item"
+  gitlabOrgApprovalList:
+    type: array
+    description: a list of zero or more Gitlab organization values in the approval list
+    x-nullable: true
+    items:
+      $ref: "#/definitions/approval-item"
+  userDocusignName:
+    type: string
+    description: full name used on docusign document
+  userDocusignDateSigned:
+    type: string
+    description: docusign signature date
+  autoCreateECLA:
+    type: boolean
+    description: flag to indicate if the product should automatically create an employee acknowledgement for a given user when the CLA manager adds the user to the email, GitLab username, or GitLab username approval list
+    example: true
+    x-omitempty: false

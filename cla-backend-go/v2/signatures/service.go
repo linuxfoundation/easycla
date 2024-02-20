@@ -47,7 +47,7 @@ var (
 
 // ServiceInterface contains method of v2 signature service
 type ServiceInterface interface {
-	GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error)
+	GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.CorporateSignatures, error)
 	GetProjectIclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
 	GetProjectCclaSignaturesCsv(ctx context.Context, claGroupID string) ([]byte, error)
 	GetProjectIclaSignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error)
@@ -70,13 +70,14 @@ type Service struct {
 	projectsClaGroupsRepo projects_cla_groups.Repository
 	s3                    *s3.S3
 	signaturesBucket      string
+	eventService          events.Service
 }
 
 // NewService creates instance of v2 signature service
 func NewService(awsSession *session.Session, signaturesBucketName string, v1ProjectService service.Service,
 	v1CompanyService company.IService,
 	v1SignatureService signatures.SignatureService,
-	pcgRepo projects_cla_groups.Repository, v1SignatureRepo signatures.SignatureRepository, usersService users.Service) *Service {
+	pcgRepo projects_cla_groups.Repository, v1SignatureRepo signatures.SignatureRepository, usersService users.Service, eventService events.Service) *Service {
 	return &Service{
 		v1ProjectService:      v1ProjectService,
 		v1CompanyService:      v1CompanyService,
@@ -86,11 +87,12 @@ func NewService(awsSession *session.Session, signaturesBucketName string, v1Proj
 		projectsClaGroupsRepo: pcgRepo,
 		s3:                    s3.New(awsSession),
 		signaturesBucket:      signaturesBucketName,
+		eventService:          eventService,
 	}
 }
 
 // GetProjectCompanySignatures return the signatures for the specified project and company information
-func (s *Service) GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.Signatures, error) {
+func (s *Service) GetProjectCompanySignatures(ctx context.Context, companyID, companySFID, projectSFID string) (*models.CorporateSignatures, error) {
 	pm, err := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 	if err != nil {
 		return nil, err
@@ -110,7 +112,12 @@ func (s *Service) GetProjectCompanySignatures(ctx context.Context, companyID, co
 		resp.ProjectID = sig.ProjectID
 		resp.Signatures = append(resp.Signatures, sig)
 	}
-	return v2SignaturesReplaceCompanyID(resp, companyID, companySFID)
+	oldformatSignatures, err := v2SignaturesReplaceCompanyID(resp, companyID, companySFID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.v2SignaturesToCorporateSignatures(*oldformatSignatures, projectSFID)
 }
 
 // eclaSigCsvLine returns a single ECLA signature CSV line
