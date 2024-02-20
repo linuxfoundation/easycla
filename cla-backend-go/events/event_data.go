@@ -2754,9 +2754,14 @@ func (ed *SignatureAutoCreateECLAUpdatedEventData) GetEventSummaryString(args *L
 }
 
 func (ed *IndividualSignatureSignedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s signed an individual CLA for project %s with project ID: %s",
-		args.LfUsername, ed.ProjectName, ed.ProjectID)
-	return data, false
+	data := fmt.Sprintf("The user %s signed an individual CLA", args.LfUsername)
+	if ed.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", ed.ProjectName)
+	}
+	if ed.ProjectID != "" {
+		data = data + fmt.Sprintf(" with project ID: %s", ed.ProjectID)
+	}
+	return data + ".", false
 }
 
 func (ed *IndividualSignatureSignedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
