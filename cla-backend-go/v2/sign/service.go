@@ -140,6 +140,7 @@ func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo 
 		gitlabActivityService: gitlabActivityService,
 		gitlabApp:             gitlabApp,
 		gerritService:         gerritService,
+		eventsService:         eventsService,
 	}
 }
 
@@ -522,7 +523,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 		recipients := []string{utils.GetBestEmail(claUser)}
 
-		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectID, emailParams)
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectExternalID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
 			return err
@@ -551,19 +552,38 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 			return err
 		}
 
+		log.WithFields(f).Debugf("cla_group : %+v", claGroup)
+
+		pcg, err := s.projectClaGroupsRepo.GetCLAGroup(ctx, signature.ProjectID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to lookup project cla group by project ID: %s", signature.ProjectID)
+			return err
+		}
+
+		log.WithFields(f).Debugf("project cla group: %+v", pcg)
+		projectName := claGroup.ProjectName
+		if projectName == "" {
+			projectName = pcg.ProjectName
+			log.WithFields(f).Debugf("project name not found in cla_group, using project cla group name: %s", projectName)
+		}
+		log.WithFields(f).Debugf("project name: %s", projectName)
+
 		// Log the event
-		log.WithFields(f).Debugf("logging event...")
-		s.eventsService.LogEvent(&events.LogEventArgs{
-			EventType: events.IndividualSignatureSigned,
-			ProjectID: signature.ProjectID,
-			UserID:    claUser.UserID,
-			EventData: &events.IndividualSignatureSignedEventData{
-				ProjectName: claGroup.ProjectName,
-				Username:    fullName,
-				ProjectID:   signature.ProjectID,
-			},
+		eventData := events.IndividualSignatureSignedEventData{
+			ProjectName: projectName,
+			ProjectID:   signature.ProjectID,
+		}
+		log.WithFields(f).Debugf("logging event: %+v", eventData)
+		eventArgs := &events.LogEventArgs{
+			EventType:  events.IndividualSignatureSigned,
+			ProjectID:  signature.ProjectID,
+			UserID:     claUser.UserID,
+			LfUsername: fullName,
+			EventData:  &eventData,
 			CLAGroupID: signature.ProjectID,
-		})
+		}
+		log.WithFields(f).Debugf("logging event: %+v", eventArgs)
+		s.eventsService.LogEvent(eventArgs)
 
 	} else {
 		log.WithFields(f).Debugf("envelope not signed - status: %s", status)
@@ -776,7 +796,7 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 
 		recipients := []string{utils.GetBestEmail(claUser)}
 
-		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectID, emailParams)
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectExternalID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
 			return err
@@ -1545,12 +1565,8 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		return "", err
 	}
 
-	// s.ClaV4ApiURL = "https://dc35-41-210-154-131.ngrok-free.app"
-
 	callbackURL := fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID)
-
 	return callbackURL, nil
-
 }
 
 //nolint:gocyclo
