@@ -197,7 +197,7 @@ provider:
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-events/index/event-foundation-sfid-event-time-epoch-index"
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-events/index/event-company-sfid-event-data-lower-index"
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-events/index/company-sfid-cla-group-id-event-time-epoch-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-events/index/project-sfid-event-type-index"
+            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-events/index/event-project-sfid-event-type-index"
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-metrics/index/metric-type-salesforce-id-index"
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-cla-manager-requests/index/cla-manager-requests-company-project-index"
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-cla-manager-requests/index/cla-manager-requests-external-company-project-index"
