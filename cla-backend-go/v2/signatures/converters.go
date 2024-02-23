@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	v1Events "github.com/communitybridge/easycla/cla-backend-go/events"
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
@@ -90,10 +91,12 @@ func (s *Service) TransformSignatureToCorporateSignature(signature *models.Signa
 			searchTerm := fmt.Sprintf("%s was added to the approval list", item)
 
 			pageSize := int64(10000)
+			eventType := v1Events.ClaApprovalListUpdated
 			result, eventErr := s.eventService.SearchEvents(&events.SearchEventsParams{
-				SearchTerm: &searchTerm,
-				ProjectID:  &projectSFID,
-				PageSize:   &pageSize,
+				SearchTerm:  &searchTerm,
+				ProjectSFID: &projectSFID,
+				EventType:   &eventType,
+				PageSize:    &pageSize,
 			})
 			if eventErr != nil {
 				errMutex.Lock()
