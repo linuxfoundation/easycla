@@ -2300,6 +2300,7 @@ paths:
         - $ref: '#/parameters/userID'
         - $ref: '#/parameters/companyID'
         - $ref: '#/parameters/projectID'
+        - $ref: '#/parameters/projectSFID'
         - $ref: '#/parameters/before'
         - $ref: '#/parameters/after'
         - $ref: '#/parameters/userName'
@@ -2549,6 +2550,11 @@ parameters:
   projectID:
     name: projectID
     description: unique id of the project
+    in: query
+    type: string
+  projectSFID:
+    name: projectSFID
+    description: unique id of the SF project
     in: query
     type: string
   companyID:

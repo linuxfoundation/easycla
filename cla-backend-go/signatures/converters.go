@@ -162,10 +162,10 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 					if loadACLDetails {
 						userModel, userErr := repo.usersRepo.GetUserByUserName(userName, true)
 						if userErr != nil {
-							log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by userNmae: %s in ACL for signature: %s", userName, sigModel.SignatureID)
+							log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by username: %s in ACL for signature: %s", userName, sigModel.SignatureID)
 						} else {
 							if userModel == nil {
-								log.WithFields(f).Warnf("unable to lookup user by userNmae: %s in ACL for signature: %s", userName, sigModel.SignatureID)
+								log.WithFields(f).Warnf("unable to lookup user by username: %s in ACL for signature: %s", userName, sigModel.SignatureID)
 							} else {
 								signatureACL = append(signatureACL, *userModel)
 							}

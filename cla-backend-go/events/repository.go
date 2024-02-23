@@ -48,6 +48,7 @@ const (
 	EventCompanySFIDEventDataLowerIndex           = "event-company-sfid-event-data-lower-index"
 	CompanyIDExternalProjectIDEventEpochTimeIndex = "company-id-external-project-id-event-epoch-time-index"
 	CompanySFIDClaGroupIDEpochIndex               = "company-sfid-cla-group-id-event-time-epoch-index"
+	EventProjectSFIDEventTypeIndex                = "event-project-sfid-event-type-index"
 )
 
 // constants
@@ -254,8 +255,8 @@ func (repo *repository) SearchEvents(params *eventOps.SearchEventsParams, pageSi
 		"pageSize":     pageSize,
 	}
 
-	if params.ProjectID == nil {
-		return nil, errors.New("invalid request. projectID is compulsory")
+	if params.ProjectID == nil && params.ProjectSFID == nil {
+		return nil, errors.New("invalid request. projectID|projectSFID is compulsory")
 	}
 	var condition expression.KeyConditionBuilder
 	var indexName, pk, sk string
@@ -269,7 +270,14 @@ func (repo *repository) SearchEvents(params *eventOps.SearchEventsParams, pageSi
 		pk = "event_project_id"
 		condition = addTimeExpression(condition, params)
 		sk = "event_time_epoch"
+	case params.ProjectSFID != nil:
+		// search by projectSFID
+		indexName = EventProjectSFIDEventTypeIndex
+		condition = expression.Key("event_project_sfid").Equal(expression.Value(params.ProjectSFID)).And(expression.Key("event_type").Equal(expression.Value(params.EventType)))
+		pk = "event_project_sfid"
+		sk = "event_type"
 	}
+
 	filter := createSearchEventFilter(pk, sk, params)
 	if filter != nil {
 		builder = builder.WithFilter(*filter)
