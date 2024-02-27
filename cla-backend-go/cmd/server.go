@@ -367,6 +367,11 @@ func server(localMode bool) http.Handler {
 	sign.Configure(v2API, v2SignService, usersService)
 	v2GithubActivity.Configure(v2API, v2GithubActivityService)
 
+	v2API.AddMiddlewareFor("POST", "/signed/individual/{installation_id}/{github_repository_id}/{change_request_id}", sign.DocusignMiddleware)
+	v2API.AddMiddlewareFor("POST", "/signed/corporate/{project_id}/{company_id}", sign.CCLADocusignMiddleware)
+	v2API.AddMiddlewareFor("POST", "/signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}", sign.DocusignMiddleware)
+	v2API.AddMiddlewareFor("POST", "/signed/gerrit/individual/{user_id}", sign.DocusignMiddleware)
+
 	userCreaterMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			createUserFromRequest(authorizer, usersService, eventsService, r)
