@@ -32,8 +32,8 @@ var (
 	cclaDocusignPayload []byte
 )
 
-// docusignMiddleware is used to get access to xml request body
-func docusignMiddleware(next http.Handler) http.Handler {
+// DocusignMiddleware is used to get access to xml request body
+func DocusignMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f := logrus.Fields{
 			"functionName": "v2.sign.handlers.docusignMiddleware",
@@ -53,7 +53,8 @@ func docusignMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func cclaDocusignMiddleware(next http.Handler) http.Handler {
+// CCLADocusignMiddleware used to set CCLA middleware
+func CCLADocusignMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f := logrus.Fields{
 			"functionName": "v2.sign.handlers.cclaDocusignMiddleware",
@@ -243,10 +244,6 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			return sign.NewCclaCallbackOK()
 		})
 
-	api.AddMiddlewareFor("POST", "/signed/individual/{installation_id}/{github_repository_id}/{change_request_id}", docusignMiddleware)
-	api.AddMiddlewareFor("POST", "/signed/corporate/{project_id}/{company_id}", cclaDocusignMiddleware)
-	api.AddMiddlewareFor("POST", "/signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}", docusignMiddleware)
-	api.AddMiddlewareFor("POST", "/signed/gerrit/individual/{user_id}", docusignMiddleware)
 }
 
 type codedResponse interface {
