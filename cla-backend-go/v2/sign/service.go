@@ -292,7 +292,22 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		log.WithFields(f).Warn("unable to request corporate signature - missing corporate documents in the CLA Group configuration")
 		return nil, ErrTemplateNotConfigured
 	}
+
 	var currentUserEmail string
+	log.WithFields(f).Debugf("Loading user by username: %s...", lfUsername)
+	userModel, userErr := usc.GetUserByUsername(lfUsername)
+	if userErr != nil {
+		return nil, userErr
+	}
+
+	if userModel != nil {
+		for _, email := range userModel.Emails {
+			if email != nil && *email.IsPrimary {
+				currentUserEmail = *email.EmailAddress
+			}
+		}
+	}
+
 	// Email flow
 	if input.SendAsEmail {
 		log.WithFields(f).Debugf("Sending request as an email to: %s...", input.AuthorityEmail.String())
@@ -306,20 +321,6 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 	} else {
 		// Direct to DocuSign flow...
-
-		log.WithFields(f).Debugf("Loading user by username: %s...", lfUsername)
-		userModel, userErr := usc.GetUserByUsername(lfUsername)
-		if userErr != nil {
-			return nil, userErr
-		}
-
-		if userModel != nil {
-			for _, email := range userModel.Emails {
-				if email != nil && *email.IsPrimary {
-					currentUserEmail = *email.EmailAddress
-				}
-			}
-		}
 
 		err = prepareUserForSigning(ctx, currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
 		if err != nil {
@@ -1171,8 +1172,10 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 			CompanyName:   companyModel.CompanyName,
 			SignatoryName: getUserName(user),
 		},
-		CLAGroupID: projectID,
-		UserID:     user.UserID,
+		CLAGroupID:  projectID,
+		UserID:      user.UserID,
+		CompanyID:   companyID,
+		CompanySFID: companyModel.CompanyExternalID,
 	})
 
 	return nil
