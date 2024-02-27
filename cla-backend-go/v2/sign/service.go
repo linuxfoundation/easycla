@@ -1058,16 +1058,18 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 	clientUserID := info.EnvelopeStatus.RecipientStatuses[0].ClientUserId
 	if clientUserID == "" {
 		approved := true
-		signatures, sigErr := s.signatureService.GetCorporateSignatures(ctx, companyID, projectID, &approved, nil)
+		var sigErr error
+		signature, sigErr = s.signatureService.GetCorporateSignature(ctx, projectID, companyID, &approved, nil)
+		// signatures, sigErr := s.signatureService.GetCorporateSignatures(ctx, companyID, projectID, &approved, nil)
 		if sigErr != nil {
 			log.WithFields(f).WithError(sigErr).Warnf("unable to lookup corporate signatures by company ID: %s, project ID: %s", companyID, projectID)
 			return sigErr
 		}
-		if len(signatures) == 0 {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup corporate signatures by company ID: %s, project ID: %s - not found", companyID, projectID)
-			return errors.New("unable to lookup corporate signatures by company ID - not found")
-		}
-		signature = getLatestSignature(signatures)
+		// if len(signatures) == 0 {
+		// 	log.WithFields(f).WithError(err).Warnf("unable to lookup corporate signatures by company ID: %s, project ID: %s - not found", companyID, projectID)
+		// 	return errors.New("unable to lookup corporate signatures by company ID - not found")
+		// }
+		// signature = getLatestSignature(signatures)
 		log.WithFields(f).Debugf("signature: %+v", signature)
 		signatureID = signature.SignatureID
 	} else {
@@ -1170,6 +1172,7 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 			SignatoryName: getUserName(user),
 		},
 		CLAGroupID: projectID,
+		UserID:     user.UserID,
 	})
 
 	return nil
