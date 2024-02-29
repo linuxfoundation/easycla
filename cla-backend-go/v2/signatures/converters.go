@@ -7,11 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
-	v1Events "github.com/communitybridge/easycla/cla-backend-go/events"
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -82,37 +79,39 @@ func (s *Service) TransformSignatureToCorporateSignature(signature *models.Signa
 	}
 
 	var wg sync.WaitGroup
-	var errMutex sync.Mutex
+	// var errMutex sync.Mutex
 	var err error
 
 	transformApprovalList := func(approvalList []string, listType string, destinationList *[]*models.ApprovalItem) {
 		defer wg.Done()
 		for _, item := range approvalList {
-			searchTerm := fmt.Sprintf("%s was added to the approval list", item)
+			// searchTerm := fmt.Sprintf("%s was added to the approval list", item)
 
-			pageSize := int64(10000)
-			eventType := v1Events.ClaApprovalListUpdated
-			result, eventErr := s.eventService.SearchEvents(&events.SearchEventsParams{
-				SearchTerm:  &searchTerm,
-				ProjectSFID: &projectSFID,
-				EventType:   &eventType,
-				PageSize:    &pageSize,
-			})
-			if eventErr != nil {
-				errMutex.Lock()
-				err = eventErr
-				errMutex.Unlock()
-				return
-			}
+			// pageSize := int64(10000)
+			// eventType := v1Events.ClaApprovalListUpdated
+			// result, eventErr := s.eventService.SearchEvents(&events.SearchEventsParams{
+			// 	SearchTerm:  &searchTerm,
+			// 	ProjectSFID: &projectSFID,
+			// 	EventType:   &eventType,
+			// 	PageSize:    &pageSize,
+			// })
+			// if eventErr != nil {
+			// 	errMutex.Lock()
+			// 	err = eventErr
+			// 	errMutex.Unlock()
+			// 	return
+			// }
 			approvalItem := &models.ApprovalItem{
 				ApprovalItem: item,
+				DateAdded:    signature.SignatureModified,
 			}
-			if len(result.Events) > 0 {
-				event := getLatestEvent(result.Events)
-				approvalItem.DateAdded = event.EventTime
-			} else {
-				log.WithFields(f).Debugf("no events found for %s: %s", listType, item)
-			}
+			// if len(result.Events) > 0 {
+			// 	event := getLatestEvent(result.Events)
+			// 	approvalItem.DateAdded = event.EventTime
+			// } else {
+			// 	log.WithFields(f).Debugf("no events found for %s: %s", listType, item)
+			// }
+			log.WithFields(f).Debugf("approvalItem: %+v and list type: %s", approvalItem, listType)
 			*destinationList = append(*destinationList, approvalItem)
 		}
 	}
@@ -146,25 +145,25 @@ func (s *Service) TransformSignatureToCorporateSignature(signature *models.Signa
 	return err
 }
 
-func getLatestEvent(events []*v1Models.Event) *v1Models.Event {
-	var latest *v1Models.Event
-	var latestTime time.Time
+// func getLatestEvent(events []*v1Models.Event) *v1Models.Event {
+// 	var latest *v1Models.Event
+// 	var latestTime time.Time
 
-	for _, item := range events {
-		t, err := utils.ParseDateTime(item.EventTime)
-		if err != nil {
-			log.Debugf("Error parsing time: %+v ", err)
-			continue
-		}
+// 	for _, item := range events {
+// 		t, err := utils.ParseDateTime(item.EventTime)
+// 		if err != nil {
+// 			log.Debugf("Error parsing time: %+v ", err)
+// 			continue
+// 		}
 
-		if latest == nil || t.After(latestTime) {
-			latest = item
-			latestTime = t
-		}
-	}
+// 		if latest == nil || t.After(latestTime) {
+// 			latest = item
+// 			latestTime = t
+// 		}
+// 	}
 
-	return latest
-}
+// 	return latest
+// }
 
 func iclaSigCsvHeader() string {
 	return `Name,GitHub Username,GitLab Username,LF_ID,Email,Signed Date,Approved,Signed`
