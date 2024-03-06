@@ -295,11 +295,17 @@ func (lfg *LFGroup) AddUserToGroup(ctx context.Context, authUser *auth.User, cla
 	// Check the response code to see how it went - response payload is undefined - just looking for a successful response status code
 	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		log.WithFields(f).Debugf("successfully added user: %s to group: %s", userName, groupName)
+		lfUsername := ""
+		username := ""
+		if authUser != nil {
+			lfUsername = authUser.UserName
+			username = authUser.UserName
+		}
 		// Create a log event indicating our success
 		lfg.EventsService.LogEventWithContext(ctx, &events.LogEventArgs{
 			EventType:  events.GerritUserAdded,
-			LfUsername: authUser.UserName,
-			UserName:   authUser.UserName,
+			LfUsername: lfUsername,
+			UserName:   username,
 			CLAGroupID: claGroupID,
 			EventData: &events.GerritUserAddedEventData{
 				Username:  userName,
