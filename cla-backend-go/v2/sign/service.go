@@ -1003,6 +1003,16 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 			CLAGroupID: signature.ProjectID,
 		})
 
+		// Add User to Gerrit Group
+		log.WithFields(f).Debugf("adding user to ldap group...")
+		if claUser.LfUsername != "" {
+			err = s.gerritService.AddUserToGroup(ctx, nil, signature.ProjectID, claUser.LfUsername, utils.ClaTypeICLA)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to add user to gerrit group")
+				return err
+			}
+		}
+
 	} else {
 		log.WithFields(f).Debugf("envelope not signed - status: %s", status)
 	}
