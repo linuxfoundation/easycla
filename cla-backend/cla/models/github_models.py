@@ -1277,39 +1277,39 @@ def get_author_summary(commit,pr) -> UserCommitSummary:
             cla.log.debug(f'{fn} - PR: {pr}, {commit_author_summary}')
             # check for co-author details
             # issue # 3884
-            co_authors = cla.utils.get_co_authors_from_commit(commit)
-            for co_author in co_authors:
-                # check if co-author is a github user
-                login, github_id = None, None
-                email = co_author[1]
-                name = co_author[0]
-                # get repository service
-                github = cla.utils.get_repository_service('github')
-                cla.log.debug(f'{fn} - getting co-author details: {co_author}, email: {email}, name: {name}')
-                try:
-                    user = github.get_github_user_by_email(email, installation_id)
-                except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
-                    # user not found
-                    cla.log.debug(f'{fn} - co-author github user not found : {co_author} with exception: {ex}')
-                    user = None
-                cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
-                if user:
-                    cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
-                    login = user.login
-                    github_id = user.id
-                    co_author_summary = UserCommitSummary(
-                        commit.sha,
-                        github_id,
-                        login,
-                        name,
-                        email,
-                        False, False  # default not authorized - will be evaluated and updated later
-                    )
-                    cla.log.debug(f'{fn} - PR: {pull_request.number}, {co_author_summary}')
-                    commit_authors.append(co_author_summary)
-                else:
-                    cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
-            return commit_author_summary
+            # co_authors = cla.utils.get_co_authors_from_commit(commit)
+            # for co_author in co_authors:
+            #     # check if co-author is a github user
+            #     login, github_id = None, None
+            #     email = co_author[1]
+            #     name = co_author[0]
+            #     # get repository service
+            #     github = cla.utils.get_repository_service('github')
+            #     cla.log.debug(f'{fn} - getting co-author details: {co_author}, email: {email}, name: {name}')
+            #     try:
+            #         user = github.get_github_user_by_email(email, installation_id)
+            #     except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
+            #         # user not found
+            #         cla.log.debug(f'{fn} - co-author github user not found : {co_author} with exception: {ex}')
+            #         user = None
+            #     cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
+            #     if user:
+            #         cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
+            #         login = user.login
+            #         github_id = user.id
+            #         co_author_summary = UserCommitSummary(
+            #             commit.sha,
+            #             github_id,
+            #             login,
+            #             name,
+            #             email,
+            #             False, False  # default not authorized - will be evaluated and updated later
+            #         )
+            #         cla.log.debug(f'{fn} - PR: {pull_request.number}, {co_author_summary}')
+            #         commit_authors.append(co_author_summary)
+            #     else:
+            #         cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
+            # return commit_author_summary
         except (GithubException, IncompletableObject) as exc:
             cla.log.warning(f'{fn} - PR: {pr}, unable to get commit author summary: {exc}')
             try:
