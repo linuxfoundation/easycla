@@ -1309,7 +1309,7 @@ def get_author_summary(commit,pr) -> UserCommitSummary:
             #         commit_authors.append(co_author_summary)
             #     else:
             #         cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
-            # return commit_author_summary
+            return commit_author_summary
         except (GithubException, IncompletableObject) as exc:
             cla.log.warning(f'{fn} - PR: {pr}, unable to get commit author summary: {exc}')
             try:
