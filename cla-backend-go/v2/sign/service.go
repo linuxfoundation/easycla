@@ -931,13 +931,15 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 			return err
 		}
 
-		// send email to user
-		log.WithFields(f).Debugf("sending email to user... ")
+		log.WithFields(f).Debugf("getting claGroupID: %s", signature.ProjectID)
+
 		claGroup, err := s.claGroupService.GetCLAGroup(ctx, signature.ProjectID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to lookup CLA Group by ID: %s", signature.ProjectID)
 			return err
 		}
+
+		log.WithFields(f).Debugf("claGroup: %+s found", claGroup.ProjectID)
 
 		subject := fmt.Sprintf("EasyCLA: Individual CLA Signed for %s", claGroup.ProjectName)
 		pdfLink := fmt.Sprintf("%s/v3/signatures/%s/%s/icla/pdf", s.ClaV1ApiURL, signature.ProjectID, signature.SignatureReferenceID)
@@ -957,7 +959,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 
 		recipients := []string{utils.GetBestEmail(claUser)}
 
-		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectID, emailParams)
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectExternalID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
 			return err
@@ -1004,13 +1006,15 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		})
 
 		// Add User to Gerrit Group
-		log.WithFields(f).Debugf("adding user to ldap group...")
 		if claUser.LfUsername != "" {
+			log.WithFields(f).Debugf("adding user to gerrit group: %s", claUser.LfUsername)
 			err = s.gerritService.AddUserToGroup(ctx, nil, signature.ProjectID, claUser.LfUsername, utils.ClaTypeICLA)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warnf("unable to add user to gerrit group")
 				return err
 			}
+		} else {
+			log.WithFields(f).Warnf("user LF username is empty")
 		}
 
 	} else {
@@ -1187,6 +1191,31 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 		CompanyID:   companyID,
 		CompanySFID: companyModel.CompanyExternalID,
 	})
+
+	// Check if project is a gerrit instance
+	var gerrits []*v1Models.Gerrit
+	gerritList, err := s.gerritService.GetClaGroupGerrits(ctx, projectID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get gerrit instances for project: %s", projectID)
+		gerrits = []*v1Models.Gerrit{}
+	} else {
+		log.WithFields(f).Debugf("gerrit instances found for project: %s", projectID)
+		gerrits = gerritList.List
+	}
+
+	// Add User to Gerrit Group
+	if len(gerrits) > 0 {
+		if user.LfUsername != "" {
+			log.WithFields(f).Debugf("adding user to gerrit group: %s", user.LfUsername)
+			err = s.gerritService.AddUserToGroup(ctx, nil, projectID, user.LfUsername, utils.ClaTypeCCLA)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to add user to gerrit group")
+				return err
+			}
+		} else {
+			log.WithFields(f).Warnf("user LF username is empty")
+		}
+	}
 
 	return nil
 

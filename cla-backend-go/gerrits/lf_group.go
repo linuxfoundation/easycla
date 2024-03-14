@@ -238,8 +238,6 @@ func (lfg *LFGroup) AddUserToGroup(ctx context.Context, authUser *auth.User, cla
 		"claGroupID":     claGroupID,
 		"groupName":      groupName,
 		"userName":       userName,
-		"authUserName":   authUser.UserName,
-		"authUserEmail":  authUser.Email,
 	}
 
 	log.WithFields(f).Debug("adding user to group...")
