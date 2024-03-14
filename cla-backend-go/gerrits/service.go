@@ -329,8 +329,6 @@ func (s service) AddUserToGroup(ctx context.Context, authUser *auth.User, claGro
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
 		"userName":       userName,
-		"authUserName":   authUser.UserName,
-		"authUserEmail":  authUser.Email,
 	}
 
 	log.WithFields(f).Debug("querying for CLA Group gerrits...")
