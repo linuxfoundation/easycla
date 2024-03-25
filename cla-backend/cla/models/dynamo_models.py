@@ -11,6 +11,7 @@ import os
 import re
 import time
 import uuid
+from datetime import timezone
 from typing import Optional, List
 
 import dateutil.parser
@@ -2674,7 +2675,8 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         return d
 
     def save(self) -> None:
-        self.model.date_modified = datetime.datetime.utcnow()
+        self.model.date_modified = datetime.datetime.now(timezone.utc)
+        cla.log.info(f'saving datetime: {self.model.date_modified}')
         self.model.save()
 
     def load(self, signature_id):
