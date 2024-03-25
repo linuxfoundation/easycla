@@ -869,7 +869,12 @@ class DocuSign(signing_service_interface.SigningService):
         new_signature.set_signature_acl(user.get_lf_username())
 
         # Save signature before adding user to the LDAP Group.
-        new_signature.save()
+        cla.log.debug(f'{fn} - saving signature...{new_signature.to_dict()}')
+        try:
+            self._save_employee_signature(new_signature)
+        except Exception as ex:
+            cla.log.error(f'{fn} - unable to save signature error: {ex}')
+            return
         cla.log.info(f'{fn} - saved signature for: {request_info}')
         event_data = (f'The user {user.get_user_name()} acknowledged the CLA company affiliation for '
                       f'company {company.get_company_name()} with ID {company.get_company_id()}, '
