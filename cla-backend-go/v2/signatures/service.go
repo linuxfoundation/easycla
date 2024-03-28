@@ -31,6 +31,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
 	"github.com/communitybridge/easycla/cla-backend-go/users"
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/approvals"
 	"github.com/sirupsen/logrus"
 )
 
@@ -70,14 +71,14 @@ type Service struct {
 	projectsClaGroupsRepo projects_cla_groups.Repository
 	s3                    *s3.S3
 	signaturesBucket      string
-	eventService          events.Service
+	approvalsRepos        approvals.IRepository
 }
 
 // NewService creates instance of v2 signature service
 func NewService(awsSession *session.Session, signaturesBucketName string, v1ProjectService service.Service,
 	v1CompanyService company.IService,
 	v1SignatureService signatures.SignatureService,
-	pcgRepo projects_cla_groups.Repository, v1SignatureRepo signatures.SignatureRepository, usersService users.Service, eventService events.Service) *Service {
+	pcgRepo projects_cla_groups.Repository, v1SignatureRepo signatures.SignatureRepository, usersService users.Service, approvalsRepo approvals.IRepository) *Service {
 	return &Service{
 		v1ProjectService:      v1ProjectService,
 		v1CompanyService:      v1CompanyService,
@@ -87,7 +88,7 @@ func NewService(awsSession *session.Session, signaturesBucketName string, v1Proj
 		projectsClaGroupsRepo: pcgRepo,
 		s3:                    s3.New(awsSession),
 		signaturesBucket:      signaturesBucketName,
-		eventService:          eventService,
+		approvalsRepos:        approvalsRepo,
 	}
 }
 

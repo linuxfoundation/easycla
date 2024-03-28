@@ -62,6 +62,7 @@ type Repository interface {
 	CreateEvent(event *models.Event) error
 	AddDataToEvent(eventID, parentProjectSFID, projectSFID, projectSFName, companySFID, projectID, claGroupID string) error
 	SearchEvents(params *eventOps.SearchEventsParams, pageSize int64) (*models.EventList, error)
+	GetCCLAEvents(claGroupId, companyID, searchTerm, eventType string, pageSize int64) ([]*models.Event, error)
 	GetRecentEvents(pageSize int64) (*models.EventList, error)
 
 	GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
@@ -246,6 +247,79 @@ func addTimeExpression(keyCond expression.KeyConditionBuilder, params *eventOps.
 		return keyCond.And(exp)
 	}
 	return keyCond
+}
+
+// GetEvents
+func (repo *repository) GetCCLAEvents(claGroupId, companyID, searchTerm, eventType string, pageSize int64) ([]*models.Event, error) {
+	f := logrus.Fields{
+		"functionName": "v1.events.repository.GetCCLAEvents",
+		"claGroupId":   claGroupId,
+		"companyID":    companyID,
+		"eventType":    eventType,
+		"pageSize":     pageSize,
+	}
+
+	log.WithFields(f).Debug("querying events table...")
+	condition := expression.Key("event_cla_group_id").Equal(expression.Value(claGroupId))
+	builder := expression.NewBuilder().WithKeyCondition(condition)
+
+	filter := expression.Name("event_company_id").Equal(expression.Value(companyID)).
+		And(expression.Name("event_type").Equal(expression.Value(eventType))).And(expression.Name("event_data_lower").Contains(strings.ToLower(searchTerm)))
+
+	builder = builder.WithFilter(filter)
+
+	// Use the nice builder to create the expression
+	expr, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		FilterExpression:          expr.Filter(),
+		TableName:                 aws.String(repo.eventsTable),
+		IndexName:                 aws.String(EventCLAGroupIDEpochIndex),
+		Limit:                     aws.Int64(pageSize), // The maximum number of items to evaluate (not necessarily the number of matching items)
+	}
+
+	events := make([]*models.Event, 0)
+
+	var results *dynamodb.QueryOutput
+
+	for {
+		// Perform the query...
+		var errQuery error
+		results, errQuery = repo.dynamoDBClient.Query(queryInput)
+		if errQuery != nil {
+			log.WithFields(f).WithError(errQuery).Warn("error retrieving events")
+			return nil, errQuery
+		}
+
+		// Build the result models
+		eventsList, modelErr := buildEventListModels(results)
+		if modelErr != nil {
+			log.WithFields(f).WithError(modelErr).Warn("error convert event list models")
+			return nil, modelErr
+		}
+
+		events = append(events, eventsList...)
+		log.WithFields(f).Debugf("loaded %d events", len(events))
+
+		// We have more records if last evaluated key has a value
+		log.WithFields(f).Debugf("last evaluated key %+v", results.LastEvaluatedKey)
+		if len(results.LastEvaluatedKey) > 0 {
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			break
+		}
+	}
+
+	return events, nil
+
 }
 
 // SearchEvents returns list of events matching with filter criteria.

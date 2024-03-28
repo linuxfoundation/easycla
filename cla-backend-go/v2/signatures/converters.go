@@ -79,38 +79,36 @@ func (s *Service) TransformSignatureToCorporateSignature(signature *models.Signa
 	}
 
 	var wg sync.WaitGroup
-	// var errMutex sync.Mutex
+	var errMutex sync.Mutex
 	var err error
 
 	transformApprovalList := func(approvalList []string, listType string, destinationList *[]*models.ApprovalItem) {
 		defer wg.Done()
 		for _, item := range approvalList {
-			// searchTerm := fmt.Sprintf("%s was added to the approval list", item)
+			approvals, approvalErr := s.approvalsRepos.SearchApprovalList(listType, item, signature.ProjectID, "", signature.SignatureID)
+			if approvalErr != nil {
+				errMutex.Lock()
+				err = approvalErr
+				errMutex.Unlock()
+				return
+			}
 
-			// pageSize := int64(10000)
-			// eventType := v1Events.ClaApprovalListUpdated
-			// result, eventErr := s.eventService.SearchEvents(&events.SearchEventsParams{
-			// 	SearchTerm:  &searchTerm,
-			// 	ProjectSFID: &projectSFID,
-			// 	EventType:   &eventType,
-			// 	PageSize:    &pageSize,
-			// })
-			// if eventErr != nil {
-			// 	errMutex.Lock()
-			// 	err = eventErr
-			// 	errMutex.Unlock()
-			// 	return
-			// }
+			// Handle scenarios of records with no attached event logs
+			dateAdded := signature.SignatureModified
+
+			if len(approvals) > 0 {
+				log.WithFields(f).Debugf("approval found: for %s: %s", listType, item)
+				// ideally this should be one record
+				dateAdded = approvals[0].DateAdded
+			} else {
+				log.WithFields(f).Debugf("no approval found for %s: %s", listType, item)
+			}
+
 			approvalItem := &models.ApprovalItem{
 				ApprovalItem: item,
-				DateAdded:    signature.SignatureModified,
+				DateAdded:    dateAdded,
 			}
-			// if len(result.Events) > 0 {
-			// 	event := getLatestEvent(result.Events)
-			// 	approvalItem.DateAdded = event.EventTime
-			// } else {
-			// 	log.WithFields(f).Debugf("no events found for %s: %s", listType, item)
-			// }
+
 			log.WithFields(f).Debugf("approvalItem: %+v and list type: %s", approvalItem, listType)
 			*destinationList = append(*destinationList, approvalItem)
 		}
@@ -144,26 +142,6 @@ func (s *Service) TransformSignatureToCorporateSignature(signature *models.Signa
 
 	return err
 }
-
-// func getLatestEvent(events []*v1Models.Event) *v1Models.Event {
-// 	var latest *v1Models.Event
-// 	var latestTime time.Time
-
-// 	for _, item := range events {
-// 		t, err := utils.ParseDateTime(item.EventTime)
-// 		if err != nil {
-// 			log.Debugf("Error parsing time: %+v ", err)
-// 			continue
-// 		}
-
-// 		if latest == nil || t.After(latestTime) {
-// 			latest = item
-// 			latestTime = t
-// 		}
-// 	}
-
-// 	return latest
-// }
 
 func iclaSigCsvHeader() string {
 	return `Name,GitHub Username,GitLab Username,LF_ID,Email,Signed Date,Approved,Signed`

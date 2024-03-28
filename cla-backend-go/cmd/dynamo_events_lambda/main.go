@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
@@ -35,6 +36,7 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
 
+	"github.com/communitybridge/easycla/cla-backend-go/v2/approvals"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/dynamo_events"
 
 	"github.com/communitybridge/easycla/cla-backend-go/token"
@@ -100,6 +102,8 @@ func init() {
 	githubOrganizationsRepo := github_organizations.NewRepository(awsSession, stage)
 	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
 	storeRepo := store.NewRepository(awsSession, stage)
+	approvalsTableName := fmt.Sprintf("cla-%s-approvals", stage)
+	approvalRepo := approvals.NewRepository(stage, awsSession, approvalsTableName)
 
 	token.Init(configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret, configFile.Auth0Platform.URL, configFile.Auth0Platform.Audience)
 	github.Init(configFile.GitHub.AppID, configFile.GitHub.AppPrivateKey, configFile.GitHub.AccessToken)
@@ -135,7 +139,7 @@ func init() {
 	})
 
 	usersService := users.NewService(usersRepo, eventsService)
-	signaturesRepo := signatures.NewRepository(awsSession, stage, companyRepo, usersRepo, eventsService, repositoriesRepo, githubOrganizationsRepo, gerritService)
+	signaturesRepo := signatures.NewRepository(awsSession, stage, companyRepo, usersRepo, eventsService, repositoriesRepo, githubOrganizationsRepo, gerritService, approvalRepo)
 	v2RepositoryService := v2Repositories.NewService(repositoriesRepo, v2Repository, projectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
 	gitlabOrgService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoryService, projectClaGroupRepo, storeRepo, usersService, signaturesRepo, companyRepo)
 
