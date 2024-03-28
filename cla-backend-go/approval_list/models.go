@@ -40,3 +40,15 @@ type CclaWhitelistRequest struct {
 	DateModified       string   `dynamodbav:"date_modified"`
 	Version            string   `dynamodbav:"version"`
 }
+
+// ApprovalItem data model
+
+type ApprovalItem struct {
+	ApprovalID       string `dynamodbav:"approval_id"`
+	SignatureID      string `dynamodbav:"signature_id"`
+	DateAdded        string `dynamodbav:"date_added"`
+	DateCreated      string `dynamodbav:"date_created"`
+	DateModified     string `dynamodbav:"date_modified"`
+	ApprovalName     string `dynamodbav:"approval_name"`
+	ApprovalCriteria string `dynamodbav:"approval_criteria"`
+}

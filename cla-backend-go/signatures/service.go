@@ -46,6 +46,7 @@ type SignatureService interface {
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
 	GetCorporateSignatures(ctx context.Context, claGroupID, companyID string, approved, signed *bool) ([]*models.Signature, error)
 	GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error)
+	GetCCLASignatures(ctx context.Context, signed, approved *bool) ([]*ItemSignature, error)
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
 	GetProjectCompanySignature(ctx context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error)
 	GetProjectCompanySignatures(ctx context.Context, params signatures.GetProjectCompanySignaturesParams) (*models.Signatures, error)
@@ -238,6 +239,11 @@ func (s service) GetCompanySignatures(ctx context.Context, params signatures.Get
 // GetCompanyIDsWithSignedCorporateSignatures returns a list of company IDs that have signed a CLA agreement
 func (s service) GetCompanyIDsWithSignedCorporateSignatures(ctx context.Context, claGroupID string) ([]SignatureCompanyID, error) {
 	return s.repo.GetCompanyIDsWithSignedCorporateSignatures(ctx, claGroupID)
+}
+
+// GetCCLASignatures returns the list of CCLA signatures
+func (s service) GetCCLASignatures(ctx context.Context, signed, approved *bool) ([]*ItemSignature, error) {
+	return s.repo.GetCCLASignatures(ctx, signed, approved)
 }
 
 // GetUserSignatures returns the list of user signatures associated with the specified user

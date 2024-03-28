@@ -224,3 +224,15 @@ const GitHubRepositoryType = "GitHub"
 type contextKey string
 
 const XREQUESTIDKey contextKey = "x-request-id"
+
+const GithubUsernameApprovalCriteria = "githubUsername"
+
+const GithubOrgApprovalCriteria = "githubOrg"
+
+const GitlabUsernameApprovalCriteria = "gitlabUsername"
+
+const GitlabOrgApprovalCriteria = "gitlabOrg"
+
+const EmailApprovalCriteria = "email"
+
+const DomainApprovalCriteria = "domain"

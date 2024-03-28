@@ -34,6 +34,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/github"
 	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
 	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/approvals"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 
@@ -80,7 +81,8 @@ type SignatureRepository interface {
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
 	GetIndividualSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error)
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
-	GetCorporateSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error)
+	GetCorporateSignatures(ctx context.Context, claGroupID, companyID string, approved, signed *bool) ([]*models.Signature, error)
+	GetCCLASignatures(ctx context.Context, signed, approved *bool) ([]*ItemSignature, error)
 	GetSignatureACL(ctx context.Context, signatureID string) ([]string, error)
 	GetProjectSignatures(ctx context.Context, params signatures.GetProjectSignaturesParams) (*models.Signatures, error)
 	CreateProjectSummaryReport(ctx context.Context, params signatures.CreateProjectSummaryReportParams) (*models.SignatureReport, error)
@@ -121,10 +123,11 @@ type repository struct {
 	ghOrgRepo          github_organizations.RepositoryInterface
 	gerritService      gerrits.Service
 	signatureTableName string
+	approvalRepo       approvals.IRepository
 }
 
 // NewRepository creates a new instance of the signature repository service
-func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service, repositoriesRepo repositories.RepositoryInterface, ghOrgRepo github_organizations.RepositoryInterface, gerritService gerrits.Service) SignatureRepository {
+func NewRepository(awsSession *session.Session, stage string, companyRepo company.IRepository, usersRepo users.UserRepository, eventsService events.Service, repositoriesRepo repositories.RepositoryInterface, ghOrgRepo github_organizations.RepositoryInterface, gerritService gerrits.Service, approvalRepo approvals.IRepository) SignatureRepository {
 	return repository{
 		stage:              stage,
 		dynamoDBClient:     dynamodb.New(awsSession),
@@ -135,6 +138,7 @@ func NewRepository(awsSession *session.Session, stage string, companyRepo compan
 		ghOrgRepo:          ghOrgRepo,
 		gerritService:      gerritService,
 		signatureTableName: fmt.Sprintf("cla-%s-signatures", stage),
+		approvalRepo:       approvalRepo,
 	}
 }
 
@@ -196,6 +200,60 @@ func (repo repository) SaveOrUpdateSignature(ctx context.Context, signature *Ite
 	log.WithFields(f).Debugf("successfully added/updated  signature to database")
 
 	return nil
+}
+
+// GetCCCLASignatures returns a list of CCLA signatures
+func (repo repository) GetCCLASignatures(ctx context.Context, signed, approved *bool) ([]*ItemSignature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.GetCCLASignatures",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signed":         signed,
+		"approved":       approved,
+	}
+
+	var filter expression.ConditionBuilder
+
+	filter = expression.Name("signature_type").Equal(expression.Value("ccla"))
+	if signed != nil {
+		filter = filter.And(expression.Name("signature_signed").Equal(expression.Value(signed)))
+	}
+	if approved != nil {
+		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(approved)))
+	}
+
+	// Use the expression builder to build the expression
+	expr, err := expression.NewBuilder().WithFilter(filter).Build()
+
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for CCLA signatures query, error: %v", err)
+		return nil, err
+	}
+
+	// Make the DynamoDB Query API call
+	input := &dynamodb.ScanInput{
+		TableName:                 aws.String(repo.signatureTableName),
+		FilterExpression:          expr.Filter(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	}
+
+	results, err := repo.dynamoDBClient.Scan(input)
+	if err != nil {
+		log.WithFields(f).Warnf("error retrieving CCLA signatures, error: %v", err)
+		return nil, err
+	}
+
+	// The scan returns a list of matching records - we need to convert these to a list of models
+	log.WithFields(f).Debugf("retrieved %d CCLA signatures", len(results.Items))
+
+	var signatures []*ItemSignature
+	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &signatures)
+	if err != nil {
+		log.WithFields(f).Warnf("error unmarshalling CCLA signatures from database, error: %v", err)
+		return nil, err
+	}
+
+	return signatures, nil
 }
 
 // UpdateSignature updates an existing signature
@@ -3037,6 +3095,8 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		return nil, errors.New(msg)
 	}
 
+	signatureID := cclaSignature.SignatureID
+
 	// Get CLA Manager
 	var cclaManagers []ClaManagerInfoParams
 	for i := range cclaSignature.SignatureACL {
@@ -3125,6 +3185,12 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			expressionAttributeNames["#E"] = aws.String(columnName)
 			expressionAttributeValues[":e"] = attrList
 			updateExpression = updateExpression + " #E = :e, "
+		}
+
+		log.WithFields(f).Debugf("updating approval list table")
+
+		if params.AddEmailApprovalList != nil {
+			repo.updateApprovalTable(ctx, params.AddEmailApprovalList, utils.EmailApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
 		}
 
 		// if email removal update signature approvals
@@ -3245,6 +3311,12 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			expressionAttributeValues[":d"] = attrList
 			updateExpression = updateExpression + " #D = :d, "
 		}
+
+		log.WithFields(f).Debugf("updating approval list table")
+		if params.AddDomainApprovalList != nil {
+			repo.updateApprovalTable(ctx, params.AddDomainApprovalList, utils.EmailApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
+		}
+
 		if params.RemoveDomainApprovalList != nil {
 			// Get ICLAs
 			log.WithFields(f).Debug("getting icla records... ")
@@ -3303,6 +3375,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			expressionAttributeNames["#GHU"] = aws.String(columnName)
 			expressionAttributeValues[":ghu"] = attrList
 			updateExpression = updateExpression + " #GHU = :ghu, "
+		}
+
+		if params.AddGithubUsernameApprovalList != nil {
+			repo.updateApprovalTable(ctx, params.AddGithubUsernameApprovalList, utils.GithubUsernameApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
 		}
 		if params.RemoveGithubUsernameApprovalList != nil {
 			// if email removal update signature approvals
@@ -3388,6 +3464,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			updateExpression = updateExpression + " #GHO = :gho, "
 		}
 
+		if params.AddGithubOrgApprovalList != nil {
+			repo.updateApprovalTable(ctx, params.AddGithubOrgApprovalList, utils.GithubOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
+		}
+
 		if params.RemoveGithubOrgApprovalList != nil {
 			approvalList.Criteria = utils.GitHubOrgCriteria
 			approvalList.ApprovalList = params.RemoveGithubOrgApprovalList
@@ -3453,6 +3533,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			expressionAttributeNames["#GLU"] = aws.String(columnName)
 			expressionAttributeValues[":glu"] = attrList
 			updateExpression = updateExpression + " #GLU = :glu, "
+		}
+		if params.AddGitlabUsernameApprovalList != nil {
+			repo.updateApprovalTable(ctx, params.AddGitlabUsernameApprovalList, utils.GitlabUsernameApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
 		}
 		if params.RemoveGitlabUsernameApprovalList != nil {
 			// if email removal update signature approvals
@@ -3538,6 +3621,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			expressionAttributeNames["#GLO"] = aws.String(columnName)
 			expressionAttributeValues[":glo"] = attrList
 			updateExpression = updateExpression + " #GLO = :glo, "
+		}
+
+		if params.AddGitlabOrgApprovalList != nil {
+			repo.updateApprovalTable(ctx, params.AddGitlabOrgApprovalList, utils.GitlabOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
 		}
 
 		if params.RemoveGitlabOrgApprovalList != nil {
@@ -3626,6 +3713,43 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 	// Just grab and use the first one - need to figure out conflict resolution if more than one
 	return updatedSig, nil
+}
+
+func (repo *repository) updateApprovalTable(ctx context.Context, approvalList []string, criteria, signatureID, projectID, companyID, companyName string) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.addApprovalList",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	for _, item := range approvalList {
+		log.WithFields(f).Debugf("adding approval request for item: %s with criteria: %s", item, criteria)
+		approvalID, err := uuid.NewV4()
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to generate UUID for email: %s", item)
+			continue
+		}
+		_, currentTime := utils.CurrentTime()
+		approvalItem := approvals.ApprovalItem{
+			ApprovalID:          approvalID.String(),
+			SignatureID:         signatureID,
+			ApprovalName:        item,
+			ProjectID:           projectID,
+			CompanyID:           companyID,
+			ApprovalCriteria:    criteria,
+			DateCreated:         currentTime,
+			DateModified:        currentTime,
+			ApprovalCompanyName: companyName,
+			DateAdded:           currentTime,
+			Note:                "Auto-Added",
+		}
+
+		err = repo.approvalRepo.AddApprovalList(approvalItem)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to add approval request for item: %s", item)
+			continue
+		}
+		log.WithFields(f).Debugf("added approval request for item: %s with criteria: %s", item, criteria)
+	}
 }
 
 // sendEmail is a helper function used to render email for (CCLA, ICLA, ECLA cases)

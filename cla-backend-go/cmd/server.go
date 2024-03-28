@@ -6,6 +6,7 @@ package cmd
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -71,6 +72,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/events"
 
 	"github.com/communitybridge/easycla/cla-backend-go/project"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/approvals"
 	v2Project "github.com/communitybridge/easycla/cla-backend-go/v2/project"
 
 	"github.com/communitybridge/easycla/cla-backend-go/users"
@@ -261,6 +263,7 @@ func server(localMode bool) http.Handler {
 	gitlabOrganizationRepo := gitlab_organizations.NewRepository(awsSession, stage)
 	claManagerReqRepo := cla_manager.NewRepository(awsSession, stage)
 	storeRepository := store.NewRepository(awsSession, stage)
+	approvalsRepo := approvals.NewRepository(stage, awsSession, fmt.Sprintf("cla-%s-approvals", stage))
 
 	// Our service layer handlers
 	eventsService := events.NewService(eventsRepo, combinedRepo{
@@ -279,7 +282,7 @@ func server(localMode bool) http.Handler {
 	})
 
 	// Signature repository handler
-	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService, gitV1Repository, githubOrganizationsRepo, gerritService)
+	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService, gitV1Repository, githubOrganizationsRepo, gerritService, approvalsRepo)
 
 	// Initialize the external platform services - these are external APIs that
 	// we download the swagger specification, generate the models, and have
@@ -305,7 +308,7 @@ func server(localMode bool) http.Handler {
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo)
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepository, usersService, signaturesRepo, v1CompanyRepo)
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation, v1RepositoriesService, githubOrganizationsService, v1ProjectService, gitlabApp, configFile.ClaV1ApiURL, configFile.CLALandingPage, configFile.CLALogoURL)
-	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, eventsService)
+	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, approvalsRepo)
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV1URL)
 	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
 	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
