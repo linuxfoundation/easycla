@@ -535,7 +535,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
         try :
             # Get Commit authors
-            commit_authors = get_pull_request_commit_authors(pull_request)
+            commit_authors = get_pull_request_commit_authors(pull_request,installation_id)
             cla.log.debug(f'{fn} - commit authors: {commit_authors}')
         except Exception as e:
             cla.log.warning(f'{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository '
@@ -650,7 +650,7 @@ class GitHub(repository_service_interface.RepositoryService):
         cla.log.debug(f'{fn} - retrieved pull request: {pull_request}')
 
         # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
-        commit_authors = get_pull_request_commit_authors(pull_request)
+        commit_authors = get_pull_request_commit_authors(pull_request,installation_id)
 
         cla.log.debug(f'{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit authors '
                         f'for pull request: {pull_request.number}')
@@ -1255,7 +1255,7 @@ def get_merge_group_commit_authors(merge_group_sha, installation_id=None) -> Lis
 
     return commit_authors
     
-def get_author_summary(commit,pr) -> UserCommitSummary:
+def get_author_summary(commit,pr,installation_id) -> UserCommitSummary:
     """
     Helper function to extract author information from a GitHub commit.
     :param commit: A GitHub commit object.
@@ -1277,38 +1277,12 @@ def get_author_summary(commit,pr) -> UserCommitSummary:
             cla.log.debug(f'{fn} - PR: {pr}, {commit_author_summary}')
             # check for co-author details
             # issue # 3884
-            # co_authors = cla.utils.get_co_authors_from_commit(commit)
-            # for co_author in co_authors:
-            #     # check if co-author is a github user
-            #     login, github_id = None, None
-            #     email = co_author[1]
-            #     name = co_author[0]
-            #     # get repository service
-            #     github = cla.utils.get_repository_service('github')
-            #     cla.log.debug(f'{fn} - getting co-author details: {co_author}, email: {email}, name: {name}')
-            #     try:
-            #         user = github.get_github_user_by_email(email, installation_id)
-            #     except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
-            #         # user not found
-            #         cla.log.debug(f'{fn} - co-author github user not found : {co_author} with exception: {ex}')
-            #         user = None
-            #     cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
-            #     if user:
-            #         cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
-            #         login = user.login
-            #         github_id = user.id
-            #         co_author_summary = UserCommitSummary(
-            #             commit.sha,
-            #             github_id,
-            #             login,
-            #             name,
-            #             email,
-            #             False, False  # default not authorized - will be evaluated and updated later
-            #         )
-            #         cla.log.debug(f'{fn} - PR: {pull_request.number}, {co_author_summary}')
-            #         commit_authors.append(co_author_summary)
-            #     else:
-            #         cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
+            commit_authors = []
+            co_authors = cla.utils.get_co_authors_from_commit(commit)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                for co_author in co_authors:
+                    commit_authors.append(executor.submit(get_co_author_commits, co_author, commit, pr, installation_id))
+
             return commit_author_summary
         except (GithubException, IncompletableObject) as exc:
             cla.log.warning(f'{fn} - PR: {pr}, unable to get commit author summary: {exc}')
@@ -1357,7 +1331,7 @@ def get_author_summary(commit,pr) -> UserCommitSummary:
             
             
 
-def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
+def get_pull_request_commit_authors(pull_request, installation_id) -> List[UserCommitSummary]:
     """
     Helper function to extract all committer information for a GitHub PR.
 
@@ -1381,7 +1355,7 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
     commit_authors = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
-        future_to_commit = {executor.submit(get_author_summary, commit, pull_request.number): commit for commit in pull_request.get_commits()}
+        future_to_commit = {executor.submit(get_author_summary, commit, pull_request.number, installation_id): commit for commit in pull_request.get_commits()}
         for future in concurrent.futures.as_completed(future_to_commit):
             future_to_commit[future]
             try:
@@ -1392,6 +1366,39 @@ def get_pull_request_commit_authors(pull_request) -> List[UserCommitSummary]:
             
     return commit_authors
 
+
+def get_co_author_commits(co_author,commit,pr,installation_id):
+    fn = 'cla.models.github_models.get_co_author_commits'
+    # check if co-author is a github user
+    login, github_id = None, None
+    email = co_author[1]
+    name = co_author[0]
+    # get repository service
+    github = cla.utils.get_repository_service('github')
+    cla.log.debug(f'{fn} - getting co-author details: {co_author}, email: {email}, name: {name}')
+    try:
+        user = github.get_github_user_by_email(email, installation_id)
+    except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
+        # user not found
+        cla.log.debug(f'{fn} - co-author github user not found : {co_author} with exception: {ex}')
+        user = None
+    cla.log.debug(f'{fn} - co-author: {co_author}, user: {user}')
+    if user:
+        cla.log.debug(f'{fn} - co-author github user details found : {co_author}, user: {user}')
+        login = user.login
+        github_id = user.id
+        co_author_summary = UserCommitSummary(
+            commit.sha,
+            github_id,
+            login,
+            name,
+            email,
+            False, False  # default not authorized - will be evaluated and updated later
+        )
+        cla.log.debug(f'{fn} - PR: {pr}, {co_author_summary}')
+        return co_author_summary
+    else:
+        cla.log.debug(f'{fn} - co-author github user details not found : {co_author}')
 
 def has_check_previously_passed_or_failed(pull_request: PullRequest):
     """
