@@ -212,6 +212,7 @@ func (repo repository) GetCCLASignatures(ctx context.Context, signed, approved *
 	}
 
 	var filter expression.ConditionBuilder
+	pageSize := 1000
 
 	filter = expression.Name("signature_type").Equal(expression.Value("ccla"))
 	if signed != nil {
@@ -235,25 +236,39 @@ func (repo repository) GetCCLASignatures(ctx context.Context, signed, approved *
 		FilterExpression:          expr.Filter(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
+		Limit:                     aws.Int64(int64(pageSize)),
 	}
-
-	results, err := repo.dynamoDBClient.Scan(input)
-	if err != nil {
-		log.WithFields(f).Warnf("error retrieving CCLA signatures, error: %v", err)
-		return nil, err
-	}
-
-	// The scan returns a list of matching records - we need to convert these to a list of models
-	log.WithFields(f).Debugf("retrieved %d CCLA signatures", len(results.Items))
 
 	var signatures []*ItemSignature
-	err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &signatures)
-	if err != nil {
-		log.WithFields(f).Warnf("error unmarshalling CCLA signatures from database, error: %v", err)
-		return nil, err
+	var lastEvaluatedKey map[string]*dynamodb.AttributeValue
+
+	for {
+		results, queryErr := repo.dynamoDBClient.Scan(input)
+		if queryErr != nil {
+			log.WithFields(f).Warnf("error retrieving CCLA signatures, error: %v", queryErr)
+			return nil, queryErr
+		}
+
+		var items []*ItemSignature
+		err = dynamodbattribute.UnmarshalListOfMaps(results.Items, &items)
+		if err != nil {
+			log.WithFields(f).Warnf("error unmarshalling CCLA signatures from database, error: %v", err)
+			return nil, err
+		}
+
+		signatures = append(signatures, items...)
+
+		// If the result set is truncated, we'll need to issue another query to fetch the next page
+		if results.LastEvaluatedKey == nil {
+			break
+		}
+
+		lastEvaluatedKey = results.LastEvaluatedKey
+		input.ExclusiveStartKey = lastEvaluatedKey
 	}
 
 	return signatures, nil
+
 }
 
 // UpdateSignature updates an existing signature

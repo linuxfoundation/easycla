@@ -4,10 +4,12 @@
 package events
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +29,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 )
@@ -249,6 +252,48 @@ func addTimeExpression(keyCond expression.KeyConditionBuilder, params *eventOps.
 	return keyCond
 }
 
+func isProvisionedThroughputExceeded(err error) bool {
+	f := logrus.Fields{
+		"functionName": "v1.events.repository.isProvisionedThroughputExceeded",
+	}
+
+	if err == nil {
+		return false
+	}
+	if aerr, ok := err.(awserr.Error); ok && aerr.Code() == "ProvisionedThroughputExceededException" {
+		log.WithFields(f).WithError(err).Warn("provisioned throughput exceeded")
+		return true
+	}
+
+	log.WithFields(f).WithError(err).Warn("error checking for provisioned throughput exceeded")
+	return false
+}
+
+func exponentialBackoffSleep(retry int) {
+	// Base delay
+	baseDelay := 100
+
+	// Mx backoff time
+	maxBackoff := 20000
+
+	// Calculate delay
+	delay := baseDelay * (1 << retry)
+
+	if delay > maxBackoff {
+		delay = maxBackoff
+	}
+
+	// Add jitter
+	jitter, err := rand.Int(rand.Reader, big.NewInt(int64(delay)))
+	if err != nil {
+		log.Warnf("error generating random number: %v", err)
+		return
+	}
+	totalDelay := time.Duration(int64(delay)+jitter.Int64()) * time.Millisecond
+
+	time.Sleep(totalDelay)
+}
+
 // GetEvents
 func (repo *repository) GetCCLAEvents(claGroupId, companyID, searchTerm, eventType string, pageSize int64) ([]*models.Event, error) {
 	f := logrus.Fields{
@@ -290,13 +335,21 @@ func (repo *repository) GetCCLAEvents(claGroupId, companyID, searchTerm, eventTy
 
 	var results *dynamodb.QueryOutput
 
-	for {
+	maxRetries := 5
+
+	for retry := 0; retry < maxRetries; retry++ {
 		// Perform the query...
+		log.WithFields(f).Debugf("retrying query: %d", retry)
 		var errQuery error
 		results, errQuery = repo.dynamoDBClient.Query(queryInput)
 		if errQuery != nil {
-			log.WithFields(f).WithError(errQuery).Warn("error retrieving events")
-			return nil, errQuery
+			if retry == maxRetries || isProvisionedThroughputExceeded(errQuery) {
+				log.WithFields(f).WithError(errQuery).Warn("error retrieving events")
+				return nil, errQuery
+			}
+			log.WithFields(f).WithError(errQuery).Warn("error retrieving events - retrying...")
+			exponentialBackoffSleep(retry)
+			continue
 		}
 
 		// Build the result models
@@ -313,6 +366,7 @@ func (repo *repository) GetCCLAEvents(claGroupId, companyID, searchTerm, eventTy
 		log.WithFields(f).Debugf("last evaluated key %+v", results.LastEvaluatedKey)
 		if len(results.LastEvaluatedKey) > 0 {
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+			retry = 0
 		} else {
 			break
 		}

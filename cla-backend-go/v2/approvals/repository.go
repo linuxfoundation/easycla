@@ -5,8 +5,11 @@ package approvals
 
 import (
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -17,6 +20,7 @@ import (
 
 type IRepository interface {
 	GetApprovalList(approvalID string) (*ApprovalItem, error)
+	DeleteAll() error
 	GetApprovalListBySignature(signatureID string) ([]ApprovalItem, error)
 	AddApprovalList(approvalItem ApprovalItem) error
 	DeleteApprovalList(approvalID string) error
@@ -35,6 +39,95 @@ func NewRepository(stage string, awsSession *session.Session, tableName string) 
 		dynamoDBClient: dynamodb.New(awsSession),
 		tableName:      tableName,
 	}
+}
+
+func (repo *repository) getAll() ([]*ApprovalItem, error) {
+	f := logrus.Fields{
+		"functionName": "getAll",
+	}
+
+	log.WithFields(f).Debugf("repository.getAll - fetching all approval lists")
+
+	// Get all the records
+	pageSize := int64(100)
+
+	scanInput := &dynamodb.ScanInput{
+		TableName: aws.String(repo.tableName),
+		Limit:     aws.Int64(pageSize),
+	}
+
+	var results []*ApprovalItem
+	for {
+		result, err := repo.dynamoDBClient.Scan(scanInput)
+		if err != nil {
+			log.WithFields(f).Warnf("repository.getAll - unable to scan table, error: %+v", err)
+			return nil, err
+		}
+
+		var items []*ApprovalItem
+		err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &items)
+		if err != nil {
+			log.WithFields(f).Warnf("repository.getAll - unable to unmarshal data from table, error: %+v", err)
+			return nil, err
+		}
+
+		results = append(results, items...)
+
+		if result.LastEvaluatedKey == nil {
+			break
+		}
+
+		scanInput.ExclusiveStartKey = result.LastEvaluatedKey
+	}
+
+	return results, nil
+}
+
+func (repo *repository) DeleteAll() error {
+	f := logrus.Fields{
+		"functionName": "DeleteAll",
+	}
+
+	log.WithFields(f).Debugf("repository.DeleteAll - deleting all approval lists")
+	itemsToDelete, err := repo.getAll()
+
+	if err != nil {
+		log.WithFields(f).Warnf("repository.DeleteAll - unable to fetch data from table, error: %+v", err)
+		return err
+	}
+
+	log.WithFields(f).Debugf("repository.DeleteAll - deleting %d approval list items", len(itemsToDelete))
+
+	// Delete all the records
+	for _, item := range itemsToDelete {
+		retry := 0
+		for {
+			log.WithFields(f).Debugf("repository.DeleteAll - deleting approval list item: %+v", item)
+			deleteRequest := &dynamodb.DeleteItemInput{
+				Key: map[string]*dynamodb.AttributeValue{
+					"approval_id": {
+						S: aws.String(item.ApprovalID),
+					},
+				},
+				TableName: aws.String(repo.tableName),
+			}
+
+			_, err = repo.dynamoDBClient.DeleteItem(deleteRequest)
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+					if retry > 5 {
+						return fmt.Errorf("unable to delete approval list item - retry limit reached, error: %+v", err)
+					}
+					retry++
+					continue
+				}
+				return fmt.Errorf("unable to delete approval list item, error: %+v", err)
+			}
+			break
+		}
+	}
+
+	return nil
 }
 
 func (repo *repository) GetApprovalList(approvalID string) (*ApprovalItem, error) {
@@ -81,28 +174,53 @@ func (repo *repository) GetApprovalListBySignature(signatureID string) ([]Approv
 
 	log.WithFields(f).Debugf("repository.GetApprovalListBySignature - fetching approval list by signatureID: %s", signatureID)
 
-	result, err := repo.dynamoDBClient.Scan(&dynamodb.ScanInput{
-		TableName:        aws.String(repo.tableName),
-		FilterExpression: aws.String("signature_id = :signature_id"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":signature_id": {
-				S: aws.String(signatureID),
-			},
-		},
-	})
+	condition := expression.Key("signature_id").Equal(expression.Value(signatureID))
+
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).Build()
+
 	if err != nil {
-		log.WithFields(f).Warnf("repository.GetApprovalListBySignature - unable to read data from table, error: %+v", err)
+		log.WithFields(f).Warnf("error building expression, error: %+v", err)
 		return nil, err
 	}
 
-	approvalItems := make([]ApprovalItem, 0)
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &approvalItems)
-	if err != nil {
-		log.WithFields(f).Warnf("repository.GetApprovalListBySignature - unable to unmarshal data from table, error: %+v", err)
-		return nil, err
+	pageSize := int64(100)
+
+	input := &dynamodb.QueryInput{
+		TableName:                 aws.String(repo.tableName),
+		IndexName:                 aws.String("signature-id-index"),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		Limit:                     aws.Int64(pageSize),
 	}
 
-	return approvalItems, nil
+	var results []ApprovalItem
+
+	for {
+		output, err := repo.dynamoDBClient.Query(input)
+		if err != nil {
+			log.WithFields(f).Warnf("error retrieving approval list, error: %+v", err)
+			return nil, err
+		}
+
+		var items []ApprovalItem
+		err = dynamodbattribute.UnmarshalListOfMaps(output.Items, &items)
+		if err != nil {
+			log.WithFields(f).Warnf("error unmarshalling data, error: %+v", err)
+			return nil, err
+		}
+
+		results = append(results, items...)
+
+		if output.LastEvaluatedKey == nil {
+			break
+		}
+
+		input.ExclusiveStartKey = output.LastEvaluatedKey
+	}
+
+	return results, nil
+
 }
 
 func (repo *repository) AddApprovalList(approvalItem ApprovalItem) error {
@@ -121,13 +239,33 @@ func (repo *repository) AddApprovalList(approvalItem ApprovalItem) error {
 		return err
 	}
 
-	_, err = repo.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
-		TableName: aws.String(repo.tableName),
-		Item:      av,
-	})
-	if err != nil {
-		log.WithFields(f).Warnf("repository.AddApprovalList - unable to add data to table, error: %+v", err)
-		return err
+	const maxRetries = 5
+	var retryDelay time.Duration = 1
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		_, err = repo.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
+			TableName: aws.String(repo.tableName),
+			Item:      av,
+		})
+
+		if err != nil {
+			awsErr, ok := err.(awserr.Error)
+			if !ok {
+				log.WithFields(f).Warnf("repository.AddApprovalList - unable to add data to table, error: %+v", err)
+				return err
+			}
+
+			switch awsErr.Code() {
+			case dynamodb.ErrCodeProvisionedThroughputExceededException:
+				log.WithFields(f).Warnf("repository.AddApprovalList - provisioned throughput exceeded, retrying in %d seconds", retryDelay)
+				time.Sleep(retryDelay * time.Second)
+				retryDelay = retryDelay * 2 // exponential backoff
+				continue
+			default:
+				log.WithFields(f).Warnf("repository.AddApprovalList - unable to add data to table, error: %+v", err)
+				return err
+			}
+		}
 	}
 
 	return nil

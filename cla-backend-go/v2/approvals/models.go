@@ -16,4 +16,5 @@ type ApprovalItem struct {
 	ProjectID           string `dynamodbav:"project_id"`
 	ApprovalCompanyName string `dynamodbav:"approval_company_name"`
 	Note                string `dynamodbav:"note"`
+	Active              bool   `dynamodbav:"active"`
 }
