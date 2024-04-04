@@ -3254,11 +3254,12 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		log.WithFields(f).Debugf("updating approval list table")
 
 		if params.AddEmailApprovalList != nil {
-			repo.updateApprovalTable(ctx, params.AddEmailApprovalList, utils.EmailApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
+			repo.updateApprovalTable(ctx, params.AddEmailApprovalList, utils.EmailApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 
 		// if email removal update signature approvals
 		if params.RemoveEmailApprovalList != nil {
+			repo.updateApprovalTable(ctx, params.AddEmailApprovalList, utils.EmailApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
 			log.WithFields(f).Debugf("removing email: %+v the approval list", params.RemoveDomainApprovalList)
 			var wg sync.WaitGroup
 			wg.Add(len(params.RemoveEmailApprovalList))
@@ -3378,7 +3379,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 		log.WithFields(f).Debugf("updating approval list table")
 		if params.AddDomainApprovalList != nil {
-			repo.updateApprovalTable(ctx, params.AddDomainApprovalList, utils.EmailApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
+			repo.updateApprovalTable(ctx, params.AddDomainApprovalList, utils.EmailApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 
 		if params.RemoveDomainApprovalList != nil {
@@ -3418,6 +3419,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			}
 
 			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+			repo.updateApprovalTable(ctx, params.AddDomainApprovalList, utils.EmailApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
 		}
 	}
 
@@ -3442,9 +3444,11 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 
 		if params.AddGithubUsernameApprovalList != nil {
-			repo.updateApprovalTable(ctx, params.AddGithubUsernameApprovalList, utils.GithubUsernameApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
+			repo.updateApprovalTable(ctx, params.AddGithubUsernameApprovalList, utils.GithubUsernameApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 		if params.RemoveGithubUsernameApprovalList != nil {
+
+			repo.updateApprovalTable(ctx, params.AddGithubUsernameApprovalList, utils.GithubUsernameApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
 			// if email removal update signature approvals
 			if params.RemoveGithubUsernameApprovalList != nil {
 				var wg sync.WaitGroup
@@ -3529,7 +3533,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 
 		if params.AddGithubOrgApprovalList != nil {
-			repo.updateApprovalTable(ctx, params.AddGithubOrgApprovalList, utils.GithubOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
+			repo.updateApprovalTable(ctx, params.AddGithubOrgApprovalList, utils.GithubOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 
 		if params.RemoveGithubOrgApprovalList != nil {
@@ -3576,6 +3580,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			approvalList.GitHubUsernames = utils.RemoveDuplicates(ghUsernames)
 
 			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+			repo.updateApprovalTable(ctx, params.AddGithubOrgApprovalList, utils.GithubOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
 		}
 	}
 
@@ -3599,9 +3604,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			updateExpression = updateExpression + " #GLU = :glu, "
 		}
 		if params.AddGitlabUsernameApprovalList != nil {
-			repo.updateApprovalTable(ctx, params.AddGitlabUsernameApprovalList, utils.GitlabUsernameApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
+			repo.updateApprovalTable(ctx, params.AddGitlabUsernameApprovalList, utils.GitlabUsernameApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 		if params.RemoveGitlabUsernameApprovalList != nil {
+			repo.updateApprovalTable(ctx, params.AddGitlabUsernameApprovalList, utils.GitlabUsernameApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
 			// if email removal update signature approvals
 			if params.RemoveGitlabUsernameApprovalList != nil {
 				approvalList.Criteria = utils.GitlabUsernameCriteria
@@ -3688,10 +3694,11 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 
 		if params.AddGitlabOrgApprovalList != nil {
-			repo.updateApprovalTable(ctx, params.AddGitlabOrgApprovalList, utils.GitlabOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName)
+			repo.updateApprovalTable(ctx, params.AddGitlabOrgApprovalList, utils.GitlabOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 
 		if params.RemoveGitlabOrgApprovalList != nil {
+			repo.updateApprovalTable(ctx, params.AddGitlabOrgApprovalList, utils.GitlabOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
 			approvalList.Criteria = utils.GitlabOrgCriteria
 			approvalList.ApprovalList = params.RemoveGitlabOrgApprovalList
 			approvalList.Action = utils.RemoveApprovals
@@ -3779,7 +3786,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	return updatedSig, nil
 }
 
-func (repo *repository) updateApprovalTable(ctx context.Context, approvalList []string, criteria, signatureID, projectID, companyID, companyName string) {
+func (repo *repository) updateApprovalTable(ctx context.Context, approvalList []string, criteria, signatureID, projectID, companyID, companyName string, add bool) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.addApprovalList",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -3793,6 +3800,37 @@ func (repo *repository) updateApprovalTable(ctx context.Context, approvalList []
 			continue
 		}
 		_, currentTime := utils.CurrentTime()
+
+		// Check if it exists
+		approvalItems, apprErr := repo.approvalRepo.SearchApprovalList(criteria, item, projectID, companyID, signatureID)
+		if apprErr != nil {
+			log.WithFields(f).WithError(apprErr).Warnf("unable to search approval list for item: %s", item)
+			continue
+		}
+
+		if len(approvalItems) > 0 {
+			// Update the existing record
+			approvalItem := approvalItems[0]
+			if add {
+				log.WithFields(f).Debugf("approval request for item: %s with criteria: %s already exists", item, criteria)
+				approvalItem.DateModified = currentTime
+				approvalItem.Active = true
+			} else {
+				log.WithFields(f).Debugf("approval request for item: %s with criteria: %s already exists", item, criteria)
+				approvalItem.DateModified = currentTime
+				approvalItem.Active = false
+			}
+			err = repo.approvalRepo.UpdateApprovalItem(approvalItem)
+
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to update approval request for item: %s", item)
+				continue
+			}
+			log.WithFields(f).Debugf("updated approval request for item: %s with criteria: %s", item, criteria)
+			continue
+		}
+
+		// create a new record
 		approvalItem := approvals.ApprovalItem{
 			ApprovalID:          approvalID.String(),
 			SignatureID:         signatureID,
@@ -3804,7 +3842,16 @@ func (repo *repository) updateApprovalTable(ctx context.Context, approvalList []
 			DateModified:        currentTime,
 			ApprovalCompanyName: companyName,
 			DateAdded:           currentTime,
-			Note:                "Auto-Added",
+		}
+
+		if add {
+			approvalItem.Active = true
+			approvalItem.DateAdded = currentTime
+			approvalItem.Note = "Auto-Added"
+		} else {
+			approvalItem.Active = false
+			approvalItem.DateRemoved = currentTime
+			approvalItem.Note = "Auto-Removed"
 		}
 
 		err = repo.approvalRepo.AddApprovalList(approvalItem)
