@@ -77,6 +77,7 @@ type SignatureRepository interface {
 	SaveOrUpdateSignature(ctx context.Context, signature *ItemSignature) error
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
+	GetItemSignature(ctx context.Context, signatureID string) (*ItemSignature, error)
 	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
 	GetIndividualSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error)
@@ -170,6 +171,54 @@ func (repo repository) CreateSignature(ctx context.Context, signature *ItemSigna
 
 	return nil
 
+}
+
+// GetItemSignature returns the signature for the specified signature id
+func (repo repository) GetItemSignature(ctx context.Context, signatureID string) (*ItemSignature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.GetItemSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+	}
+
+	// This is the key we want to match
+	condition := expression.Key("signature_id").Equal(expression.Value(signatureID))
+
+	// Use the builder to create the expression
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for signature ID query, signatureID: %s, error: %v", signatureID, err)
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		TableName:                 aws.String(repo.signatureTableName),
+	}
+
+	// Make the DynamoDB Query API call
+	results, queryErr := repo.dynamoDBClient.Query(queryInput)
+	if queryErr != nil {
+		log.WithFields(f).Warnf("error retrieving signature ID: %s, error: %v", signatureID, queryErr)
+		return nil, queryErr
+	}
+
+	// No match, didn't find it
+	if *results.Count == 0 {
+		return nil, nil
+	}
+
+	var signature ItemSignature
+	err = dynamodbattribute.UnmarshalMap(results.Items[0], &signature)
+	if err != nil {
+		log.WithFields(f).Warnf("error unmarshalling signature for ID: %s, error: %v", signatureID, err)
+		return nil, err
+	}
+
+	return &signature, nil
 }
 
 // SaveOrUpdateSignature either creates or updates the signature record

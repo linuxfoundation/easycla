@@ -67,6 +67,7 @@ type Repository interface {
 	SearchEvents(params *eventOps.SearchEventsParams, pageSize int64) (*models.EventList, error)
 	GetCCLAEvents(claGroupId, companyID, searchTerm, eventType string, pageSize int64) ([]*models.Event, error)
 	GetRecentEvents(pageSize int64) (*models.EventList, error)
+	GetEventsByType(eventType string, pageSize int64) ([]*models.Event, error)
 
 	GetCompanyFoundationEvents(companySFID, companyID, foundationSFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
 	GetCompanyClaGroupEvents(claGroupID string, companySFID string, nextKey *string, paramPageSize *int64, searchTerm *string, all bool) (*models.EventList, error)
@@ -309,7 +310,11 @@ func (repo *repository) GetCCLAEvents(claGroupId, companyID, searchTerm, eventTy
 	builder := expression.NewBuilder().WithKeyCondition(condition)
 
 	filter := expression.Name("event_company_id").Equal(expression.Value(companyID)).
-		And(expression.Name("event_type").Equal(expression.Value(eventType))).And(expression.Name("event_data_lower").Contains(strings.ToLower(searchTerm)))
+		And(expression.Name("event_type").Equal(expression.Value(eventType)))
+
+	if searchTerm != "" {
+		filter = filter.And(expression.Name("event_data_lower").Contains(strings.ToLower(searchTerm)))
+	}
 
 	builder = builder.WithFilter(filter)
 
@@ -374,6 +379,77 @@ func (repo *repository) GetCCLAEvents(claGroupId, companyID, searchTerm, eventTy
 
 	return events, nil
 
+}
+
+func (repo *repository) GetEventsByType(eventType string, pageSize int64) ([]*models.Event, error) {
+	f := logrus.Fields{
+		"functionName": "v1.events.repository.GetEventsByType",
+		"eventType":    eventType,
+		"pageSize":     pageSize,
+	}
+
+	log.WithFields(f).Debug("querying events table...")
+	condition := expression.Key("event_type").Equal(expression.Value(eventType))
+
+	builder := expression.NewBuilder().WithKeyCondition(condition)
+
+	// Use the nice builder to create the expression
+	expr, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.eventsTable),
+		IndexName:                 aws.String("event-type-index"),
+		Limit:                     aws.Int64(pageSize), // The maximum number of items to evaluate (not necessarily the number of matching items)
+	}
+
+	events := make([]*models.Event, 0)
+
+	var results *dynamodb.QueryOutput
+
+	maxRetries := 3
+
+	for retry := 0; retry < maxRetries; retry++ {
+		// Perform the query...
+		log.WithFields(f).Debugf("retrying query: %d", retry)
+		var errQuery error
+		results, errQuery = repo.dynamoDBClient.Query(queryInput)
+		if errQuery != nil {
+			if retry == maxRetries || isProvisionedThroughputExceeded(errQuery) {
+				log.WithFields(f).WithError(errQuery).Warn("error retrieving events")
+				return nil, errQuery
+			}
+			log.WithFields(f).WithError(errQuery).Warn("error retrieving events - retrying...")
+			exponentialBackoffSleep(retry)
+			continue
+		}
+
+		// Build the result models
+		eventsList, modelErr := buildEventListModels(results)
+		if modelErr != nil {
+			log.WithFields(f).WithError(modelErr).Warn("error convert event list models")
+			return nil, modelErr
+		}
+
+		events = append(events, eventsList...)
+		log.WithFields(f).Debugf("loaded %d events", len(events))
+
+		// We have more records if last evaluated key has a value
+		if len(results.LastEvaluatedKey) > 0 {
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+			retry = 0
+		} else {
+			break
+		}
+	}
+	return events, nil
 }
 
 // SearchEvents returns list of events matching with filter criteria.
