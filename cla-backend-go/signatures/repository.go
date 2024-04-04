@@ -3814,10 +3814,12 @@ func (repo *repository) updateApprovalTable(ctx context.Context, approvalList []
 			if add {
 				log.WithFields(f).Debugf("approval request for item: %s with criteria: %s already exists", item, criteria)
 				approvalItem.DateModified = currentTime
+				approvalItem.DateAdded = currentTime
 				approvalItem.Active = true
 			} else {
 				log.WithFields(f).Debugf("approval request for item: %s with criteria: %s already exists", item, criteria)
 				approvalItem.DateModified = currentTime
+				approvalItem.DateRemoved = currentTime
 				approvalItem.Active = false
 			}
 			err = repo.approvalRepo.UpdateApprovalItem(approvalItem)
@@ -3841,7 +3843,6 @@ func (repo *repository) updateApprovalTable(ctx context.Context, approvalList []
 			DateCreated:         currentTime,
 			DateModified:        currentTime,
 			ApprovalCompanyName: companyName,
-			DateAdded:           currentTime,
 		}
 
 		if add {
