@@ -118,55 +118,58 @@ func (s *Service) TransformSignatureToCorporateSignature(signature *models.Signa
 
 	log.WithFields(f).Debugf("Fetched %d approval list items for signature", len(approvals))
 
-	transformApprovalList := func(approvalList []string, listType string, destinationList *[]*models.ApprovalItem) {
-		defer wg.Done()
-		for _, item := range approvalList {
-			// Default to the signature modified date
-			// log.WithFields(f).Debugf("searching for approval for %s: %s", listType, item)
-			foundApprovals := searchSignatureApprovals(signature.SignatureID, listType, item, approvals)
-			// Handle scenarios of records with no attached event logs
-			dateAdded := signature.SignatureModified
-
-			if len(foundApprovals) > 0 {
-				// ideally this should be one record
-				dateAdded = approvals[0].DateAdded
-			}
-
-			approvalItem := &models.ApprovalItem{
-				ApprovalItem: item,
-				DateAdded:    dateAdded,
-			}
-			*destinationList = append(*destinationList, approvalItem)
-		}
+	signatureApprovals := map[string][]string{
+		"domain":         signature.DomainApprovalList,
+		"email":          signature.EmailApprovalList,
+		"githubOrg":      signature.GithubOrgApprovalList,
+		"githubUsername": signature.GithubUsernameApprovalList,
+		"gitlabOrg":      signature.GitlabOrgApprovalList,
+		"gitlabUsername": signature.GitlabUsernameApprovalList,
 	}
 
-	// Transform domain approval list
-	wg.Add(1)
-	go transformApprovalList(signature.DomainApprovalList, "domain", &corporateSignature.DomainApprovalList)
+	// Transform the approval list items
+	for key, value := range signatureApprovals {
+		wg.Add(1)
+		go func(key string, value []string) {
+			defer wg.Done()
+			for _, item := range value {
+				// Default to the signature modified date
+				// log.WithFields(f).Debugf("searching for approval for %s: %s", key, item)
+				approvalItem := models.ApprovalItem{
+					ApprovalItem: item,
+					DateAdded:    signature.SignatureModified,
+				}
+				foundApprovals := searchSignatureApprovals(signature.SignatureID, key, item, approvals)
 
-	// Transform email approval list
-	wg.Add(1)
-	go transformApprovalList(signature.EmailApprovalList, "email", &corporateSignature.EmailApprovalList)
+				if len(foundApprovals) > 0 {
+					// ideally this should be one record
+					approvalItem.DateAdded = foundApprovals[0].DateAdded
+					log.WithFields(f).Debugf("found approval for %s: %s :%s", key, item, approvalItem.DateAdded)
+				}
 
-	// Transform GitHub org approval list
-	wg.Add(1)
-	go transformApprovalList(signature.GithubOrgApprovalList, "githubOrg", &corporateSignature.GithubOrgApprovalList)
+				switch key {
+				case "domain":
+					corporateSignature.DomainApprovalList = append(corporateSignature.DomainApprovalList, &approvalItem)
+				case "email":
+					corporateSignature.EmailApprovalList = append(corporateSignature.EmailApprovalList, &approvalItem)
+				case "githubOrg":
+					corporateSignature.GithubOrgApprovalList = append(corporateSignature.GithubOrgApprovalList, &approvalItem)
+				case "githubUsername":
+					corporateSignature.GithubUsernameApprovalList = append(corporateSignature.GithubUsernameApprovalList, &approvalItem)
+				case "gitlabOrg":
+					corporateSignature.GitlabOrgApprovalList = append(corporateSignature.GitlabOrgApprovalList, &approvalItem)
+				case "gitlabUsername":
+					corporateSignature.GitlabUsernameApprovalList = append(corporateSignature.GitlabUsernameApprovalList, &approvalItem)
+				}
+			}
+		}(key, value)
 
-	// Transform GitHub username approval list
-	wg.Add(1)
-	go transformApprovalList(signature.GithubUsernameApprovalList, "githubUsername", &corporateSignature.GithubUsernameApprovalList)
+	}
 
-	// Transform GitLab org approval list
-	wg.Add(1)
-	go transformApprovalList(signature.GitlabOrgApprovalList, "gitlabOrg", &corporateSignature.GitlabOrgApprovalList)
-
-	// Transform GitLab username approval list
-	wg.Add(1)
-	go transformApprovalList(signature.GitlabUsernameApprovalList, "gitlabUsername", &corporateSignature.GitlabUsernameApprovalList)
-
+	log.WithFields(f).Debug("waiting for approval list items to be processed")
 	wg.Wait()
-
 	return err
+
 }
 
 func iclaSigCsvHeader() string {
