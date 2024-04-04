@@ -27,6 +27,7 @@ type IRepository interface {
 	DeleteAll() error
 	GetApprovalListBySignature(signatureID string) ([]ApprovalItem, error)
 	AddApprovalList(approvalItem ApprovalItem) error
+	UpdateApprovalItem(approvalItem ApprovalItem) error
 	DeleteApprovalList(approvalID string) error
 	SearchApprovalList(criteria, approvalListName, claGroupID, companyID, signatureID string) ([]ApprovalItem, error)
 	BatchAddApprovalList(approvalItems []ApprovalItem) error
@@ -132,6 +133,33 @@ func (repo *repository) DeleteAll() error {
 			break
 		}
 	}
+	return nil
+}
+
+func (repo *repository) UpdateApprovalItem(approvalItem ApprovalItem) error {
+	f := logrus.Fields{
+		"functionName": "v2.approvals.repository.UpdateApprovalItem",
+		"approvalID":   approvalItem.ApprovalID,
+	}
+
+	log.WithFields(f).Debugf("updating approval item: %+v", approvalItem)
+
+	av, err := dynamodbattribute.MarshalMap(approvalItem)
+	if err != nil {
+		log.WithFields(f).Warnf("unable to marshal data, error: %+v", err)
+		return err
+	}
+
+	_, err = repo.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
+		TableName: aws.String(repo.tableName),
+		Item:      av,
+	})
+
+	if err != nil {
+		log.WithFields(f).Warnf("repository.UpdateApprovalItem - unable to update data in table, error: %+v", err)
+		return err
+	}
+
 	return nil
 }
 
