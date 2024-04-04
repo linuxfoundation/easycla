@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/communitybridge/easycla/cla-backend-go/signatures"
+	"github.com/communitybridge/easycla/cla-backend-go/v2/approvals"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
 
 	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
@@ -143,8 +144,11 @@ func Handler(ctx context.Context) error {
 		RefreshToken: configFile.LFGroup.RefreshToken,
 	})
 
+	approvalsTableName := "cla-" + stage + "-approvals"
+
 	usersService := users.NewService(usersRepo, eventsService)
-	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService, gitV1Repository, githubOrganizationsRepo, gerritService)
+	approvalsRepo := approvals.NewRepository(stage, awsSession, approvalsTableName)
+	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService, gitV1Repository, githubOrganizationsRepo, gerritService, approvalsRepo)
 	v2RepositoriesService := v2Repositories.NewService(gitV1Repository, gitV2Repository, v1ProjectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
 	// gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo)
 	gitlabOrganizationService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepo, usersService, signaturesRepo, v1CompanyRepo)
