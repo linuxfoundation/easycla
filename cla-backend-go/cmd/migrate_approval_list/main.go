@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	// "strings"
 	"sync"
 	"time"
 
@@ -46,9 +48,8 @@ var ghRepo repositories.Repository
 var gerritsRepo gerrits.Repository
 var ghOrgRepo github_organizations.Repository
 var gerritService gerrits.Service
-var eventFound int
-var eventNotFound int
-var recordExists int
+var eventsByType []*v1Models.Event
+var toUpdateApprovalItems []approvals.ApprovalItem
 
 type combinedRepo struct {
 	users.UserRepository
@@ -56,19 +57,6 @@ type combinedRepo struct {
 	repository.ProjectRepository
 	projects_cla_groups.Repository
 }
-
-var emailDomainSuccessCount int
-var emailSuccessCount int
-var githubOrgSuccessCount int
-var githubUsernameSuccessCount int
-var gitlabOrgSuccessCount int
-var gitlabUsernameSuccessCount int
-
-// var emailFailureCount int
-// var githubOrgFailureCount int
-// var githubUsernameFailureCount int
-// var gitlabOrgFailureCount int
-// var gitlabUsernameFailureCount int
 
 func init() {
 	stage = os.Getenv("STAGE")
@@ -109,28 +97,55 @@ func main() {
 	approved := true
 	// signatureID := flag.String("signature-id", "ALL", "signature ID to migrate")
 	delete := flag.Bool("delete", false, "delete approval items")
+	signatureID := flag.String("signature-id", "ALL", "signature ID to migrate")
 	flag.Parse()
 
 	if *delete {
 		log.Info("Deleting approval items")
-		err := approvalRepo.DeleteAll()
+		err := approvalRepo.BatchDeleteApprovalList()
 		if err != nil {
 			log.WithFields(f).WithError(err).Error("error deleting approval items")
 			return
 		}
 		log.Info("Deleted all approval items")
 		return
+
+	} else if *signatureID != "ALL" {
+		log.Infof("Migrating approval items for signature : %s", *signatureID)
+		signature, err := signatureRepo.GetItemSignature(context.Background(), *signatureID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Errorf("error fetching signature : %s", *signatureID)
+			return
+		}
+		log.WithFields(f).Debugf("Processing signature : %+v", signature)
+		err = updateApprovalsTable(signature)
+		if err != nil {
+			log.WithFields(f).WithError(err).Errorf("error updating approvals table for signature : %s", *signatureID)
+			return
+		}
+		log.Infof("batch update %d approvals ", len(toUpdateApprovalItems))
+		err = approvalRepo.BatchAddApprovalList(toUpdateApprovalItems)
+		if err != nil {
+			log.WithFields(f).WithError(err).Error("error adding approval items")
+			return
+		}
+		return
 	}
-	
+
 	log.Info("Fetching all ccla signatures...")
 	cclaSignatures, err := signatureRepo.GetCCLASignatures(context.Background(), &signed, &approved)
 	if err != nil {
 		log.Fatalf("Error fetching ccla signatures : %v", err)
 	}
 	log.Infof("Fetched %d ccla signatures", len(cclaSignatures))
-	eventFound = 0
-	eventNotFound = 0
-	recordExists = 0
+
+	log.WithFields(f).Debugf("Fetching events by type : %s", events.ClaApprovalListUpdated)
+	eventsByType, err = eventsRepo.GetEventsByType(events.ClaApprovalListUpdated, 100)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Errorf("error fetching events by type : %s", events.ClaApprovalListUpdated)
+		return
+	}
 
 	var wg sync.WaitGroup
 
@@ -139,115 +154,60 @@ func main() {
 		go func(signature *signatures.ItemSignature) {
 			defer wg.Done()
 			log.WithFields(f).Debugf("Processing company : %s, project : %s", signature.SignatureReferenceName, signature.SignatureProjectID)
-			err := updateApprovalsTable(signature)
-			if err != nil {
-				log.WithFields(f).Warnf("Error updating approvals table for signature : %s, error: %v", signature.SignatureID, err)
+			updateErr := updateApprovalsTable(signature)
+			if updateErr != nil {
+				log.WithFields(f).Warnf("Error updating approvals table for signature : %s, error: %v", signature.SignatureID, updateErr)
 			}
 		}(cclaSignature)
 	}
 	wg.Wait()
-	log.WithFields(f).Debugf("Events found : %d, Events not found : %d , existing Record count: %d", eventFound, eventNotFound, recordExists)
-	
-	
+	log.WithFields(f).Infof("batch update %d approvals ", len(toUpdateApprovalItems))
+	err = approvalRepo.BatchAddApprovalList(toUpdateApprovalItems)
+	if err != nil {
+		log.WithFields(f).WithError(err).Error("error adding approval items")
+		return
+	}
 
 }
 
-func counter(listType string) {
-	switch listType {
-	case utils.DomainApprovalCriteria:
-		emailDomainSuccessCount++
-	case utils.EmailApprovalCriteria:
-		emailSuccessCount++
-	case utils.GithubOrgApprovalCriteria:
-		githubOrgSuccessCount++
-	case utils.GithubUsernameApprovalCriteria:
-		githubUsernameSuccessCount++
-	case utils.GitlabOrgApprovalCriteria:
-		gitlabOrgSuccessCount++
-	case utils.GitlabUsernameApprovalCriteria:
-		gitlabUsernameSuccessCount++
+func getSearchTermEvents(events []*v1Models.Event, searchTerm, companyID string) []*v1Models.Event {
+	f := logrus.Fields{
+		"functionName": "getSearchTermEvents",
+		"searchTerm":   searchTerm,
+		"companyID":    companyID,
 	}
-}
-
-func approvalExists(approvalItems []approvals.ApprovalItem, listType, item, projectID, signatureID string) bool {
-	if len(approvalItems) == 0 {
-		return false
-	}
-	for _, approval := range approvalItems {
-		if approval.ApprovalCriteria == listType && approval.ApprovalName == item && approval.ProjectID == projectID && approval.SignatureID == signatureID {
-			return true
+	log.WithFields(f).Debug("searching for events ...")
+	var result []*v1Models.Event
+	for _, event := range events {
+		if strings.Contains(strings.ToLower(event.EventData), strings.ToLower(searchTerm)) && event.EventCompanyID == companyID {
+			log.WithFields(f).Debugf("found event with search term : %s", searchTerm)
+			result = append(result, event)
 		}
 	}
-
-	return false
+	return result
 }
 
 func updateApprovalsTable(signature *signatures.ItemSignature) error {
 	f := logrus.Fields{
 		"functionName": "updateApprovalsTable",
 		"signatureID":  signature.SignatureID,
+		"companyName":  signature.SignatureReferenceName,
 	}
 	log.WithFields(f).Debugf("updating approvals table for signature : %s", signature.SignatureID)
 	var wg sync.WaitGroup
 	var errMutex sync.Mutex
 	var err error
 
-	approvalItems, err := approvalRepo.GetApprovalListBySignature(signature.SignatureID)
-	if err != nil {
-		log.WithFields(f).Warnf("Error fetching approval list items for signature : %s, error: %v", signature.SignatureID, err)
-		return err
-	}
-
-	log.WithFields(f).Debugf("Fetched %d approval list items for signature: %s", len(approvalItems), signature.SignatureID)
-
-	company, err := companyRepo.GetCompany(context.Background(), signature.SignatureReferenceID)
-
-	if err != nil {
-		log.WithFields(f).Warnf("Error fetching company : %s, error: %v", signature.SignatureReferenceID, err)
-		return err
-	}
-
-	if company == nil {
-		log.WithFields(f).Warnf("Company not found for : %s", signature.SignatureReferenceID)
-		return fmt.Errorf("company not found for : %s", signature.SignatureReferenceID)
-	}
-
-	searchTerm := "was added to the approval list"
-
-	// Get Company Project list
-	companyEvents, err := eventsRepo.GetCompanyClaGroupEvents(signature.SignatureProjectID, company.CompanyExternalID, nil, nil, &searchTerm, true)
-
-	if err != nil {
-		log.WithFields(f).Warnf("Error fetching company events : %s, error: %v", signature.SignatureProjectID, err)
-		return err
-	}
-
-	log.WithFields(f).Debugf("Fetched %d company events for project : %s and company: %s", len(companyEvents.Events), signature.SignatureProjectID, company.CompanyName)
-
 	update := func(approvalList []string, listType string) {
 		defer wg.Done()
 		for _, item := range approvalList {
 			searchTerm := fmt.Sprintf("%s was added to the approval list", item)
-			eventType := events.ClaApprovalListUpdated
-
-			if approvalExists(approvalItems, listType, item, signature.SignatureProjectID, signature.SignatureID) {
-				log.WithFields(f).Debugf("Approval item already exists for : %s, %s", listType, item)
-				recordExists++
-				return
-			}
-
-			log.WithFields(f).Debugf("searching for events with search term : %s, projectID: %s, eventType: %s ", searchTerm, signature.SignatureProjectID, eventType)
-
+			events := getSearchTermEvents(eventsByType, searchTerm, signature.SignatureReferenceID)
 			dateAdded := signature.DateModified
 
-			// search events for the item
-			for _, event := range companyEvents.Events {
-				if event.EventType == eventType && event.EventCompanyID == company.CompanyID && event.EventCLAGroupID == signature.SignatureProjectID && strings.Contains(strings.ToLower(event.EventData), strings.ToLower(searchTerm)) {
-					log.WithFields(f).Debugf("found event with id: %s, event : %+v ", event.EventID, event)
-					dateAdded = event.EventTime
-					eventFound++
-					break
-				}
+			if len(events) > 0 {
+				latestEvent := getLatestEvent(events)
+				dateAdded = latestEvent.EventTime
 			}
 
 			approvalID, approvalErr := uuid.NewV4()
@@ -275,17 +235,7 @@ func updateApprovalsTable(signature *signatures.ItemSignature) error {
 				Active:              true,
 			}
 
-			log.WithFields(f).Debugf("Adding approval item : %+v", approvalItem)
-			approvalErr = approvalRepo.AddApprovalList(approvalItem)
-			if err != nil {
-				errMutex.Lock()
-				err = approvalErr
-				errMutex.Unlock()
-				log.WithFields(f).Warnf("Error adding approval item : %v", err)
-				return
-			}
-
-			counter(listType)
+			toUpdateApprovalItems = append(toUpdateApprovalItems, approvalItem)
 		}
 	}
 
@@ -308,9 +258,6 @@ func updateApprovalsTable(signature *signatures.ItemSignature) error {
 	go update(signature.GitlabUsernameApprovalList, utils.GitlabUsernameApprovalCriteria)
 
 	wg.Wait()
-
-	log.WithFields(f).Debugf("processed for company : %s, project : %s", signature.SignatureReferenceName, signature.SignatureProjectID)
-	log.WithFields(f).Debugf("Email domain success count : %d, Email success count : %d, Github org success count : %d, Github username success count : %d, Gitlab org success count : %d, Gitlab username success count : %d", emailDomainSuccessCount, emailSuccessCount, githubOrgSuccessCount, githubUsernameSuccessCount, gitlabOrgSuccessCount, gitlabUsernameSuccessCount)
 
 	return err
 }

@@ -6,6 +6,10 @@ package approvals
 import (
 	"errors"
 	"fmt"
+
+	// "math/rand"
+	"net"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -25,6 +29,8 @@ type IRepository interface {
 	AddApprovalList(approvalItem ApprovalItem) error
 	DeleteApprovalList(approvalID string) error
 	SearchApprovalList(criteria, approvalListName, claGroupID, companyID, signatureID string) ([]ApprovalItem, error)
+	BatchAddApprovalList(approvalItems []ApprovalItem) error
+	BatchDeleteApprovalList() error
 }
 
 type repository struct {
@@ -126,7 +132,6 @@ func (repo *repository) DeleteAll() error {
 			break
 		}
 	}
-
 	return nil
 }
 
@@ -166,6 +171,15 @@ func (repo *repository) GetApprovalList(approvalID string) (*ApprovalItem, error
 	return &approvalItem, nil
 }
 
+func exponentialBackoff(attempt int) time.Duration {
+	const maxBackoff = 30 * time.Second
+	backoff := time.Duration(1<<uint(attempt)) * time.Second
+	if backoff > maxBackoff {
+		backoff = maxBackoff
+	}
+	return backoff
+}
+
 func (repo *repository) GetApprovalListBySignature(signatureID string) ([]ApprovalItem, error) {
 	f := logrus.Fields{
 		"functionName": "GetApprovalListBySignature",
@@ -179,7 +193,6 @@ func (repo *repository) GetApprovalListBySignature(signatureID string) ([]Approv
 	expr, err := expression.NewBuilder().WithKeyCondition(condition).Build()
 
 	if err != nil {
-		log.WithFields(f).Warnf("error building expression, error: %+v", err)
 		return nil, err
 	}
 
@@ -195,12 +208,22 @@ func (repo *repository) GetApprovalListBySignature(signatureID string) ([]Approv
 	}
 
 	var results []ApprovalItem
+	maxRetries := 5
 
-	for {
+	for attempt := 0; attempt < maxRetries; attempt++ {
 		output, err := repo.dynamoDBClient.Query(input)
 		if err != nil {
-			log.WithFields(f).Warnf("error retrieving approval list, error: %+v", err)
-			return nil, err
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				log.WithFields(f).Warnf("error building expression, error: %+v", err)
+			} else if awsErr, ok := err.(awserr.Error); ok {
+				log.WithFields(f).Warnf("error building expression, error: %+v", awsErr)
+			} else if err.Error() == "connection reset by peer" {
+				log.WithFields(f).Warnf("error building expression, error: %+v", err)
+			} else {
+				return nil, err
+			}
+
+			time.Sleep(exponentialBackoff(attempt))
 		}
 
 		var items []ApprovalItem
@@ -221,6 +244,177 @@ func (repo *repository) GetApprovalListBySignature(signatureID string) ([]Approv
 
 	return results, nil
 
+}
+
+func (repo *repository) BatchDeleteApprovalList() error {
+	f := logrus.Fields{
+		"functionName": "v2.BatchDeleteApprovalList",
+		"tableName":    repo.tableName,
+	}
+
+	log.WithFields(f).Debugf("repository.BatchDeleteApprovalList - deleting all approval list items")
+
+	itemsToDelete, err := repo.getAll()
+	startTime := time.Now()
+
+	if err != nil {
+		log.WithFields(f).Warnf("repository.BatchDeleteApprovalList - unable to fetch data from table, error: %+v", err)
+		return err
+	}
+
+	log.WithFields(f).Debugf("repository.BatchDeleteApprovalList - deleting %d approval list items", len(itemsToDelete))
+
+	batchSize := 25
+	deleted := len(itemsToDelete)
+	processed := 0
+	var wg sync.WaitGroup
+
+	for num := 0; num < len(itemsToDelete); num += batchSize {
+		start := num
+		end := num + batchSize
+		if end > len(itemsToDelete) {
+			end = len(itemsToDelete)
+		}
+
+		wg.Add(1)
+
+		go func(s, e int) {
+			defer wg.Done()
+			var batchWriteItems []*dynamodb.WriteRequest
+			for _, approvalItem := range itemsToDelete[s:e] {
+				batchWriteItems = append(batchWriteItems, &dynamodb.WriteRequest{
+					DeleteRequest: &dynamodb.DeleteRequest{
+						Key: map[string]*dynamodb.AttributeValue{
+							"approval_id": {
+								S: aws.String(approvalItem.ApprovalID),
+							},
+						},
+					},
+				})
+			}
+
+			input := &dynamodb.BatchWriteItemInput{
+				RequestItems: map[string][]*dynamodb.WriteRequest{
+					repo.tableName: batchWriteItems,
+				},
+			}
+
+			maxAttempts := 3
+
+			for attempt := 0; attempt < maxAttempts; attempt++ {
+				op, err := repo.dynamoDBClient.BatchWriteItem(input)
+				if err != nil {
+					if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+						log.WithFields(f).Warnf("repository.BatchDeleteApprovalList - provisioned throughput exceeded, retrying in :%d seconds", exponentialBackoff(attempt))
+						time.Sleep(exponentialBackoff(attempt))
+						continue
+					}
+					log.WithFields(f).Warnf("repository.BatchDeleteApprovalList - unable to batch delete data from table, error: %+v", err)
+					return
+				}
+
+				if len(op.UnprocessedItems) != 0 {
+					log.WithFields(f).Warn("unprocessed items found")
+					deleted -= len(op.UnprocessedItems)
+				}
+				break
+			}
+
+			processed += len(batchWriteItems)
+
+			log.WithFields(f).Debugf("repository.BatchDeleteApprovalList - processed %d of %d approval list items", processed, len(itemsToDelete))
+
+		}(start, end)
+
+	}
+
+	log.WithFields(f).Debug("repository.BatchDeleteApprovalList - waiting for batch delete to complete")
+	wg.Wait()
+
+	log.WithFields(f).Debugf("all batches completed: deleted %d records in %s", deleted, time.Since(startTime))
+
+	return nil
+
+}
+
+func (repo *repository) BatchAddApprovalList(approvalItems []ApprovalItem) error {
+	f := logrus.Fields{
+		"functionName": "BatchAddApprovalList",
+		"tableName":    repo.tableName,
+	}
+
+	log.WithFields(f).Debugf("repository.BatchAddApprovalList - adding %d approval list items", len(approvalItems))
+	batchSize := 25
+	processed := 0
+	inserted := len(approvalItems)
+	startTime := time.Now()
+	var wg sync.WaitGroup
+
+	for num := 0; num < len(approvalItems); num += batchSize {
+		start := num
+		end := num + batchSize
+		if end > len(approvalItems) {
+			end = len(approvalItems)
+		}
+
+		wg.Add(1)
+
+		go func(s, e int) {
+			defer wg.Done()
+			var batchWriteItems []*dynamodb.WriteRequest
+			for _, approvalItem := range approvalItems[s:e] {
+				av, err := dynamodbattribute.MarshalMap(approvalItem)
+				if err != nil {
+					log.WithFields(f).Warnf("repository.BatchAddApprovalList - unable to marshal data, error: %+v", err)
+					return
+				}
+
+				batchWriteItems = append(batchWriteItems, &dynamodb.WriteRequest{
+					PutRequest: &dynamodb.PutRequest{
+						Item: av,
+					},
+				})
+			}
+
+			input := &dynamodb.BatchWriteItemInput{
+				RequestItems: map[string][]*dynamodb.WriteRequest{
+					repo.tableName: batchWriteItems,
+				},
+			}
+
+			maxAttempts := 3
+
+			for attempt := 0; attempt < maxAttempts; attempt++ {
+				op, err := repo.dynamoDBClient.BatchWriteItem(input)
+				if err != nil {
+					if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+						log.WithFields(f).Warnf("repository.BatchAddApprovalList - provisioned throughput exceeded, retrying in :%d seconds", exponentialBackoff(attempt))
+						time.Sleep(exponentialBackoff(attempt))
+						continue
+					}
+					log.WithFields(f).Warnf("repository.BatchAddApprovalList - unable to batch add data to table, error: %+v", err)
+					return
+				}
+
+				if len(op.UnprocessedItems) != 0 {
+					log.WithFields(f).Warn("unprocessed items found")
+					inserted -= len(op.UnprocessedItems)
+				}
+				break
+			}
+			processed += len(batchWriteItems)
+			log.WithFields(f).Debugf("repository.BatchAddApprovalList - processed %d of %d approval list items", processed, len(approvalItems))
+
+		}(start, end)
+
+	}
+
+	log.WithFields(f).Debug("repository.BatchAddApprovalList - waiting for batch add to complete")
+	wg.Wait()
+
+	log.WithFields(f).Debugf("all batches completed: inserted %d records in %s", inserted, time.Since(startTime))
+
+	return nil
 }
 
 func (repo *repository) AddApprovalList(approvalItem ApprovalItem) error {
@@ -249,6 +443,12 @@ func (repo *repository) AddApprovalList(approvalItem ApprovalItem) error {
 		})
 
 		if err != nil {
+			netErr, ok := err.(net.Error)
+			if ok && netErr.Timeout() {
+				log.WithFields(f).Warnf("repository.AddApprovalList - timeout error, retrying in %d seconds", retryDelay)
+				time.Sleep(exponentialBackoff(attempt))
+				continue
+			}
 			awsErr, ok := err.(awserr.Error)
 			if !ok {
 				log.WithFields(f).Warnf("repository.AddApprovalList - unable to add data to table, error: %+v", err)

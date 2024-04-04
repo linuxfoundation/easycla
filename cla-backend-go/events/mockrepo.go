@@ -20,6 +20,11 @@ import (
 // mockRepository data model
 type mockRepository struct{}
 
+// GetEventsByType implements Repository.
+func (repo *mockRepository) GetEventsByType(eventType string, pageSize int64) ([]*models.Event, error) {
+	panic("unimplemented")
+}
+
 // GetCCLAEvents implements Repository.
 func (repo *mockRepository) GetCCLAEvents(claGroupId string, companyID string, searchTerm string, eventType string, pageSize int64) ([]*models.Event, error) {
 	panic("unimplemented")
