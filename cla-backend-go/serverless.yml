@@ -204,16 +204,8 @@ provider:
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-cla-manager-requests/index/cla-manager-requests-project-index"
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-projects-cla-groups/index/cla-group-id-index"
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-projects-cla-groups/index/foundation-sfid-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-org-sfid-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-project-sfid-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-organization-name-lower-search-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-project-sfid-organization-name-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-full-path-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/gitlab-external-group-id-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/approval-criteria-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/approval-name-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/date-added-index"
-            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/signature-id-index"
+            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs/index/*"
+            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-approvals/index/*"
 
   environment:
     STAGE: ${self:provider.stage}
