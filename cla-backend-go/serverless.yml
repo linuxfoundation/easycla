@@ -139,6 +139,7 @@ provider:
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-metrics"
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-projects-cla-groups"
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-gitlab-orgs"
+            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-approvals"
         - Effect: Allow
           Action:
             - dynamodb:Query
