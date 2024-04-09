@@ -170,7 +170,7 @@ func main() {
 
 }
 
-func getSearchTermEvents(events []*v1Models.Event, searchTerm, companyID string) []*v1Models.Event {
+func getSearchTermEvents(events []*v1Models.Event, searchTerm, companyID, claGroupID string) []*v1Models.Event {
 	f := logrus.Fields{
 		"functionName": "getSearchTermEvents",
 		"searchTerm":   searchTerm,
@@ -179,7 +179,7 @@ func getSearchTermEvents(events []*v1Models.Event, searchTerm, companyID string)
 	log.WithFields(f).Debug("searching for events ...")
 	var result []*v1Models.Event
 	for _, event := range events {
-		if strings.Contains(strings.ToLower(event.EventData), strings.ToLower(searchTerm)) && event.EventCompanyID == companyID {
+		if strings.Contains(strings.ToLower(event.EventData), strings.ToLower(searchTerm)) && event.EventCompanyID == companyID && event.EventCLAGroupID == claGroupID {
 			log.WithFields(f).Debugf("found event with search term : %s", searchTerm)
 			result = append(result, event)
 		}
@@ -201,8 +201,25 @@ func updateApprovalsTable(signature *signatures.ItemSignature) error {
 	update := func(approvalList []string, listType string) {
 		defer wg.Done()
 		for _, item := range approvalList {
-			searchTerm := fmt.Sprintf("%s was added to the approval list", item)
-			events := getSearchTermEvents(eventsByType, searchTerm, signature.SignatureReferenceID)
+			searchIdentifier := ""
+			switch listType {
+			case utils.DomainApprovalCriteria:
+				searchIdentifier = "email address domain"
+			case utils.EmailApprovalCriteria:
+				searchIdentifier = "email address"
+			case utils.GithubUsernameApprovalCriteria:
+				searchIdentifier = "GitHub username"
+			case utils.GitlabUsernameApprovalCriteria:
+				searchIdentifier = "GitLab username"
+			case utils.GithubOrgApprovalCriteria:
+				searchIdentifier = "GitHub organization"
+			case utils.GitlabOrgApprovalCriteria:
+				searchIdentifier = "GitLab group"
+			default:
+				searchIdentifier = ""
+			}
+			searchTerm := fmt.Sprintf("%s %s was added to the approval list", searchIdentifier, item)
+			events := getSearchTermEvents(eventsByType, searchTerm, signature.SignatureReferenceID, signature.SignatureProjectID)
 			dateAdded := signature.DateModified
 
 			if len(events) > 0 {
