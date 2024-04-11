@@ -80,6 +80,8 @@ type Service interface {
 	GetSignURL(email, recipientID, userName, clientUserId, envelopeID, returnURL string) (string, error)
 	createEnvelope(ctx context.Context, payload *DocuSignEnvelopeRequest) (string, error)
 	addDocumentToEnvelope(ctx context.Context, envelopeID, documentName string, document []byte) error
+	GetSignedDocument(ctx context.Context, envelopeID, documentID string) ([]byte, error)
+	GetEnvelopeDocuments(ctx context.Context, envelopeID string) ([]DocuSignDocument, error)
 
 	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
 	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error)
@@ -493,7 +495,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 		//Get signed document
 		log.WithFields(f).Debugf("getting signed document for envelope ID: %s", envelopeID)
-		signedDocument, err := s.getSignedDocument(ctx, envelopeID, documentID)
+		signedDocument, err := s.GetSignedDocument(ctx, envelopeID, documentID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get signed document for envelope ID: %s", envelopeID)
 			return err
@@ -765,7 +767,7 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 
 		//Get signed document
 		log.WithFields(f).Debugf("getting signed document for envelope ID: %s", envelopeID)
-		signedDocument, err := s.getSignedDocument(ctx, envelopeID, documentID)
+		signedDocument, err := s.GetSignedDocument(ctx, envelopeID, documentID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get signed document for envelope ID: %s", envelopeID)
 			return err
@@ -925,7 +927,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 
 		//Get signed document
 		log.WithFields(f).Debugf("getting signed document for envelope ID: %s", envelopeID)
-		signedDocument, err := s.getSignedDocument(ctx, envelopeID, documentID)
+		signedDocument, err := s.GetSignedDocument(ctx, envelopeID, documentID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get signed document for envelope ID: %s", envelopeID)
 			return err
@@ -1161,7 +1163,7 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 
 	// store document on S3
 	log.WithFields(f).Debugf("storing signed document on S3...")
-	signedDocument, err := s.getSignedDocument(ctx, envelopeID, info.EnvelopeStatus.DocumentStatuses[0].ID)
+	signedDocument, err := s.GetSignedDocument(ctx, envelopeID, info.EnvelopeStatus.DocumentStatuses[0].ID)
 
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get signed document for envelope ID: %s", envelopeID)

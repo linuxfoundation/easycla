@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/sirupsen/logrus"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -26,6 +28,7 @@ type S3Storage interface {
 	Download(filename string) ([]byte, error)
 	Delete(filename string) error
 	GetPresignedURL(filename string) (string, error)
+	KeyExists(key string) (bool, error)
 }
 
 var s3Storage S3Storage
@@ -111,6 +114,13 @@ func UploadToS3(body []byte, projectID string, claType string, identifier string
 	return s3Storage.Upload(body, projectID, claType, identifier, signatureID)
 }
 
+func DocumentExists(key string) (bool, error) {
+	if s3Storage == nil {
+		return false, errors.New("s3 storage not set")
+	}
+	return s3Storage.KeyExists(key)
+}
+
 // DownloadFromS3 downloads file from s3
 func DownloadFromS3(filename string) ([]byte, error) {
 	if s3Storage == nil {
@@ -133,6 +143,35 @@ func GetDownloadLink(filename string) (string, error) {
 		return "", errors.New("s3Storage not set")
 	}
 	return s3Storage.GetPresignedURL(filename)
+}
+
+// KeyExists checks if key exists in s3
+func (s3c *S3Client) KeyExists(key string) (bool, error) {
+	f := logrus.Fields{
+		"functionName": "utils.s3.KeyExists",
+		"bucketName":   s3c.BucketName,
+		"key":          key,
+	}
+
+	log.WithFields(f).Debug("checking for key")
+
+	_, err := s3c.s3.HeadObject(&s3.HeadObjectInput{
+		Bucket: aws.String(s3c.BucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		// check for NotFound error
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) || strings.Contains(err.Error(), "NotFound") {
+			log.WithFields(f).Debug("key not found")
+			return false, nil
+		}
+		log.WithFields(f).WithError(err).Warn("problem checking for key")
+		return false, err
+	}
+
+	log.WithFields(f).Debugf("s3 document exists for key: %s", key)
+	return true, nil
 }
 
 // SignedCLAFilename provide s3 bucket url
