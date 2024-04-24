@@ -1249,11 +1249,15 @@ func getContributorPublicEmail(model *v1User.User) emails.Contributor {
 func getFormattedUserDetails(model *v1Models.User) string {
 	var details []string
 	if model.Username != "" {
-		details = append(details, fmt.Sprintf("User Name: %s", model.Username))
+		details = append(details, fmt.Sprintf("Name/User Name: %s", model.Username))
 	}
 
 	if model.GithubUsername != "" {
 		details = append(details, fmt.Sprintf("GitHub User Name: %s", model.GithubUsername))
+	}
+
+	if model.GitlabUsername != "" {
+		details = append(details, fmt.Sprintf("GitLab User Name: %s", model.GitlabUsername))
 	}
 
 	if model.LfUsername != "" {
