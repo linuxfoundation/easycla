@@ -3,9 +3,13 @@
 
 import xml.etree.ElementTree as ET
 
-from cla.models.docusign_models import populate_signature_from_ccla_callback, populate_signature_from_icla_callback, \
-    create_default_company_values, document_signed_email_content, ClaSignatoryEmailParams, cla_signatory_email_content
-from cla.models.dynamo_models import Signature, Company, Project, User
+from cla.models.docusign_models import (ClaSignatoryEmailParams,
+                                        cla_signatory_email_content,
+                                        create_default_company_values,
+                                        document_signed_email_content,
+                                        populate_signature_from_ccla_callback,
+                                        populate_signature_from_icla_callback)
+from cla.models.dynamo_models import Company, Project, Signature, User
 
 content_icla_agreement_date = """<?xml version="1.0" encoding="utf-8"?>
 <DocuSignEnvelopeInformation xmlns:xsd="http://www.w3.org/2001/XMLSchema"

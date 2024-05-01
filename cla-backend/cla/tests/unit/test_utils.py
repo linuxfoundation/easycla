@@ -6,9 +6,10 @@ from unittest.mock import Mock, patch
 
 import cla
 from cla import utils
-from cla.models.dynamo_models import Signature, User, Project
-from cla.utils import append_email_help_sign_off_content, get_email_help_content, get_email_sign_off_content, \
-    get_full_sign_url, append_project_version_to_url
+from cla.models.dynamo_models import Project, Signature, User
+from cla.utils import (append_email_help_sign_off_content,
+                       append_project_version_to_url, get_email_help_content,
+                       get_email_sign_off_content, get_full_sign_url)
 
 
 class TestUtils(unittest.TestCase):

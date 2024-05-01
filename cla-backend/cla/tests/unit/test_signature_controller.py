@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import cla
 from cla.controllers.signature import notify_whitelist_change
 from cla.controllers.signing import canceled_signature_html
-from cla.models.dynamo_models import User, Signature, Project
+from cla.models.dynamo_models import Project, Signature, User
 from cla.models.sns_email_models import MockSNS
 from cla.user import CLAUser
 

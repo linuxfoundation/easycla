@@ -4,7 +4,8 @@
 import unittest
 
 import cla
-from cla.controllers.github import webhook_secret_validation, webhook_secret_failed_email_content
+from cla.controllers.github import (webhook_secret_failed_email_content,
+                                    webhook_secret_validation)
 from cla.utils import get_comment_badge
 
 SUCCESS = ":white_check_mark:"

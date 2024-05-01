@@ -1,14 +1,14 @@
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
 
-import pytest
+from unittest.mock import MagicMock, Mock, patch
+
 import cla
 import pynamodb
-from unittest.mock import Mock, patch, MagicMock
-
+import pytest
 from cla.models.dynamo_models import GitHubOrg, GitHubOrgModel
-from cla.utils import get_github_organization_instance
 from cla.tests.unit.data import GH_TABLE_DESCRIPTION
+from cla.utils import get_github_organization_instance
 
 PATCH_METHOD = "pynamodb.connection.Connection._make_api_call"
 

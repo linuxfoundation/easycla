@@ -3,9 +3,8 @@
 
 from unittest.mock import Mock, patch
 
-import pytest
-
 import cla
+import pytest
 from cla.auth import AuthUser
 from cla.controllers import company as company_controller
 from cla.models.dynamo_models import Company

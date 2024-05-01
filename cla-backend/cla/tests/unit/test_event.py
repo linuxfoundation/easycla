@@ -6,9 +6,8 @@ import time
 from unittest.mock import Mock
 
 import pytest
-
 from cla.models import event_types
-from cla.models.dynamo_models import Event, User, Project, Company
+from cla.models.dynamo_models import Company, Event, Project, User
 
 
 @pytest.fixture()
