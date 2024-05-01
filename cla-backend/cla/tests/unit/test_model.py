@@ -4,17 +4,16 @@
 """
 Test python API changes for Signature and User Tables
 """
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import pytest
-
-from cla.models.dynamo_models import SignatureModel, UserModel
-from cla.utils import get_user_instance, get_signature_instance, get_company_instance
-from cla import utils
-from cla.tests.unit.data import USER_TABLE_DATA
-
-from pynamodb.indexes import AllProjection
 import cla
+import pytest
+from cla import utils
+from cla.models.dynamo_models import SignatureModel, UserModel
+from cla.tests.unit.data import USER_TABLE_DATA
+from cla.utils import (get_company_instance, get_signature_instance,
+                       get_user_instance)
+from pynamodb.indexes import AllProjection
 
 PATCH_METHOD = "pynamodb.connection.Connection._make_api_call"
 

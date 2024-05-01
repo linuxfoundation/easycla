@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 import cla
 from cla.auth import AuthUser
 from cla.controllers import project as project_controller
-from cla.models.dynamo_models import Project, User, Document, UserPermissions
+from cla.models.dynamo_models import Document, Project, User, UserPermissions
 from cla.models.event_types import EventType
 
 PATCH_METHOD = "pynamodb.connection.Connection._make_api_call"

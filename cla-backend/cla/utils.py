@@ -1840,6 +1840,7 @@ def get_co_authors_from_commit(commit):
     Helper function to return co-authors from commit
     """
     fn = "get_co_authors_from_commit"
+    # import pdb; pdb.set_trace()
     co_authors = []
     if commit.commit:
         commit_message = commit.commit.message

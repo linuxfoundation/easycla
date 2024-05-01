@@ -4,9 +4,9 @@
 from unittest.mock import Mock
 
 import pytest
-
-from cla.models.dynamo_models import User, Company
 from cla import utils
+from cla.models.dynamo_models import Company, User
+
 
 @pytest.fixture
 def user():

@@ -1,27 +1,15 @@
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
 
-import pytest
+from unittest.mock import MagicMock, patch
 
-from unittest.mock import patch, MagicMock
-from cla.tests.unit.data import (
-    COMPANY_TABLE_DATA,
-    USER_TABLE_DATA,
-    SIGNATURE_TABLE_DATA,
-    EVENT_TABLE_DESCRIPTION,
-    PROJECT_TABLE_DESCRIPTION,
-)
-from cla.models.dynamo_models import (
-    UserModel,
-    SignatureModel,
-    CompanyModel,
-    EventModel,
-    ProjectModel,
-    Signature,
-    Company,
-    User,
-    Project
-)
+import pytest
+from cla.models.dynamo_models import (Company, CompanyModel, EventModel,
+                                      Project, ProjectModel, Signature,
+                                      SignatureModel, User, UserModel)
+from cla.tests.unit.data import (COMPANY_TABLE_DATA, EVENT_TABLE_DESCRIPTION,
+                                 PROJECT_TABLE_DESCRIPTION,
+                                 SIGNATURE_TABLE_DATA, USER_TABLE_DATA)
 
 PATCH_METHOD = "pynamodb.connection.Connection._make_api_call"
 

@@ -1,12 +1,12 @@
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
 
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
 import pytest
-
 from cla.controllers import user as user_controller
-from cla.models.dynamo_models import User, Project, Company, CCLAWhitelistRequest, CompanyInvite
+from cla.models.dynamo_models import (CCLAWhitelistRequest, Company,
+                                      CompanyInvite, Project, User)
 from cla.models.event_types import EventType
 
 

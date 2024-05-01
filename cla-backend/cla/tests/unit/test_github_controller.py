@@ -5,8 +5,9 @@ import unittest
 from unittest.mock import Mock
 
 import cla
-from cla.controllers.github import get_org_name_from_installation_event, get_github_activity_action, \
-    notify_project_managers
+from cla.controllers.github import (get_github_activity_action,
+                                    get_org_name_from_installation_event,
+                                    notify_project_managers)
 from cla.controllers.repository import Repository
 from cla.models.ses_models import MockSES
 

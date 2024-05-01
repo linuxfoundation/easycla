@@ -4,13 +4,12 @@
 import json
 import os
 from http import HTTPStatus
-from unittest.mock import Mock, patch, MagicMock
-
-import pytest
+from unittest.mock import MagicMock, Mock, patch
 
 import cla
+import pytest
 from cla.models.dynamo_models import UserPermissions
-from cla.salesforce import get_projects, get_project
+from cla.salesforce import get_project, get_projects
 
 
 @pytest.fixture()

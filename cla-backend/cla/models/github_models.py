@@ -1255,7 +1255,7 @@ def get_merge_group_commit_authors(merge_group_sha, installation_id=None) -> Lis
 
     return commit_authors
     
-def get_author_summary(commit,pr,installation_id) -> UserCommitSummary:
+def get_author_summary(commit,pr,installation_id) -> List[UserCommitSummary]:
     """
     Helper function to extract author information from a GitHub commit.
     :param commit: A GitHub commit object.
@@ -1264,6 +1264,7 @@ def get_author_summary(commit,pr,installation_id) -> UserCommitSummary:
     :type pr: int
     """
     fn = 'cla.models.github_models.get_author_summary'
+    commit_authors = []
     if commit.author:
         try:
             commit_author_summary = UserCommitSummary(
@@ -1277,13 +1278,13 @@ def get_author_summary(commit,pr,installation_id) -> UserCommitSummary:
             cla.log.debug(f'{fn} - PR: {pr}, {commit_author_summary}')
             # check for co-author details
             # issue # 3884
-            commit_authors = []
+            commit_authors.append(commit_author_summary)
             co_authors = cla.utils.get_co_authors_from_commit(commit)
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 for co_author in co_authors:
-                    commit_authors.append(executor.submit(get_co_author_commits, co_author, commit, pr, installation_id))
+                    commit_authors.append(executor.submit(get_co_author_commits, co_author, commit, pr, installation_id).result())
 
-            return commit_author_summary
+            return commit_authors
         except (GithubException, IncompletableObject) as exc:
             cla.log.warning(f'{fn} - PR: {pr}, unable to get commit author summary: {exc}')
             try:
@@ -1303,7 +1304,8 @@ def get_author_summary(commit,pr,installation_id) -> UserCommitSummary:
                                 f'GitHub NamedUser author NOT found for commit SHA {commit_author_summary} '
                                 f'however, we did find GitAuthor info')
                 cla.log.debug(f'{fn} - PR: {pr}, {commit_author_summary}')
-                return commit_author_summary
+                commit_authors.append(commit_author_summary)
+                return commit_authors
             except (GithubException, IncompletableObject) as exc:
                 cla.log.warning(f'{fn} - PR: {pr}, unable to get commit author summary: {exc}')
                 commit_author_summary = UserCommitSummary(
@@ -1316,6 +1318,8 @@ def get_author_summary(commit,pr,installation_id) -> UserCommitSummary:
                 )
                 cla.log.warning(f'{fn} - PR: {pr}, '
                 f'could not find any commit author for SHA {commit_author_summary}')
+                commit_authors.append(commit_author_summary)
+                return commit_authors
     else:
         cla.log.warning(f'{fn} - PR: {pr}, '
                         f'could not find any commit author for SHA {commit.sha}')
@@ -1327,7 +1331,8 @@ def get_author_summary(commit,pr,installation_id) -> UserCommitSummary:
             None,
             False, False
         )
-        return commit_author_summary
+        commit_authors.append(commit_author_summary)
+        return commit_authors
             
             
 
@@ -1359,7 +1364,7 @@ def get_pull_request_commit_authors(pull_request, installation_id) -> List[UserC
         for future in concurrent.futures.as_completed(future_to_commit):
             future_to_commit[future]
             try:
-                commit_authors.append(future.result())
+                commit_authors.extend(future.result())
             except Exception as exc:
                 cla.log.warning(f'{fn} - PR: {pull_request.number}, get_author_summary generated an exception: {exc}')
                 raise exc
