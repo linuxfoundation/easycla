@@ -10,6 +10,11 @@ on:
       - v1.*
       - v2.*
 
+permissions:
+  # These permissions are needed to interact with GitHub's OIDC Token endpoint to fetch/set the AWS deployment credentials.
+  id-token: write
+  contents: read
+
 env:
   AWS_REGION: us-east-1
   AWS_PROFILE: lf-cla
