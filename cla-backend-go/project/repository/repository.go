@@ -567,7 +567,7 @@ func (repo *repo) GetCLAGroups(ctx context.Context, params *project.GetProjectsP
 		}
 
 		// Convert the list of DB models to a list of response models
-		projectList, modelErr := repo.buildCLAGroupModels(ctx, results.Items, LoadRepoDetails)
+		projectList, modelErr := repo.buildCLAGroupModels(ctx, results.Items, DontLoadRepoDetails)
 		if modelErr != nil {
 			log.WithFields(f).Warnf("error converting project DB model to response model, error: %v",
 				modelErr)

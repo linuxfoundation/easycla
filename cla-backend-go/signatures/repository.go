@@ -106,6 +106,7 @@ type SignatureRepository interface {
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error)
 	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
 	ActivateSignature(ctx context.Context, signatureID string) error
+	GetICLAByDate(ctx context.Context, startDate string) ([]ItemSignature, error)
 }
 
 type iclaSignatureWithDetails struct {
@@ -4445,6 +4446,69 @@ func (repo repository) GetClaGroupICLASignatures(ctx context.Context, claGroupID
 
 	out.List = iclaSignatures
 	return out, nil
+}
+
+func (repo repository) GetICLAByDate(ctx context.Context, startDate string) ([]ItemSignature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.GetICLAs",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"startDate":      startDate,
+	}
+
+	var signatures []ItemSignature
+
+	log.WithFields(f).Debug("querying for icla signatures by date...")
+
+	filter := expression.Name("date_created").GreaterThanEqual(expression.Value(startDate)).
+		And(expression.Name("signature_type").Equal(expression.Value(utils.SignatureTypeCLA))).
+		And(expression.Name("signature_signed").Equal(expression.Value(true))).
+		And(expression.Name("signature_approved").Equal(expression.Value(true)))
+
+	// Use the expression builder to create the expression
+	expr, err := expression.NewBuilder().WithFilter(filter).Build()
+	if err != nil {
+		log.WithFields(f).Warnf("error building expression for query icla signatures by date: %v", err)
+		return nil, err
+	}
+
+	var lastEvaluatedKey map[string]*dynamodb.AttributeValue
+
+	for {
+		scanInput := &dynamodb.ScanInput{
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			FilterExpression:          expr.Filter(),
+			TableName:                 aws.String(repo.signatureTableName),
+			ExclusiveStartKey:         lastEvaluatedKey,
+		}
+
+		result, err := repo.dynamoDBClient.Scan(scanInput)
+		if err != nil {
+			log.WithFields(f).Warnf("error retrieving icla signatures by date: %v", err)
+			return nil, err
+		}
+
+		log.WithFields(f).Debugf("retrieved %d icla signatures by date", len(result.Items))
+
+		var dbSignatures []ItemSignature
+
+		unmarshallError := dynamodbattribute.UnmarshalListOfMaps(result.Items, &dbSignatures)
+		if unmarshallError != nil {
+			log.WithFields(f).Warnf("error unmarshalling icla signatures from database by date: %v", unmarshallError)
+			return nil, unmarshallError
+		}
+
+		signatures = append(signatures, dbSignatures...)
+
+		// log.WithFields(f).Debugf("last evaluated key: %+v", result.LastEvaluatedKey)
+
+		if result.LastEvaluatedKey == nil {
+			break
+		}
+		lastEvaluatedKey = result.LastEvaluatedKey
+	}
+
+	return signatures, nil
 }
 
 func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures []ItemSignature) []*iclaSignatureWithDetails {
