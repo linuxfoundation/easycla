@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ const PresignedURLValidity = 15 * time.Minute
 // S3Storage provides methods to handle s3 storage
 type S3Storage interface {
 	Upload(fileContent []byte, projectID string, claType string, identifier string, signatureID string) error
+	UploadFile(file *os.File, projectID string, claType string, identifier string, signatureID string) error
 	Download(filename string) ([]byte, error)
 	Delete(filename string) error
 	GetPresignedURL(filename string) (string, error)
@@ -56,6 +58,16 @@ func (s3c *S3Client) Upload(fileContent []byte, projectID string, claType string
 		Bucket: aws.String(s3c.BucketName),
 		Key:    aws.String(filename),
 		Body:   bytes.NewReader(fileContent),
+	})
+	return err
+}
+
+func (s3c *S3Client) UploadFile(file *os.File, projectID string, claType string, identifier string, signatureID string) error {
+	filename := strings.Join([]string{"contract-group", projectID, claType, identifier, signatureID}, "/") + ".pdf"
+	_, err := s3c.s3.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String(s3c.BucketName),
+		Key:    aws.String(filename),
+		Body:   file,
 	})
 	return err
 }
@@ -112,6 +124,17 @@ func UploadToS3(body []byte, projectID string, claType string, identifier string
 		return errors.New("s3Storage not set")
 	}
 	return s3Storage.Upload(body, projectID, claType, identifier, signatureID)
+}
+
+// UploadFileToS3 uploads file to s3 storage at path contract-group/<project-ID>/<claType>/<identifier>/<signatureID>.pdf
+// claType should be cla or ccla
+// identifier can be user-id or company-id
+func UploadFileToS3(file *os.File, projectID string, claType string, identifier string, signatureID string) error {
+	if s3Storage == nil {
+		return errors.New("s3Storage not set")
+	}
+
+	return s3Storage.UploadFile(file, projectID, claType, identifier, signatureID)
 }
 
 func DocumentExists(key string) (bool, error) {

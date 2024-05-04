@@ -89,7 +89,7 @@ type APIErrorResponse struct {
 	Message   string `json:"message"`
 }
 
-func main() {
+func main() { // nolint
 	ctx := context.Background()
 	f := logrus.Fields{
 		"functionName": "main",
@@ -97,20 +97,101 @@ func main() {
 	// var toUpdate []*signatures.ItemSignature
 
 	dryRun := flag.Bool("dry-run", false, "dry run mode")
+	folder := flag.String("folder", "", "folder to upload the s3 documents")
+	meta := flag.String("meta", "", "meta data to upload the s3 documents")
 
 	flag.Parse()
 
 	// Fetch all the signatures from 2024-02-01T00:00:00.000Z
 	startDate := "2024-02-01T00:00:00.000Z"
 
+	if dryRun != nil && *dryRun {
+		log.WithFields(f).Debug("dry-run mode enabled")
+	}
+
+	if folder != nil && *folder != "" && meta != nil && *meta != "" {
+		log.WithFields(f).Debugf("folder: %s, meta: %s", *folder, *meta)
+		// var metaMap map[string]string
+
+		// Read csv file
+		file, err := os.Open(*meta)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem opening meta file")
+			return
+		}
+
+		reader := csv.NewReader(file)
+		records, err := reader.ReadAll()
+
+		count := len(records)
+		log.WithFields(f).Debugf("processing %d records", count)
+
+		passed := 0
+
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("problem reading meta file")
+			return
+		}
+
+		var wg sync.WaitGroup
+
+		// Limit the number of concurrent uploads
+		semaphore := make(chan struct{}, 5)
+
+		for _, record := range records {
+			wg.Add(1)
+			semaphore <- struct{}{}
+			go func(record []string) {
+				defer wg.Done()
+				defer func() { <-semaphore }()
+				fileName := record[0]
+				envelopeID := record[1]
+				signatureID := record[2]
+				projectID := record[3]
+				referenceID := record[4]
+				log.WithFields(f).Debugf("uploading file: %s, envelopeID: %s, signatureID: %s, projectID: %s, referenceID: %s", fileName, envelopeID, signatureID, projectID, referenceID)
+				// Upload the file
+				file, err := os.Open(*folder + "/" + fileName) // nolint
+				if err != nil {
+					log.WithFields(f).WithError(err).Warn("problem opening file")
+					failed++
+					return
+				}
+
+				if dryRun != nil && *dryRun {
+					log.WithFields(f).Debugf("dry-run mode enabled, skipping file upload: %s", fileName)
+					return
+				}
+
+				// Upload the document
+				log.WithFields(f).Debugf("uploading document for signature...: %s", signatureID)
+
+				err = utils.UploadFileToS3(file, projectID, utils.ClaTypeICLA, referenceID, signatureID)
+
+				if err != nil {
+					log.WithFields(f).WithError(err).Warn("problem uploading file")
+					failed++
+					return
+				}
+				passed++
+
+				log.WithFields(f).Debugf("document uploaded for signature: %s", signatureID)
+
+			}(record)
+		}
+
+		wg.Wait()
+
+		log.WithFields(f).Debug("completed processing files")
+
+		log.WithFields(f).Debugf("total: %d, passed: %d, failed: %d", count, passed, failed)
+		return
+	}
+
 	iclaSignatures, err := signatureRepo.GetICLAByDate(ctx, startDate)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem fetching ICLA signatures")
 		return
-	}
-
-	if dryRun != nil && *dryRun {
-		log.WithFields(f).Debug("dry-run mode enabled")
 	}
 
 	log.WithFields(f).Debugf("processing %d ICLA signatures", len(iclaSignatures))
@@ -151,7 +232,7 @@ func main() {
 		semaphore <- struct{}{}
 		go func(sig signatures.ItemSignature) {
 			defer wg.Done()
-			
+
 			var documentID string
 
 			reportData := ReportData{
