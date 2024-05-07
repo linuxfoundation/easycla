@@ -15,12 +15,9 @@ from datetime import datetime
 from typing import List, Optional
 from urllib.parse import urlencode
 
+import cla
 import falcon
 import requests
-from hug.middleware import SessionMiddleware
-from requests_oauthlib import OAuth2Session
-
-import cla
 from cla.middleware import CLALogMiddleware
 from cla.models import DoesNotExist
 from cla.models.dynamo_models import (CCLAWhitelistRequest, CLAManagerRequest,
@@ -30,11 +27,13 @@ from cla.models.dynamo_models import (CCLAWhitelistRequest, CLAManagerRequest,
                                       User, UserPermissions)
 from cla.models.event_types import EventType
 from cla.user import UserCommitSummary
+from hug.middleware import SessionMiddleware
+from requests_oauthlib import OAuth2Session
 
-API_BASE_URL = os.environ.get('CLA_API_BASE', '')
-CLA_LOGO_URL = os.environ.get('CLA_BUCKET_LOGO_URL', '')
-CORPORATE_BASE = os.environ.get('CLA_CORPORATE_BASE', '')
-CORPORATE_V2_BASE = os.environ.get('CLA_CORPORATE_V2_BASE', '')
+API_BASE_URL = os.environ.get("CLA_API_BASE", "")
+CLA_LOGO_URL = os.environ.get("CLA_BUCKET_LOGO_URL", "")
+CORPORATE_BASE = os.environ.get("CLA_CORPORATE_BASE", "")
+CORPORATE_V2_BASE = os.environ.get("CLA_CORPORATE_V2_BASE", "")
 
 
 def get_cla_path():
@@ -45,16 +44,22 @@ def get_cla_path():
 
 
 def get_log_middleware():
-    """Prepare the hug middleware to manage logging. """
+    """Prepare the hug middleware to manage logging."""
     return CLALogMiddleware(logger=cla.log)
 
 
 def get_session_middleware():
     """Prepares the hug middleware to manage key-value session data."""
     store = get_key_value_store_service()
-    return SessionMiddleware(store, context_name='session', cookie_name='cla-sid',
-                             cookie_max_age=300, cookie_domain=None, cookie_path='/',
-                             cookie_secure=False)
+    return SessionMiddleware(
+        store,
+        context_name="session",
+        cookie_name="cla-sid",
+        cookie_max_age=300,
+        cookie_domain=None,
+        cookie_path="/",
+        cookie_secure=False,
+    )
 
 
 def create_database(conf=None):
@@ -67,11 +72,11 @@ def create_database(conf=None):
     """
     if conf is None:
         conf = cla.conf
-    cla.log.info('Creating CLA database in %s', conf['DATABASE'])
-    if conf['DATABASE'] == 'DynamoDB':
+    cla.log.info("Creating CLA database in %s", conf["DATABASE"])
+    if conf["DATABASE"] == "DynamoDB":
         from cla.models.dynamo_models import create_database as cd
     else:
-        raise Exception('Invalid database selection in configuration: %s' % conf['DATABASE'])
+        raise Exception("Invalid database selection in configuration: %s" % conf["DATABASE"])
     cd()
 
 
@@ -87,11 +92,11 @@ def delete_database(conf=None):
     """
     if conf is None:
         conf = cla.conf
-    cla.log.warning('Deleting CLA database in %s', conf['DATABASE'])
-    if conf['DATABASE'] == 'DynamoDB':
+    cla.log.warning("Deleting CLA database in %s", conf["DATABASE"])
+    if conf["DATABASE"] == "DynamoDB":
         from cla.models.dynamo_models import delete_database as dd
     else:
-        raise Exception('Invalid database selection in configuration: %s' % conf['DATABASE'])
+        raise Exception("Invalid database selection in configuration: %s" % conf["DATABASE"])
     dd()
 
 
@@ -111,15 +116,25 @@ def get_database_models(conf=None):
     """
     if conf is None:
         conf = cla.conf
-    if conf['DATABASE'] == 'DynamoDB':
-        return {'User': User, 'Signature': Signature, 'Repository': Repository,
-                'Company': Company, 'Project': Project, 'Document': Document,
-                'GitHubOrg': GitHubOrg, 'Gerrit': Gerrit, 'UserPermissions': UserPermissions,
-                'Event': Event, 'CompanyInvites': CompanyInvite, 'ProjectCLAGroup': ProjectCLAGroup,
-                'CCLAWhitelistRequest': CCLAWhitelistRequest, 'CLAManagerRequest': CLAManagerRequest,
-                }
+    if conf["DATABASE"] == "DynamoDB":
+        return {
+            "User": User,
+            "Signature": Signature,
+            "Repository": Repository,
+            "Company": Company,
+            "Project": Project,
+            "Document": Document,
+            "GitHubOrg": GitHubOrg,
+            "Gerrit": Gerrit,
+            "UserPermissions": UserPermissions,
+            "Event": Event,
+            "CompanyInvites": CompanyInvite,
+            "ProjectCLAGroup": ProjectCLAGroup,
+            "CCLAWhitelistRequest": CCLAWhitelistRequest,
+            "CLAManagerRequest": CLAManagerRequest,
+        }
     else:
-        raise Exception('Invalid database selection in configuration: %s' % conf['DATABASE'])
+        raise Exception("Invalid database selection in configuration: %s" % conf["DATABASE"])
 
 
 def get_user_instance(conf=None) -> User:
@@ -131,7 +146,7 @@ def get_user_instance(conf=None) -> User:
     :return: A User model instance based on configuration specified.
     :rtype: cla.models.model_interfaces.User
     """
-    return get_database_models(conf)['User']()
+    return get_database_models(conf)["User"]()
 
 
 def get_cla_manager_requests_instance(conf=None) -> CLAManagerRequest:
@@ -143,7 +158,7 @@ def get_cla_manager_requests_instance(conf=None) -> CLAManagerRequest:
     :return: A CLAManagerRequest model instance based on configuration specified.
     :rtype: cla.models.model_interfaces.CLAManagerRequest
     """
-    return get_database_models(conf)['CLAManagerRequest']()
+    return get_database_models(conf)["CLAManagerRequest"]()
 
 
 def get_user_permissions_instance(conf=None) -> UserPermissions:
@@ -155,7 +170,7 @@ def get_user_permissions_instance(conf=None) -> UserPermissions:
     :return: A UserPermissions model instance based on configuration specified
     :rtype: cla.models.model_interfaces.UserPermissions
     """
-    return get_database_models(conf)['UserPermissions']()
+    return get_database_models(conf)["UserPermissions"]()
 
 
 def get_company_invites_instance(conf=None):
@@ -167,7 +182,7 @@ def get_company_invites_instance(conf=None):
     :return: A CompanyInvites model instance based on configuration specified
     :rtype: cla.models.model_interfaces.CompanyInvite
     """
-    return get_database_models(conf)['CompanyInvites']()
+    return get_database_models(conf)["CompanyInvites"]()
 
 
 def get_signature_instance(conf=None) -> Signature:
@@ -179,7 +194,7 @@ def get_signature_instance(conf=None) -> Signature:
     :return: An Signature model instance based on configuration.
     :rtype: cla.models.model_interfaces.Signature
     """
-    return get_database_models(conf)['Signature']()
+    return get_database_models(conf)["Signature"]()
 
 
 def get_repository_instance(conf=None):
@@ -191,7 +206,7 @@ def get_repository_instance(conf=None):
     :return: A Repository model instance based on configuration specified.
     :rtype: cla.models.model_interfaces.Repository
     """
-    return get_database_models(conf)['Repository']()
+    return get_database_models(conf)["Repository"]()
 
 
 def get_github_organization_instance(conf=None):
@@ -203,7 +218,7 @@ def get_github_organization_instance(conf=None):
     :return: A Repository model instance based on configuration specified.
     :rtype: cla.models.model_interfaces.GitHubOrg
     """
-    return get_database_models(conf)['GitHubOrg']()
+    return get_database_models(conf)["GitHubOrg"]()
 
 
 def get_gerrit_instance(conf=None):
@@ -215,7 +230,7 @@ def get_gerrit_instance(conf=None):
     :return: A Gerrit model instance based on configuration specified.
     :rtype: cla.models.model_interfaces.Gerrit
     """
-    return get_database_models(conf)['Gerrit']()
+    return get_database_models(conf)["Gerrit"]()
 
 
 def get_company_instance(conf=None) -> Company:
@@ -227,7 +242,7 @@ def get_company_instance(conf=None) -> Company:
     :return: A company model instance based on configuration specified.
     :rtype: cla.models.model_interfaces.Company
     """
-    return get_database_models(conf)['Company']()
+    return get_database_models(conf)["Company"]()
 
 
 def get_project_instance(conf=None) -> Project:
@@ -239,7 +254,7 @@ def get_project_instance(conf=None) -> Project:
     :return: A Project model instance based on configuration specified.
     :rtype: cla.models.model_interfaces.Project
     """
-    return get_database_models(conf)['Project']()
+    return get_database_models(conf)["Project"]()
 
 
 def get_document_instance(conf=None):
@@ -251,7 +266,7 @@ def get_document_instance(conf=None):
     :return: A Document model instance based on configuration specified.
     :rtype: cla.models.model_interfaces.Document
     """
-    return get_database_models(conf)['Document']()
+    return get_database_models(conf)["Document"]()
 
 
 def get_event_instance(conf=None) -> Event:
@@ -263,7 +278,7 @@ def get_event_instance(conf=None) -> Event:
     :return: A Event model instance based on configuration
     :rtype: cla.models.model_interfaces.Event
     """
-    return get_database_models(conf)['Event']()
+    return get_database_models(conf)["Event"]()
 
 
 def get_project_cla_group_instance(conf=None) -> ProjectCLAGroup:
@@ -276,7 +291,7 @@ def get_project_cla_group_instance(conf=None) -> ProjectCLAGroup:
     :rtype: cla.models.model_interfaces.ProjectCLAGroup
     """
 
-    return get_database_models(conf)['ProjectCLAGroup']()
+    return get_database_models(conf)["ProjectCLAGroup"]()
 
 
 def get_ccla_whitelist_request_instance(conf=None) -> CCLAWhitelistRequest:
@@ -289,7 +304,7 @@ def get_ccla_whitelist_request_instance(conf=None) -> CCLAWhitelistRequest:
     :rtype: cla.models.model_interfaces.CCLAWhitelistRequest
     """
 
-    return get_database_models(conf)['CCLAWhitelistRequest']()
+    return get_database_models(conf)["CCLAWhitelistRequest"]()
 
 
 def get_email_service(conf=None, initialize=True):
@@ -305,19 +320,19 @@ def get_email_service(conf=None, initialize=True):
     """
     if conf is None:
         conf = cla.conf
-    email_service = conf['EMAIL_SERVICE']
-    if email_service == 'SMTP':
+    email_service = conf["EMAIL_SERVICE"]
+    if email_service == "SMTP":
         from cla.models.smtp_models import SMTP as email
-    elif email_service == 'MockSMTP':
+    elif email_service == "MockSMTP":
         from cla.models.smtp_models import MockSMTP as email
-    elif email_service == 'SES':
+    elif email_service == "SES":
         from cla.models.ses_models import SES as email
-    elif email_service == 'SNS':
+    elif email_service == "SNS":
         from cla.models.sns_email_models import SNS as email
-    elif email_service == 'MockSES':
+    elif email_service == "MockSES":
         from cla.models.ses_models import MockSES as email
     else:
-        raise Exception('Invalid email service selected in configuration: %s' % email_service)
+        raise Exception("Invalid email service selected in configuration: %s" % email_service)
     email_instance = email()
     if initialize:
         email_instance.initialize(conf)
@@ -337,13 +352,13 @@ def get_signing_service(conf=None, initialize=True):
     """
     if conf is None:
         conf = cla.conf
-    signing_service = conf['SIGNING_SERVICE']
-    if signing_service == 'DocuSign':
+    signing_service = conf["SIGNING_SERVICE"]
+    if signing_service == "DocuSign":
         from cla.models.docusign_models import DocuSign as signing
-    elif signing_service == 'MockDocuSign':
+    elif signing_service == "MockDocuSign":
         from cla.models.docusign_models import MockDocuSign as signing
     else:
-        raise Exception('Invalid signing service selected in configuration: %s' % signing_service)
+        raise Exception("Invalid signing service selected in configuration: %s" % signing_service)
     signing_service_instance = signing()
     if initialize:
         signing_service_instance.initialize(conf)
@@ -363,15 +378,15 @@ def get_storage_service(conf=None, initialize=True):
     """
     if conf is None:
         conf = cla.conf
-    storage_service = conf['STORAGE_SERVICE']
-    if storage_service == 'LocalStorage':
+    storage_service = conf["STORAGE_SERVICE"]
+    if storage_service == "LocalStorage":
         from cla.models.local_storage import LocalStorage as storage
-    elif storage_service == 'S3Storage':
+    elif storage_service == "S3Storage":
         from cla.models.s3_storage import S3Storage as storage
-    elif storage_service == 'MockS3Storage':
+    elif storage_service == "MockS3Storage":
         from cla.models.s3_storage import MockS3Storage as storage
     else:
-        raise Exception('Invalid storage service selected in configuration: %s' % storage_service)
+        raise Exception("Invalid storage service selected in configuration: %s" % storage_service)
     storage_instance = storage()
     if initialize:
         storage_instance.initialize(conf)
@@ -391,13 +406,13 @@ def get_pdf_service(conf=None, initialize=True):
     """
     if conf is None:
         conf = cla.conf
-    pdf_service = conf['PDF_SERVICE']
-    if pdf_service == 'DocRaptor':
+    pdf_service = conf["PDF_SERVICE"]
+    if pdf_service == "DocRaptor":
         from cla.models.docraptor_models import DocRaptor as pdf
-    elif pdf_service == 'MockDocRaptor':
+    elif pdf_service == "MockDocRaptor":
         from cla.models.docraptor_models import MockDocRaptor as pdf
     else:
-        raise Exception('Invalid PDF service selected in configuration: %s' % pdf_service)
+        raise Exception("Invalid PDF service selected in configuration: %s" % pdf_service)
     pdf_instance = pdf()
     if initialize:
         pdf_instance.initialize(conf)
@@ -415,13 +430,13 @@ def get_key_value_store_service(conf=None):
     """
     if conf is None:
         conf = cla.conf
-    keyvalue = cla.conf['KEYVALUE']
-    if keyvalue == 'Memory':
+    keyvalue = cla.conf["KEYVALUE"]
+    if keyvalue == "Memory":
         from hug.store import InMemoryStore as Store
-    elif keyvalue == 'DynamoDB':
+    elif keyvalue == "DynamoDB":
         from cla.models.dynamo_models import Store
     else:
-        raise Exception('Invalid key-value store selected in configuration: %s' % keyvalue)
+        raise Exception("Invalid key-value store selected in configuration: %s" % keyvalue)
     return Store()
 
 
@@ -438,7 +453,7 @@ def get_supported_repository_providers():
     # from cla.models.gitlab_models import GitLab, MockGitLab
     # return {'github': GitHub, 'mock_github': MockGitHub,
     # 'gitlab': GitLab, 'mock_gitlab': MockGitLab}
-    return {'github': GitHub, 'mock_github': MockGitHub}
+    return {"github": GitHub, "mock_github": MockGitHub}
 
 
 def get_repository_service(provider, initialize=True):
@@ -454,7 +469,7 @@ def get_repository_service(provider, initialize=True):
     """
     providers = get_supported_repository_providers()
     if provider not in providers:
-        raise NotImplementedError('Provider not supported')
+        raise NotImplementedError("Provider not supported")
     instance = providers[provider]()
     if initialize:
         instance.initialize(cla.conf)
@@ -473,7 +488,7 @@ def get_repository_service_by_repository(repository, initialize=True):
     :return: A repository provider instance (GitHub, Gerrit, etc).
     :rtype: RepositoryService
     """
-    repository_model = get_database_models()['Repository']
+    repository_model = get_database_models()["Repository"]
     if isinstance(repository, repository_model):
         repo = repository
     else:
@@ -490,7 +505,7 @@ def get_supported_document_content_types():  # pylint: disable=invalid-name
     :return: List of supported document content types.
     :rtype: dict
     """
-    return ['pdf', 'url+pdf', 'storage+pdf']
+    return ["pdf", "url+pdf", "storage+pdf"]
 
 
 def get_project_document(project, document_type, major_version, minor_version):
@@ -508,13 +523,12 @@ def get_project_document(project, document_type, major_version, minor_version):
     :return: The document model if found.
     :rtype: cla.models.model_interfaces.Document
     """
-    if document_type == 'individual':
+    if document_type == "individual":
         documents = project.get_project_individual_documents()
     else:
         documents = project.get_project_corporate_documents()
     for document in documents:
-        if document.get_document_major_version() == major_version and \
-                document.get_document_minor_version() == minor_version:
+        if document.get_document_major_version() == major_version and document.get_document_minor_version() == minor_version:
             return document
     return None
 
@@ -576,48 +590,62 @@ def get_last_version(documents):
 
 
 def user_icla_check(user: User, project: Project, signature: Signature, latest_major_version=False) -> bool:
-    cla.log.debug(f'ICLA signature found for user: {user} on project: {project}, '
-                  f'signature_id: {signature.get_signature_id()}')
+    cla.log.debug(
+        f"ICLA signature found for user: {user} on project: {project}, " f"signature_id: {signature.get_signature_id()}"
+    )
 
     # Here's our logic to determine if the signature is valid
     if latest_major_version:  # Ensure it's latest signature.
         document_models = project.get_project_individual_documents()
         major, _ = get_last_version(document_models)
         if signature.get_signature_document_major_version() != major:
-            cla.log.debug(f'User: {user} only has an old document version signed '
-                          f'(v{signature.get_signature_document_major_version()}) - needs a new version')
+            cla.log.debug(
+                f"User: {user} only has an old document version signed "
+                f"(v{signature.get_signature_document_major_version()}) - needs a new version"
+            )
             return False
 
     if signature.get_signature_signed() and signature.get_signature_approved():
         # Signature found and signed/approved.
-        cla.log.debug(f'User: {user} has ICLA signed and approved signature_id: {signature.get_signature_id()} '
-                      f'for project: {project}')
+        cla.log.debug(
+            f"User: {user} has ICLA signed and approved signature_id: {signature.get_signature_id()} "
+            f"for project: {project}"
+        )
         return True
     elif signature.get_signature_signed():  # Not approved yet.
-        cla.log.debug(f'User: {user} has ICLA signed with signature_id: {signature.get_signature_id()}, '
-                      f'project: {project}, but has not been approved yet')
+        cla.log.debug(
+            f"User: {user} has ICLA signed with signature_id: {signature.get_signature_id()}, "
+            f"project: {project}, but has not been approved yet"
+        )
         return False
     else:  # Not signed or approved yet.
-        cla.log.debug(f'User: {user} has ICLA with signature_id: {signature.get_signature_id()}, '
-                      f'project: {project}, but has not been signed or approved yet')
+        cla.log.debug(
+            f"User: {user} has ICLA with signature_id: {signature.get_signature_id()}, "
+            f"project: {project}, but has not been signed or approved yet"
+        )
         return False
 
 
 def user_ccla_check(user: User, project: Project, signature: Signature) -> bool:
-    cla.log.debug(f'CCLA signature found for user: {user} on project: {project}, '
-                  f'signature_id: {signature.get_signature_id()}')
+    cla.log.debug(
+        f"CCLA signature found for user: {user} on project: {project}, " f"signature_id: {signature.get_signature_id()}"
+    )
 
     if signature.get_signature_signed() and signature.get_signature_approved():
-        cla.log.debug(f'User: {user} has a signed and approved CCLA for project: {project}')
+        cla.log.debug(f"User: {user} has a signed and approved CCLA for project: {project}")
         return True
 
     if signature.get_signature_signed():
-        cla.log.debug(f'User: {user} has CCLA signed with signature_id: {signature.get_signature_id()}, '
-                      f'project: {project}, but has not been approved yet')
+        cla.log.debug(
+            f"User: {user} has CCLA signed with signature_id: {signature.get_signature_id()}, "
+            f"project: {project}, but has not been approved yet"
+        )
         return False
     else:  # Not signed or approved yet.
-        cla.log.debug(f'User: {user} has CCLA with signature_id: {signature.get_signature_id()}, '
-                      f'project: {project}, but has not been signed or approved yet')
+        cla.log.debug(
+            f"User: {user} has CCLA with signature_id: {signature.get_signature_id()}, "
+            f"project: {project}, but has not been signed or approved yet"
+        )
         return False
 
 
@@ -635,93 +663,109 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
     :rtype: boolean
     """
 
-    fn = 'utils.user_signed_project_signature'
+    fn = "utils.user_signed_project_signature"
     # Check if we have an ICLA for this user
-    cla.log.debug(f'{fn} - checking to see if user has signed an ICLA, user: {user}, project: {project}')
+    cla.log.debug(f"{fn} - checking to see if user has signed an ICLA, user: {user}, project: {project}")
 
     signature = user.get_latest_signature(project.get_project_id(), signature_signed=True, signature_approved=True)
     icla_pass = False
     if signature is not None:
         icla_pass = True
     else:
-        cla.log.debug(f'{fn} - ICLA signature NOT found for User: {user} on project: {project}')
+        cla.log.debug(f"{fn} - ICLA signature NOT found for User: {user} on project: {project}")
 
     # If we passed the ICLA check - good, return true, no need to check CCLA
     if icla_pass:
-        cla.log.debug(
-            f'{fn} - ICLA signature check passed for User: {user} on project: {project} - skipping CCLA check')
+        cla.log.debug(f"{fn} - ICLA signature check passed for User: {user} on project: {project} - skipping CCLA check")
         return True
     else:
-        cla.log.debug(
-            f'{fn} - ICLA signature check failed for User: {user} on project: {project} - will now check CCLA')
+        cla.log.debug(f"{fn} - ICLA signature check failed for User: {user} on project: {project} - will now check CCLA")
 
     # Check if we have an CCLA for this user
     company_id = user.get_user_company_id()
 
     ccla_pass = False
     if company_id is not None:
-        cla.log.debug(f'{fn} - CCLA signature check - user has a company: {company_id} - '
-                      'looking up user\'s employee acknowledgement...')
+        cla.log.debug(
+            f"{fn} - CCLA signature check - user has a company: {company_id} - "
+            "looking up user's employee acknowledgement..."
+        )
 
         # Get employee signature
         employee_signature = user.get_latest_signature(
-            project.get_project_id(),
-            company_id=company_id,
-            signature_signed=True,
-            signature_approved=True)
+            project.get_project_id(), company_id=company_id, signature_signed=True, signature_approved=True
+        )
 
         if employee_signature is not None:
-            cla.log.debug(f'{fn} - CCLA signature check - located employee acknowledgement - '
-                          f'signature id: {employee_signature.get_signature_id()}')
+            cla.log.debug(
+                f"{fn} - CCLA signature check - located employee acknowledgement - "
+                f"signature id: {employee_signature.get_signature_id()}"
+            )
 
             company = get_company_instance()
             try:
-                cla.log.debug(f'{fn} - CCLA signature check - loading company record by id: {company_id}...')
+                cla.log.debug(f"{fn} - CCLA signature check - loading company record by id: {company_id}...")
                 company.load(company_id)
             except DoesNotExist as err:
-                cla.log.debug(f'{fn} - CCLA signature check failed - user is NOT associated with a valid company - '
-                              f'company with id does not exist: {company_id}.')
+                cla.log.debug(
+                    f"{fn} - CCLA signature check failed - user is NOT associated with a valid company - "
+                    f"company with id does not exist: {company_id}."
+                )
                 return False
 
             # Get CCLA signature of company to access whitelist
-            cla.log.debug(f'{fn} - CCLA signature check - loading signed CCLA for project|company, '
-                          f'user: {user}, project_id: {project}, company_id: {company_id}')
+            cla.log.debug(
+                f"{fn} - CCLA signature check - loading signed CCLA for project|company, "
+                f"user: {user}, project_id: {project}, company_id: {company_id}"
+            )
             signature = company.get_latest_signature(
-                project.get_project_id(), signature_signed=True, signature_approved=True)
+                project.get_project_id(), signature_signed=True, signature_approved=True
+            )
 
             # Don't check the version for employee signatures.
             if signature is not None:
-                cla.log.debug(f'{fn} - CCLA signature check - loaded signed CCLA for project|company, '
-                              f'user: {user}, project_id: {project}, company_id: {company_id}, '
-                              f'signature_id: {signature.get_signature_id()}')
+                cla.log.debug(
+                    f"{fn} - CCLA signature check - loaded signed CCLA for project|company, "
+                    f"user: {user}, project_id: {project}, company_id: {company_id}, "
+                    f"signature_id: {signature.get_signature_id()}"
+                )
 
                 # Verify if user has been approved: https://github.com/communitybridge/easycla/issues/332
-                cla.log.debug(f'{fn} - CCLA signature check - '
-                              'checking to see if the user is in one of the approval lists...')
+                cla.log.debug(
+                    f"{fn} - CCLA signature check - " "checking to see if the user is in one of the approval lists..."
+                )
                 # if project.get_project_ccla_requires_icla_signature() is True:
                 #     cla.log.debug(f'{fn} - CCLA signature check - '
                 #                   'project requires ICLA signature as well as CCLA signature ')
-                if user.is_approved(signature) :
+                if user.is_approved(signature):
                     ccla_pass = True
                 else:
                     # Set user signatures approved = false due to user failing whitelist checks
-                    cla.log.debug(f'{fn} - user not in one of the approval lists - '
-                                  'marking signature approved = false for '
-                                  f'user: {user}, project_id: {project}, company_id: {company_id}')
+                    cla.log.debug(
+                        f"{fn} - user not in one of the approval lists - "
+                        "marking signature approved = false for "
+                        f"user: {user}, project_id: {project}, company_id: {company_id}"
+                    )
                     user_signatures = user.get_user_signatures(
-                        project_id=project.get_project_id(), company_id=company_id, signature_approved=True,
-                        signature_signed=True
+                        project_id=project.get_project_id(),
+                        company_id=company_id,
+                        signature_approved=True,
+                        signature_signed=True,
                     )
                     for signature in user_signatures:
-                        cla.log.debug(f'{fn} - user not in one of the approval lists - '
-                                      'marking signature approved = false for '
-                                      f'user: {user}, project_id: {project}, company_id: {company_id}, '
-                                      f'signature: {signature.get_signature_id()}')
+                        cla.log.debug(
+                            f"{fn} - user not in one of the approval lists - "
+                            "marking signature approved = false for "
+                            f"user: {user}, project_id: {project}, company_id: {company_id}, "
+                            f"signature: {signature.get_signature_id()}"
+                        )
                         signature.set_signature_approved(False)
                         signature.save()
-                        event_data = (f'The employee signature of user {user.get_user_name()} was '
-                                      f'disapproved the during CCLA check for project {project.get_project_name()} '
-                                      f'and company {company.get_company_name()}')
+                        event_data = (
+                            f"The employee signature of user {user.get_user_name()} was "
+                            f"disapproved the during CCLA check for project {project.get_project_name()} "
+                            f"and company {company.get_company_name()}"
+                        )
                         Event.create_event(
                             event_type=EventType.EmployeeSignatureDisapproved,
                             event_cla_group_id=project.get_project_id(),
@@ -732,25 +776,31 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
                             contains_pii=True,
                         )
             else:
-                cla.log.debug(f'{fn} - CCLA signature check - unable to load signed CCLA for project|company, '
-                              f'user: {user}, project_id: {project}, company_id: {company_id} - '
-                              'signatory needs to sign the CCLA before the user can be authorized')
+                cla.log.debug(
+                    f"{fn} - CCLA signature check - unable to load signed CCLA for project|company, "
+                    f"user: {user}, project_id: {project}, company_id: {company_id} - "
+                    "signatory needs to sign the CCLA before the user can be authorized"
+                )
         else:
-            cla.log.debug(f'{fn} - CCLA signature check - unable to load employee acknowledgement for project|company, '
-                          f'user: {user}, project_id: {project}, company_id: {company_id}, '
-                          'signed=true, approved=true - user needs to be associated with an organization before '
-                          'they can be authorized.')
+            cla.log.debug(
+                f"{fn} - CCLA signature check - unable to load employee acknowledgement for project|company, "
+                f"user: {user}, project_id: {project}, company_id: {company_id}, "
+                "signed=true, approved=true - user needs to be associated with an organization before "
+                "they can be authorized."
+            )
     else:
-        cla.log.debug(f'{fn} - CCLA signature check failed - user is NOT associated with a company - '
-                      f'unable to check for a CCLA, user info: {user}.')
+        cla.log.debug(
+            f"{fn} - CCLA signature check failed - user is NOT associated with a company - "
+            f"unable to check for a CCLA, user info: {user}."
+        )
 
     if ccla_pass:
-        cla.log.debug(f'{fn} - CCLA signature check passed for user: {user} on project: {project}')
+        cla.log.debug(f"{fn} - CCLA signature check passed for user: {user} on project: {project}")
         return True
     else:
-        cla.log.debug(f'{fn} - CCLA signature check failed for user: {user} on project: {project}')
+        cla.log.debug(f"{fn} - CCLA signature check failed for user: {user} on project: {project}")
 
-    cla.log.debug(f'{fn} - User: {user} failed both ICLA and CCLA checks')
+    cla.log.debug(f"{fn} - User: {user} failed both ICLA and CCLA checks")
     return False
 
 
@@ -771,12 +821,13 @@ def get_redirect_uri(repository_service, installation_id, github_repository_id, 
     :return: The redirect_uri parameter expected by the OAuth2 process.
     :rtype: string
     """
-    params = {'installation_id': installation_id,
-              'github_repository_id': github_repository_id,
-              'change_request_id': change_request_id}
+    params = {
+        "installation_id": installation_id,
+        "github_repository_id": github_repository_id,
+        "change_request_id": change_request_id,
+    }
     params = urllib.parse.urlencode(params)
-    return '{}/v2/repository-provider/{}/oauth2_redirect?{}'.format(cla.conf['API_BASE_URL'], repository_service,
-                                                                    params)
+    return "{}/v2/repository-provider/{}/oauth2_redirect?{}".format(cla.conf["API_BASE_URL"], repository_service, params)
 
 
 def get_full_sign_url(repository_service, installation_id, github_repository_id, change_request_id, project_version):
@@ -800,10 +851,9 @@ def get_full_sign_url(repository_service, installation_id, github_repository_id,
     :type project_version: string
     """
 
-    base_url = '{}/v2/repository-provider/{}/sign/{}/{}/{}/#/'.format(cla.conf['API_BASE_URL'], repository_service,
-                                                                      str(installation_id),
-                                                                      str(github_repository_id),
-                                                                      str(change_request_id))
+    base_url = "{}/v2/repository-provider/{}/sign/{}/{}/{}/#/".format(
+        cla.conf["API_BASE_URL"], repository_service, str(installation_id), str(github_repository_id), str(change_request_id)
+    )
 
     return append_project_version_to_url(address=base_url, project_version=project_version)
 
@@ -816,7 +866,7 @@ def append_project_version_to_url(address: str, project_version: str) -> str:
     :return: returns the final url
     """
     version = "1"
-    if project_version and project_version == 'v2':
+    if project_version and project_version == "v2":
         version = "2"
 
     # seem if the url has # in it (https://dev.lfcla.com/#/version=1) the underlying urllib is being confused
@@ -839,8 +889,9 @@ def append_project_version_to_url(address: str, project_version: str) -> str:
     return "?".join([address, query_params_str])
 
 
-def get_comment_badge(repository_type, all_signed, sign_url, project_version, missing_user_id=False,
-                      is_approved_by_manager=False):
+def get_comment_badge(
+    repository_type, all_signed, sign_url, project_version, missing_user_id=False, is_approved_by_manager=False
+):
     """
     Returns the CLA badge that will appear on the change request comment (PR for 'github', merge
     request for 'gitlab', etc)
@@ -858,40 +909,48 @@ def get_comment_badge(repository_type, all_signed, sign_url, project_version, mi
     :type is_approved_by_manager: bool
     """
 
-    alt = 'CLA'
+    alt = "CLA"
     if all_signed:
-        badge_url = f'{CLA_LOGO_URL}/cla-signed.svg'
+        badge_url = f"{CLA_LOGO_URL}/cla-signed.svg"
         badge_hyperlink = cla.conf["CLA_LANDING_PAGE"]
         badge_hyperlink = os.path.join(badge_hyperlink, "#/")
         badge_hyperlink = append_project_version_to_url(address=badge_hyperlink, project_version=project_version)
         alt = "CLA Signed"
-        return (f'<a href="{badge_hyperlink}">'
-                f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328" >'
-                '</a><br/>')
+        return (
+            f'<a href="{badge_hyperlink}">'
+            f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328" >'
+            "</a><br/>"
+        )
     else:
         badge_hyperlink = sign_url
-        text = ''
+        text = ""
         if missing_user_id:
-            badge_url = f'{CLA_LOGO_URL}/cla-missing-id.svg'
-            alt = 'CLA Missing ID'
-            text = (f'{text} <a href="{badge_hyperlink}">'
-                    f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328">'
-                    '</a>')
+            badge_url = f"{CLA_LOGO_URL}/cla-missing-id.svg"
+            alt = "CLA Missing ID"
+            text = (
+                f'{text} <a href="{badge_hyperlink}">'
+                f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328">'
+                "</a>"
+            )
 
         if is_approved_by_manager:
-            badge_url = f'{CLA_LOGO_URL}/cla-confirmation-needed.svg'
-            alt = 'CLA Confirmation Needed'
-            text = (f'{text} <a href="{badge_hyperlink}">'
-                    f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328">'
-                    '</a>')
+            badge_url = f"{CLA_LOGO_URL}/cla-confirmation-needed.svg"
+            alt = "CLA Confirmation Needed"
+            text = (
+                f'{text} <a href="{badge_hyperlink}">'
+                f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328">'
+                "</a>"
+            )
         else:
-            badge_url = f'{CLA_LOGO_URL}/cla-not-signed.svg'
+            badge_url = f"{CLA_LOGO_URL}/cla-not-signed.svg"
             alt = "CLA Not Signed"
-            text = (f'{text} <a href="{badge_hyperlink}">'
-                    f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328">'
-                    '</a>')
+            text = (
+                f'{text} <a href="{badge_hyperlink}">'
+                f'<img src="{badge_url}" alt="{alt}" align="left" height="28" width="328">'
+                "</a>"
+            )
 
-        return f'{text}<br/>'
+        return f"{text}<br/>"
 
 
 def assemble_cla_status(author_name, signed=False):
@@ -907,15 +966,21 @@ def assemble_cla_status(author_name, signed=False):
     :type signed: boolean
     """
     if author_name is None:
-        author_name = 'Unknown'
+        author_name = "Unknown"
     if signed:
-        return author_name, 'EasyCLA check passed. You are authorized to contribute.'
-    return author_name, 'Missing CLA Authorization.'
+        return author_name, "EasyCLA check passed. You are authorized to contribute."
+    return author_name, "Missing CLA Authorization."
 
 
-def assemble_cla_comment(repository_type, installation_id, github_repository_id, change_request_id,
-                         signed: List[UserCommitSummary], missing: List[UserCommitSummary],
-                         project_version):
+def assemble_cla_comment(
+    repository_type,
+    installation_id,
+    github_repository_id,
+    change_request_id,
+    signed: List[UserCommitSummary],
+    missing: List[UserCommitSummary],
+    project_version,
+):
     """
     Helper function to generate a CLA comment based on a a change request.
 
@@ -950,8 +1015,7 @@ def assemble_cla_comment(repository_type, installation_id, github_repository_id,
     # Logic not supported as we removed the DB query in the caller
     # approved_ids = list(filter(lambda x: len(x[1]) == 4 and x[1][3] is True, missing))
     # approved_by_manager = len(approved_ids) > 0
-    sign_url = get_full_sign_url(repository_type, installation_id, github_repository_id, change_request_id,
-                                 project_version)
+    sign_url = get_full_sign_url(repository_type, installation_id, github_repository_id, change_request_id, project_version)
     comment = get_comment_body(repository_type, sign_url, signed, missing)
     all_signed = len(missing) == 0
     badge = get_comment_badge(
@@ -959,8 +1023,9 @@ def assemble_cla_comment(repository_type, installation_id, github_repository_id,
         all_signed=all_signed,
         sign_url=sign_url,
         project_version=project_version,
-        missing_user_id=no_user_id)
-    return badge + '<br />' + comment
+        missing_user_id=no_user_id,
+    )
+    return badge + "<br />" + comment
 
 
 def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary], missing: List[UserCommitSummary]):
@@ -983,11 +1048,11 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
     committers_comment = ""
     num_signed = len(signed)
     num_missing = len(missing)
-    text = ''
+    text = ""
 
     # Start of the HTML to render the list of committers
     if len(signed) > 0 or len(missing) > 0:
-        committers_comment += '<ul>'
+        committers_comment += "<ul>"
 
     if num_signed > 0:
         # Group commits by author.
@@ -996,7 +1061,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             if user_commit_summary.is_valid_user():
                 author_info = user_commit_summary.get_user_info(tag_user=False)
             else:
-                author_info = 'Unknown'
+                author_info = "Unknown"
 
             if author_info not in committers:
                 committers[author_info] = []
@@ -1008,7 +1073,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
         for author_info, user_commit_summaries in committers.items():
             # build a quick list of just the commit hash values
             commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
-            cla.log.info(f'{fn} SHAs for signed users: {commit_shas}')
+            cla.log.info(f"{fn} SHAs for signed users: {commit_shas}")
             committers_comment += f'<li>{success} {author_info} ({", ".join(commit_shas)})</li>'
 
     if num_missing > 0:
@@ -1021,7 +1086,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             if user_commit_summary.is_valid_user():
                 author_info = user_commit_summary.get_user_info(tag_user=True)
             else:
-                author_info = 'Unknown'
+                author_info = "Unknown"
 
             if author_info not in committers:
                 committers[author_info] = []
@@ -1032,7 +1097,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
         # Print the author commit information.
         github_help_url = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
         for author_info, user_commit_summaries in committers.items():
-            if author_info == 'Unknown':
+            if author_info == "Unknown":
                 # build a quick list of just the commit hash values
                 commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                 committers_comment += (
@@ -1043,42 +1108,51 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                     "(To view the commit's email address, add .patch at the end of this PR page's URL.) "
                     "For further assistance with EasyCLA, "
                     f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
-                    "</li>")
+                    "</li>"
+                )
             else:
-                missing_affiliations = [user_commit_summary for user_commit_summary in user_commit_summaries
-                                        if not user_commit_summary.affiliated and user_commit_summary.authorized]
+                missing_affiliations = [
+                    user_commit_summary
+                    for user_commit_summary in user_commit_summaries
+                    if not user_commit_summary.affiliated and user_commit_summary.authorized
+                ]
                 if len(missing_affiliations) > 0:
                     # build a quick list of just the commit hash values for users missing company affiliations
-                    commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries
-                                   if not user_commit_summary.affiliated]
-                    cla.log.info(f'{fn} SHAs for users with missing company affiliations: {commit_shas}')
+                    commit_shas = [
+                        user_commit_summary.commit_sha
+                        for user_commit_summary in user_commit_summaries
+                        if not user_commit_summary.affiliated
+                    ]
+                    cla.log.info(f"{fn} SHAs for users with missing company affiliations: {commit_shas}")
                     committers_comment += (
                         f'<li>{failed} {author_info} ({", ".join(commit_shas)}). '
-                        f'This user is authorized, but they must confirm their affiliation with their company. '
-                        f'Start the authorization process '
+                        f"This user is authorized, but they must confirm their affiliation with their company. "
+                        f"Start the authorization process "
                         f"<a href='{sign_url}' target='_blank'> by clicking here</a>, click \"Corporate\", "
-                        f'select the appropriate company from the list, then confirm '
-                        f'your affiliation on the page that appears. '
-                        f'For further assistance with EasyCLA, '
+                        f"select the appropriate company from the list, then confirm "
+                        f"your affiliation on the page that appears. "
+                        f"For further assistance with EasyCLA, "
                         f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
-                        '</li>')
+                        "</li>"
+                    )
                 else:
                     # build a quick list of just the commit hash values
                     commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
                     committers_comment += (
-                        f'<li>'
+                        f"<li>"
                         f"<a href='{sign_url}' target='_blank'>{failed}</a> - "
                         f"{author_info}. The commit ({', '.join(commit_shas)}) "
                         "is not authorized under a signed CLA. "
                         f"<a href='{sign_url}' target='_blank'>Please click here to be authorized</a>. "
                         f"For further assistance with EasyCLA, "
                         f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
-                        "</li>")
+                        "</li>"
+                    )
 
     if len(signed) > 0 or len(missing) > 0:
-        committers_comment += '</ul>'
+        committers_comment += "</ul>"
 
-    committers_comment += '<!-- Date Modified: ' + str(datetime.datetime.now()) + ' -->'
+    committers_comment += "<!-- Date Modified: " + str(datetime.datetime.now()) + " -->"
 
     if len(signed) > 0 and len(missing) == 0:
         text = "The committers listed above are authorized under a signed CLA."
@@ -1099,20 +1173,21 @@ def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_ur
     :param authorize_url: The URL to submit the OAuth2 request.
     :type authorize_url: string
     """
-    fn = 'utils.get_authorization_url_and_state'
+    fn = "utils.get_authorization_url_and_state"
     oauth = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scope)
     authorization_url, state = oauth.authorization_url(authorize_url)
-    cla.log.debug(f'{fn} - initialized a new oauth session '
-                  f'using the github oauth client id: {client_id[0:5]}... '
-                  f'with the redirect_uri: {redirect_uri} '
-                  f'using scope of: {scope}. Obtained the '
-                  f'state: {state} and the '
-                  f'generated authorization_url: {authorize_url}')
+    cla.log.debug(
+        f"{fn} - initialized a new oauth session "
+        f"using the github oauth client id: {client_id[0:5]}... "
+        f"with the redirect_uri: {redirect_uri} "
+        f"using scope of: {scope}. Obtained the "
+        f"state: {state} and the "
+        f"generated authorization_url: {authorize_url}"
+    )
     return authorization_url, state
 
 
-def fetch_token(client_id, state, token_url, client_secret, code,
-                redirect_uri=None):  # pylint: disable=too-many-arguments
+def fetch_token(client_id, state, token_url, client_secret, code, redirect_uri=None):  # pylint: disable=too-many-arguments
     """
     Helper function to fetch a OAuth2 session token.
 
@@ -1129,16 +1204,18 @@ def fetch_token(client_id, state, token_url, client_secret, code,
     :param redirect_uri: The redirect URI for this OAuth2 session.
     :type redirect_uri: string
     """
-    fn = 'utils.fetch_token'
+    fn = "utils.fetch_token"
     if redirect_uri is not None:
-        oauth2 = OAuth2Session(client_id, state=state, scope=['user:email'], redirect_uri=redirect_uri)
+        oauth2 = OAuth2Session(client_id, state=state, scope=["user:email"], redirect_uri=redirect_uri)
     else:
-        oauth2 = OAuth2Session(client_id, state=state, scope=['user:email'])
-    cla.log.debug(f'{fn} - oauth2.fetch_token - '
-                  f'token_url: {token_url}, '
-                  f'client_id: {client_id}, '
-                  f'client_secret: {client_secret}, '
-                  f'code: {code}')
+        oauth2 = OAuth2Session(client_id, state=state, scope=["user:email"])
+    cla.log.debug(
+        f"{fn} - oauth2.fetch_token - "
+        f"token_url: {token_url}, "
+        f"client_id: {client_id}, "
+        f"client_secret: {client_secret}, "
+        f"code: {code}"
+    )
     return oauth2.fetch_token(token_url, client_secret=client_secret, code=code)
 
 
@@ -1155,30 +1232,30 @@ def redirect_user_by_signature(user, signature):
     if signature.get_signature_signed() and signature.get_signature_approved():
         # Signature already signed and approved.
         # TODO: Notify user of signed and approved signature somehow.
-        cla.log.info('Signature already signed and approved for user: %s, %s',
-                     user.get_user_emails(), signature.get_signature_id())
+        cla.log.info(
+            "Signature already signed and approved for user: %s, %s", user.get_user_emails(), signature.get_signature_id()
+        )
         if return_url is None:
-            cla.log.info('No return_url set in signature object - serving success message')
-            return {'status': 'signed and approved'}
+            cla.log.info("No return_url set in signature object - serving success message")
+            return {"status": "signed and approved"}
         else:
-            cla.log.info('Redirecting user back to %s', return_url)
+            cla.log.info("Redirecting user back to %s", return_url)
             raise falcon.HTTPFound(return_url)
     elif signature.get_signature_signed():
         # Awaiting approval.
         # TODO: Notify user of pending approval somehow.
-        cla.log.info('Signature signed but not approved yet: %s',
-                     signature.get_signature_id())
+        cla.log.info("Signature signed but not approved yet: %s", signature.get_signature_id())
         if return_url is None:
-            cla.log.info('No return_url set in signature object - serving pending message')
-            return {'status': 'pending approval'}
+            cla.log.info("No return_url set in signature object - serving pending message")
+            return {"status": "pending approval"}
         else:
-            cla.log.info('Redirecting user back to %s', return_url)
+            cla.log.info("Redirecting user back to %s", return_url)
             raise falcon.HTTPFound(return_url)
     else:
         # Signature awaiting signature.
         sign_url = signature.get_signature_sign_url()
         signature_id = signature.get_signature_id()
-        cla.log.info('Signature exists, sending user to sign: %s (%s)', signature_id, sign_url)
+        cla.log.info("Signature exists, sending user to sign: %s (%s)", signature_id, sign_url)
         raise falcon.HTTPFound(sign_url)
 
 
@@ -1195,7 +1272,7 @@ def get_active_signature_metadata(user_id):
     :rtype: dict
     """
     store = get_key_value_store_service()
-    key = 'active_signature:' + str(user_id)
+    key = "active_signature:" + str(user_id)
     if store.exists(key):
         return json.loads(store.get(key))
     return None
@@ -1218,13 +1295,12 @@ def set_active_signature_metadata(user_id, project_id, repository_id, pull_reque
     :type pull_request_id: string
     """
     store = get_key_value_store_service()
-    key = 'active_signature:' + str(user_id)  # Should have been set when user initiated the signature.
-    value = json.dumps({'user_id': user_id,
-                        'project_id': project_id,
-                        'repository_id': repository_id,
-                        'pull_request_id': pull_request_id})
+    key = "active_signature:" + str(user_id)  # Should have been set when user initiated the signature.
+    value = json.dumps(
+        {"user_id": user_id, "project_id": project_id, "repository_id": repository_id, "pull_request_id": pull_request_id}
+    )
     store.set(key, value)
-    cla.log.info('Stored active signature details for user %s: Key - %s  Value - %s', user_id, key, value)
+    cla.log.info("Stored active signature details for user %s: Key - %s  Value - %s", user_id, key, value)
 
 
 def delete_active_signature_metadata(user_id):
@@ -1235,13 +1311,14 @@ def delete_active_signature_metadata(user_id):
     :type user_id: string
     """
     store = get_key_value_store_service()
-    key = 'active_signature:' + str(user_id)
+    key = "active_signature:" + str(user_id)
     store.delete(key)
-    cla.log.info('Deleted stored active signature details for user %s', user_id)
+    cla.log.info("Deleted stored active signature details for user %s", user_id)
 
 
-def set_active_pr_metadata(github_author_username: str, github_author_email: str,
-                           cla_group_id: str, repository_id: str, pull_request_id: str):
+def set_active_pr_metadata(
+    github_author_username: str, github_author_email: str, cla_group_id: str, repository_id: str, pull_request_id: str
+):
     """
     When we receive a GitHub PR callback, we want to store a bit if information/metadata
     about the repository, PR, commit authors, and associated CLA Group so that we can later
@@ -1265,22 +1342,22 @@ def set_active_pr_metadata(github_author_username: str, github_author_email: str
     # the same value is stored twice, indexed separately by username and email to allow lookups by either
     value = json.dumps(
         {
-            'github_author_username': github_author_username,
-            'github_author_email': github_author_email,
-            'cla_group_id': cla_group_id,
-            'repository_id': repository_id,
-            'pull_request_id': pull_request_id
+            "github_author_username": github_author_username,
+            "github_author_email": github_author_email,
+            "cla_group_id": cla_group_id,
+            "repository_id": repository_id,
+            "pull_request_id": pull_request_id,
         }
     )
 
-    key_github_author_username = 'active_pr:u:' + github_author_username
+    key_github_author_username = "active_pr:u:" + github_author_username
     store.set(key_github_author_username, value)
-    cla.log.info(f'stored active pull request details by user email: %s', key_github_author_username)
+    cla.log.info(f"stored active pull request details by user email: %s", key_github_author_username)
 
     if github_author_email is not None:
-        key_github_author_email = 'active_pr:e:' + github_author_email
+        key_github_author_email = "active_pr:e:" + github_author_email
         store.set(key_github_author_email, value)
-        cla.log.info(f'stored active pull request details by user email: %s', key_github_author_email)
+        cla.log.info(f"stored active pull request details by user email: %s", key_github_author_email)
 
 
 def get_active_signature_return_url(user_id, metadata=None):
@@ -1297,33 +1374,30 @@ def get_active_signature_return_url(user_id, metadata=None):
     if metadata is None:
         metadata = get_active_signature_metadata(user_id)
     if metadata is None:
-        cla.log.warning('Could not find active signature for user {}, return URL request failed'.format(user_id))
+        cla.log.warning("Could not find active signature for user {}, return URL request failed".format(user_id))
         return None
 
     # Factor in Gitlab flow process
     if "merge_request_id" in metadata.keys():
-        return metadata['return_url']
+        return metadata["return_url"]
 
     # Get Github ID from metadata
-    github_repository_id = metadata['repository_id']
+    github_repository_id = metadata["repository_id"]
 
     # Get installation id through a helper function
     installation_id = get_installation_id_from_github_repository(github_repository_id)
     if installation_id is None:
-        cla.log.error('Could not find installation ID that is configured for this repository ID: %s',
-                      github_repository_id)
+        cla.log.error("Could not find installation ID that is configured for this repository ID: %s", github_repository_id)
         return None
 
-    github = cla.utils.get_repository_service('github')
-    return github.get_return_url(metadata['repository_id'],
-                                 metadata['pull_request_id'],
-                                 installation_id)
+    github = cla.utils.get_repository_service("github")
+    return github.get_return_url(metadata["repository_id"], metadata["pull_request_id"], installation_id)
 
 
 def get_installation_id_from_github_repository(github_repository_id):
     # Get repository ID that references the github ID.
     try:
-        repository = Repository().get_repository_by_external_id(github_repository_id, 'github')
+        repository = Repository().get_repository_by_external_id(github_repository_id, "github")
     except DoesNotExist:
         return None
 
@@ -1341,7 +1415,7 @@ def get_installation_id_from_github_repository(github_repository_id):
 def get_organization_id_from_gitlab_repository(gitlab_repository_id):
     # Get repository ID that references the gitlab ID.
     try:
-        repository = Repository().get_repository_by_external_id(gitlab_repository_id, 'gitlab')
+        repository = Repository().get_repository_by_external_id(gitlab_repository_id, "gitlab")
     except DoesNotExist:
         return None
     # Get GitLabGroup from this repository
@@ -1359,7 +1433,7 @@ def get_organization_id_from_gitlab_repository(gitlab_repository_id):
 def get_project_id_from_github_repository(github_repository_id):
     # Get repository ID that references the github ID.
     try:
-        repository = Repository().get_repository_by_external_id(github_repository_id, 'github')
+        repository = Repository().get_repository_by_external_id(github_repository_id, "github")
     except DoesNotExist:
         return None
 
@@ -1381,21 +1455,25 @@ def get_individual_signature_callback_url(user_id, metadata=None):
     if metadata is None:
         metadata = get_active_signature_metadata(user_id)
     if metadata is None:
-        cla.log.warning('Could not find active signature for user {}, callback URL request failed'.format(user_id))
+        cla.log.warning("Could not find active signature for user {}, callback URL request failed".format(user_id))
         return None
 
     # Get Github ID from metadata
-    github_repository_id = metadata['repository_id']
+    github_repository_id = metadata["repository_id"]
 
     # Get installation id through a helper function
     installation_id = get_installation_id_from_github_repository(github_repository_id)
     if installation_id is None:
-        cla.log.error('Could not find installation ID that is configured for this repository ID: %s',
-                      github_repository_id)
+        cla.log.error("Could not find installation ID that is configured for this repository ID: %s", github_repository_id)
         return None
 
-    return os.path.join(API_BASE_URL, 'v2/signed/individual', str(installation_id), str(metadata['repository_id']),
-                        str(metadata['pull_request_id']))
+    return os.path.join(
+        API_BASE_URL,
+        "v2/signed/individual",
+        str(installation_id),
+        str(metadata["repository_id"]),
+        str(metadata["pull_request_id"]),
+    )
 
 
 def get_individual_signature_callback_url_gitlab(user_id, metadata=None):
@@ -1412,23 +1490,29 @@ def get_individual_signature_callback_url_gitlab(user_id, metadata=None):
     if metadata is None:
         metadata = get_active_signature_metadata(user_id)
     if metadata is None:
-        cla.log.warning('Could not find active signature for user {}, callback URL request failed'.format(user_id))
+        cla.log.warning("Could not find active signature for user {}, callback URL request failed".format(user_id))
         return None
 
     # Get GitLab ID from metadata
-    gitlab_repository_id = metadata['repository_id']
+    gitlab_repository_id = metadata["repository_id"]
 
     # Get organization id
     organization_id = get_organization_id_from_gitlab_repository(gitlab_repository_id)
 
     if organization_id is None:
-        cla.log.error('Could not find GitLab organization ID that is configured for this repository ID: %s',
-                      gitlab_repository_id)
+        cla.log.error(
+            "Could not find GitLab organization ID that is configured for this repository ID: %s", gitlab_repository_id
+        )
         return None
 
-    return os.path.join(API_BASE_URL, 'v2/signed/gitlab/individual', str(user_id), str(organization_id),
-                        str(metadata['repository_id']),
-                        str(metadata['merge_request_id']))
+    return os.path.join(
+        API_BASE_URL,
+        "v2/signed/gitlab/individual",
+        str(user_id),
+        str(organization_id),
+        str(metadata["repository_id"]),
+        str(metadata["merge_request_id"]),
+    )
 
 
 def request_individual_signature(installation_id, github_repository_id, user, change_request_id, callback_url=None):
@@ -1450,24 +1534,19 @@ def request_individual_signature(installation_id, github_repository_id, user, ch
     :type callback_url: string
     """
     project_id = get_project_id_from_github_repository(github_repository_id)
-    repo_service = get_repository_service('github')
-    return_url = repo_service.get_return_url(github_repository_id,
-                                             change_request_id,
-                                             installation_id)
+    repo_service = get_repository_service("github")
+    return_url = repo_service.get_return_url(github_repository_id, change_request_id, installation_id)
     if callback_url is None:
-        callback_url = os.path.join(API_BASE_URL, 'v2/signed/individual', str(installation_id), str(change_request_id))
+        callback_url = os.path.join(API_BASE_URL, "v2/signed/individual", str(installation_id), str(change_request_id))
 
     signing_service = get_signing_service()
-    return_url_type = 'Github'
-    signature_data = signing_service.request_individual_signature(project_id,
-                                                                  user.get_user_id(),
-                                                                  return_url_type,
-                                                                  return_url,
-                                                                  callback_url)
-    if 'sign_url' in signature_data:
-        raise falcon.HTTPFound(signature_data['sign_url'])
-    cla.log.error('Could not get sign_url from signing service provider - sending user '
-                  'to return_url instead')
+    return_url_type = "Github"
+    signature_data = signing_service.request_individual_signature(
+        project_id, user.get_user_id(), return_url_type, return_url, callback_url
+    )
+    if "sign_url" in signature_data:
+        raise falcon.HTTPFound(signature_data["sign_url"])
+    cla.log.error("Could not get sign_url from signing service provider - sending user " "to return_url instead")
     raise falcon.HTTPFound(return_url)
 
 
@@ -1478,19 +1557,18 @@ def lookup_user_gitlab_username(user_gitlab_id: int) -> Optional[str]:
     :return: the user's gitlab login/username
     """
     try:
-        r = requests.get(f'https://gitlab.com/api/v4/users/{user_gitlab_id}')
+        r = requests.get(f"https://gitlab.com/api/v4/users/{user_gitlab_id}")
         r.raise_for_status()
     except requests.exceptions.HTTPError as err:
-        msg = f'Could not get user github user from id: {user_gitlab_id}: error: {err}'
+        msg = f"Could not get user github user from id: {user_gitlab_id}: error: {err}"
         cla.log.warning(msg)
         return None
 
     gitlab_user = r.json()
-    if 'id' in gitlab_user:
-        return gitlab_user['id']
+    if "id" in gitlab_user:
+        return gitlab_user["id"]
     else:
-        cla.log.warning('Malformed HTTP response from GitLab - expecting "id" attribute '
-                        f'- response: {gitlab_user}')
+        cla.log.warning('Malformed HTTP response from GitLab - expecting "id" attribute ' f"- response: {gitlab_user}")
         return None
 
 
@@ -1501,19 +1579,18 @@ def lookup_user_gitlab_id(user_gitlab_username: str) -> Optional[str]:
     :return: the user's gitlab id
     """
     try:
-        r = requests.get(f'https://gitlab.com/api/v4/users?username={user_gitlab_username}')
+        r = requests.get(f"https://gitlab.com/api/v4/users?username={user_gitlab_username}")
         r.raise_for_status()
     except requests.exceptions.HTTPError as err:
-        msg = f'Could not get user github user from username: {user_gitlab_username}: error: {err}'
+        msg = f"Could not get user github user from username: {user_gitlab_username}: error: {err}"
         cla.log.warning(msg)
         return None
 
     gitlab_user = r.json()
-    if 'username' in gitlab_user:
-        return gitlab_user['username']
+    if "username" in gitlab_user:
+        return gitlab_user["username"]
     else:
-        cla.log.warning('Malformed HTTP response from GitLab - expecting "username" attribute '
-                        f'- response: {gitlab_user}')
+        cla.log.warning('Malformed HTTP response from GitLab - expecting "username" attribute ' f"- response: {gitlab_user}")
         return None
 
 
@@ -1525,28 +1602,28 @@ def lookup_user_github_username(user_github_id: int) -> Optional[str]:
     """
     try:
         headers = {
-            'Authorization': 'Bearer {}'.format(cla.conf['GITHUB_OAUTH_TOKEN']),
-            'Accept': 'application/json',
+            "Authorization": "Bearer {}".format(cla.conf["GITHUB_OAUTH_TOKEN"]),
+            "Accept": "application/json",
         }
 
-        r = requests.get(f'https://api.github.com/user/{user_github_id}', headers=headers)
+        r = requests.get(f"https://api.github.com/user/{user_github_id}", headers=headers)
         r.raise_for_status()
     except requests.exceptions.HTTPError as err:
-        msg = f'Could not get user github user from id: {user_github_id}: error: {err}'
+        msg = f"Could not get user github user from id: {user_github_id}: error: {err}"
         cla.log.warning(msg)
         return None
 
     github_user = r.json()
-    if 'message' in github_user:
-        cla.log.warning(f'Unable to lookup user from id: {user_github_id} '
-                        f'- message: {github_user["message"]}')
+    if "message" in github_user:
+        cla.log.warning(f"Unable to lookup user from id: {user_github_id} " f'- message: {github_user["message"]}')
         return None
     else:
-        if 'login' in github_user:
-            return github_user['login']
+        if "login" in github_user:
+            return github_user["login"]
         else:
-            cla.log.warning('Malformed HTTP response from GitHub - expecting "login" attribute '
-                            f'- response: {github_user}')
+            cla.log.warning(
+                'Malformed HTTP response from GitHub - expecting "login" attribute ' f"- response: {github_user}"
+            )
             return None
 
 
@@ -1558,28 +1635,26 @@ def lookup_user_github_id(user_github_username: str) -> Optional[int]:
     """
     try:
         headers = {
-            'Authorization': 'Bearer {}'.format(cla.conf['GITHUB_OAUTH_TOKEN']),
-            'Accept': 'application/json',
+            "Authorization": "Bearer {}".format(cla.conf["GITHUB_OAUTH_TOKEN"]),
+            "Accept": "application/json",
         }
 
-        r = requests.get(f'https://api.github.com/users/{user_github_username}', headers=headers)
+        r = requests.get(f"https://api.github.com/users/{user_github_username}", headers=headers)
         r.raise_for_status()
     except requests.exceptions.HTTPError as err:
-        msg = f'Could not get user github id from username: {user_github_username}: error: {err}'
+        msg = f"Could not get user github id from username: {user_github_username}: error: {err}"
         cla.log.warning(msg)
         return None
 
     github_user = r.json()
-    if 'message' in github_user:
-        cla.log.warning(f'Unable to lookup user from id: {user_github_username} '
-                        f'- message: {github_user["message"]}')
+    if "message" in github_user:
+        cla.log.warning(f"Unable to lookup user from id: {user_github_username} " f'- message: {github_user["message"]}')
         return None
     else:
-        if 'id' in github_user:
-            return github_user['id']
+        if "id" in github_user:
+            return github_user["id"]
         else:
-            cla.log.warning('Malformed HTTP response from GitHub - expecting "id" attribute '
-                            f'- response: {github_user}')
+            cla.log.warning('Malformed HTTP response from GitHub - expecting "id" attribute ' f"- response: {github_user}")
             return None
 
 
@@ -1587,27 +1662,27 @@ def lookup_github_organizations(github_username: str):
     # Use the Github API to retrieve github orgs that the user is a member of (user must be a public member).
     try:
         headers = {
-            'Authorization': 'Bearer {}'.format(cla.conf['GITHUB_OAUTH_TOKEN']),
-            'Accept': 'application/json',
+            "Authorization": "Bearer {}".format(cla.conf["GITHUB_OAUTH_TOKEN"]),
+            "Accept": "application/json",
         }
 
-        r = requests.get(f'https://api.github.com/users/{github_username}/orgs', headers=headers)
+        r = requests.get(f"https://api.github.com/users/{github_username}/orgs", headers=headers)
         r.raise_for_status()
     except requests.exceptions.HTTPError as err:
-        cla.log.warning('Could not get user github org: {}'.format(err))
-        return {'error': 'Could not get user github org: {}'.format(err)}
-    return [github_org['login'] for github_org in r.json()]
+        cla.log.warning("Could not get user github org: {}".format(err))
+        return {"error": "Could not get user github org: {}".format(err)}
+    return [github_org["login"] for github_org in r.json()]
 
 
 def lookup_gitlab_org_members(organization_id):
     # Use the v2 Endpoint thats a wrapper for Gitlab Group member query
     try:
-        r = requests.get(f'{cla.config.PLATFORM_GATEWAY_URL}/cla-service/v4/gitlab/group/{organization_id}/members')
+        r = requests.get(f"{cla.config.PLATFORM_GATEWAY_URL}/cla-service/v4/gitlab/group/{organization_id}/members")
         r.raise_for_status()
     except requests.exceptions.HTTPError as err:
-        cla.log.warning(f'Could not fetch gitlab org users: {err}')
-        return {f'error: Could not get user gitlab group id: {organization_id} members: {err}'}
-    return r.json()['list']
+        cla.log.warning(f"Could not fetch gitlab org users: {err}")
+        return {f"error: Could not get user gitlab group id: {organization_id} members: {err}"}
+    return r.json()["list"]
 
 
 def update_github_username(github_user: dict, user: User):
@@ -1619,16 +1694,18 @@ def update_github_username(github_user: dict, user: User):
     :return: None
     """
     # set the github username if available
-    if 'login' in github_user:
+    if "login" in github_user:
         if user.get_user_github_username() is None:
             cla.log.debug(f'Updating user record - adding github username: {github_user["login"]}')
-            user.set_user_github_username(github_user['login'])
-        if user.get_user_github_username() != github_user['login']:
-            cla.log.warning(f'Note: github user with id: {github_user["id"]}'
-                            f' has a mismatched username (gh: {github_user["id"]} '
-                            f'vs db user record: {user.get_user_github_username}) - '
-                            f'setting the value to: {github_user["login"]}')
-            user.set_user_github_username(github_user['login'])
+            user.set_user_github_username(github_user["login"])
+        if user.get_user_github_username() != github_user["login"]:
+            cla.log.warning(
+                f'Note: github user with id: {github_user["id"]}'
+                f' has a mismatched username (gh: {github_user["id"]} '
+                f"vs db user record: {user.get_user_github_username}) - "
+                f'setting the value to: {github_user["login"]}'
+            )
+            user.set_user_github_username(github_user["login"])
 
 
 def is_approved(ccla_signature: Signature, email=None, github_username=None, github_id=None):
@@ -1642,28 +1719,29 @@ def is_approved(ccla_signature: Signature, email=None, github_username=None, git
     :param github_username: A given github username checked against ccla signature github/github-org whitelists
     :param github_id: A given github id checked against ccla signature github/github-org whitelists
     """
-    fn = 'utils.is_approved'
+    fn = "utils.is_approved"
 
     if email:
         # Checking email whitelist
         whitelist = ccla_signature.get_email_whitelist()
-        cla.log.debug(f'{fn} - testing email: {email} with CCLA approval list emails: {whitelist}')
+        cla.log.debug(f"{fn} - testing email: {email} with CCLA approval list emails: {whitelist}")
         if whitelist is not None:
             if email.lower() in (s.lower() for s in whitelist):
-                cla.log.debug(f'{fn} found user email in email approval list')
+                cla.log.debug(f"{fn} found user email in email approval list")
                 return True
 
         # Checking domain whitelist
         patterns = ccla_signature.get_domain_whitelist()
-        cla.log.debug(f"{fn} - testing user email domain: {email} with "
-                      f"domain approval list values in database: {patterns}")
+        cla.log.debug(
+            f"{fn} - testing user email domain: {email} with " f"domain approval list values in database: {patterns}"
+        )
         if patterns is not None:
             if get_user_instance().preprocess_pattern([email], patterns):
                 return True
             else:
                 cla.log.debug(f"{fn} - did not match email: {email} with domain: {patterns}")
         else:
-            cla.log.debug(f'{fn} - no domain approval list patterns defined - skipping domain approval list check')
+            cla.log.debug(f"{fn} - no domain approval list patterns defined - skipping domain approval list check")
 
     if github_id:
         github_username = lookup_user_github_username(github_id)
@@ -1673,16 +1751,18 @@ def is_approved(ccla_signature: Signature, email=None, github_username=None, git
         # remove leading and trailing whitespace from github username
         github_username = github_username.strip()
         github_approval_list = ccla_signature.get_github_whitelist()
-        cla.log.debug(f"{fn} - testing user github username: {github_username} with "
-                      f"CCLA github approval list: {github_approval_list}")
+        cla.log.debug(
+            f"{fn} - testing user github username: {github_username} with "
+            f"CCLA github approval list: {github_approval_list}"
+        )
 
         if github_approval_list is not None:
             # case insensitive search
             if github_username.lower() in (s.lower() for s in github_approval_list):
-                cla.log.debug(f'{fn} - found github username in github approval list')
+                cla.log.debug(f"{fn} - found github username in github approval list")
                 return True
     else:
-        cla.log.debug(f'{fn} - users github_username is not defined - skipping github username approval list check')
+        cla.log.debug(f"{fn} - users github_username is not defined - skipping github username approval list check")
 
     # Check github org approval list
     if github_username is not None:
@@ -1690,29 +1770,31 @@ def is_approved(ccla_signature: Signature, email=None, github_username=None, git
         if "error" not in github_orgs:
             # Fetch the list of orgs this user is part of
             github_org_approval_list = ccla_signature.get_github_org_whitelist()
-            cla.log.debug(f'{fn} - testing user github orgs: {github_orgs} with '
-                          f'CCLA github org approval list values: {github_org_approval_list}')
+            cla.log.debug(
+                f"{fn} - testing user github orgs: {github_orgs} with "
+                f"CCLA github org approval list values: {github_org_approval_list}"
+            )
 
             if github_org_approval_list is not None:
                 for dynamo_github_org in github_org_approval_list:
                     # case insensitive search
                     if dynamo_github_org.lower() in (s.lower() for s in github_orgs):
-                        cla.log.debug(f'{fn} - found matching github org for user')
+                        cla.log.debug(f"{fn} - found matching github org for user")
                         return True
     else:
-        cla.log.debug(f'{fn} - users github_username is not defined - skipping github org approval list check')
+        cla.log.debug(f"{fn} - users github_username is not defined - skipping github org approval list check")
 
-    cla.log.debug(f'{fn} - unable to find user in any approval list')
+    cla.log.debug(f"{fn} - unable to find user in any approval list")
     return False
 
 
 def audit_event(func):
-    """ Decorator that audits events """
+    """Decorator that audits events"""
 
     def wrapper(**kwargs):
         response = func(**kwargs)
         if response.get("status_code") == falcon.HTTP_200:
-            cla.log.debug("Created event {} ".format(kwargs['event_type']))
+            cla.log.debug("Created event {} ".format(kwargs["event_type"]))
         else:
             cla.log.debug("Failed to add event")
         return response
@@ -1721,7 +1803,7 @@ def audit_event(func):
 
 
 def get_oauth_client():
-    return OAuth2Session(os.environ['GH_OAUTH_CLIENT_ID'])
+    return OAuth2Session(os.environ["GH_OAUTH_CLIENT_ID"])
 
 
 def fmt_project(project: Project):
@@ -1729,39 +1811,33 @@ def fmt_project(project: Project):
 
 
 def fmt_company(company: Company):
-    return "{} ({}) - acl: {}".format(
-        company.get_company_name(),
-        company.get_company_id(),
-        company.get_company_acl())
+    return "{} ({}) - acl: {}".format(company.get_company_name(), company.get_company_id(), company.get_company_acl())
 
 
 def fmt_user(user: User):
-    return '{} ({}) {}'.format(
-        user.get_user_name(),
-        user.get_user_id(),
-        user.get_lf_email())
+    return "{} ({}) {}".format(user.get_user_name(), user.get_user_id(), user.get_lf_email())
 
 
 def fmt_users(users: List[User]):
-    response = ''
+    response = ""
     for user in users:
-        response += fmt_user(user) + ' '
+        response += fmt_user(user) + " "
 
     return response
 
 
 def get_email_help_content(show_v2_help_link: bool) -> str:
     # v1 help link
-    help_link = 'https://docs.linuxfoundation.org/lfx/easycla'
+    help_link = "https://docs.linuxfoundation.org/lfx/easycla"
     if show_v2_help_link:
         # v2 help link
-        help_link = 'https://docs.linuxfoundation.org/lfx/easycla'
+        help_link = "https://docs.linuxfoundation.org/lfx/easycla"
 
     return f'<p>If you need help or have questions about EasyCLA, you can <a href="{help_link}" target="_blank">read the documentation</a> or <a href="https://jira.linuxfoundation.org/servicedesk/customer/portal/4/create/143" target="_blank">reach out to us for support</a>.</p>'
 
 
 def get_email_sign_off_content() -> str:
-    return '<p>Thanks,</p><p>EasyCLA Support Team</p>'
+    return "<p>Thanks,</p><p>EasyCLA Support Team</p>"
 
 
 def get_corporate_url(project_version: str) -> str:
@@ -1770,7 +1846,7 @@ def get_corporate_url(project_version: str) -> str:
     :param project_version: cla_group version(v1|v2)
     :return: default is v1 corporate console
     """
-    return CORPORATE_V2_BASE if project_version == 'v2' else CORPORATE_BASE
+    return CORPORATE_V2_BASE if project_version == "v2" else CORPORATE_BASE
 
 
 def append_email_help_sign_off_content(body: str, project_version: str) -> str:
@@ -1780,11 +1856,13 @@ def append_email_help_sign_off_content(body: str, project_version: str) -> str:
     :param project_version:
     :return:
     """
-    return "".join([
-        body,
-        get_email_help_content(project_version == "v2"),
-        get_email_sign_off_content(),
-    ])
+    return "".join(
+        [
+            body,
+            get_email_help_content(project_version == "v2"),
+            get_email_sign_off_content(),
+        ]
+    )
 
 
 def append_email_help_sign_off_content_plain(body: str, project_version: str) -> str:
@@ -1820,7 +1898,7 @@ def get_time_from_string(date_string: str) -> Optional[datetime]:
     :return:
     """
     # Try these formats
-    formats = ['%Y-%m-%d %H:%M:%S.%f%z', '%Y-%m-%dT%H:%M:%S%z', '%Y-%m-%dT%H:%M:%S.%f%z', '%Y-%m-%dT%H:%M:%S.%f']
+    formats = ["%Y-%m-%d %H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S.%f"]
     for fmt in formats:
         try:
             return datetime.strptime(date_string, fmt)
@@ -1837,19 +1915,20 @@ def get_public_email(user):
     if len(user.get_all_user_emails()) > 0:
         return next((email for email in user.get_all_user_emails() if "noreply.github.com" not in email), None)
 
+
 def get_co_authors_from_commit(commit):
     """
     Helper function to return co-authors from commit
     """
     fn = "get_co_authors_from_commit"
-    # import pdb; pdb.set_trace()
     co_authors = []
     if commit.commit:
         commit_message = commit.commit.message
-        cla.log.debug(f'{fn} - commit message: {commit_message}')
+        cla.log.debug(f"{fn} - commit message: {commit_message}")
         if commit_message:
             co_authors = re.findall(r"Co-authored-by: (.*) <(.*)>", commit_message)
     return co_authors
+
 
 def extract_pull_request_number(pull_request_message):
     """
@@ -1862,11 +1941,7 @@ def extract_pull_request_number(pull_request_message):
     try:
         pull_request_number = int(re.search(r"#(\d+)", pull_request_message).group(1))
     except AttributeError as e:
-        cla.log.warning(f'{fn} - unable to extract pull request number from message: {pull_request_message}, error: {e}')
+        cla.log.warning(f"{fn} - unable to extract pull request number from message: {pull_request_message}, error: {e}")
     except Exception as e:
-        cla.log.warning(f'{fn} - unable to extract pull request number from message: {pull_request_message}, error: {e}')
+        cla.log.warning(f"{fn} - unable to extract pull request number from message: {pull_request_message}, error: {e}")
     return pull_request_number
-
-
-
-
