@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 import unittest
+from unittest.mock import MagicMock
 
 import cla
-from cla.controllers.github import (webhook_secret_failed_email_content,
-                                    webhook_secret_validation)
+from cla.controllers.github import webhook_secret_failed_email_content, webhook_secret_validation
+from cla.models.github_models import has_check_previously_passed_or_failed
 from cla.utils import get_comment_badge
 
 SUCCESS = ":white_check_mark:"
@@ -119,6 +120,42 @@ def test_comment_badge_with_missing_whitelisted_user():
     assert confirmation_needed_badge in response
 
 
+def test_has_check_previously_passed_or_failed_failed_status():
+    # Create a mock PullRequest object
+    pull_request = MagicMock()
+    # Create mock comments
+    comments = [
+        MagicMock(body="This is a comment that does not match any failure or pass condition"),
+    ]
+    # Set the return value of get_issue_comments to the mock comments
+    pull_request.get_issue_comments.return_value = comments
+
+    # Test the function
+    result, comment = has_check_previously_passed_or_failed(pull_request)
+
+    assert result == False
+    assert comment is None
+
+
+def test_has_check_previously_passed_or_failed_passed_status():
+    # Create a mock PullRequest object
+    pull_request = MagicMock()
+    # Create mock comments
+    comments = [
+        MagicMock(body="This is a comment that does not match any failure or pass condition"),
+        MagicMock(body="The committers listed above are authorized under a signed CLA."),
+    ]
+    # Set the return value of get_issue_comments to the mock comments
+    pull_request.get_issue_comments.return_value = comments
+
+    # Test the function
+    result, comment = has_check_previously_passed_or_failed(pull_request)
+
+    # Assert that the function returns True and the correct comment
+    assert result
+    assert comment == comments[1]
+
+
 class TestWebhookSecretValidation(unittest.TestCase):
     def setUp(self) -> None:
         self.old_email = cla.config.EMAIL_SERVICE
@@ -134,21 +171,21 @@ class TestWebhookSecretValidation(unittest.TestCase):
         """
         cla.config.GITHUB_APP_WEBHOOK_SECRET = ""
         with self.assertRaises(RuntimeError) as ex:
-            _ = webhook_secret_validation("secret", b'')
+            _ = webhook_secret_validation("secret", b"")
 
     def test_webhook_secret_validation_failed(self):
         """
         Tests the webhook_secret_validation method
         """
         cla.config.GITHUB_APP_WEBHOOK_SECRET = "secret"
-        assert not webhook_secret_validation("sha1=secret", ''.encode())
+        assert not webhook_secret_validation("sha1=secret", "".encode())
 
     def test_webhook_secret_validation_success(self):
         """
         Tests the webhook_secret_validation method
         """
         cla.config.GITHUB_APP_WEBHOOK_SECRET = "secret"
-        input_data = 'data'.encode('utf-8')
+        input_data = "data".encode("utf-8")
         assert webhook_secret_validation("sha1=9818e3306ba5ac267b5f2679fe4abd37e6cd7b54", input_data)
 
     # def test_webhook_secret_failed_email(self):

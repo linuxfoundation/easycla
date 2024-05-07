@@ -742,8 +742,8 @@ class GitHub(repository_service_interface.RepositoryService):
                 cla.log.debug(f'{fn} - PR: {pull_request.number} for user: {user_commit_summary}')
                 futures.append(executor.submit(handle_commit_from_user, project,user_commit_summary,signed,missing))
 
-        #Wait for all threads to be finished before mobing on
-        executor.shutdown(wait=True)
+            #Wait for all threads to be finished before moving on
+            executor.shutdown(wait=True)
 
         for future in concurrent.futures.as_completed(futures):
             cla.log.debug(f'{fn} - ThreadClosed for handle_commit_from_user')
@@ -1407,7 +1407,7 @@ def get_co_author_commits(co_author,commit,pr,installation_id):
 
 def has_check_previously_passed_or_failed(pull_request: PullRequest):
     """
-    Review the status updates in the PR. Identify 1 or more previous failed
+    Review the status updates in the PR. Identify 1 or more previous failed|passed
     updates from the EasyCLA bot. If we fine one, return True with the comment, otherwise
     return False, None
 
@@ -1505,7 +1505,7 @@ def update_pull_request(installation_id, github_repository_id, pull_request, rep
             # After Issue #167 wsa in place, they decided via Issue #289 that we
             # DO want to update the comment, but only after we've previously failed
             if previously_pass_or_failed:
-                cla.log.debug(f'{fn} - Found previously failed checks - updating CLA comment in PR.')
+                cla.log.debug(f'{fn} - Found previously passed or failed checks - updating CLA comment in PR.')
                 comment.edit(body)
             cla.log.debug(f'{fn} - EasyCLA App checks pass for PR: {pull_request.number} with authors: {signed}')
         else:
