@@ -1078,7 +1078,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
     if len(signed) > 0 or len(missing) > 0:
         committers_comment += '</ul>'
 
-    committers_comment += '<!-- Date Modified: ' + str(datetime.datetime.now()) + ' -->'
+    committers_comment += '<!-- Date Modified: ' + str(datetime.now()) + ' -->'
 
     if len(signed) > 0 and len(missing) == 0:
         text = "The committers listed above are authorized under a signed CLA."

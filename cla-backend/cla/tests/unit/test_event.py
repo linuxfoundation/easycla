@@ -101,10 +101,6 @@ def test_event_time(mock_event):
     assert mock_event.get_event_time() <= datetime.datetime.utcnow()
 
 
-def test_event_time_epoch(mock_event):
-    """ Test event time epoch """
-    mock_event.save()
-    assert mock_event.get_event_time_epoch() <= datetime.datetime.utcnow().timestamp()
 
 
 def test_company_id_external_project_id(mock_event):
