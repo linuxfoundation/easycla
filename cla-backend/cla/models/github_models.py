@@ -19,13 +19,15 @@ from cla.controllers.github_application import GitHubInstallation
 from cla.models import DoesNotExist, repository_service_interface
 from cla.models.dynamo_models import GitHubOrg, Repository
 from cla.user import UserCommitSummary
-from cla.utils import (append_project_version_to_url, get_project_instance,
-                       set_active_pr_metadata)
+from cla.utils import append_project_version_to_url, get_project_instance, set_active_pr_metadata
 from github import PullRequest
-from github.GithubException import (BadCredentialsException, GithubException,
-                                    IncompletableObject,
-                                    RateLimitExceededException,
-                                    UnknownObjectException)
+from github.GithubException import (
+    BadCredentialsException,
+    GithubException,
+    IncompletableObject,
+    RateLimitExceededException,
+    UnknownObjectException,
+)
 from requests_oauthlib import OAuth2Session
 
 # some emails we want to exclude when we register the users
@@ -1544,6 +1546,7 @@ def update_pull_request(
     github_repository_id,
     pull_request,
     repository_name,
+    organization_name,
     signed: List[UserCommitSummary],
     missing: List[UserCommitSummary],
     project_version,
@@ -1690,6 +1693,17 @@ def update_pull_request(
             )
             create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
 
+    # Add labels to the PR
+    labels = []
+    cla.log.debug(f"{fn} - Adding labels to PR: {pull_request.number}...")
+    if missing:
+        labels.append("CLA: Error")
+    elif signed:
+        labels.append("CLA: Valid")
+    if labels:
+        client = GitHubInstallation(installation_id)
+        client.add_labels_to_pr(organization_name, repository_name, pull_request.number, labels)
+
 
 def create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, sign_url, body, context):
     """
@@ -1789,6 +1803,28 @@ def create_commit_status(pull_request, commit_hash, state, sign_url, body, conte
 #         if '[![CLA Check](' in comment.body:
 #             cla.log.debug('Found matching CLA comment for PR: %s', pull_request.number)
 #             return comment
+
+
+def add_labels_to_pull_request(installation_id, github_repository_id, pull_request, labels):
+    """
+    Helper function to add labels to a GitHub PR.
+
+    :param: installation_id: The ID of the GitHub installation
+    :type: installation_id: int
+    :param: github_repository_id: The ID of the GitHub repository this PR belongs to.
+    :type: github_repository_id: int
+    :param: pull_request: The GitHub PullRequest object for this PR.
+    :type: pull_request: GitHub.PullRequest
+    :param: labels: The list of labels to add to the PR.
+    :type: labels: List[string]
+    """
+    fn = "cla.models.github_models.add_labels_to_pull_request"
+    try:
+        client = GitHubInstallation(installation_id)
+        client.add_labels_to_pull_request(github_repository_id, pull_request.number, labels)
+        cla.log.debug(f"{fn} - Successfully added labels {labels} to PR: {pull_request.number}")
+    except Exception as e:
+        cla.log.warning(f"{fn} - Unable to add labels {labels} to PR: {pull_request.number}: {e}")
 
 
 def get_github_integration_client(installation_id):
