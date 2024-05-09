@@ -83,20 +83,18 @@ class GitHubInstallation(object):
         except RequestException as err:
             cla.log.debug(err)
 
-    def add_labels_to_pr(self, owner, repo, pr_number, labels):
+    def add_labels_to_pr(self, repository_name, pr_number, labels):
         """
         Function that adds labels to a PR
 
-        :param owner: The owner of the repository
-        :type owner: str
-        :param repo: The name of the repository
+        :param repository_name: The name of the repository
         :type repo: str
         :param pr_number: The number of the PR
         :type pr_number: int
         :param labels: The labels to add to the PR
         """
         try:
-            url = "https://api.github.com/repos/{}/{}/issues/{}/labels".format(owner, repo, pr_number)
+            url = "https://api.github.com/repos/{}/issues/{}/labels".format(repository_name, pr_number)
             requests.post(
                 url,
                 json=labels,
