@@ -1703,7 +1703,10 @@ def update_pull_request(
         labels.append("CLA: Valid")
     if labels:
         client = GitHubInstallation(installation_id)
-        client.add_labels_to_pr(organization_name, repository_name, pull_request.number, labels)
+        client.add_labels_to_pr(repository_name, pull_request.number, labels)
+        cla.log.debug(f"{fn} - Successfully added labels {labels} to PR: {pull_request.number}")
+    else:
+        cla.log.debug(f"{fn} - No labels to add to PR: {pull_request.number}")
 
 
 def create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, sign_url, body, context):
