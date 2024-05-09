@@ -1547,7 +1547,6 @@ def update_pull_request(
     github_repository_id,
     pull_request,
     repository_name,
-    organization_name,
     signed: List[UserCommitSummary],
     missing: List[UserCommitSummary],
     project_version,

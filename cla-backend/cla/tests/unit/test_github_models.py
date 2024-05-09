@@ -99,8 +99,7 @@ class TestGetPullRequestCommitAuthors(TestCase):
         installation_id = 123
         github_repository_id = 456
         pull_request = MagicMock()
-        repository_name = "test_repo"
-        organization_name = "test_org"
+        repository_name = "test_org/test_repo"
         signed = [
             UserCommitSummary(
                 author_id="1",
@@ -132,7 +131,6 @@ class TestGetPullRequestCommitAuthors(TestCase):
             github_repository_id,
             pull_request,
             repository_name,
-            organization_name,
             signed,
             missing,
             project_version,
@@ -140,7 +138,6 @@ class TestGetPullRequestCommitAuthors(TestCase):
 
         # Assertions
         client_mock.add_labels_to_pr.assert_called_once_with(
-            organization_name,
             repository_name,
             pull_request.number,
             ["CLA: Valid"],
