@@ -852,6 +852,7 @@ class GitHub(repository_service_interface.RepositoryService):
             github_repository_id=github_repository_id,
             pull_request=pull_request,
             repository_name=repository_name,
+            organization_name=organization_name,
             signed=signed,
             missing=missing,
             project_version=project.get_version(),
