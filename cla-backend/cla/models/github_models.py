@@ -1388,12 +1388,12 @@ def get_author_summary(commit, pr, installation_id) -> List[UserCommitSummary]:
             # check for co-author details
             # issue # 3884
             commit_authors.append(commit_author_summary)
-            co_authors = cla.utils.get_co_authors_from_commit(commit)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                for co_author in co_authors:
-                    commit_authors.append(
-                        executor.submit(get_co_author_commits, co_author, commit, pr, installation_id).result()
-                    )
+            # co_authors = cla.utils.get_co_authors_from_commit(commit)
+            # with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            #     for co_author in co_authors:
+            #         commit_authors.append(
+            #             executor.submit(get_co_author_commits, co_author, commit, pr, installation_id).result()
+            #         )
 
             return commit_authors
         except (GithubException, IncompletableObject) as exc:
