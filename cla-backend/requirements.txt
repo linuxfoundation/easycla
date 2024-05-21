@@ -6,7 +6,7 @@ attrs==19.3.0
 beautifulsoup4==4.8.1
 boto3==1.9.236
 botocore==1.12.253
-certifi==2022.12.7
+certifi==2023.7.22
 chardet==3.0.4
 colorama==0.4.3
 coverage==4.5.4
@@ -19,7 +19,7 @@ future==0.18.3
 gossip==2.3.1
 gunicorn==19.9.0
 hug==2.6.0
-idna==2.8
+idna==3.7
 importlib-metadata==1.6.1
 Jinja2==3.1.4
 jmespath==0.9.4
@@ -44,7 +44,7 @@ pytest-clarity==0.3.0a0
 pytest-cov==2.8.1
 python-dateutil==2.8.1
 python-jose==3.0.1
-requests==2.31.0
+requests==2.32.0
 requests-oauthlib==1.2.0
 rsa==4.7
 s3transfer==0.2.1
@@ -53,7 +53,7 @@ six==1.13.0
 soupsieve==1.9.5
 termcolor==1.1.0
 typed-ast==1.4.1
-urllib3==1.25.11
+urllib3==1.26.18
 vintage==0.4.1
 wcwidth==0.1.7
 Werkzeug==0.15.5
