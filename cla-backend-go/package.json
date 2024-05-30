@@ -21,7 +21,7 @@
   "dependencies": {
     "install": "^0.13.0",
     "node.extend": "^2.0.2",
-    "serverless": "^3.32.2",
+    "serverless": "^4.0.0",
     "serverless-finch": "^4.0.3",
     "serverless-layers": "^2.6.1",
     "serverless-plugin-tracing": "^2.0.0",
