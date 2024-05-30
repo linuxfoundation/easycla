@@ -4419,7 +4419,7 @@ serverless-wsgi@^3.0.1:
     lodash "^4.17.21"
     process-utils "^4.0.0"
 
-"serverless@^2.32 || 3", "serverless@^2.60 || ^3.0.0", serverless@^3.32.2, "serverless@1 || 2 || 3":
+serverless@^3.32.2:
   version "3.33.0"
   resolved "https://registry.npmjs.org/serverless/-/serverless-3.33.0.tgz"
   integrity sha512-qmG0RMelsWmnS5Smxoy0CbjpecgnJlM89wzSIgJqfkGlmOo2nJdd8y0/E6KlaTsaozlPKkjUBDzis2nF8VNO2g==
@@ -5013,7 +5013,7 @@ write-file-atomic@^4.0.2:
     imurmurhash "^0.1.4"
     signal-exit "^3.0.7"
 
-ws@*, ws@^7.5.3, ws@^7.5.9:
+ws@^7.5.3, ws@^7.5.9:
   version "7.5.9"
   resolved "https://registry.npmjs.org/ws/-/ws-7.5.9.tgz"
   integrity sha512-F+P9Jil7UiSKSkppIiD94dN07AwvFixvLIj1Og1Rl9GGMuNipJnV9JzjD6XuqmAeiswGvUmNLjr5cFuXwNS77Q==
