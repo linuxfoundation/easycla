@@ -2455,7 +2455,7 @@ parameters:
     type: string
     required: false
     x-omitempty: false
-    pattern: '^([\w\d\s\-\,\./]+){2,255}$'
+    pattern: '[^<>]*'
     minLength: 2
     maxLength: 255
   companyNameRequired:
