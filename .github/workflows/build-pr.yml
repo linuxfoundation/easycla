@@ -41,10 +41,11 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Configure Git to clone private Github repos
-        run: git config --global url."https://${TOKEN_USER}:${TOKEN}@github.com".insteadOf "https://github.com"
+        run: |
+          echo PAT:${GH_PAT}
+          git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
         env:
-          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER }}
+          GH_PAT: ${{secrets.GH_PAT}}
 
       - name: Add OS Tools
         run: sudo apt update && sudo apt-get install file -y
@@ -78,10 +79,7 @@ jobs:
 
       - name: Go Dependencies
         working-directory: cla-backend-go
-        run: |
-          go mod tidy
-          go mod download
-          make deps
+        run: make deps
 
       - name: Go Swagger Generate
         working-directory: cla-backend-go
