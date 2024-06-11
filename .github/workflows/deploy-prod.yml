@@ -35,7 +35,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
-          node-version: '16'
+          node-version: '18'
       - name: Setup python
         uses: actions/setup-python@v4
         with:
@@ -157,7 +157,7 @@ jobs:
           if [[ ! -f bin/backend-aws-lambda ]]; then echo "Missing bin/backend-aws-lambda binary file. Exiting..."; exit 1; fi
           if [[ ! -f bin/user-subscribe-lambda ]]; then echo "Missing bin/user-subscribe-lambda binary file. Exiting..."; exit 1; fi
           yarn install
-          yarn sls deploy --force --stage ${STAGE} --region us-east-2
+          sls deploy --force --stage ${STAGE} --region us-east-2
 
       - name: EasyCLA v2 Service Check
         run: |
