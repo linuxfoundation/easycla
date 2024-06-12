@@ -59,6 +59,7 @@ type ServiceInterface interface {
 	GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error)
 	InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error
 	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
+	IsUserAuthorized(ctx context.Context, lfid, claGroupId string) (*models.LfidAuthorizedResponse, error)
 }
 
 // Service structure/model
@@ -433,4 +434,41 @@ func (s *Service) EclaAutoCreate(ctx context.Context, signatureID string, autoCr
 	}
 
 	return nil
+}
+
+func (s *Service) IsUserAuthorized(ctx context.Context, lfid, claGroupId string) (*models.LfidAuthorizedResponse, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.signatures.service.IsUserAuthorized",
+		"lfid":           lfid,
+		"claGroupId":     claGroupId,
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+
+	response := models.LfidAuthorizedResponse{
+		ClaGroupID: claGroupId,
+		Lfid:       lfid,
+	}
+
+	// fetch cla user
+	log.WithFields(f).Debug("fetching user by lfid")
+	user, err := s.usersService.GetUserByLFUserName(lfid)
+
+	if user.CompanyID != "" {
+		log.WithFields(f).Debugf("User is associated with company: %s", user.CompanyID)
+		response.CompanyID = user.CompanyID
+	}
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Debug("unable to fetch lfusername")
+		return nil, err
+	}
+
+	hasSigned, _, err := s.v1SignatureService.HasUserSigned(ctx, user, claGroupId)
+	if err != nil {
+		log.WithFields(f).WithError(err).Debug("Unable to check authorized status of the user")
+		return nil, err
+	}
+
+	response.Authorized = *hasSigned
+	return &response, nil
 }

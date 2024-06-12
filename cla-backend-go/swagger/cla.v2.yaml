@@ -4312,7 +4312,41 @@ paths:
           description: Invalid request.
       tags:
         - sign
+  /cla/authorization:
+    get:
+      summary: check if LFID is authorized for a CLA Group ID
+      description: This endpoint checks if a given LFID is authorized for a specific CLA Group
+      operationId: isAuthorized
+      security: [ ]
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: lfid
+          in: query
+          required: true
+          type: string
+          description: The Linux Foundation ID user
+        - name: claGroupId
+          in: query
+          required: true
+          type: string
+          description: The CLA Group ID
+      responses:
+        '200':
+          description: Authorization status of the LFID for the specified CLA Group
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/lfid-authorized-response'
 
+        '400':
+          $ref: '#/responses/invalid-request'
+
+      tags:
+          - signatures
+       
+      
 
 responses:
   unauthorized:
@@ -6125,3 +6159,22 @@ definitions:
         description: The unique request ID value - assigned/set by the API Gateway or the API based on the login session
         example: 'b1e86e26-d8c8-4fd8-9f8d-5c723d5dac9f'
         type: string
+  
+  lfid-authorized-response:
+    type: object
+    properties:
+      authorized:
+        type: boolean
+        description: Indicates if the LFID is authorized for the CLA Group.
+        x-omitempty: false
+      lfid:
+        type: string
+        description: The LFID that was checked
+      claGroupId:
+        type: string
+        description: The ID of the Group
+      companyID:
+        type: string
+        description: The ID of the company associated with the User (optional)
+      
+

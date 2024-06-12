@@ -1393,6 +1393,29 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 
 		return signatures.NewEclaAutoCreateOK().WithXRequestID(reqID)
 	})
+
+	api.SignaturesIsAuthorizedHandler = signatures.IsAuthorizedHandlerFunc(func(params signatures.IsAuthorizedParams) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":   "v2.signatures.handlers.SignaturesIsAuthorizedHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"lfid":           params.Lfid,
+			"clagroupid":     params.ClaGroupID,
+		}
+
+		log.WithFields(f).Debug("checking if user is authorized...")
+		result, err := v2SignatureService.IsUserAuthorized(ctx, params.Lfid, params.ClaGroupID)
+		if err != nil {
+			msg := "problem checking if user is authorized"
+			log.WithFields(f).WithError(err).Warn(msg)
+			return signatures.NewIsAuthorizedBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		log.WithFields(f).Debug("returning authorization result to caller...")
+		return signatures.NewIsAuthorizedOK().WithXRequestID(reqID).WithPayload(result)
+	})
 }
 
 // getProjectIDsFromModels is a helper function to extract the project SFIDs from the project CLA Group models
