@@ -58,6 +58,7 @@ type SignatureService interface {
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
 	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
 	SaveOrUpdateSignature(ctx context.Context, signature *ItemSignature) error
+	HasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, *bool, error)
 
 	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error)
 	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error)
@@ -1090,7 +1091,7 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 		}
 
 		log.WithFields(f).Debugf("checking to see if user has signed an ICLA or ECLA for project: %s", projectID)
-		userSigned, companyAffiliation, signedErr := s.hasUserSigned(ctx, user, projectID)
+		userSigned, companyAffiliation, signedErr := s.HasUserSigned(ctx, user, projectID)
 		if signedErr != nil {
 			log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
 			unsigned = append(unsigned, userSummary)
@@ -1128,7 +1129,7 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 // false, false, some error if user is not authorized for ICLA or ECLA - we has some problem looking up stuff
 // true, false, nil if user has an ICLA (authorized, but not company affiliation, no error)
 // true, true, nil if user has an ECLA (authorized, with company affiliation, no error)
-func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, *bool, error) {
+func (s service) HasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, *bool, error) {
 	f := logrus.Fields{
 		"functionName": "v1.signatures.service.updateChangeRequest",
 		"projectID":    projectID,
