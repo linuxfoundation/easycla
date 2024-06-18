@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+
 	// mock_signatures "github.com/communitybridge/easycla/cla-backend-go/v2/signatures/mock_v1_signatures"
 	mock_company "github.com/communitybridge/easycla/cla-backend-go/company/mocks"
 	ini "github.com/communitybridge/easycla/cla-backend-go/init"
@@ -20,36 +22,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestService_IsUserAuthorized_User_Not_Found(t *testing.T) {
-	// TestIsUserAuthorized test case
-	lfid := "foolfid"
-	projectID := "project-1234"
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	awsSession, err := ini.GetAWSSession()
-	if err != nil {
-		assert.Fail(t, "unable to create AWS session")
-	}
-
-	mockUserService := mock_users.NewMockService(ctrl)
-	mockUserService.EXPECT().GetUserByLFUserName(lfid).Return(nil, nil)
-
-	service := NewService(awsSession, "", nil, nil, nil, nil, nil, mockUserService, nil)
-
-	result, err := service.IsUserAuthorized(context.Background(), lfid, projectID)
-
-	assert.Nil(t, err)
-	assert.False(t, result.Authorized)
-}
-
-func TestService_IsUserAuthorized_CCLA_Requires_ICLA(t *testing.T) {
+func TestService_IsUserAuthorized(t *testing.T) {
 	type testCase struct {
 		lfid                           string
 		projectID                      string
 		userID                         string
 		companyID                      string
+		getUserByLFUsernameResult      *v1Models.User
+		getUserByLFUsernameError       error
 		claGroupRequiresICLA           bool
 		getIndividualSignatureResult   *v1Models.Signature
 		getIndividualSignatureError    error
@@ -69,6 +49,12 @@ func TestService_IsUserAuthorized_CCLA_Requires_ICLA(t *testing.T) {
 			userID:               "user-123",
 			companyID:            "company-123",
 			claGroupRequiresICLA: true,
+			getUserByLFUsernameResult: &v1Models.User{
+				UserID:     "user-123",
+				CompanyID:  "company-123",
+				LfUsername: "foobar_1",
+			},
+			getUserByLFUsernameError: nil,
 			getIndividualSignatureResult: &v1Models.Signature{
 				SignatureID: "signature-123",
 			},
@@ -87,6 +73,12 @@ func TestService_IsUserAuthorized_CCLA_Requires_ICLA(t *testing.T) {
 			userID:               "user-123",
 			companyID:            "company-123",
 			claGroupRequiresICLA: false,
+			getUserByLFUsernameResult: &v1Models.User{
+				UserID:     "user-123",
+				CompanyID:  "company-123",
+				LfUsername: "foobar_2",
+			},
+			getUserByLFUsernameError: nil,
 			getIndividualSignatureResult: &v1Models.Signature{
 				SignatureID: "signature-123",
 			},
@@ -100,11 +92,17 @@ func TestService_IsUserAuthorized_CCLA_Requires_ICLA(t *testing.T) {
 			expectedCompanyAffiliation:     true,
 		},
 		{
-			lfid:                 "foobar_3",
-			projectID:            "project-123",
-			userID:               "user-123",
-			companyID:            "company-123",
-			claGroupRequiresICLA: true,
+			lfid:      "foobar_3",
+			projectID: "project-123",
+			userID:    "user-123",
+			companyID: "company-123",
+			getUserByLFUsernameResult: &v1Models.User{
+				UserID:     "user-123",
+				CompanyID:  "company-123",
+				LfUsername: "foobar_3",
+			},
+			getUserByLFUsernameError: nil,
+			claGroupRequiresICLA:     true,
 			getIndividualSignatureResult: &v1Models.Signature{
 				SignatureID: "signature-123",
 			},
@@ -118,10 +116,16 @@ func TestService_IsUserAuthorized_CCLA_Requires_ICLA(t *testing.T) {
 			expectedCompanyAffiliation:     true,
 		},
 		{
-			lfid:                           "foobar_4",
-			projectID:                      "project-123",
-			userID:                         "user-123",
-			companyID:                      "company-123",
+			lfid:      "foobar_4",
+			projectID: "project-123",
+			userID:    "user-123",
+			companyID: "company-123",
+			getUserByLFUsernameResult: &v1Models.User{
+				UserID:     "user-123",
+				CompanyID:  "company-123",
+				LfUsername: "foobar_4",
+			},
+			getUserByLFUsernameError:       nil,
 			claGroupRequiresICLA:           true,
 			getIndividualSignatureResult:   nil,
 			getIndividualSignatureError:    errors.New("some error"),
@@ -134,10 +138,15 @@ func TestService_IsUserAuthorized_CCLA_Requires_ICLA(t *testing.T) {
 			expectedCompanyAffiliation:     true,
 		},
 		{
-			lfid:                           "foobar_5",
-			projectID:                      "project-123",
-			userID:                         "user-123",
-			companyID:                      "company-123",
+			lfid:      "foobar_5",
+			projectID: "project-123",
+			userID:    "user-123",
+			companyID: "company-123",
+			getUserByLFUsernameResult: &v1Models.User{
+				UserID:    "user-123",
+				CompanyID: "company-123",
+			},
+			getUserByLFUsernameError:       nil,
 			claGroupRequiresICLA:           true,
 			getIndividualSignatureResult:   nil,
 			getIndividualSignatureError:    errors.New("some error"),
@@ -149,6 +158,20 @@ func TestService_IsUserAuthorized_CCLA_Requires_ICLA(t *testing.T) {
 			expectedCCLA:                   false,
 			expectedCompanyAffiliation:     true,
 		},
+		{
+			lfid:                       "foobar_6",
+			projectID:                  "project-123",
+			userID:                     "user-123",
+			companyID:                  "company-123",
+			getUserByLFUsernameResult:  nil,
+			getUserByLFUsernameError:   nil,
+			claGroupRequiresICLA:       true,
+			expectedAuthorized:         false,
+			expectedCCLARequiresICLA:   true,
+			expectedICLA:               false,
+			expectedCCLA:               false,
+			expectedCompanyAffiliation: false,
+		},
 	}
 
 	for _, tc := range cases {
@@ -156,16 +179,13 @@ func TestService_IsUserAuthorized_CCLA_Requires_ICLA(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
+			var err error
+			var result *models.LfidAuthorizedResponse
+
 			awsSession, err := ini.GetAWSSession()
 			if err != nil {
 				assert.Fail(t, "unable to create AWS session")
 			}
-
-			mockUserService := mock_users.NewMockService(ctrl)
-			mockUserService.EXPECT().GetUserByLFUserName(tc.lfid).Return(&v1Models.User{
-				UserID:    tc.userID,
-				CompanyID: tc.companyID,
-			}, nil)
 
 			mockProjectService := mock_project.NewMockService(ctrl)
 			mockProjectService.EXPECT().GetCLAGroupByID(context.Background(), tc.projectID).Return(&v1Models.ClaGroup{
@@ -173,23 +193,32 @@ func TestService_IsUserAuthorized_CCLA_Requires_ICLA(t *testing.T) {
 				ProjectCCLARequiresICLA: tc.claGroupRequiresICLA,
 			}, nil)
 
-			mockSignatureService := mock_v1_signatures.NewMockSignatureService(ctrl)
+			mockUserService := mock_users.NewMockService(ctrl)
+			mockUserService.EXPECT().GetUserByLFUserName(tc.lfid).Return(tc.getUserByLFUsernameResult, tc.getUserByLFUsernameError)
 
-			approved := true
-			signed := true
-			mockSignatureService.EXPECT().GetIndividualSignature(context.Background(), tc.projectID, tc.userID, &approved, &signed).Return(tc.getIndividualSignatureResult, tc.getIndividualSignatureError)
+			if tc.getUserByLFUsernameResult != nil {
 
-			mockSignatureService.EXPECT().ProcessEmployeeSignature(context.Background(), gomock.Any(), gomock.Any(), gomock.Any()).Return(tc.processEmployeeSignatureResult, tc.processEmployeeSignatureError)
+				mockSignatureService := mock_v1_signatures.NewMockSignatureService(ctrl)
 
-			mockCompanyService := mock_company.NewMockIService(ctrl)
-			mockCompanyService.EXPECT().GetCompany(context.Background(), tc.companyID).Return(&v1Models.Company{
-				CompanyID: tc.companyID,
-			}, nil)
+				approved := true
+				signed := true
+				mockSignatureService.EXPECT().GetIndividualSignature(context.Background(), tc.projectID, tc.userID, &approved, &signed).Return(tc.getIndividualSignatureResult, tc.getIndividualSignatureError)
 
-			service := NewService(awsSession, "", mockProjectService, mockCompanyService, mockSignatureService, nil, nil, mockUserService, nil)
+				mockSignatureService.EXPECT().ProcessEmployeeSignature(context.Background(), gomock.Any(), gomock.Any(), gomock.Any()).Return(tc.processEmployeeSignatureResult, tc.processEmployeeSignatureError)
 
-			result, err := service.IsUserAuthorized(context.Background(), tc.lfid, tc.projectID)
+				mockCompanyService := mock_company.NewMockIService(ctrl)
+				mockCompanyService.EXPECT().GetCompany(context.Background(), tc.companyID).Return(&v1Models.Company{
+					CompanyID: tc.companyID,
+				}, nil)
 
+				service := NewService(awsSession, "", mockProjectService, mockCompanyService, mockSignatureService, nil, nil, mockUserService, nil)
+
+				result, err = service.IsUserAuthorized(context.Background(), tc.lfid, tc.projectID)
+
+			} else {
+				service := NewService(awsSession, "", mockProjectService, nil, nil, nil, nil, mockUserService, nil)
+				result, err = service.IsUserAuthorized(context.Background(), tc.lfid, tc.projectID)
+			}
 			assert.Nil(t, err)
 			assert.Equal(t, tc.expectedAuthorized, result.Authorized)
 			assert.Equal(t, tc.expectedCCLARequiresICLA, result.CCLARequiresICLA)
