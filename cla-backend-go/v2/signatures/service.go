@@ -447,12 +447,13 @@ func (s *Service) IsUserAuthorized(ctx context.Context, lfid, claGroupId string)
 	hasSigned := false
 
 	response := models.LfidAuthorizedResponse{
-		ClaGroupID:       claGroupId,
-		Lfid:             lfid,
-		Authorized:       false,
-		ICLA:             false,
-		CCLA:             false,
-		CCLARequiresICLA: false,
+		ClaGroupID:         claGroupId,
+		Lfid:               lfid,
+		Authorized:         false,
+		ICLA:               false,
+		CCLA:               false,
+		CCLARequiresICLA:   false,
+		CompanyAffiliation: false,
 	}
 
 	// fetch cla group
