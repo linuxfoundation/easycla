@@ -444,31 +444,92 @@ func (s *Service) IsUserAuthorized(ctx context.Context, lfid, claGroupId string)
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
+	hasSigned := false
+
 	response := models.LfidAuthorizedResponse{
-		ClaGroupID: claGroupId,
-		Lfid:       lfid,
+		ClaGroupID:       claGroupId,
+		Lfid:             lfid,
+		Authorized:       false,
+		ICLA:             false,
+		CCLA:             false,
+		CCLARequiresICLA: false,
 	}
+
+	// fetch cla group
+	log.WithFields(f).Debug("fetching cla group")
+	claGroup, err := s.v1ProjectService.GetCLAGroupByID(ctx, claGroupId)
+	if err != nil {
+		log.WithFields(f).WithError(err).Debug("unable to fetch cla group")
+		return nil, err
+	}
+
+	if claGroup == nil {
+		log.WithFields(f).Debug("cla group not found")
+		return &response, nil
+	}
+	response.CCLARequiresICLA = claGroup.ProjectCCLARequiresICLA
 
 	// fetch cla user
 	log.WithFields(f).Debug("fetching user by lfid")
 	user, err := s.usersService.GetUserByLFUserName(lfid)
-
-	if user.CompanyID != "" {
-		log.WithFields(f).Debugf("User is associated with company: %s", user.CompanyID)
-		response.CompanyID = user.CompanyID
-	}
 
 	if err != nil {
 		log.WithFields(f).WithError(err).Debug("unable to fetch lfusername")
 		return nil, err
 	}
 
-	hasSigned, _, err := s.v1SignatureService.HasUserSigned(ctx, user, claGroupId)
-	if err != nil {
-		log.WithFields(f).WithError(err).Debug("Unable to check authorized status of the user")
-		return nil, err
+	if user == nil {
+		log.WithFields(f).Debug("user not found")
+		return &response, nil
 	}
 
-	response.Authorized = *hasSigned
+	// check if user has signed ICLA
+	log.WithFields(f).Debug("checking if user has signed ICLA")
+	approved, signed := true, true
+	icla, iclaErr := s.v1SignatureService.GetIndividualSignature(ctx, claGroupId, user.UserID, &approved, &signed)
+	if iclaErr != nil {
+		log.WithFields(f).WithError(iclaErr).Debug("unable to get individual signature")
+	}
+
+	if icla != nil {
+		log.WithFields(f).Debug("user has signed ICLA")
+		response.ICLA = true
+		hasSigned = true
+	}
+
+	// fetch company
+	if user.CompanyID == "" {
+		log.WithFields(f).Debug("user company id not found")
+		response.CompanyAffiliation = false
+	} else {
+		log.WithFields(f).Debug("fetching company")
+		companyModel, err := s.v1CompanyService.GetCompany(ctx, user.CompanyID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Debug("unable to fetch company")
+			return nil, err
+		}
+		if companyModel == nil {
+			log.WithFields(f).Debug("company not found")
+			response.CompanyAffiliation = false
+		} else {
+			log.WithFields(f).Debug("company found")
+			response.CompanyAffiliation = true
+			// process ecla
+			ecla, err := s.v1SignatureService.ProcessEmployeeSignature(ctx, companyModel, claGroup, user)
+			if err != nil {
+				log.WithFields(f).WithError(err).Debug("unable to process ecla")
+				return nil, err
+			}
+			if ecla != nil && *ecla {
+				log.WithFields(f).Debug("user has signed ECLA")
+				hasSigned = true
+				response.CCLA = true
+			} else {
+				log.WithFields(f).Debug("user has not acknowledged with the company ")
+			}
+		}
+	}
+
+	response.Authorized = hasSigned
 	return &response, nil
 }
