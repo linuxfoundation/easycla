@@ -62,10 +62,10 @@ type IService interface { // nolint
 	// calls org service
 	SearchOrganizationByName(ctx context.Context, orgName string, websiteName string, includeSigningEntityName bool, filter string) (*models.OrgList, error)
 
-	sendRequestAccessEmail(ctx context.Context, companyModel *models.Company, requesterName, requesterEmail, recipientName, recipientAddress string)
-	sendRequestApprovedEmailToRecipient(ctx context.Context, companyModel *models.Company, recipientName, recipientAddress string)
-	sendRequestRejectedEmailToRecipient(ctx context.Context, companyModel *models.Company, recipientName, recipientAddress string)
-	getPreferredNameAndEmail(ctx context.Context, lfid string) (string, string, error)
+	// sendRequestAccessEmail(ctx context.Context, companyModel *models.Company, requesterName, requesterEmail, recipientName, recipientAddress string)
+	// sendRequestApprovedEmailToRecipient(ctx context.Context, companyModel *models.Company, recipientName, recipientAddress string)
+	// sendRequestRejectedEmailToRecipient(ctx context.Context, companyModel *models.Company, recipientName, recipientAddress string)
+	// getPreferredNameAndEmail(ctx context.Context, lfid string) (string, string, error)
 }
 
 // NewService creates a new company service object

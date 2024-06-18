@@ -6176,5 +6176,22 @@ definitions:
       companyID:
         type: string
         description: The ID of the company associated with the User (optional)
+      CCLARequiresICLA:
+        type: boolean
+        description: Flag ensuring user signs ICLA and is acknowledged the company
+        x-omitempty: false
+      companyAffiliation:
+        type: boolean
+        description: User is affiliated with a company (use case when user has no companyID attribute)
+        x-omitempty: false
+      ICLA:
+        type: boolean
+        description: User has an ICLA signature
+        x-omitempty: false
+      CCLA:
+        type: boolean
+        description: Flag to indicate if user has been company acknowledged and approved
+        x-omitempty: false
+
       
 
