@@ -384,6 +384,11 @@ func (s *service) GetCompanyProjectContributors(ctx context.Context, params *v2O
 		list = append(list, corpContributor)
 	}
 
+	// sort the list based on timestamp in descending order
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].Timestamp > list[j].Timestamp
+	})
+
 	return &models.CorporateContributorList{
 		List:        list,
 		NextKey:     sigResponse.LastKeyScanned,
