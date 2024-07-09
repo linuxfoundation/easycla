@@ -26,20 +26,6 @@ properties:
     minLength: 10
     maxLength: 255
     pattern: ^(?:http(s)?:\/\/).+$
-  groupIdCcla:
-    type: string
-    description: the LDAP group ID for CCLA encoded as a string value
-    example: '1902'
-    minLength: 1
-    maxLength: 12
-    pattern: ^[1-9]\d{0,11}$
-  groupIdIcla:
-    type: string
-    description: the LDAP group ID for ICLA encoded as a string value
-    example: '1903'
-    minLength: 1
-    maxLength: 12
-    pattern: ^[1-9]\d{0,11}$
   version:
     type: string
     description: the version associated with the gerrit record
