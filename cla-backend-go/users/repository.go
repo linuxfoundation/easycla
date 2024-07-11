@@ -1254,11 +1254,6 @@ func (repo repository) UpdateUserCompanyID(userID, companyID, note string) error
 
 // convertDBUserModel translates a dyanamoDB data model into a service response model
 func convertDBUserModel(user DBUser) *models.User {
-	var emails []string
-	if user.UserEmails.SS != nil {
-		emails = user.UserEmails.SS
-	}
-
 	return &models.User{
 		UserID:         user.UserID,
 		UserExternalID: user.UserExternalID,
@@ -1269,7 +1264,7 @@ func convertDBUserModel(user DBUser) *models.User {
 		DateModified:   user.DateModified,
 		Username:       user.UserName,
 		Version:        user.Version,
-		Emails:         emails,
+		Emails:         user.UserEmails,
 		GithubID:       user.UserGithubID,
 		GithubUsername: user.UserGithubUsername,
 		GitlabID:       user.UserGitlabID,

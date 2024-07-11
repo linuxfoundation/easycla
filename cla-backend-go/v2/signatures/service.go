@@ -496,6 +496,8 @@ func (s *Service) IsUserAuthorized(ctx context.Context, lfid, claGroupId string)
 		log.WithFields(f).Debug("user has signed ICLA")
 		response.ICLA = true
 		hasSigned = true
+	} else {
+		log.WithFields(f).Debug("user has not signed ICLA")
 	}
 
 	// fetch company
@@ -505,13 +507,12 @@ func (s *Service) IsUserAuthorized(ctx context.Context, lfid, claGroupId string)
 	} else {
 		log.WithFields(f).Debug("fetching company")
 		companyModel, err := s.v1CompanyService.GetCompany(ctx, user.CompanyID)
-		if err != nil {
+		if companyErr, ok := err.(*utils.CompanyNotFound); ok {
+			log.WithFields(f).WithError(companyErr).Debug("company not found")
+			response.CompanyAffiliation = false
+		} else if err != nil {
 			log.WithFields(f).WithError(err).Debug("unable to fetch company")
 			return nil, err
-		}
-		if companyModel == nil {
-			log.WithFields(f).Debug("company not found")
-			response.CompanyAffiliation = false
 		} else {
 			log.WithFields(f).Debug("company found")
 			response.CompanyAffiliation = true
