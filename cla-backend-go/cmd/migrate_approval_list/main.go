@@ -81,7 +81,7 @@ func init() {
 		v1ProjectClaGroupRepo,
 	})
 	ghOrgRepo = github_organizations.NewRepository(awsSession, stage)
-	gerritService = gerrits.NewService(gerritsRepo)
+	gerritService = gerrits.NewService(gerritsRepo, nil)
 	signatureRepo = signatures.NewRepository(awsSession, stage, companyRepo, usersRepo, eventsService, &ghRepo, ghOrgRepo, gerritService, approvalRepo)
 
 	log.Info("initialized repositories\n")
