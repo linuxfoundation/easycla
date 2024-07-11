@@ -129,9 +129,11 @@ func Configure(api *operations.EasyclaAPI, v1Service v1Gerrits.Service, projectS
 
 			// add the gerrit
 			addGerritInput := &v1Models.AddGerritInput{
-				GerritName: params.AddGerritInput.GerritName,
-				GerritURL:  params.AddGerritInput.GerritURL,
-				Version:    "v2",
+				GerritName:  params.AddGerritInput.GerritName,
+				GerritURL:   params.AddGerritInput.GerritURL,
+				GroupIDCcla: params.AddGerritInput.GroupIDCcla,
+				GroupIDIcla: params.AddGerritInput.GroupIDIcla,
+				Version:     "v2",
 			}
 			result, err := v1Service.AddGerrit(ctx, params.ClaGroupID, params.ProjectSFID, addGerritInput, projectModel)
 			if err != nil {
@@ -259,195 +261,195 @@ func Configure(api *operations.EasyclaAPI, v1Service v1Gerrits.Service, projectS
 			return gerrits.NewGetGerritReposOK().WithXRequestID(reqID).WithPayload(&response)
 		})
 
-	// api.GerritsGetGerritICLAUserHandler = gerrits.GetGerritICLAUserHandlerFunc(func(params gerrits.GetGerritICLAUserParams, authUser *auth.User) middleware.Responder {
-	// 	reqID := utils.GetRequestID(params.XREQUESTID)
-	// 	ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-	// 	utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-	// 	f := logrus.Fields{
-	// 		"functionName":   "v2.gerrits.handlers.GerritsGetGerritICLAUserHandler",
-	// 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	// 		"authUserName":   authUser.UserName,
-	// 		"authUserEmail":  authUser.Email,
-	// 		"claGroupID":     params.ClaGroupID,
-	// 		"projectSFID":    params.ProjectSFID,
-	// 	}
+	api.GerritsGetGerritICLAUserHandler = gerrits.GetGerritICLAUserHandlerFunc(func(params gerrits.GetGerritICLAUserParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.gerrits.handlers.GerritsGetGerritICLAUserHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"authUserName":   authUser.UserName,
+			"authUserEmail":  authUser.Email,
+			"claGroupID":     params.ClaGroupID,
+			"projectSFID":    params.ProjectSFID,
+		}
 
-	// 	// verify user have access to the project
-	// 	if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-	// 		msg := fmt.Sprintf("user %s does not have access to get gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
-	// 		log.WithFields(f).Warn(msg)
-	// 		return gerrits.NewGetGerritICLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
-	// 	}
+		// verify user have access to the project
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to get gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
+			log.WithFields(f).Warn(msg)
+			return gerrits.NewGetGerritICLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
 
-	// 	log.WithFields(f).Debugf("getting user list to gerrit...")
-	// 	responseModel, err := v1Service.GetUsersOfGroup(ctx, authUser, params.ClaGroupID, utils.ClaTypeICLA)
-	// 	if err != nil {
-	// 		msg := fmt.Sprintf("problem getting user list of CLA Group %s", params.ClaGroupID)
-	// 		log.WithFields(f).WithError(err).Warn(msg)
-	// 		return gerrits.NewGetGerritICLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
-	// 	}
+		log.WithFields(f).Debugf("getting user list to gerrit...")
+		responseModel, err := v1Service.GetUsersOfGroup(ctx, authUser, params.ClaGroupID, utils.ClaTypeICLA)
+		if err != nil {
+			msg := fmt.Sprintf("problem getting user list of CLA Group %s", params.ClaGroupID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return gerrits.NewGetGerritICLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
 
-	// 	return gerrits.NewGetGerritICLAUserOK().WithXRequestID(reqID).WithPayload(responseModel)
-	// })
+		return gerrits.NewGetGerritICLAUserOK().WithXRequestID(reqID).WithPayload(responseModel)
+	})
 
-	// api.GerritsGetGerritECLAUserHandler = gerrits.GetGerritECLAUserHandlerFunc(func(params gerrits.GetGerritECLAUserParams, authUser *auth.User) middleware.Responder {
-	// 	reqID := utils.GetRequestID(params.XREQUESTID)
-	// 	ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-	// 	utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-	// 	f := logrus.Fields{
-	// 		"functionName":   "v2.gerrits.handlers.GerritsGetGerritECLAUserHandler",
-	// 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	// 		"authUserName":   authUser.UserName,
-	// 		"authUserEmail":  authUser.Email,
-	// 		"claGroupID":     params.ClaGroupID,
-	// 		"projectSFID":    params.ProjectSFID,
-	// 	}
+	api.GerritsGetGerritECLAUserHandler = gerrits.GetGerritECLAUserHandlerFunc(func(params gerrits.GetGerritECLAUserParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.gerrits.handlers.GerritsGetGerritECLAUserHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"authUserName":   authUser.UserName,
+			"authUserEmail":  authUser.Email,
+			"claGroupID":     params.ClaGroupID,
+			"projectSFID":    params.ProjectSFID,
+		}
 
-	// 	// verify user have access to the project
-	// 	if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-	// 		msg := fmt.Sprintf("user %s does not have access to get gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
-	// 		log.WithFields(f).Warn(msg)
-	// 		return gerrits.NewGetGerritECLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
-	// 	}
+		// verify user have access to the project
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to get gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
+			log.WithFields(f).Warn(msg)
+			return gerrits.NewGetGerritECLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
 
-	// 	log.WithFields(f).Debugf("getting user list to gerrit...")
-	// 	responseModel, err := v1Service.GetUsersOfGroup(ctx, authUser, params.ClaGroupID, utils.ClaTypeECLA)
-	// 	if err != nil {
-	// 		msg := fmt.Sprintf("problem getting user list of CLA Group %s", params.ClaGroupID)
-	// 		log.WithFields(f).WithError(err).Warn(msg)
-	// 		return gerrits.NewGetGerritECLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
-	// 	}
+		log.WithFields(f).Debugf("getting user list to gerrit...")
+		responseModel, err := v1Service.GetUsersOfGroup(ctx, authUser, params.ClaGroupID, utils.ClaTypeECLA)
+		if err != nil {
+			msg := fmt.Sprintf("problem getting user list of CLA Group %s", params.ClaGroupID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return gerrits.NewGetGerritECLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
 
-	// 	return gerrits.NewGetGerritECLAUserOK().WithXRequestID(reqID).WithPayload(responseModel)
-	// })
+		return gerrits.NewGetGerritECLAUserOK().WithXRequestID(reqID).WithPayload(responseModel)
+	})
 
-	// api.GerritsAddGerritICLAUserHandler = gerrits.AddGerritICLAUserHandlerFunc(func(params gerrits.AddGerritICLAUserParams, authUser *auth.User) middleware.Responder {
-	// 	reqID := utils.GetRequestID(params.XREQUESTID)
-	// 	ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-	// 	utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-	// 	f := logrus.Fields{
-	// 		"functionName":   "v2.gerrits.handlers.GerritsAddGerritICLAUserHandler",
-	// 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	// 		"authUserName":   authUser.UserName,
-	// 		"authUserEmail":  authUser.Email,
-	// 		"claGroupID":     params.ClaGroupID,
-	// 		"projectSFID":    params.ProjectSFID,
-	// 		"gerritUsers":    strings.Join(params.AddGerritUserInput, ","),
-	// 	}
+	api.GerritsAddGerritICLAUserHandler = gerrits.AddGerritICLAUserHandlerFunc(func(params gerrits.AddGerritICLAUserParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.gerrits.handlers.GerritsAddGerritICLAUserHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"authUserName":   authUser.UserName,
+			"authUserEmail":  authUser.Email,
+			"claGroupID":     params.ClaGroupID,
+			"projectSFID":    params.ProjectSFID,
+			"gerritUsers":    strings.Join(params.AddGerritUserInput, ","),
+		}
 
-	// 	// verify user have access to the project
-	// 	if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-	// 		msg := fmt.Sprintf("user %s does not have access to add gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
-	// 		log.WithFields(f).Warn(msg)
-	// 		return gerrits.NewAddGerritICLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
-	// 	}
+		// verify user have access to the project
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to add gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
+			log.WithFields(f).Warn(msg)
+			return gerrits.NewAddGerritICLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
 
-	// 	log.WithFields(f).Debugf("adding user list to gerrit...")
-	// 	err := v1Service.AddUsersToGroup(ctx, authUser, params.ClaGroupID, params.AddGerritUserInput, utils.ClaTypeICLA)
-	// 	if err != nil {
-	// 		msg := fmt.Sprintf("problem adding user list %s to CLA Group %s", strings.Join(params.AddGerritUserInput, ","), params.ClaGroupID)
-	// 		log.WithFields(f).WithError(err).Warn(msg)
-	// 		return gerrits.NewAddGerritICLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
-	// 	}
+		log.WithFields(f).Debugf("adding user list to gerrit...")
+		err := v1Service.AddUsersToGroup(ctx, authUser, params.ClaGroupID, params.AddGerritUserInput, utils.ClaTypeICLA)
+		if err != nil {
+			msg := fmt.Sprintf("problem adding user list %s to CLA Group %s", strings.Join(params.AddGerritUserInput, ","), params.ClaGroupID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return gerrits.NewAddGerritICLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
 
-	// 	return gerrits.NewAddGerritICLAUserOK().WithXRequestID(reqID)
-	// })
+		return gerrits.NewAddGerritICLAUserOK().WithXRequestID(reqID)
+	})
 
-	// api.GerritsRemoveGerritICLAUserHandler = gerrits.RemoveGerritICLAUserHandlerFunc(func(params gerrits.RemoveGerritICLAUserParams, authUser *auth.User) middleware.Responder {
-	// 	reqID := utils.GetRequestID(params.XREQUESTID)
-	// 	ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-	// 	utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-	// 	f := logrus.Fields{
-	// 		"functionName":   "v2.gerrits.handlers.GerritsRemoveGerritICLAUserHandler",
-	// 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	// 		"authUserName":   authUser.UserName,
-	// 		"authUserEmail":  authUser.Email,
-	// 		"claGroupID":     params.ClaGroupID,
-	// 		"projectSFID":    params.ProjectSFID,
-	// 		"gerritUsers":    strings.Join(params.RemoveGerritUserInput, ","),
-	// 	}
+	api.GerritsRemoveGerritICLAUserHandler = gerrits.RemoveGerritICLAUserHandlerFunc(func(params gerrits.RemoveGerritICLAUserParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.gerrits.handlers.GerritsRemoveGerritICLAUserHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"authUserName":   authUser.UserName,
+			"authUserEmail":  authUser.Email,
+			"claGroupID":     params.ClaGroupID,
+			"projectSFID":    params.ProjectSFID,
+			"gerritUsers":    strings.Join(params.RemoveGerritUserInput, ","),
+		}
 
-	// 	// verify user have access to the project
-	// 	if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-	// 		msg := fmt.Sprintf("user %s does not have access to remove gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
-	// 		log.WithFields(f).Warn(msg)
-	// 		return gerrits.NewRemoveGerritICLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
-	// 	}
+		// verify user have access to the project
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to remove gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
+			log.WithFields(f).Warn(msg)
+			return gerrits.NewRemoveGerritICLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
 
-	// 	log.WithFields(f).Debugf("removing user list from gerrit...")
-	// 	err := v1Service.RemoveUsersFromGroup(ctx, authUser, params.ClaGroupID, params.RemoveGerritUserInput, utils.ClaTypeICLA)
-	// 	if err != nil {
-	// 		msg := fmt.Sprintf("problem removing user list %s to CLA Group %s", strings.Join(params.RemoveGerritUserInput, ","), params.ClaGroupID)
-	// 		log.WithFields(f).WithError(err).Warn(msg)
-	// 		return gerrits.NewRemoveGerritICLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
-	// 	}
+		log.WithFields(f).Debugf("removing user list from gerrit...")
+		err := v1Service.RemoveUsersFromGroup(ctx, authUser, params.ClaGroupID, params.RemoveGerritUserInput, utils.ClaTypeICLA)
+		if err != nil {
+			msg := fmt.Sprintf("problem removing user list %s to CLA Group %s", strings.Join(params.RemoveGerritUserInput, ","), params.ClaGroupID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return gerrits.NewRemoveGerritICLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
 
-	// 	return gerrits.NewRemoveGerritICLAUserOK().WithXRequestID(reqID)
-	// })
+		return gerrits.NewRemoveGerritICLAUserOK().WithXRequestID(reqID)
+	})
 
-	// api.GerritsAddGerritECLAUserHandler = gerrits.AddGerritECLAUserHandlerFunc(func(params gerrits.AddGerritECLAUserParams, authUser *auth.User) middleware.Responder {
-	// 	reqID := utils.GetRequestID(params.XREQUESTID)
-	// 	ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-	// 	utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-	// 	f := logrus.Fields{
-	// 		"functionName":   "v2.gerrits.handlers.GerritsAddGerritECLAUserHandler",
-	// 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	// 		"authUserName":   authUser.UserName,
-	// 		"authUserEmail":  authUser.Email,
-	// 		"claGroupID":     params.ClaGroupID,
-	// 		"projectSFID":    params.ProjectSFID,
-	// 		"gerritUsers":    strings.Join(params.AddGerritUserInput, ","),
-	// 	}
+	api.GerritsAddGerritECLAUserHandler = gerrits.AddGerritECLAUserHandlerFunc(func(params gerrits.AddGerritECLAUserParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.gerrits.handlers.GerritsAddGerritECLAUserHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"authUserName":   authUser.UserName,
+			"authUserEmail":  authUser.Email,
+			"claGroupID":     params.ClaGroupID,
+			"projectSFID":    params.ProjectSFID,
+			"gerritUsers":    strings.Join(params.AddGerritUserInput, ","),
+		}
 
-	// 	// verify user have access to the project
-	// 	if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-	// 		msg := fmt.Sprintf("user %s does not have access to add gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
-	// 		log.WithFields(f).Warn(msg)
-	// 		return gerrits.NewAddGerritECLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
-	// 	}
+		// verify user have access to the project
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to add gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
+			log.WithFields(f).Warn(msg)
+			return gerrits.NewAddGerritECLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
 
-	// 	log.WithFields(f).Debugf("adding user list to gerrit...")
-	// 	err := v1Service.AddUsersToGroup(ctx, authUser, params.ClaGroupID, params.AddGerritUserInput, utils.ClaTypeECLA)
-	// 	if err != nil {
-	// 		msg := fmt.Sprintf("problem adding user list %s to CLA Group %s", strings.Join(params.AddGerritUserInput, ","), params.ClaGroupID)
-	// 		log.WithFields(f).WithError(err).Warn(msg)
-	// 		return gerrits.NewAddGerritECLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
-	// 	}
+		log.WithFields(f).Debugf("adding user list to gerrit...")
+		err := v1Service.AddUsersToGroup(ctx, authUser, params.ClaGroupID, params.AddGerritUserInput, utils.ClaTypeECLA)
+		if err != nil {
+			msg := fmt.Sprintf("problem adding user list %s to CLA Group %s", strings.Join(params.AddGerritUserInput, ","), params.ClaGroupID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return gerrits.NewAddGerritECLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
 
-	// 	return gerrits.NewAddGerritECLAUserOK().WithXRequestID(reqID)
-	// })
+		return gerrits.NewAddGerritECLAUserOK().WithXRequestID(reqID)
+	})
 
-	// api.GerritsRemoveGerritECLAUserHandler = gerrits.RemoveGerritECLAUserHandlerFunc(func(params gerrits.RemoveGerritECLAUserParams, authUser *auth.User) middleware.Responder {
-	// 	reqID := utils.GetRequestID(params.XREQUESTID)
-	// 	ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-	// 	utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-	// 	f := logrus.Fields{
-	// 		"functionName":   "v2.gerrits.handlers.GerritsRemoveGerritECLAUserHandler",
-	// 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-	// 		"authUserName":   authUser.UserName,
-	// 		"authUserEmail":  authUser.Email,
-	// 		"claGroupID":     params.ClaGroupID,
-	// 		"projectSFID":    params.ProjectSFID,
-	// 		"gerritUsers":    strings.Join(params.RemoveGerritUserInput, ","),
-	// 	}
+	api.GerritsRemoveGerritECLAUserHandler = gerrits.RemoveGerritECLAUserHandlerFunc(func(params gerrits.RemoveGerritECLAUserParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.gerrits.handlers.GerritsRemoveGerritECLAUserHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"authUserName":   authUser.UserName,
+			"authUserEmail":  authUser.Email,
+			"claGroupID":     params.ClaGroupID,
+			"projectSFID":    params.ProjectSFID,
+			"gerritUsers":    strings.Join(params.RemoveGerritUserInput, ","),
+		}
 
-	// 	// verify user have access to the project
-	// 	if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
-	// 		msg := fmt.Sprintf("user %s does not have access to remove gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
-	// 		log.WithFields(f).Warn(msg)
-	// 		return gerrits.NewRemoveGerritECLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
-	// 	}
+		// verify user have access to the project
+		if !utils.IsUserAuthorizedForProjectTree(ctx, authUser, params.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to remove gerrit users with Project scope of %s", authUser.UserName, params.ProjectSFID)
+			log.WithFields(f).Warn(msg)
+			return gerrits.NewRemoveGerritECLAUserForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
 
-	// 	log.WithFields(f).Debugf("removing user list from gerrit...")
-	// 	err := v1Service.RemoveUsersFromGroup(ctx, authUser, params.ClaGroupID, params.RemoveGerritUserInput, utils.ClaTypeECLA)
-	// 	if err != nil {
-	// 		msg := fmt.Sprintf("problem removing user list %s to CLA Group %s", strings.Join(params.RemoveGerritUserInput, ","), params.ClaGroupID)
-	// 		log.WithFields(f).WithError(err).Warn(msg)
-	// 		return gerrits.NewRemoveGerritECLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
-	// 	}
+		log.WithFields(f).Debugf("removing user list from gerrit...")
+		err := v1Service.RemoveUsersFromGroup(ctx, authUser, params.ClaGroupID, params.RemoveGerritUserInput, utils.ClaTypeECLA)
+		if err != nil {
+			msg := fmt.Sprintf("problem removing user list %s to CLA Group %s", strings.Join(params.RemoveGerritUserInput, ","), params.ClaGroupID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return gerrits.NewRemoveGerritECLAUserInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
 
-	// 	return gerrits.NewRemoveGerritECLAUserOK().WithXRequestID(reqID)
-	// })
+		return gerrits.NewRemoveGerritECLAUserOK().WithXRequestID(reqID)
+	})
 
 }
 

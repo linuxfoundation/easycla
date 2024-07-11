@@ -1007,17 +1007,17 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 			CLAGroupID: signature.ProjectID,
 		})
 
-		// // Add User to Gerrit Group
-		// if claUser.LfUsername != "" {
-		// 	log.WithFields(f).Debugf("adding user to gerrit group: %s", claUser.LfUsername)
-		// 	err = s.gerritService.AddUserToGroup(ctx, nil, signature.ProjectID, claUser.LfUsername, utils.ClaTypeICLA)
-		// 	if err != nil {
-		// 		log.WithFields(f).WithError(err).Warnf("unable to add user to gerrit group")
-		// 		return err
-		// 	}
-		// } else {
-		// 	log.WithFields(f).Warnf("user LF username is empty")
-		// }
+		// Add User to Gerrit Group
+		if claUser.LfUsername != "" {
+			log.WithFields(f).Debugf("adding user to gerrit group: %s", claUser.LfUsername)
+			err = s.gerritService.AddUserToGroup(ctx, nil, signature.ProjectID, claUser.LfUsername, utils.ClaTypeICLA)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to add user to gerrit group")
+				return err
+			}
+		} else {
+			log.WithFields(f).Warnf("user LF username is empty")
+		}
 
 	} else {
 		log.WithFields(f).Debugf("envelope not signed - status: %s", status)
@@ -1194,30 +1194,30 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 		CompanySFID: companyModel.CompanyExternalID,
 	})
 
-	// // Check if project is a gerrit instance
-	// var gerrits []*v1Models.Gerrit
-	// gerritList, err := s.gerritService.GetClaGroupGerrits(ctx, projectID)
-	// if err != nil {
-	// 	log.WithFields(f).WithError(err).Warnf("unable to get gerrit instances for project: %s", projectID)
-	// 	gerrits = []*v1Models.Gerrit{}
-	// } else {
-	// 	log.WithFields(f).Debugf("gerrit instances found for project: %s", projectID)
-	// 	gerrits = gerritList.List
-	// }
+	// Check if project is a gerrit instance
+	var gerrits []*v1Models.Gerrit
+	gerritList, err := s.gerritService.GetClaGroupGerrits(ctx, projectID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get gerrit instances for project: %s", projectID)
+		gerrits = []*v1Models.Gerrit{}
+	} else {
+		log.WithFields(f).Debugf("gerrit instances found for project: %s", projectID)
+		gerrits = gerritList.List
+	}
 
-	// // Add User to Gerrit Group
-	// if len(gerrits) > 0 {
-	// 	if user.LfUsername != "" {
-	// 		log.WithFields(f).Debugf("adding user to gerrit group: %s", user.LfUsername)
-	// 		err = s.gerritService.AddUserToGroup(ctx, nil, projectID, user.LfUsername, utils.ClaTypeCCLA)
-	// 		if err != nil {
-	// 			log.WithFields(f).WithError(err).Warnf("unable to add user to gerrit group")
-	// 			return err
-	// 		}
-	// 	} else {
-	// 		log.WithFields(f).Warnf("user LF username is empty")
-	// 	}
-	// }
+	// Add User to Gerrit Group
+	if len(gerrits) > 0 {
+		if user.LfUsername != "" {
+			log.WithFields(f).Debugf("adding user to gerrit group: %s", user.LfUsername)
+			err = s.gerritService.AddUserToGroup(ctx, nil, projectID, user.LfUsername, utils.ClaTypeCCLA)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to add user to gerrit group")
+				return err
+			}
+		} else {
+			log.WithFields(f).Warnf("user LF username is empty")
+		}
+	}
 
 	return nil
 
