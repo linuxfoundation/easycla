@@ -3222,201 +3222,201 @@ paths:
       tags:
         - gerrits
 
-  # /cla-group/{claGroupID}/project/{projectSFID}/gerrits/icla/user:
-  #   get:
-  #     summary: Get Gerrit ICLA Users
-  #     description: Gets the authorized individual CLA users from a gerrit instance for the CLA Group/Projecct
-  #     operationId: getGerritICLAUser
-  #     parameters:
-  #       - $ref: "#/parameters/x-request-id"
-  #       - $ref: "#/parameters/x-acl"
-  #       - $ref: "#/parameters/x-username"
-  #       - $ref: "#/parameters/x-email"
-  #       - $ref: "#/parameters/path-claGroupID"
-  #       - $ref: "#/parameters/path-projectSFID"
-  #     responses:
-  #       '200':
-  #         description: 'Success'
-  #         headers:
-  #           x-request-id:
-  #             type: string
-  #             description: The unique request ID value - assigned/set by the API Gateway based on the session
-  #         schema:
-  #           $ref: '#/definitions/gerrit-group-response'
-  #       '400':
-  #         $ref: '#/responses/invalid-request'
-  #       '403':
-  #         $ref: '#/responses/forbidden'
-  #       '409':
-  #         $ref: '#/responses/conflict'
-  #       '500':
-  #         $ref: '#/responses/internal-server-error'
-  #     tags:
-  #       - gerrits
-    # put:
-    #   summary: Add Gerrit ICLA Users
-    #   description: Adds one or more individual CLA users to the gerrit CLA Group/project
-    #   operationId: addGerritICLAUser
-    #   parameters:
-    #     - $ref: "#/parameters/x-request-id"
-    #     - $ref: "#/parameters/x-acl"
-    #     - $ref: "#/parameters/x-username"
-    #     - $ref: "#/parameters/x-email"
-    #     - $ref: "#/parameters/path-claGroupID"
-    #     - $ref: "#/parameters/path-projectSFID"
-    #     - in: body
-    #       name: add-gerrit-user-input
-    #       schema:
-    #         $ref: '#/definitions/add-gerrit-user-input'
-    #       required: true
-    #   responses:
-    #     '200':
-    #       description: 'Success'
-    #       headers:
-    #         x-request-id:
-    #           type: string
-    #           description: The unique request ID value - assigned/set by the API Gateway based on the session
-    #     '400':
-    #       $ref: '#/responses/invalid-request'
-    #     '403':
-    #       $ref: '#/responses/forbidden'
-    #     '409':
-    #       $ref: '#/responses/conflict'
-    #     '500':
-    #       $ref: '#/responses/internal-server-error'
-    #   tags:
-    #     - gerrits
-    # delete:
-    #   summary: Remove Gerrit ICLA Users
-    #   description: Removes one or more individual CLA users from a gerrit instance for the CLA Group/Project
-    #   operationId: removeGerritICLAUser
-    #   parameters:
-    #     - $ref: "#/parameters/x-request-id"
-    #     - $ref: "#/parameters/x-acl"
-    #     - $ref: "#/parameters/x-username"
-    #     - $ref: "#/parameters/x-email"
-    #     - $ref: "#/parameters/path-claGroupID"
-    #     - $ref: "#/parameters/path-projectSFID"
-    #     - in: body
-    #       name: remove-gerrit-user-input
-    #       schema:
-    #         $ref: '#/definitions/remove-gerrit-user-input'
-    #       required: true
-    #   responses:
-    #     '200':
-    #       description: 'Success'
-    #       headers:
-    #         x-request-id:
-    #           type: string
-    #           description: The unique request ID value - assigned/set by the API Gateway based on the session
-    #     '400':
-    #       $ref: '#/responses/invalid-request'
-    #     '403':
-    #       $ref: '#/responses/forbidden'
-    #     '409':
-    #       $ref: '#/responses/conflict'
-    #     '500':
-    #       $ref: '#/responses/internal-server-error'
-    #   tags:
-    #     - gerrits
+  /cla-group/{claGroupID}/project/{projectSFID}/gerrits/icla/user:
+    get:
+      summary: Get Gerrit ICLA Users
+      description: Gets the authorized individual CLA users from a gerrit instance for the CLA Group/Projecct
+      operationId: getGerritICLAUser
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: "#/parameters/path-projectSFID"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/gerrit-group-response'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gerrits
+    put:
+      summary: Add Gerrit ICLA Users
+      description: Adds one or more individual CLA users to the gerrit CLA Group/project
+      operationId: addGerritICLAUser
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: "#/parameters/path-projectSFID"
+        - in: body
+          name: add-gerrit-user-input
+          schema:
+            $ref: '#/definitions/add-gerrit-user-input'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gerrits
+    delete:
+      summary: Remove Gerrit ICLA Users
+      description: Removes one or more individual CLA users from a gerrit instance for the CLA Group/Project
+      operationId: removeGerritICLAUser
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: "#/parameters/path-projectSFID"
+        - in: body
+          name: remove-gerrit-user-input
+          schema:
+            $ref: '#/definitions/remove-gerrit-user-input'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gerrits
 
-  # /cla-group/{claGroupID}/project/{projectSFID}/gerrits/ecla/user:
-  #   get:
-  #     summary: Get Gerrit ECLA Users
-  #     description: Gets the authorized employee CLA users from a gerrit instance for the CLA Group/Projecct
-  #     operationId: getGerritECLAUser
-  #     parameters:
-  #       - $ref: "#/parameters/x-request-id"
-  #       - $ref: "#/parameters/x-acl"
-  #       - $ref: "#/parameters/x-username"
-  #       - $ref: "#/parameters/x-email"
-  #       - $ref: "#/parameters/path-claGroupID"
-  #       - $ref: "#/parameters/path-projectSFID"
-  #     responses:
-  #       '200':
-  #         description: 'Success'
-  #         headers:
-  #           x-request-id:
-  #             type: string
-  #             description: The unique request ID value - assigned/set by the API Gateway based on the session
-  #         schema:
-  #           $ref: '#/definitions/gerrit-group-response'
-  #       '400':
-  #         $ref: '#/responses/invalid-request'
-  #       '403':
-  #         $ref: '#/responses/forbidden'
-  #       '409':
-  #         $ref: '#/responses/conflict'
-  #       '500':
-  #         $ref: '#/responses/internal-server-error'
-  #     tags:
-  #       - gerrits
-    # put:
-    #   summary: Add Gerrit ECLA Users
-    #   description: Adds one or more employee CLA users to a gerrit instance for the CLA Group/Project
-    #   operationId: addGerritECLAUser
-    #   parameters:
-    #     - $ref: "#/parameters/x-request-id"
-    #     - $ref: "#/parameters/x-acl"
-    #     - $ref: "#/parameters/x-username"
-    #     - $ref: "#/parameters/x-email"
-    #     - $ref: "#/parameters/path-claGroupID"
-    #     - $ref: "#/parameters/path-projectSFID"
-    #     - in: body
-    #       name: add-gerrit-user-input
-    #       schema:
-    #         $ref: '#/definitions/add-gerrit-user-input'
-    #       required: true
-    #   responses:
-    #     '200':
-    #       description: 'Success'
-    #       headers:
-    #         x-request-id:
-    #           type: string
-    #           description: The unique request ID value - assigned/set by the API Gateway based on the session
-    #     '400':
-    #       $ref: '#/responses/invalid-request'
-    #     '403':
-    #       $ref: '#/responses/forbidden'
-    #     '409':
-    #       $ref: '#/responses/conflict'
-    #     '500':
-    #       $ref: '#/responses/internal-server-error'
-    #   tags:
-    #     - gerrits
-    # delete:
-    #   summary: Remove Gerrit ECLA Users
-    #   description: Removes one or more employee CLA users from a gerrit instance for the project
-    #   operationId: removeGerritECLAUser
-    #   parameters:
-    #     - $ref: "#/parameters/x-request-id"
-    #     - $ref: "#/parameters/x-acl"
-    #     - $ref: "#/parameters/x-username"
-    #     - $ref: "#/parameters/x-email"
-    #     - $ref: "#/parameters/path-claGroupID"
-    #     - $ref: "#/parameters/path-projectSFID"
-    #     - in: body
-    #       name: remove-gerrit-user-input
-    #       schema:
-    #         $ref: '#/definitions/remove-gerrit-user-input'
-    #       required: true
-    #   responses:
-    #     '200':
-    #       description: 'Success'
-    #       headers:
-    #         x-request-id:
-    #           type: string
-    #           description: The unique request ID value - assigned/set by the API Gateway based on the session
-    #     '400':
-    #       $ref: '#/responses/invalid-request'
-    #     '403':
-    #       $ref: '#/responses/forbidden'
-    #     '409':
-    #       $ref: '#/responses/conflict'
-    #     '500':
-    #       $ref: '#/responses/internal-server-error'
-      # tags:
-      #   - gerrits
+  /cla-group/{claGroupID}/project/{projectSFID}/gerrits/ecla/user:
+    get:
+      summary: Get Gerrit ECLA Users
+      description: Gets the authorized employee CLA users from a gerrit instance for the CLA Group/Projecct
+      operationId: getGerritECLAUser
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: "#/parameters/path-projectSFID"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/gerrit-group-response'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gerrits
+    put:
+      summary: Add Gerrit ECLA Users
+      description: Adds one or more employee CLA users to a gerrit instance for the CLA Group/Project
+      operationId: addGerritECLAUser
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: "#/parameters/path-projectSFID"
+        - in: body
+          name: add-gerrit-user-input
+          schema:
+            $ref: '#/definitions/add-gerrit-user-input'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gerrits
+    delete:
+      summary: Remove Gerrit ECLA Users
+      description: Removes one or more employee CLA users from a gerrit instance for the project
+      operationId: removeGerritECLAUser
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: "#/parameters/path-projectSFID"
+        - in: body
+          name: remove-gerrit-user-input
+          schema:
+            $ref: '#/definitions/remove-gerrit-user-input'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - gerrits
   /cla-group/{claGroupID}/user/{userID}/icla:
     put:
       summary: Invalidate ICLA record
