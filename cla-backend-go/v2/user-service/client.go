@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
 	log "github.com/communitybridge/easycla/cla-backend-go/logging"
@@ -21,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/communitybridge/easycla/cla-backend-go/token"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/user-service/client"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/user-service/client/bulk"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/user-service/client/user"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/user-service/models"
 	runtimeClient "github.com/go-openapi/runtime/client"
@@ -76,19 +74,57 @@ func (usc *Client) GetUsersByUsernames(lfUsernames []string) ([]*models.User, er
 		return nil, err
 	}
 
-	params := bulk.NewSearchBulkParams()
-	params.SearchBulk = &models.SearchBulk{
-		List: lfUsernames,
+	url := fmt.Sprintf("https://%s/user-service/v1/bulk", usc.apiGwURL)
+	var requestBody = models.SearchBulk{
 		Type: aws.String("username"),
+		List: lfUsernames,
 	}
-	clientAuth := runtimeClient.BearerToken(tok)
-	result, err := usc.cl.Bulk.SearchBulk(params, clientAuth)
+
+	requestBodyBytes, err := json.Marshal(requestBody)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem with the bulk search")
+		log.WithFields(f).WithError(err).Warn("problem marshalling the request body")
 		return nil, err
 	}
 
-	return result.Payload.Data, nil
+	request, err := http.NewRequest("POST", url, strings.NewReader(string(requestBodyBytes)))
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem building new request")
+		return nil, err
+	}
+
+	request.Header.Set("X-API-KEY", usc.apiKey)
+	request.Header.Set("Authorization", "Bearer "+tok)
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem searching user")
+		return nil, err
+	}
+
+	defer func() {
+		closeErr := response.Body.Close()
+		if closeErr != nil {
+			log.WithFields(f).WithError(closeErr).Warn("error closing body")
+		}
+
+	}()
+
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem decoding the user response")
+		return nil, err
+	}
+
+	//return as []*models.User
+	userList, err := getUsers(data)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem processing the user response")
+		return nil, err
+	}
+
+	return userList, nil
 }
 
 // GetUserByUsername returns user by lfUsername
@@ -189,25 +225,51 @@ func (usc *Client) ListUsersByUsername(lfUsername string) (*models.User, error) 
 		log.WithFields(f).WithError(err).Warn("problem obtaining token")
 		return nil, err
 	}
-	clientAuth := runtimeClient.BearerToken(tok)
 
-	params := &user.FindUsersParams{
-		Username: &lfUsername,
-		Context:  utils.NewContext(),
-	}
-	result, err := usc.cl.User.FindUsers(params, clientAuth)
+	url := fmt.Sprintf("https://%s/user-service/v1/users?username=%s", usc.apiGwURL, lfUsername)
+	request, err := http.NewRequest("GET", url, nil)
+
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem finding user by lfUsername")
+		log.WithFields(f).WithError(err).Warn("problem building new request")
 		return nil, err
 	}
-	users := result.Payload.Data
 
-	if len(users) == 0 {
+	request.Header.Set("X-API-KEY", usc.apiKey)
+	request.Header.Set("Authorization", "Bearer "+tok)
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem searching user")
+		return nil, err
+	}
+
+	defer func() {
+		closeErr := response.Body.Close()
+		if closeErr != nil {
+			log.WithFields(f).WithError(closeErr).Warn("error closing body")
+		}
+	}()
+
+	data, err := io.ReadAll(response.Body)
+
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem decoding the user response")
+		return nil, err
+	}
+
+	userList, err := getUsers(data)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem processing the user response")
+		return nil, err
+	}
+
+	if len(userList) == 0 {
 		log.WithFields(f).Debug("get by lfUsername returned no results")
 		return nil, ErrUserNotFound
 	}
 
-	return users[0], nil
+	return userList[0], nil
 }
 
 // SearchUsersByEmail returns a single user based on the email parameter
@@ -222,24 +284,51 @@ func (usc *Client) SearchUsersByEmail(email string) (*models.User, error) {
 		log.WithFields(f).WithError(err).Warn("problem obtaining token")
 		return nil, err
 	}
-	clientAuth := runtimeClient.BearerToken(tok)
 
-	params := &user.FindUsersParams{
-		Email:   &email,
-		Context: context.Background(),
-	}
-	result, err := usc.cl.User.FindUsers(params, clientAuth)
+	url := fmt.Sprintf("https://%s/user-service/v1/users?email=%s", usc.apiGwURL, email)
+	request, err := http.NewRequest("GET", url, nil)
+
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem finding user by email")
+		log.WithFields(f).WithError(err).Warn("problem building new request")
 		return nil, err
 	}
-	users := result.Payload.Data
 
-	if len(users) == 0 {
+	request.Header.Set("X-API-KEY", usc.apiKey)
+	request.Header.Set("Authorization", "Bearer "+tok)
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem searching user")
+		return nil, err
+	}
+
+	defer func() {
+		closeErr := response.Body.Close()
+		if closeErr != nil {
+			log.WithFields(f).WithError(closeErr).Warn("error closing body")
+		}
+	}()
+
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem decoding the user response")
+		return nil, err
+	}
+
+	userList, err := getUsers(data)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem processing the user response")
+		return nil, err
+	}
+
+	if len(userList) == 0 {
 		log.WithFields(f).Debug("get by lfUsername returned no results")
 		return nil, ErrUserNotFound
 	}
-	return users[0], nil
+
+	return userList[0], nil
+
 }
 
 func getUsers(body []byte) ([]*models.User, error) {
