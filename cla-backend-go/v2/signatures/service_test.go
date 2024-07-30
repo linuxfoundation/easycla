@@ -16,8 +16,8 @@ import (
 	mock_company "github.com/communitybridge/easycla/cla-backend-go/company/mocks"
 	ini "github.com/communitybridge/easycla/cla-backend-go/init"
 	mock_project "github.com/communitybridge/easycla/cla-backend-go/project/mocks"
+	mock_v1_signatures "github.com/communitybridge/easycla/cla-backend-go/signatures/mocks"
 	mock_users "github.com/communitybridge/easycla/cla-backend-go/v2/signatures/mock_users"
-	mock_v1_signatures "github.com/communitybridge/easycla/cla-backend-go/v2/signatures/mock_v1_signatures"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 )
@@ -257,7 +257,6 @@ func TestService_IsUserAuthorized(t *testing.T) {
 			mockUserService.EXPECT().GetUserByLFUserName(tc.lfid).Return(tc.getUserByLFUsernameResult, tc.getUserByLFUsernameError)
 
 			if tc.getUserByLFUsernameResult != nil {
-
 				mockSignatureService := mock_v1_signatures.NewMockSignatureService(ctrl)
 
 				approved := true

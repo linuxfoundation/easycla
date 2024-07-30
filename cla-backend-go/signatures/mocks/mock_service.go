@@ -504,31 +504,17 @@ func (mr *MockSignatureServiceMockRecorder) UpdateSignature(ctx, signatureID, up
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSignature", reflect.TypeOf((*MockSignatureService)(nil).UpdateSignature), ctx, signatureID, updates)
 }
 
-// createOrGetEmployeeModels mocks base method.
-func (m *MockSignatureService) createOrGetEmployeeModels(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error) {
+// UserIsApproved mocks base method.
+func (m *MockSignatureService) UserIsApproved(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "createOrGetEmployeeModels", ctx, claGroupModel, companyModel, corporateSignatureModel)
-	ret0, _ := ret[0].([]*models.User)
+	ret := m.ctrl.Call(m, "UserIsApproved", ctx, user, cclaSignature)
+	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// createOrGetEmployeeModels indicates an expected call of createOrGetEmployeeModels.
-func (mr *MockSignatureServiceMockRecorder) createOrGetEmployeeModels(ctx, claGroupModel, companyModel, corporateSignatureModel interface{}) *gomock.Call {
+// UserIsApproved indicates an expected call of UserIsApproved.
+func (mr *MockSignatureServiceMockRecorder) UserIsApproved(ctx, user, cclaSignature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "createOrGetEmployeeModels", reflect.TypeOf((*MockSignatureService)(nil).createOrGetEmployeeModels), ctx, claGroupModel, companyModel, corporateSignatureModel)
-}
-
-// handleGitHubStatusUpdate mocks base method.
-func (m *MockSignatureService) handleGitHubStatusUpdate(ctx context.Context, employeeUserModel *models.User) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "handleGitHubStatusUpdate", ctx, employeeUserModel)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// handleGitHubStatusUpdate indicates an expected call of handleGitHubStatusUpdate.
-func (mr *MockSignatureServiceMockRecorder) handleGitHubStatusUpdate(ctx, employeeUserModel interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "handleGitHubStatusUpdate", reflect.TypeOf((*MockSignatureService)(nil).handleGitHubStatusUpdate), ctx, employeeUserModel)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserIsApproved", reflect.TypeOf((*MockSignatureService)(nil).UserIsApproved), ctx, user, cclaSignature)
 }
