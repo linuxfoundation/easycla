@@ -2368,14 +2368,14 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 	}
 
 	// This is the keys we want to match
-	condition := expression.Key("signature_user_ccla_company_id").Equal(expression.Value(companyModel.CompanyID)).And(
-		expression.Key("signature_project_id").Equal(expression.Value(claGroupModel.ProjectID)))
+	condition := expression.Key("signature_reference_id").Equal(expression.Value(employeeUserModel.UserID))
 
 	var filterAdded bool
 	var filter expression.ConditionBuilder
 
 	// Check for approved signatures
-	filter = addAndCondition(filter, expression.Name("signature_reference_id").Equal(expression.Value(employeeUserModel.UserID)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyModel.CompanyID)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_project_id").Equal(expression.Value(claGroupModel.ProjectID)), &filterAdded)
 
 	log.WithFields(f).Debugf("running employee signature query on table: %s", repo.signatureTableName)
 	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildProjection()).Build()
@@ -2394,7 +2394,7 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 		FilterExpression:          expr.Filter(),
 		ProjectionExpression:      expr.Projection(),
 		TableName:                 aws.String(repo.signatureTableName),
-		IndexName:                 aws.String("signature-user-ccla-company-index"), // Name of a secondary index to scan
+		IndexName:                 aws.String("reference-signature-index"), // Name of a secondary index to scan
 		Limit:                     aws.Int64(10),
 	}
 
@@ -2406,7 +2406,9 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 		errorChannel <- errQuery
 		return
 	}
+
 	if results == nil || len(results.Items) == 0 {
+		log.WithFields(f).Debug("No ecla records found!")
 		resultChannel <- &EmployeeModel{
 			Signature: nil,
 			User:      employeeUserModel,

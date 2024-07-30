@@ -522,6 +522,7 @@ func (s *Service) IsUserAuthorized(ctx context.Context, lfid, claGroupId string)
 				log.WithFields(f).WithError(err).Debug("unable to process ecla")
 				return nil, err
 			}
+			log.WithFields(f).Debugf("ecla value: %b", ecla)
 			if ecla != nil && *ecla {
 				log.WithFields(f).Debug("user has signed ECLA")
 				hasSigned = true
