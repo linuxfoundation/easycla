@@ -137,7 +137,12 @@ func Handler(ctx context.Context) error {
 		v1ProjectClaGroupRepo,
 	})
 
-	gerritService := gerrits.NewService(gerritRepo)
+	gerritService := gerrits.NewService(gerritRepo, &gerrits.LFGroup{
+		LfBaseURL:    configFile.LFGroup.ClientURL,
+		ClientID:     configFile.LFGroup.ClientID,
+		ClientSecret: configFile.LFGroup.ClientSecret,
+		RefreshToken: configFile.LFGroup.RefreshToken,
+	})
 
 	approvalsTableName := "cla-" + stage + "-approvals"
 
