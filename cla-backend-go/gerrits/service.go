@@ -522,14 +522,20 @@ func listGerritRepos(ctx context.Context, gerritHost string) (map[string]GerritR
 	}
 	client := resty.New()
 
+	base := "https://" + gerritHost
+
 	gerritAPIPath, gerritAPIPathErr := getGerritAPIPath(ctx, gerritHost)
 	if gerritAPIPathErr != nil {
 		return nil, gerritAPIPathErr
 	}
 
+	if gerritAPIPath != "" {
+		base = fmt.Sprintf("https://%s/%s", gerritHost, gerritAPIPath)
+	}
+
 	resp, err := client.R().
 		EnableTrace().
-		Get(fmt.Sprintf("https://%s/%s/projects/?d&pp=0", gerritHost, gerritAPIPath))
+		Get(fmt.Sprintf("%s/projects/?d&pp=0", base))
 	if err != nil {
 		log.WithFields(f).Warnf("problem querying gerrit host: %s, error: %+v", gerritHost, err)
 		return nil, err
@@ -562,14 +568,20 @@ func getGerritConfig(ctx context.Context, gerritHost string) (*ServerInfo, error
 	}
 	client := resty.New()
 
+	base := "https://" + gerritHost
+
 	gerritAPIPath, gerritAPIPathErr := getGerritAPIPath(ctx, gerritHost)
 	if gerritAPIPathErr != nil {
 		return nil, gerritAPIPathErr
 	}
 
+	if gerritAPIPath != "" {
+		base = fmt.Sprintf("https://%s/%s", gerritHost, gerritAPIPath)
+	}
+
 	resp, err := client.R().
 		EnableTrace().
-		Get(fmt.Sprintf("https://%s/%s/config/server/info", gerritHost, gerritAPIPath))
+		Get(fmt.Sprintf("%s/config/server/info", base))
 	if err != nil {
 		log.WithFields(f).Warnf("problem querying gerrit config, error: %+v", err)
 		return nil, err
@@ -603,6 +615,8 @@ func getGerritAPIPath(ctx context.Context, gerritHost string) (string, error) {
 	switch gerritHost {
 	case "gerrit.linuxfoundation.org":
 		return "infra", nil
+	case "mockapi.gerrit.dev.itx.linuxfoundation.org":
+		return "", nil
 	case "gerrit.onap.org":
 		return "r", nil
 	case "gerrit.o-ran-sc.org":
