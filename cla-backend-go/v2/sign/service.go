@@ -2648,7 +2648,7 @@ func removeSignatoryRole(ctx context.Context, userEmail string, companySFID stri
 	usc := userService.GetClient()
 	// search user
 	log.WithFields(f).Debug("searching user by email")
-	user, err := usc.SearchUserByEmail(userEmail)
+	user, err := usc.SearchUsersByEmail(userEmail)
 	if err != nil {
 		log.WithFields(f).Debug("Failed to get user")
 		return err
@@ -2699,7 +2699,7 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 	usc := userService.GetClient()
 	// search user
 	log.WithFields(f).Debug("searching user by email")
-	user, err := usc.SearchUserByEmail(userEmail)
+	user, err := usc.SearchUsersByEmail(userEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Debugf("User with email: %s does not have an LF login", userEmail)
 		return nil

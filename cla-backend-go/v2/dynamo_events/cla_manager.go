@@ -67,7 +67,7 @@ func (s *service) SetInitialCLAManagerACSPermissions(ctx context.Context, signat
 
 		log.WithFields(f).Debugf("searching user by email: %s", sig.SignatureACL[0].LfEmail)
 		if sig.SignatureACL[0].LfEmail != "" {
-			claManager, err = userServiceClient.SearchUserByEmail(sig.SignatureACL[0].LfEmail.String())
+			claManager, err = userServiceClient.SearchUsersByEmail(sig.SignatureACL[0].LfEmail.String())
 			if err != nil || claManager == nil {
 				log.WithFields(f).Warnf("unable to lookup user by email: %s, error: %+v",
 					sig.SignatureACL[0].LfEmail, err)
@@ -79,7 +79,7 @@ func (s *service) SetInitialCLAManagerACSPermissions(ctx context.Context, signat
 			// Search each one...
 			for _, altEmail := range sig.SignatureACL[0].Emails {
 				log.WithFields(f).Debugf("searching user by alternate email: %s", altEmail)
-				claManager, err = userServiceClient.SearchUserByEmail(altEmail)
+				claManager, err = userServiceClient.SearchUsersByEmail(altEmail)
 				if err != nil || claManager == nil {
 					log.WithFields(f).Warnf("unable to lookup user by alternate email: %s, error: %+v",
 						altEmail, err)
