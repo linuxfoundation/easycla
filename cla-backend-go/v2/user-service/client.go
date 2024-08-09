@@ -340,36 +340,6 @@ func getUsers(body []byte) ([]*models.User, error) {
 	return users.Data, err
 }
 
-// SearchUserByEmail search user by email
-func (usc *Client) SearchUserByEmail(email string) (*models.User, error) {
-	f := logrus.Fields{
-		"functionName": "SearchUserByEmail",
-		"email":        email,
-	}
-	params := &user.SearchUsersParams{
-		Email:   &email,
-		Context: context.Background(),
-	}
-	tok, err := token.GetToken()
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem obtaining token")
-		return nil, err
-	}
-	clientAuth := runtimeClient.BearerToken(tok)
-	result, err := usc.cl.User.SearchUsers(params, clientAuth)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem finding user by email")
-		return nil, err
-	}
-	users := result.Payload.Data
-
-	if len(users) == 0 {
-		log.WithFields(f).Debug("get by lfUsername returned no results")
-		return nil, ErrUserNotFound
-	}
-	return users[0], nil
-}
-
 // ConvertToContact converts user to contact from lead
 func (usc *Client) ConvertToContact(userSFID string) error {
 	params := &user.ConvertToContactParams{

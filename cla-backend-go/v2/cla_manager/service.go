@@ -166,7 +166,7 @@ func (s *service) CreateCLAManager(ctx context.Context, authUser *auth.User, cla
 		msg := fmt.Sprintf("Failed to get Lfx User with username : %s ", authUsername)
 		log.WithFields(f).Warn(msg)
 	}
-	user, userErr := userServiceClient.SearchUserByEmail(params.Body.UserEmail.String())
+	user, userErr := userServiceClient.SearchUsersByEmail(params.Body.UserEmail.String())
 
 	// Check for potential user with no username
 	if user != nil && user.Username == "" {
@@ -1002,7 +1002,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 	}
 
 	// Get suggested CLA Manager user details
-	user, userErr := userService.SearchUserByEmail(userEmail)
+	user, userErr := userService.SearchUsersByEmail(userEmail)
 	if userErr != nil || (user != nil && user.Username == "") {
 		var contributorModel emails.Contributor
 		msg := fmt.Sprintf("UserEmail: %s has no LF Login and has been sent an invite email to create an account , error: %+v", userEmail, userErr)
