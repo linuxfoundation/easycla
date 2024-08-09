@@ -8,11 +8,13 @@ on:
     branches:
       - main
 
+
 env:
+  AWS_REGION: us-east-1
   STAGE: dev
 
 jobs:
-  build-pr:
+  build-deploy-dev:
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -36,7 +38,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ${{ github.workspace }}/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -78,10 +80,7 @@ jobs:
 
       - name: Go Dependencies
         working-directory: cla-backend-go
-        run: |
-          go mod tidy
-          go mod download
-          make deps
+        run: make deps
 
       - name: Go Swagger Generate
         working-directory: cla-backend-go
