@@ -58,8 +58,8 @@ jobs:
       - name: Configure Git to clone private Github repos
         run: git config --global url."https://${TOKEN_USER}:${TOKEN}@github.com".insteadOf "https://github.com"
         env:
-          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER }}
+          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN_GITHUB }}
+          TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER_GITHUB }}
 
       - name: Add OS Tools
         run: sudo apt update && sudo apt-get install file -y
