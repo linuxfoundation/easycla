@@ -71,15 +71,18 @@ func (repo *repo) AddGerrit(ctx context.Context, input *models.Gerrit) (*models.
 	}
 	_, currentTime := utils.CurrentTime()
 	gerrit := &Gerrit{
-		DateCreated:  currentTime,
-		DateModified: currentTime,
-		GerritID:     gerritID.String(),
-		GerritName:   input.GerritName,
-		GerritURL:    input.GerritURL.String(),
-		GroupIDCcla:  input.GroupIDCcla,
-		ProjectID:    input.ProjectID,
-		ProjectSFID:  input.ProjectSFID,
-		Version:      input.Version,
+		DateCreated:   currentTime,
+		DateModified:  currentTime,
+		GerritID:      gerritID.String(),
+		GerritName:    input.GerritName,
+		GerritURL:     input.GerritURL.String(),
+		GroupIDCcla:   input.GroupIDCcla,
+		GroupIDIcla:   input.GroupIDIcla,
+		GroupNameCcla: input.GroupNameCcla,
+		GroupNameIcla: input.GroupNameIcla,
+		ProjectID:     input.ProjectID,
+		ProjectSFID:   input.ProjectSFID,
+		Version:       input.Version,
 	}
 	av, err := dynamodbattribute.MarshalMap(gerrit)
 	if err != nil {
