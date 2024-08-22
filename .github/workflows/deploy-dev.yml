@@ -6,7 +6,7 @@ name: Build and Deploy to DEV
 on:
   push:
     branches:
-      - feature/*
+      - dev
 
 permissions:
   # These permissions are needed to interact with GitHub's OIDC Token endpoint to fetch/set the AWS deployment credentials.

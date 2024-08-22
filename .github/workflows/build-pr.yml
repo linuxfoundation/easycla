@@ -6,8 +6,7 @@ name: Build and Test Pull Request
 on:
   pull_request:
     branches:
-      - main
-      - feature/*
+      - dev
 
 
 env:
