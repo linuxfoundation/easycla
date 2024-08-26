@@ -273,13 +273,7 @@ func server(localMode bool) http.Handler {
 		v1ProjectClaGroupRepo,
 	})
 
-	gerritService := gerrits.NewService(gerritRepo, &gerrits.LFGroup{
-		LfBaseURL:     configFile.LFGroup.ClientURL,
-		ClientID:      configFile.LFGroup.ClientID,
-		ClientSecret:  configFile.LFGroup.ClientSecret,
-		RefreshToken:  configFile.LFGroup.RefreshToken,
-		EventsService: eventsService,
-	})
+	gerritService := gerrits.NewService(gerritRepo)
 
 	// Signature repository handler
 	signaturesRepo := signatures.NewRepository(awsSession, stage, v1CompanyRepo, usersRepo, eventsService, gitV1Repository, githubOrganizationsRepo, gerritService, approvalsRepo)
