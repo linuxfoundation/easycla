@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -36,11 +37,11 @@ func main() {
 
 	// Initialize the events repository
 	eventsRepo := events.NewRepository(awsSession, stage)
-	eventService := events.NewService(eventsRepo,nil)
+	eventService := events.NewService(eventsRepo, nil)
 
 	// Initialize the users repository
 	// usersRepo := users.NewRepository(awsSession, stage)
-	
+
 	inputFilename := flag.String("input-file", "", "Input with a given list of lf usernames")
 	claGroup := flag.String("cla-group-id", "", "The ID of the CLA group")
 	claGroupName := flag.String("cla-group-name", "", "The name of the CLA group")
@@ -57,7 +58,11 @@ func main() {
 		log.Fatalf("Unable to read input file: %s", *inputFilename)
 	}
 
-	defer file.Close()
+	defer func() {
+		if err = file.Close(); err != nil {
+			log.Fatalf("Error closing file: %v", err)
+		}
+	}()
 
 	reader := csv.NewReader(file)
 
@@ -70,12 +75,12 @@ func main() {
 
 	type Report struct {
 		Username string
-		Events []*models.Event
+		Events   []*models.Event
 	}
 
-	projectReport := make([]Report,0)
+	projectReport := make([]Report, 0)
 
-	for i,record := range records {
+	for i, record := range records {
 		if i == 0 {
 			continue
 		}
@@ -93,11 +98,11 @@ func main() {
 			log.Debugf("Processing record: %s", lfusername)
 			searchParams := eventOps.SearchEventsParams{
 				SearchTerm: &lfusername,
-				ProjectID: claGroup,
+				ProjectID:  claGroup,
 			}
-			events, err := eventService.SearchEvents(&searchParams)
-			if err != nil {
-				log.Debugf("Error getting events: %v", err)
+			events, eventErr := eventService.SearchEvents(&searchParams)
+			if eventErr != nil {
+				log.Debugf("Error getting events: %v", eventErr)
 				report.Events = nil
 			}
 
@@ -108,11 +113,11 @@ func main() {
 				log.Debugf("Events found for user: %s", lfusername)
 				report.Events = events.Events
 			}
-	
+
 			mu.Lock()
 			projectReport = append(projectReport, report)
 			defer mu.Unlock()
-			
+
 		}(lfUsername)
 	}
 
@@ -121,25 +126,39 @@ func main() {
 
 	// Create a csv file with the results
 	outputFilename := fmt.Sprintf("ldap-%s-%s.csv", *claGroupName, time.Now().Format("2006-01-02-15-04-05"))
-	outputFile, err := os.Create(outputFilename)
+	outputFile, err := os.Create(filepath.Clean(outputFilename))
 
 	if err != nil {
 		log.Fatalf("Unable to create output file: %s", outputFilename)
 	}
 
-	defer outputFile.Close()
+	defer func() {
+		if err = outputFile.Close(); err != nil {
+			log.Fatalf("Error closing file: %v", err)
+		}
+	}()
 
 	writer := csv.NewWriter(outputFile)
 
-	writer.Write([]string{"Username","Event ID", "Event Data", "Event Type", "Event Date"})
+	err = writer.Write([]string{"Username", "Event ID", "Event Data", "Event Type", "Event Date"})
+	if err != nil {
+		log.Fatalf("Error writing csv: %v", err)
+	}
 
-	for _,report := range projectReport {
+	for _, report := range projectReport {
 		if report.Events == nil {
-			writer.Write([]string{report.Username, "No events found", "", "", ""})
+			err = writer.Write([]string{report.Username, "No events found", "", "", ""})
+			if err != nil {
+				log.Fatalf("Error writing csv: %v", err)
+			}
 			continue
 		}
-		for _,event := range report.Events {
-			writer.Write([]string{report.Username, event.EventID, event.EventData, event.EventType, event.EventTime})
+		for _, event := range report.Events {
+			err = writer.Write([]string{report.Username, event.EventID, event.EventData, event.EventType, event.EventTime})
+			if err != nil {
+				log.Fatalf("Error writing csv: %v", err)
+			}
+
 		}
 	}
 
