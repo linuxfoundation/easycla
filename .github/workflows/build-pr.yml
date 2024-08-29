@@ -12,13 +12,13 @@ permissions:
   id-token: write
   contents: read
   pull-requests: write
-  
+    
 env:
   AWS_REGION: us-east-1
   STAGE: dev
 
 jobs:
-  build-deploy-dev:
+  build-test-lint:
     runs-on: ubuntu-latest
     environment: dev
     steps:

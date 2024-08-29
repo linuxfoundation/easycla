@@ -1078,7 +1078,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
 
     if num_missing > 0:
         support_url = "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
-        missing_id_help_url = "https://confluence.linuxfoundation.org/pages/viewpage.action?pageId=86641302"
+        missing_id_help_url = "https://linuxfoundation.atlassian.net/wiki/spaces/LP/pages/160923756/Missing+ID+on+Commit+but+I+have+an+agreement+on+file"
 
         # Build a lookup table to group all the commits by author.
         committers = {}
