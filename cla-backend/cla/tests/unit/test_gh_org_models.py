@@ -35,6 +35,6 @@ def test_set_organization_name(gh_instance):
 def test_get_org_by_name_lower(gh_instance):
     """ Test getting GitHub org with case insensitive search """
     gh_org = cla.utils.get_github_organization_instance()
-    gh_org.model.scan = Mock(return_value=[gh_instance.model])
+    gh_org.model.organization_name_lower_search_index.query = Mock(return_value=[gh_instance.model])
     found_gh_org = gh_org.get_organization_by_lower_name(gh_instance.get_organization_name())
     assert found_gh_org.get_organization_name_lower() == gh_instance.get_organization_name_lower()
