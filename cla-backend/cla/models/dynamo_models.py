@@ -500,6 +500,20 @@ class GitlabOrganizationNameLowerIndex(GlobalSecondaryIndex):
 
     organization_name_lower = UnicodeAttribute(hash_key=True)
 
+class OrganizationNameLowerSearchIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying organizations by Organization Name.
+    """
+
+    class Meta:
+        """Meta class for external ID github org index."""
+
+        index_name = "organization-name-lower-search-index"
+        write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
+        read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
+        projection = AllProjection()
+
+    organization_name_lower = UnicodeAttribute(hash_key=True)
 
 class GitlabExternalGroupIDIndex(GlobalSecondaryIndex):
     """
@@ -3817,7 +3831,8 @@ class GitHubOrgModel(BaseModel):
     project_sfid = UnicodeAttribute()
     organization_sfid_index = GitlabOrgSFIndex()
     project_sfid_organization_name_index = GitlabOrgProjectSfidOrganizationNameIndex()
-    organization_name_lowe_index = GitlabOrganizationNameLowerIndex()
+    organization_name_lower_index = GitlabOrganizationNameLowerIndex()
+    organization_name_lower_search_index = OrganizationNameLowerSearchIndex()
     organization_project_id = UnicodeAttribute(null=True)
     organization_company_id = UnicodeAttribute(null=True)
     auto_enabled = BooleanAttribute(null=True)
@@ -3964,7 +3979,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
         return None
 
     def get_organization_by_lower_name(self, organization_name):
-        org_generator = self.model.scan(organization_name_lower__eq=organization_name.lower())
+        org_generator = self.model.organization_name_lower_search_index.query(organization_name.lower())
         for org_model in org_generator:
             org = GitHubOrg()
             org.model = org_model
