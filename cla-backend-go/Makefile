@@ -35,7 +35,7 @@ ifeq "$(shell uname -s)" "Linux"
 endif
 
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
-LINT_VERSION=v1.61.0
+LINT_VERSION=v1.51.2
 SWAGGER_DIR=$(ROOT_DIR)/swagger
 SWAGGER_BIN_DIR=/usr/local/bin
 SWAGGER_TOOL_VERSION=v0.30.3
@@ -69,7 +69,7 @@ setup-swagger:
 
 setup_dev: setup-dev
 setup-dev:
-	pushd /tmp && echo "==> Installing goimport..." && go install golang.org/x/tools/cmd/goimports@latest && echo "==> Installation coverage tools..." && go install golang.org/x/tools/cmd/cover@latest && popd
+	pushd /tmp && echo "==> Installing goimport..." && go install golang.org/x/tools/cmd/goimports@v0.24.0 && echo "==> Installation coverage tools..." && go install golang.org/x/tools/cmd/cover@latest && popd
 
 	@echo "==> Installing linter..."
 	@# Latest releases: https://github.com/golangci/golangci-lint/releases
