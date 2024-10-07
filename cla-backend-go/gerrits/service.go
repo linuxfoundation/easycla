@@ -61,13 +61,11 @@ func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID s
 		"projectSFID":    projectSFID,
 	}
 
-	log.WithFields(f).Debugf("cla groupID %s", claGroupID)
-	log.WithFields(f).Debugf("project Model %+v", claGroupModel)
-
 	if params.GerritName == nil {
 		return nil, errors.New("gerrit_name required")
 	}
 
+	log.WithFields(f).Debugf("checking if gerrit name already exists in the system : %s", *params.GerritName)
 	gerritObject, err := s.repo.ExistsByName(ctx, *params.GerritName)
 	if err != nil {
 		message := fmt.Sprintf("unable to get gerrit by name : %s", *params.GerritName)
@@ -108,9 +106,16 @@ func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID s
 	for _, repo := range gerritRepoList.Repos {
 		repo.Connected = true
 	}
+	gerritInstance, err := s.repo.AddGerrit(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	input.GerritID = gerritInstance.GerritID
+	input.DateCreated = gerritInstance.DateCreated
+	input.DateModified = gerritInstance.DateModified
 	input.GerritRepoList = gerritRepoList
 	log.WithFields(f).Debugf("gerrit input %+v", input)
-	return s.repo.AddGerrit(ctx, input)
+	return input, nil
 }
 
 func (s service) GetGerrit(ctx context.Context, gerritID string) (*models.Gerrit, error) {
