@@ -5065,6 +5065,7 @@ class Event(model_interfaces.Event):
         try:
             project = Project()
             project.load(str(cla_group_id))
+            event.set_event_cla_group_id(cla_group_id)
             event.set_event_cla_group_name(project.get_project_name())
             event.set_event_project_sfid(project.get_project_external_id())
             Event.set_project_details(event, project.get_project_external_id())
