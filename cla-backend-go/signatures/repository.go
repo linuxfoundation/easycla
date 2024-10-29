@@ -4616,6 +4616,32 @@ func (repo repository) addAdditionalICLAMetaData(f logrus.Fields, intermediateRe
 	return finalResults, nil
 }
 
+func deduplicateSignatures(signatures []map[string]*dynamodb.AttributeValue) []map[string]*dynamodb.AttributeValue {
+	f := logrus.Fields{
+		"functionName": "v1.signatures.repository.deduplicateSignatures",
+	}
+	// Map to keep track of the latest unique signatures by SignatureReferenceID
+	uniqueSignatures := make(map[string]map[string]*dynamodb.AttributeValue)
+	for _, sig := range signatures {
+		log.WithFields(f).Debugf("processing signature: %+v", sig)
+		refID := sig["signature_reference_id"].S
+		existingSig, exists := uniqueSignatures[*refID]
+		if !exists || (sig["date_created"] != nil && existingSig["date_created"] != nil && *sig["date_created"].S > *existingSig["date_created"].S) {
+			uniqueSignatures[*refID] = sig
+		} else if !exists || (sig["date_created"] != nil && existingSig["date_created"] == nil) {
+			uniqueSignatures[*refID] = sig
+		} else if !exists || (sig["date_created"] == nil && existingSig["date_created"] != nil) {
+			uniqueSignatures[*refID] = sig
+		}
+	}
+	// Convert the map back to a slice
+	var uniqueSignatureList []map[string]*dynamodb.AttributeValue
+	for _, sig := range uniqueSignatures {
+		uniqueSignatureList = append(uniqueSignatureList, sig)
+	}
+	return uniqueSignatureList
+}
+
 func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.GetClaGroupCorporateContributors",
@@ -4698,10 +4724,10 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 
 	out := &models.CorporateContributorList{List: make([]*models.CorporateContributor, 0)}
 	var lastEvaluatedKey string
-
+	var allItems []map[string]*dynamodb.AttributeValue
 	currentCount := int64(0)
 
-	for ok := true; ok; ok = lastEvaluatedKey != "" && currentCount < *pageSize {
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
 		// Make the DynamoDB Query API call
 		log.WithFields(f).Debug("querying signatures...")
 		results, queryErr := repo.dynamoDBClient.Query(queryInput)
@@ -4710,78 +4736,9 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 			return nil, queryErr
 		}
 
-		var dbSignatures []ItemSignature
-
-		err := dynamodbattribute.UnmarshalListOfMaps(results.Items, &dbSignatures)
-		if err != nil {
-			log.WithFields(f).Warnf("error unmarshalling icla signatures from database for cla group: %s, error: %v",
-				claGroupID, err)
-			return nil, err
-		}
-
-		log.WithFields(f).Debugf("located %d signatures...", len(dbSignatures))
-		for _, sig := range dbSignatures {
-			var sigCreatedTime = sig.DateCreated
-			t, err := utils.ParseDateTime(sig.DateCreated)
-			if err != nil {
-				log.WithFields(f).WithError(err).Warn("unable to parse signature date created time")
-			} else {
-				sigCreatedTime = utils.TimeToString(t)
-			}
-
-			// Set the signed date/time
-			var sigSignedTime string
-			// Use the user docusign date signed value if it is present - older signatures do not have this
-			if sig.UserDocusignDateSigned != "" {
-				// Put the date into a standard format
-				t, err = utils.ParseDateTime(sig.UserDocusignDateSigned)
-				if err != nil {
-					log.WithFields(f).WithError(err).Warn("unable to parse signature docusign date signed time")
-				} else {
-					sigSignedTime = utils.TimeToString(t)
-				}
-			} else {
-				// Put the date into a standard format
-				t, err = utils.ParseDateTime(sig.DateCreated)
-				if err != nil {
-					log.WithFields(f).WithError(err).Warn("unable to parse signature date created time")
-				} else {
-					sigSignedTime = utils.TimeToString(t)
-				}
-			}
-
-			signatureVersion := fmt.Sprintf("v%s.%s", strconv.Itoa(sig.SignatureDocumentMajorVersion), strconv.Itoa(sig.SignatureDocumentMinorVersion))
-
-			sigName := sig.UserName
-			user, userErr := repo.usersRepo.GetUser(sig.SignatureReferenceID)
-			if userErr != nil {
-				log.WithFields(f).Warnf("unable to get user for id: %s, error: %v ", sig.SignatureReferenceID, userErr)
-			}
-			if user != nil && sigName == "" {
-				sigName = user.Username
-			}
-
-			out.List = append(out.List, &models.CorporateContributor{
-				SignatureID:            sig.SignatureID,
-				GithubID:               sig.UserGithubUsername,
-				LinuxFoundationID:      sig.UserLFUsername,
-				Name:                   sigName,
-				SignatureVersion:       signatureVersion,
-				Email:                  sig.UserEmail,
-				Timestamp:              sigCreatedTime,
-				UserDocusignName:       sig.UserDocusignName,
-				UserDocusignDateSigned: sigSignedTime,
-				SignatureModified:      sig.DateModified,
-				SignatureApproved:      sig.SignatureApproved,
-				SignatureSigned:        sig.SignatureSigned,
-			})
-
-			// Increment the current count
-			currentCount++
-			if currentCount >= *pageSize {
-				break
-			}
-		}
+		// Append the results...
+		allItems = append(allItems, results.Items...)
+		currentCount += int64(len(results.Items))
 
 		if results.LastEvaluatedKey["signature_id"] != nil && currentCount < *pageSize {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
@@ -4791,11 +4748,78 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		}
 
 	}
+
+	allItems = deduplicateSignatures(allItems)
+	var dbSignatures []ItemSignature
+	err = dynamodbattribute.UnmarshalListOfMaps(allItems, &dbSignatures)
+	if err != nil {
+		log.WithFields(f).Warnf("error unmarshalling icla signatures from database for cla group: %s, error: %v",
+			claGroupID, err)
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("located %d signatures...", len(dbSignatures))
+	for _, sig := range dbSignatures {
+		var sigCreatedTime = sig.DateCreated
+		t, err := utils.ParseDateTime(sig.DateCreated)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to parse signature date created time")
+		} else {
+			sigCreatedTime = utils.TimeToString(t)
+		}
+
+		// Set the signed date/time
+		var sigSignedTime string
+		// Use the user docusign date signed value if it is present - older signatures do not have this
+		if sig.UserDocusignDateSigned != "" {
+			// Put the date into a standard format
+			t, err = utils.ParseDateTime(sig.UserDocusignDateSigned)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("unable to parse signature docusign date signed time")
+			} else {
+				sigSignedTime = utils.TimeToString(t)
+			}
+		} else {
+			// Put the date into a standard format
+			t, err = utils.ParseDateTime(sig.DateCreated)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("unable to parse signature date created time")
+			} else {
+				sigSignedTime = utils.TimeToString(t)
+			}
+		}
+
+		signatureVersion := fmt.Sprintf("v%s.%s", strconv.Itoa(sig.SignatureDocumentMajorVersion), strconv.Itoa(sig.SignatureDocumentMinorVersion))
+
+		sigName := sig.UserName
+		user, userErr := repo.usersRepo.GetUser(sig.SignatureReferenceID)
+		if userErr != nil {
+			log.WithFields(f).Warnf("unable to get user for id: %s, error: %v ", sig.SignatureReferenceID, userErr)
+		}
+		if user != nil && sigName == "" {
+			sigName = user.Username
+		}
+
+		out.List = append(out.List, &models.CorporateContributor{
+			SignatureID:            sig.SignatureID,
+			GithubID:               sig.UserGithubUsername,
+			LinuxFoundationID:      sig.UserLFUsername,
+			Name:                   sigName,
+			SignatureVersion:       signatureVersion,
+			Email:                  sig.UserEmail,
+			Timestamp:              sigCreatedTime,
+			UserDocusignName:       sig.UserDocusignName,
+			UserDocusignDateSigned: sigSignedTime,
+			SignatureModified:      sig.DateModified,
+			SignatureApproved:      sig.SignatureApproved,
+			SignatureSigned:        sig.SignatureSigned,
+		})
+	}
 	sort.Slice(out.List, func(i, j int) bool {
 		return out.List[i].Name < out.List[j].Name
 	})
 
-	out.ResultCount = currentCount
+	out.ResultCount = int64(len(out.List))
 	out.TotalCount = totalCount
 	out.NextKey = lastEvaluatedKey
 
@@ -4851,6 +4875,7 @@ func (repo repository) getTotalCorporateContributorCount(ctx context.Context, cl
 
 	var lastEvaluatedKey string
 	var totalCount int64
+	var allItems []map[string]*dynamodb.AttributeValue
 
 	// Loop until we have all the records - we'll get a nil lastEvaluatedKey when we're done
 	for ok := true; ok; ok = lastEvaluatedKey != "" {
@@ -4861,8 +4886,7 @@ func (repo repository) getTotalCorporateContributorCount(ctx context.Context, cl
 			return
 		}
 
-		// Add the count to the total
-		totalCount += *results.Count
+		allItems = append(allItems, results.Items...)
 
 		// Set the last evaluated key
 		if results.LastEvaluatedKey["signature_id"] != nil {
@@ -4873,9 +4897,12 @@ func (repo repository) getTotalCorporateContributorCount(ctx context.Context, cl
 		}
 	}
 
-	log.WithFields(f).Debugf("total signature count query took: %s", time.Since(beforeQuery))
-
+	// Deduplicate the signatures
+	// uniqueSignatures := deduplicateSignatures(allItems)
+	totalCount = int64(len(allItems))
 	totalCountChannel <- totalCount
+
+	log.WithFields(f).Debugf("total signature count query took: %s", time.Since(beforeQuery))
 
 }
 
