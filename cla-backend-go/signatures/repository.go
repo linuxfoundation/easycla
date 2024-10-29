@@ -4627,6 +4627,19 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	totalCountChannel := make(chan int64, 1)
 	go repo.getTotalCorporateContributorCount(ctx, claGroupID, companyID, searchTerm, totalCountChannel)
 
+	totalCount := <-totalCountChannel
+	log.WithFields(f).Debugf("total corporate contributor count: %d", totalCount)
+	// If the page size is nil, set it to the default
+	if pageSize == nil {
+		pageSize = aws.Int64(10)
+	}
+
+	if *pageSize > totalCount {
+		pageSize = aws.Int64(totalCount)
+	}
+
+	log.WithFields(f).Debugf("total corporate contributor count: %d, page size: %d", totalCount, *pageSize)
+
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
 	// if companyID != nil {
 	// 	sortKey := fmt.Sprintf("%s#%v#%v#%v", utils.ClaTypeECLA, true, true, *companyID)
@@ -4659,11 +4672,6 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		return nil, err
 	}
 
-	// If the page size is nil, set it to the default
-	if pageSize == nil {
-		pageSize = aws.Int64(10)
-	}
-
 	// Assemble the query input parameters
 	queryInput := &dynamodb.QueryInput{
 		ExpressionAttributeNames:  expr.Names(),
@@ -4691,7 +4699,9 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	out := &models.CorporateContributorList{List: make([]*models.CorporateContributor, 0)}
 	var lastEvaluatedKey string
 
-	for ok := true; ok; ok = lastEvaluatedKey != "" {
+	currentCount := int64(0)
+
+	for ok := true; ok; ok = lastEvaluatedKey != "" && currentCount < *pageSize {
 		// Make the DynamoDB Query API call
 		log.WithFields(f).Debug("querying signatures...")
 		results, queryErr := repo.dynamoDBClient.Query(queryInput)
@@ -4765,17 +4775,19 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
 			})
+
+			// Increment the current count
+			currentCount++
+			if currentCount >= *pageSize {
+				break
+			}
 		}
 
-		if results.LastEvaluatedKey["signature_id"] != nil {
+		if results.LastEvaluatedKey["signature_id"] != nil && currentCount < *pageSize {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
 		} else {
 			lastEvaluatedKey = ""
-		}
-
-		if int64(len(out.List)) >= *pageSize {
-			break
 		}
 
 	}
@@ -4783,8 +4795,8 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		return out.List[i].Name < out.List[j].Name
 	})
 
-	out.ResultCount = int64(len(out.List))
-	out.TotalCount = <-totalCountChannel
+	out.ResultCount = currentCount
+	out.TotalCount = totalCount
 	out.NextKey = lastEvaluatedKey
 
 	return out, nil
