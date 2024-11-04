@@ -18,6 +18,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+from datetime import datetime
 
 import cla
 import pydocusign  # type: ignore
@@ -784,6 +785,8 @@ class DocuSign(signing_service_interface.SigningService):
             'signature_approved': {'BOOL': signature.get_signature_approved()},
             'signature_acl': {'SS': list(signature.get_signature_acl())},
             'signature_user_ccla_company_id': {'S': signature.get_signature_user_ccla_company_id()},
+            'date_modified': {'S': datetime.now().isoformat()},
+            'date_created': {'S': datetime.now().isoformat()}
         }
 
         if signature.get_signature_return_url() is not None:
