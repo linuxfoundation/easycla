@@ -1316,9 +1316,11 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 	if len(emailApprovalList) > 0 {
 		for _, email := range emails {
 			log.WithFields(f).Debugf("checking email: %s", email)
-			if utils.StringInSlice(email, emailApprovalList) {
-				log.WithFields(f).Debugf("found matching email: %s in the email approval list", email)
-				return true, nil
+			// case insensitive search
+			for _, emailApproval := range emailApprovalList {
+				if strings.EqualFold(email, emailApproval) {
+					return true, nil
+				}
 			}
 		}
 	} else {
