@@ -254,6 +254,7 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_return_url_type=return_url_type,
                               signature_signed=False,
                               signature_approved=True,
+                              signature_embargo_acked=True,
                               signature_return_url=return_url,
                               signature_callback_url=callback_url)
 
@@ -358,6 +359,7 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_return_url_type='Gerrit',
                               signature_signed=False,
                               signature_approved=True,
+                              signature_embargo_acked=True,
                               signature_return_url=return_url,
                               signature_callback_url=callback_url)
 
@@ -706,6 +708,7 @@ class DocuSign(signing_service_interface.SigningService):
                                   signature_type='cla',
                                   signature_signed=True,
                                   signature_approved=True,
+                                  signature_embargo_acked=True,
                                   signature_return_url=return_url,
                                   signature_user_ccla_company_id=company_id)
         cla.log.info(f'{fn} - created new signature document for: {request_info} - signature: {new_signature}')
@@ -783,6 +786,7 @@ class DocuSign(signing_service_interface.SigningService):
             'signature_type': {'S': signature.get_signature_type()},
             'signature_signed': {'BOOL': signature.get_signature_signed()},
             'signature_approved': {'BOOL': signature.get_signature_approved()},
+            'signature_embargo_acked': {'BOOL': signature.get_signature_embargo_acked()},
             'signature_acl': {'SS': list(signature.get_signature_acl())},
             'signature_user_ccla_company_id': {'S': signature.get_signature_user_ccla_company_id()},
             'date_modified': {'S': datetime.now().isoformat()},
@@ -865,6 +869,7 @@ class DocuSign(signing_service_interface.SigningService):
                                   signature_type='cla',
                                   signature_signed=True,
                                   signature_approved=True,
+                                  signature_embargo_acked=True,
                                   signature_return_url=return_url,
                                   signature_user_ccla_company_id=company_id)
 
@@ -973,6 +978,7 @@ class DocuSign(signing_service_interface.SigningService):
                                   signatory_name=signatory_name,
                                   signing_entity_name=company.get_signing_entity_name(),
                                   signature_signed=False,
+                                  signature_embargo_acked=True,
                                   signature_approved=True)
 
         callback_url = self._get_corporate_signature_callback_url(project.get_project_id(), company.get_company_id())

@@ -2484,6 +2484,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_project_index = ProjectSignatureIndex()
     signature_reference_index = ReferenceSignatureIndex()
     signature_envelope_id = UnicodeAttribute(null=True)
+    signature_embargo_acked = BooleanAttribute(default=False, null=True)
     # Callback type refers to either Gerrit or GitHub
     signature_return_url_type = UnicodeAttribute(null=True)
     note = UnicodeAttribute(null=True)
@@ -2538,6 +2539,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             signature_type=None,
             signature_signed=False,
             signature_approved=False,
+            signature_embargo_acked=False,
             signed_on=None,
             signatory_name=None,
             signing_entity_name=None,
@@ -2593,6 +2595,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         self.model.signing_entity_name = signing_entity_name
         self.model.sigtype_signed_approved_id = sigtype_signed_approved_id
         self.model.signature_approved = signature_approved
+        self.model.signature_embargo_acked = signature_embargo_acked
         self.model.signature_sign_url = signature_sign_url
         self.model.signature_return_url = signature_return_url
         self.model.signature_callback_url = signature_callback_url
@@ -2626,7 +2629,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             "reference type: {}, "
             "user cla company id: {}, signed: {}, signed_on: {}, signatory_name: {}, signing entity name: {},"
             "sigtype_signed_approved_id: {}, "
-            "approved: {}, domain whitelist: {}, "
+            "approved: {}, embargo_acked: {}, domain whitelist: {}, "
             "email whitelist: {}, github user whitelist: {}, github domain whitelist: {}, "
             "note: {},signature project external id: {}, signature company signatory id: {}, "
             "signature company signatory name: {}, signature company signatory email: {},"
@@ -2650,6 +2653,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             self.model.signing_entity_name,
             self.model.sigtype_signed_approved_id,
             self.model.signature_approved,
+            self.model.signature_embargo_acked,
             self.model.domain_whitelist,
             self.model.email_whitelist,
             self.model.github_whitelist,
@@ -2738,6 +2742,9 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def get_signature_approved(self):
         return self.model.signature_approved
+
+    def get_signature_embargo_acked(self):
+        return self.model.signature_embargo_acked
 
     def get_signature_sign_url(self):
         return self.model.signature_sign_url
@@ -2877,6 +2884,9 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def set_signature_approved(self, approved) -> None:
         self.model.signature_approved = bool(approved)
+
+    def set_signature_embargo_acked(self, embargo_acked) -> None:
+        self.model.signature_embargo_acked = bool(embargo_acked)
 
     def set_signature_sign_url(self, sign_url) -> None:
         self.model.signature_sign_url = sign_url

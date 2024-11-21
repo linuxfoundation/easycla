@@ -55,6 +55,7 @@ def create_signature(signature_project_id,  # pylint: disable=too-many-arguments
                      signature_type='cla',
                      signature_approved=False,
                      signature_signed=False,
+                     signature_embargo_acked=False,
                      signature_return_url=None,
                      signature_sign_url=None,
                      signature_user_ccla_company_id=None,
@@ -74,6 +75,8 @@ def create_signature(signature_project_id,  # pylint: disable=too-many-arguments
     :type signature_signed: boolean
     :param signature_approved: Whether or not the signature has been approved.
     :type signature_approved: boolean
+    :param signature_embargo_acked: Whether or not the embargo was acknowledged
+    :type signature_embargo_acked: boolean
     :param signature_return_url: The URL the user will be redirected to after signing.
     :type signature_return_url: string
     :param signature_sign_url: The URL the user must visit to sign the signature.
@@ -125,6 +128,7 @@ def create_signature(signature_project_id,  # pylint: disable=too-many-arguments
     signature.set_signature_type(signature_type)
     signature.set_signature_signed(signature_signed)
     signature.set_signature_approved(signature_approved)
+    signature.set_signature_embargo_acked(signature_embargo_acked)
     signature.set_signature_return_url(signature_return_url)
     signature.set_signature_sign_url(signature_sign_url)
     if signature_user_ccla_company_id is not None:
@@ -151,6 +155,7 @@ def update_signature(signature_id,  # pylint: disable=too-many-arguments,too-man
                      signature_type=None,
                      signature_approved=None,
                      signature_signed=None,
+                     signature_embargo_acked=None,
                      signature_return_url=None,
                      signature_sign_url=None,
                      domain_whitelist=None,
@@ -177,6 +182,8 @@ def update_signature(signature_id,  # pylint: disable=too-many-arguments,too-man
     :type signature_signed: boolean | None
     :param signature_approved: Whether this signature is approved or not.
     :type signature_approved: boolean | None
+    :param signature_embargo_acked: Whether this signature's embargo is acknowledged
+    :type signature_embargo_acked: boolean | None
     :param signature_return_url: The URL the user will be sent to after signing.
     :type signature_return_url: string | None
     :param signature_sign_url: The URL the user must visit to sign the signature.
@@ -238,6 +245,13 @@ def update_signature(signature_id,  # pylint: disable=too-many-arguments,too-man
             update_str += f'signature_approved updated to {val} \n'
         except KeyError:
             return {'errors': {'signature_approved': 'Invalid value passed in for true/false field'}}
+    if signature_embargo_acked is not None:
+        try:
+            val = hug.types.smart_boolean(signature_embargo_acked)
+            signature.set_signature_embargo_acked(val)
+            update_str += f'signature_embargo_acked updated to {val} \n'
+        except KeyError:
+            return {'errors': {'signature_embargo_acked': 'Invalid value passed in for true/false field'}}
     if signature_return_url is not None:
         try:
             val = cla.hug_types.url(signature_return_url)
@@ -554,6 +568,8 @@ def create_bot_signature(bot_user: User, signature: Signature) -> Optional[Signa
     bot_sig.set_signature_document_minor_version(signature.get_signature_document_minor_version())
     bot_sig.set_signature_approved(True)
     bot_sig.set_signature_signed(True)
+    # should bot signature by automaticaly set to "embargo acknowledged"?
+    bot_sig.set_signature_embargo_acked(True)
     bot_sig.set_signature_type('cla')
     bot_sig.set_signature_reference_type('user')
     bot_sig.set_signature_user_ccla_company_id(bot_user.get_user_company_id())
