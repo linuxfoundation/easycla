@@ -133,6 +133,38 @@ locally and simply point to the DEV environment. The `STAGE` environment
 variable controls where we point. Make sure you export/provide/setup the AWS
 properties in order to connect.
 
+
+When running on Linux it looks like `.venv` sets $HOME to /tmp, and then python backend is looking for the AWS config file in `~/.aws/config`
+This means it ends up in `/tmp/.aws/config`. You can use the following scritp to activate your environment (`setenv.secret`) via: `source setenv.secret`:
+```
+#!/bin/bash
+rm -rf /tmp/aws
+cp -R ~/.aws /tmp/.aws
+export AWS_SDK_LOAD_CONFIG=1
+export AWS_PROFILE='lfproduct-dev'
+export AWS_REGION='us-east-1'
+export AWS_ACCESS_KEY_ID='[redacted]'
+export AWS_SECRET_ACCESS_KEY='[redacted]'
+export PRODUCT_DOMAIN='dev.lfcla.com'
+export ROOT_DOMAIN='lfcla.dev.platform.linuxfoundation.org'
+export PORT='5000'
+export STAGE='dev'
+```
+
+And the following one to unset the environment:
+```
+#!/bin/bash
+rm -rf /tmp/.aws
+unset AWS_PROFILE
+unset AWS_REGION
+unset AWS_ACCESS_KEY_ID
+unset AWS_SECRET_ACCESS_KEY
+unset PRODUCT_DOMAIN
+unset ROOT_DOMAIN
+unset PORT
+unset STAGE
+```
+
 ## Run the Python Backend
 
 ```bash
