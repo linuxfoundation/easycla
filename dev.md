@@ -363,9 +363,9 @@ First build and setup the environment.  Then simply run it:
 
 ```bash
 # Mac
-./cla-mac
+./bin/cla-mac
 # or linux
-./cla 
+./bin/cla
 ```
 
 You should see the typical diagnostic details on startup indicating that it
