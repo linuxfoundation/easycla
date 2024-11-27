@@ -4,7 +4,19 @@
 # project_id='88ee12de-122b-4c46-9046-19422054ed8d'
 # return_url_type='github'
 # return_url='http://localhost'
-# DEBUG=1 ./utils/request_individual_signature_post.sh 9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
+# TOKEN='...' - Auth0 JWT bearer token
+# DEBUG=1 TOKEN="$(cat ./auth0.token.secret)" ./utils/request_corporate_signature_post.sh 862ff296-6508-4f10-9147-2bc2dd7bfe80 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
+
+if [ -z "$TOKEN" ]
+then
+  source ./auth0_token.secret
+fi
+
+if [ -z "$TOKEN" ]
+then
+  echo "$0: TOKEN not specified and unable to obtain one"
+  exit 1
+fi
 
 if [ -z "$1" ]
 then
