@@ -257,7 +257,6 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_embargo_acked=True,
                               signature_return_url=return_url,
                               signature_callback_url=callback_url)
-
         # Set signature ACL
         if return_url_type.lower() == "github":
             acl = user.get_user_github_id()
