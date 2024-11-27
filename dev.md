@@ -143,8 +143,11 @@ cp -R ~/.aws /tmp/.aws
 export AWS_SDK_LOAD_CONFIG=1
 export AWS_PROFILE='lfproduct-dev'
 export AWS_REGION='us-east-1'
-export AWS_ACCESS_KEY_ID='[redacted]'
-export AWS_SECRET_ACCESS_KEY='[redacted]'
+data="$(aws sts assume-role --role-arn arn:aws:iam::395594542180:role/product-contractors-role --profile lfproduct --role-session-name lfproduct-dev-session)"
+export AWS_ACCESS_KEY_ID="$(echo "${data}" | jq -r '.Credentials.AccessKeyId')"
+export AWS_SECRET_ACCESS_KEY="$(echo "${data}" | jq -r '.Credentials.SecretAccessKey')"
+export AWS_SESSION_TOKEN="$(echo "${data}" | jq -r '.Credentials.SessionToken')"
+export AWS_SECURITY_TOKEN="$(echo "${data}" | jq -r '.Credentials.SessionToken')"
 export PRODUCT_DOMAIN='dev.lfcla.com'
 export ROOT_DOMAIN='lfcla.dev.platform.linuxfoundation.org'
 export PORT='5000'
@@ -155,15 +158,20 @@ And the following one to unset the environment:
 ```
 #!/bin/bash
 rm -rf /tmp/.aws
+unset AWS_SDK_LOAD_CONFIG=1
 unset AWS_PROFILE
 unset AWS_REGION
 unset AWS_ACCESS_KEY_ID
 unset AWS_SECRET_ACCESS_KEY
+unset AWS_SESSION_TOKEN
+unset AWS_SECURITY_TOKEN
 unset PRODUCT_DOMAIN
 unset ROOT_DOMAIN
 unset PORT
 unset STAGE
 ```
+
+Please refer to [aws_env.md](aws_env.md) for more details.
 
 ## Run the Python Backend
 
