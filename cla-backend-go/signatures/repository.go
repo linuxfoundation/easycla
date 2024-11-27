@@ -2527,6 +2527,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		SignatureReferenceID:          employeeUserModel.UserID,
 		SignatureApproved:             true,
 		SignatureSigned:               true,
+		SignatureEmbargoAcked:         true,
 		SignatureDocumentMajorVersion: 2,
 		SignatureDocumentMinorVersion: 0,
 		SigTypeSignedApprovedID:       fmt.Sprintf("ecla#true#true#%s", companyModel.CompanyID),
@@ -4545,6 +4546,7 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 				LfUsername:             sig.UserLFUsername,
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
+				SignatureEmbargoAcked:  sig.SignatureEmbargoAcked,
 				SignatureModified:      sig.DateModified,
 				SignatureID:            sig.SignatureID,
 				SignedOn:               sigSignedTime,
@@ -4774,6 +4776,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 				SignatureModified:      sig.DateModified,
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
+				// SignatureEmbargoAcked:  sig.SignatureEmbargoAcked,
 			})
 
 			// Increment the current count

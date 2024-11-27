@@ -1520,6 +1520,7 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 	contributor.LinuxFoundationID = user.LfUsername
 	contributor.SignatureApproved = sig.SignatureApproved
 	contributor.SignatureSigned = sig.SignatureSigned
+	// contributor.SignatureEmbargoAcked = sig.SignatureEmbargoAcked
 	contributor.Name = user.Username
 	t, err := utils.ParseDateTime(sig.SignatureCreated)
 	if err != nil {

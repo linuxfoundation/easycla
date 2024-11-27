@@ -48,3 +48,8 @@ properties:
     type: boolean
     description: the flag for contributor that has not yet been approved
     x-omitempty: false
+#  signatureEmbargoAcked:
+#    type: boolean
+#    description: the signature embargo acknowledged flag - true or false value
+#    example: true
+#    # x-omitempty: false

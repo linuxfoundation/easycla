@@ -472,6 +472,7 @@ func (t *TestBehaviour) RunAddCLAManager() {
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("signatureSigned", reflect.Bool).
 		ExpectJsonType("signatureApproved", reflect.Bool).
+		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureReferenceType", reflect.String).
 		ExpectJsonType("signatureReferenceID", reflect.String).
 		ExpectJsonType("signatureReferenceName", reflect.String).
@@ -540,6 +541,7 @@ func (t *TestBehaviour) RunRemoveCLAManager() {
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("signatureSigned", reflect.Bool).
 		ExpectJsonType("signatureApproved", reflect.Bool).
+		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureReferenceType", reflect.String).
 		ExpectJsonType("signatureReferenceID", reflect.String).
 		ExpectJsonType("signatureReferenceName", reflect.String).

@@ -40,6 +40,7 @@ func (s *service) SetInitialCLAManagerACSPermissions(ctx context.Context, signat
 	f["projectID"] = sig.ProjectID
 	f["signed"] = sig.SignatureSigned
 	f["approved"] = sig.SignatureApproved
+	// f["embargo_acked"] = sig.SignatureEmbargoAcked
 	f["companyName"] = sig.CompanyName
 	f["claType"] = sig.ClaType
 
