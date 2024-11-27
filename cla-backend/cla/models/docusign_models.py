@@ -8,7 +8,6 @@ NOTE: This integration uses DocuSign's Legacy Authentication REST API Integratio
 https://developers.docusign.com/esign-rest-api/guides/post-go-live
 
 """
-
 import io
 import json
 import boto3

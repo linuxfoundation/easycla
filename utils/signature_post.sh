@@ -8,6 +8,17 @@ then
   export API_URL="http://localhost:5000"
 fi
 
+if [ -z "$TOKEN" ]
+then
+  source ./auth0_token.secret
+fi
+
+if [ -z "$TOKEN" ]
+then
+  echo "$0: TOKEN not specified and unable to obtain one"
+  exit 1
+fi
+
 if [ ! -z "$DEBUG" ]
 then
   echo "curl -s -XPOST -H 'Authorization: Bearer ${TOKEN}' -H 'Content-Type: application/json' '${API_URL}/v1/signature' -d '${BODY}' | jq -r '.'"
