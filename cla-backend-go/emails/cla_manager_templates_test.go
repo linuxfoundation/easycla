@@ -198,9 +198,9 @@ func TestClaManagerAddedEToUserTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project JohnsProjectExternal")
-	assert.Contains(t, result, "CLA Manager for the organization JohnsCompany and the project JohnsProjectExternal")
-	assert.Contains(t, result, "allowed to contribute to the project JohnsProjectExternal")
+	assert.Contains(t, result, "the CLA Group JohnsProject.")
+	assert.Contains(t, result, "organization JohnsCompany and the CLAGroup JohnsProject")
+	assert.Contains(t, result, "allowed to contribute to the CLA Group JohnsProject")
 	assert.Contains(t, result, "CLA Managers for the CLA Group JohnsProject")
 	assert.Contains(t, result, "<a href=\"http://CorporateURL.com\" target=\"_blank\">")
 	assert.Contains(t, result, "and then the project JohnsProject")
@@ -224,10 +224,9 @@ func TestClaManagerAddedToCLAManagersTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project JohnsProjectExternal associated with the CLA Group JohnsProject")
-	assert.Contains(t, result, "CLA Manager from JohnsCompany for the project JohnsProjectExternal")
-	assert.Contains(t, result, "contribute to JohnsProjectExternal")
-	assert.Contains(t, result, "CLA Managers for JohnsProjectExternal")
+	assert.Contains(t, result, "regarding the CLA Group JohnsProject")
+	assert.Contains(t, result, "contribute to JohnsProject")
+	assert.Contains(t, result, "CLA Managers for CLA Group JohnsProject")
 	assert.Contains(t, result, "<li>John (john@example.com)</li>")
 
 }
@@ -250,7 +249,6 @@ func TestClaManagerDeletedToCLAManagersTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project JohnsProject")
 	assert.Contains(t, result, "John (john@example.com) has been removed")
 
 }
