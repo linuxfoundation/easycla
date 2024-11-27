@@ -1,0 +1,15 @@
+#!/bin/bash
+# API_URL=https://3f13-147-75-85-27.ngrok-free.app (defaults to localhost:5000)
+# TOKEN='...' - Auth0 JWT bearer token
+# BODY='{...}' - signature body
+
+if [ -z "$API_URL" ]
+then
+  export API_URL="http://localhost:5000"
+fi
+
+if [ ! -z "$DEBUG" ]
+then
+  echo "curl -s -XPOST -H 'Authorization: Bearer ${TOKEN}' -H 'Content-Type: application/json' '${API_URL}/v1/signature' -d '${BODY}' | jq -r '.'"
+fi
+curl -s -XPOST -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" "${API_URL}/v1/signature" -d "${BODY}" | jq -r '.'
