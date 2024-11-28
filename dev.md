@@ -202,6 +202,9 @@ open http://localhost:5000/v2/health
 open http://localhost:5000/v2/user/<some_uuid_from_users_table>
 ```
 
+To expose service running on the localhost to the outside world use: `` ./utils/ngrok.sh ``.
+And then tets via: `` API_URL='https://[redacted].ngrok-free.app' ./scripts/health.sh `` from another host (anywhere in the world).
+
 ## Building and Running the Go Backend
 
 Current Endpoints:

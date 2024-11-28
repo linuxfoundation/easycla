@@ -8,6 +8,7 @@ export AWS_ACCESS_KEY_ID="$(echo "${data}" | jq -r '.Credentials.AccessKeyId')"
 export AWS_SECRET_ACCESS_KEY="$(echo "${data}" | jq -r '.Credentials.SecretAccessKey')"
 export AWS_SESSION_TOKEN="$(echo "${data}" | jq -r '.Credentials.SessionToken')"
 export AWS_SECURITY_TOKEN="$(echo "${data}" | jq -r '.Credentials.SessionToken')"
+export GITHUB_OAUTH_TOKEN="$(cat /etc/github/oauth)"
 
 export AWS_SDK_LOAD_CONFIG=true
 export AWS_PROFILE='lfproduct-dev'
