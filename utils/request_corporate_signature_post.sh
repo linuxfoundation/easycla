@@ -1,12 +1,12 @@
 #!/bin/bash
-# API_URL=https://3f13-147-75-85-27.ngrok-free.app (defaults to localhost:5000)
+# API_URL=https://[xyz].ngrok-free.app (defaults to localhost:5000)
 # company_id='862ff296-6508-4f10-9147-2bc2dd7bfe80'
 # project_id='88ee12de-122b-4c46-9046-19422054ed8d'
 # return_url_type='github'
 # return_url='http://localhost'
 # TOKEN='...' - Auth0 JWT bearer token
 # DEBUG=1 TOKEN="$(cat ./auth0.token.secret)" ./utils/request_corporate_signature_post.sh 862ff296-6508-4f10-9147-2bc2dd7bfe80 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
-# TODO: this is WIP atm
+# TODO: this is WIP atm (due to AUTH0 token and X-ACL missing)
 
 if [ -z "$TOKEN" ]
 then

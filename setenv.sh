@@ -3,7 +3,8 @@
 rm -rf /tmp/aws
 cp -R /root/.aws /tmp/.aws
 
-data="$(aws sts assume-role --role-arn arn:aws:iam::395594542180:role/product-contractors-role --profile lfproduct --role-session-name lfproduct-dev-session)"
+dev_arn="$(cat ./product-contractors-role.dev.secret)"
+data="$(aws sts assume-role --role-arn ${dev_arn} --profile lfproduct --role-session-name lfproduct-dev-session)"
 export AWS_ACCESS_KEY_ID="$(echo "${data}" | jq -r '.Credentials.AccessKeyId')"
 export AWS_SECRET_ACCESS_KEY="$(echo "${data}" | jq -r '.Credentials.SecretAccessKey')"
 export AWS_SESSION_TOKEN="$(echo "${data}" | jq -r '.Credentials.SessionToken')"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# API_URL=https://3f13-147-75-85-27.ngrok-free.app (defaults to localhost:5000)
+# API_URL=https://[xyz].ngrok-free.app (defaults to localhost:5000)
 if [ -z "$API_URL" ]
 then
   export API_URL="http://localhost:5000"
