@@ -1,5 +1,5 @@
 #!/bin/bash
-# API_URL=https://3f13-147-75-85-27.ngrok-free.app (defaults to localhost:5000)
+# API_URL=https://[token].ngrok-free.app (defaults to localhost:5000)
 # TOKEN='...' - Auth0 JWT bearer token
 # BODY='{...}' - signature body
 
