@@ -186,6 +186,21 @@ func (mr *MockRepositoryMockRecorder) RemoveProjectAssociatedWithClaGroup(ctx, c
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveProjectAssociatedWithClaGroup", reflect.TypeOf((*MockRepository)(nil).RemoveProjectAssociatedWithClaGroup), ctx, claGroupID, projectSFIDList, all)
 }
 
+// SignedAtFoundation mocks base method.
+func (m *MockRepository) SignedAtFoundation(ctx context.Context, claGroupID string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SignedAtFoundation", ctx, claGroupID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SignedAtFoundation indicates an expected call of SignedAtFoundation.
+func (mr *MockRepositoryMockRecorder) SignedAtFoundation(ctx, claGroupID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SignedAtFoundation", reflect.TypeOf((*MockRepository)(nil).SignedAtFoundation), ctx, claGroupID)
+}
+
 // UpdateClaGroupName mocks base method.
 func (m *MockRepository) UpdateClaGroupName(ctx context.Context, projectSFID, claGroupName string) error {
 	m.ctrl.T.Helper()

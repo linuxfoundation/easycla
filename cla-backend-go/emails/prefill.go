@@ -89,6 +89,8 @@ func (s *emailTemplateServiceProvider) PrefillV2CLAProjectParams(projectSFIDs []
 		claProjectParams = append(claProjectParams, params)
 	}
 
+	log.Debugf("claProjectParams: %+v", claProjectParams)
+
 	return claProjectParams, nil
 }
 

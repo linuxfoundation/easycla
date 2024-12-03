@@ -16,8 +16,8 @@ const (
 	// RemovedCLAManagerTemplate includes the email template for email when user is removed as CLA Manager
 	RemovedCLAManagerTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project {{.GetProjectNameOrFoundation}} and CLA Group {{.CLAGroupName}}.</p>
-<p>You have been removed as a CLA Manager from {{.CompanyName}} for the project {{.Project.ExternalProjectName}}.</p>
+<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
+<p>You have been removed as a CLA Manager from {{.CompanyName}} for the CLA Group {{.CLAGroupName}}.</p>
 <p>If you have further questions about this, please contact one of the existing managers from
 {{.CompanyName}}:</p>
 <ul>
@@ -29,13 +29,7 @@ const (
 )
 
 // RenderRemovedCLAManagerTemplate renders the RemovedCLAManagerTemplate
-func RenderRemovedCLAManagerTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params RemovedCLAManagerTemplateParams) (string, error) {
-	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
-	if err != nil {
-		return "", err
-	}
-	params.CLAGroupTemplateParams = claGroupParams
-
+func RenderRemovedCLAManagerTemplate(svc EmailTemplateService, claGroupModelVersion string, params RemovedCLAManagerTemplateParams) (string, error) {
 	return RenderTemplate(claGroupModelVersion, RemovedCLAManagerTemplateName, RemovedCLAManagerTemplate, params)
 }
 
@@ -242,8 +236,9 @@ func RenderClaManagerAddedEToUserTemplate(svc EmailTemplateService, claGroupMode
 type ClaManagerAddedToCLAManagersTemplateParams struct {
 	CommonEmailParams
 	CLAGroupTemplateParams
-	Name  string
-	Email string
+	Name        string
+	Email       string
+	ProjectSFID string
 }
 
 const (
@@ -293,12 +288,11 @@ const (
 )
 
 // RenderClaManagerDeletedToCLAManagersTemplate renders the RemovedCLAManagerTemplate
-func RenderClaManagerDeletedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params ClaManagerDeletedToCLAManagersTemplateParams) (string, error) {
-	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
-	if err != nil {
-		return "", err
+func RenderClaManagerDeletedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, claGroupName string) (string, error) {
+
+	params := CLAGroupTemplateParams{
+		CLAGroupName: claGroupName,
 	}
-	params.CLAGroupTemplateParams = claGroupParams
 
 	return RenderTemplate(claGroupModelVersion, ClaManagerDeletedToCLAManagersTemplateName, ClaManagerDeletedToCLAManagersTemplate, params)
 }
