@@ -56,6 +56,7 @@ type Repository interface {
 	IsAssociated(ctx context.Context, projectSFID string, claGroupID string) (bool, error)
 	UpdateRepositoriesCount(ctx context.Context, projectSFID string, diff int64, reset bool) error
 	UpdateClaGroupName(ctx context.Context, projectSFID string, claGroupName string) error
+	SignedAtFoundation(ctx context.Context, claGroupID string) (bool, error)
 }
 
 type repo struct {
@@ -122,6 +123,26 @@ func (repo *repo) queryClaGroupsProjects(ctx context.Context, keyCondition expre
 	}
 
 	return projectClaGroups, nil
+}
+
+func (repo *repo) SignedAtFoundation(ctx context.Context, claGroupID string) (bool, error) {
+	f := logrus.Fields{
+		"functionName": "SignedAtFoundation",
+		"claGroupID":   claGroupID,
+	}
+	pcgs, err := repo.GetProjectsIdsForClaGroup(ctx, claGroupID)
+	if err != nil {
+		return false, err
+	}
+
+	log.WithFields(f).Info("checking if claGroup is signed at foundation level..")
+	for _, pcg := range pcgs {
+		if pcg.FoundationSFID == pcg.ProjectSFID {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // GetClaGroupIDForProject retrieves the CLA Group ID for the project
