@@ -485,7 +485,7 @@ func sendClaManagerAddedEmailToCLAManagers(emailSvc emails.EmailTemplateService,
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Added Notice for %s", projectName)
 	recipients := []string{emailParams.RecipientAddress}
-	body, err := emails.RenderClaManagerAddedToCLAManagersTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
+	body, err := emails.RenderClaManagerAddedToCLAManagersTemplate(emailSvc, claGroupModel.Version, projectName, emailParams)
 	if err != nil {
 		log.Warnf("email template render : %s failed : %v", emails.ClaManagerAddedToCLAManagersTemplate, err)
 		return

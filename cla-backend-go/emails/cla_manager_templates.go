@@ -258,12 +258,15 @@ list of company’s CLA Managers for CLA Group {{.CLAGroupName}}.</p>
 )
 
 // RenderClaManagerAddedToCLAManagersTemplate renders the ClaManagerAddedToCLAManagersTemplate
-func RenderClaManagerAddedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params ClaManagerAddedToCLAManagersTemplateParams) (string, error) {
-	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
-	if err != nil {
-		return "", err
+func RenderClaManagerAddedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, claGroupName string, params ClaManagerAddedToCLAManagersTemplateParams) (string, error) {
+	// claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// params.CLAGroupTemplateParams = claGroupParams
+	params.CLAGroupTemplateParams = CLAGroupTemplateParams{
+		CLAGroupName: claGroupName,
 	}
-	params.CLAGroupTemplateParams = claGroupParams
 
 	return RenderTemplate(claGroupModelVersion, ClaManagerAddedToCLAManagersTemplateName, ClaManagerAddedToCLAManagersTemplate, params)
 }
