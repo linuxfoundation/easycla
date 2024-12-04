@@ -5,7 +5,7 @@
 # return_url_type='github'
 # return_url='http://localhost'
 # TOKEN='...' - Auth0 JWT bearer token
-# DEBUG=1 TOKEN="$(cat ./auth0.token.secret)" ./utils/request_corporate_signature_post.sh 862ff296-6508-4f10-9147-2bc2dd7bfe80 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
+# DEBUG=1 TOKEN="$(cat ./auth0.token.secret)" ./utils/request_corporate_signature_go_post.sh 862ff296-6508-4f10-9147-2bc2dd7bfe80 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
 # TODO: this is WIP atm (due to AUTH0 token and X-ACL missing)
 
 if [ -z "$TOKEN" ]
