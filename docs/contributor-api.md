@@ -1,4 +1,3 @@
-```
 # EasyCLA Sign Flow: Sequence Overview
 
 ## 1. User Creates a Pull Request (PR)
@@ -115,4 +114,3 @@
       /user/{userID}/invite-company-admin
       ```
     - An email is sent to the user to invite them as a company admin, concluding the process.
-```
