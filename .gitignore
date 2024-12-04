@@ -241,3 +241,7 @@ dist/*
 api-postman/*
 
 cla-backend/run-python-test-example-*.py
+
+# LG
+out
+*.secret
