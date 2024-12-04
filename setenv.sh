@@ -10,6 +10,11 @@ export AWS_SECRET_ACCESS_KEY="$(echo "${data}" | jq -r '.Credentials.SecretAcces
 export AWS_SESSION_TOKEN="$(echo "${data}" | jq -r '.Credentials.SessionToken')"
 export AWS_SECURITY_TOKEN="$(echo "${data}" | jq -r '.Credentials.SessionToken')"
 export GITHUB_OAUTH_TOKEN="$(cat /etc/github/oauth)"
+export DOCUSIGN_INTEGRATOR_KEY="$(cat ./DOCUSIGN_INTEGRATOR_KEY.secret)"
+export DOCUSIGN_USER_ID="$(cat ./DOCUSIGN_USER_ID.secret)"
+export DOCUSIGN_AUTH_SERVER="$(cat ./DOCUSIGN_AUTH_SERVER.secret)"
+export DOCUSIGN_ROOT_URL="$(cat ./DOCUSIGN_ROOT_URL.secret)"
+export DOCUSIGN_ACCOUNT_ID="$(cat ./DOCUSIGN_ACCOUNT_ID.secret)"
 
 export AWS_SDK_LOAD_CONFIG=true
 export AWS_PROFILE='lfproduct-dev'
