@@ -4,7 +4,7 @@
 # project_id='88ee12de-122b-4c46-9046-19422054ed8d'
 # return_url_type='github'
 # return_url='http://localhost'
-# DEBUG=1 ./utils/request_individual_signature_post.sh 9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
+# DEBUG=1 ./utils/request_individual_signature_py_post.sh 9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
 
 if [ -z "$1" ]
 then
