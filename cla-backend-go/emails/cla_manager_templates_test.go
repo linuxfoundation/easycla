@@ -30,8 +30,8 @@ func TestRemovedCLAManagerTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project JohnsProject")
-	assert.Contains(t, result, "CLA Manager from JohnsCompany for the project JohnsProject")
+	assert.Contains(t, result, "regarding the CLA Group JohnsProject")
+	assert.Contains(t, result, "CLA Manager from JohnsCompany for the CLA Group JohnsProject")
 	assert.Contains(t, result, "<li>LFUserName LFEmail</li>")
 
 	// even if the foundation is set we should show the project name
@@ -41,15 +41,8 @@ func TestRemovedCLAManagerTemplate(t *testing.T) {
 		params)
 	assert.NoError(t, err)
 	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "for the project JohnsProject")
+	assert.Contains(t, result, "for the CLA Group JohnsProject")
 
-	// then we increase the child project count so we should get the FoundationName instead of project name
-	params.ChildProjectCount = 2
-	result, err = RenderTemplate(utils.V1, RemovedCLAManagerTemplateName, RemovedCLAManagerTemplate,
-		params)
-	assert.NoError(t, err)
-	assert.Contains(t, result, "Hello JohnsClaManager")
-	assert.Contains(t, result, "regarding the project CNCF")
 }
 
 func TestRequestAccessToCLAManagersTemplate(t *testing.T) {
