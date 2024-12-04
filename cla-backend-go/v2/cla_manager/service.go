@@ -239,7 +239,7 @@ func (s *service) CreateCLAManager(ctx context.Context, authUser *auth.User, cla
 	}
 
 	// Add CLA Manager to Database
-	signature, addErr := s.managerService.AddClaManager(ctx, authUser, v1CompanyModel.CompanyID, claGroupID, user.Username, projectSF.Name)
+	signature, addErr := s.managerService.AddClaManager(ctx, authUser, v1CompanyModel.CompanyID, claGroupID, user.Username, params.ProjectSFID)
 	if addErr != nil {
 		msg := buildErrorMessageCreate(params, addErr)
 		log.WithFields(f).Warn(msg)
