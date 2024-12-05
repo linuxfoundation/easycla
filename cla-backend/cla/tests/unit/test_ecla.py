@@ -25,6 +25,7 @@ def test_save_employee_signature(project, company, user_instance):
     signature.get_signature_type.return_value = "cla"
     signature.get_signature_signed.return_value = True
     signature.get_signature_approved.return_value = True
+    signature.get_signature_embargo_acked.return_value = True
     signature.get_signature_acl.return_value = ['acl1', 'acl2']
     signature.get_signature_user_ccla_company_id.return_value = "company_id"
     signature.get_signature_return_url.return_value = None

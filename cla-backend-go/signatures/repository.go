@@ -2126,6 +2126,11 @@ func (repo repository) ValidateProjectRecord(ctx context.Context, signatureID, n
 	expressionAttributeValues[":a"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
 	updateExpression = updateExpression + " #A = :a,"
 
+	// Set embago acknowledged flag
+	// expressionAttributeNames["#E"] = aws.String("signature_embargo_acked")
+	// expressionAttributeValues[":e"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
+	// updateExpression = updateExpression + " #E = :e,"
+
 	expressionAttributeNames["#S"] = aws.String("note")
 	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
 	updateExpression = updateExpression + " #S = :s"
@@ -2527,6 +2532,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		SignatureReferenceID:          employeeUserModel.UserID,
 		SignatureApproved:             true,
 		SignatureSigned:               true,
+		SignatureEmbargoAcked:         true,
 		SignatureDocumentMajorVersion: 2,
 		SignatureDocumentMinorVersion: 0,
 		SigTypeSignedApprovedID:       fmt.Sprintf("ecla#true#true#%s", companyModel.CompanyID),
@@ -4545,6 +4551,7 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 				LfUsername:             sig.UserLFUsername,
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
+				SignatureEmbargoAcked:  true,
 				SignatureModified:      sig.DateModified,
 				SignatureID:            sig.SignatureID,
 				SignedOn:               sigSignedTime,
@@ -4928,7 +4935,10 @@ func (repo repository) ActivateSignature(ctx context.Context, signatureID string
 	}
 
 	// Build the expression
-	expressionUpdate := expression.Set(expression.Name("signature_approved"), expression.Value(true)).Set(expression.Name("signature_signed"), expression.Value(false))
+	expressionUpdate := expression.
+		Set(expression.Name("signature_approved"), expression.Value(true)).
+		Set(expression.Name("signature_signed"), expression.Value(false)).
+		Set(expression.Name("signature_embargo_acked"), expression.Value(true))
 
 	expr, err := expression.NewBuilder().WithUpdate(expressionUpdate).Build()
 	if err != nil {

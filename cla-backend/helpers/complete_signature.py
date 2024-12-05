@@ -31,6 +31,7 @@ cla.log.info('Completing the signature: %s' %SIGNATURE_ID)
 signature = get_signature_instance()
 signature.load(SIGNATURE_ID)
 signature.set_signature_signed(True)
+signature.set_signature_embargo_acked(True)
 signature.save()
 if signature.get_signature_reference_type() != 'user':
     cla.log.error('Trying to handle CCLA as a ICLA - not implemented yet')
