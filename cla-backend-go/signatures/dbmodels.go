@@ -10,7 +10,7 @@ type ItemSignature struct {
 	DateModified                  string   `json:"date_modified,omitempty"`
 	SignatureApproved             bool     `json:"signature_approved,omitempty"`
 	SignatureSigned               bool     `json:"signature_signed"`
-	SignatureEmbargoAcked         bool     `json:"signature_embargo_acked"`
+	SignatureEmbargoAcked         bool     `json:"signature_embargo_acked,omitempty"`
 	SignatureDocumentMajorVersion int      `json:"signature_document_major_version,omitempty"`
 	SignatureDocumentMinorVersion int      `json:"signature_document_minor_version,omitempty"`
 	SignatureSignURL              string   `json:"signature_sign_url,omitempty"`

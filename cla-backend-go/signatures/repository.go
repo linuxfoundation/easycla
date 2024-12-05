@@ -2126,6 +2126,11 @@ func (repo repository) ValidateProjectRecord(ctx context.Context, signatureID, n
 	expressionAttributeValues[":a"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
 	updateExpression = updateExpression + " #A = :a,"
 
+	// Set embago acknowledged flag
+	// expressionAttributeNames["#E"] = aws.String("signature_embargo_acked")
+	// expressionAttributeValues[":e"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
+	// updateExpression = updateExpression + " #E = :e,"
+
 	expressionAttributeNames["#S"] = aws.String("note")
 	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
 	updateExpression = updateExpression + " #S = :s"
@@ -4540,13 +4545,14 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 
 		intermediateResponse = append(intermediateResponse, &iclaSignatureWithDetails{
 			IclaSignature: &models.IclaSignature{
-				GithubUsername:         sig.UserGithubUsername,
-				GitlabUsername:         sig.UserGitlabUsername,
-				UserID:                 sig.SignatureReferenceID,
-				LfUsername:             sig.UserLFUsername,
-				SignatureApproved:      sig.SignatureApproved,
-				SignatureSigned:        sig.SignatureSigned,
-				SignatureEmbargoAcked:  sig.SignatureEmbargoAcked,
+				GithubUsername:    sig.UserGithubUsername,
+				GitlabUsername:    sig.UserGitlabUsername,
+				UserID:            sig.SignatureReferenceID,
+				LfUsername:        sig.UserLFUsername,
+				SignatureApproved: sig.SignatureApproved,
+				SignatureSigned:   sig.SignatureSigned,
+				// SignatureEmbargoAcked:  sig.SignatureEmbargoAcked,
+				SignatureEmbargoAcked:  true,
 				SignatureModified:      sig.DateModified,
 				SignatureID:            sig.SignatureID,
 				SignedOn:               sigSignedTime,
@@ -4776,7 +4782,6 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 				SignatureModified:      sig.DateModified,
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
-				// SignatureEmbargoAcked:  sig.SignatureEmbargoAcked,
 			})
 
 			// Increment the current count
@@ -4931,7 +4936,10 @@ func (repo repository) ActivateSignature(ctx context.Context, signatureID string
 	}
 
 	// Build the expression
-	expressionUpdate := expression.Set(expression.Name("signature_approved"), expression.Value(true)).Set(expression.Name("signature_signed"), expression.Value(false))
+	expressionUpdate := expression.
+		Set(expression.Name("signature_approved"), expression.Value(true)).
+		Set(expression.Name("signature_signed"), expression.Value(false)).
+		Set(expression.Name("signature_embargo_acked"), expression.Value(true))
 
 	expr, err := expression.NewBuilder().WithUpdate(expressionUpdate).Build()
 	if err != nil {

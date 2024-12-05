@@ -422,6 +422,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 		log.WithFields(f).Debugf("envelope signed - status: %s", status)
 		updates := map[string]interface{}{
 			"signature_signed":          true,
+			"signature_embargo_acked":   true,
 			"date_modified":             currentTime,
 			"signed_on":                 currentTime,
 			"user_docusign_raw_xml":     string(payload),
@@ -657,6 +658,7 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 		log.WithFields(f).Debugf("envelope signed - status: %s", status)
 		updates := map[string]interface{}{
 			"signature_signed":          true,
+			"signature_embargo_acked":   true,
 			"date_modified":             currentTime,
 			"signed_on":                 currentTime,
 			"user_docusign_raw_xml":     string(payload),
@@ -890,6 +892,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		log.WithFields(f).Debugf("envelope signed - status: %s", status)
 		updates := map[string]interface{}{
 			"signature_signed":          true,
+			"signature_embargo_acked":   true,
 			"date_modified":             currentTime,
 			"signed_on":                 currentTime,
 			"user_docusign_raw_xml":     string(payload),
@@ -1138,9 +1141,10 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 	if status == DocusignCompleted && !signature.SignatureSigned {
 		_, currentTime := utils.CurrentTime()
 		updates := map[string]interface{}{
-			"signature_signed": true,
-			"date_modified":    currentTime,
-			"signed_on":        currentTime,
+			"signature_signed":        true,
+			"signature_embargo_acked": true,
+			"date_modified":           currentTime,
+			"signed_on":               currentTime,
 		}
 
 		userSignedDate := info.EnvelopeStatus.RecipientStatuses[0].Signed
@@ -1371,7 +1375,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 				SignatureProjectID:            latestSignature.ProjectID,
 				SignatureApproved:             latestSignature.SignatureApproved,
 				SignatureSigned:               latestSignature.SignatureSigned,
-				SignatureEmbargoAcked:         latestSignature.SignatureEmbargoAcked,
+				SignatureEmbargoAcked:         true,
 				SignatureReferenceName:        latestSignature.SignatureReferenceName,
 				SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
 				SignedOn:                      latestSignature.SignedOn,
@@ -2361,7 +2365,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 				SignatureProjectID:            latestSignature.ProjectID,
 				SignatureApproved:             latestSignature.SignatureApproved,
 				SignatureSigned:               latestSignature.SignatureSigned,
-				SignatureEmbargoAcked:         latestSignature.SignatureEmbargoAcked,
+				SignatureEmbargoAcked:         true,
 				SignatureReferenceName:        latestSignature.SignatureReferenceName,
 				SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
 				SignedOn:                      latestSignature.SignedOn,
@@ -2575,7 +2579,7 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 			SignatoryName:                 signatoryName,
 			SignatureSigned:               companySignature.SignatureSigned,
 			SignatureApproved:             companySignature.SignatureApproved,
-			SignatureEmbargoAcked:         companySignature.SignatureEmbargoAcked,
+			SignatureEmbargoAcked:         true,
 			DateCreated:                   companySignature.Created,
 			SignatureDocumentMajorVersion: majorVersion,
 			SignatureDocumentMinorVersion: minorVersion,

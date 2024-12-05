@@ -49,6 +49,6 @@ fi
 
 if [ ! -z "$DEBUG" ]
 then
-  echo "curl -s -XPOST -H 'Authorization: Bearer ${TOKEN}' -H 'Content-Type: application/json' '${API_URL}/v2/request-employee-signature' -d '{\"project_id\":\"${project_id}\",\"user_id\":\"${user_id}\",\"company_id\":\"${company_id}\",\"return_url_type\":\"${return_url_type}\",\"return_url\":\"${return_url}\"}' | jq -r '.'"
+  echo "curl -s -XPOST -H 'Content-Type: application/json' '${API_URL}/v2/request-employee-signature' -d '{\"project_id\":\"${project_id}\",\"user_id\":\"${user_id}\",\"company_id\":\"${company_id}\",\"return_url_type\":\"${return_url_type}\",\"return_url\":\"${return_url}\"}' | jq -r '.'"
 fi
-curl -s -XPOST -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" "${API_URL}/v2/request-employee-signature" -d "{\"project_id\":\"${project_id}\",\"user_id\":\"${user_id}\",\"company_id\":\"${company_id}\",\"return_url_type\":\"${return_url_type}\",\"return_url\":\"${return_url}\"}" | jq -r '.'
+curl -s -XPOST -H "Content-Type: application/json" "${API_URL}/v2/request-employee-signature" -d "{\"project_id\":\"${project_id}\",\"user_id\":\"${user_id}\",\"company_id\":\"${company_id}\",\"return_url_type\":\"${return_url_type}\",\"return_url\":\"${return_url}\"}" | jq -r '.'
