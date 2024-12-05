@@ -15,7 +15,7 @@ then
 fi
 
 if [ -z "$TOKEN" ]
-then 
+then
   echo "$0: TOKEN not specified and unable to obtain one"
   exit 1
 fi
