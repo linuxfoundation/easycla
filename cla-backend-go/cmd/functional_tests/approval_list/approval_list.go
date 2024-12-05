@@ -308,7 +308,6 @@ func (t *TestBehaviour) RunUpdateApprovalListAddEmail(testData InputTestValues) 
 		ExpectJsonType("signatureType", reflect.String).
 		ExpectJsonType("signatureApproved", reflect.Bool).
 		ExpectJsonType("signatureSigned", reflect.Bool).
-		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureCreated", reflect.String).
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("version", reflect.String).
@@ -353,7 +352,6 @@ func (t *TestBehaviour) RunUpdateApprovalListRemoveEmail(testData InputTestValue
 		ExpectJsonType("signatureType", reflect.String).
 		ExpectJsonType("signatureApproved", reflect.Bool).
 		ExpectJsonType("signatureSigned", reflect.Bool).
-		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureCreated", reflect.String).
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("version", reflect.String).
@@ -398,7 +396,6 @@ func (t *TestBehaviour) RunUpdateApprovalListAddDomain(testData InputTestValues)
 		ExpectJsonType("signatureType", reflect.String).
 		ExpectJsonType("signatureApproved", reflect.Bool).
 		ExpectJsonType("signatureSigned", reflect.Bool).
-		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureCreated", reflect.String).
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("version", reflect.String).
@@ -443,7 +440,6 @@ func (t *TestBehaviour) RunUpdateApprovalListRemoveDomain(testData InputTestValu
 		ExpectJsonType("signatureType", reflect.String).
 		ExpectJsonType("signatureApproved", reflect.Bool).
 		ExpectJsonType("signatureSigned", reflect.Bool).
-		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureCreated", reflect.String).
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("version", reflect.String).
@@ -488,7 +484,6 @@ func (t *TestBehaviour) RunUpdateApprovalListAddGitHubUsername(testData InputTes
 		ExpectJsonType("signatureType", reflect.String).
 		ExpectJsonType("signatureApproved", reflect.Bool).
 		ExpectJsonType("signatureSigned", reflect.Bool).
-		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureCreated", reflect.String).
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("version", reflect.String).
@@ -533,7 +528,6 @@ func (t *TestBehaviour) RunUpdateApprovalListRemoveGitHubUsername(testData Input
 		ExpectJsonType("signatureType", reflect.String).
 		ExpectJsonType("signatureApproved", reflect.Bool).
 		ExpectJsonType("signatureSigned", reflect.Bool).
-		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureCreated", reflect.String).
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("version", reflect.String).
@@ -578,7 +572,6 @@ func (t *TestBehaviour) RunUpdateApprovalListAddGitHubOrg(testData InputTestValu
 		ExpectJsonType("signatureType", reflect.String).
 		ExpectJsonType("signatureApproved", reflect.Bool).
 		ExpectJsonType("signatureSigned", reflect.Bool).
-		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureCreated", reflect.String).
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("version", reflect.String).
@@ -623,7 +616,6 @@ func (t *TestBehaviour) RunUpdateApprovalListRemoveGitHubOrg(testData InputTestV
 		ExpectJsonType("signatureType", reflect.String).
 		ExpectJsonType("signatureApproved", reflect.Bool).
 		ExpectJsonType("signatureSigned", reflect.Bool).
-		// ExpectJsonType("signatureEmbargoAcked", reflect.Bool).
 		ExpectJsonType("signatureCreated", reflect.String).
 		ExpectJsonType("signatureModified", reflect.String).
 		ExpectJsonType("version", reflect.String).
