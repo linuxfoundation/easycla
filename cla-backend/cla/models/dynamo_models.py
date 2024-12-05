@@ -2484,7 +2484,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_project_index = ProjectSignatureIndex()
     signature_reference_index = ReferenceSignatureIndex()
     signature_envelope_id = UnicodeAttribute(null=True)
-    signature_embargo_acked = BooleanAttribute(default=False, null=True)
+    signature_embargo_acked = BooleanAttribute(default=True, null=True)
     # Callback type refers to either Gerrit or GitHub
     signature_return_url_type = UnicodeAttribute(null=True)
     note = UnicodeAttribute(null=True)
@@ -2539,7 +2539,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             signature_type=None,
             signature_signed=False,
             signature_approved=False,
-            signature_embargo_acked=False,
+            signature_embargo_acked=True,
             signed_on=None,
             signatory_name=None,
             signing_entity_name=None,
