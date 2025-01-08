@@ -2343,7 +2343,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 		return nil, errors.New("no gerrits found for project")
 	}
 
-	returnURL := gerrits.List[0].GerritURL
+	returnURL := input.ReturnURL
 	log.WithFields(f).Debugf("returnURL: %s", returnURL)
 
 	if latestSignature != nil {
