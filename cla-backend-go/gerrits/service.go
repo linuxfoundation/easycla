@@ -136,19 +136,19 @@ func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID s
 
 	var groupNameCcla, groupNameIcla string
 	if params.GroupIDIcla != "" {
-		group, err := s.lfGroup.GetGroup(ctx, params.GroupIDIcla)
-		if err != nil {
+		group, err2 := s.lfGroup.GetGroup(ctx, params.GroupIDIcla)
+		if err2 != nil {
 			message := fmt.Sprintf("unable to get LDAP ICLA Group: %s", params.GroupIDIcla)
-			log.WithFields(f).WithError(err).Warnf(message)
+			log.WithFields(f).WithError(err2).Warnf(message)
 			return nil, errors.New(message)
 		}
 		groupNameIcla = group.Title
 	}
 	if params.GroupIDCcla != "" {
-		group, err := s.lfGroup.GetGroup(ctx, params.GroupIDCcla)
-		if err != nil {
+		group, err2 := s.lfGroup.GetGroup(ctx, params.GroupIDCcla)
+		if err2 != nil {
 			message := fmt.Sprintf("unable to get LDAP CCLA Group: %s", params.GroupIDCcla)
-			log.WithFields(f).WithError(err).Warnf(message)
+			log.WithFields(f).WithError(err2).Warnf(message)
 			return nil, errors.New(message)
 		}
 		groupNameCcla = group.Title
