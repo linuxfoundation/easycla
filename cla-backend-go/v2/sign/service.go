@@ -422,6 +422,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 		log.WithFields(f).Debugf("envelope signed - status: %s", status)
 		updates := map[string]interface{}{
 			"signature_signed":          true,
+			"signature_embargo_acked":   true,
 			"date_modified":             currentTime,
 			"signed_on":                 currentTime,
 			"user_docusign_raw_xml":     string(payload),
@@ -657,6 +658,7 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 		log.WithFields(f).Debugf("envelope signed - status: %s", status)
 		updates := map[string]interface{}{
 			"signature_signed":          true,
+			"signature_embargo_acked":   true,
 			"date_modified":             currentTime,
 			"signed_on":                 currentTime,
 			"user_docusign_raw_xml":     string(payload),
@@ -890,6 +892,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		log.WithFields(f).Debugf("envelope signed - status: %s", status)
 		updates := map[string]interface{}{
 			"signature_signed":          true,
+			"signature_embargo_acked":   true,
 			"date_modified":             currentTime,
 			"signed_on":                 currentTime,
 			"user_docusign_raw_xml":     string(payload),
@@ -1138,9 +1141,10 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 	if status == DocusignCompleted && !signature.SignatureSigned {
 		_, currentTime := utils.CurrentTime()
 		updates := map[string]interface{}{
-			"signature_signed": true,
-			"date_modified":    currentTime,
-			"signed_on":        currentTime,
+			"signature_signed":        true,
+			"signature_embargo_acked": true,
+			"date_modified":           currentTime,
+			"signed_on":               currentTime,
 		}
 
 		userSignedDate := info.EnvelopeStatus.RecipientStatuses[0].Signed
@@ -1371,6 +1375,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 				SignatureProjectID:            latestSignature.ProjectID,
 				SignatureApproved:             latestSignature.SignatureApproved,
 				SignatureSigned:               latestSignature.SignatureSigned,
+				SignatureEmbargoAcked:         true,
 				SignatureReferenceName:        latestSignature.SignatureReferenceName,
 				SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
 				SignedOn:                      latestSignature.SignedOn,
@@ -1443,6 +1448,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		DateModified:                  currentTime,
 		SignatureSigned:               false,
 		SignatureApproved:             true,
+		SignatureEmbargoAcked:         true,
 		SignatureDocumentMajorVersion: majorVersion,
 		SignatureDocumentMinorVersion: minorVersion,
 		SignatureReferenceID:          *input.UserID,
@@ -2359,6 +2365,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 				SignatureProjectID:            latestSignature.ProjectID,
 				SignatureApproved:             latestSignature.SignatureApproved,
 				SignatureSigned:               latestSignature.SignatureSigned,
+				SignatureEmbargoAcked:         true,
 				SignatureReferenceName:        latestSignature.SignatureReferenceName,
 				SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
 				SignedOn:                      latestSignature.SignedOn,
@@ -2397,6 +2404,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 		SignatureReferenceType:        utils.SignatureReferenceTypeUser,
 		SignatureSigned:               false,
 		SignatureApproved:             true,
+		SignatureEmbargoAcked:         true,
 		SignatureType:                 utils.SignatureTypeCLA,
 		SignatureReferenceID:          *input.UserID,
 		SignatureReturnURLType:        input.ReturnURLType,
@@ -2571,6 +2579,7 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 			SignatoryName:                 signatoryName,
 			SignatureSigned:               companySignature.SignatureSigned,
 			SignatureApproved:             companySignature.SignatureApproved,
+			SignatureEmbargoAcked:         true,
 			DateCreated:                   companySignature.Created,
 			SignatureDocumentMajorVersion: majorVersion,
 			SignatureDocumentMinorVersion: minorVersion,
@@ -2611,6 +2620,7 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 			SignatoryName:                 signatoryName,
 			SignatureSigned:               false,
 			SignatureApproved:             true,
+			SignatureEmbargoAcked:         true,
 			SignatureCallbackURL:          callbackURL,
 			SignatureReturnURL:            input.ReturnURL,
 			SigtypeSignedApprovedID:       fmt.Sprintf("%s#%v#%v#%s", utils.SignatureTypeCCLA, signed, approved, signatureID),
@@ -2648,7 +2658,7 @@ func removeSignatoryRole(ctx context.Context, userEmail string, companySFID stri
 	usc := userService.GetClient()
 	// search user
 	log.WithFields(f).Debug("searching user by email")
-	user, err := usc.SearchUserByEmail(userEmail)
+	user, err := usc.SearchUsersByEmail(userEmail)
 	if err != nil {
 		log.WithFields(f).Debug("Failed to get user")
 		return err
@@ -2699,7 +2709,7 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 	usc := userService.GetClient()
 	// search user
 	log.WithFields(f).Debug("searching user by email")
-	user, err := usc.SearchUserByEmail(userEmail)
+	user, err := usc.SearchUsersByEmail(userEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Debugf("User with email: %s does not have an LF login", userEmail)
 		return nil

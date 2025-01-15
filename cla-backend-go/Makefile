@@ -69,7 +69,7 @@ setup-swagger:
 
 setup_dev: setup-dev
 setup-dev:
-	pushd /tmp && echo "==> Installing goimport..." && go install golang.org/x/tools/cmd/goimports@latest && echo "==> Installation coverage tools..." && go install golang.org/x/tools/cmd/cover@latest && popd
+	pushd /tmp && echo "==> Installing goimport..." && go install golang.org/x/tools/cmd/goimports@v0.24.0 && echo "==> Installation coverage tools..." && go install golang.org/x/tools/cmd/cover@latest && popd
 
 	@echo "==> Installing linter..."
 	@# Latest releases: https://github.com/golangci/golangci-lint/releases

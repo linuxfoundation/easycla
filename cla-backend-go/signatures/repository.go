@@ -2127,6 +2127,11 @@ func (repo repository) ValidateProjectRecord(ctx context.Context, signatureID, n
 	expressionAttributeValues[":a"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
 	updateExpression = updateExpression + " #A = :a,"
 
+	// Set embago acknowledged flag
+	// expressionAttributeNames["#E"] = aws.String("signature_embargo_acked")
+	// expressionAttributeValues[":e"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
+	// updateExpression = updateExpression + " #E = :e,"
+
 	expressionAttributeNames["#S"] = aws.String("note")
 	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
 	updateExpression = updateExpression + " #S = :s"
@@ -2369,14 +2374,14 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 	}
 
 	// This is the keys we want to match
-	condition := expression.Key("signature_user_ccla_company_id").Equal(expression.Value(companyModel.CompanyID)).And(
-		expression.Key("signature_project_id").Equal(expression.Value(claGroupModel.ProjectID)))
+	condition := expression.Key("signature_reference_id").Equal(expression.Value(employeeUserModel.UserID))
 
 	var filterAdded bool
 	var filter expression.ConditionBuilder
 
 	// Check for approved signatures
-	filter = addAndCondition(filter, expression.Name("signature_reference_id").Equal(expression.Value(employeeUserModel.UserID)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyModel.CompanyID)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_project_id").Equal(expression.Value(claGroupModel.ProjectID)), &filterAdded)
 
 	log.WithFields(f).Debugf("running employee signature query on table: %s", repo.signatureTableName)
 	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildProjection()).Build()
@@ -2395,7 +2400,7 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 		FilterExpression:          expr.Filter(),
 		ProjectionExpression:      expr.Projection(),
 		TableName:                 aws.String(repo.signatureTableName),
-		IndexName:                 aws.String("signature-user-ccla-company-index"), // Name of a secondary index to scan
+		IndexName:                 aws.String("reference-signature-index"), // Name of a secondary index to scan
 		Limit:                     aws.Int64(10),
 	}
 
@@ -2407,7 +2412,9 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 		errorChannel <- errQuery
 		return
 	}
+
 	if results == nil || len(results.Items) == 0 {
+		log.WithFields(f).Debug("No ecla records found!")
 		resultChannel <- &EmployeeModel{
 			Signature: nil,
 			User:      employeeUserModel,
@@ -2526,6 +2533,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		SignatureReferenceID:          employeeUserModel.UserID,
 		SignatureApproved:             true,
 		SignatureSigned:               true,
+		SignatureEmbargoAcked:         true,
 		SignatureDocumentMajorVersion: 2,
 		SignatureDocumentMinorVersion: 0,
 		SigTypeSignedApprovedID:       fmt.Sprintf("ecla#true#true#%s", companyModel.CompanyID),
@@ -4544,6 +4552,7 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 				LfUsername:             sig.UserLFUsername,
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
+				SignatureEmbargoAcked:  true,
 				SignatureModified:      sig.DateModified,
 				SignatureID:            sig.SignatureID,
 				SignedOn:               sigSignedTime,
@@ -4626,6 +4635,19 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	totalCountChannel := make(chan int64, 1)
 	go repo.getTotalCorporateContributorCount(ctx, claGroupID, companyID, searchTerm, totalCountChannel)
 
+	totalCount := <-totalCountChannel
+	log.WithFields(f).Debugf("total corporate contributor count: %d", totalCount)
+	// If the page size is nil, set it to the default
+	if pageSize == nil {
+		pageSize = aws.Int64(10)
+	}
+
+	if *pageSize > totalCount {
+		pageSize = aws.Int64(totalCount)
+	}
+
+	log.WithFields(f).Debugf("total corporate contributor count: %d, page size: %d", totalCount, *pageSize)
+
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
 	// if companyID != nil {
 	// 	sortKey := fmt.Sprintf("%s#%v#%v#%v", utils.ClaTypeECLA, true, true, *companyID)
@@ -4658,11 +4680,6 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		return nil, err
 	}
 
-	// If the page size is nil, set it to the default
-	if pageSize == nil {
-		pageSize = aws.Int64(10)
-	}
-
 	// Assemble the query input parameters
 	queryInput := &dynamodb.QueryInput{
 		ExpressionAttributeNames:  expr.Names(),
@@ -4690,7 +4707,9 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	out := &models.CorporateContributorList{List: make([]*models.CorporateContributor, 0)}
 	var lastEvaluatedKey string
 
-	for ok := true; ok; ok = lastEvaluatedKey != "" {
+	currentCount := int64(0)
+
+	for ok := true; ok; ok = lastEvaluatedKey != "" && currentCount < *pageSize {
 		// Make the DynamoDB Query API call
 		log.WithFields(f).Debug("querying signatures...")
 		results, queryErr := repo.dynamoDBClient.Query(queryInput)
@@ -4764,17 +4783,19 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
 			})
+
+			// Increment the current count
+			currentCount++
+			if currentCount >= *pageSize {
+				break
+			}
 		}
 
-		if results.LastEvaluatedKey["signature_id"] != nil {
+		if results.LastEvaluatedKey["signature_id"] != nil && currentCount < *pageSize {
 			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
 			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
 		} else {
 			lastEvaluatedKey = ""
-		}
-
-		if int64(len(out.List)) >= *pageSize {
-			break
 		}
 
 	}
@@ -4782,8 +4803,8 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		return out.List[i].Name < out.List[j].Name
 	})
 
-	out.ResultCount = int64(len(out.List))
-	out.TotalCount = <-totalCountChannel
+	out.ResultCount = currentCount
+	out.TotalCount = totalCount
 	out.NextKey = lastEvaluatedKey
 
 	return out, nil
@@ -4915,7 +4936,10 @@ func (repo repository) ActivateSignature(ctx context.Context, signatureID string
 	}
 
 	// Build the expression
-	expressionUpdate := expression.Set(expression.Name("signature_approved"), expression.Value(true)).Set(expression.Name("signature_signed"), expression.Value(false))
+	expressionUpdate := expression.
+		Set(expression.Name("signature_approved"), expression.Value(true)).
+		Set(expression.Name("signature_signed"), expression.Value(false)).
+		Set(expression.Name("signature_embargo_acked"), expression.Value(true))
 
 	expr, err := expression.NewBuilder().WithUpdate(expressionUpdate).Build()
 	if err != nil {

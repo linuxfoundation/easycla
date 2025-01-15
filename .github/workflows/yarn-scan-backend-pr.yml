@@ -8,7 +8,7 @@ on:
   # https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions
   pull_request:
     branches:
-      - main
+      - dev
 
 jobs:
   yarn-scan-backend-pr:

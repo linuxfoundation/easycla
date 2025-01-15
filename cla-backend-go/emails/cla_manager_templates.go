@@ -16,8 +16,8 @@ const (
 	// RemovedCLAManagerTemplate includes the email template for email when user is removed as CLA Manager
 	RemovedCLAManagerTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project {{.GetProjectNameOrFoundation}} and CLA Group {{.CLAGroupName}}.</p>
-<p>You have been removed as a CLA Manager from {{.CompanyName}} for the project {{.Project.ExternalProjectName}}.</p>
+<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
+<p>You have been removed as a CLA Manager from {{.CompanyName}} for the CLA Group {{.CLAGroupName}}.</p>
 <p>If you have further questions about this, please contact one of the existing managers from
 {{.CompanyName}}:</p>
 <ul>
@@ -29,13 +29,7 @@ const (
 )
 
 // RenderRemovedCLAManagerTemplate renders the RemovedCLAManagerTemplate
-func RenderRemovedCLAManagerTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params RemovedCLAManagerTemplateParams) (string, error) {
-	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
-	if err != nil {
-		return "", err
-	}
-	params.CLAGroupTemplateParams = claGroupParams
-
+func RenderRemovedCLAManagerTemplate(svc EmailTemplateService, claGroupModelVersion string, params RemovedCLAManagerTemplateParams) (string, error) {
 	return RenderTemplate(claGroupModelVersion, RemovedCLAManagerTemplateName, RemovedCLAManagerTemplate, params)
 }
 
@@ -218,12 +212,12 @@ const (
 	//ClaManagerAddedEToUserTemplate email template for cla manager v2
 	ClaManagerAddedEToUserTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}} and CLA Group {{.CLAGroupName}}.</p>
-<p>You have been added as a CLA Manager for the organization {{.CompanyName}} and the project {{.Project.ExternalProjectName}}.  This means that you can now maintain the
-list of employees allowed to contribute to the project {{.Project.ExternalProjectName}} on behalf of your company, as well as view and manage the list of your
+<p>This is a notification email from EasyCLA regarding the  CLA Group {{.CLAGroupName}}.</p>
+<p>You have been added as a CLA Manager for the organization {{.CompanyName}} and the CLAGroup {{.CLAGroupName}}.  This means that you can now maintain the
+list of employees allowed to contribute to the CLA Group {{.CLAGroupName}} on behalf of your company, as well as view and manage the list of your
 company’s CLA Managers for the CLA Group {{.CLAGroupName}}.</p>
 <p> To get started, please log into the <a href="{{.CorporateConsole}}" target="_blank">EasyCLA Corporate Console</a>, and select your
-company and then the project {{.Project.ExternalProjectName}}. From here you will be able to edit the list of approved employees and CLA Managers.</p>
+company and then the project {{.CLAGroupName}}. From here you will be able to edit the list of approved employees and CLA Managers.</p>
 `
 )
 
@@ -242,8 +236,9 @@ func RenderClaManagerAddedEToUserTemplate(svc EmailTemplateService, claGroupMode
 type ClaManagerAddedToCLAManagersTemplateParams struct {
 	CommonEmailParams
 	CLAGroupTemplateParams
-	Name  string
-	Email string
+	Name        string
+	Email       string
+	ProjectSFID string
 }
 
 const (
@@ -252,10 +247,10 @@ const (
 	// ClaManagerAddedToCLAManagersTemplate is email template for
 	ClaManagerAddedToCLAManagersTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}} associated with the CLA Group {{.CLAGroupName}}.</p>
-<p>The following user has been added as a CLA Manager from {{.CompanyName}} for the project {{.Project.ExternalProjectName}}. This means that they can now
-maintain the list of employees allowed to contribute to {{.Project.ExternalProjectName}} on behalf of your company, as well as view and manage the
-list of company’s CLA Managers for {{.Project.ExternalProjectName}}.</p>
+<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
+<p>The following user has been added as a CLA Manager from {{.CompanyName}} for the CLA Group {{.CLAGroupName}}. This means that they can now
+maintain the list of employees allowed to contribute to {{.CLAGroupName}} on behalf of your company, as well as view and manage the
+list of company’s CLA Managers for CLA Group {{.CLAGroupName}}.</p>
 <ul>
 <li>{{.Name}} ({{.Email}})</li>
 </ul>
@@ -263,12 +258,15 @@ list of company’s CLA Managers for {{.Project.ExternalProjectName}}.</p>
 )
 
 // RenderClaManagerAddedToCLAManagersTemplate renders the ClaManagerAddedToCLAManagersTemplate
-func RenderClaManagerAddedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params ClaManagerAddedToCLAManagersTemplateParams) (string, error) {
-	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
-	if err != nil {
-		return "", err
+func RenderClaManagerAddedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, claGroupName string, params ClaManagerAddedToCLAManagersTemplateParams) (string, error) {
+	// claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// params.CLAGroupTemplateParams = claGroupParams
+	params.CLAGroupTemplateParams = CLAGroupTemplateParams{
+		CLAGroupName: claGroupName,
 	}
-	params.CLAGroupTemplateParams = claGroupParams
 
 	return RenderTemplate(claGroupModelVersion, ClaManagerAddedToCLAManagersTemplateName, ClaManagerAddedToCLAManagersTemplate, params)
 }
@@ -287,18 +285,17 @@ const (
 	// ClaManagerDeletedToCLAManagersTemplate is template for
 	ClaManagerDeletedToCLAManagersTemplate = `
 <p>Hello {{.RecipientName}},</p>
-<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}}.</p>
-<p>{{.Name}} ({{.Email}}) has been removed as a CLA Manager from {{.CompanyName}} for the project {{.Project.ExternalProjectName}}.</p>
+<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
+<p>{{.Name}} ({{.Email}}) has been removed as a CLA Manager from {{.CompanyName}} for CLA Group {{.CLAGroupName}}.</p>
 `
 )
 
 // RenderClaManagerDeletedToCLAManagersTemplate renders the RemovedCLAManagerTemplate
-func RenderClaManagerDeletedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params ClaManagerDeletedToCLAManagersTemplateParams) (string, error) {
-	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
-	if err != nil {
-		return "", err
+func RenderClaManagerDeletedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, claGroupName string) (string, error) {
+
+	params := CLAGroupTemplateParams{
+		CLAGroupName: claGroupName,
 	}
-	params.CLAGroupTemplateParams = claGroupParams
 
 	return RenderTemplate(claGroupModelVersion, ClaManagerDeletedToCLAManagersTemplateName, ClaManagerDeletedToCLAManagersTemplate, params)
 }

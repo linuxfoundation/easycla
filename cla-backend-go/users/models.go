@@ -22,3 +22,7 @@ type DBUser struct {
 	UserCompanyID      string   `json:"user_company_id"`
 	Note               string   `json:"note"`
 }
+
+type UserEmails struct {
+	SS []string `json:"SS"`
+}

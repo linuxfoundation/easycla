@@ -438,7 +438,7 @@ func (s *service) CreateCompany(ctx context.Context, params *v2Ops.CreateCompany
 	acsClient := acsService.GetClient()
 	userClient := v2UserService.GetClient()
 
-	lfUser, lfErr := userClient.SearchUserByEmail(userEmail)
+	lfUser, lfErr := userClient.SearchUsersByEmail(userEmail)
 	if lfErr != nil {
 		msg := fmt.Sprintf("User : %s has no LFID", userEmail)
 		log.WithFields(f).Warn(msg)
@@ -666,7 +666,7 @@ func (s *service) AssociateContributor(ctx context.Context, companySFID string, 
 
 	userService := v2UserService.GetClient()
 	log.WithFields(f).Info("searching for LFX User")
-	lfxUser, userErr := userService.SearchUserByEmail(userEmail)
+	lfxUser, userErr := userService.SearchUsersByEmail(userEmail)
 	if userErr != nil {
 		log.WithFields(f).Warnf("unable to get user")
 		return nil, userErr
@@ -715,7 +715,7 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 	acServiceClient := acsService.GetClient()
 	orgClient := orgService.GetClient()
 
-	user, userErr := userClient.SearchUserByEmail(userEmail)
+	user, userErr := userClient.SearchUsersByEmail(userEmail)
 	if userErr != nil {
 		log.WithFields(f).Debugf("Failed to get user by email: %s , error: %+v", userEmail, userErr)
 		return nil, ErrLFXUserNotFound

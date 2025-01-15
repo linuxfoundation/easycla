@@ -560,6 +560,8 @@ func (repo repository) GetUserByLFUserName(lfUserName string) (*models.User, err
 		return nil, err
 	}
 
+	log.WithFields(f).Debugf("result: %+v", result.Items)
+
 	// The user model
 	var dbUserModels []DBUser
 

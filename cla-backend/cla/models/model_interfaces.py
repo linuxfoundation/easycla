@@ -884,6 +884,15 @@ class Signature(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
+    def get_signature_embargo_acked(self):
+        """
+        Getter for an signature's embargo acknowledgement status. True is acknowledged, False otherwise.
+
+        :return: The signature's embargo acknowledgement status. True is acknowledged, False otherwise.
+        :rtype: boolean
+        """
+        raise NotImplementedError()
+
     def get_signature_sign_url(self):
         """
         Getter for an signature's signing URL. The URL the user has to visit in
@@ -1036,6 +1045,15 @@ class Signature(object):  # pylint: disable=too-many-public-methods
 
         :param approved: Approved status. True for approved, False otherwise.
         :type approved: bool
+        """
+        raise NotImplementedError()
+
+    def set_signature_embargo_acked(self, embargo_acked):
+        """
+        Setter for an signature's embargo acknowledgement status.
+
+        :param embargo_acked: Embargo acknowledgement status. True for acknowledged, False otherwise.
+        :type embargo_acked: bool
         """
         raise NotImplementedError()
 

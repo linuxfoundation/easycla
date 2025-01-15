@@ -77,6 +77,7 @@ type SignatureService interface {
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	// handleGitHubStatusUpdate(ctx context.Context, employeeUserModel *models.User) error
 	ProcessEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, user *models.User) (*bool, error)
+	UserIsApproved(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, error)
 }
 
 type service struct {
@@ -1199,7 +1200,7 @@ func (s service) HasUserSigned(ctx context.Context, user *models.User, projectID
 
 func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, user *models.User) (*bool, error) {
 	f := logrus.Fields{
-		"functionName":   "v2.signatures.service.processEmployeeSignature",
+		"functionName":   "v2.signatures.service.ProcessEmployeeSignature",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyModel.CompanyID,
 		"projectID":      claGroupModel.ProjectID,
@@ -1227,7 +1228,8 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 		if result != nil {
 			employeeSignature := result.Signature
 			if employeeSignature != nil {
-				log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgement - signature id: %s", employeeSignature.SignatureID)
+				// log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgement - signature id: %s", employeeSignature.SignatureID)
+				log.WithFields(f).Debugf("ecla signature check -  :%+v", employeeSignature)
 
 				// Get corporate ccla signature of company to access the approval list
 				cclaSignature, cclaErr := s.GetCorporateSignature(ctx, projectID, companyID, &approved, &signed)
@@ -1237,7 +1239,8 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 				}
 
 				if cclaSignature != nil {
-					userApproved, approvedErr := s.userIsApproved(ctx, user, cclaSignature)
+					log.WithFields(f).Debug("found ccla signature")
+					userApproved, approvedErr := s.UserIsApproved(ctx, user, cclaSignature)
 					if approvedErr != nil {
 						log.WithFields(f).WithError(approvedErr).Warnf("problem determining if user: %s is approved for project: %s", user.UserID, projectID)
 						return &hasSigned, approvedErr
@@ -1247,6 +1250,8 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 					if userApproved {
 						log.WithFields(f).Debugf("user: %s is in the approval list for signature: %s", user.UserID, employeeSignature.SignatureID)
 						hasSigned = true
+					} else {
+						log.WithFields(f).Debugf("user: %s is not in the approval list for signature: %s", user.UserID, employeeSignature.SignatureID)
 					}
 				}
 			} else {
@@ -1264,14 +1269,24 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 
 }
 
-func (s service) userIsApproved(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, error) {
-	emails := append(user.Emails, string(user.LfEmail))
-
+func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, error) {
+	// add lf email to emails
 	f := logrus.Fields{
-		"functionName": "v1.signatures.service.userIsApproved",
+		"functionName": "v1.signatures.service.UserIsApproved",
+	}
+
+	emails := user.Emails
+
+	if user.LfEmail != "" {
+		log.WithFields(f).Debugf("adding lf email: %s to emails", user.LfEmail)
+		emails = append(emails, string(user.LfEmail))
+		// remove duplicates
+		log.WithFields(f).Debug("removing duplicates")
+		emails = utils.RemoveDuplicates(emails)
 	}
 
 	// check GitHub username approval list
+	log.WithFields(f).Debug("checking if user is in the approval list")
 	gitHubUsernameApprovalList := cclaSignature.GithubUsernameApprovalList
 	if len(gitHubUsernameApprovalList) > 0 {
 		for _, gitHubUsername := range gitHubUsernameApprovalList {
@@ -1297,10 +1312,15 @@ func (s service) userIsApproved(ctx context.Context, user *models.User, cclaSign
 
 	// check email email approval list
 	emailApprovalList := cclaSignature.EmailApprovalList
+	log.WithFields(f).Debugf("checking if user is in the email approval list: %+v with emails :%v", emailApprovalList, emails)
 	if len(emailApprovalList) > 0 {
 		for _, email := range emails {
-			if strings.EqualFold(email, strings.TrimSpace(user.LfUsername)) {
-				return true, nil
+			log.WithFields(f).Debugf("checking email: %s", email)
+			// case insensitive search
+			for _, emailApproval := range emailApprovalList {
+				if strings.EqualFold(email, emailApproval) {
+					return true, nil
+				}
 			}
 		}
 	} else {

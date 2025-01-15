@@ -45,7 +45,8 @@
     "qs": "^6.11.0",
     "set-value": "^4.0.1",
     "simple-git": "^3.16.0",
-    "ws": "^7.4.6",
-    "xmlhttprequest-ssl": "^1.6.2"
+    "ws": ">=7.5.10",
+    "xmlhttprequest-ssl": "^1.6.2",
+    "fast-xml-parser": ">=4.4.1"
   }
 }

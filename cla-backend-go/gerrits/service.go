@@ -8,14 +8,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 
 	"github.com/go-openapi/strfmt"
-
 	"github.com/go-resty/resty/v2"
+
+	// "github.com/go-resty/resty/v2"
+	apiclient "github.com/communitybridge/easycla/cla-backend-go/api_client"
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
@@ -94,6 +99,7 @@ func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID s
 		return nil, errors.New("gerrit_name required")
 	}
 
+	log.WithFields(f).Debugf("checking if gerrit name already exists in the system : %s", *params.GerritName)
 	gerritObject, err := s.repo.ExistsByName(ctx, *params.GerritName)
 	if err != nil {
 		message := fmt.Sprintf("unable to get gerrit by name : %s", *params.GerritName)
@@ -158,7 +164,35 @@ func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID s
 		ProjectSFID:   projectSFID,
 		Version:       params.Version,
 	}
-	return s.repo.AddGerrit(ctx, input)
+
+	// Get the gerrit repos
+	log.WithFields(f).Debugf("fetching gerrit repos for gerrit instance: %s", *params.GerritURL)
+	gerritHost, err := extractGerritHost(*params.GerritURL, f)
+	if err != nil {
+		return nil, err
+	}
+	gerritRepoList, getRepoErr := s.GetGerritRepos(ctx, gerritHost)
+	if getRepoErr != nil {
+		log.WithFields(f).WithError(getRepoErr).Warnf("problem fetching gerrit repos, error: %+v", getRepoErr)
+		return nil, getRepoErr
+	}
+
+	log.WithFields(f).Debugf("discovered %d gerrit repos", len(gerritRepoList.Repos))
+	log.WithFields(f).Debugf("gerrit repo list %+v", gerritRepoList)
+	// Set the connected flag - for now, we just set this value to true
+	for _, repo := range gerritRepoList.Repos {
+		repo.Connected = true
+	}
+	gerritInstance, err := s.repo.AddGerrit(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	input.GerritID = gerritInstance.GerritID
+	input.DateCreated = gerritInstance.DateCreated
+	input.DateModified = gerritInstance.DateModified
+	input.GerritRepoList = gerritRepoList
+	log.WithFields(f).Debugf("gerrit input %+v", input)
+	return input, nil
 }
 
 func (s service) GetGerrit(ctx context.Context, gerritID string) (*models.Gerrit, error) {
@@ -476,6 +510,7 @@ func convertModel(responseModel map[string]GerritRepoInfo, serverInfo *ServerInf
 				URL:  strfmt.URI(weblink.URL),
 			})
 		}
+		log.Debugf("Processing repo: %s, weblinks: %+v", name, weblinks)
 
 		claEnabled := false
 		if serverInfo != nil && serverInfo.Auth.UseContributorAgreements {
@@ -520,37 +555,66 @@ func listGerritRepos(ctx context.Context, gerritHost string) (map[string]GerritR
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"gerritHost":     gerritHost,
 	}
-	client := resty.New()
+	client := &apiclient.RestAPIClient{
+		Client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+
+	base := "https://" + gerritHost
 
 	gerritAPIPath, gerritAPIPathErr := getGerritAPIPath(ctx, gerritHost)
 	if gerritAPIPathErr != nil {
 		return nil, gerritAPIPathErr
 	}
 
-	resp, err := client.R().
-		EnableTrace().
-		Get(fmt.Sprintf("https://%s/%s/projects/?d&pp=0", gerritHost, gerritAPIPath))
+	log.WithFields(f).Debugf("gerrit API path using client: %s", gerritAPIPath)
+
+	if gerritAPIPath != "" {
+		base = fmt.Sprintf("https://%s/%s", gerritHost, gerritAPIPath)
+	}
+
+	url := fmt.Sprintf("%s/projects/?d&pp=0", base)
+	resp, err := client.GetData(ctx, url)
+
 	if err != nil {
-		log.WithFields(f).Warnf("problem querying gerrit host: %s, error: %+v", gerritHost, err)
 		return nil, err
 	}
 
-	if resp.IsError() {
-		msg := fmt.Sprintf("non-success response from list gerrit host repos for gerrit %s, error code: %s", gerritHost, resp.Status())
-		log.WithFields(f).Warn(msg)
-		return nil, errors.New(msg)
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.WithFields(f).Debugf("Failed to close response body; %v", err)
+		}
+	}()
+
+	log.WithFields(f).Debugf("response: %+v", resp.Body)
+
+	// Get the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
 	}
 
-	var result map[string]GerritRepoInfo
 	// Need to strip off the leading "magic prefix line" from the response payload, which is: )]}'
 	// See: https://gerrit.linuxfoundation.org/infra/Documentation/rest-api.html#output
-	err = json.Unmarshal(resp.Body()[4:], &result)
+	strippedBody := stripMagicPrefix(body)
+
+	var result map[string]GerritRepoInfo
+
+	err = json.Unmarshal(strippedBody, &result)
 	if err != nil {
 		log.WithFields(f).Warnf("problem unmarshalling response for gerrit host: %s, error: %+v", gerritHost, err)
 		return nil, err
 	}
 
 	return result, nil
+}
+
+func stripMagicPrefix(data []byte) []byte {
+	if len(data) > 4 {
+		return data[4:]
+	}
+	return data
 }
 
 // getGerritConfig returns the gerrit configuration for the specified host
@@ -562,14 +626,20 @@ func getGerritConfig(ctx context.Context, gerritHost string) (*ServerInfo, error
 	}
 	client := resty.New()
 
+	base := "https://" + gerritHost
+
 	gerritAPIPath, gerritAPIPathErr := getGerritAPIPath(ctx, gerritHost)
 	if gerritAPIPathErr != nil {
 		return nil, gerritAPIPathErr
 	}
 
+	if gerritAPIPath != "" {
+		base = fmt.Sprintf("https://%s/%s", gerritHost, gerritAPIPath)
+	}
+
 	resp, err := client.R().
 		EnableTrace().
-		Get(fmt.Sprintf("https://%s/%s/config/server/info", gerritHost, gerritAPIPath))
+		Get(fmt.Sprintf("%s/config/server/info", base))
 	if err != nil {
 		log.WithFields(f).Warnf("problem querying gerrit config, error: %+v", err)
 		return nil, err
@@ -603,6 +673,8 @@ func getGerritAPIPath(ctx context.Context, gerritHost string) (string, error) {
 	switch gerritHost {
 	case "gerrit.linuxfoundation.org":
 		return "infra", nil
+	case "mockapi.gerrit.dev.itx.linuxfoundation.org":
+		return "", nil
 	case "gerrit.onap.org":
 		return "r", nil
 	case "gerrit.o-ran-sc.org":

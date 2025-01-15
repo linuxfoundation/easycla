@@ -57,7 +57,7 @@ def test_event_project_id(project):
         event_type=event_types.EventType.DeleteProject,
         event_cla_group_id=project.get_project_id()
     )
-    assert 'data' in response
+    assert project.get_project_id() == response['data']['event_cla_group_id']
 
 
 def test_event_user_id_attribute(user_instance, mock_event):

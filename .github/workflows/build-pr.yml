@@ -6,13 +6,19 @@ name: Build and Test Pull Request
 on:
   pull_request:
     branches:
-      - main
+      - dev
 
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+    
 env:
+  AWS_REGION: us-east-1
   STAGE: dev
 
 jobs:
-  build-pr:
+  build-test-lint:
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -36,15 +42,15 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ${{ github.workspace }}/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
       - name: Configure Git to clone private Github repos
         run: git config --global url."https://${TOKEN_USER}:${TOKEN}@github.com".insteadOf "https://github.com"
         env:
-          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER }}
+          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN_GITHUB }}
+          TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER_GITHUB }}
 
       - name: Add OS Tools
         run: sudo apt update && sudo apt-get install file -y
@@ -78,10 +84,7 @@ jobs:
 
       - name: Go Dependencies
         working-directory: cla-backend-go
-        run: |
-          go mod tidy
-          go mod download
-          make deps
+        run: make deps
 
       - name: Go Swagger Generate
         working-directory: cla-backend-go

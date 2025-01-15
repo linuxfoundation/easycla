@@ -500,6 +500,20 @@ class GitlabOrganizationNameLowerIndex(GlobalSecondaryIndex):
 
     organization_name_lower = UnicodeAttribute(hash_key=True)
 
+class OrganizationNameLowerSearchIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying organizations by Organization Name.
+    """
+
+    class Meta:
+        """Meta class for external ID github org index."""
+
+        index_name = "organization-name-lower-search-index"
+        write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
+        read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
+        projection = AllProjection()
+
+    organization_name_lower = UnicodeAttribute(hash_key=True)
 
 class GitlabExternalGroupIDIndex(GlobalSecondaryIndex):
     """
@@ -2470,6 +2484,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_project_index = ProjectSignatureIndex()
     signature_reference_index = ReferenceSignatureIndex()
     signature_envelope_id = UnicodeAttribute(null=True)
+    signature_embargo_acked = BooleanAttribute(default=True, null=True)
     # Callback type refers to either Gerrit or GitHub
     signature_return_url_type = UnicodeAttribute(null=True)
     note = UnicodeAttribute(null=True)
@@ -2524,6 +2539,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             signature_type=None,
             signature_signed=False,
             signature_approved=False,
+            signature_embargo_acked=True,
             signed_on=None,
             signatory_name=None,
             signing_entity_name=None,
@@ -2579,6 +2595,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         self.model.signing_entity_name = signing_entity_name
         self.model.sigtype_signed_approved_id = sigtype_signed_approved_id
         self.model.signature_approved = signature_approved
+        self.model.signature_embargo_acked = signature_embargo_acked
         self.model.signature_sign_url = signature_sign_url
         self.model.signature_return_url = signature_return_url
         self.model.signature_callback_url = signature_callback_url
@@ -2612,7 +2629,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             "reference type: {}, "
             "user cla company id: {}, signed: {}, signed_on: {}, signatory_name: {}, signing entity name: {},"
             "sigtype_signed_approved_id: {}, "
-            "approved: {}, domain whitelist: {}, "
+            "approved: {}, embargo_acked: {}, domain whitelist: {}, "
             "email whitelist: {}, github user whitelist: {}, github domain whitelist: {}, "
             "note: {},signature project external id: {}, signature company signatory id: {}, "
             "signature company signatory name: {}, signature company signatory email: {},"
@@ -2636,6 +2653,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             self.model.signing_entity_name,
             self.model.sigtype_signed_approved_id,
             self.model.signature_approved,
+            self.model.signature_embargo_acked,
             self.model.domain_whitelist,
             self.model.email_whitelist,
             self.model.github_whitelist,
@@ -2724,6 +2742,9 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def get_signature_approved(self):
         return self.model.signature_approved
+
+    def get_signature_embargo_acked(self):
+        return self.model.signature_embargo_acked
 
     def get_signature_sign_url(self):
         return self.model.signature_sign_url
@@ -2863,6 +2884,9 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def set_signature_approved(self, approved) -> None:
         self.model.signature_approved = bool(approved)
+
+    def set_signature_embargo_acked(self, embargo_acked) -> None:
+        self.model.signature_embargo_acked = bool(embargo_acked)
 
     def set_signature_sign_url(self, sign_url) -> None:
         self.model.signature_sign_url = sign_url
@@ -3817,7 +3841,8 @@ class GitHubOrgModel(BaseModel):
     project_sfid = UnicodeAttribute()
     organization_sfid_index = GitlabOrgSFIndex()
     project_sfid_organization_name_index = GitlabOrgProjectSfidOrganizationNameIndex()
-    organization_name_lowe_index = GitlabOrganizationNameLowerIndex()
+    organization_name_lower_index = GitlabOrganizationNameLowerIndex()
+    organization_name_lower_search_index = OrganizationNameLowerSearchIndex()
     organization_project_id = UnicodeAttribute(null=True)
     organization_company_id = UnicodeAttribute(null=True)
     auto_enabled = BooleanAttribute(null=True)
@@ -3964,7 +3989,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
         return None
 
     def get_organization_by_lower_name(self, organization_name):
-        org_generator = self.model.scan(organization_name_lower__eq=organization_name.lower())
+        org_generator = self.model.organization_name_lower_search_index.query(organization_name.lower())
         for org_model in org_generator:
             org = GitHubOrg()
             org.model = org_model
@@ -5050,6 +5075,7 @@ class Event(model_interfaces.Event):
         try:
             project = Project()
             project.load(str(cla_group_id))
+            event.set_event_cla_group_id(cla_group_id)
             event.set_event_cla_group_name(project.get_project_name())
             event.set_event_project_sfid(project.get_project_external_id())
             Event.set_project_details(event, project.get_project_external_id())

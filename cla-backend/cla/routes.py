@@ -283,6 +283,7 @@ def get_signature(auth_user: check_auth, signature_id: hug.types.uuid):
     "/signature",
     versions=1,
     examples=" - {'signature_type': 'cla', 'signature_signed': true, \
+                        'signature_embargo_acked': true, \
                         'signature_approved': true, 'signature_sign_url': 'http://sign.com/here', \
                         'signature_return_url': 'http://cla-system.com/signed', \
                         'signature_project_id': '<project-id>', \
@@ -297,6 +298,7 @@ def post_signature(
         signature_type: hug.types.one_of(["cla", "dco"]),
         signature_signed: hug.types.smart_boolean,
         signature_approved: hug.types.smart_boolean,
+        signature_embargo_acked: hug.types.smart_boolean,
         signature_return_url: cla.hug_types.url,
         signature_sign_url: cla.hug_types.url,
         signature_user_ccla_company_id=None,
@@ -307,6 +309,7 @@ def post_signature(
     DATA: {'signature_type': 'cla',
            'signature_signed': true,
            'signature_approved': true,
+           'signature_embargo_acked': true,
            'signature_sign_url': 'http://sign.com/here',
            'signature_return_url': 'http://cla-system.com/signed',
            'signature_project_id': '<project-id>',
@@ -327,6 +330,7 @@ def post_signature(
         signature_user_ccla_company_id=signature_user_ccla_company_id,
         signature_signed=signature_signed,
         signature_approved=signature_approved,
+        signature_embargo_acked=signature_embargo_acked,
         signature_return_url=signature_return_url,
         signature_sign_url=signature_sign_url,
     )
@@ -336,7 +340,7 @@ def post_signature(
     "/signature",
     versions=1,
     examples=" - {'signature_id': '01620259-d202-4350-8264-ef42a861922d', \
-                       'signature_type': 'cla', 'signature_signed': true}",
+                       'signature_type': 'cla', 'signature_signed': true, 'signature_embargo_acked': true}",
 )
 def put_signature(
         auth_user: check_auth,  # pylint: disable=too-many-arguments
@@ -347,6 +351,7 @@ def put_signature(
         signature_type=None,
         signature_signed=None,
         signature_approved=None,
+        signature_embargo_acked=None,
         signature_return_url=None,
         signature_sign_url=None,
         domain_whitelist=None,
@@ -358,7 +363,7 @@ def put_signature(
     PUT: /signature
 
     DATA: {'signature_id': '<signature-id>',
-           'signature_type': 'cla', 'signature_signed': true}
+           'signature_type': 'cla', 'signature_signed': true, 'signature_embargo_acked': true}
 
     Supports all the fields as the POST equivalent.
 
@@ -373,6 +378,7 @@ def put_signature(
         signature_type=signature_type,
         signature_signed=signature_signed,
         signature_approved=signature_approved,
+        signature_embargo_acked=signature_embargo_acked,
         signature_return_url=signature_return_url,
         signature_sign_url=signature_sign_url,
         domain_whitelist=domain_whitelist,
