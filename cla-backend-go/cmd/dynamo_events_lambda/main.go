@@ -115,7 +115,12 @@ func init() {
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, repositoriesRepo, projectClaGroupRepo)
 	repositoriesService := repositories.NewService(repositoriesRepo, githubOrganizationsRepo, projectClaGroupRepo)
 
-	gerritService := gerrits.NewService(gerritRepo)
+	gerritService := gerrits.NewService(gerritRepo, &gerrits.LFGroup{
+		LfBaseURL:    configFile.LFGroup.ClientURL,
+		ClientID:     configFile.LFGroup.ClientID,
+		ClientSecret: configFile.LFGroup.ClientSecret,
+		RefreshToken: configFile.LFGroup.RefreshToken,
+	})
 	// Services
 	projectService := service.NewService(projectRepo, repositoriesRepo, gerritRepo, projectClaGroupRepo, usersRepo)
 
