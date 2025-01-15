@@ -6,7 +6,7 @@ name: Build and Test Pull Request
 on:
   pull_request:
     branches:
-      - dev
+      - main
 
 permissions:
   id-token: write
