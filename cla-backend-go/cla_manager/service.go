@@ -39,7 +39,7 @@ type IService interface {
 	PendingRequest(companyID, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 	DeleteRequest(requestID string) error
 
-	AddClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error)
+	AddClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFID string) (*models.Signature, error)
 	RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error)
 }
 
@@ -193,7 +193,7 @@ func (s service) DeleteRequest(requestID string) error {
 }
 
 // AddClaManager Adds LFID to Signature Access Control list
-func (s service) AddClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error) {
+func (s service) AddClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFID string) (*models.Signature, error) {
 
 	f := logrus.Fields{
 		"functionName":   "v1.cla_manager.AddClaManager",
@@ -201,9 +201,9 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 		"companyID":      companyID,
 		"claGroupID":     claGroupID,
 		"LFID":           LFID,
-		"projectName":    projectSFName,
+		"projectSFID":    projectSFID,
 	}
-
+	var projectSFName string
 	userModel, userErr := s.usersService.GetUserByLFUserName(LFID)
 	if userErr != nil || userModel == nil {
 		return nil, userErr
@@ -216,11 +216,6 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 	claGroupModel, projectErr := s.projectService.GetCLAGroupByID(ctx, claGroupID)
 	if projectErr != nil || claGroupModel == nil {
 		return nil, projectErr
-	}
-
-	// if projectSFName is empty, we can set clagroup project name.
-	if projectSFName == "" {
-		projectSFName = claGroupModel.ProjectName
 	}
 
 	// Look up signature ACL to ensure the user can add cla manager
@@ -258,8 +253,9 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 				RecipientAddress: manager.LfEmail.String(),
 				CompanyName:      companyModel.CompanyName,
 			},
-			Name:  userModel.Username,
-			Email: userModel.LfEmail.String(),
+			Name:        userModel.Username,
+			Email:       userModel.LfEmail.String(),
+			ProjectSFID: projectSFID,
 		}, claGroupModel)
 	}
 	// Notify the added user
@@ -267,7 +263,7 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 		RecipientName:    userModel.Username,
 		RecipientAddress: userModel.LfEmail.String(),
 		CompanyName:      companyModel.CompanyName,
-	}, claGroupModel)
+	}, claGroupModel, projectSFID)
 
 	// Send an event
 	s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
@@ -317,7 +313,7 @@ func (s service) getCompanySignature(ctx context.Context, companyID string, claG
 }
 
 // RemoveClaManager removes lfid from signature acl with given company and project
-func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFName string) (*models.Signature, error) {
+func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, companyID string, claGroupID string, LFID string, projectSFID string) (*models.Signature, error) {
 
 	f := logrus.Fields{
 		"functionName":   "v1.cla_manager.RemoveClaManager",
@@ -327,6 +323,7 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 		"companyID":      companyID,
 	}
 
+	var projectSFName string
 	userModel, userErr := s.usersService.GetUserByLFUserName(LFID)
 	if userErr != nil || userModel == nil {
 		return nil, userErr
@@ -339,11 +336,6 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 	claGroupModel, projectErr := s.projectService.GetCLAGroupByID(ctx, claGroupID)
 	if projectErr != nil || claGroupModel == nil {
 		return nil, projectErr
-	}
-
-	// if projectSFName is empty, we can set clagroup project name.
-	if projectSFName == "" {
-		projectSFName = claGroupModel.ProjectName
 	}
 
 	signed := true
@@ -420,50 +412,56 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 
 type ProjectDetails struct {
 	ProjectName string
-	ProjectSFID string
+	ProjectSFID []string
 }
 
-func (s service) getProjectDetails(ctx context.Context, claGroupModel *models.ClaGroup) ProjectDetails {
+// func (s service) getProjectDetails(ctx context.Context, claGroupModel *models.ClaGroup) ProjectDetails {
+// 	f := logrus.Fields{
+// 		"functionName":   "v1.cla_manager.getProjectDetails",
+// 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+// 		"claGroupID":     claGroupModel.ProjectID,
+// 	}
+// 	projectSFIDs := make([]string, 0)
+
+// 	projectDetails := ProjectDetails{
+// 		ProjectName: claGroupModel.ProjectName,
+// 	}
+// 	signedAtFoundation := false
+// 	var err error
+
+// 	pcg, pcgErr := s.projectClaRepository.GetCLAGroup(ctx, claGroupModel.ProjectID)
+// 	if pcgErr != nil {
+// 		log.WithFields(f).WithError(err).Debug("unable too get pcg record")
+// 	}
+
+// 	signedAtFoundation, err = s.projectClaRepository.SignedAtFoundation(ctx, claGroupModel.ProjectID)
+// 	if err != nil {
+// 		log.WithFields(f).WithError(err).Debug("unable to get status of cla signed at foundation")
+// 	}
+
+// 	if signedAtFoundation && pcg != nil && err != nil {
+// 		log.WithFields(f).Debug("cla group is signed at foundation level...")
+// 		projectDetails.ProjectName = pcg.FoundationName
+// 		projectSFIDs = append(projectSFIDs, pcg.FoundationSFID)
+
+// 	} else {
+// 		log.WithFields(f).Debug("cla group is signed at project level ...")
+
+// 	}
+
+// 	projectDetails.ProjectSFID = projectSFIDs
+
+// 	return projectDetails
+// }
+
+func (s service) sendClaManagerAddedEmailToUser(emailSvc emails.EmailTemplateService, emailParams emails.CommonEmailParams, claGroupModel *models.ClaGroup, projectSFID string) {
 	f := logrus.Fields{
-		"functionName":   "v1.cla_manager.getProjectDetails",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"claGroupID":     claGroupModel.ProjectID,
+		"functionName": "sendClaManagerAddedEmailToUser",
+		"projectSFID":  projectSFID,
 	}
-
-	projectDetails := ProjectDetails{
-		ProjectName: claGroupModel.ProjectName,
-		ProjectSFID: claGroupModel.ProjectExternalID,
-	}
-	signedAtFoundation := false
-
-	pcg, err := s.projectClaRepository.GetCLAGroup(ctx, claGroupModel.ProjectID)
-	if err != nil {
-		log.WithFields(f).Warnf("unable to fetch project cla group by project id: %s, error: %+v", claGroupModel.ProjectID, err)
-	}
-
-	// check if cla group is signed at foundation level
-	if pcg != nil && pcg.FoundationSFID != "" {
-		signedAtFoundation, err = s.projectClaRepository.IsExistingFoundationLevelCLAGroup(ctx, pcg.FoundationSFID)
-		if err != nil {
-			log.WithFields(f).Warnf("unable to fetch foundation level cla group by foundation id: %s, error: %+v", pcg.FoundationSFID, err)
-		}
-
-		if signedAtFoundation {
-			log.WithFields(f).Debugf("cla group is signed at foundation level...")
-			projectDetails.ProjectName = pcg.FoundationName
-			projectDetails.ProjectSFID = pcg.FoundationSFID
-		}
-	}
-
-	return projectDetails
-}
-
-func (s service) sendClaManagerAddedEmailToUser(emailSvc emails.EmailTemplateService, emailParams emails.CommonEmailParams, claGroupModel *models.ClaGroup) {
-	projectDetails := s.getProjectDetails(context.Background(), claGroupModel)
-	projectName := projectDetails.ProjectName
-	projectSFID := projectDetails.ProjectSFID
+	log.WithFields(f).Info("Sending email to user")
 	// subject string, body string, recipients []string
-	subject := fmt.Sprintf("EasyCLA: Added as CLA Manager for Project :%s", projectName)
+	subject := fmt.Sprintf("EasyCLA: Added as CLA Manager for Project :%s", claGroupModel.ProjectName)
 	recipients := []string{emailParams.RecipientAddress}
 	body, err := emails.RenderClaManagerAddedEToUserTemplate(emailSvc, claGroupModel.Version, projectSFID, emails.ClaManagerAddedEToUserTemplateParams{
 		CommonEmailParams: emailParams,
@@ -487,7 +485,7 @@ func sendClaManagerAddedEmailToCLAManagers(emailSvc emails.EmailTemplateService,
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Added Notice for %s", projectName)
 	recipients := []string{emailParams.RecipientAddress}
-	body, err := emails.RenderClaManagerAddedToCLAManagersTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
+	body, err := emails.RenderClaManagerAddedToCLAManagersTemplate(emailSvc, claGroupModel.Version, projectName, emailParams)
 	if err != nil {
 		log.Warnf("email template render : %s failed : %v", emails.ClaManagerAddedToCLAManagersTemplate, err)
 		return
@@ -553,10 +551,12 @@ func sendRemovedClaManagerEmailToRecipient(emailSvc emails.EmailTemplateService,
 	body, err := emails.RenderRemovedCLAManagerTemplate(
 		emailSvc,
 		claGroupModel.Version,
-		claGroupModel.ProjectExternalID,
 		emails.RemovedCLAManagerTemplateParams{
 			CommonEmailParams: emailParams,
 			CLAManagers:       emailCLAManagerParams,
+			CLAGroupTemplateParams: emails.CLAGroupTemplateParams{
+				CLAGroupName: projectName,
+			},
 		})
 
 	if err != nil {
@@ -573,14 +573,11 @@ func sendRemovedClaManagerEmailToRecipient(emailSvc emails.EmailTemplateService,
 }
 
 func (s service) sendClaManagerDeleteEmailToCLAManagers(emailSvc emails.EmailTemplateService, emailParams emails.ClaManagerDeletedToCLAManagersTemplateParams, claGroupModel *models.ClaGroup) {
-	projectDetails := s.getProjectDetails(context.Background(), claGroupModel)
-	projectName := projectDetails.ProjectName
-	projectSFID := projectDetails.ProjectSFID
 
 	// subject string, body string, recipients []string
-	subject := fmt.Sprintf("EasyCLA: CLA Manager Removed Notice for %s", projectName)
+	subject := fmt.Sprintf("EasyCLA: CLA Manager Removed Notice for %s", claGroupModel.ProjectName)
 	recipients := []string{emailParams.RecipientAddress}
-	body, err := emails.RenderClaManagerDeletedToCLAManagersTemplate(emailSvc, claGroupModel.Version, projectSFID, emailParams)
+	body, err := emails.RenderClaManagerDeletedToCLAManagersTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectName)
 
 	if err != nil {
 		log.Warnf("email template render : %s failed : %v", emails.ClaManagerDeletedToCLAManagersTemplateName, err)

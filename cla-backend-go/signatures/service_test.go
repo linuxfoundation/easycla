@@ -70,6 +70,16 @@ func TestUserIsApproved(t *testing.T) {
 			},
 			expectedIsApproved: true,
 		},
+		{
+			name: "Test user email case - email approval",
+			user: &v1Models.User{
+				Emails: []string{"Foo@gmail.com"},
+			},
+			cclaSignature: &v1Models.Signature{
+				EmailApprovalList: []string{"foo@gmail.com"},
+			},
+			expectedIsApproved: true,
+		},
 	}
 
 	for _, tc := range testCases {

@@ -8,7 +8,6 @@ NOTE: This integration uses DocuSign's Legacy Authentication REST API Integratio
 https://developers.docusign.com/esign-rest-api/guides/post-go-live
 
 """
-
 import io
 import json
 import boto3
@@ -198,6 +197,9 @@ class DocuSign(signing_service_interface.SigningService):
             cla.log.debug('Individual Signature - user already has a signatures with this project: {}'.
                           format(latest_signature.get_signature_id()))
 
+            # Set embargo acknowledged flag also for the existing signature
+            latest_signature.set_signature_embargo_acked(True)
+
             # Re-generate and set the signing url - this will update the signature record
             self.populate_sign_url(latest_signature, callback_url, default_values=default_cla_values,
                                    preferred_email=preferred_email)
@@ -254,9 +256,9 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_return_url_type=return_url_type,
                               signature_signed=False,
                               signature_approved=True,
+                              signature_embargo_acked=True,
                               signature_return_url=return_url,
                               signature_callback_url=callback_url)
-
         # Set signature ACL
         if return_url_type.lower() == "github":
             acl = user.get_user_github_id()
@@ -314,6 +316,9 @@ class DocuSign(signing_service_interface.SigningService):
                 last_document.get_document_major_version() == latest_signature.get_signature_document_major_version():
             cla.log.info('User already has a signatures with this project: %s', latest_signature.get_signature_id())
 
+            # Set embargo acknowledged flag also for the existing signature
+            latest_signature.set_signature_embargo_acked(True)
+
             # Re-generate and set the signing url - this will update the signature record
             self.populate_sign_url(latest_signature, callback_url, default_values=default_cla_values)
 
@@ -358,6 +363,7 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_return_url_type='Gerrit',
                               signature_signed=False,
                               signature_approved=True,
+                              signature_embargo_acked=True,
                               signature_return_url=return_url,
                               signature_callback_url=callback_url)
 
@@ -706,6 +712,7 @@ class DocuSign(signing_service_interface.SigningService):
                                   signature_type='cla',
                                   signature_signed=True,
                                   signature_approved=True,
+                                  signature_embargo_acked=True,
                                   signature_return_url=return_url,
                                   signature_user_ccla_company_id=company_id)
         cla.log.info(f'{fn} - created new signature document for: {request_info} - signature: {new_signature}')
@@ -783,6 +790,7 @@ class DocuSign(signing_service_interface.SigningService):
             'signature_type': {'S': signature.get_signature_type()},
             'signature_signed': {'BOOL': signature.get_signature_signed()},
             'signature_approved': {'BOOL': signature.get_signature_approved()},
+            'signature_embargo_acked': {'BOOL': True},
             'signature_acl': {'SS': list(signature.get_signature_acl())},
             'signature_user_ccla_company_id': {'S': signature.get_signature_user_ccla_company_id()},
             'date_modified': {'S': datetime.now().isoformat()},
@@ -865,6 +873,7 @@ class DocuSign(signing_service_interface.SigningService):
                                   signature_type='cla',
                                   signature_signed=True,
                                   signature_approved=True,
+                                  signature_embargo_acked=True,
                                   signature_return_url=return_url,
                                   signature_user_ccla_company_id=company_id)
 
@@ -973,6 +982,7 @@ class DocuSign(signing_service_interface.SigningService):
                                   signatory_name=signatory_name,
                                   signing_entity_name=company.get_signing_entity_name(),
                                   signature_signed=False,
+                                  signature_embargo_acked=True,
                                   signature_approved=True)
 
         callback_url = self._get_corporate_signature_callback_url(project.get_project_id(), company.get_company_id())
@@ -985,6 +995,9 @@ class DocuSign(signing_service_interface.SigningService):
 
         # Set signature ACL
         signature.set_signature_acl(user.get_lf_username())
+
+        # Set embargo acknowledged flag also for the existing signature
+        signature.set_signature_embargo_acked(True)
 
         self.populate_sign_url(signature, callback_url,
                                signatory_name, signatory_email,
@@ -1506,6 +1519,7 @@ class DocuSign(signing_service_interface.SigningService):
             cla.log.info(f'{fn} - ICLA signature signed ({signature_id}) - '
                          'Notifying repository service provider')
             signature.set_signature_signed(True)
+            signature.set_signature_embargo_acked(True)
             populate_signature_from_icla_callback(content, tree, signature)
             # Save signature
             signature.save()
@@ -1600,6 +1614,7 @@ class DocuSign(signing_service_interface.SigningService):
             cla.log.debug(f'{fn} - updating signature in database - setting signed=true...')
             # Save signature before adding user to LDAP Groups.
             signature.set_signature_signed(True)
+            signature.set_signature_embargo_acked(True)
             signature.save()
 
             # Load the Project by ID and send audit event
@@ -1711,6 +1726,7 @@ class DocuSign(signing_service_interface.SigningService):
 
             cla.log.debug(f'{fn} - updating signature in database - setting signed=true...')
             signature.set_signature_signed(True)
+            signature.set_signature_embargo_acked(True)
             populate_signature_from_icla_callback(content, tree, signature)
             signature.save()
 
@@ -1855,6 +1871,7 @@ class DocuSign(signing_service_interface.SigningService):
             # Note: cla-manager role assignment and cla-manager-designee cleanup is handled in the DB trigger handler
             # upon save with the signature signed flag transition to true...
             signature.set_signature_signed(True)
+            signature.set_signature_embargo_acked(True)
             populate_signature_from_ccla_callback(content, tree, signature)
             signature.save()
 

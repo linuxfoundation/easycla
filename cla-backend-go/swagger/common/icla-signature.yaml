@@ -52,6 +52,11 @@ properties:
     description: the signature signed flag - true or false value
     example: true
     x-omitempty: false
+  signatureEmbargoAcked:
+    type: boolean
+    description: the signature embargo acknowledged flag - true or false value
+    example: true
+    # x-omitempty: false
   signatureModified:
     type: string
     description: the signature modified created time

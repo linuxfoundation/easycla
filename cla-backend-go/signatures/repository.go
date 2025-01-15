@@ -19,7 +19,6 @@ import (
 
 	"github.com/communitybridge/easycla/cla-backend-go/config"
 
-	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/sirupsen/logrus"
 
 	"github.com/communitybridge/easycla/cla-backend-go/users"
@@ -2127,6 +2126,11 @@ func (repo repository) ValidateProjectRecord(ctx context.Context, signatureID, n
 	expressionAttributeValues[":a"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
 	updateExpression = updateExpression + " #A = :a,"
 
+	// Set embago acknowledged flag
+	// expressionAttributeNames["#E"] = aws.String("signature_embargo_acked")
+	// expressionAttributeValues[":e"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
+	// updateExpression = updateExpression + " #E = :e,"
+
 	expressionAttributeNames["#S"] = aws.String("note")
 	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
 	updateExpression = updateExpression + " #S = :s"
@@ -2528,6 +2532,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		SignatureReferenceID:          employeeUserModel.UserID,
 		SignatureApproved:             true,
 		SignatureSigned:               true,
+		SignatureEmbargoAcked:         true,
 		SignatureDocumentMajorVersion: 2,
 		SignatureDocumentMinorVersion: 0,
 		SigTypeSignedApprovedID:       fmt.Sprintf("ecla#true#true#%s", companyModel.CompanyID),
@@ -3200,10 +3205,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		PageSize:  utils.Int64(10),
 	}
 
-	authUser := auth.User{
-		Email:    claManager.LfEmail.String(),
-		UserName: claManager.LfUsername,
-	}
+	// authUser := auth.User{
+	// 	Email:    claManager.LfEmail.String(),
+	// 	UserName: claManager.LfUsername,
+	// }
 
 	// Keep track of gerrit users under a give CLA Group
 	var gerritICLAECLAs []string
@@ -3214,8 +3219,8 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		goRoutines := 2
 		gerritResultChannel := make(chan *GerritUserResponse, goRoutines)
 		gerritQueryStartTime, _ := utils.CurrentTime()
-		go repo.getGerritUsers(ctx, &authUser, projectID, utils.ClaTypeICLA, gerritResultChannel)
-		go repo.getGerritUsers(ctx, &authUser, projectID, utils.ClaTypeECLA, gerritResultChannel)
+		// go repo.getGerritUsers(ctx, &authUser, projectID, utils.ClaTypeICLA, gerritResultChannel)
+		// go repo.getGerritUsers(ctx, &authUser, projectID, utils.ClaTypeECLA, gerritResultChannel)
 
 		log.WithFields(f).Debug("waiting on gerrit user query results from 2 go routines...")
 		for i := 0; i < goRoutines; i++ {
@@ -3313,19 +3318,19 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 									}
 								} else {
 
-									// Update gerrit user
-									if utils.StringInSlice(user.LfUsername, gerritICLAECLAs) {
-										gerritIclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
-										if gerritIclaErr != nil {
-											msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
-											log.WithFields(f).WithError(gerritIclaErr).Warn(msg)
-										}
-										eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
-										if eclaErr != nil {
-											msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
-											log.WithFields(f).WithError(eclaErr).Warn(msg)
-										}
-									}
+									// // Update gerrit user
+									// if utils.StringInSlice(user.LfUsername, gerritICLAECLAs) {
+									// 	// gerritIclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
+									// 	if gerritIclaErr != nil {
+									// 		msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
+									// 		log.WithFields(f).WithError(gerritIclaErr).Warn(msg)
+									// 	}
+									// 	eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
+									// 	if eclaErr != nil {
+									// 		msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
+									// 		log.WithFields(f).WithError(eclaErr).Warn(msg)
+									// 	}
+									// }
 									results <- &ICLAUserResponse{
 										ICLASignature: &models.IclaSignature{
 											GithubUsername: icla.UserGHUsername,
@@ -4053,10 +4058,10 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 	}
 	email := getBestEmail(user)
 
-	authUser := auth.User{
-		Email:    claManager.LfEmail.String(),
-		UserName: claManager.LfUsername,
-	}
+	// authUser := auth.User{
+	// 	Email:    claManager.LfEmail.String(),
+	// 	UserName: claManager.LfUsername,
+	// }
 
 	if approvalList.Criteria == utils.EmailDomainCriteria {
 		// Handle Domains
@@ -4072,20 +4077,20 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 					return user, err
 				}
 
-				// Update Gerrit group users
-				if utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs) {
-					log.WithFields(f).Debugf("removing gerrit user:%s  from claGroup: %s ...", user.LfUsername, approvalList.ClaGroupID)
-					iclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
-					if iclaErr != nil {
-						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
-						log.WithFields(f).Warn(msg)
-					}
-					eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
-					if eclaErr != nil {
-						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
-						log.WithFields(f).Warn(msg)
-					}
-				}
+				// // Update Gerrit group users
+				// if utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs) {
+				// 	log.WithFields(f).Debugf("removing gerrit user:%s  from claGroup: %s ...", user.LfUsername, approvalList.ClaGroupID)
+				// 	iclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
+				// 	if iclaErr != nil {
+				// 		msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+				// 		log.WithFields(f).Warn(msg)
+				// 	}
+				// 	eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
+				// 	if eclaErr != nil {
+				// 		msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+				// 		log.WithFields(f).Warn(msg)
+				// 	}
+				// }
 			}
 		}
 	} else if approvalList.Criteria == utils.GitHubOrgCriteria {
@@ -4546,6 +4551,7 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 				LfUsername:             sig.UserLFUsername,
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
+				SignatureEmbargoAcked:  true,
 				SignatureModified:      sig.DateModified,
 				SignatureID:            sig.SignatureID,
 				SignedOn:               sigSignedTime,
@@ -4929,7 +4935,10 @@ func (repo repository) ActivateSignature(ctx context.Context, signatureID string
 	}
 
 	// Build the expression
-	expressionUpdate := expression.Set(expression.Name("signature_approved"), expression.Value(true)).Set(expression.Name("signature_signed"), expression.Value(false))
+	expressionUpdate := expression.
+		Set(expression.Name("signature_approved"), expression.Value(true)).
+		Set(expression.Name("signature_signed"), expression.Value(false)).
+		Set(expression.Name("signature_embargo_acked"), expression.Value(true))
 
 	expr, err := expression.NewBuilder().WithUpdate(expressionUpdate).Build()
 	if err != nil {
@@ -4959,32 +4968,32 @@ func (repo repository) ActivateSignature(ctx context.Context, signatureID string
 }
 
 // getGerritUsers is a helper function to fetch the list of gerrit users for the specified type - results are returned through the specified results channel
-func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, projectSFID string, claType string, gerritResultChannel chan *GerritUserResponse) {
-	f := logrus.Fields{
-		"functionName":   "v1.signatures.repository.getGerritUsers",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"projectSFID":    projectSFID,
-	}
-	log.WithFields(f).Debugf("querying gerrit for %s gerrit users...", claType)
-	gerritIclaUsers, getGerritQueryErr := repo.gerritService.GetUsersOfGroup(ctx, authUser, projectSFID, claType)
-	if getGerritQueryErr != nil || gerritIclaUsers == nil {
-		msg := fmt.Sprintf("unable to fetch gerrit users for claGroup: %s , claType: %s ", projectSFID, claType)
-		log.WithFields(f).WithError(getGerritQueryErr).Warn(msg)
-		gerritResultChannel <- &GerritUserResponse{
-			gerritGroupResponse: nil,
-			queryType:           claType,
-			Error:               errors.New(msg),
-		}
-		return
-	}
+// func (repo repository) getGerritUsers(ctx context.Context, authUser *auth.User, projectSFID string, claType string, gerritResultChannel chan *GerritUserResponse) {
+// 	// f := logrus.Fields{
+// 	// 	"functionName":   "v1.signatures.repository.getGerritUsers",
+// 	// 	utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+// 	// 	"projectSFID":    projectSFID,
+// 	// }
+// 	// log.WithFields(f).Debugf("querying gerrit for %s gerrit users...", claType)
+// 	// gerritIclaUsers, getGerritQueryErr := repo.gerritService.GetUsersOfGroup(ctx, authUser, projectSFID, claType)
+// 	// if getGerritQueryErr != nil || gerritIclaUsers == nil {
+// 	// 	msg := fmt.Sprintf("unable to fetch gerrit users for claGroup: %s , claType: %s ", projectSFID, claType)
+// 	// 	log.WithFields(f).WithError(getGerritQueryErr).Warn(msg)
+// 	// 	gerritResultChannel <- &GerritUserResponse{
+// 	// 		gerritGroupResponse: nil,
+// 	// 		queryType:           claType,
+// 	// 		Error:               errors.New(msg),
+// 	// 	}
+// 	// 	return
+// 	// }
 
-	log.WithFields(f).Debugf("retrieved %d gerrit users for CLA type: %s...", len(gerritIclaUsers.Members), claType)
-	gerritResultChannel <- &GerritUserResponse{
-		gerritGroupResponse: gerritIclaUsers,
-		queryType:           claType,
-		Error:               nil,
-	}
-}
+// 	// log.WithFields(f).Debugf("retrieved %d gerrit users for CLA type: %s...", len(gerritIclaUsers.Members), claType)
+// 	gerritResultChannel <- &GerritUserResponse{
+// 		gerritGroupResponse: nil,
+// 		queryType:           claType,
+// 		Error:               nil,
+// 	}
+// }
 
 func buildNextKey(indexName string, signature *models.Signature) (string, error) {
 	nextKey := make(map[string]*dynamodb.AttributeValue)

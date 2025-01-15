@@ -27,18 +27,15 @@ type Gerrit struct {
 // toModel converts the gerrit structure into a response model
 func (g *Gerrit) toModel() *models.Gerrit {
 	return &models.Gerrit{
-		DateCreated:   g.DateCreated,
-		DateModified:  g.DateModified,
-		GerritID:      strfmt.UUID4(g.GerritID),
-		GerritName:    g.GerritName,
-		GerritURL:     strfmt.URI(g.GerritURL),
-		GroupIDCcla:   g.GroupIDCcla,
-		GroupIDIcla:   g.GroupIDIcla,
-		GroupNameCcla: g.GroupNameCcla,
-		GroupNameIcla: g.GroupNameIcla,
-		ProjectID:     g.ProjectID,
-		Version:       g.Version,
-		ProjectSFID:   g.ProjectSFID,
+		DateCreated:  g.DateCreated,
+		DateModified: g.DateModified,
+		GerritID:     strfmt.UUID4(g.GerritID),
+		GerritName:   g.GerritName,
+		GerritURL:    strfmt.URI(g.GerritURL),
+		GroupIDCcla:  g.GroupIDCcla,
+		ProjectID:    g.ProjectID,
+		Version:      g.Version,
+		ProjectSFID:  g.ProjectSFID,
 	}
 }
 

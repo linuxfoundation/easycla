@@ -133,6 +133,46 @@ locally and simply point to the DEV environment. The `STAGE` environment
 variable controls where we point. Make sure you export/provide/setup the AWS
 properties in order to connect.
 
+
+When running on Linux it looks like `.venv` sets $HOME to /tmp, and then python backend is looking for the AWS config file in `~/.aws/config`
+This means it ends up in `/tmp/.aws/config`. You can use the following scritp to activate your environment (`setenv.secret`) via: `source setenv.secret`:
+```
+#!/bin/bash
+rm -rf /tmp/aws
+cp -R ~/.aws /tmp/.aws
+export AWS_SDK_LOAD_CONFIG=1
+export AWS_PROFILE='lfproduct-dev'
+export AWS_REGION='us-east-1'
+data="$(aws sts assume-role --role-arn arn:aws:iam::395594542180:role/product-contractors-role --profile lfproduct --role-session-name lfproduct-dev-session)"
+export AWS_ACCESS_KEY_ID="$(echo "${data}" | jq -r '.Credentials.AccessKeyId')"
+export AWS_SECRET_ACCESS_KEY="$(echo "${data}" | jq -r '.Credentials.SecretAccessKey')"
+export AWS_SESSION_TOKEN="$(echo "${data}" | jq -r '.Credentials.SessionToken')"
+export AWS_SECURITY_TOKEN="$(echo "${data}" | jq -r '.Credentials.SessionToken')"
+export PRODUCT_DOMAIN='dev.lfcla.com'
+export ROOT_DOMAIN='lfcla.dev.platform.linuxfoundation.org'
+export PORT='5000'
+export STAGE='dev'
+```
+
+And the following one to unset the environment:
+```
+#!/bin/bash
+rm -rf /tmp/.aws
+unset AWS_SDK_LOAD_CONFIG=1
+unset AWS_PROFILE
+unset AWS_REGION
+unset AWS_ACCESS_KEY_ID
+unset AWS_SECRET_ACCESS_KEY
+unset AWS_SESSION_TOKEN
+unset AWS_SECURITY_TOKEN
+unset PRODUCT_DOMAIN
+unset ROOT_DOMAIN
+unset PORT
+unset STAGE
+```
+
+Please refer to [aws_env.md](aws_env.md) for more details.
+
 ## Run the Python Backend
 
 ```bash
@@ -161,6 +201,9 @@ open http://localhost:5000/v2/health
 # Get User by ID
 open http://localhost:5000/v2/user/<some_uuid_from_users_table>
 ```
+
+To expose service running on the localhost to the outside world use: `` ./utils/ngrok.sh ``.
+And then tets via: `` API_URL='https://[redacted].ngrok-free.app' ./scripts/health.sh `` from another host (anywhere in the world).
 
 ## Building and Running the Go Backend
 
@@ -331,9 +374,9 @@ First build and setup the environment.  Then simply run it:
 
 ```bash
 # Mac
-./cla-mac
+./bin/cla-mac
 # or linux
-./cla 
+./bin/cla
 ```
 
 You should see the typical diagnostic details on startup indicating that it

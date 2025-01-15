@@ -97,6 +97,7 @@ type SignatureDynamoDB struct {
 	SignatureACL                  []string `json:"signature_acl"`                    // [github:1234567]
 	SignatureApproved             bool     `json:"signature_approved"`               // true if the signature is approved, false if revoked/invalidated
 	SignatureSigned               bool     `json:"signature_signed"`                 // true if the signature has been signed
+	SignatureEmbargoAcked         bool     `json:"signature_embargo_acked"`          // true if the signature's embargo was acknowledged
 	SignatureReferenceType        string   `json:"signature_reference_type"`         // one of: user, company
 	SignatureReferenceName        string   `json:"signature_reference_name"`         // John Doe
 	SignatureReferenceNameLower   string   `json:"signature_reference_name_lower"`   // john doe

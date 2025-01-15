@@ -41,6 +41,7 @@ type Signature struct {
 	DateModified                  string   `json:"date_modified"`
 	SignatureApproved             bool     `json:"signature_approved"`
 	SignatureSigned               bool     `json:"signature_signed"`
+	SignatureEmbargoAcked         bool     `json:"signature_embargo_acked"`
 	SignatureDocumentMajorVersion string   `json:"signature_document_major_version"`
 	SignatureDocumentMinorVersion string   `json:"signature_document_minor_version"`
 	SignatureReferenceID          string   `json:"signature_reference_id"`
@@ -95,6 +96,7 @@ func (s *service) SignatureAssignContributorEvent(event events.DynamoDBEventReco
 	f["projectID"] = newSignature.SignatureProjectID
 	f["approved"] = newSignature.SignatureApproved
 	f["signed"] = newSignature.SignatureSigned
+	f["embargo_acked"] = newSignature.SignatureEmbargoAcked
 
 	if !oldSignature.SignatureSigned && newSignature.SignatureSigned {
 		log.WithFields(f).Debug("signature is now signed - assigning contributor...")
@@ -138,6 +140,7 @@ func (s *service) SignatureSignedEvent(event events.DynamoDBEventRecord) error {
 	f["projectID"] = newSignature.SignatureProjectID
 	f["approved"] = newSignature.SignatureApproved
 	f["signed"] = newSignature.SignatureSigned
+	f["embargo_acked"] = newSignature.SignatureEmbargoAcked
 
 	// check if signature signed event is received
 	if !oldSignature.SignatureSigned && newSignature.SignatureSigned {

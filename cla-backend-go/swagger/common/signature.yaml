@@ -38,6 +38,11 @@ properties:
     description: the signature approved flag - true or false value
     example: true
     x-omitempty: false
+  signatureEmbargoAcked:
+    type: boolean
+    description: the signature embargo acknowledged flag - true or false value
+    example: true
+    # x-omitempty: false
   signatureReferenceType:
     type: string
     description: the signature reference type - either user or company
