@@ -19,13 +19,18 @@
     "prune:prod": "SLS_DEBUG=* time ./node_modules/serverless/bin/serverless.js prune -n 3 -s prod -r us-east-2 --verbose"
   },
   "dependencies": {
+    "aws-sdk": "^2.1329.0",
+    "fast-xml-parser": ">=4.4.1",
+    "follow-redirects": "^1.14.7",
     "install": "^0.13.0",
     "node.extend": "^2.0.2",
-    "serverless": "^3.32.2",
+    "qs": "^6.11.0",
+    "serverless": "^4.4.19",
     "serverless-finch": "^4.0.3",
     "serverless-layers": "^2.6.1",
     "serverless-plugin-tracing": "^2.0.0",
     "serverless-prune-plugin": "^2.0.2",
+    "simple-git": "^3.16.0",
     "xml2js": "^0.6.0",
     "yarn-audit-fix": "^9.3.10"
   },
