@@ -38,8 +38,6 @@ jobs:
         with:
           python-version: '3.8'
           cache: 'pip'
-#      - name: Upgrade setuptools
-#        run: pip install --upgrade setuptools
       - name: Cache Go modules
         uses: actions/cache@v2
         with:
