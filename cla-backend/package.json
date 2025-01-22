@@ -33,9 +33,13 @@
     "delete_domain:prod": "SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js delete_domain -s prod -r us-east-1 --verbose"
   },
   "dependencies": {
+    "aws-sdk": "^2.1329.0",
+    "fast-xml-parser": ">=4.4.1",
     "install": "^0.13.0",
+    "node-fetch": "^2.6.7",
     "node.extend": "^2.0.2",
-    "serverless": "^3.32.2",
+    "qs": "^6.11.0",
+    "serverless": "^4.4.19",
     "serverless-domain-manager": "^7.0.4",
     "serverless-finch": "^4.0.3",
     "serverless-layers": "^2.6.1",
@@ -43,6 +47,8 @@
     "serverless-prune-plugin": "^2.0.2",
     "serverless-python-requirements": "^6.0.0",
     "serverless-wsgi": "^3.0.1",
+    "shell-quote": "^1.7.3",
+    "simple-git": "^3.16.0",
     "xml2js": "^0.6.0",
     "yarn-audit-fix": "^10.0.0"
   },
