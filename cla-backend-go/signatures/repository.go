@@ -4704,6 +4704,9 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	}
 
 	out := &models.CorporateContributorList{List: make([]*models.CorporateContributor, 0)}
+	if totalCount == 0 {
+		return out, nil
+	}
 	var lastEvaluatedKey string
 
 	currentCount := int64(0)
