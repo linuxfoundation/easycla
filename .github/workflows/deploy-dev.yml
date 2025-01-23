@@ -33,6 +33,9 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '18'
+      - name: Install additional deps
+        id: install-dependencies
+        uses: ./.github/install-dependencies
       - name: Setup python
         uses: actions/setup-python@v4
         with:
