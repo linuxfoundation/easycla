@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
       - name: Setup go
         uses: actions/setup-go@v3
         with:
@@ -36,7 +36,7 @@ jobs:
       - name: Setup python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.8'
+          python-version: '3.7'
           cache: 'pip'
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -64,10 +64,10 @@ jobs:
       - name: Python Setup
         working-directory: cla-backend
         run: |
-          python -m venv venv
-          source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
+
+
 
       - name: Python Lint
         working-directory: cla-backend
@@ -77,9 +77,6 @@ jobs:
       - name: Python Test
         working-directory: cla-backend
         run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install pytest
           pytest "cla/tests" -p no:warnings
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
