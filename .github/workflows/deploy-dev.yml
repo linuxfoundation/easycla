@@ -69,8 +69,6 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-
-
       - name: Python Lint
         working-directory: cla-backend
         run: |
@@ -79,7 +77,10 @@ jobs:
       - name: Python Test
         working-directory: cla-backend
         run: |
-          python -m pytest "cla/tests" -p no:warnings
+          python -m venv venv
+          source venv/bin/activate
+          pip install pytest
+          pytest "cla/tests" -p no:warnings
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
           AUTH0_PLATFORM_URL: https://linuxfoundation-dev.auth0.com/oauth/token
