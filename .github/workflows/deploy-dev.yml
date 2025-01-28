@@ -19,7 +19,7 @@ env:
 
 jobs:
   build-deploy-dev:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     environment: dev
     steps:
       - uses: actions/checkout@v3
