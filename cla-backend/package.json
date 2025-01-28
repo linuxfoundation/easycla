@@ -7,7 +7,7 @@
     "node": ">=16"
   },
   "scripts": {
-    "sls": "./node_modules/serverless/bin/serverless.js",
+    "sls": "./node_modules/serverless/.bin/serverless.js",
     "serve:dev": "./node_modules/serverless/bin/serverless.js wsgi serve -s 'dev' -r us-east-1 --verbose",
     "deploy:dev": "SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js deploy -s dev -r us-east-1 --verbose",
     "deploy:info:dev": "SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js info -s dev -r us-east-1 --verbose",
