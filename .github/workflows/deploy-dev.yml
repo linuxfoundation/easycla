@@ -64,6 +64,8 @@ jobs:
       - name: Python Setup
         working-directory: cla-backend
         run: |
+          python -m venv venv
+          source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
 
