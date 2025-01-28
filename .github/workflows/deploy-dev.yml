@@ -79,7 +79,7 @@ jobs:
       - name: Python Test
         working-directory: cla-backend
         run: |
-          pytest "cla/tests" -p no:warnings
+          python -m pytest "cla/tests" -p no:warnings
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
           AUTH0_PLATFORM_URL: https://linuxfoundation-dev.auth0.com/oauth/token
