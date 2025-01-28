@@ -59,7 +59,7 @@ jobs:
           TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER_GITHUB }}
 
       - name: Add OS Tools
-        run: sudo apt update && sudo apt-get install file libxml2-dev -y
+        run: sudo apt update && sudo apt-get install file -y
 
       - name: Python Setup
         working-directory: cla-backend
