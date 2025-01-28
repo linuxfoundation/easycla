@@ -1,0 +1,20 @@
+name: Install Additional Deps
+description: Install required project dependencies
+runs:
+  using: 'composite'
+  steps:
+    - uses: pnpm/action-setup@v2
+      with:
+        version: 8
+
+    - uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install serverless
+      run: pnpm install -g serverless
+      shell: bash
+
+    - name: Install dependencies
+      run: pnpm install
+      shell: bash
