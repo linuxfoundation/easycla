@@ -4,7 +4,7 @@
   "license": "MIT",
   "author": "The Linux Foundation",
   "engines": {
-    "node": ">=16"
+    "node": ">=18"
   },
   "scripts": {
     "sls": "./node_modules/serverless/bin/serverless.js",
