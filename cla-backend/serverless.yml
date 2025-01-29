@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 service: cla-backend
-frameworkVersion: '^2.72.4'
+frameworkVersion: '^3.0.0'
 
 package:
   # Exclude all first - selectively add in lambda functions
@@ -584,6 +584,10 @@ functions:
   apiv1:
     handler: wsgi_handler.handler
     description: "EasyCLA Python API handler for the /v1 endpoints"
+    package:
+      individually: true
+      patterns:
+        - '!**'
     events:
       - http:
           method: ANY
@@ -593,6 +597,10 @@ functions:
   apiv2:
     handler: wsgi_handler.handler
     description: "EasyCLA Python API handler for the /v2 endpoints"
+    package:
+      individually: true
+      patterns:
+        - '!**'
     events:
       - http:
           method: ANY
@@ -602,6 +610,10 @@ functions:
   salesforceprojects:
     handler: cla.salesforce.get_projects
     description: "EasyCLA API Callback Handler for fetching all SalesForce projects"
+    package:
+      individually: true
+      patterns:
+        - '!**'
     events:
       - http:
           method: ANY
@@ -611,6 +623,10 @@ functions:
   salesforceprojectbyID:
     handler: cla.salesforce.get_project
     description: "EasyCLA API Callback Handler for fetching SalesForce projects by ID"
+    package:
+      individually: true
+      patterns:
+        - '!**'
     events:
       - http:
           method: ANY
@@ -621,6 +637,10 @@ functions:
   githubinstall:
     handler: wsgi_handler.handler
     description: "EasyCLA API Callback Handler for GitHub bot installations"
+    package:
+      individually: true
+      patterns:
+        - '!**'
     events:
       - http:
           method: ANY
@@ -630,6 +650,10 @@ functions:
   githubactivity:
     handler: wsgi_handler.handler
     description: "EasyCLA API Callback Handler for GitHub activity"
+    package:
+      individually: true
+      patterns:
+        - '!**'
     events:
       - http:
           method: POST
