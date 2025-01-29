@@ -398,6 +398,7 @@ functions:
     package:
       individually: true
       patterns:
+        - '!**'
         - 'auth/bin/**'
 
   api-v3-lambda:
