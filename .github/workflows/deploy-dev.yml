@@ -23,10 +23,12 @@ jobs:
     environment: dev
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup go
         uses: actions/setup-go@v4
         with:
           go-version: '1.20.1'
+
       - name: Go Version
         run: go version
 
@@ -36,7 +38,7 @@ jobs:
           node-version: '18'
 
       - name: Setup python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.8'
           cache: 'pip'
@@ -149,6 +151,7 @@ jobs:
           if [[ ! -f serverless.yml ]]; then echo "Missing serverless.yml file. Exiting..."; exit 1; fi
           if [[ ! -f serverless-authorizer.yml ]]; then echo "Missing serverless-authorizer.yml file. Exiting..."; exit 1; fi
           yarn sls deploy --force --stage ${STAGE} --region us-east-1 --verbose
+
       - name: EasyCLA v1 Service Check
         run: |
           sudo apt install curl jq -y
