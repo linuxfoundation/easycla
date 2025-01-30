@@ -70,8 +70,8 @@ jobs:
       - name: Python Setup
         working-directory: cla-backend
         run: |
-          python -m venv venv
-          source venv/bin/activate
+          python -m venv .venv
+          source .venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
 
@@ -83,8 +83,8 @@ jobs:
       - name: Python Test
         working-directory: cla-backend
         run: |
-          python -m venv venv
-          source venv/bin/activate
+          python -m venv .venv
+          source .venv/bin/activate
           pip install pytest
           pytest "cla/tests" -p no:warnings
         env:
