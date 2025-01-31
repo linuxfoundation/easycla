@@ -15,3 +15,5 @@ COND="data:signature_project_id = '01af041c-fa69-4052-a23c-fb8c1d3bef24' and dat
 COND="data:signature_reference_id = '1527f0ec-3272-11ec-a3ed-0e7521e28b4e' and data:signature_user_ccla_company_id = 'f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc' and data:signature_project_id = '01af041c-fa69-4052-a23c-fb8c1d3bef24'" ./utils/lookup_sf.sh signatures signature_id
 # CCLA
 COND="data:signature_project_id = '01af041c-fa69-4052-a23c-fb8c1d3bef24' and data:signature_reference_id = 'f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc' and data:signature_type = 'ccla' and data:signature_reference_type = 'company' and data:signature_user_ccla_company_id is null and data:signature_approved and data:signature_signed" ./utils/lookup_sf.sh signatures signature_id
+# M2M token generation & API call
+./m2m-token-prod.secret && DEBUG=1 API_URL='https://api-gw.platform.linuxfoundation.org/cla-service' ./utils/cla_authorization.sh b71c469a-55e7-492c-9235-fd30b31da2aa andreasgeissler
