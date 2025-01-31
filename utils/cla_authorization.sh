@@ -3,9 +3,9 @@
 # cla_group='b71c469a-55e7-492c-9235-fd30b31da2aa' (ONAP)
 # lfid='lflgryglicki'
 # TOKEN='...' - Auth0 JWT bearer token
-# XACL='...' - X-ACL
-# API_URL='https://api-gw.platform.linuxfoundation.org/cla-service/v4/cla-service/v4/'
 # DEBUG=1 ./utils/cla_group_corporate_contributors.sh b71c469a-55e7-492c-9235-fd30b31da2aa andreasgeissler
+# For prod: ./m2m-token-prod.secret && API_URL='https://api-gw.platform.linuxfoundation.org/cla-service' ./utils/cla_authorization.sh b71c469a-55e7-492c-9235-fd30b31da2aa andreasgeissler
+# For dev: ./m2m-token-dev.secret && API_URL='https://api-gw.dev.platform.linuxfoundation.org/cla-service' ./utils/cla_authorization.sh 01af041c-fa69-4052-a23c-fb8c1d3bef24 poojapanjwani
 
 if [ -z "$TOKEN" ]
 then
@@ -17,17 +17,6 @@ if [ -z "$TOKEN" ]
 then
   echo "$0: TOKEN not specified and unable to obtain one"
   exit 1
-fi
-
-if [ -z "$XACL" ]
-then
-  XACL="$(cat ./x-acl.secret)"
-fi
-
-if [ -z "$XACL" ]
-then
-  echo "$0: XACL not specified and unable to obtain one"
-  exit 2
 fi
 
 if [ -z "$1" ]
@@ -51,6 +40,6 @@ fi
 
 if [ ! -z "$DEBUG" ]
 then
-  echo "curl -s -XGET -H 'X-ACL: ${XACL}' -H 'Authorization: Bearer ${TOKEN}' -H 'Content-Type: application/json' '${API_URL}/v4/cla-services/cla/authorization?lfid=${lfid}&claGroupId=${cla_group}'"
+  echo "curl -s -XGET -H 'Authorization: Bearer ${TOKEN}' -H 'Content-Type: application/json' \"${API_URL}/v4/cla/authorization?lfid=${lfid}&claGroupId=${cla_group}\""
 fi
-curl -s -XGET -H "X-ACL: ${XACL}" -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" "${API_URL}/v4/cla/authorization?lfid=${lfid}&claGroupId=${cla_group}"
+curl -s -XGET -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" "${API_URL}/v4/cla/authorization?lfid=${lfid}&claGroupId=${cla_group}"
