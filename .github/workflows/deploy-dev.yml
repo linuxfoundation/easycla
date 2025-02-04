@@ -127,7 +127,8 @@ jobs:
 
       - name: Go Lint
         working-directory: cla-backend-go
-        run: make lint
+        run: |
+          make lint || exit
 
       - name: Setup Deployment
         working-directory: cla-backend
