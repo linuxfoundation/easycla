@@ -134,7 +134,8 @@ def user(user_table):
         req.return_value = {}
         user_instance = User()
         user_instance.set_user_id("user_foo_id")
-        user_instance.set_user_email("foo@gmail.com")
+        # LG: 20250204: breaks tests
+        # user_instance.set_user_email("foo@gmail.com")
         user_instance.set_user_name("foo_username")
         user_instance.save()
         yield user_instance

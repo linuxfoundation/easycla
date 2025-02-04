@@ -87,8 +87,7 @@ class TestUserModels(unittest.TestCase):
         user = User()
         user.set_lf_email(None)
         user.set_user_emails([])
-        # LG: temporarily disable as it fails: 20250204
-        # assert user.get_user_email() is None
+        assert user.get_user_email() is None
 
         user.set_lf_email("test1@test.com")
         assert user.get_user_email() == "test1@test.com"
