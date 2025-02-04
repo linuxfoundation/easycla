@@ -27,7 +27,7 @@ jobs:
       - name: Setup go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.23.5'
 
       - name: Go Version
         run: go version
@@ -70,6 +70,7 @@ jobs:
       - name: Python Setup
         working-directory: cla-backend
         run: |
+          sudo apt install libxml2-dev libxslt-dev
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
