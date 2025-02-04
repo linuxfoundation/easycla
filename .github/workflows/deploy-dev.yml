@@ -70,7 +70,7 @@ jobs:
       - name: Python Setup
         working-directory: cla-backend
         run: |
-          # sudo apt install libxml2-dev libxslt-dev
+          sudo apt install libxml2-dev libxslt-dev
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
