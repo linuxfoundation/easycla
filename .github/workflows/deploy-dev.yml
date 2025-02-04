@@ -91,7 +91,7 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          pip install --upgrade pytest py pytest_clarity
+          pip install --upgrade pytest py pytest_clarity six
           pytest "cla/tests" -p no:warnings
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
