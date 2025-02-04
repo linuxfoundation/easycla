@@ -27,7 +27,8 @@ jobs:
       - name: Setup go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23.5'
+          ## go-version: '1.23.5'
+          go-version: '1.22'
 
       - name: Go Version
         run: go version
@@ -40,7 +41,7 @@ jobs:
       - name: Setup python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
           cache: 'pip'
 
       - name: Configure AWS Credentials
@@ -70,21 +71,21 @@ jobs:
       - name: Python Setup
         working-directory: cla-backend
         run: |
-          sudo apt install libxml2-dev libxslt-dev
+          ## sudo apt install libxml2-dev libxslt-dev
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
-          pip install lxml --prefer-binary
-          pip install python-jose
+          ## pip install lxml --prefer-binary
+          ## pip install python-jose
           pip install -r requirements.txt
 
       - name: Python Lint
         working-directory: cla-backend
         run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install pylint
-          pip install --upgrade wrapt
+          ## python -m venv .venv
+          ## source .venv/bin/activate
+          ## pip install pylint
+          ## pip install --upgrade wrapt
           pylint cla/*.py || true
 
       - name: Python Test
@@ -92,8 +93,10 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          pip install --upgrade pytest py pytest_clarity six
-          pytest "cla/tests" -p no:warnings || true
+          pip install pytest
+          pytest "cla/tests" -p no:warnings
+          ## pip install --upgrade pytest py pytest_clarity six
+          ## pytest "cla/tests" -p no:warnings || true
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
           AUTH0_PLATFORM_URL: https://linuxfoundation-dev.auth0.com/oauth/token
@@ -128,9 +131,8 @@ jobs:
       - name: Go Lint
         working-directory: cla-backend-go
         run: |
-          # LG: commented out as it timeouts
-          # make lint
-          echo 'ok'
+          ## make lint
+          make lint
 
       - name: Setup Deployment
         working-directory: cla-backend
