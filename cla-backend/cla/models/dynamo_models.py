@@ -939,7 +939,7 @@ class DocumentModel(MapAttribute):
     document_preamble = UnicodeAttribute(null=True)
     document_legal_entity_name = UnicodeAttribute(null=True)
     document_s3_url = UnicodeAttribute(null=True)
-    document_tabs = ListAttribute(of=DocumentTabModel, default=[])
+    document_tabs = ListAttribute(of=DocumentTabModel)
 
 
 class Document(model_interfaces.Document):
@@ -1142,9 +1142,9 @@ class ProjectModel(BaseModel):
     project_external_id = UnicodeAttribute()
     project_name = UnicodeAttribute()
     project_name_lower = UnicodeAttribute(null=True)
-    project_individual_documents = ListAttribute(of=DocumentModel, default=[])
-    project_corporate_documents = ListAttribute(of=DocumentModel, default=[])
-    project_member_documents = ListAttribute(of=DocumentModel, default=[])
+    project_individual_documents = ListAttribute(of=DocumentModel)
+    project_corporate_documents = ListAttribute(of=DocumentModel)
+    project_member_documents = ListAttribute(of=DocumentModel)
     project_icla_enabled = BooleanAttribute(default=True)
     project_ccla_enabled = BooleanAttribute(default=True)
     project_ccla_requires_icla_signature = BooleanAttribute(default=False)
@@ -1158,7 +1158,7 @@ class ProjectModel(BaseModel):
     project_name_lower_search_index = ProjectNameLowerIndex()
     foundation_sfid_project_name_index = ProjectFoundationIDIndex()
 
-    project_acl = UnicodeSetAttribute(default=set())
+    project_acl = UnicodeSetAttribute(default=set)
     # Default is v1 for all of our models - override for this model so that we can redirect to new UI when ready
     # version = UnicodeAttribute(default="v2")  # Schema version is v2 for Project Models
 
@@ -1567,7 +1567,7 @@ class UserModel(BaseModel):
     user_id = UnicodeAttribute(hash_key=True)
     # User Emails are specifically GitHub Emails
     user_external_id = UnicodeAttribute(null=True)
-    user_emails = UnicodeSetAttribute(default=set())
+    user_emails = UnicodeSetAttribute(default=set)
     user_name = UnicodeAttribute(null=True)
     user_company_id = UnicodeAttribute(null=True)
     user_github_id = NumberAttribute(null=True)
@@ -3491,7 +3491,7 @@ class CompanyModel(BaseModel):
     company_name_index = CompanyNameIndex()
     signing_entity_name_index = SigningEntityNameIndex()
     company_external_id_index = ExternalCompanyIndex()
-    company_acl = UnicodeSetAttribute(default=set())
+    company_acl = UnicodeSetAttribute(default=set)
     note = UnicodeAttribute(null=True)
 
 
@@ -4562,7 +4562,7 @@ class UserPermissionsModel(BaseModel):
             host = "http://localhost:8000"
 
     username = UnicodeAttribute(hash_key=True)
-    projects = UnicodeSetAttribute(default=set())
+    projects = UnicodeSetAttribute(default=set)
 
 
 class UserPermissions(model_interfaces.UserPermissions):  # pylint: disable=too-many-public-methods
@@ -5262,7 +5262,7 @@ class CCLAWhitelistRequestModel(BaseModel):
     project_id = UnicodeAttribute(null=True)
     project_name = UnicodeAttribute(null=True)
     request_status = UnicodeAttribute(null=True)
-    user_emails = UnicodeSetAttribute(default=set())
+    user_emails = UnicodeSetAttribute(default=set)
     user_id = UnicodeAttribute(null=True)
     user_github_id = UnicodeAttribute(null=True)
     user_github_username = UnicodeAttribute(null=True)
