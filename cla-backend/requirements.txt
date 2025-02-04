@@ -36,9 +36,6 @@ pydocusign==2.2
 PyGithub==1.55
 PyJWT==2.7.0
 pyparsing==2.4.5
-pytest==5.0.1
-pytest-clarity==0.3.0a0
-pytest-cov==2.8.1
 python-dateutil==2.8.1
 requests==2.31.0
 requests-oauthlib==1.2.0
@@ -59,4 +56,3 @@ python-jose==3.3.0
 pynamodb==6.0.2
 wrapt==1.17.2
 astroid==3.3.8
-pylint==3.3.4

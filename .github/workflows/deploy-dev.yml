@@ -73,7 +73,6 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
-          # pip install python-jose pynamodb
           pip install -r requirements.txt
 
       - name: Python Lint
@@ -81,7 +80,7 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          # pip install --upgrade pylint wrapt
+          pip install --upgrade pylint
           pylint cla/*.py || true
 
       - name: Python Test
@@ -89,8 +88,8 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          # pip install --upgrade pytest py pytest_clarity wrapt
-          pip install --upgrade pytest py pytest_clarity
+          # pip install --upgrade pytest py pytest_clarity
+          pip install --upgrade pytest pytest-clarity pytest-cov
           pytest "cla/tests" -p no:warnings || true
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
