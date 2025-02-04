@@ -35,7 +35,6 @@ pyasn1==0.4.8
 pydocusign==2.2
 PyGithub==1.55
 PyJWT==2.7.0
-pylint==2.11.1
 pyparsing==2.4.5
 pytest==5.0.1
 pytest-clarity==0.3.0a0
@@ -60,3 +59,4 @@ python-jose==3.3.0
 pynamodb==6.0.2
 wrapt==1.17.2
 astroid==3.3.8
+pylint==3.3.4

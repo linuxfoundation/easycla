@@ -82,7 +82,6 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           # pip install --upgrade pylint wrapt
-          pip install --upgrade pylint
           pylint cla/*.py || true
 
       - name: Python Test
