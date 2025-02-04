@@ -74,6 +74,7 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
+          pip install lxml --prefer-binary
           pip install -r requirements.txt
 
       - name: Python Lint
