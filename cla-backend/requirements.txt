@@ -29,7 +29,6 @@ more-itertools==8.0.2
 nose2==0.9.1
 oauthlib==3.1.0
 packaging==20.5
-pluggy==0.13.1
 py==1.10.0
 pyasn1==0.4.8
 pydocusign==2.2
@@ -56,3 +55,4 @@ python-jose==3.3.0
 pynamodb==6.0.2
 wrapt==1.17.2
 astroid==3.3.8
+pluggy==1.5.0
