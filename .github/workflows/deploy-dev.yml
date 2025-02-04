@@ -82,9 +82,9 @@ jobs:
       - name: Python Lint
         working-directory: cla-backend
         run: |
-          ## python -m venv .venv
-          ## source .venv/bin/activate
-          ## pip install pylint
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install pylint
           ## pip install --upgrade wrapt
           pylint cla/*.py || true
 
@@ -93,7 +93,7 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          pip install --upgrade pytest py pytest_clarity
+          pip install --upgrade pytest py pytest_clarity wrapt
           pytest "cla/tests" -p no:warnings
           ## pip install --upgrade pytest py pytest_clarity six
           ## pytest "cla/tests" -p no:warnings || true
