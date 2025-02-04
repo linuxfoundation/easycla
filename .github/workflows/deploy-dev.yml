@@ -83,6 +83,7 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           pip install pylint
+          pip install --upgrade wrapt
           pylint cla/*.py || true
 
       - name: Python Test
@@ -91,6 +92,7 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           pip install pytest
+          pip install --upgrade pytest py
           pytest "cla/tests" -p no:warnings
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
