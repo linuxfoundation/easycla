@@ -93,7 +93,7 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          pip install pytest
+          pip install --upgrade pytest py
           pytest "cla/tests" -p no:warnings
           ## pip install --upgrade pytest py pytest_clarity six
           ## pytest "cla/tests" -p no:warnings || true
