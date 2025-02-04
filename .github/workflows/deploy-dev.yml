@@ -80,6 +80,9 @@ jobs:
       - name: Python Lint
         working-directory: cla-backend
         run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install pylint
           pylint cla/*.py || true
 
       - name: Python Test
