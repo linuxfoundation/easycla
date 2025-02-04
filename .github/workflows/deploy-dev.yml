@@ -150,8 +150,10 @@ jobs:
           if [[ ! -f bin/gitlab-repository-check-lambda ]]; then echo "Missing bin/gitlab-repository-check-lambda binary file. Exiting..."; exit 1; fi
           if [[ ! -f serverless.yml ]]; then echo "Missing serverless.yml file. Exiting..."; exit 1; fi
           if [[ ! -f serverless-authorizer.yml ]]; then echo "Missing serverless-authorizer.yml file. Exiting..."; exit 1; fi
-          find . -maxdepth 3 -type f
-          yarn sls deploy --verbose --conceal --force --stage ${STAGE} --region us-east-1 --verbose
+          echo "find:"
+          find bin/
+          echo "find."
+          yarn sls deploy --force --stage ${STAGE} --region us-east-1 --verbose
 
       - name: EasyCLA v1 Service Check
         run: |
