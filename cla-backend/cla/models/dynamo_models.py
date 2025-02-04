@@ -939,7 +939,7 @@ class DocumentModel(MapAttribute):
     document_preamble = UnicodeAttribute(null=True)
     document_legal_entity_name = UnicodeAttribute(null=True)
     document_s3_url = UnicodeAttribute(null=True)
-    document_tabs = ListAttribute(of=DocumentTabModel)
+    document_tabs = ListAttribute(of=DocumentTabModel, default=list)
 
 
 class Document(model_interfaces.Document):
@@ -1142,9 +1142,9 @@ class ProjectModel(BaseModel):
     project_external_id = UnicodeAttribute()
     project_name = UnicodeAttribute()
     project_name_lower = UnicodeAttribute(null=True)
-    project_individual_documents = ListAttribute(of=DocumentModel)
-    project_corporate_documents = ListAttribute(of=DocumentModel)
-    project_member_documents = ListAttribute(of=DocumentModel)
+    project_individual_documents = ListAttribute(of=DocumentModel, default=list)
+    project_corporate_documents = ListAttribute(of=DocumentModel, default=list)
+    project_member_documents = ListAttribute(of=DocumentModel, default=list)
     project_icla_enabled = BooleanAttribute(default=True)
     project_ccla_enabled = BooleanAttribute(default=True)
     project_ccla_requires_icla_signature = BooleanAttribute(default=False)
