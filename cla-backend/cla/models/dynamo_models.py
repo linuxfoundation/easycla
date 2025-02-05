@@ -945,6 +945,8 @@ class DocumentModel(MapAttribute):
     document_major_version = NumberAttribute(default=1)
     document_minor_version = NumberAttribute(default=0)
     document_author_name = UnicodeAttribute()
+    # LG: now we can use DateTimeAttribute - because pynamodb was updated
+    # document_creation_date = UnicodeAttribute()
     document_creation_date = DateTimeAttribute()
     document_preamble = UnicodeAttribute(null=True)
     document_legal_entity_name = UnicodeAttribute(null=True)

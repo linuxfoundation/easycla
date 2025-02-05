@@ -119,7 +119,6 @@ def project_table():
             ProjectModel.create_table(read_capacity_units=1, write_capacity_units=1)
 
 
-import pdb
 @pytest.fixture()
 def company_table():
     """ Fixture that creates the company table """
