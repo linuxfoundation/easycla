@@ -89,7 +89,7 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pytest py pytest-cov pytest-clarity
-          pytest "cla/tests" -p no:warnings || true
+          pytest "cla/tests" -p no:warnings
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
           AUTH0_PLATFORM_URL: https://linuxfoundation-dev.auth0.com/oauth/token
@@ -118,8 +118,7 @@ jobs:
 
       - name: Go Test
         working-directory: cla-backend-go
-        run: |
-          make test
+        run: make test
 
       - name: Go Lint
         working-directory: cla-backend-go
@@ -137,7 +136,6 @@ jobs:
           cp ../cla-backend-go/bin/zipbuilder-scheduler-lambda bin/
           cp ../cla-backend-go/bin/zipbuilder-lambda bin/
           cp ../cla-backend-go/bin/gitlab-repository-check-lambda bin/
-
 
       - name: EasyCLA v1 Deployment us-east-1
         working-directory: cla-backend

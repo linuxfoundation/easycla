@@ -22,21 +22,21 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20.1'
+          go-version: '1.22'
       - name: Go Version
         run: go version
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
       - name: Setup python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: '3.11'
           cache: 'pip'
       - name: Cache Go modules
         uses: actions/cache@v2
@@ -77,7 +77,7 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pytest py pytest-cov pytest-clarity
-          pytest "cla/tests" -p no:warnings || true
+          pytest "cla/tests" -p no:warnings
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
           AUTH0_PLATFORM_URL: https://linuxfoundation-dev.auth0.com/oauth/token
@@ -87,8 +87,7 @@ jobs:
 
       - name: Go Setup
         working-directory: cla-backend-go
-        run: |
-          make clean setup
+        run: make clean setup
 
       - name: Go Dependencies
         working-directory: cla-backend-go
@@ -96,8 +95,7 @@ jobs:
 
       - name: Go Swagger Generate
         working-directory: cla-backend-go
-        run: |
-          make swagger
+        run: make swagger
 
       - name: Go Build
         working-directory: cla-backend-go
@@ -106,8 +104,7 @@ jobs:
 
       - name: Go Test
         working-directory: cla-backend-go
-        run: |
-          make test
+        run: make test
 
       - name: Go Lint
         working-directory: cla-backend-go
