@@ -41,6 +41,8 @@ fi
 
 if [ ! -z "$DEBUG" ]
 then
-  echo "curl -s -XPOST -H 'Content-Type: application/json' '${API_URL}/v2/request-individual-signature' -d '{\"project_id\":\"${project_id}\",\"user_id\":\"${user_id}\",\"return_url_type\":\"${return_url_type}\",\"return_url\":\"${return_url}\"}' | jq -r '.'"
+  echo "curl -s -XPOST -H 'Content-Type: application/json' '${API_URL}/v2/request-individual-signature' -d '{\"project_id\":\"${project_id}\",\"user_id\":\"${user_id}\",\"return_url_type\":\"${return_url_type}\",\"return_url\":\"${return_url}\"}'"
+  curl -s -XPOST -H "Content-Type: application/json" "${API_URL}/v2/request-individual-signature" -d "{\"project_id\":\"${project_id}\",\"user_id\":\"${user_id}\",\"return_url_type\":\"${return_url_type}\",\"return_url\":\"${return_url}\"}"
+else
+  curl -s -XPOST -H "Content-Type: application/json" "${API_URL}/v2/request-individual-signature" -d "{\"project_id\":\"${project_id}\",\"user_id\":\"${user_id}\",\"return_url_type\":\"${return_url_type}\",\"return_url\":\"${return_url}\"}" | jq -r '.'
 fi
-curl -s -XPOST -H "Content-Type: application/json" "${API_URL}/v2/request-individual-signature" -d "{\"project_id\":\"${project_id}\",\"user_id\":\"${user_id}\",\"return_url_type\":\"${return_url_type}\",\"return_url\":\"${return_url}\"}" | jq -r '.'

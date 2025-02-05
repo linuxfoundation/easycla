@@ -13,6 +13,7 @@ import time
 import uuid
 from datetime import timezone
 from typing import Optional, List
+from dateutil.parser import parse as parsedatestring
 
 import dateutil.parser
 from pynamodb import attributes
@@ -24,7 +25,7 @@ from pynamodb.attributes import (
     NumberAttribute,
     ListAttribute,
     JSONAttribute,
-    MapAttribute, DESERIALIZE_CLASS_MAP,
+    MapAttribute,
 )
 from pynamodb.expressions.condition import Condition
 from pynamodb.indexes import GlobalSecondaryIndex, AllProjection
@@ -708,14 +709,24 @@ class CompanyIDProjectIDIndex(GlobalSecondaryIndex):
     company_id = UnicodeAttribute(hash_key=True)
     project_id = UnicodeAttribute(range_key=True)
 
+class DateTimeAttribute(UTCDateTimeAttribute):
+    """
+    We need to patch deserialize, see https://pynamodb.readthedocs.io/en/stable/upgrading.html#no-longer-parsing-date-time-strings-leniently
+    This fails for ProjectModel.date_created having '2022-11-21T10:31:31Z' instead of strictly expected '2022-08-25T16:26:04.000000+0000'
+    """
+    def deserialize(self, value):
+        try:
+            return self._fast_parse_utc_date_string(value)
+        except (TypeError, ValueError):
+            return parsedatestring(value)
 
 class BaseModel(Model):
     """
     Base pynamodb model used for all CLA models.
     """
 
-    date_created = UTCDateTimeAttribute(default=datetime.datetime.utcnow())
-    date_modified = UTCDateTimeAttribute(default=datetime.datetime.utcnow())
+    date_created = DateTimeAttribute(default=datetime.datetime.utcnow())
+    date_modified = DateTimeAttribute(default=datetime.datetime.utcnow())
     version = UnicodeAttribute(default="v1")  # Schema version.
 
     def __iter__(self):
@@ -934,8 +945,7 @@ class DocumentModel(MapAttribute):
     document_major_version = NumberAttribute(default=1)
     document_minor_version = NumberAttribute(default=0)
     document_author_name = UnicodeAttribute()
-    # Not using UTCDateTimeAttribute due to https://github.com/pynamodb/PynamoDB/issues/162
-    document_creation_date = UnicodeAttribute()
+    document_creation_date = DateTimeAttribute()
     document_preamble = UnicodeAttribute(null=True)
     document_legal_entity_name = UnicodeAttribute(null=True)
     document_s3_url = UnicodeAttribute(null=True)
@@ -2573,10 +2583,6 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
     ):
         super(Signature).__init__()
 
-        # Patch the deserialize function of the ListAttribute - this addresses the issue when the List is 'None'
-        # See notes below in the patched function which describes the problem in more details
-        attributes.ListAttribute.deserialize = patched_deserialize
-
         self.model = SignatureModel()
         self.model.signature_id = signature_id
         self.model.signature_external_id = signature_external_id
@@ -3511,10 +3517,6 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             note=None,
     ):
         super(Company).__init__()
-
-        # Patch the deserialize function of the ListAttribute - this addresses the issue when the List is 'None'
-        # See notes below in the patched function which describes the problem in more details
-        attributes.ListAttribute.deserialize = patched_deserialize
 
         self.model = CompanyModel()
         self.model.company_id = company_id
@@ -4725,7 +4727,7 @@ class EventModel(BaseModel):
     event_user_name = UnicodeAttribute(null=True)
     event_user_name_lower = UnicodeAttribute(null=True)
 
-    event_time = UTCDateTimeAttribute(default=datetime.datetime.utcnow())
+    event_time = DateTimeAttribute(default=datetime.datetime.utcnow())
     event_time_epoch = NumberAttribute(default=int(time.time()))
     event_date = UnicodeAttribute(null=True)
 
@@ -5417,34 +5419,3 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
             ccla_whitelist_request.model = request
             ret.append(ccla_whitelist_request)
         return ret
-
-
-def patched_deserialize(self, values):
-    """
-    Decode from list of AttributeValue types. This is a patched version of the pynamodb version 3.4.1 which address
-    the use-case where it attempts to iterate over a NoneType value. This is a known issue in pynamodb and has been
-    resolved in the latest 5.x series of pynamodb. However, if we upgrade to this version it will break all the
-    date/time processing in our models. So, we simply patch this version of the library to address this issue.
-    """
-    deserialized_lst = []
-    if not values:
-        return deserialized_lst
-    for v in values:
-        class_for_deserialize = self.element_type() if self.element_type else _get_class_for_deserialize(v)
-        attr_value = _get_value_for_deserialize(v)
-        deserialized_lst.append(class_for_deserialize.deserialize(attr_value))
-    return deserialized_lst
-
-
-def _get_value_for_deserialize(value):
-    key = next(iter(value.keys()))
-    if key == 'NULL':
-        return None
-    return value[key]
-
-
-def _get_class_for_deserialize(value):
-    value_type = list(value.keys())[0]
-    if value_type not in DESERIALIZE_CLASS_MAP:
-        raise ValueError('Unknown value: ' + str(value))
-    return DESERIALIZE_CLASS_MAP[value_type]
