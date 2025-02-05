@@ -195,7 +195,7 @@ jobs:
         run: |
           if [[ ! -f bin/backend-aws-lambda ]]; then echo "Missing bin/backend-aws-lambda binary file. Exiting..."; exit 1; fi
           if [[ ! -f bin/user-subscribe-lambda ]]; then echo "Missing bin/user-subscribe-lambda binary file. Exiting..."; exit 1; fi
-          # rm -rf ./node_modules/
+          rm -rf ./node_modules/
           yarn install
           yarn sls deploy --force --stage ${STAGE} --region us-east-2 --verbose
 
