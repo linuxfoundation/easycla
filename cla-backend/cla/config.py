@@ -14,6 +14,7 @@ import logging
 import os
 import sys
 from multiprocessing.pool import ThreadPool
+from multiprocessing import set_start_method
 
 from boto3 import client
 from botocore.exceptions import ClientError, ProfileNotFound, NoCredentialsError
@@ -196,6 +197,7 @@ def load_ssm_keys():
     ]
 
     # thread pool of 7 to load fetch the keys
+    set_start_method("spawn")
     pool = ThreadPool(7)
     results = pool.map(_load_single_key, keys)
     pool.close()
