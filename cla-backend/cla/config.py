@@ -13,11 +13,10 @@ configuration, etc) in cla_config.py somewhere in your Python path.
 import logging
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 from boto3 import client
 from botocore.exceptions import ClientError, ProfileNotFound, NoCredentialsError
-
-from concurrent.futures import ThreadPoolExecutor
 
 region = "us-east-1"
 ssm_client = client('ssm', region_name=region)
@@ -199,7 +198,6 @@ def load_ssm_keys():
     # thread pool of 7 to load fetch the keys
     with ThreadPoolExecutor(max_workers=7) as executor:
         results = list(executor.map(_load_single_key, keys))
-    logging.warning(f"got {len(results)} keys")
 
     # set the variable values at the module level so can be imported as cla.config.{VAR_NAME}
     for config_key, result in zip(config_keys, results):
