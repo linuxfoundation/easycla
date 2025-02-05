@@ -7,7 +7,6 @@ on:
   push:
     branches:
       - dev
-      - feat/fix-golang-size
 
 permissions:
   # These permissions are needed to interact with GitHub's OIDC Token endpoint to fetch/set the AWS deployment credentials.
