@@ -22,7 +22,8 @@ USER_TABLE_DATA = {
             }
         ],
         "ProvisionedThroughput": {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
-    }
+    },
+    "TableName" : "cla-{}-users".format(stage)
 }
 
 COMPANY_TABLE_DATA = {
@@ -37,7 +38,8 @@ COMPANY_TABLE_DATA = {
                 "ProvisionedThroughput": {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
             }
         ],
-    }
+    },
+    "TableName" : "cla-{}-companies".format(stage)
 }
 
 SIGNATURE_TABLE_DATA = {
@@ -79,21 +81,24 @@ SIGNATURE_TABLE_DATA = {
                 "ProvisionedThroughput": {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
             }
         ],
-    }
+    },
+    "TableName" : "cla-{}-signatures".format(stage)
 }
 
 EVENT_TABLE_DESCRIPTION = {
     "Table": {
         "AttributeDefinitions": [{"AttributeName": "event_id", "AttributeType": "S"}],
         "KeySchema": [{"AttributeName": "event_id", "KeyType": "HASH"}],
-    }
+    },
+    "TableName" : "cla-{}-events".format(stage)
 }
 
 PROJECT_TABLE_DESCRIPTION = {
     "Table": {
         "AttributeDefinitions": [{"AttributeName": "project_id", "AttributeType": "S"}],
         "KeySchema": [{"AttributeName": "project_id", "KeyType": "HASH"}],
-    }
+    },
+    "TableName" : "cla-{}-projects".format(stage)
 }
 
 GH_TABLE_DESCRIPTION = {

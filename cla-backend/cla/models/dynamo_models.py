@@ -1187,7 +1187,7 @@ class Project(model_interfaces.Project):  # pylint: disable=too-many-public-meth
             project_icla_enabled=True,
             project_ccla_enabled=True,
             project_ccla_requires_icla_signature=False,
-            project_acl=None,
+            project_acl=set(),
             project_live=False,
             note=None
     ):
@@ -2490,7 +2490,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_return_url = UnicodeAttribute(null=True)
     signature_callback_url = UnicodeAttribute(null=True)
     signature_user_ccla_company_id = UnicodeAttribute(null=True)
-    signature_acl = UnicodeSetAttribute()
+    signature_acl = UnicodeSetAttribute(default=set)
     signature_project_index = ProjectSignatureIndex()
     signature_reference_index = ReferenceSignatureIndex()
     signature_envelope_id = UnicodeAttribute(null=True)
@@ -2558,7 +2558,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             signature_return_url=None,
             signature_callback_url=None,
             signature_user_ccla_company_id=None,
-            signature_acl=None,
+            signature_acl=set(),
             signature_return_url_type=None,
             signature_envelope_id=None,
             domain_whitelist=None,
@@ -3513,7 +3513,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             company_manager_id=None,
             company_name=None,
             signing_entity_name=None,
-            company_acl=None,
+            company_acl=set(),
             note=None,
     ):
         super(Company).__init__()
@@ -4572,7 +4572,7 @@ class UserPermissions(model_interfaces.UserPermissions):  # pylint: disable=too-
     ORM-agnostic wrapper for the DynamoDB UserPermissions model.
     """
 
-    def __init__(self, username=None, projects=None):
+    def __init__(self, username=None, projects=set()):
         super(UserPermissions).__init__()
         self.model = UserPermissionsModel()
         self.model.username = username
@@ -5286,7 +5286,7 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
             project_id=None,
             project_name=None,
             request_status=None,
-            user_emails=None,
+            user_emails=set(),
             user_id=None,
             user_github_id=None,
             user_github_username=None,

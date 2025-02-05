@@ -82,7 +82,9 @@ def event_table():
     fake_db.side_effect = fake_dynamodb
 
     with patch(PATCH_METHOD, new=fake_db):
-        EventModel.create_table(read_capacity_units=1, write_capacity_units=1)
+        with patch("pynamodb.connection.TableConnection.describe_table") as req:
+            req.return_value = EVENT_TABLE_DESCRIPTION
+            EventModel.create_table(read_capacity_units=1, write_capacity_units=1)
 
 
 @pytest.fixture()
@@ -96,7 +98,9 @@ def user_table():
     fake_db.side_effect = fake_dynamodb
 
     with patch(PATCH_METHOD, new=fake_db):
-        UserModel.create_table()
+        with patch("pynamodb.connection.TableConnection.describe_table") as req:
+            req.return_value = USER_TABLE_DATA
+            UserModel.create_table()
 
 
 @pytest.fixture()
@@ -110,9 +114,12 @@ def project_table():
     fake_db.side_effect = fake_dynamodb
 
     with patch(PATCH_METHOD, new=fake_db):
-        ProjectModel.create_table(read_capacity_units=1, write_capacity_units=1)
+        with patch("pynamodb.connection.TableConnection.describe_table") as req:
+            req.return_value = PROJECT_TABLE_DESCRIPTION
+            ProjectModel.create_table(read_capacity_units=1, write_capacity_units=1)
 
 
+import pdb
 @pytest.fixture()
 def company_table():
     """ Fixture that creates the company table """
@@ -123,8 +130,12 @@ def company_table():
     fake_db = MagicMock()
     fake_db.side_effect = fake_dynamodb
 
+    #with patch("pynamodb.connection.base.MetaTable.table_name") as req:
+    #    req.return_value = COMPANY_TABLE_DATA['TableName']
     with patch(PATCH_METHOD, new=fake_db):
-        CompanyModel.create_table()
+        with patch("pynamodb.connection.TableConnection.describe_table") as req:
+            req.return_value = COMPANY_TABLE_DATA
+            CompanyModel.create_table()
 
 
 @pytest.fixture()
