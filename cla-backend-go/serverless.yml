@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 service: cla-backend-go
-frameworkVersion: '^3.28.1'
+frameworkVersion: '^3.29.0'
 
 package:
   # Exclude all first - selectively add in lambda functions,
@@ -315,4 +315,5 @@ functions:
     package:
       individually: true
       patterns:
+        - '!**'
         - 'bin/backend-aws-lambda'
