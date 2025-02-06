@@ -7,7 +7,6 @@ import cla
 from cla import utils
 from cla.models.dynamo_models import User
 
-
 class TestUserModels(unittest.TestCase):
     tests_enabled = False
 
@@ -90,19 +89,19 @@ class TestUserModels(unittest.TestCase):
             user.set_lf_email(None)
             user.set_user_emails([])
             assert user.get_user_email() is None
-    
+
             user.set_lf_email("test1@test.com")
             assert user.get_user_email() == "test1@test.com"
-    
+
             user = User(user_email="test2@test.com")
             assert user.get_user_email() == "test2@test.com"
-    
+
             user = User(user_email="test3@test.com", preferred_email="test3@test.com")
             assert user.get_user_email() == "test3@test.com"
             user.set_user_emails(["test4@test.com", "test5@test.com"])
             user.set_lf_email("test3@test.com")
             assert user.get_user_email() == "test3@test.com"
-    
+
             # the scenario where have multiple emails
             user = User(preferred_email="test5@test.com")
             user.set_user_emails(["test1@test.com", "test2@test.com", "test5@test.com"])

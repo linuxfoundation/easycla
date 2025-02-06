@@ -59,7 +59,7 @@ def create_signature(signature_project_id,  # pylint: disable=too-many-arguments
                      signature_return_url=None,
                      signature_sign_url=None,
                      signature_user_ccla_company_id=None,
-                     signature_acl=None):
+                     signature_acl=set()):
     """
     Creates an signature and returns the newly created signature in dict format.
 
@@ -85,7 +85,7 @@ def create_signature(signature_project_id,  # pylint: disable=too-many-arguments
     :type signature_user_ccla_company_id: string
     :return: A dict of a newly created signature.
     :param signature_acl: a list with the signature access control list values
-    :type signature_acl: list of strings
+    :type signature_acl: set of strings
     :rtype: dict
     """
     signature: Signature = cla.utils.get_signature_instance()

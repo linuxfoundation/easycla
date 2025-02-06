@@ -1039,7 +1039,9 @@ class Document(model_interfaces.Document):
         return self.model.document_minor_version
 
     def get_document_creation_date(self):
-        return dateutil.parser.parse(self.model.document_creation_date)
+        # LG: we now can use datetime because pynamodb was updated
+        # return dateutil.parser.parse(self.model.document_creation_date)
+        return self.model.document_creation_date
 
     def get_document_preamble(self):
         return self.model.document_preamble
@@ -1093,7 +1095,9 @@ class Document(model_interfaces.Document):
         self.model.document_minor_version = version
 
     def set_document_creation_date(self, document_creation_date):
-        self.model.document_creation_date = document_creation_date.isoformat()
+        # LG: we now can use datetime because pynamodb was updated
+        # self.model.document_creation_date = document_creation_date.isoformat()
+        self.model.document_creation_date = document_creation_date
 
     def set_document_preamble(self, document_preamble):
         self.model.document_preamble = document_preamble
@@ -1811,7 +1815,16 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         self.model.user_emails = set(email_list)
 
     def set_user_emails(self, user_emails):
-        self.model.user_emails = user_emails
+        # LG: handle different possible types passed as argument
+        if user_emails:
+            if isinstance(user_emails, list):
+                self.model.user_emails = set(user_emails)
+            elif isinstance(user_emails, set):
+                self.model.user_emails = user_emails
+            else:
+                self.model.user_emails = set([user_emails])
+        else:
+            self.model.user_emails = set()
 
     def set_user_name(self, user_name):
         self.model.user_name = user_name
@@ -5396,7 +5409,16 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
         self.model.request_status = request_status
 
     def set_user_emails(self, user_emails):
-        self.model.user_emails = user_emails
+        # LG: handle different possible types passed as argument
+        if user_emails:
+            if isinstance(user_emails, list):
+                self.model.user_emails = set(user_emails)
+            elif isinstance(user_emails, set):
+                self.model.user_emails = user_emails
+            else:
+                self.model.user_emails = set([user_emails])
+        else:
+            self.model.user_emails = set()
 
     def set_user_id(self, user_id):
         self.model.user_id = user_id
