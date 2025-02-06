@@ -731,9 +731,16 @@ class PatchedUnicodeSetAttribute(UnicodeSetAttribute):
     """
     def get_value(self, value):
         # if self.attr_type not in value:
+        if not value:
+            return set()
         if self.attr_type == 'SS' and 'L' in value:
             value = {'SS':list(map(lambda x: x['S'], value['L']))}
         super(PatchedUnicodeSetAttribute, self).get_value(value)
+
+    def deserialize(self, value):
+        if not value:
+            return set()
+        return set(value)
 
 class BaseModel(Model):
     """
