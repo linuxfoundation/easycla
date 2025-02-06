@@ -1,5 +1,6 @@
 #!/bin/bash
 # API_URL=https://[xyz].ngrok-free.app (defaults to localhost:5000)
+# API_URL=https://api.lfcla.dev.platform.linuxfoundation.org
 if [ -z "$API_URL" ]
 then
   export API_URL="http://localhost:5000"

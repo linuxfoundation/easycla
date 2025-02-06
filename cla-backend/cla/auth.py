@@ -63,6 +63,9 @@ def get_auth_token(headers):
 
     return parts[1]
 
+# LG: for local testing
+def fake_authenticate_user(headers):
+    return AuthUser({'name': 'Lukasz Gryglicki', 'email': 'lukaszgryglicki@o2.pl', 'username': 'lukaszgryglicki', 'sub': ''})
 
 def authenticate_user(headers):
     """
