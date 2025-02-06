@@ -791,7 +791,7 @@ class DocuSign(signing_service_interface.SigningService):
             'signature_signed': {'BOOL': signature.get_signature_signed()},
             'signature_approved': {'BOOL': signature.get_signature_approved()},
             'signature_embargo_acked': {'BOOL': True},
-            'signature_acl': {'SS': set(signature.get_signature_acl())},
+            'signature_acl': {'SS': list(signature.get_signature_acl())},
             'signature_user_ccla_company_id': {'S': signature.get_signature_user_ccla_company_id()},
             'date_modified': {'S': datetime.now().isoformat()},
             'date_created': {'S': datetime.now().isoformat()}
