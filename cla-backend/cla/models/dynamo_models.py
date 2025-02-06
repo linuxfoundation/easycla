@@ -709,6 +709,7 @@ class CompanyIDProjectIDIndex(GlobalSecondaryIndex):
     company_id = UnicodeAttribute(hash_key=True)
     project_id = UnicodeAttribute(range_key=True)
 
+# LG: patched class
 class DateTimeAttribute(UTCDateTimeAttribute):
     """
     We need to patch deserialize, see https://pynamodb.readthedocs.io/en/stable/upgrading.html#no-longer-parsing-date-time-strings-leniently
@@ -719,6 +720,20 @@ class DateTimeAttribute(UTCDateTimeAttribute):
             return self._fast_parse_utc_date_string(value)
         except (TypeError, ValueError):
             return parsedatestring(value)
+
+# LG: patched class
+class PatchedUnicodeSetAttribute(UnicodeSetAttribute):
+    """
+    In attribute value we can have:
+    - set of strings "SS": {"SS":["id1","id2"]} - this is expected by pynamodb
+    - list of strings "LS": {"L":[{"S": "id"},{"S":"id2"}] - this is what golang saves
+    - NULL: {"NULL":true}
+    """
+    def get_value(self, value):
+        # if self.attr_type not in value:
+        if self.attr_type == 'SS' and 'L' in value:
+            value = {'SS':list(map(lambda x: x['S'], value['L']))}
+        super(PatchedUnicodeSetAttribute, self).get_value(value)
 
 class BaseModel(Model):
     """
@@ -1174,7 +1189,7 @@ class ProjectModel(BaseModel):
     project_name_lower_search_index = ProjectNameLowerIndex()
     foundation_sfid_project_name_index = ProjectFoundationIDIndex()
 
-    project_acl = UnicodeSetAttribute(default=set)
+    project_acl = PatchedUnicodeSetAttribute(default=set)
     # Default is v1 for all of our models - override for this model so that we can redirect to new UI when ready
     # version = UnicodeAttribute(default="v2")  # Schema version is v2 for Project Models
 
@@ -1583,7 +1598,7 @@ class UserModel(BaseModel):
     user_id = UnicodeAttribute(hash_key=True)
     # User Emails are specifically GitHub Emails
     user_external_id = UnicodeAttribute(null=True)
-    user_emails = UnicodeSetAttribute(default=set)
+    user_emails = PatchedUnicodeSetAttribute(default=set)
     user_name = UnicodeAttribute(null=True)
     user_company_id = UnicodeAttribute(null=True)
     user_github_id = NumberAttribute(null=True)
@@ -2505,7 +2520,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_return_url = UnicodeAttribute(null=True)
     signature_callback_url = UnicodeAttribute(null=True)
     signature_user_ccla_company_id = UnicodeAttribute(null=True)
-    signature_acl = UnicodeSetAttribute(default=set)
+    signature_acl = PatchedUnicodeSetAttribute(default=set)
     signature_project_index = ProjectSignatureIndex()
     signature_reference_index = ReferenceSignatureIndex()
     signature_envelope_id = UnicodeAttribute(null=True)
@@ -2792,7 +2807,6 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         return self.model.signature_user_ccla_company_id
 
     def get_signature_acl(self):
-        cla.log.info(f"LG:{self.get_signature_id()}: get_signature_acl: --> {self.model.signature_acl}")
         return self.model.signature_acl or set()
 
     def get_signature_return_url_type(self):
@@ -2934,7 +2948,6 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def set_signature_acl(self, signature_acl_username) -> None:
         self.model.signature_acl = set([signature_acl_username])
-        cla.log.info(f"LG:{self.get_signature_id()}: set_signature_acl: {self.model.signature_acl} <-- {signature_acl_username}")
 
     def set_signature_return_url_type(self, signature_return_url_type) -> None:
         self.model.signature_return_url_type = signature_return_url_type
@@ -2994,16 +3007,12 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         if not self.model.signature_acl:
             self.model.signature_acl = set()
         self.model.signature_acl.add(username)
-        # LG:
-        cla.log.info(f"LG:{self.get_signature_id()}: add_signature_acl: {self.model.signature_acl} <-- {username}")
 
     def remove_signature_acl(self, username) -> None:
         current_acl = self.model.signature_acl or set()
         if username not in current_acl:
             return
         self.model.signature_acl.remove(username)
-        # LG:
-        cla.log.info(f"LG:{self.get_signature_id()}: remove_signature_acl: {self.model.signature_acl} <-- {username}")
 
     def set_user_email(self, user_email) -> None:
         self.model.user_email = user_email
@@ -3518,7 +3527,7 @@ class CompanyModel(BaseModel):
     company_name_index = CompanyNameIndex()
     signing_entity_name_index = SigningEntityNameIndex()
     company_external_id_index = ExternalCompanyIndex()
-    company_acl = UnicodeSetAttribute(default=set)
+    company_acl = PatchedUnicodeSetAttribute(default=set)
     note = UnicodeAttribute(null=True)
 
 
@@ -4585,7 +4594,7 @@ class UserPermissionsModel(BaseModel):
             host = "http://localhost:8000"
 
     username = UnicodeAttribute(hash_key=True)
-    projects = UnicodeSetAttribute(default=set)
+    projects = PatchedUnicodeSetAttribute(default=set)
 
 
 class UserPermissions(model_interfaces.UserPermissions):  # pylint: disable=too-many-public-methods
@@ -5285,7 +5294,7 @@ class CCLAWhitelistRequestModel(BaseModel):
     project_id = UnicodeAttribute(null=True)
     project_name = UnicodeAttribute(null=True)
     request_status = UnicodeAttribute(null=True)
-    user_emails = UnicodeSetAttribute(default=set)
+    user_emails = PatchedUnicodeSetAttribute(default=set)
     user_id = UnicodeAttribute(null=True)
     user_github_id = UnicodeAttribute(null=True)
     user_github_username = UnicodeAttribute(null=True)

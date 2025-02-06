@@ -1,3 +1,7 @@
 #!/bin/bash
 # add: | jq -r '.[].signature_acl'
-aws --profile lfproduct-dev dynamodb scan --table-name cla-dev-signatures --max-items 20 | jq -r '.Items'
+if [ -z "$STAGE" ]
+then
+  STAGE=dev
+fi
+aws --profile "lfproduct-${STAGE}" dynamodb scan --table-name "cla-${STAGE}-signatures" --max-items 100 | jq -r '.Items'
