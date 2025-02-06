@@ -2792,6 +2792,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         return self.model.signature_user_ccla_company_id
 
     def get_signature_acl(self):
+        cla.log.info(f"LG:{self.get_signature_id()}: get_signature_acl: --> {self.model.signature_acl}")
         return self.model.signature_acl or set()
 
     def get_signature_return_url_type(self):
@@ -2933,6 +2934,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
 
     def set_signature_acl(self, signature_acl_username) -> None:
         self.model.signature_acl = set([signature_acl_username])
+        cla.log.info(f"LG:{self.get_signature_id()}: set_signature_acl: {self.model.signature_acl} <-- {signature_acl_username}")
 
     def set_signature_return_url_type(self, signature_return_url_type) -> None:
         self.model.signature_return_url_type = signature_return_url_type
@@ -2992,12 +2994,16 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         if not self.model.signature_acl:
             self.model.signature_acl = set()
         self.model.signature_acl.add(username)
+        # LG:
+        cla.log.info(f"LG:{self.get_signature_id()}: add_signature_acl: {self.model.signature_acl} <-- {username}")
 
     def remove_signature_acl(self, username) -> None:
         current_acl = self.model.signature_acl or set()
         if username not in current_acl:
             return
         self.model.signature_acl.remove(username)
+        # LG:
+        cla.log.info(f"LG:{self.get_signature_id()}: remove_signature_acl: {self.model.signature_acl} <-- {username}")
 
     def set_user_email(self, user_email) -> None:
         self.model.user_email = user_email

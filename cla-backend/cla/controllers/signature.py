@@ -133,6 +133,8 @@ def create_signature(signature_project_id,  # pylint: disable=too-many-arguments
     signature.set_signature_sign_url(signature_sign_url)
     if signature_user_ccla_company_id is not None:
         signature.set_signature_user_ccla_company_id(str(signature_user_ccla_company_id))
+    # LG:
+    cla.log.info(f"LG: signature.save(): {signature.get_signature_id()} --> {signature.get_signature_acl()}")
     signature.save()
 
     event_data = f'Signature added. Signature_id - {signature.get_signature_id()} for Project - {project.get_project_name()}'

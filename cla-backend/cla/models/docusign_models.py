@@ -264,7 +264,9 @@ class DocuSign(signing_service_interface.SigningService):
             acl = user.get_user_github_id()
         elif return_url_type.lower() == "gitlab":
             acl = user.get_user_gitlab_id()
-        cla.log.debug('Individual Signature - setting ACL using user {} id: {}'.format(return_url_type, acl))
+        # LG:
+        cla.log.info('LG: Individual Signature - setting ACL using user {} id: {}'.format(return_url_type, acl))
+        # cla.log.debug('Individual Signature - setting ACL using user {} id: {}'.format(return_url_type, acl))
         signature.set_signature_acl('{}:{}'.format(return_url_type.lower(),acl))
 
         # Populate sign url
@@ -1488,6 +1490,8 @@ class DocuSign(signing_service_interface.SigningService):
         # Save Envelope ID in signature.
         cla.log.debug(f'{fn} - {sig_type} - saving signature to database...')
         signature.set_signature_envelope_id(envelope.envelopeId)
+        # LG:
+        cla.log.info(f"LG: final save in populate_sign_url: {signature.get_signature_id()} --> {signature.get_signature_acl()}")
         signature.save()
         cla.log.debug(f'{fn} - {sig_type} - saved signature to database - id: {signature.get_signature_id()}...')
         cla.log.debug(f'populate_sign_url - {sig_type} - complete')
