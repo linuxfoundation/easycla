@@ -67,6 +67,8 @@ def process_data(request, response, resource):
 @hug.directive()
 def check_auth(request=None, **kwargs):
     """Returns the authenticated user"""
+    # LG:
+    # return request and cla.auth.fake_authenticate_user(request.headers)
     return request and cla.auth.authenticate_user(request.headers)
 
 

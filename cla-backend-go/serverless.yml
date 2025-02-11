@@ -315,4 +315,5 @@ functions:
     package:
       individually: true
       patterns:
+        - '!**'
         - 'bin/backend-aws-lambda'

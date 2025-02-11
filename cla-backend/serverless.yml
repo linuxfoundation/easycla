@@ -101,7 +101,7 @@ custom:
 
 provider:
   name: aws
-  runtime: python3.7
+  runtime: python3.11
   stage: ${env:STAGE}
   region: us-east-1
   timeout: 60 # optional, in seconds, default is 6
@@ -413,7 +413,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/backend-aws-lambda'
 
   dynamo-projects-events-lambda:
@@ -424,7 +423,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/dynamo-events-lambda'
 
   dynamo-signatures-events-lambda:
@@ -435,7 +433,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/dynamo-events-lambda'
 
   dynamo-events-events-lambda:
@@ -446,7 +443,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/dynamo-events-lambda'
 
   dynamo-repositories-events-lambda:
@@ -457,7 +453,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/dynamo-events-lambda'
 
   dynamo-projects-cla-groups-events-lambda:
@@ -468,7 +463,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/dynamo-events-lambda'
 
   dynamo-github-orgs-events-lambda:
@@ -479,7 +473,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/dynamo-events-lambda'
 
   save-metrics-lambda:
@@ -496,7 +489,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/metrics-aws-lambda'
 
   report-metrics-lambda:
@@ -513,7 +505,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/metrics-report-lambda'
 
   zip-builder-scheduler-lambda:
@@ -530,7 +521,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/zipbuilder-scheduler-lambda'
 
   zip-builder-lambda:
@@ -543,7 +533,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/zipbuilder-lambda'
 
   gitlab-repository-check-lambda:
@@ -561,7 +550,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/gitlab-repository-check-lambda'
 
   # User Subscribe event for dynamodb cla-stage-users table.
@@ -573,7 +561,6 @@ functions:
     package:
       individually: true
       patterns:
-        - '!**'
         - 'bin/user-subscribe-lambda'
     reservedConcurrency: 5
     events:

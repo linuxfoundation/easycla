@@ -804,7 +804,7 @@ class DocuSign(signing_service_interface.SigningService):
             item['signature_reference_name'] = {'S': signature.get_signature_reference_name()}
 
         try:
-         self.dynamo_client.put_item(TableName=signature_table, Item=item)
+            self.dynamo_client.put_item(TableName=signature_table, Item=item)
         except Exception as e:
             cla.log.error(f'Error while saving signature record (boto3): {e}')
             raise e

@@ -22,30 +22,36 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
       - name: Setup go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20.1'
+          go-version: '1.22'
+
       - name: Go Version
         run: go version
+
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
+
       - name: Setup python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.7'
+          python-version: '3.11'
           cache: 'pip'
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           audience: sts.amazonaws.com
           role-to-assume: arn:aws:iam::395594542180:role/github-actions-deploy
           aws-region: us-east-1
+
       - name: Cache Go modules
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -64,19 +70,25 @@ jobs:
       - name: Python Setup
         working-directory: cla-backend
         run: |
+          python -m venv .venv
+          source .venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
-
-
 
       - name: Python Lint
         working-directory: cla-backend
         run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pylint
           pylint cla/*.py || true
 
       - name: Python Test
         working-directory: cla-backend
         run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pytest py pytest-cov pytest-clarity
           pytest "cla/tests" -p no:warnings
         env:
           PLATFORM_GATEWAY_URL: https://api-gw.dev.platform.linuxfoundation.org
@@ -106,8 +118,7 @@ jobs:
 
       - name: Go Test
         working-directory: cla-backend-go
-        run: |
-          make test
+        run: make test
 
       - name: Go Lint
         working-directory: cla-backend-go
@@ -126,7 +137,6 @@ jobs:
           cp ../cla-backend-go/bin/zipbuilder-lambda bin/
           cp ../cla-backend-go/bin/gitlab-repository-check-lambda bin/
 
-
       - name: EasyCLA v1 Deployment us-east-1
         working-directory: cla-backend
         run: |
@@ -142,6 +152,7 @@ jobs:
           if [[ ! -f serverless.yml ]]; then echo "Missing serverless.yml file. Exiting..."; exit 1; fi
           if [[ ! -f serverless-authorizer.yml ]]; then echo "Missing serverless-authorizer.yml file. Exiting..."; exit 1; fi
           yarn sls deploy --force --stage ${STAGE} --region us-east-1 --verbose
+
       - name: EasyCLA v1 Service Check
         run: |
           sudo apt install curl jq -y
@@ -176,6 +187,7 @@ jobs:
             echo "Failed to get a successful response from endpoint: ${v3_url}"
             exit ${exit_code}
           fi
+
       - name: EasyCLA v2 Deployment us-east-2
         working-directory: cla-backend-go
         run: |
@@ -183,7 +195,7 @@ jobs:
           if [[ ! -f bin/user-subscribe-lambda ]]; then echo "Missing bin/user-subscribe-lambda binary file. Exiting..."; exit 1; fi
           rm -rf ./node_modules/
           yarn install
-          yarn sls deploy --force --stage ${STAGE} --region us-east-2
+          yarn sls deploy --force --stage ${STAGE} --region us-east-2 --verbose
 
       - name: EasyCLA v2 Service Check
         run: |

@@ -1,6 +1,5 @@
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
-astroid==2.8.0
 atomicwrites==1.3.0
 attrs==19.3.0
 beautifulsoup4==4.8.1
@@ -30,20 +29,13 @@ more-itertools==8.0.2
 nose2==0.9.1
 oauthlib==3.1.0
 packaging==20.5
-pluggy==0.13.1
 py==1.10.0
 pyasn1==0.4.8
 pydocusign==2.2
 PyGithub==1.55
 PyJWT==2.7.0
-pylint==2.11.1
-pynamodb==4.4.0
 pyparsing==2.4.5
-pytest==5.0.1
-pytest-clarity==0.3.0a0
-pytest-cov==2.8.1
 python-dateutil==2.8.1
-python-jose==3.0.1
 requests==2.31.0
 requests-oauthlib==1.2.0
 rsa==4.7
@@ -52,12 +44,15 @@ sentinels==1.0.0
 six==1.13.0
 soupsieve==1.9.5
 termcolor==1.1.0
-typed-ast==1.4.1
 urllib3==1.26.18
 vintage==0.4.1
 wcwidth==0.1.7
 Werkzeug==0.15.5
-wrapt==1.11.2
 zipp==3.15.0
 markupsafe==2.0.1
-setuptools>=65.5.1 # not directly required, pinned by Snyk to avoid a vulnerability
+# LG:
+python-jose==3.3.0
+pynamodb==6.0.2
+wrapt==1.17.2
+astroid==3.3.8
+pluggy==1.5.0

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 import json
 import unittest
+import uuid
 from unittest.mock import Mock
 
 import cla
@@ -119,6 +120,23 @@ def mock_get_user_by_github_username(username):
     u1.set_user_email('user1@gmail.com')
     return [u1]
 
+def test_signature_acl():
+    sig = Signature()
+    sig.set_signature_document_major_version(1)
+    sig.set_signature_document_minor_version(0)
+    sig.set_signature_id(str(uuid.uuid4()))
+    sig.set_signature_project_id(str(uuid.uuid4()))
+    sig.set_signature_reference_id(str(uuid.uuid4()))
+    sig.set_signature_type('user')
+    sig.set_signature_acl('lgryglicki')
+    # print(f"signature_id1 {sig.get_signature_id()}")
+    # sig.save()
+    # sig2 = Signature()
+    # sig2.load(signature_id='afcf787b-8010-4c43-8bf7-2dbbfa229f2c')
+    # print(f"signature_id2 {sig2.get_signature_id()}")
+    # sig2.set_signature_id(str(uuid.uuid4()))
+    # print(f"signature_id3 {sig2.get_signature_id()}")
+    # sig2.save()
 
 if __name__ == '__main__':
     unittest.main()

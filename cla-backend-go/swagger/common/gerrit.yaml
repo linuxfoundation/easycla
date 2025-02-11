@@ -40,25 +40,6 @@ properties:
     minLength: 1
     maxLength: 12
     pattern: ^[1-9]\d{0,11}$
-  groupIdIcla:
-    type: string
-    description: the LDAP group ID for ICLA encoded as a string value
-    example: '1903'
-    minLength: 1
-    maxLength: 12
-    pattern: ^[1-9]\d{0,11}$
-  groupNameCcla:
-    type: string
-    description: the LDAP group name for CCLA
-    example: 'onap-cla-ccla'
-    minLength: 3
-    maxLength: 20
-  groupNameIcla:
-    type: string
-    description: the LDAP group name for ICLA
-    example: 'onap-cla-icla'
-    minLength: 3
-    maxLength: 20
   projectSFID:
     type: string
     description: the Project SalesForce ID (external ID) associated with this gerrit record

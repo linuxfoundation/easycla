@@ -13,6 +13,7 @@ import time
 import uuid
 from datetime import timezone
 from typing import Optional, List
+from dateutil.parser import parse as parsedatestring
 
 import dateutil.parser
 from pynamodb import attributes
@@ -24,7 +25,7 @@ from pynamodb.attributes import (
     NumberAttribute,
     ListAttribute,
     JSONAttribute,
-    MapAttribute, DESERIALIZE_CLASS_MAP,
+    MapAttribute,
 )
 from pynamodb.expressions.condition import Condition
 from pynamodb.indexes import GlobalSecondaryIndex, AllProjection
@@ -708,14 +709,46 @@ class CompanyIDProjectIDIndex(GlobalSecondaryIndex):
     company_id = UnicodeAttribute(hash_key=True)
     project_id = UnicodeAttribute(range_key=True)
 
+# LG: patched class
+class DateTimeAttribute(UTCDateTimeAttribute):
+    """
+    We need to patch deserialize, see https://pynamodb.readthedocs.io/en/stable/upgrading.html#no-longer-parsing-date-time-strings-leniently
+    This fails for ProjectModel.date_created having '2022-11-21T10:31:31Z' instead of strictly expected '2022-08-25T16:26:04.000000+0000'
+    """
+    def deserialize(self, value):
+        try:
+            return self._fast_parse_utc_date_string(value)
+        except (TypeError, ValueError):
+            return parsedatestring(value)
+
+# LG: patched class
+class PatchedUnicodeSetAttribute(UnicodeSetAttribute):
+    """
+    In attribute value we can have:
+    - set of strings "SS": {"SS":["id1","id2"]} - this is expected by pynamodb
+    - list of strings "LS": {"L":[{"S": "id"},{"S":"id2"}] - this is what golang saves
+    - NULL: {"NULL":true}
+    """
+    def get_value(self, value):
+        # if self.attr_type not in value:
+        if not value:
+            return set()
+        if self.attr_type == 'SS' and 'L' in value:
+            value = {'SS':list(map(lambda x: x['S'], value['L']))}
+        super(PatchedUnicodeSetAttribute, self).get_value(value)
+
+    def deserialize(self, value):
+        if not value:
+            return set()
+        return set(value)
 
 class BaseModel(Model):
     """
     Base pynamodb model used for all CLA models.
     """
 
-    date_created = UTCDateTimeAttribute(default=datetime.datetime.utcnow())
-    date_modified = UTCDateTimeAttribute(default=datetime.datetime.utcnow())
+    date_created = DateTimeAttribute(default=datetime.datetime.utcnow())
+    date_modified = DateTimeAttribute(default=datetime.datetime.utcnow())
     version = UnicodeAttribute(default="v1")  # Schema version.
 
     def __iter__(self):
@@ -934,12 +967,13 @@ class DocumentModel(MapAttribute):
     document_major_version = NumberAttribute(default=1)
     document_minor_version = NumberAttribute(default=0)
     document_author_name = UnicodeAttribute()
-    # Not using UTCDateTimeAttribute due to https://github.com/pynamodb/PynamoDB/issues/162
-    document_creation_date = UnicodeAttribute()
+    # LG: now we can use DateTimeAttribute - because pynamodb was updated
+    # document_creation_date = UnicodeAttribute()
+    document_creation_date = DateTimeAttribute()
     document_preamble = UnicodeAttribute(null=True)
     document_legal_entity_name = UnicodeAttribute(null=True)
     document_s3_url = UnicodeAttribute(null=True)
-    document_tabs = ListAttribute(of=DocumentTabModel, default=[])
+    document_tabs = ListAttribute(of=DocumentTabModel, default=list)
 
 
 class Document(model_interfaces.Document):
@@ -1027,7 +1061,9 @@ class Document(model_interfaces.Document):
         return self.model.document_minor_version
 
     def get_document_creation_date(self):
-        return dateutil.parser.parse(self.model.document_creation_date)
+        # LG: we now can use datetime because pynamodb was updated
+        # return dateutil.parser.parse(self.model.document_creation_date)
+        return self.model.document_creation_date
 
     def get_document_preamble(self):
         return self.model.document_preamble
@@ -1081,7 +1117,9 @@ class Document(model_interfaces.Document):
         self.model.document_minor_version = version
 
     def set_document_creation_date(self, document_creation_date):
-        self.model.document_creation_date = document_creation_date.isoformat()
+        # LG: we now can use datetime because pynamodb was updated
+        # self.model.document_creation_date = document_creation_date.isoformat()
+        self.model.document_creation_date = document_creation_date
 
     def set_document_preamble(self, document_preamble):
         self.model.document_preamble = document_preamble
@@ -1142,9 +1180,9 @@ class ProjectModel(BaseModel):
     project_external_id = UnicodeAttribute()
     project_name = UnicodeAttribute()
     project_name_lower = UnicodeAttribute(null=True)
-    project_individual_documents = ListAttribute(of=DocumentModel, default=[])
-    project_corporate_documents = ListAttribute(of=DocumentModel, default=[])
-    project_member_documents = ListAttribute(of=DocumentModel, default=[])
+    project_individual_documents = ListAttribute(of=DocumentModel, default=list)
+    project_corporate_documents = ListAttribute(of=DocumentModel, default=list)
+    project_member_documents = ListAttribute(of=DocumentModel, default=list)
     project_icla_enabled = BooleanAttribute(default=True)
     project_ccla_enabled = BooleanAttribute(default=True)
     project_ccla_requires_icla_signature = BooleanAttribute(default=False)
@@ -1158,7 +1196,7 @@ class ProjectModel(BaseModel):
     project_name_lower_search_index = ProjectNameLowerIndex()
     foundation_sfid_project_name_index = ProjectFoundationIDIndex()
 
-    project_acl = UnicodeSetAttribute(default=set())
+    project_acl = PatchedUnicodeSetAttribute(default=set)
     # Default is v1 for all of our models - override for this model so that we can redirect to new UI when ready
     # version = UnicodeAttribute(default="v2")  # Schema version is v2 for Project Models
 
@@ -1177,7 +1215,7 @@ class Project(model_interfaces.Project):  # pylint: disable=too-many-public-meth
             project_icla_enabled=True,
             project_ccla_enabled=True,
             project_ccla_requires_icla_signature=False,
-            project_acl=None,
+            project_acl=set(),
             project_live=False,
             note=None
     ):
@@ -1567,7 +1605,7 @@ class UserModel(BaseModel):
     user_id = UnicodeAttribute(hash_key=True)
     # User Emails are specifically GitHub Emails
     user_external_id = UnicodeAttribute(null=True)
-    user_emails = UnicodeSetAttribute(default=set())
+    user_emails = PatchedUnicodeSetAttribute(default=set)
     user_name = UnicodeAttribute(null=True)
     user_company_id = UnicodeAttribute(null=True)
     user_github_id = NumberAttribute(null=True)
@@ -1799,7 +1837,16 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         self.model.user_emails = set(email_list)
 
     def set_user_emails(self, user_emails):
-        self.model.user_emails = user_emails
+        # LG: handle different possible types passed as argument
+        if user_emails:
+            if isinstance(user_emails, list):
+                self.model.user_emails = set(user_emails)
+            elif isinstance(user_emails, set):
+                self.model.user_emails = user_emails
+            else:
+                self.model.user_emails = set([user_emails])
+        else:
+            self.model.user_emails = set()
 
     def set_user_name(self, user_name):
         self.model.user_name = user_name
@@ -2480,7 +2527,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_return_url = UnicodeAttribute(null=True)
     signature_callback_url = UnicodeAttribute(null=True)
     signature_user_ccla_company_id = UnicodeAttribute(null=True)
-    signature_acl = UnicodeSetAttribute()
+    signature_acl = PatchedUnicodeSetAttribute(default=set)
     signature_project_index = ProjectSignatureIndex()
     signature_reference_index = ReferenceSignatureIndex()
     signature_envelope_id = UnicodeAttribute(null=True)
@@ -2548,7 +2595,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             signature_return_url=None,
             signature_callback_url=None,
             signature_user_ccla_company_id=None,
-            signature_acl=None,
+            signature_acl=set(),
             signature_return_url_type=None,
             signature_envelope_id=None,
             domain_whitelist=None,
@@ -2572,10 +2619,6 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             auto_create_ecla: bool = False,
     ):
         super(Signature).__init__()
-
-        # Patch the deserialize function of the ListAttribute - this addresses the issue when the List is 'None'
-        # See notes below in the patched function which describes the problem in more details
-        attributes.ListAttribute.deserialize = patched_deserialize
 
         self.model = SignatureModel()
         self.model.signature_id = signature_id
@@ -3491,7 +3534,7 @@ class CompanyModel(BaseModel):
     company_name_index = CompanyNameIndex()
     signing_entity_name_index = SigningEntityNameIndex()
     company_external_id_index = ExternalCompanyIndex()
-    company_acl = UnicodeSetAttribute(default=set())
+    company_acl = PatchedUnicodeSetAttribute(default=set)
     note = UnicodeAttribute(null=True)
 
 
@@ -3507,14 +3550,10 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             company_manager_id=None,
             company_name=None,
             signing_entity_name=None,
-            company_acl=None,
+            company_acl=set(),
             note=None,
     ):
         super(Company).__init__()
-
-        # Patch the deserialize function of the ListAttribute - this addresses the issue when the List is 'None'
-        # See notes below in the patched function which describes the problem in more details
-        attributes.ListAttribute.deserialize = patched_deserialize
 
         self.model = CompanyModel()
         self.model.company_id = company_id
@@ -4562,7 +4601,7 @@ class UserPermissionsModel(BaseModel):
             host = "http://localhost:8000"
 
     username = UnicodeAttribute(hash_key=True)
-    projects = UnicodeSetAttribute(default=set())
+    projects = PatchedUnicodeSetAttribute(default=set)
 
 
 class UserPermissions(model_interfaces.UserPermissions):  # pylint: disable=too-many-public-methods
@@ -4570,7 +4609,7 @@ class UserPermissions(model_interfaces.UserPermissions):  # pylint: disable=too-
     ORM-agnostic wrapper for the DynamoDB UserPermissions model.
     """
 
-    def __init__(self, username=None, projects=None):
+    def __init__(self, username=None, projects=set()):
         super(UserPermissions).__init__()
         self.model = UserPermissionsModel()
         self.model.username = username
@@ -4725,7 +4764,7 @@ class EventModel(BaseModel):
     event_user_name = UnicodeAttribute(null=True)
     event_user_name_lower = UnicodeAttribute(null=True)
 
-    event_time = UTCDateTimeAttribute(default=datetime.datetime.utcnow())
+    event_time = DateTimeAttribute(default=datetime.datetime.utcnow())
     event_time_epoch = NumberAttribute(default=int(time.time()))
     event_date = UnicodeAttribute(null=True)
 
@@ -5262,7 +5301,7 @@ class CCLAWhitelistRequestModel(BaseModel):
     project_id = UnicodeAttribute(null=True)
     project_name = UnicodeAttribute(null=True)
     request_status = UnicodeAttribute(null=True)
-    user_emails = UnicodeSetAttribute(default=set())
+    user_emails = PatchedUnicodeSetAttribute(default=set)
     user_id = UnicodeAttribute(null=True)
     user_github_id = UnicodeAttribute(null=True)
     user_github_username = UnicodeAttribute(null=True)
@@ -5284,7 +5323,7 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
             project_id=None,
             project_name=None,
             request_status=None,
-            user_emails=None,
+            user_emails=set(),
             user_id=None,
             user_github_id=None,
             user_github_username=None,
@@ -5392,7 +5431,16 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
         self.model.request_status = request_status
 
     def set_user_emails(self, user_emails):
-        self.model.user_emails = user_emails
+        # LG: handle different possible types passed as argument
+        if user_emails:
+            if isinstance(user_emails, list):
+                self.model.user_emails = set(user_emails)
+            elif isinstance(user_emails, set):
+                self.model.user_emails = user_emails
+            else:
+                self.model.user_emails = set([user_emails])
+        else:
+            self.model.user_emails = set()
 
     def set_user_id(self, user_id):
         self.model.user_id = user_id
@@ -5417,34 +5465,3 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
             ccla_whitelist_request.model = request
             ret.append(ccla_whitelist_request)
         return ret
-
-
-def patched_deserialize(self, values):
-    """
-    Decode from list of AttributeValue types. This is a patched version of the pynamodb version 3.4.1 which address
-    the use-case where it attempts to iterate over a NoneType value. This is a known issue in pynamodb and has been
-    resolved in the latest 5.x series of pynamodb. However, if we upgrade to this version it will break all the
-    date/time processing in our models. So, we simply patch this version of the library to address this issue.
-    """
-    deserialized_lst = []
-    if not values:
-        return deserialized_lst
-    for v in values:
-        class_for_deserialize = self.element_type() if self.element_type else _get_class_for_deserialize(v)
-        attr_value = _get_value_for_deserialize(v)
-        deserialized_lst.append(class_for_deserialize.deserialize(attr_value))
-    return deserialized_lst
-
-
-def _get_value_for_deserialize(value):
-    key = next(iter(value.keys()))
-    if key == 'NULL':
-        return None
-    return value[key]
-
-
-def _get_class_for_deserialize(value):
-    value_type = list(value.keys())[0]
-    if value_type not in DESERIALIZE_CLASS_MAP:
-        raise ValueError('Unknown value: ' + str(value))
-    return DESERIALIZE_CLASS_MAP[value_type]
