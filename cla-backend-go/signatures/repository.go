@@ -3319,18 +3319,18 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 								} else {
 
 									// Update gerrit user
-//									if utils.StringInSlice(user.LfUsername, gerritICLAECLAs) {
-//										gerritIclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
-//										if gerritIclaErr != nil {
-//											msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
-//											log.WithFields(f).WithError(gerritIclaErr).Warn(msg)
-//										}
-//										eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
-//										if eclaErr != nil {
-//											msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
-//											log.WithFields(f).WithError(eclaErr).Warn(msg)
-//										}
-//									}
+									//									if utils.StringInSlice(user.LfUsername, gerritICLAECLAs) {
+									//										gerritIclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
+									//										if gerritIclaErr != nil {
+									//											msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
+									//											log.WithFields(f).WithError(gerritIclaErr).Warn(msg)
+									//										}
+									//										eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
+									//										if eclaErr != nil {
+									//											msg := fmt.Sprintf("unable to remove gerrit user: %s from group: %s", user.LfUsername, approvalList.ClaGroupID)
+									//											log.WithFields(f).WithError(eclaErr).Warn(msg)
+									//										}
+									//									}
 									results <- &ICLAUserResponse{
 										ICLASignature: &models.IclaSignature{
 											GithubUsername: icla.UserGHUsername,
@@ -4078,19 +4078,19 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 				}
 
 				// Update Gerrit group users
-//				if utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs) {
-//					log.WithFields(f).Debugf("removing gerrit user:%s  from claGroup: %s ...", user.LfUsername, approvalList.ClaGroupID)
-//					iclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
-//					if iclaErr != nil {
-//						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
-//						log.WithFields(f).Warn(msg)
-//					}
-//					eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
-//					if eclaErr != nil {
-//						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
-//						log.WithFields(f).Warn(msg)
-//					}
-//				}
+				//				if utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs) {
+				//					log.WithFields(f).Debugf("removing gerrit user:%s  from claGroup: %s ...", user.LfUsername, approvalList.ClaGroupID)
+				//					iclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeICLA)
+				//					if iclaErr != nil {
+				//						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+				//						log.WithFields(f).Warn(msg)
+				//					}
+				//					eclaErr := repo.gerritService.RemoveUserFromGroup(ctx, &authUser, approvalList.ClaGroupID, user.LfUsername, utils.ClaTypeECLA)
+				//					if eclaErr != nil {
+				//						msg := fmt.Sprintf("unable to remove gerrit user:%s from group:%s", user.LfUsername, approvalList.ClaGroupID)
+				//						log.WithFields(f).Warn(msg)
+				//					}
+				//				}
 			}
 		}
 	} else if approvalList.Criteria == utils.GitHubOrgCriteria {
