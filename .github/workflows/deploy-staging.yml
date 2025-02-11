@@ -48,7 +48,7 @@ jobs:
           role-to-assume: arn:aws:iam::844390194980:role/github-actions-deploy
           aws-region: us-east-1
       - name: Cache Go modules
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
