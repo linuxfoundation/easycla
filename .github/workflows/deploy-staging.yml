@@ -12,6 +12,7 @@ on:
 
 permissions:
   # These permissions are needed to interact with GitHub's OIDC Token endpoint to fetch/set the AWS deployment credentials.
+  # LG: 2025-02-11: this is outdated and not used - needs to be updated and made similar to deploy-dev.yml or deploy-prod.yml
   id-token: write
   contents: read
 
