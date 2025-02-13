@@ -66,6 +66,9 @@ func EncryptAuthInfo(oauthResp *OauthSuccessResponse, gitLabApp *App) (string, e
 	if err != nil {
 		return "", fmt.Errorf("problem marshalling oauth resp json, error: %v", err)
 	}
+	if len(b) > 64*1024*1024 { // 64 MB limit
+		return "", fmt.Errorf("oauth response size too large")
+	}
 	authInfo := string(b)
 	//log.Infof("auth info before encrypting : %s", authInfo)
 

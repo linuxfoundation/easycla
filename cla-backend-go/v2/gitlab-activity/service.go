@@ -722,7 +722,7 @@ func (s *service) checkGitLabGroupApproval(ctx context.Context, userName, URL st
 
 	log.WithFields(f).Debugf("checking approval list gitlab org criteria : %s for user: %s ", URL, userName)
 	var searchURL = URL
-	params := getParams(`(?P<base>\bhttps://gitlab.com/\b)(?P<group>\bgroups\/\b)?(?P<name>\w+)`, URL)
+	params := getParams(`(?P<base>\bhttps://gitlab\.com/\b)(?P<group>\bgroups\/\b)?(?P<name>\w+)`, URL)
 	if params[`group`] == "" {
 		params[`group`] = "groups/"
 		updated := fmt.Sprintf("%s%s%s", params[`base`], params[`group`], params[`name`])
