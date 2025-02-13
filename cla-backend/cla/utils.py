@@ -1209,13 +1209,13 @@ def fetch_token(client_id, state, token_url, client_secret, code, redirect_uri=N
         oauth2 = OAuth2Session(client_id, state=state, scope=["user:email"], redirect_uri=redirect_uri)
     else:
         oauth2 = OAuth2Session(client_id, state=state, scope=["user:email"])
-    cla.log.debug(
-        f"{fn} - oauth2.fetch_token - "
-        f"token_url: {token_url}, "
-        f"client_id: {client_id}, "
-        f"client_secret: {client_secret}, "
-        f"code: {code}"
-    )
+    #cla.log.debug(
+    #    f"{fn} - oauth2.fetch_token - "
+    #    f"token_url: {token_url}, "
+    #    f"client_id: {client_id}, "
+    #    f"client_secret: {client_secret}, "
+    #    f"code: {code}"
+    #)
     return oauth2.fetch_token(token_url, client_secret=client_secret, code=code)
 
 
