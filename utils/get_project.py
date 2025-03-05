@@ -1,6 +1,7 @@
 #!/bin/bash
 # API_URL=https://[xyz].ngrok-free.app (defaults to localhost:5000)
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org
+# API_URL=https://api.easycla.lfx.linuxfoundation.org
 # https://api.easycla.lfx.linuxfoundation.org/v2/project/d8cead54-92b7-48c5-a2c8-b1e295e8f7f1
 if [ -z "$1" ]
 then
