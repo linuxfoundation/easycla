@@ -792,8 +792,7 @@ class DocumentTabModel(MapAttribute):
     """
 
     document_tab_type = UnicodeAttribute(default="text")
-    document_tab_id = UnicodeAttribute()
-    # LG: this can be null
+    document_tab_id = UnicodeAttribute(null=True)
     document_tab_name = UnicodeAttribute(null=True)
     document_tab_page = NumberAttribute(default=1)
     document_tab_position_x = NumberAttribute()
@@ -961,16 +960,15 @@ class DocumentModel(MapAttribute):
     Represents a document in the project model.
     """
 
-    document_name = UnicodeAttribute()
+    document_name = UnicodeAttribute(null=True)
     document_file_id = UnicodeAttribute(null=True)
-    document_content_type = UnicodeAttribute()  # pdf, url+pdf, storage+pdf, etc
+    document_content_type = UnicodeAttribute(null=True)  # pdf, url+pdf, storage+pdf, etc
     document_content = UnicodeAttribute(null=True)  # None if using storage service.
     document_major_version = NumberAttribute(default=1)
     document_minor_version = NumberAttribute(default=0)
-    # LG: this can be null
     document_author_name = UnicodeAttribute(null=True)
     # LG: now we can use DateTimeAttribute - because pynamodb was updated
-    # document_creation_date = UnicodeAttribute()
+    # document_creation_date = UnicodeAttribute(null=True)
     document_creation_date = DateTimeAttribute()
     document_preamble = UnicodeAttribute(null=True)
     document_legal_entity_name = UnicodeAttribute(null=True)
@@ -1179,8 +1177,8 @@ class ProjectModel(BaseModel):
             host = "http://localhost:8000"
 
     project_id = UnicodeAttribute(hash_key=True)
-    project_external_id = UnicodeAttribute()
-    project_name = UnicodeAttribute()
+    project_external_id = UnicodeAttribute(null=True)
+    project_name = UnicodeAttribute(null=True)
     project_name_lower = UnicodeAttribute(null=True)
     project_individual_documents = ListAttribute(of=DocumentModel, default=list)
     project_corporate_documents = ListAttribute(of=DocumentModel, default=list)
@@ -2250,11 +2248,11 @@ class RepositoryModel(BaseModel):
             host = "http://localhost:8000"
 
     repository_id = UnicodeAttribute(hash_key=True)
-    repository_project_id = UnicodeAttribute()
-    repository_name = UnicodeAttribute()
-    repository_type = UnicodeAttribute()  # Gerrit, GitHub, etc.
-    repository_url = UnicodeAttribute()
-    repository_organization_name = UnicodeAttribute()
+    repository_project_id = UnicodeAttribute(null=True)
+    repository_name = UnicodeAttribute(null=True)
+    repository_type = UnicodeAttribute(null=True)  # Gerrit, GitHub, etc.
+    repository_url = UnicodeAttribute(null=True)
+    repository_organization_name = UnicodeAttribute(null=True)
     repository_external_id = UnicodeAttribute(null=True)
     repository_sfdc_id = UnicodeAttribute(null=True)
     project_sfid = UnicodeAttribute(null=True)
@@ -2508,13 +2506,13 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
 
     signature_id = UnicodeAttribute(hash_key=True)
     signature_external_id = UnicodeAttribute(null=True)
-    signature_project_id = UnicodeAttribute()
+    signature_project_id = UnicodeAttribute(null=True)
     signature_document_minor_version = NumberAttribute()
     signature_document_major_version = NumberAttribute()
     signature_reference_id = UnicodeAttribute(range_key=True)
     signature_reference_name = UnicodeAttribute(null=True)
     signature_reference_name_lower = UnicodeAttribute(null=True)
-    signature_reference_type = UnicodeAttribute()
+    signature_reference_type = UnicodeAttribute(null=True)
     signature_type = UnicodeAttribute(default="cla")
     signature_signed = BooleanAttribute(default=False)
     # Signed on date/time
@@ -3531,8 +3529,8 @@ class CompanyModel(BaseModel):
     company_id = UnicodeAttribute(hash_key=True)
     company_external_id = UnicodeAttribute(null=True)
     company_manager_id = UnicodeAttribute(null=True)
-    company_name = UnicodeAttribute()  # parent
-    signing_entity_name = UnicodeAttribute()  # also the parent name or could be alternative name
+    company_name = UnicodeAttribute(null=True)  # parent
+    signing_entity_name = UnicodeAttribute(null=True)  # also the parent name or could be alternative name
     company_name_index = CompanyNameIndex()
     signing_entity_name_index = SigningEntityNameIndex()
     company_external_id_index = ExternalCompanyIndex()
@@ -3848,10 +3846,10 @@ class GitlabOrgModel(BaseModel):
     organization_name = UnicodeAttribute(null=True)
     organization_url = UnicodeAttribute(null=True)
     organization_name_lower = UnicodeAttribute(null=True)
-    organization_sfid = UnicodeAttribute()
+    organization_sfid = UnicodeAttribute(null=True)
     external_gitlab_group_id = NumberAttribute()
-    project_sfid = UnicodeAttribute()
-    auth_info = UnicodeAttribute()
+    project_sfid = UnicodeAttribute(null=True)
+    auth_info = UnicodeAttribute(null=True)
     organization_sfid_index = GitlabOrgSFIndex()
     project_sfid_organization_name_index = GitlabOrgProjectSfidOrganizationNameIndex()
     organization_name_lower_index = GitlabOrganizationNameLowerIndex()
@@ -3878,8 +3876,8 @@ class GitHubOrgModel(BaseModel):
     organization_name = UnicodeAttribute(hash_key=True)
     organization_name_lower = UnicodeAttribute(null=True)
     organization_installation_id = NumberAttribute(null=True)
-    organization_sfid = UnicodeAttribute()
-    project_sfid = UnicodeAttribute()
+    organization_sfid = UnicodeAttribute(null=True)
+    project_sfid = UnicodeAttribute(null=True)
     organization_sfid_index = GitlabOrgSFIndex()
     project_sfid_organization_name_index = GitlabOrgProjectSfidOrganizationNameIndex()
     organization_name_lower_index = GitlabOrganizationNameLowerIndex()
@@ -4264,9 +4262,9 @@ class GerritModel(BaseModel):
             host = "http://localhost:8000"
 
     gerrit_id = UnicodeAttribute(hash_key=True)
-    project_id = UnicodeAttribute()
-    gerrit_name = UnicodeAttribute()
-    gerrit_url = UnicodeAttribute()
+    project_id = UnicodeAttribute(null=True)
+    gerrit_name = UnicodeAttribute(null=True)
+    gerrit_url = UnicodeAttribute(null=True)
     group_id_icla = UnicodeAttribute(null=True)
     group_id_ccla = UnicodeAttribute(null=True)
     group_name_icla = UnicodeAttribute(null=True)
@@ -4673,8 +4671,8 @@ class CompanyInviteModel(BaseModel):
             host = "http://localhost:8000"
 
     company_invite_id = UnicodeAttribute(hash_key=True)
-    user_id = UnicodeAttribute()
-    requested_company_id = UnicodeAttribute()
+    user_id = UnicodeAttribute(null=True)
+    requested_company_id = UnicodeAttribute(null=True)
     requested_company_id_index = RequestedCompanyIndex()
 
 
