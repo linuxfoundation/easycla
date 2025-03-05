@@ -793,7 +793,8 @@ class DocumentTabModel(MapAttribute):
 
     document_tab_type = UnicodeAttribute(default="text")
     document_tab_id = UnicodeAttribute()
-    document_tab_name = UnicodeAttribute()
+    # LG: this can be null
+    document_tab_name = UnicodeAttribute(null=True)
     document_tab_page = NumberAttribute(default=1)
     document_tab_position_x = NumberAttribute()
     document_tab_position_y = NumberAttribute()
@@ -966,7 +967,7 @@ class DocumentModel(MapAttribute):
     document_content = UnicodeAttribute(null=True)  # None if using storage service.
     document_major_version = NumberAttribute(default=1)
     document_minor_version = NumberAttribute(default=0)
-    # LG:FIXME:TODO: investigate tomorrow: 2025-03-05
+    # LG: this can be null
     document_author_name = UnicodeAttribute(null=True)
     # LG: now we can use DateTimeAttribute - because pynamodb was updated
     # document_creation_date = UnicodeAttribute()
@@ -1043,9 +1044,6 @@ class Document(model_interfaces.Document):
         return self.model.document_content_type
 
     def get_document_author_name(self):
-        # LG:FIXME:TODO: investigate tomorrow: 2025-03-05
-        if self.model.document_author_name is None:
-            return ""
         return self.model.document_author_name
 
     def get_document_content(self):
