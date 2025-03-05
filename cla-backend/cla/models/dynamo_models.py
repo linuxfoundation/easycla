@@ -966,7 +966,8 @@ class DocumentModel(MapAttribute):
     document_content = UnicodeAttribute(null=True)  # None if using storage service.
     document_major_version = NumberAttribute(default=1)
     document_minor_version = NumberAttribute(default=0)
-    document_author_name = UnicodeAttribute()
+    # LG:FIXME:TODO: investigate tomorrow: 2025-03-05
+    document_author_name = UnicodeAttribute(null=True)
     # LG: now we can use DateTimeAttribute - because pynamodb was updated
     # document_creation_date = UnicodeAttribute()
     document_creation_date = DateTimeAttribute()
@@ -1042,6 +1043,9 @@ class Document(model_interfaces.Document):
         return self.model.document_content_type
 
     def get_document_author_name(self):
+        # LG:FIXME:TODO: investigate tomorrow: 2025-03-05
+        if self.model.document_author_name is None:
+            return ""
         return self.model.document_author_name
 
     def get_document_content(self):
