@@ -795,16 +795,16 @@ class DocumentTabModel(MapAttribute):
     document_tab_id = UnicodeAttribute(null=True)
     document_tab_name = UnicodeAttribute(null=True)
     document_tab_page = NumberAttribute(default=1)
-    document_tab_position_x = NumberAttribute()
-    document_tab_position_y = NumberAttribute()
+    document_tab_position_x = NumberAttribute(null=True)
+    document_tab_position_y = NumberAttribute(null=True)
     document_tab_width = NumberAttribute(default=200)
     document_tab_height = NumberAttribute(default=20)
     document_tab_is_locked = BooleanAttribute(default=False)
     document_tab_is_required = BooleanAttribute(default=True)
-    document_tab_anchor_string = UnicodeAttribute(default=None)
+    document_tab_anchor_string = UnicodeAttribute(default=None, null=True)
     document_tab_anchor_ignore_if_not_present = BooleanAttribute(default=True)
-    document_tab_anchor_x_offset = NumberAttribute()
-    document_tab_anchor_y_offset = NumberAttribute()
+    document_tab_anchor_x_offset = NumberAttribute(null=True)
+    document_tab_anchor_y_offset = NumberAttribute(null=True)
 
 
 class DocumentTab(model_interfaces.DocumentTab):
@@ -969,7 +969,7 @@ class DocumentModel(MapAttribute):
     document_author_name = UnicodeAttribute(null=True)
     # LG: now we can use DateTimeAttribute - because pynamodb was updated
     # document_creation_date = UnicodeAttribute(null=True)
-    document_creation_date = DateTimeAttribute()
+    document_creation_date = DateTimeAttribute(null=True)
     document_preamble = UnicodeAttribute(null=True)
     document_legal_entity_name = UnicodeAttribute(null=True)
     document_s3_url = UnicodeAttribute(null=True)
@@ -2507,8 +2507,8 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     signature_id = UnicodeAttribute(hash_key=True)
     signature_external_id = UnicodeAttribute(null=True)
     signature_project_id = UnicodeAttribute(null=True)
-    signature_document_minor_version = NumberAttribute()
-    signature_document_major_version = NumberAttribute()
+    signature_document_minor_version = NumberAttribute(null=True)
+    signature_document_major_version = NumberAttribute(null=True)
     signature_reference_id = UnicodeAttribute(range_key=True)
     signature_reference_name = UnicodeAttribute(null=True)
     signature_reference_name_lower = UnicodeAttribute(null=True)
@@ -3783,8 +3783,8 @@ class StoreModel(Model):
         read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
 
     key = UnicodeAttribute(hash_key=True)
-    value = JSONAttribute()
-    expire = NumberAttribute()
+    value = JSONAttribute(null=True)
+    expire = NumberAttribute(null=True)
 
 
 class Store(key_value_store_interface.KeyValueStore):
@@ -3847,7 +3847,7 @@ class GitlabOrgModel(BaseModel):
     organization_url = UnicodeAttribute(null=True)
     organization_name_lower = UnicodeAttribute(null=True)
     organization_sfid = UnicodeAttribute(null=True)
-    external_gitlab_group_id = NumberAttribute()
+    external_gitlab_group_id = NumberAttribute(null=True)
     project_sfid = UnicodeAttribute(null=True)
     auth_info = UnicodeAttribute(null=True)
     organization_sfid_index = GitlabOrgSFIndex()
