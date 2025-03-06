@@ -683,6 +683,7 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
 
     # Check if we have an CCLA for this user
     company_id = user.get_user_company_id()
+    cla.log.debug(f"{fn}: LG: company_id={company_id}")
 
     ccla_pass = False
     if company_id is not None:
@@ -695,6 +696,7 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
         employee_signature = user.get_latest_signature(
             project.get_project_id(), company_id=company_id, signature_signed=True, signature_approved=True
         )
+        cla.log.debug(f"{fn}: LG: employee_signature={employee_signature}")
 
         if employee_signature is not None:
             cla.log.debug(
@@ -712,6 +714,7 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
                     f"company with id does not exist: {company_id}."
                 )
                 return False
+            cla.log.debug(f"{fn}: LG: company={company}")
 
             # Get CCLA signature of company to access whitelist
             cla.log.debug(
@@ -721,6 +724,7 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
             signature = company.get_latest_signature(
                 project.get_project_id(), signature_signed=True, signature_approved=True
             )
+            cla.log.debug(f"{fn}: LG: signature={signature}")
 
             # Don't check the version for employee signatures.
             if signature is not None:
@@ -739,6 +743,7 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
                 #                   'project requires ICLA signature as well as CCLA signature ')
                 if user.is_approved(signature):
                     ccla_pass = True
+                    cla.log.debug(f"{fn}: LG: ccla_pass={ccla_pass}")
                 else:
                     # Set user signatures approved = false due to user failing whitelist checks
                     cla.log.debug(
