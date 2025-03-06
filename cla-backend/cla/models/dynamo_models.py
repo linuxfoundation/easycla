@@ -735,7 +735,7 @@ class PatchedUnicodeSetAttribute(UnicodeSetAttribute):
             return set()
         if self.attr_type == 'SS' and 'L' in value:
             value = {'SS':list(map(lambda x: x['S'], value['L']))}
-        super(PatchedUnicodeSetAttribute, self).get_value(value)
+        return super(PatchedUnicodeSetAttribute, self).get_value(value)
 
     def deserialize(self, value):
         if not value:
@@ -2013,7 +2013,6 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         :rtype: bool
         """
         fn = 'dynamo_models.preprocess_pattern'
-        cla.log.debug(f"{fn}: LG: self={self}, emails={emails}, patterns={patterns}")
         for pattern in patterns:
             if pattern.startswith("*."):
                 pattern = pattern.replace("*.", ".*")
@@ -2024,12 +2023,10 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
 
             preprocessed_pattern = "^.*@" + pattern + "$"
             pat = re.compile(preprocessed_pattern)
-            cla.log.debug(f"{fn}: LG: patters={pattern}, preprocessed_pattern={preprocessed_pattern}, pat={pat}")
             for email in emails:
                 if pat.match(email) is not None:
                     self.log_debug(f'{fn} - found user email in email approval pattern')
                     return True
-        cla.log.debug(f"{fn}: LG: no match")
         return False
 
     # Accepts a Signature object
@@ -2045,14 +2042,11 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         :rtype: bool
         """
         fn = 'dynamo_models.is_approved'
-        cla.log.debug(f"{fn}: LG: self={self}, ccla_signature={ccla_signature}")
         # Returns the union of lf_emails and emails (separate columns)
         emails = self.get_all_user_emails()
-        cla.log.debug(f"{fn}: LG: emails={emails}")
         if len(emails) > 0:
             # remove leading and trailing whitespace before checking emails
             emails = [email.strip() for email in emails]
-        cla.log.debug(f"{fn}: LG: emails={emails} (stripped)")
 
         # First, we check email whitelist
         whitelist = ccla_signature.get_email_whitelist()
