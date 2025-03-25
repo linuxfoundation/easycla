@@ -167,6 +167,7 @@ provider:
             - lambda:InvokeFunction
           Resource:
             - "arn:aws:lambda:${self:provider.region}:${aws:accountId}:function:cla-backend-${sls:stage}-zip-builder-lambda"
+            - "arn:aws:lambda:${self:provider.region}:${aws:accountId}:function:cla-backend-${sls:stage}-zipbuilder-lambda"
         - Effect: Allow
           Action:
             - ssm:GetParameter
