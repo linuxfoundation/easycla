@@ -186,7 +186,7 @@ type DownloadFileInput struct {
 
 func writeFileToZip(writer *zip.Writer, filesInput chan *FileContent) bool {
 	var zipUpdated bool
-	log.Infof("writing files")
+	// log.Infof("writing files")
 	for fileContent := range filesInput {
 		filename := fileContent.filename
 		buff := fileContent.buff
