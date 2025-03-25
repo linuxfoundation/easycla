@@ -186,10 +186,11 @@ type DownloadFileInput struct {
 
 func writeFileToZip(writer *zip.Writer, filesInput chan *FileContent) bool {
 	var zipUpdated bool
+	log.Infof("writing files")
 	for fileContent := range filesInput {
 		filename := fileContent.filename
 		buff := fileContent.buff
-		log.Debugf("Adding file : %s to zip", filename)
+		log.Infof("Adding file: %s to zip", filename)
 		header := &zip.FileHeader{
 			Name:   filename,
 			Method: zip.Deflate,
