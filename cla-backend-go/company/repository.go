@@ -733,7 +733,7 @@ func (repo repository) buildCompaniesByUserManagerWithInvites(ctx context.Contex
 	for _, invite := range invites {
 		company, err := repo.GetCompany(ctx, invite.RequestedCompanyID)
 		if err != nil {
-			log.WithFields(f).Warnf("error retrieving company with company ID %s, error: %v - skipping invite", company, err)
+			log.WithFields(f).Warnf("error retrieving company with company ID %s, error: %v - skipping invite", invite.RequestedCompanyID, err)
 			continue
 		}
 
