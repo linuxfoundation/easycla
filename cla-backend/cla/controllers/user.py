@@ -56,6 +56,10 @@ def get_user(user_id=None, user_email=None, user_github_id=None):
             return {'errors': {'user_github_id': 'User not found'}}
         # Use the first user for now - need to revisit - what if multiple are returned?
         user = users[0]
+    company_id = user.get_user_company_id()
+    if company_id is not None:
+        import pdb
+        pdb.set_trace()
     return user.to_dict()
 
 
