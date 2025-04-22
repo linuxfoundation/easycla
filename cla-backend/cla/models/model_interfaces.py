@@ -1248,6 +1248,15 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
+    def get_eligible_to_contribute(self):
+        """
+        Getter for company eligible to contribute flag
+
+        :return: The company's eligible to contribute flag
+        :rtype: boolean
+        """
+        raise NotImplementedError()
+
     def get_signing_entity_name(self) -> str:
         """
         Getter for an company's signing entity name.
@@ -1317,6 +1326,15 @@ class Company(object):  # pylint: disable=too-many-public-methods
 
         :param signing_entity_name: The name of the company's signing entity name.
         :type signing_entity_name: string
+        """
+        raise NotImplementedError()
+
+    def set_eligible_to_contribute(self, eligible_to_contribute):
+        """
+        Setter for company's eligible to contribute flag
+
+        :param eligible_to_contribute: Rligible to contribute flag
+        :type eligible_to_contribute: bool
         """
         raise NotImplementedError()
 
