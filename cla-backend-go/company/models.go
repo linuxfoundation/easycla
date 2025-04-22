@@ -24,6 +24,7 @@ type DBModel struct {
 	Created           string   `dynamodbav:"date_created" json:"date_created"`
 	Updated           string   `dynamodbav:"date_modified" json:"date_modified"`
 	Note              string   `dynamodbav:"note" json:"note"`
+	IsEmbargoed       bool     `dynamodbav:"is_embargoed" json:"is_embargoed"`
 	Version           string   `dynamodbav:"version" json:"version"`
 }
 
@@ -85,6 +86,7 @@ func (dbCompanyModel *DBModel) toModel() (*models.Company, error) {
 		Created:           strfmt.DateTime(createdDateTime),
 		Updated:           strfmt.DateTime(updateDateTime),
 		Note:              dbCompanyModel.Note,
+		IsEmbargoed:       dbCompanyModel.IsEmbargoed,
 		Version:           dbCompanyModel.Version,
 	}, nil
 }
@@ -145,6 +147,7 @@ func toSwaggerModel(dbCompanyModel *DBModel) (*models.Company, error) {
 		CompanyID:         dbCompanyModel.CompanyID,
 		CompanyName:       dbCompanyModel.CompanyName,
 		SigningEntityName: dbCompanyModel.SigningEntityName,
+		IsEmbargoed:       dbCompanyModel.IsEmbargoed,
 		CompanyExternalID: dbCompanyModel.CompanyExternalID,
 		CompanyManagerID:  dbCompanyModel.CompanyManagerID,
 		Created:           strfmt.DateTime(createdDateTime),

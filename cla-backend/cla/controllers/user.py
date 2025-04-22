@@ -57,18 +57,18 @@ def get_user(user_id=None, user_email=None, user_github_id=None):
         # Use the first user for now - need to revisit - what if multiple are returned?
         user = users[0]
     user_company_id = user.get_user_company_id()
-    eligible_to_contribute = True
+    is_embargoed = False
     if user_company_id is not None:
         user_company = get_company_instance()
         try:
             user_company.load(user_company_id)
-            eligible_to_contribute = user_company.get_eligible_to_contribute()
-            if eligible_to_contribute is not False:
-                eligible_to_contribute = True
+            is_company_embargoed = user_company.get_is_embargoed()
+            if is_company_embargoed is True:
+                is_embargoed = True
         except DoesNotExist as err:
             pass
     user_dict = user.to_dict()
-    user_dict['eligible_to_contribute'] = eligible_to_contribute
+    user_dict['is_embargoed'] = is_embargoed
     return user_dict
 
 

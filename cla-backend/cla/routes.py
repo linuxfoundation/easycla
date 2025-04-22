@@ -661,7 +661,7 @@ def post_company(
         company_manager_user_name=None,
         company_manager_user_email=None,
         company_manager_id=None,
-        eligible_to_contribute=None,
+        is_embargoed=None,
         response=None
 ):
     """
@@ -680,7 +680,7 @@ def post_company(
         signing_entity_name=company_name,
         company_manager_user_name=company_manager_user_name,
         company_manager_user_email=company_manager_user_email,
-        eligible_to_contribute=eligible_to_contribute,
+        is_embargoed=is_embargoed,
         response=response,
     )
 
@@ -699,7 +699,7 @@ def put_company(
         auth_user: check_auth,  # pylint: disable=too-many-arguments
         company_id: hug.types.uuid,
         company_name=None,
-        eligible_to_contribute=None,
+        is_embargoed=None,
         company_manager_id=None,
 ):
     """
@@ -716,7 +716,7 @@ def put_company(
         company_name=company_name,
         company_manager_id=company_manager_id,
         username=auth_user.username,
-        eligible_to_contribute=eligible_to_contribute,
+        is_embargoed=is_embargoed,
     )
 
 

@@ -1248,11 +1248,11 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def get_eligible_to_contribute(self):
+    def get_is_embargoed(self):
         """
-        Getter for company eligible to contribute flag
+        Getter for company is embargoed flag
 
-        :return: The company's eligible to contribute flag
+        :return: The company's is embargoed flag
         :rtype: boolean
         """
         raise NotImplementedError()
@@ -1329,12 +1329,12 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def set_eligible_to_contribute(self, eligible_to_contribute):
+    def set_is_embargoed(self, is_embargoed):
         """
-        Setter for company's eligible to contribute flag
+        Setter for company's is embargoed flag
 
-        :param eligible_to_contribute: Rligible to contribute flag
-        :type eligible_to_contribute: bool
+        :param is_embargoed: is embargoed flag
+        :type is_embargoed: bool
         """
         raise NotImplementedError()
 

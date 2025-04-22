@@ -3536,7 +3536,7 @@ class CompanyModel(BaseModel):
     company_external_id_index = ExternalCompanyIndex()
     company_acl = PatchedUnicodeSetAttribute(default=set)
     note = UnicodeAttribute(null=True)
-    eligible_to_contribute = BooleanAttribute(default=True, null=True)
+    is_embargoed = BooleanAttribute(default=False, null=True)
 
 
 class Company(model_interfaces.Company):  # pylint: disable=too-many-public-methods
@@ -3553,7 +3553,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             signing_entity_name=None,
             company_acl=set(),
             note=None,
-            eligible_to_contribute=True,
+            is_embargoed=True,
     ):
         super(Company).__init__()
 
@@ -3568,7 +3568,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             self.model.signing_entity_name = company_name
         self.model.company_acl = company_acl
         self.model.note = note
-        self.model.eligible_to_contribute = eligible_to_contribute
+        self.model.is_embargoed = is_embargoed
 
     def __str__(self) -> str:
         return (
@@ -3577,7 +3577,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             f"signing_entity_name: {self.model.signing_entity_name}, "
             f"external id: {self.model.company_external_id}, "
             f"manager id: {self.model.company_manager_id}, "
-            f"eligible_to_contribute: {self.model.eligible_to_contribute}, "
+            f"is_embargoed: {self.model.is_embargoed}, "
             f"acl: {self.model.company_acl}, "
             f"note: {self.model.note}"
         )
@@ -3633,8 +3633,8 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
     def get_note(self) -> str:
         return self.model.note
 
-    def get_eligible_to_contribute(self):
-        return self.model.eligible_to_contribute
+    def get_is_embargoed(self):
+        return self.model.is_embargoed
 
     def set_company_id(self, company_id: str) -> None:
         self.model.company_id = company_id
@@ -3657,8 +3657,8 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
     def set_note(self, note: str) -> None:
         self.model.note = note
 
-    def set_eligible_to_contribute(self, eligible_to_contribute) -> None:
-        self.model.eligible_to_contribute = bool(eligible_to_contribute)
+    def set_is_embargoed(self, is_embargoed) -> None:
+        self.model.is_embargoed = bool(is_embargoed)
 
     def update_note(self, note: str) -> None:
         if self.model.note:

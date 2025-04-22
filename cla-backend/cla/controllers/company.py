@@ -86,7 +86,7 @@ def create_company(auth_user: AuthUser,
                    company_manager_id: str = None,
                    company_manager_user_name: str = None,
                    company_manager_user_email: str = None,
-                   eligible_to_contribute: bool = True,
+                   is_embargoed: bool = False,
                    user_id: str = None,
                    response=None):
     """
@@ -104,8 +104,8 @@ def create_company(auth_user: AuthUser,
     :type company_manager_user_name: string
     :param company_manager_user_email: The user email of the company manager user.
     :type company_manager_user_email: string
-    :param eligible_to_contribute: Eligible to contribute
-    :type eligible_to_contribute: bool
+    :param is_embargoed: is embargoed
+    :type is_embargoed: bool
     :return: dict representation of the company object.
     :rtype: dict
     """
@@ -128,7 +128,7 @@ def create_company(auth_user: AuthUser,
     company.set_signing_entity_name(signing_entity_name)
     company.set_company_manager_id(manager.get_user_id())
     company.set_company_acl(manager.get_lf_username())
-    company.set_eligible_to_contribute(eligible_to_contribute)
+    company.set_is_embargoed(is_embargoed)
     company.save()
     cla.log.debug(f'{fn} - created company with name: {company_name} with company_id: {company.get_company_id()}')
 
@@ -151,7 +151,7 @@ def create_company(auth_user: AuthUser,
 def update_company(company_id: str,  # pylint: disable=too-many-arguments
                    company_name: str = None,
                    company_manager_id: str = None,
-                   eligible_to_contribute: bool = None,
+                   is_embargoed: bool = None,
                    username: str = None):
     """
     Updates an company and returns the newly updated company in dict format.
@@ -184,9 +184,9 @@ def update_company(company_id: str,  # pylint: disable=too-many-arguments
         val = hug.types.uuid(company_manager_id)
         company.set_company_manager_id(str(val))
         update_str += f"The company company manager id was updated to {val}"
-    if eligible_to_contribute is not None:
-        company.set_eligible_to_contribute(eligible_to_contribute)
-        update_str += f"The company eligible_to_contribute was updated to {eligible_to_contribute}. "
+    if is_embargoed is not None:
+        company.set_is_embargoed(is_embargoed)
+        update_str += f"The company is_embargoed was updated to {is_embargoed}. "
 
     company.save()
 

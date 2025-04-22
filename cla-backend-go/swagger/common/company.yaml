@@ -38,6 +38,11 @@ properties:
     type: string
     description: An optional note associated with this company record
     example: "Added by David to support CNCF migration"
+  isEmbargoed:
+    type: boolean
+    description: "Is this company embargoed?"
+    # default: false
+    example: true
   version:
     type: string
     description: 'the version of the company record'
