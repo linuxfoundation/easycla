@@ -26,3 +26,9 @@ type DBUser struct {
 type UserEmails struct {
 	SS []string `json:"SS"`
 }
+
+// CompanyEmbargo data model
+type CompanyEmbargo struct {
+	CompanyID   string `dynamodbav:"company_id" json:"company_id"`
+	IsEmbargoed bool   `dynamodbav:"is_embargoed" json:"is_embargoed"`
+}
