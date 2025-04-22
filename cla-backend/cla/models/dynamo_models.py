@@ -3553,7 +3553,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             signing_entity_name=None,
             company_acl=set(),
             note=None,
-            is_embargoed=True,
+            is_embargoed=False,
     ):
         super(Company).__init__()
 
