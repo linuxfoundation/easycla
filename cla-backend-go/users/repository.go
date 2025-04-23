@@ -574,7 +574,6 @@ func (repo repository) GetUser(userID string) (*models.User, error) {
 	user.IsEmbargoed, err = repo.isUserEmbargoed(user)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("Error checking if user's company is embargoed for user_id: %s, error: %+v", userID, err)
-		return user, nil
 	}
 	return user, nil
 }
