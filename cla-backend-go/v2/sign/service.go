@@ -228,6 +228,17 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 	}
 
+	// 1.5 Check if company is embargoed
+	if comp != nil && comp.IsEmbargoed {
+		if input.CompanySfid != nil {
+			err = fmt.Errorf("company %s is embargoed", *input.CompanySfid)
+		} else {
+			err = fmt.Errorf("company is embargoed")
+		}
+		log.WithFields(f).WithError(err).Error("company is embargoed")
+		return nil, err
+	}
+
 	// 2. Ensure this is a valid project
 	psc := projectService.GetClient()
 	log.WithFields(f).Debug("looking up project by SFID...")
