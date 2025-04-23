@@ -1,6 +1,7 @@
 #!/bin/bash
 # API_URL=https://[xyz].ngrok-free.app (defaults to localhost:5000)
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org
+# Note: To run manually see cla-backend-go/auth/authorizer.go:SecurityAuth() and update accordingly 'LG:'
 if [ -z "$1" ]
 then
   echo "$0: you need to specify company_id as a 1st parameter, example '0ca30016-6457-466c-bc41-a09560c1f9bf'"
