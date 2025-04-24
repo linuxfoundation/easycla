@@ -718,7 +718,7 @@ class DocuSign(signing_service_interface.SigningService):
         company.load(company_id)
         cla.log.info(f'{fn} - loaded company details for: {request_info}')
 
-        # Check for embargo
+        # Check for OFAC sanctioned flag
         if company.get_is_sanctioned() is True:
             return self.sanctioned_error(fn, user_id, company_id)
 
@@ -887,7 +887,7 @@ class DocuSign(signing_service_interface.SigningService):
         company.load(company_id)
         cla.log.info(f'{fn} - loaded company details for: {request_info}')
 
-        # Check for embargo
+        # Check for OFAC sanctioned flag
         if company.get_is_sanctioned() is True:
             return self.sanctioned_error(fn, user_id, company_id)
 
@@ -1223,7 +1223,7 @@ class DocuSign(signing_service_interface.SigningService):
                             'Returning an error response')
             return {'errors': {'company_id': str(err)}}
 
-        # Check for embargo
+        # Check for OFAC sanctioned flag
         if company.get_is_sanctioned() is True:
             return self.sanctioned_error(fn, None, company_id)
 

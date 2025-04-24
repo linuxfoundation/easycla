@@ -37,9 +37,9 @@ then
   export API_URL="http://localhost:5000"
 fi
 
-if [ -z "%{V}" ]
+if [ -z "${V}" ]
 then
-  export V=v3
+  export V=v4
 fi
 
 API="${API_URL}/${V}/company/${company_id}"
