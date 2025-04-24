@@ -1,5 +1,5 @@
 #!/bin/bash
-./utils/update_company_is_embargoed.sh 0ca30016-6457-466c-bc41-a09560c1f9bf true
+./utils/update_company_is_sanctioned.sh 0ca30016-6457-466c-bc41-a09560c1f9bf true
 # Python APIs
 ./utils/get_company_py.sh 0ca30016-6457-466c-bc41-a09560c1f9bf
 ./utils/get_user_py.sh 9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5
