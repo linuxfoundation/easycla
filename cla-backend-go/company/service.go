@@ -878,7 +878,7 @@ func (s service) CreateOrgFromExternalID(ctx context.Context, signingEntityName,
 		CompanyExternalID: org.ID,
 		CompanyName:       org.Name,
 		SigningEntityName: signingEntityName,
-		IsEmbargoed:       false,
+		IsSanctioned:      false,
 		Note:              fmt.Sprintf("%s - Created based on SF Organization Service record - %s", now, additionalNote),
 	}
 	if companyAdmin != nil {

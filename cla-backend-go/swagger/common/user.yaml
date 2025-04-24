@@ -57,8 +57,8 @@ properties:
   userCompanyID:
     type: string
     description: the user's optional company ID
-  isEmbargoed:
+  isSanctioned:
     type: boolean
-    description: "Is this user embargoed? This field comes from users's company"
+    description: "Is this user OFAC sanctioned? This field comes from users's company"
     # default: false
     example: true

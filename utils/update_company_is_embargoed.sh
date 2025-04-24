@@ -1,7 +1,7 @@
 #!/bin/bash
 # STAGE=dev|prod
 # DEBUG=1
-# example update: STAGE=prod DEBUG=1 ./utils/update_company_is_embargoed.sh "0ca30016-6457-466c-bc41-a09560c1f9bf" false
+# example update: STAGE=prod DEBUG=1 ./utils/update_company_is_sanctioned.sh "0ca30016-6457-466c-bc41-a09560c1f9bf" false
 if [ -z "$STAGE" ]
 then
   export STAGE=dev
@@ -18,6 +18,6 @@ then
 fi
 if [ ! -z "$DEBUG" ]
 then
-  echo aws --profile "lfproduct-$STAGE" dynamodb update-item --table-name "cla-${STAGE}-companies" --key "{\"company_id\":{\"S\":\"${1}\"}}" --update-expression '"SET is_embargoed = :val"' --expression-attribute-values "{\":val\":{\"BOOL\":${2}}}"
+  echo aws --profile "lfproduct-$STAGE" dynamodb update-item --table-name "cla-${STAGE}-companies" --key "{\"company_id\":{\"S\":\"${1}\"}}" --update-expression '"SET is_sanctioned = :val"' --expression-attribute-values "{\":val\":{\"BOOL\":${2}}}"
 fi
-aws --profile "lfproduct-$STAGE" dynamodb update-item --table-name "cla-${STAGE}-companies" --key "{\"company_id\":{\"S\":\"${1}\"}}" --update-expression "SET is_embargoed = :val" --expression-attribute-values "{\":val\":{\"BOOL\":${2}}}"
+aws --profile "lfproduct-$STAGE" dynamodb update-item --table-name "cla-${STAGE}-companies" --key "{\"company_id\":{\"S\":\"${1}\"}}" --update-expression "SET is_sanctioned = :val" --expression-attribute-values "{\":val\":{\"BOOL\":${2}}}"

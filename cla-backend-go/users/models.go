@@ -27,8 +27,8 @@ type UserEmails struct {
 	SS []string `json:"SS"`
 }
 
-// CompanyEmbargo data model
-type CompanyEmbargo struct {
-	CompanyID   string `dynamodbav:"company_id" json:"company_id"`
-	IsEmbargoed bool   `dynamodbav:"is_embargoed" json:"is_embargoed"`
+// CompanySanctioned data model (extracts OFAC sanctioned flag from the company)
+type CompanySanctioned struct {
+	CompanyID    string `dynamodbav:"company_id" json:"company_id"`
+	IsSanctioned bool   `dynamodbav:"is_sanctioned" json:"is_sanctioned"`
 }

@@ -473,20 +473,20 @@ func (repo repository) Delete(userID string) error {
 	return nil
 }
 
-func (repo repository) isUserEmbargoed(user *models.User) (bool, error) {
+func (repo repository) isUserSanctioned(user *models.User) (bool, error) {
 	if user == nil {
-		return false, fmt.Errorf("users.repository.isUserEmbargoed: null user given")
+		return false, fmt.Errorf("users.repository.isUserSanctioned: null user given")
 	}
 
 	// This actually comes from user_company_id in DynamoDB which is correct
 	companyID := user.CompanyID
 	if companyID == "" {
-		// No company set - no embargo
+		// No company set - no OFAC sanction possible
 		return false, nil
 	}
 
 	f := logrus.Fields{
-		"functionName": "users.repository.isUserEmbargoed",
+		"functionName": "users.repository.isUserSanctioned",
 		"userID":       user.UserID,
 		"companyID":    companyID,
 	}
@@ -505,19 +505,19 @@ func (repo repository) isUserEmbargoed(user *models.User) (bool, error) {
 		return false, err
 	}
 
-	// Company not found - no embargo
+	// Company not found - no OFAC sanction possible
 	if len(companyTableData.Item) == 0 {
 		return false, nil
 	}
 
-	data := CompanyEmbargo{}
+	data := CompanySanctioned{}
 	err = dynamodbattribute.UnmarshalMap(companyTableData.Item, &data)
 	if err != nil {
-		log.WithFields(f).Warnf("error unmarshalling company embargo data, error: %v", err)
+		log.WithFields(f).Warnf("error unmarshalling company OFAC sanctioned data, error: %v", err)
 		return false, nil
 	}
 
-	return data.IsEmbargoed, nil
+	return data.IsSanctioned, nil
 }
 
 // GetUser retrieves the specified user using the user id
@@ -571,9 +571,9 @@ func (repo repository) GetUser(userID string) (*models.User, error) {
 	}
 
 	user := convertDBUserModel(dbUserModels[0])
-	user.IsEmbargoed, err = repo.isUserEmbargoed(user)
+	user.IsSanctioned, err = repo.isUserSanctioned(user)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("Error checking if user's company is embargoed for user_id: %s, error: %+v", userID, err)
+		log.WithFields(f).WithError(err).Warnf("Error checking if user's company is sanctioned for user_id: %s, error: %+v", userID, err)
 	}
 	return user, nil
 }

@@ -1248,11 +1248,11 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def get_is_embargoed(self):
+    def get_is_sanctioned(self):
         """
-        Getter for company is embargoed flag
+        Getter for company is sanctioned flag
 
-        :return: The company's is embargoed flag
+        :return: The company's is sanctioned flag
         :rtype: boolean
         """
         raise NotImplementedError()
@@ -1329,12 +1329,12 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def set_is_embargoed(self, is_embargoed):
+    def set_is_sanctioned(self, is_sanctioned):
         """
-        Setter for company's is embargoed flag
+        Setter for company's is sanctioned flag
 
-        :param is_embargoed: is embargoed flag
-        :type is_embargoed: bool
+        :param is_sanctioned: is sanctioned flag
+        :type is_sanctioned: bool
         """
         raise NotImplementedError()
 

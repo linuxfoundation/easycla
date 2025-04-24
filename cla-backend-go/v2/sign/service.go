@@ -228,14 +228,14 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 	}
 
-	// 1.5 Check if company is embargoed
-	if comp != nil && comp.IsEmbargoed {
+	// 1.5 Check if company is sanctioned
+	if comp != nil && comp.IsSanctioned {
 		if input.CompanySfid != nil {
-			err = fmt.Errorf("company %s is embargoed", *input.CompanySfid)
+			err = fmt.Errorf("company %s is sanctioned", *input.CompanySfid)
 		} else {
-			err = fmt.Errorf("company is embargoed")
+			err = fmt.Errorf("company is sanctioned")
 		}
-		log.WithFields(f).WithError(err).Error("company is embargoed")
+		log.WithFields(f).WithError(err).Error("company is sanctioned")
 		return nil, err
 	}
 

@@ -38,9 +38,9 @@ properties:
     type: string
     description: An optional note associated with this company record
     example: "Added by David to support CNCF migration"
-  isEmbargoed:
+  isSanctioned:
     type: boolean
-    description: "Is this company embargoed?"
+    description: "Is this company OFAC sanctioned?"
     # default: false
     example: true
   version:

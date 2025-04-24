@@ -106,7 +106,7 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				if strings.Contains(err.Error(), "internal server error") {
 					return sign.NewRequestCorporateSignatureInternalServerError().WithPayload(errorResponse(reqID, err))
 				}
-				if strings.Contains(err.Error(), "is embargoed") {
+				if strings.Contains(err.Error(), "is sanctioned") {
 					desc := "We’re sorry, but you are currently unable to sign the Corporate Contributor License Agreement (CCLA). If you believe this may be an error, please reach out to support"
 					return sign.NewRequestCorporateSignatureForbidden().WithPayload(errorResponseWithDesc(reqID, err, desc))
 				}
