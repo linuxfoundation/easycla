@@ -718,7 +718,7 @@ class DateTimeAttribute(UTCDateTimeAttribute):
     def deserialize(self, value):
         try:
             return self._fast_parse_utc_date_string(value)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, AttributeError):
             return parsedatestring(value)
 
 # LG: patched class
@@ -3536,6 +3536,7 @@ class CompanyModel(BaseModel):
     company_external_id_index = ExternalCompanyIndex()
     company_acl = PatchedUnicodeSetAttribute(default=set)
     note = UnicodeAttribute(null=True)
+    is_sanctioned = BooleanAttribute(default=False, null=True)
 
 
 class Company(model_interfaces.Company):  # pylint: disable=too-many-public-methods
@@ -3552,6 +3553,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             signing_entity_name=None,
             company_acl=set(),
             note=None,
+            is_sanctioned=False,
     ):
         super(Company).__init__()
 
@@ -3566,6 +3568,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             self.model.signing_entity_name = company_name
         self.model.company_acl = company_acl
         self.model.note = note
+        self.model.is_sanctioned = is_sanctioned
 
     def __str__(self) -> str:
         return (
@@ -3574,6 +3577,7 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
             f"signing_entity_name: {self.model.signing_entity_name}, "
             f"external id: {self.model.company_external_id}, "
             f"manager id: {self.model.company_manager_id}, "
+            f"is_sanctioned: {self.model.is_sanctioned}, "
             f"acl: {self.model.company_acl}, "
             f"note: {self.model.note}"
         )
@@ -3629,6 +3633,9 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
     def get_note(self) -> str:
         return self.model.note
 
+    def get_is_sanctioned(self):
+        return self.model.is_sanctioned
+
     def set_company_id(self, company_id: str) -> None:
         self.model.company_id = company_id
 
@@ -3649,6 +3656,9 @@ class Company(model_interfaces.Company):  # pylint: disable=too-many-public-meth
 
     def set_note(self, note: str) -> None:
         self.model.note = note
+
+    def set_is_sanctioned(self, is_sanctioned) -> None:
+        self.model.is_sanctioned = bool(is_sanctioned)
 
     def update_note(self, note: str) -> None:
         if self.model.note:

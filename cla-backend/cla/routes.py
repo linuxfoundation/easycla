@@ -661,6 +661,7 @@ def post_company(
         company_manager_user_name=None,
         company_manager_user_email=None,
         company_manager_id=None,
+        is_sanctioned=None,
         response=None
 ):
     """
@@ -679,6 +680,7 @@ def post_company(
         signing_entity_name=company_name,
         company_manager_user_name=company_manager_user_name,
         company_manager_user_email=company_manager_user_email,
+        is_sanctioned=is_sanctioned,
         response=response,
     )
 
@@ -697,6 +699,7 @@ def put_company(
         auth_user: check_auth,  # pylint: disable=too-many-arguments
         company_id: hug.types.uuid,
         company_name=None,
+        is_sanctioned=None,
         company_manager_id=None,
 ):
     """
@@ -709,7 +712,11 @@ def put_company(
     """
 
     return cla.controllers.company.update_company(
-        str(company_id), company_name=company_name, company_manager_id=company_manager_id, username=auth_user.username,
+        str(company_id),
+        company_name=company_name,
+        company_manager_id=company_manager_id,
+        username=auth_user.username,
+        is_sanctioned=is_sanctioned,
     )
 
 

@@ -106,6 +106,10 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				if strings.Contains(err.Error(), "internal server error") {
 					return sign.NewRequestCorporateSignatureInternalServerError().WithPayload(errorResponse(reqID, err))
 				}
+				if strings.Contains(err.Error(), "is sanctioned") {
+					desc := "We’re sorry, but you are currently unable to sign the Corporate Contributor License Agreement (CCLA). If you believe this may be an error, please reach out to support"
+					return sign.NewRequestCorporateSignatureForbidden().WithPayload(errorResponseWithDesc(reqID, err, desc))
+				}
 				if err == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
 					return sign.NewRequestCorporateSignatureBadRequest().WithPayload(errorResponse(reqID, err))
 				}
@@ -259,6 +263,21 @@ func errorResponse(reqID string, err error) *models.ErrorResponse {
 	e := models.ErrorResponse{
 		Code:       code,
 		Message:    err.Error(),
+		XRequestID: reqID,
+	}
+
+	return &e
+}
+
+func errorResponseWithDesc(reqID string, err error, desc string) *models.ErrorResponse {
+	code := ""
+	if e, ok := err.(codedResponse); ok {
+		code = e.Code()
+	}
+
+	e := models.ErrorResponse{
+		Code:       code,
+		Message:    err.Error() + "\n" + desc,
 		XRequestID: reqID,
 	}
 

@@ -26,3 +26,9 @@ type DBUser struct {
 type UserEmails struct {
 	SS []string `json:"SS"`
 }
+
+// CompanySanctioned data model (extracts OFAC sanctioned flag from the company)
+type CompanySanctioned struct {
+	CompanyID    string `dynamodbav:"company_id" json:"company_id"`
+	IsSanctioned bool   `dynamodbav:"is_sanctioned" json:"is_sanctioned"`
+}

@@ -86,6 +86,7 @@ def create_company(auth_user: AuthUser,
                    company_manager_id: str = None,
                    company_manager_user_name: str = None,
                    company_manager_user_email: str = None,
+                   is_sanctioned: bool = False,
                    user_id: str = None,
                    response=None):
     """
@@ -103,6 +104,8 @@ def create_company(auth_user: AuthUser,
     :type company_manager_user_name: string
     :param company_manager_user_email: The user email of the company manager user.
     :type company_manager_user_email: string
+    :param is_sanctioned: is sanctioned
+    :type is_sanctioned: bool
     :return: dict representation of the company object.
     :rtype: dict
     """
@@ -125,6 +128,7 @@ def create_company(auth_user: AuthUser,
     company.set_signing_entity_name(signing_entity_name)
     company.set_company_manager_id(manager.get_user_id())
     company.set_company_acl(manager.get_lf_username())
+    company.set_is_sanctioned(is_sanctioned)
     company.save()
     cla.log.debug(f'{fn} - created company with name: {company_name} with company_id: {company.get_company_id()}')
 
@@ -147,6 +151,7 @@ def create_company(auth_user: AuthUser,
 def update_company(company_id: str,  # pylint: disable=too-many-arguments
                    company_name: str = None,
                    company_manager_id: str = None,
+                   is_sanctioned: bool = None,
                    username: str = None):
     """
     Updates an company and returns the newly updated company in dict format.
@@ -179,6 +184,9 @@ def update_company(company_id: str,  # pylint: disable=too-many-arguments
         val = hug.types.uuid(company_manager_id)
         company.set_company_manager_id(str(val))
         update_str += f"The company company manager id was updated to {val}"
+    if is_sanctioned is not None:
+        company.set_is_sanctioned(is_sanctioned)
+        update_str += f"The company is_sanctioned was updated to {is_sanctioned}. "
 
     company.save()
 
