@@ -1933,15 +1933,21 @@ def get_co_authors_from_commit(commit):
 def extract_pull_request_number(pull_request_message):
     """
     Helper function to return pull request number from pull request message
+    Extracts the pull request number from the first line of a message.
+    It picks the last #number in the first line (GitHub appends it automatically).
     :param pull_request_message: message in merge_group payload
     :return:
     """
     fn = "extract_pull_request_number"
     pull_request_number = None
     try:
-        pull_request_number = int(re.search(r"#(\d+)", pull_request_message).group(1))
-    except AttributeError as e:
-        cla.log.warning(f"{fn} - unable to extract pull request number from message: {pull_request_message}, error: {e}")
+        first_line = pull_request_message.splitlines()[0]
+        matches = re.findall(r"#(\d+)", first_line)
+        if matches:
+            pull_request_number = int(matches[-1])  # last match
+        else:
+            cla.log.warning(f"{fn} - error - unable to extract pull request number from message: {pull_request_message}")
     except Exception as e:
-        cla.log.warning(f"{fn} - unable to extract pull request number from message: {pull_request_message}, error: {e}")
+        cla.log.warning(f"{fn} - error - unable to extract pull request number from message: {pull_request_message}, error: {e}")
+    cla.log.debug(f"{fn} - extracted PR number {pull_request_number} from merge_queue data")
     return pull_request_number
