@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import cla
 from cla import utils
 from cla.models.dynamo_models import Project, Signature, User
-from cla.utils import (append_email_help_sign_off_content,
+from cla.utils import (append_email_help_sign_off_content, extract_pull_request_number,
                        append_project_version_to_url, get_email_help_content,
                        get_email_sign_off_content, get_full_sign_url)
 
@@ -283,3 +283,32 @@ def test_append_project_version_to_url():
 
 if __name__ == '__main__':
     unittest.main()
+
+def test_extract_pull_request_number():
+    tests = [
+        ["Merge pull request #232 from sun-test-org/thakurveerendras-patch-26#1\n\nUpdate README.md", 232],
+        ["Merge pull request #234 from sun-test-org/thakurveerendras-patch-26\n\nCreate mqfile2#file2", 234],
+        ["Merge pull request #235 from sun-test-org/branch#2341\n\nMQFileBranch#2342", 235],
+        ["Merge pull request #236 from sun-test-org/thakurveerendras-patch-27\n\nUpdate mqfile2#234", 236],
+        ["Merge pull request #237 from sun-test-org/thakurveerendras-patch-28#123\n\nCreate mqfile3#123", 237],
+        ["Merge pull request #235 from sun-test-org/branch#2341\n\nMQFileBranch#2342", 235],
+        ["Merge pull request #238 from sun-test-org/branch#23456\n\nPR#234567", 238],
+        ["Merge pull request #235 from sun-test-org/branch#2341\n\nMQFileBranch#2342", 235],
+        ["merge pull request #235 from sun-test-org/branch#2341\n\nMQFileBranch#2342", 235],
+        ["Hello world\nThis if for PR #123 fixing issue #112", 123],
+        # ["Hello world\nThis if for Issue #112 - PR #123", 123],
+        ["[mdatagen] Add event type definition (#12822)\n\n#Description\n\nHello, ...", 12822],
+        ["[pt] Update localized content on content/pt/docs/languages/go/exporters.md (#6783)", 6783],
+        ["[chore]: remove testifylint-fix target (#12828)\n\n#### Description\n\ngolangci-lint is now able to apply suggested fixes from testifylint with\ngolangci-lint --fix .\nThis PR removes testifylint-fix target from Makefile.\n\nSigned-off-by: Matthieu MOREL <matthieu.morel35@gmail.com>", 12828],
+        ["[chore] Prepare release 0.125.0 (#933)\n\n* Update version from 0.124.0 to 0.125.0\n\n* update versions in ebpf\n\n---------\n\nCo-authored-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>\nCo-authored-by: Yang Song <yang.song@datadoghq.com>", 933],
+        ["Add invoke_agent as a member of gen_ai.operation.name (#2160)", 2160],
+        ["Merge pull request #61 from open-telemetry/renovate/all-patch\n\nfix(deps): update all patch versions", 61],
+        ["Merge pull request #51 from open-telemetry/rollback-deps\n\nchore: roll back major dependency updates", 51],
+        ["fixes #6549 incorrect use of resource constructor (#6707)", 6707],
+        ["", None],
+        ["Add documentation example for xconfmap (#5675) (#12832)\n#### Description\n\nThis PR introduces a simple testable examples to the package\n[confmap](/confmap/xconfmap)", 12832]
+    ]
+    
+    for i, (message, expected) in enumerate(tests, 1):
+        result = extract_pull_request_number(message)
+        assert result == expected
