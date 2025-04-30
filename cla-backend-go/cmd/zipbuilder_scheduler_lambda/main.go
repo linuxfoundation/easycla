@@ -114,13 +114,13 @@ func handler(ctx context.Context, event events.CloudWatchEvent) {
 
 func invokeLambda(wg *sync.WaitGroup, lambdaClient *lambda.Lambda, stage string, buildZipEvent BuildZipEvent) {
 	defer wg.Done()
-	log.WithField("buildZipEvent", buildZipEvent).Debug("invoking zipbuilder-lambda")
+	log.WithField("buildZipEvent", buildZipEvent).Debug("invoking zip-builder-lambda")
 	payload, err := json.Marshal(buildZipEvent)
 	if err != nil {
 		log.Error("Error marshalling BuildZip request", err)
 		return
 	}
-	functionName := fmt.Sprintf("cla-backend-%s-zipbuilder-lambda", stage)
+	functionName := fmt.Sprintf("cla-backend-%s-zip-builder-lambda", stage)
 
 	_, err = lambdaClient.Invoke(&lambda.InvokeInput{FunctionName: aws.String(functionName), Payload: payload})
 	if err != nil {

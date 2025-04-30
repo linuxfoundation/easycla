@@ -11,7 +11,7 @@ import cla
 from cla.models import DoesNotExist
 from cla.models.dynamo_models import User, Company, Project, Event, CCLAWhitelistRequest, CompanyInvite
 from cla.models.event_types import EventType
-from cla.utils import get_user_instance, get_email_service, get_email_sign_off_content, get_email_help_content, \
+from cla.utils import get_user_instance, get_company_instance, get_email_service, get_email_sign_off_content, get_email_help_content, \
     append_email_help_sign_off_content
 
 
@@ -56,7 +56,20 @@ def get_user(user_id=None, user_email=None, user_github_id=None):
             return {'errors': {'user_github_id': 'User not found'}}
         # Use the first user for now - need to revisit - what if multiple are returned?
         user = users[0]
-    return user.to_dict()
+    user_company_id = user.get_user_company_id()
+    is_sanctioned = False
+    if user_company_id is not None:
+        user_company = get_company_instance()
+        try:
+            user_company.load(user_company_id)
+            is_company_sanctioned = user_company.get_is_sanctioned()
+            if is_company_sanctioned is True:
+                is_sanctioned = True
+        except DoesNotExist as err:
+            pass
+    user_dict = user.to_dict()
+    user_dict['is_sanctioned'] = is_sanctioned
+    return user_dict
 
 
 def get_user_signatures(user_id):

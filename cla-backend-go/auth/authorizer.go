@@ -72,6 +72,7 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 	f["claims"] = fmt.Sprintf("%+v", claims)
 
 	// Get the username from the token claims
+	// LG: for V3 endpoints comment this out and set: username, name and email manually for local testing.
 	usernameClaim, ok := claims[a.authValidator.usernameClaim]
 	if !ok {
 		log.WithFields(f).Warnf("username not found in claims with key: %s", a.authValidator.usernameClaim)

@@ -650,6 +650,32 @@ class DocuSign(signing_service_interface.SigningService):
 
         return {'success': {'the employee is ready to sign the CCLA'}}
 
+    def sanctioned_error(self, fn, user_id, company_id):
+        if user_id is not None:
+            msg = f'{fn} - user {user_id}, company {company_id} is sanctioned'
+            desc = "We’re sorry, but you are currently unable to sign the Employee Contributor License Agreement (ECLA). If you believe this may be an error, please reach out to support"
+            cla.log.error(msg)
+            return {
+                'code': 403,
+                'errors': {
+                    'sanctioned': msg,
+                    'description': desc,
+                    'user_id': user_id,
+                    'company_id': company_id,
+                }
+            }
+        msg = f'{fn} - company {company_id} is sanctioned'
+        desc = "We’re sorry, but you are currently unable to sign the Corporate Contributor License Agreement (CCLA). If you believe this may be an error, please reach out to support"
+        cla.log.error(msg)
+        return {
+            'code': 403,
+            'errors': {
+                'sanctioned': msg,
+                'description': desc,
+                'company_id': company_id,
+            }
+        }
+
     def request_employee_signature(self, project_id, company_id, user_id, return_url=None, return_url_type="github"):
 
         fn = 'docusign_models.check_and_prepare_employee_signature'
@@ -691,6 +717,10 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.info(f'{fn} - loading company details for: {request_info}')
         company.load(company_id)
         cla.log.info(f'{fn} - loaded company details for: {request_info}')
+
+        # Check for OFAC sanctioned flag
+        if company.get_is_sanctioned() is True:
+            return self.sanctioned_error(fn, user_id, company_id)
 
         # user has already been checked from check_and_prepare_employee_signature. Load user with user ID.
         user = User()
@@ -856,6 +886,10 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.info(f'{fn} - loading company details for: {request_info}')
         company.load(company_id)
         cla.log.info(f'{fn} - loaded company details for: {request_info}')
+
+        # Check for OFAC sanctioned flag
+        if company.get_is_sanctioned() is True:
+            return self.sanctioned_error(fn, user_id, company_id)
 
         # user has already been checked from check_and_prepare_employee_signature. Load user with user ID.
         user = User()
@@ -1188,6 +1222,10 @@ class DocuSign(signing_service_interface.SigningService):
             cla.log.warning(f'{fn} - Unable to load company by id: {company_id}. '
                             'Returning an error response')
             return {'errors': {'company_id': str(err)}}
+
+        # Check for OFAC sanctioned flag
+        if company.get_is_sanctioned() is True:
+            return self.sanctioned_error(fn, None, company_id)
 
         # Decision Point:
         # If no signatory name/email passed in, then the specified user (CLA Manager) IS also the CLA Signatory

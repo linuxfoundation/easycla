@@ -102,10 +102,10 @@ func main() {
 	log.Info("Lambda server starting...")
 	printBuildInfo()
 	if os.Getenv("LOCAL_MODE") == "true" {
-		if len(os.Args) != 3 {
-			log.Fatal("invalid number of args. first arg should be icla or ccla and 2nd arg should be cla_group_id")
+		if len(os.Args) != 4 {
+			log.Fatal("invalid number of args. first arg should be icla or ccla, 2nd should be pdf or csv and 3rd arg should be cla_group_id")
 		}
-		err := handler(utils.NewContext(), BuildZipEvent{SignatureType: os.Args[1], ClaGroupID: os.Args[2]})
+		err := handler(utils.NewContext(), BuildZipEvent{SignatureType: os.Args[1], FileType: os.Args[2], ClaGroupID: os.Args[3]})
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -1248,6 +1248,15 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
+    def get_is_sanctioned(self):
+        """
+        Getter for company is sanctioned flag
+
+        :return: The company's is sanctioned flag
+        :rtype: boolean
+        """
+        raise NotImplementedError()
+
     def get_signing_entity_name(self) -> str:
         """
         Getter for an company's signing entity name.
@@ -1317,6 +1326,15 @@ class Company(object):  # pylint: disable=too-many-public-methods
 
         :param signing_entity_name: The name of the company's signing entity name.
         :type signing_entity_name: string
+        """
+        raise NotImplementedError()
+
+    def set_is_sanctioned(self, is_sanctioned):
+        """
+        Setter for company's is sanctioned flag
+
+        :param is_sanctioned: is sanctioned flag
+        :type is_sanctioned: bool
         """
         raise NotImplementedError()
 

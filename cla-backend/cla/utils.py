@@ -1933,15 +1933,42 @@ def get_co_authors_from_commit(commit):
 def extract_pull_request_number(pull_request_message):
     """
     Helper function to return pull request number from pull request message
+    Extracts the pull request number from the first line of a message.
+    It picks the last #number in the first line (GitHub appends it automatically).
     :param pull_request_message: message in merge_group payload
     :return:
     """
     fn = "extract_pull_request_number"
     pull_request_number = None
     try:
-        pull_request_number = int(re.search(r"#(\d+)", pull_request_message).group(1))
-    except AttributeError as e:
-        cla.log.warning(f"{fn} - unable to extract pull request number from message: {pull_request_message}, error: {e}")
+        first_line = pull_request_message.splitlines()[0]
+        cla.log.debug(f"{fn} - checking line '{first_line}")
+        # Case 1: "Merge pull request #N"
+        matches = re.match(r'^Merge pull request #(\d+)', first_line)
+        if matches:
+            pull_request_number = int(matches.group(1))
+            cla.log.debug(f"{fn} - extracted PR number {pull_request_number} from merge_queue data: {pull_request_message} by matching 'Merge pull request #N...'")
+            return pull_request_number
+        # Case 2: PR number in last (#N) group on first line, like: "Some text (#whatever) (#N)"
+        matches = re.findall(r'\(#(\d+)\)', first_line)
+        if matches:
+            pull_request_number = int(matches[-1])  # last match
+            cla.log.debug(f"{fn} - extracted PR number {pull_request_number} from merge_queue data: {pull_request_message} by matching '...(#N)'")
+            return pull_request_number
+        # Case 3: PR number in last #N on first line, like: "Some text #N"
+        matches = re.findall(r"\s+#(\d+)", first_line)
+        if matches:
+            pull_request_number = int(matches[-1])  # last match
+            cla.log.debug(f"{fn} - extracted PR number {pull_request_number} from merge_queue data: {pull_request_message} by matching '... #N'")
+            return pull_request_number
+        # Case 4: PR number in first #N in the entire commit message
+        matches = re.findall(r"#(\d+)", pull_request_message)
+        if matches:
+            pull_request_number = int(matches[0])  # first match
+            cla.log.debug(f"{fn} - extracted PR number {pull_request_number} from merge_queue data: {pull_request_message} by matching first '#N'")
+            return pull_request_number
+        else:
+            cla.log.warning(f"{fn} - error - unable to extract pull request number from message: {pull_request_message}")
     except Exception as e:
-        cla.log.warning(f"{fn} - unable to extract pull request number from message: {pull_request_message}, error: {e}")
+        cla.log.warning(f"{fn} - error - unable to extract pull request number from message: {pull_request_message}, error: {e}")
     return pull_request_number

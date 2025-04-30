@@ -53,17 +53,19 @@ type UserRepository interface {
 
 // repository data model
 type repository struct {
-	stage          string
-	dynamoDBClient *dynamodb.DynamoDB
-	tableName      string
+	stage            string
+	dynamoDBClient   *dynamodb.DynamoDB
+	tableName        string
+	companyTableName string
 }
 
 // NewRepository creates a new instance of the whitelist service
 func NewRepository(awsSession *session.Session, stage string) UserRepository {
 	return repository{
-		stage:          stage,
-		dynamoDBClient: dynamodb.New(awsSession),
-		tableName:      fmt.Sprintf("cla-%s-users", stage),
+		stage:            stage,
+		dynamoDBClient:   dynamodb.New(awsSession),
+		tableName:        fmt.Sprintf("cla-%s-users", stage),
+		companyTableName: fmt.Sprintf("cla-%s-companies", stage),
 	}
 }
 
@@ -471,6 +473,53 @@ func (repo repository) Delete(userID string) error {
 	return nil
 }
 
+func (repo repository) isUserSanctioned(user *models.User) (bool, error) {
+	if user == nil {
+		return false, fmt.Errorf("users.repository.isUserSanctioned: null user given")
+	}
+
+	// This actually comes from user_company_id in DynamoDB which is correct
+	companyID := user.CompanyID
+	if companyID == "" {
+		// No company set - no OFAC sanction possible
+		return false, nil
+	}
+
+	f := logrus.Fields{
+		"functionName": "users.repository.isUserSanctioned",
+		"userID":       user.UserID,
+		"companyID":    companyID,
+	}
+
+	companyTableData, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
+		TableName: aws.String(repo.companyTableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"company_id": {
+				S: aws.String(companyID),
+			},
+		},
+	})
+
+	if err != nil {
+		log.WithFields(f).Errorf("error fetching company table data using company id: %s, error: %v", companyID, err)
+		return false, err
+	}
+
+	// Company not found - no OFAC sanction possible
+	if len(companyTableData.Item) == 0 {
+		return false, nil
+	}
+
+	data := CompanySanctioned{}
+	err = dynamodbattribute.UnmarshalMap(companyTableData.Item, &data)
+	if err != nil {
+		log.WithFields(f).Warnf("error unmarshalling company OFAC sanctioned data, error: %v", err)
+		return false, nil
+	}
+
+	return data.IsSanctioned, nil
+}
+
 // GetUser retrieves the specified user using the user id
 func (repo repository) GetUser(userID string) (*models.User, error) {
 	f := logrus.Fields{
@@ -521,7 +570,12 @@ func (repo repository) GetUser(userID string) (*models.User, error) {
 		log.WithFields(f).Warnf("retrieved %d results for the getUser(id) query when we should return 0 or 1", len(dbUserModels))
 	}
 
-	return convertDBUserModel(dbUserModels[0]), nil
+	user := convertDBUserModel(dbUserModels[0])
+	user.IsSanctioned, err = repo.isUserSanctioned(user)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("Error checking if user's company is sanctioned for user_id: %s, error: %+v", userID, err)
+	}
+	return user, nil
 }
 
 // GetUserByLFUserName returns the user record associated with the LF Username value

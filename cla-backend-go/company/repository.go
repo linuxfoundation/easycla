@@ -733,7 +733,7 @@ func (repo repository) buildCompaniesByUserManagerWithInvites(ctx context.Contex
 	for _, invite := range invites {
 		company, err := repo.GetCompany(ctx, invite.RequestedCompanyID)
 		if err != nil {
-			log.WithFields(f).Warnf("error retrieving company with company ID %s, error: %v - skipping invite", company, err)
+			log.WithFields(f).Warnf("error retrieving company with company ID %s, error: %v - skipping invite", invite.RequestedCompanyID, err)
 			continue
 		}
 
@@ -772,6 +772,8 @@ func buildCompanyModels(ctx context.Context, results *dynamodb.ScanOutput) ([]mo
 		CompanyACL        []string `json:"company_acl"`
 		CompanyExternalID string   `json:"company_external_id"`
 		Created           string   `json:"date_created"`
+		Note              string   `json:"note"`
+		IsSanctioned      bool     `json:"is_sanctioned"`
 		Modified          string   `json:"date_modified"`
 	}
 
@@ -812,6 +814,8 @@ func buildCompanyModels(ctx context.Context, results *dynamodb.ScanOutput) ([]mo
 			SigningEntityName: dbCompany.SigningEntityName,
 			CompanyExternalID: dbCompany.CompanyExternalID,
 			Created:           strfmt.DateTime(createdDateTime),
+			Note:              dbCompany.Note,
+			IsSanctioned:      dbCompany.IsSanctioned,
 			Updated:           strfmt.DateTime(modifiedDateTime),
 		})
 	}
@@ -1269,6 +1273,7 @@ func (repo repository) CreateCompany(ctx context.Context, in *models.Company) (*
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"companyName":       in.CompanyName,
 		"signingEntityName": in.SigningEntityName,
+		"isSanctioned":      in.IsSanctioned,
 		"companySFID":       in.CompanyExternalID,
 	}
 
@@ -1296,6 +1301,7 @@ func (repo repository) CreateCompany(ctx context.Context, in *models.Company) (*
 		CompanyName:       in.CompanyName,
 		CompanyExternalID: in.CompanyExternalID,
 		SigningEntityName: in.SigningEntityName,
+		IsSanctioned:      in.IsSanctioned,
 		Created:           now,
 		Updated:           now,
 		Version:           "v1",

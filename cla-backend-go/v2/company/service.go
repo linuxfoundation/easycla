@@ -489,6 +489,7 @@ func (s *service) CreateCompany(ctx context.Context, params *v2Ops.CreateCompany
 		CompanyName:       companyName,
 		SigningEntityName: signingEntityName,
 		Note:              note,
+		IsSanctioned:      false,
 	}
 	if lfUser != nil && lfUser.Username != "" {
 		createCompanyModel.CompanyACL = []string{lfUser.Username}
@@ -1716,8 +1717,8 @@ func (s service) autoCreateCompany(ctx context.Context, companySFID string) (*v1
 	companyModel, companyCreateErr := s.companyRepo.CreateCompany(ctx, &v1Models.Company{
 		CompanyExternalID: companySFID,
 		CompanyName:       sfOrgModel.Name,
-
-		Note: "created on-demand by v4 service based on SF Organization Service record",
+		IsSanctioned:      false,
+		Note:              "created on-demand by v4 service based on SF Organization Service record",
 	})
 
 	if companyCreateErr != nil || companyModel == nil {

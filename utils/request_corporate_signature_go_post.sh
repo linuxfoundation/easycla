@@ -7,6 +7,11 @@
 # TOKEN='...' - Auth0 JWT bearer token
 # XACL='...' - X-ACL
 # DEBUG=1 XACL="$(cat ./x-acl.secret)" TOKEN="$(cat ./auth0.token.secret)" ./utils/request_corporate_signature_go_post.sh 0016s000006Uq9VAAS a092h000004wx1DAAQ github 'http://localhost'
+# DEBUG=1 XACL="$(cat ./x-acl.secret)" TOKEN="$(cat ./auth0.token.secret)" ./utils/request_corporate_signature_go_post.sh 0014100000Te0yqAAB lfbrdgbVFK7QngqnzD github 'http://localhost'
+# select distinct data:user_external_id from fivetran_ingest.dynamodb_product_us_east_1.cla_prod_users
+# select distinct data:company_external_id from fivetran_ingest.dynamodb_product_us_east_1.cla_prod_companies
+# select user_id, data:user_external_id from fivetran_ingest.dynamodb_product_us_east1_dev.cla_dev_users where data:lf_username = 'uname'
+# select company_id, data:company_external_id from fivetran_ingest.dynamodb_product_us_east1_dev.cla_dev_companies where data:company_name = 'cname'
 
 if [ -z "$TOKEN" ]
 then

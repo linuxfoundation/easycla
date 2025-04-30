@@ -228,6 +228,17 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 	}
 
+	// 1.5 Check if company is sanctioned
+	if comp != nil && comp.IsSanctioned {
+		if input.CompanySfid != nil {
+			err = fmt.Errorf("company %s is sanctioned", *input.CompanySfid)
+		} else {
+			err = fmt.Errorf("company is sanctioned")
+		}
+		log.WithFields(f).WithError(err).Error("company is sanctioned")
+		return nil, err
+	}
+
 	// 2. Ensure this is a valid project
 	psc := projectService.GetClient()
 	log.WithFields(f).Debug("looking up project by SFID...")
