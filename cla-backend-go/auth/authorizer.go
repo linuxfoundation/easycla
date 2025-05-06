@@ -60,6 +60,7 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 	// the list of scopes mentioned by the spec for this route.
 
 	// Verify the token is valid
+	// LG:to skip verification
 	log.WithFields(f).Debug("verifying token...")
 	claims, err := a.authValidator.VerifyToken(token)
 	if err != nil {
@@ -73,6 +74,7 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 
 	// Get the username from the token claims
 	// LG: for V3 endpoints comment this out and set: username, name and email manually for local testing.
+	// username, name, email := "user", "Name Surname", "example@gmail.com"
 	usernameClaim, ok := claims[a.authValidator.usernameClaim]
 	if !ok {
 		log.WithFields(f).Warnf("username not found in claims with key: %s", a.authValidator.usernameClaim)
@@ -111,6 +113,7 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 		return nil, errors.New("invalid email")
 	}
 	f["email"] = email
+	// LG:end
 
 	// Get User by LFID
 	log.WithFields(f).Debugf("loading user and profiles by LFID: %s", username)

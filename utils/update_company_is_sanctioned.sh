@@ -8,7 +8,7 @@ then
 fi
 if [ -z "$1" ]
 then
-  echo "$0: you need to specify company_id, for example: '0ca30016-6457-466c-bc41-a09560c1f9bf'"
+  echo "$0: you need to specify company_id, for example: '0ca30016-6457-466c-bc41-a09560c1f9bf', '10bde6b1-3061-4972-9c6a-17dd9a175a5c'"
   exit 1
 fi
 if [ -z "$2" ]
