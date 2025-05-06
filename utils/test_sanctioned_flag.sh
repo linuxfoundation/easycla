@@ -1,4 +1,8 @@
 #!/bin/bash
+# 10bde6b1-3061-4972-9c6a-17dd9a175a5c - dev LF
+# 0ca30016-6457-466c-bc41-a09560c1f9bf - dev CNCF
+# 0016s000006UKKqAAO - dev LF SFID
+# 0014100000Te0yqAAB - dev CNCF SFID
 ./utils/update_company_is_sanctioned.sh 0ca30016-6457-466c-bc41-a09560c1f9bf true
 # Python APIs
 ./utils/get_company_py.sh 0ca30016-6457-466c-bc41-a09560c1f9bf

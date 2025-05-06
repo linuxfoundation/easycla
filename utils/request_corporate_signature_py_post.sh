@@ -6,6 +6,7 @@
 # return_url='http://localhost'
 # DEBUG=1 ./utils/request_corporate_signature_py_post.sh 862ff296-6508-4f10-9147-2bc2dd7bfe80 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
 # ./utils/request_corporate_signature_py_post.sh 0ca30016-6457-466c-bc41-a09560c1f9bf 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
+# ./utils/request_corporate_signature_py_post.sh 10bde6b1-3061-4972-9c6a-17dd9a175a5c 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
 # Note: this is only for internal usage, it requires 'check_auth' function update in cla-backend/cla/routes.py (see LG:) and can only be tested locally (LG:)
 
 if [ -z "$1" ]

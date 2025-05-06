@@ -1,14 +1,14 @@
 #!/bin/bash
 # API_URL=https://[xyz].ngrok-free.app (defaults to localhost:5000)
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org
-# Note: To run manually see cla-backend-go/auth/authorizer.go:SecurityAuth() and update accordingly 'LG:'
 # V=v3|v4
+# Note: To run manually see cla-backend-go/auth/authorizer.go:SecurityAuth() and update accordingly 'LG:'
 if [ -z "$1" ]
 then
-  echo "$0: you need to specify company_id as a 1st parameter, example '0ca30016-6457-466c-bc41-a09560c1f9bf', '10bde6b1-3061-4972-9c6a-17dd9a175a5c'"
+  echo "$0: you need to specify company_sfid as a 1st parameter, example '0014100000Te0yqAAB', '0016s000006UKKqAAO'"
   exit 1
 fi
-export company_id="$1"
+export company_sfid="$1"
 
 if [ -z "$TOKEN" ]
 then
@@ -43,7 +43,7 @@ then
   export V=v4
 fi
 
-API="${API_URL}/${V}/company/${company_id}"
+API="${API_URL}/${V}/company/external/${company_sfid}"
 
 if [ ! -z "$DEBUG" ]
 then
