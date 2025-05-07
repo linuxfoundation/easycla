@@ -69,6 +69,6 @@ do
     ((np++))
   done
   IFS=';' read -ra ary <<< "${names}"
-  sorted_projects=$(printf "%s\n" "${ary[@]}" | sort | paste -sd ',' | sed 's/),/), /g')
+  sorted_projects=$(printf "%s\n" "${ary[@]}" | sort | uniq | paste -sd ',' | sed 's/),/), /g')
   echo "Template: ${template} used by ${np} project(s): ${sorted_projects}"
 done
