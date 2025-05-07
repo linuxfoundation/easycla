@@ -11,13 +11,13 @@ else
   export TABLE="fivetran_ingest.dynamodb_product_us_east1_dev.cla_dev_projects"
 fi
 
-JQ='sort_by(.document_major_version, .document_minor_version, .document_creation_date) | .[-1].document_s3_url'
-
 declare -A template_projects
 declare -A projects
 
-data=$(snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o timing=false -o output_format=plain -q "select distinct object_construct('project_id', project_id, 'project_name', data:project_name) from ${TABLE} order by 1" | jq -s -r '.')
+JQ='[.[] | select((.document_major_version != null) and (.document_minor_version != null) and (.document_creation_date != null))] | sort_by((.document_major_version | tonumber), (.document_minor_version | tonumber), .document_creation_date) | .[-1].document_s3_url'
 
+data=$(snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o timing=false -o output_format=plain -q "select distinct object_construct('project_id', project_id, 'project_name', data:project_name) from ${TABLE} order by 1 limit 10000" | jq -s -r '.')
+# echo $data
 while read -r project_id project_name
 do
   template=$(snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o timing=false -o output_format=plain -q "select data:project_individual_documents from ${TABLE} where project_id = '${project_id}'" | jq -r "${JQ}")
