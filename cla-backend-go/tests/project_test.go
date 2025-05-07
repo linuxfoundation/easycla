@@ -25,14 +25,20 @@ func createDocument(major, minor int, date time.Time, name string) models.ClaGro
 	}
 }
 
+func mustParseTime(t *testing.T, layout, value string) time.Time {
+	dt, err := time.Parse(layout, value)
+	assert.Nil(t, err)
+	return dt
+}
+
 func TestGetCurrentDocument(t *testing.T) {
 	// Dates
-	dt_250217, _ := time.Parse(time.RFC3339, "2025-02-17T15:00:13Z")
-	dt_240217, _ := time.Parse(time.RFC3339, "2024-02-17T15:00:13Z")
-	dt_240218, _ := time.Parse(time.RFC3339, "2024-02-18T15:00:13Z")
-	dt_230217, _ := time.Parse(time.RFC3339, "2023-02-17T15:00:13Z")
-	dt_230218, _ := time.Parse(time.RFC3339, "2023-02-18T15:00:13Z")
-	dt_220218, _ := time.Parse(time.RFC3339, "2022-02-18T15:00:13Z")
+	dt_250217 := mustParseTime(t, time.RFC3339, "2025-02-17T15:00:13Z")
+	dt_240217 := mustParseTime(t, time.RFC3339, "2024-02-17T15:00:13Z")
+	dt_240218 := mustParseTime(t, time.RFC3339, "2024-02-18T15:00:13Z")
+	dt_230217 := mustParseTime(t, time.RFC3339, "2023-02-17T15:00:13Z")
+	dt_230218 := mustParseTime(t, time.RFC3339, "2023-02-18T15:00:13Z")
+	dt_220218 := mustParseTime(t, time.RFC3339, "2022-02-18T15:00:13Z")
 
 	// Create documents
 	document_15 := createDocument(1, 5, dt_250217, "document_15")
