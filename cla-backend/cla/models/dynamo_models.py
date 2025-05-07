@@ -1409,13 +1409,16 @@ class Project(model_interfaces.Project):  # pylint: disable=too-many-public-meth
             if current_major > last_major:
                 last_major = current_major
                 last_minor = current_minor
+                latest_date = document.get_document_creation_date()
                 current_document = document
                 continue
             if current_major == last_major and current_minor > last_minor:
                 last_minor = current_minor
+                latest_date = document.get_document_creation_date()
                 current_document = document
+                continue
             # Retrieve document that has the latest date
-            if not latest_date or document.get_document_creation_date() > latest_date:
+            if current_major == last_major and current_minor == last_minor and (not latest_date or document.get_document_creation_date() > latest_date):
                 latest_date = document.get_document_creation_date()
                 current_document = document
         return (last_major, last_minor, current_document)
