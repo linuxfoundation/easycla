@@ -1,8 +1,8 @@
 #!/bin/bash
 # STAGE=prod
-# JQ='.[] | {document_major_version, document_minor_version, document_creation_date, document_file_id, document_name}'
-# JQ='sort_by(.document_major_version, .document_minor_version) | .[-1]'
-# JQ='sort_by(.document_major_version, .document_minor_version) | .[-1] | {document_major_version, document_minor_version, document_creation_date, document_file_id, document_name}'
+# JQ='.[] | {document_major_version, document_minor_version, document_file_id, document_name, document_creation_date, document_s3_url}'
+# JQ='sort_by(.document_major_version, .document_minor_version, .document_creation_date) | .[-1]'
+# JQ='sort_by(.document_major_version, .document_minor_version, .document_creation_date) | .[-1] | {document_major_version, document_minor_version, document_file_id, document_name, document_creation_date, document_s3_url}'
 # d8cead54-92b7-48c5-a2c8-b1e295e8f7f1 - prod CNCF project ID
 if [ -z "$1" ]
 then
