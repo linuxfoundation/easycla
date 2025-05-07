@@ -57,6 +57,7 @@ for template in $(printf "%s\n" "${!template_projects[@]}" | sort)
 do
   projs="${template_projects[$template]}"
   names=""
+  np=0
   IFS=';' read -ra idary <<< "${projs}"
   for id in "${idary[@]}"; do
     if [ -z "${names}" ]
@@ -65,8 +66,9 @@ do
     else
       names+=";${projects[$id]} (${id})"
     fi
+    ((np++))
   done
   IFS=';' read -ra ary <<< "${names}"
   sorted_projects=$(printf "%s\n" "${ary[@]}" | sort | paste -sd ',' | sed 's/),/), /g')
-  echo "Template: ${template} used by projects: ${sorted_projects}"
+  echo "Template: ${template} used by ${np} project(s): ${sorted_projects}"
 done
