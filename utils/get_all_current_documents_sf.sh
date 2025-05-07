@@ -21,11 +21,11 @@ data=$(snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o ti
 while read -r project_id project_name
 do
   template=$(snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o timing=false -o output_format=plain -q "select data:project_individual_documents from ${TABLE} where project_id = '${project_id}'" | jq -r "${JQ}")
-  if ( [ -z "${template}" ] || [ "${template}" = "null" ] )
+  if ( [ -z "${template}" ] || [ "${template}" = "null" ] || [ -z "${project_name}" ] )
   then
     continue
   fi
-  echo "ICLA ${project_id}"
+  echo "ICLA ${project_id} - ${project_name}"
   if [ -n "${template_projects[$template]}" ]
   then
     template_projects["$template"]+=";${project_id}"
@@ -33,16 +33,16 @@ do
     template_projects["$template"]="${project_id}"
   fi
   projects["$project_id"]="${project_name}"
-done < <(echo "${data}" | jq -r -c '.[] | "\(.project_id) \(.project_name)"')
+done < <(echo "${data}" | jq -r -c '.[] | select(.project_id != null and .project_name != null) | "\(.project_id) \(.project_name)"')
 
 while read -r project_id project_name
 do
   template=$(snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o timing=false -o output_format=plain -q "select data:project_corporate_documents from ${TABLE} where project_id = '${project_id}'" | jq -r "${JQ}")
-  if ( [ -z "${template}" ] || [ "${template}" = "null" ] )
+  if ( [ -z "${template}" ] || [ "${template}" = "null" ] || [ -z "${project_name}" ] )
   then
     continue
   fi
-  echo "CCLA ${project_id}"
+  echo "CCLA ${project_id} - ${project_name}"
   if [ -n "${template_projects[$template]}" ]
   then
     template_projects["$template"]+=";${project_id}"
@@ -50,7 +50,7 @@ do
     template_projects["$template"]="${project_id}"
   fi
   projects["$project_id"]="${project_name}"
-done < <(echo "${data}" | jq -r -c '.[] | "\(.project_id) \(.project_name)"')
+done < <(echo "${data}" | jq -r -c '.[] | select(.project_id != null and .project_name != null) | "\(.project_id) \(.project_name)"')
 
 # for template in "${!template_projects[@]}"
 for template in $(printf "%s\n" "${!template_projects[@]}" | sort)
