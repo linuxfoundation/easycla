@@ -5,7 +5,9 @@ package tests
 
 import (
 	"context"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/communitybridge/easycla/cla-backend-go/project/common"
 
@@ -13,6 +15,84 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 )
+
+func createDocument(major, minor int, date time.Time, name string) models.ClaGroupDocument {
+	return models.ClaGroupDocument{
+		DocumentMajorVersion: strconv.Itoa(major),
+		DocumentMinorVersion: strconv.Itoa(minor),
+		DocumentCreationDate: utils.TimeToString(date),
+		DocumentName:         name,
+	}
+}
+
+func mustParseTime(t *testing.T, value string) time.Time {
+	dt, err := time.Parse(time.RFC3339, value)
+	assert.Nil(t, err)
+	return dt
+}
+
+func TestGetCurrentDocument(t *testing.T) {
+	// Dates
+	dt_250217 := mustParseTime(t, "2025-02-17T15:00:13Z")
+	dt_240217 := mustParseTime(t, "2024-02-17T15:00:13Z")
+	dt_240218 := mustParseTime(t, "2024-02-18T15:00:13Z")
+	dt_230217 := mustParseTime(t, "2023-02-17T15:00:13Z")
+	dt_230218 := mustParseTime(t, "2023-02-18T15:00:13Z")
+	dt_220218 := mustParseTime(t, "2022-02-18T15:00:13Z")
+
+	// Create documents
+	document_15 := createDocument(1, 5, dt_250217, "document_15")
+	document_29 := createDocument(2, 9, dt_240217, "document_29")
+	document_29_newer := createDocument(2, 9, dt_240218, "document_29_newer")
+	document_210 := createDocument(2, 10, dt_230217, "document_210")
+	document_210_newer := createDocument(2, 10, dt_230218, "document_210_newer")
+	document_30 := createDocument(3, 0, dt_220218, "document_30")
+	document_31 := createDocument(3, 1, dt_220218, "document_31")
+	document_310 := createDocument(3, 10, dt_220218, "document_310")
+
+	// Test cases
+	tests := []struct {
+		docs          []models.ClaGroupDocument
+		expectedName  string
+		expectedMajor int
+		expectedMinor int
+	}{
+		{[]models.ClaGroupDocument{document_29}, "document_29", 2, 9},
+		{[]models.ClaGroupDocument{document_29_newer, document_29}, "document_29_newer", 2, 9},
+		{[]models.ClaGroupDocument{document_29, document_29_newer}, "document_29_newer", 2, 9},
+		{[]models.ClaGroupDocument{document_29, document_210}, "document_210", 2, 10},
+		{[]models.ClaGroupDocument{document_29_newer, document_210}, "document_210", 2, 10},
+		{[]models.ClaGroupDocument{document_29, document_210_newer}, "document_210_newer", 2, 10},
+		{[]models.ClaGroupDocument{document_29_newer, document_210_newer}, "document_210_newer", 2, 10},
+		{[]models.ClaGroupDocument{document_29, document_29_newer, document_210}, "document_210", 2, 10},
+		{[]models.ClaGroupDocument{document_29, document_210, document_210_newer}, "document_210_newer", 2, 10},
+		{[]models.ClaGroupDocument{document_29, document_29_newer, document_210, document_210_newer}, "document_210_newer", 2, 10},
+		{[]models.ClaGroupDocument{document_210, document_210_newer, document_29_newer, document_29}, "document_210_newer", 2, 10},
+		{[]models.ClaGroupDocument{document_210, document_15, document_210_newer, document_29_newer, document_29}, "document_210_newer", 2, 10},
+		{[]models.ClaGroupDocument{document_210, document_210_newer, document_29_newer, document_30, document_29}, "document_30", 3, 0},
+		{[]models.ClaGroupDocument{document_210, document_15, document_210_newer, document_29_newer, document_30, document_29}, "document_30", 3, 0},
+		{[]models.ClaGroupDocument{document_15, document_30, document_29}, "document_30", 3, 0},
+		{[]models.ClaGroupDocument{document_31, document_310, document_30}, "document_310", 3, 10},
+	}
+
+	for _, tt := range tests {
+		doc, err := common.GetCurrentDocument(context.Background(), tt.docs)
+		assert.Nil(t, err)
+
+		// Check the document name
+		assert.Equal(t, tt.expectedName, doc.DocumentName)
+
+		// Check the major version
+		major, err := strconv.Atoi(doc.DocumentMajorVersion)
+		assert.Nil(t, err)
+		assert.Equal(t, tt.expectedMajor, major)
+
+		// Check the minor version
+		minor, err := strconv.Atoi(doc.DocumentMinorVersion)
+		assert.Nil(t, err)
+		assert.Equal(t, tt.expectedMinor, minor)
+	}
+}
 
 func TestGetCurrentDocumentVersion(t *testing.T) {
 	currentTime, _ := utils.CurrentTime()

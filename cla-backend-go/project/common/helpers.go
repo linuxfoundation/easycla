@@ -5,7 +5,6 @@ package common
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -75,58 +74,50 @@ func GetCurrentDocument(ctx context.Context, docs []models.ClaGroupDocument) (mo
 		"functionName":   "v1.project.helpers.GetCurrentDocument",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
-	var currentDoc models.ClaGroupDocument
-	var currentDocVersion float64
-	var currentDocDateTime time.Time
+	var currDoc models.ClaGroupDocument
+	var lastDateTime time.Time
+	lastMaj, lastMin := 0, -1
 	for _, doc := range docs {
-		maj, err := strconv.Atoi(doc.DocumentMajorVersion)
+		currMaj, err := strconv.Atoi(doc.DocumentMajorVersion)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("invalid major number in cla group: %s", doc.DocumentMajorVersion)
 			continue
 		}
 
-		min, err := strconv.Atoi(doc.DocumentMinorVersion)
+		currMin, err := strconv.Atoi(doc.DocumentMinorVersion)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("invalid minor number in cla group: %s", doc.DocumentMinorVersion)
 			continue
 		}
 
-		version, err := strconv.ParseFloat(fmt.Sprintf("%d.%d", maj, min), 32)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("invalid major/minor version in cla group: %s.%s", doc.DocumentMajorVersion, doc.DocumentMinorVersion)
-			continue
-		}
-
-		dateTime, err := utils.ParseDateTime(doc.DocumentCreationDate)
+		currDateTime, err := utils.ParseDateTime(doc.DocumentCreationDate)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("invalid date time in cla group: %s", doc.DocumentCreationDate)
 			continue
 		}
 
-		// // No previous, use the first...
-		// if currentDoc == (models.ClaGroupDocument{}) {
-		// 	currentDoc = doc
-		// 	currentDocVersion = version
-		// 	currentDocDateTime = dateTime
-		// 	continue
-		// }
-
-		// Newer version...
-		if version > currentDocVersion {
-			currentDoc = doc
-			currentDocVersion = version
-			currentDocDateTime = dateTime
+		if currMaj > lastMaj {
+			lastMaj = currMaj
+			lastMin = currMin
+			lastDateTime = currDateTime
+			currDoc = doc
+			continue
 		}
 
-		// Same version, but a later date...
-		if version == currentDocVersion && dateTime.After(currentDocDateTime) {
-			currentDoc = doc
-			currentDocVersion = version
-			currentDocDateTime = dateTime
+		if currMaj == lastMaj && currMin > lastMin {
+			lastMin = currMin
+			lastDateTime = currDateTime
+			currDoc = doc
+			continue
+		}
+
+		if currMaj == lastMaj && currMin == lastMin && currDateTime.After(lastDateTime) {
+			lastDateTime = currDateTime
+			currDoc = doc
 		}
 	}
 
-	return currentDoc, nil
+	return currDoc, nil
 }
 
 func AreClaGroupDocumentsEqual(doc1, doc2 models.ClaGroupDocument) bool {
