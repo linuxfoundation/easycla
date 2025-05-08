@@ -497,42 +497,6 @@ var templateMap = map[string]models.Template{
 				OffsetY:      -8,
 			},
 			{
-				ID:           "mailing_address1",
-				Name:         "Mailing Address",
-				AnchorString: "Mailing Address:",
-				FieldType:    "text_unlocked",
-				IsOptional:   false,
-				IsEditable:   false,
-				Width:        300,
-				Height:       20,
-				OffsetX:      105,
-				OffsetY:      -7,
-			},
-			{
-				ID:           "mailing_address2",
-				Name:         "Mailing Address",
-				AnchorString: "Mailing Address:",
-				FieldType:    "text_unlocked",
-				IsOptional:   false,
-				IsEditable:   false,
-				Width:        340,
-				Height:       20,
-				OffsetX:      0,
-				OffsetY:      20,
-			},
-			{
-				ID:           "mailing_address3",
-				Name:         "Mailing Address",
-				AnchorString: "Mailing Address:",
-				FieldType:    "text_optional",
-				IsOptional:   true,
-				IsEditable:   false,
-				Width:        340,
-				Height:       20,
-				OffsetX:      0,  // should be aligned with the above
-				OffsetY:      48, // 47 should move down some
-			},
-			{
 				ID:           "country",
 				Name:         "Country",
 				AnchorString: "Country:",
@@ -741,9 +705,6 @@ var templateMap = map[string]models.Template{
 
 		<p>Please sign: __________________________________ Date: _______________ </p>
 		<p>Full name: __________________________________________________________ </p>
-		<p>Mailing Address:	____________________________________________________ </p>
-		<p>_____________________________________________________________________ </p>
-		<p>_____________________________________________________________________ </p>
 		<p>Country: ________________________________________</p>
 		<p>E-Mail: _________________________________________</p>
 		</body></html>
@@ -820,42 +781,6 @@ var templateMap = map[string]models.Template{
 				Height:       20,
 				OffsetX:      65,
 				OffsetY:      -8,
-			},
-			{
-				ID:           "mailing_address1",
-				Name:         "Mailing Address",
-				AnchorString: "Mailing Address:",
-				FieldType:    "text_unlocked",
-				IsOptional:   false,
-				IsEditable:   false,
-				Width:        300,
-				Height:       20,
-				OffsetX:      105,
-				OffsetY:      -7,
-			},
-			{
-				ID:           "mailing_address2",
-				Name:         "Mailing Address",
-				AnchorString: "Mailing Address:",
-				FieldType:    "text_unlocked",
-				IsOptional:   false,
-				IsEditable:   false,
-				Width:        340,
-				Height:       20,
-				OffsetX:      0,
-				OffsetY:      22,
-			},
-			{
-				ID:           "mailing_address3",
-				Name:         "Mailing Address",
-				AnchorString: "Mailing Address:",
-				FieldType:    "text_optional",
-				IsOptional:   true,
-				IsEditable:   false,
-				Width:        340,
-				Height:       20,
-				OffsetX:      0, // should be aligned with the above
-				OffsetY:      50,
 			},
 			{
 				ID:           "country",
@@ -1066,9 +991,6 @@ var templateMap = map[string]models.Template{
 
 		<p>Please sign: __________________________________ Date: _______________ </p>
 		<p>Full name: __________________________________________________________ </p>
-		<p>Mailing Address:	____________________________________________________ </p>
-		<p>_____________________________________________________________________ </p>
-		<p>_____________________________________________________________________ </p>		
 		<p>Country: ________________________________________</p>
 		<p>E-Mail: _________________________________________</p>
 		</body></html>

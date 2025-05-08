@@ -57,42 +57,6 @@ content_icla_agreement_date = """<?xml version="1.0" encoding="utf-8"?>
                     <TabStatus>
                         <TabType>Custom</TabType>
                         <Status>Signed</Status>
-                        <XPosition>281</XPosition>
-                        <YPosition>227</YPosition>
-                        <TabLabel>mailing_address1</TabLabel>
-                        <TabName>Mailing Address</TabName>
-                        <TabValue>asdf</TabValue>
-                        <DocumentID>22317</DocumentID>
-                        <PageNumber>3</PageNumber>
-                        <CustomTabType>Text</CustomTabType>
-                    </TabStatus>
-                    <TabStatus>
-                        <TabType>Custom</TabType>
-                        <Status>Signed</Status>
-                        <XPosition>116</XPosition>
-                        <YPosition>277</YPosition>
-                        <TabLabel>mailing_address2</TabLabel>
-                        <TabName>Mailing Address</TabName>
-                        <TabValue>asdf</TabValue>
-                        <DocumentID>22317</DocumentID>
-                        <PageNumber>3</PageNumber>
-                        <CustomTabType>Text</CustomTabType>
-                    </TabStatus>
-                    <TabStatus>
-                        <TabType>Custom</TabType>
-                        <Status>Signed</Status>
-                        <XPosition>116</XPosition>
-                        <YPosition>331</YPosition>
-                        <TabLabel>mailing_address3</TabLabel>
-                        <TabName>Mailing Address</TabName>
-                        <TabValue>asdf</TabValue>
-                        <DocumentID>22317</DocumentID>
-                        <PageNumber>3</PageNumber>
-                        <CustomTabType>Text</CustomTabType>
-                    </TabStatus>
-                    <TabStatus>
-                        <TabType>Custom</TabType>
-                        <Status>Signed</Status>
                         <XPosition>210</XPosition>
                         <YPosition>400</YPosition>
                         <TabLabel>country</TabLabel>
@@ -146,15 +110,6 @@ content_icla_agreement_date = """<?xml version="1.0" encoding="utf-8"?>
                         <fields>
                             <field name="full_name">
                                 <value>Example FullName</value>
-                            </field>
-                            <field name="mailing_address1">
-                                <value>asdf</value>
-                            </field>
-                            <field name="mailing_address2">
-                                <value>asdf</value>
-                            </field>
-                            <field name="mailing_address3">
-                                <value>asdf</value>
                             </field>
                             <field name="country">
                                 <value>Bulgaria</value>
@@ -275,42 +230,6 @@ content_icla_missing_agreement_date = """<?xml version="1.0" encoding="utf-8"?>
                     <TabStatus>
                         <TabType>Custom</TabType>
                         <Status>Signed</Status>
-                        <XPosition>281</XPosition>
-                        <YPosition>227</YPosition>
-                        <TabLabel>mailing_address1</TabLabel>
-                        <TabName>Mailing Address</TabName>
-                        <TabValue>asdf</TabValue>
-                        <DocumentID>22317</DocumentID>
-                        <PageNumber>3</PageNumber>
-                        <CustomTabType>Text</CustomTabType>
-                    </TabStatus>
-                    <TabStatus>
-                        <TabType>Custom</TabType>
-                        <Status>Signed</Status>
-                        <XPosition>116</XPosition>
-                        <YPosition>277</YPosition>
-                        <TabLabel>mailing_address2</TabLabel>
-                        <TabName>Mailing Address</TabName>
-                        <TabValue>asdf</TabValue>
-                        <DocumentID>22317</DocumentID>
-                        <PageNumber>3</PageNumber>
-                        <CustomTabType>Text</CustomTabType>
-                    </TabStatus>
-                    <TabStatus>
-                        <TabType>Custom</TabType>
-                        <Status>Signed</Status>
-                        <XPosition>116</XPosition>
-                        <YPosition>331</YPosition>
-                        <TabLabel>mailing_address3</TabLabel>
-                        <TabName>Mailing Address</TabName>
-                        <TabValue>asdf</TabValue>
-                        <DocumentID>22317</DocumentID>
-                        <PageNumber>3</PageNumber>
-                        <CustomTabType>Text</CustomTabType>
-                    </TabStatus>
-                    <TabStatus>
-                        <TabType>Custom</TabType>
-                        <Status>Signed</Status>
                         <XPosition>210</XPosition>
                         <YPosition>400</YPosition>
                         <TabLabel>country</TabLabel>
@@ -359,15 +278,6 @@ content_icla_missing_agreement_date = """<?xml version="1.0" encoding="utf-8"?>
                         <fields>
                             <field name="full_name">
                                 <value>Example FullName</value>
-                            </field>
-                            <field name="mailing_address1">
-                                <value>asdf</value>
-                            </field>
-                            <field name="mailing_address2">
-                                <value>asdf</value>
-                            </field>
-                            <field name="mailing_address3">
-                                <value>asdf</value>
                             </field>
                             <field name="country">
                                 <value>Bulgaria</value>
