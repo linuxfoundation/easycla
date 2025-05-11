@@ -63,6 +63,14 @@ func Configure(api *operations.ClaAPI, service ServiceInterface, eventsService e
 				break
 			}
 		}
+		if newPOCValue == "" {
+			for _, field := range params.Body.MetaFields {
+				if field.TemplateVariable == "CONTACT_URL" {
+					newPOCValue = field.Value
+					break
+				}
+			}
+		}
 
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType: events.CLATemplateCreated,

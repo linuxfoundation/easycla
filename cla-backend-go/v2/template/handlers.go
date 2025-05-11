@@ -107,6 +107,14 @@ func Configure(api *operations.EasyclaAPI, service v1Template.ServiceInterface, 
 				break
 			}
 		}
+		if newPOCValue == "" {
+			for _, field := range input.MetaFields {
+				if field.TemplateVariable == "CONTACT_URL" {
+					newPOCValue = field.Value
+					break
+				}
+			}
+		}
 
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:         events.CLATemplateCreated,
