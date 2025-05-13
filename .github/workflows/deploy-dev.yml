@@ -29,9 +29,6 @@ jobs:
         with:
           go-version: '1.24'
 
-      - name: Clear Go Build Cache
-        run: go clean -cache -modcache -i -r
-
       - name: Go Version
         run: go version
 
