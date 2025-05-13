@@ -60,7 +60,7 @@ func GetOrganization(ctx context.Context, organizationName string) (*github.Orga
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		msg := fmt.Sprintf("GetOrganization %s failed with no success response code %d. error = %s", organizationName, resp.StatusCode, err.Error())
-		log.WithFields(f).Warnf(msg)
+		log.WithFields(f).Warnf("%s", msg)
 		return nil, errors.New(msg)
 	}
 	return org, nil
@@ -84,7 +84,7 @@ func GetOrganizationMembers(ctx context.Context, orgName string, installationID 
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 || err != nil {
 		msg := fmt.Sprintf("List Org Members failed for Organization: %s with no success response code %d. error = %s", orgName, resp.StatusCode, err.Error())
-		log.WithFields(f).Warnf(msg)
+		log.WithFields(f).Warnf("%s", msg)
 		return nil, errors.New(msg)
 	}
 

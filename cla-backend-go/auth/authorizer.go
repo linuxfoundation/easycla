@@ -66,7 +66,7 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("SecurityAuth - verify token error: %+v", err)
 		if strings.Contains(strings.ToLower(err.Error()), "expired") {
-			return nil, swagerrors.New(401, err.Error())
+			return nil, swagerrors.New(401, "%s", err.Error())
 		}
 		return nil, err
 	}

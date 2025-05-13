@@ -571,7 +571,7 @@ func (repo Repository) DeleteGitHubOrganization(ctx context.Context, projectSFID
 		)
 		if err != nil {
 			errMsg := fmt.Sprintf("error deleting github organization: %s - %+v", githubOrgName, err)
-			log.WithFields(f).Warnf(errMsg)
+			log.WithFields(f).Warnf("%s", errMsg)
 			return errors.New(errMsg)
 		}
 	}
@@ -613,7 +613,7 @@ func (repo Repository) DeleteGitHubOrganizationByParent(ctx context.Context, par
 	})
 	if err != nil {
 		errMsg := fmt.Sprintf("error deleting github organization: %s - %+v", githubOrgName, err)
-		log.WithFields(f).Warnf(errMsg)
+		log.WithFields(f).Warnf("%s", errMsg)
 		return errors.New(errMsg)
 	}
 

@@ -54,11 +54,17 @@ func RefreshOauthToken(refreshToken string) (*OauthSuccessResponse, error) {
 	}
 
 	if resp.StatusCode() != 200 {
-		log.WithFields(f).Warnf("error fetching oauth credentials from gitlab - status code: %d", resp.StatusCode())
-		return nil, errors.New("error fetching oauth credentials from gitlab")
+		log.WithFields(f).Warnf("error refreshing oauth credentials from gitlab - status code: %d", resp.StatusCode())
+		return nil, errors.New("error refreshing oauth credentials from gitlab")
 	}
 
-	return resp.Result().(*OauthSuccessResponse), nil
+	result, ok := resp.Result().(*OauthSuccessResponse)
+	if !ok {
+		log.WithFields(f).Warnf("error refreshing oauth credentials from gitlab - non success response: %+v", resp)
+		return nil, errors.New("error refreshing oauth credentials from gitlab")
+	}
+
+	return result, nil
 }
 
 // FetchOauthCredentials is responsible for fetching the credentials from gitlab for alredy started Oauth process (access_token, refresh_token)
@@ -107,5 +113,11 @@ func FetchOauthCredentials(code string) (*OauthSuccessResponse, error) {
 		return nil, errors.New(msg)
 	}
 
-	return resp.Result().(*OauthSuccessResponse), nil
+	result, ok := resp.Result().(*OauthSuccessResponse)
+	if !ok {
+		log.WithFields(f).Warnf("error fetching oauth credentials from gitlab - non success response: %+v", resp)
+		return nil, errors.New("error fetching oauth credentials from gitlab")
+	}
+
+	return result, nil
 }

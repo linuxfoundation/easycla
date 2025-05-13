@@ -88,7 +88,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 
 					if err != nil {
 						msg := fmt.Sprintf("problem initiating sign request for :%+v", srp)
-						log.WithFields(f).Debugf(msg)
+						log.WithFields(f).Debugf("%s", msg)
 						http.Error(rw, msg, http.StatusInternalServerError)
 						return
 					}

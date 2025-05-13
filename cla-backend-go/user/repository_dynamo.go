@@ -93,7 +93,7 @@ func (repo RepositoryDynamo) GetUserAndProfilesByLFID(lfidUsername string) (CLAU
 	}
 
 	if len(users) < 1 {
-		log.Debugf(fmt.Sprintf("Get User And Profiles By LFID - user not found given LFID: %s", lfidUsername))
+		log.Debugf("Get User And Profiles By LFID - user not found given LFID: %s", lfidUsername)
 		return CLAUser{
 			LFUsername: lfidUsername,
 		}, errors.New("user not found")
