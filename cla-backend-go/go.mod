@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: MIT
 module github.com/communitybridge/easycla/cla-backend-go
 
-go 1.20
+go 1.22.0
 
 replace github.com/awslabs/aws-lambda-go-api-proxy => github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
 
 require (
 	github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
-	github.com/LF-Engineering/lfx-kit v0.1.33
+	github.com/LF-Engineering/lfx-kit v0.1.39
 	github.com/LF-Engineering/lfx-models v0.7.9
 	github.com/aws/aws-lambda-go v1.22.0
 	github.com/aws/aws-sdk-go v1.36.27
@@ -60,7 +60,7 @@ require (
 	golang.org/x/net v0.8.0
 	golang.org/x/oauth2 v0.6.0
 	golang.org/x/sync v0.2.0
-	golang.org/x/sys v0.8.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	google.golang.org/protobuf v1.30.0 // indirect
 )

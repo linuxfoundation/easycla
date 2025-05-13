@@ -3216,7 +3216,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	// Only load the gerrit user information, which is costly, if we have updates to remove email or email domains
 	if (params.RemoveEmailApprovalList != nil && len(params.RemoveEmailApprovalList) > 0) || (params.RemoveDomainApprovalList != nil && len(params.RemoveDomainApprovalList) > 0) {
 
-		goRoutines := 2
+		goRoutines := 0
 		gerritResultChannel := make(chan *GerritUserResponse, goRoutines)
 		gerritQueryStartTime, _ := utils.CurrentTime()
 		//go repo.getGerritUsers(ctx, &authUser, projectID, utils.ClaTypeICLA, gerritResultChannel)
