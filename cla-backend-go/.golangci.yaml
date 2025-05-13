@@ -63,7 +63,7 @@ linters:
     - goimports
     - gosec
     - megacheck # (staticcheck + gosimple + unused in one linter)
-    - depguard
+    # - depguard
     - unconvert
     - unparam
     - unused

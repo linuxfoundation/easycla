@@ -174,7 +174,7 @@ func (t *TestBehaviour) RunGetCompanySignatures() {
 			if unmarshallErr != nil {
 				F.AddError(unmarshallErr.Error())
 			}
-			if signatures.Signatures == nil || len(signatures.Signatures) == 0 {
+			if len(signatures.Signatures) == 0 {
 				F.AddError("Signatures - Get Company Signatures - Google - Expecting at least one signature in response")
 			}
 			for _, sig := range signatures.Signatures {

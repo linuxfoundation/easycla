@@ -601,7 +601,7 @@ func GetRepositories(ctx context.Context, organizationName string) ([]*github.Re
 
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
 			msg := fmt.Sprintf("GetRepositories %s failed with no success response code %d. error = %s", organizationName, resp.StatusCode, err.Error())
-			log.WithFields(f).Warnf(msg)
+			log.WithFields(f).Warnf("%s", msg)
 			return nil, errors.New(msg)
 		}
 

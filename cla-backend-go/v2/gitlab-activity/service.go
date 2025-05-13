@@ -513,21 +513,21 @@ func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroup
 	_, err = s.companyRepository.GetCompany(ctx, companyID)
 	if err != nil {
 		msg := fmt.Sprintf("can't load company record: %s for user: %s (%s), error: %v", companyID, userModel.Username, userModel.UserID, err)
-		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		log.WithFields(f).Errorf("%s", msg)
+		return false, fmt.Errorf("%s", msg)
 	}
 
 	corporateSignature, err := s.signatureRepository.GetCorporateSignature(ctx, claGroupID, companyID, aws.Bool(true), aws.Bool(true))
 	if err != nil {
 		msg := fmt.Sprintf("can't load company signature record for company: %s for user : %s (%s), error : %v", companyID, userModel.Username, userModel.UserID, err)
-		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		log.WithFields(f).Errorf("%s", msg)
+		return false, fmt.Errorf("%s", msg)
 	}
 
 	if corporateSignature == nil {
 		msg := fmt.Sprintf("no corporate signature (CCLA) record found for company : %s ", companyID)
-		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		log.WithFields(f).Errorf("%s", msg)
+		return false, fmt.Errorf("%s", msg)
 	}
 
 	log.WithFields(f).Debugf("loaded corporate signature id: %s for claGroupID: %s and companyID: %s", corporateSignature.SignatureID, claGroupID, companyID)
@@ -539,8 +539,8 @@ func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroup
 		approvalCriteria.GitlabUsername = gitlabUser.Username
 	} else {
 		msg := fmt.Sprintf("gitlabUser model doesn't have enough information to fetch the employee signatures for user : %s", userModel.UserID)
-		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		log.WithFields(f).Errorf("%s", msg)
+		return false, fmt.Errorf("%s", msg)
 	}
 
 	if !s.IsUserApprovedForSignature(ctx, f, corporateSignature, userModel, gitlabUser) {
@@ -556,14 +556,14 @@ func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroup
 
 	if err != nil {
 		msg := fmt.Sprintf("can't load employee signature records : %s for user : %s association : %v", companyID, userModel.UserID, err)
-		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		log.WithFields(f).Errorf("%s", msg)
+		return false, fmt.Errorf("%s", msg)
 	}
 
 	if len(employeeSignatures.Signatures) == 0 {
 		msg := fmt.Sprintf("no employee signature records found for company : %s user : %s association", companyID, userModel.UserID)
-		log.WithFields(f).Errorf(msg)
-		return false, fmt.Errorf(msg)
+		log.WithFields(f).Errorf("%s", msg)
+		return false, fmt.Errorf("%s", msg)
 	}
 
 	log.WithFields(f).Warnf("is in signature approval list : %s and has employee signature", corporateSignature.SignatureID)

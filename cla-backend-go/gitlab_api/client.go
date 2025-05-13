@@ -131,6 +131,7 @@ func encrypt(key, message []byte) ([]byte, error) {
 	// Choose the block cipher mode of operation
 	// Using the cipher feedback (CFB) mode here.
 	// CBCEncrypter also available.
+	//nolint:staticcheck // CFB mode required for backward compatibility
 	cfb := cipher.NewCFBEncrypter(block, iv)
 	// Generate the encrypted message and store it
 	// in the remaining bytes after the IV nonce
@@ -152,6 +153,7 @@ func decrypt(key, cipherText []byte) ([]byte, error) {
 	cipherText = cipherText[aes.BlockSize:]
 
 	// Decrypt the message using the CFB block mode
+	//nolint:staticcheck // CFB mode required for backward compatibility
 	cfb := cipher.NewCFBDecrypter(block, iv)
 	cfb.XORKeyStream(cipherText, cipherText)
 

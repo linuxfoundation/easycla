@@ -695,7 +695,7 @@ func (repo *repo) UpdateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 	}
 
 	// An update to the project ACL
-	if claGroupModel.ProjectACL != nil && len(claGroupModel.ProjectACL) > 0 {
+	if len(claGroupModel.ProjectACL) > 0 {
 		log.WithFields(f).Debugf("adding project_acl: %s", claGroupModel.ProjectACL)
 		expressionAttributeNames["#A"] = aws.String("project_acl")
 		expressionAttributeValues[":a"] = &dynamodb.AttributeValue{SS: aws.StringSlice(claGroupModel.ProjectACL)}

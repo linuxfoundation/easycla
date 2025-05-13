@@ -861,20 +861,20 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 		_, err = s.companyRepository.GetCompany(ctx, companyID)
 		if err != nil {
 			msg := fmt.Sprintf("can't load company record: %s for user: %s (%s), error: %v", companyID, claUser.Username, claUser.UserID, err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return &consoleURL, nil
 		}
 
 		corporateSignature, err := s.signatureRepo.GetCorporateSignature(ctx, gitlabRepo.RepositoryClaGroupID, companyID, aws.Bool(false), aws.Bool(true))
 		if err != nil {
 			msg := fmt.Sprintf("can't load company signature record for company: %s for user : %s (%s), error : %v", companyID, claUser.Username, claUser.UserID, err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return &consoleURL, nil
 		}
 
 		if corporateSignature == nil {
 			msg := fmt.Sprintf("no corporate signature (CCLA) record found for company : %s ", companyID)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return &consoleURL, nil
 		}
 		log.WithFields(f).Debugf("loaded corporate signature id: %s for claGroupID: %s and companyID: %s", corporateSignature.SignatureID, gitlabRepo.RepositoryClaGroupID, companyID)
@@ -883,7 +883,7 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 	err = s.signatureRepo.ActivateSignature(ctx, signatureID)
 	if err != nil {
 		msg := fmt.Sprintf("found error on Activate Signature error : %s", err.Error())
-		log.WithFields(f).Errorf(msg)
+		log.WithFields(f).Errorf("%s", msg)
 	}
 	return &consoleURL, nil
 }
@@ -1025,7 +1025,7 @@ func (s *Service) updateRepositoryStatus(glClient *goGitLab.Client, gitLabProjec
 					return
 				}
 				msg := fmt.Sprintf("problem loading GitLab project by external ID: %d, response code: %d, body: %s", repo.RepositoryGitlabID, resp.StatusCode, responseBody)
-				log.WithFields(f).Warnf(msg)
+				log.WithFields(f).Warnf("%s", msg)
 				responseChannel <- responseChannelModel{
 					RepositoryExternalID: repo.RepositoryGitlabID,
 					ConnectionStatus:     utils.ConnectionFailure,

@@ -761,7 +761,7 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 	projectModel, projErr := s.projectRepo.GetCLAGroupByID(ctx, ClaGroupID, DontLoadRepoDetails)
 	if projErr != nil {
 		msg := fmt.Sprintf("unable to query CLA Group ID: %s, error: %+v", ClaGroupID, projErr)
-		log.WithFields(f).Warnf(msg)
+		log.WithFields(f).Warnf("%s", msg)
 	}
 
 	// Log Event

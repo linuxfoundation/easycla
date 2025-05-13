@@ -173,7 +173,7 @@ func Configure(api *operations.ClaAPI, clientID, clientSecret, accessToken strin
 				if params.State != persistedState {
 					msg := fmt.Sprintf("mismatch state, received: %s from callback, but loaded our state as: %s",
 						params.State, persistedState)
-					log.WithFields(f).Warnf(msg)
+					log.WithFields(f).Warnf("%s", msg)
 					http.Error(w, msg, http.StatusInternalServerError)
 					return
 				}

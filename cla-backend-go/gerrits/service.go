@@ -66,7 +66,7 @@ func (s service) AddGerrit(ctx context.Context, claGroupID string, projectSFID s
 	gerritObject, err := s.repo.ExistsByName(ctx, *params.GerritName)
 	if err != nil {
 		message := fmt.Sprintf("unable to get gerrit by name : %s", *params.GerritName)
-		log.WithFields(f).WithError(err).Warnf(message)
+		log.WithFields(f).WithError(err).Warnf("%s", message)
 	}
 
 	if len(gerritObject) > 0 {
@@ -188,7 +188,7 @@ func (s service) DeleteClaGroupGerrits(ctx context.Context, claGroupID string) (
 		return 0, err
 	}
 	if len(gerrits.List) > 0 {
-		log.WithFields(f).Debugf(fmt.Sprintf("Deleting gerrits for cla-group :%s ", claGroupID))
+		log.WithFields(f).Debugf("Deleting gerrits for cla-group :%s ", claGroupID)
 		for _, gerrit := range gerrits.List {
 			err = s.repo.DeleteGerrit(ctx, gerrit.GerritID.String())
 			if err != nil {
@@ -367,7 +367,7 @@ func getGerritAPIPath(ctx context.Context, gerritHost string) (string, error) {
 		return "gerrit", nil
 	default:
 		msg := fmt.Sprintf("unsupport gerrit host: %s", gerritHost)
-		log.WithFields(f).Warnf(msg)
+		log.WithFields(f).Warnf("%s", msg)
 		return "", errors.New(msg)
 	}
 }

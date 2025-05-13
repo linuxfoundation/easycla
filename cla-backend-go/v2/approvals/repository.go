@@ -201,6 +201,9 @@ func (repo *repository) GetApprovalList(approvalID string) (*ApprovalItem, error
 
 func exponentialBackoff(attempt int) time.Duration {
 	const maxBackoff = 30 * time.Second
+	if attempt < 0 || attempt > 63 {
+		return time.Duration(30) * time.Second
+	}
 	backoff := time.Duration(1<<uint(attempt)) * time.Second
 	if backoff > maxBackoff {
 		backoff = maxBackoff

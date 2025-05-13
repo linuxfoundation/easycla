@@ -319,7 +319,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1ProjectService v1P
 					parentProject, projectErr = psc.GetProject(utils.GetProjectParentSFID(project))
 					if parentProject == nil || projectErr != nil {
 						msg := fmt.Sprintf("Failed to get parent: %s", utils.GetProjectParentSFID(project))
-						log.WithFields(f).Warnf(msg)
+						log.WithFields(f).Warnf("%s", msg)
 						return cla_group.NewEnrollProjectsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 					}
 				}

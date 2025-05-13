@@ -342,8 +342,8 @@ func (s *eventHandlerService) handleRepositoryTransferredAction(ctx context.Cont
 	// first check if it's a different organization name (could be a duplicate event)
 	if oldOrganizationName == newOrganizationName {
 		msg := fmt.Sprintf("nothing to change for github repo : %s, probably duplicate event was sent", repoModel.RepositoryName)
-		log.WithFields(f).Warnf(msg)
-		return fmt.Errorf(msg)
+		log.WithFields(f).Warnf("%s", msg)
+		return fmt.Errorf("%s", msg)
 	}
 
 	// fetch the old and the new github orgs from the db
