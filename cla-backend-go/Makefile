@@ -351,5 +351,5 @@ build-repository-update-mac: deps build-prep
 	@chmod +x $(BIN_DIR)/$(REPOSITORY_UPDATE_BIN)-mac
 
 lint:
-	@cd $(MAKEFILE_DIR) && $(LINT_TOOL) version && echo "==> Running lint..." && $(LINT_TOOL) run --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "==> Lint check passed."
+	@cd $(MAKEFILE_DIR) && $(LINT_TOOL) version && echo "==> Running lint..." && $(LINT_TOOL) run --timeout 30m --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "==> Lint check passed."
 	@cd $(MAKEFILE_DIR) && ./check-headers.sh
