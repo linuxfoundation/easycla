@@ -517,7 +517,7 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 		msg := fmt.Sprintf("unable to fetch updated github organization approval list values for "+
 			"organization id: %s for signature: %s - list is empty - returning empty list",
 			GitHubOrganizationID, signatureID)
-		log.WithFields(f).Debugf(msg)
+		log.WithFields(f).Debugf("%s", msg)
 		return []models.GithubOrg{}, nil
 	}
 
@@ -637,7 +637,7 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 		msg := fmt.Sprintf("unable to fetch updated approva list organization values for "+
 			"organization id: %s for signature: %s - list is empty - returning empty list",
 			GitHubOrganizationID, signatureID)
-		log.WithFields(f).Debugf(msg)
+		log.WithFields(f).Debugf("%s", msg)
 		return []models.GithubOrg{}, nil
 	}
 
@@ -2559,7 +2559,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 			employeeUserName = employeeUserModel.GitlabUsername
 		} else if employeeUserModel.LfEmail != "" {
 			employeeUserName = employeeUserModel.LfEmail.String()
-		} else if employeeUserModel.Emails != nil && len(employeeUserModel.Emails) > 0 {
+		} else if len(employeeUserModel.Emails) > 0 {
 			employeeUserName = employeeUserModel.Emails[0]
 		}
 	}
@@ -3214,9 +3214,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	var gerritICLAECLAs []string
 
 	// Only load the gerrit user information, which is costly, if we have updates to remove email or email domains
-	if (params.RemoveEmailApprovalList != nil && len(params.RemoveEmailApprovalList) > 0) || (params.RemoveDomainApprovalList != nil && len(params.RemoveDomainApprovalList) > 0) {
+	if len(params.RemoveEmailApprovalList) > 0 || len(params.RemoveDomainApprovalList) > 0 {
 
-		goRoutines := 2
+		goRoutines := 0
 		gerritResultChannel := make(chan *GerritUserResponse, goRoutines)
 		gerritQueryStartTime, _ := utils.CurrentTime()
 		//go repo.getGerritUsers(ctx, &authUser, projectID, utils.ClaTypeICLA, gerritResultChannel)
@@ -3239,7 +3239,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	}
 
 	// If we have an add or remove email list...we need to run an update for this column
-	if (params.AddEmailApprovalList != nil && len(params.AddEmailApprovalList) > 0) || (params.RemoveEmailApprovalList != nil && len(params.RemoveEmailApprovalList) > 0) {
+	if len(params.AddEmailApprovalList) > 0 || len(params.RemoveEmailApprovalList) > 0 {
 		columnName := SignatureEmailApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.EmailApprovalList, params.AddEmailApprovalList, params.RemoveEmailApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
@@ -3364,7 +3364,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 	}
 
-	if (params.AddDomainApprovalList != nil && len(params.AddDomainApprovalList) > 0) || (params.RemoveDomainApprovalList != nil && len(params.RemoveDomainApprovalList) > 0) {
+	if len(params.AddDomainApprovalList) > 0 || len(params.RemoveDomainApprovalList) > 0 {
 
 		columnName := SignatureDomainApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.DomainApprovalList, params.AddDomainApprovalList, params.RemoveDomainApprovalList)
@@ -3431,7 +3431,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 	}
 
-	if (params.AddGithubUsernameApprovalList != nil && len(params.AddGithubUsernameApprovalList) > 0) || (params.RemoveGithubUsernameApprovalList != nil && len(params.RemoveGithubUsernameApprovalList) > 0) {
+	if len(params.AddGithubUsernameApprovalList) > 0 || len(params.RemoveGithubUsernameApprovalList) > 0 {
 		columnName := SignatureGitHubUsernameApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GithubUsernameApprovalList, params.AddGithubUsernameApprovalList, params.RemoveGithubUsernameApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
@@ -3520,7 +3520,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 	}
 
-	if (params.AddGithubOrgApprovalList != nil && len(params.AddGithubOrgApprovalList) > 0) || (params.RemoveGithubOrgApprovalList != nil && len(params.RemoveGithubOrgApprovalList) > 0) {
+	if len(params.AddGithubOrgApprovalList) > 0 || len(params.RemoveGithubOrgApprovalList) > 0 {
 		columnName := SignatureGitHubOrgApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GithubOrgApprovalList, params.AddGithubOrgApprovalList, params.RemoveGithubOrgApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
@@ -3580,7 +3580,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				ghOrgUsers, getOrgMembersErr := github.GetOrganizationMembers(ctx, ghOrg.OrganizationName, ghOrg.OrganizationInstallationID)
 				if getOrgMembersErr != nil {
 					msg := fmt.Sprintf("unable to fetch github organization users for org: %s ", ghOrg.OrganizationName)
-					log.WithFields(f).WithError(getOrgMembersErr).Warnf(msg)
+					log.WithFields(f).WithError(getOrgMembersErr).Warnf("%s", msg)
 					return nil, errors.New(msg)
 				}
 				ghUsernames = append(ghUsernames, ghOrgUsers...)
@@ -3592,7 +3592,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 	}
 
-	if (params.AddGitlabUsernameApprovalList != nil && len(params.AddGitlabUsernameApprovalList) > 0) || (params.RemoveGitlabUsernameApprovalList != nil && len(params.RemoveGitlabUsernameApprovalList) > 0) {
+	if len(params.AddGitlabUsernameApprovalList) > 0 || len(params.RemoveGitlabUsernameApprovalList) > 0 {
 		columnName := SignatureGitlabUsernameApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GitlabUsernameApprovalList, params.AddGitlabUsernameApprovalList, params.RemoveGitlabUsernameApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
@@ -3681,7 +3681,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 	}
 
-	if (params.AddGitlabOrgApprovalList != nil && len(params.AddGitlabOrgApprovalList) > 0) || (params.RemoveGitlabOrgApprovalList != nil && len(params.RemoveGitlabOrgApprovalList) > 0) {
+	if len(params.AddGitlabOrgApprovalList) > 0 || len(params.RemoveGitlabOrgApprovalList) > 0 {
 		columnName := SignatureGitlabOrgApprovalListColumn
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GitlabOrgApprovalList, params.AddGitlabOrgApprovalList, params.RemoveGitlabOrgApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
@@ -3742,7 +3742,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				gitLabOrgUsers, getOrgMembersErr := github.GetOrganizationMembers(ctx, gitLabOrg.OrganizationName, gitLabOrg.OrganizationInstallationID)
 				if getOrgMembersErr != nil {
 					msg := fmt.Sprintf("unable to fetch gitLabOrgUsers for org: %s ", gitLabOrg.OrganizationName)
-					log.WithFields(f).WithError(getOrgMembersErr).Warnf(msg)
+					log.WithFields(f).WithError(getOrgMembersErr).Warnf("%s", msg)
 					return nil, errors.New(msg)
 				}
 				gitLabUsernames = append(gitLabUsernames, gitLabOrgUsers...)

@@ -193,7 +193,7 @@ func (s service) ApproveCclaApprovalListRequest(ctx context.Context, claUser *us
 	if requestModel.UserEmails == nil {
 		msg := fmt.Sprintf("ApproveCclaApprovalListRequest - unable to send approval email - email missing for request: %+v, error: %+v",
 			requestModel, err)
-		log.Warnf(msg)
+		log.Warnf("%s", msg)
 		return errors.New(msg)
 	}
 
@@ -287,7 +287,7 @@ func (s service) RejectCclaApprovalListRequest(ctx context.Context, companyID, c
 	if requestModel.UserEmails == nil {
 		msg := fmt.Sprintf("unable to send approval email - email missing for request: %+v, error: %+v",
 			requestModel, err)
-		log.WithFields(f).Warnf(msg)
+		log.WithFields(f).Warnf("%s", msg)
 		return errors.New(msg)
 	}
 

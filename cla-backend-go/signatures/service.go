@@ -373,7 +373,7 @@ func (s service) AddGithubOrganizationToApprovalList(ctx context.Context, signat
 
 		if !found {
 			msg := fmt.Sprintf("user is not authorized for github organization id: %s", *organizationID)
-			log.Warnf(msg)
+			log.Warnf("%s", msg)
 			return nil, errors.New(msg)
 		}
 	}
@@ -445,7 +445,7 @@ func (s service) DeleteGithubOrganizationFromApprovalList(ctx context.Context, s
 
 		if !found {
 			msg := fmt.Sprintf("user is not authorized for github organization id: %s", *organizationID)
-			log.Warnf(msg)
+			log.Warnf("%s", msg)
 			return nil, errors.New(msg)
 		}
 	}
@@ -903,15 +903,15 @@ func (s service) InvalidateProjectRecords(ctx context.Context, projectID, note s
 
 	result, err := s.repo.ProjectSignatures(ctx, projectID)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf(fmt.Sprintf("Unable to get signatures for project: %s", projectID))
+		log.WithFields(f).WithError(err).Warnf("Unable to get signatures for project: %s", projectID)
 		return 0, err
 	}
 
 	if len(result.Signatures) > 0 {
 		var wg sync.WaitGroup
 		wg.Add(len(result.Signatures))
-		log.WithFields(f).Debugf(fmt.Sprintf("Invalidating %d signatures for project: %s ",
-			len(result.Signatures), projectID))
+		log.WithFields(f).Debugf("Invalidating %d signatures for project: %s ",
+			len(result.Signatures), projectID)
 		for _, signature := range result.Signatures {
 			// Do this in parallel, as we could have a lot to invalidate
 			go func(sigID, projectID string) {

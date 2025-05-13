@@ -749,7 +749,7 @@ func (repo *Repository) DeleteGitLabOrganizationByFullPath(ctx context.Context, 
 	)
 	if err != nil {
 		errMsg := fmt.Sprintf("error updating gitlab organization by path: %s using GitLab group/organization ID: %s - %+v", gitlabOrgFullPath, org.OrganizationID, err)
-		log.WithFields(f).WithError(err).Warnf(errMsg)
+		log.WithFields(f).WithError(err).Warnf("%s", errMsg)
 		return errors.New(errMsg)
 	}
 

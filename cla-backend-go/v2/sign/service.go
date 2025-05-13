@@ -2294,7 +2294,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 	callbackURL := fmt.Sprintf("%s/v4/signed/gerrit/individual/%s", s.ClaV4ApiURL, *input.UserID)
 
 	preferredEmail := ""
-	if user.Emails != nil && len(user.Emails) > 0 {
+	if len(user.Emails) > 0 {
 		preferredEmail = user.Emails[0]
 	}
 
@@ -2549,7 +2549,7 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 	}
 	if haveSigned {
 		haveSignedErr := fmt.Errorf("one or more corporate valid signature exists for Company ID: %s, Project ID: %s", input.CompanyID, input.ProjectID)
-		log.WithFields(f).WithError(err).Warnf(haveSignedErr.Error())
+		log.WithFields(f).WithError(err).Warnf("%s", haveSignedErr.Error())
 		return nil, haveSignedErr
 	}
 	callbackURL := s.getCorporateSignatureCallbackUrl(input.ProjectID, input.CompanyID)

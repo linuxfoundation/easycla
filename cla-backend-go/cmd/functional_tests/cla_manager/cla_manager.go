@@ -281,7 +281,7 @@ func (t *TestBehaviour) RunGetCLAManagerRequests() {
 			if unmarshallErr != nil {
 				F.AddError(unmarshallErr.Error())
 			}
-			if requests.Requests == nil || len(requests.Requests) == 0 {
+			if len(requests.Requests) == 0 {
 				F.AddError("GET CLA Manager Requests - Expecting at least one request in response")
 			}
 			var containsEntry = false

@@ -184,7 +184,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 			if !utils.ValidateAutoEnabledClaGroupID(*params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
 				msg := "AutoEnabledClaGroupID can't be empty when AutoEnabled"
-				err := fmt.Errorf(msg)
+				err := fmt.Errorf("%s", msg)
 				log.WithFields(f).Warn(msg)
 				return gitlab_organizations.NewAddProjectGitlabOrganizationBadRequest().WithPayload(
 					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
@@ -561,7 +561,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		updatedGitLabOrgDBModel, err := service.GetGitLabOrganizationByID(ctx, gitLabOrg.OrganizationID)
 		if err != nil {
 			msg := fmt.Sprintf("problem loading updated gitlab organization by ID: %s : %v", gitlabOrganizationID, err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return NewServerError(reqID, "", errors.New(msg))
 		}
 

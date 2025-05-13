@@ -421,7 +421,7 @@ func (s service) AddUserToCompanyAccessList(ctx context.Context, companyID, lfid
 	// check if user already exists in the company acl
 	for _, acl := range company.CompanyACL {
 		if acl == lfid {
-			log.WithFields(f).Warnf(fmt.Sprintf("User %s has already been added to the company acl - will not update ACL", lfid))
+			log.WithFields(f).Warnf("User %s has already been added to the company acl - will not update ACL", lfid)
 			return nil
 		}
 	}
@@ -869,7 +869,7 @@ func (s service) CreateOrgFromExternalID(ctx context.Context, signingEntityName,
 	additionalNote := ""
 	if signingEntityName == "" {
 		additionalNote = fmt.Sprintf("signing entity name not set - using organization name: %s", org.Name)
-		log.WithFields(f).Debugf(additionalNote)
+		log.WithFields(f).Debugf("%s", additionalNote)
 		signingEntityName = org.Name
 	}
 

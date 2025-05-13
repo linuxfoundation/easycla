@@ -36,7 +36,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		companiesModel, err := service.GetCompanies(ctx)
 		if err != nil {
 			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to query all companies, error: %v", err)
-			log.Warnf(msg)
+			log.Warnf("%s", msg)
 			return company.NewGetCompaniesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "400",
 				Message: msg,
@@ -52,7 +52,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		companyModel, err := service.GetCompany(ctx, params.CompanyID)
 		if err != nil {
 			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to query company by ID: %s, error: %v", params.CompanyID, err)
-			log.Warnf(msg)
+			log.Warnf("%s", msg)
 			return company.NewGetCompanyBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "400",
 				Message: msg,
@@ -87,7 +87,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		companyModel, err := service.GetCompanyByExternalID(ctx, params.CompanySFID)
 		if err != nil {
 			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to get associated salesforce Organization: %s using SFID: %s, error: %v", org.Name, params.CompanySFID, err)
-			log.Warnf(msg)
+			log.Warnf("%s", msg)
 			return company.NewGetCompanyByExternalIDBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "400",
 				Message: msg,
@@ -108,7 +108,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		companyModel, err := service.GetCompanyBySigningEntityName(ctx, params.Name, params.CompanySFID)
 		if err != nil {
 			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - Unable to locate Company with Signing Entity Request of %s", params.Name)
-			log.Warnf(msg)
+			log.Warnf("%s", msg)
 			return company.NewGetCompanyBySigningEntityNameBadRequest().WithPayload(&models.ErrorResponse{
 				Code:    "400",
 				Message: msg,
@@ -134,7 +134,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		companiesModel, err := service.SearchCompanyByName(ctx, params.CompanyName, nextKey)
 		if err != nil {
 			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to query company by name: %s, error: %v", params.CompanyName, err)
-			log.Warnf(msg)
+			log.Warnf("%s", msg)
 			return company.NewSearchCompanyBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "400",
 				Message: msg,
@@ -173,7 +173,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		companies, err := service.GetCompaniesByUserManager(ctx, params.UserID)
 		if err != nil {
 			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to query companies by user manager id: %s, error: %v", params.UserID, err)
-			log.Warnf(msg)
+			log.Warnf("%s", msg)
 			return company.NewGetCompaniesByUserManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "400",
 				Message: msg,
@@ -207,7 +207,7 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		companies, err := service.GetCompaniesByUserManagerWithInvites(ctx, params.UserID)
 		if err != nil {
 			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to query companies by user manager id: %s, error: %v", params.UserID, err)
-			log.Warnf(msg)
+			log.Warnf("%s", msg)
 			return company.NewGetCompaniesByUserManagerWithInvitesBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "400",
 				Message: msg,

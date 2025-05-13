@@ -202,12 +202,12 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 			case dynamodb.ErrCodeInternalServerError:
 				log.WithFields(f).Warnf("dynamodb.ErrCodeInternalServerError: %v", aerr.Error())
 			default:
-				log.WithFields(f).Warnf(aerr.Error())
+				log.WithFields(f).Warnf("%s", aerr.Error())
 			}
 		} else {
 			// Print the error, cast err to awserr.Error to get the Code and
 			// Message from an error.
-			log.WithFields(f).WithError(err).Warnf(err.Error())
+			log.WithFields(f).WithError(err).Warnf("%s", err.Error())
 		}
 		return nil, err
 	}

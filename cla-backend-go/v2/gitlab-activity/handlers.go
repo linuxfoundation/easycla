@@ -61,14 +61,14 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		gitlabOrg, err := gitlabOrgService.GetGitLabOrganizationByID(ctx, gitlabOrganizationID)
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab org failed : %v", err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
 
 		if gitlabOrg == nil {
 			msg := fmt.Sprintf("fetching gitlab org failed no results returned")
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
@@ -76,7 +76,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		encryptedOauthResponse, err := gitlabOrgService.RefreshGitLabOrganizationAuth(ctx, gitlabOrg)
 		if err != nil {
 			msg := fmt.Sprintf("refreshing gitlab org auth failed : %v", err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
@@ -84,7 +84,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		gitlabClient, err := gitlab_api.NewGitlabOauthClient(*encryptedOauthResponse, gitLabApp)
 		if err != nil {
 			msg := fmt.Sprintf("initializing gitlab client : %v", err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
@@ -93,7 +93,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		gitlabProject, err := gitlab_api.GetProjectByID(ctx, gitlabClient, int(gitlabExternalRepositoryID))
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab project failed : %v", err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
@@ -101,7 +101,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		gitlabMr, err := gitlab_api.FetchMrInfo(gitlabClient, int(gitlabExternalRepositoryID), int(gitlabMrID))
 		if err != nil {
 			msg := fmt.Sprintf("fetching gitlab mr failed : %v", err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			return gitlab_activity.NewGitlabActivityBadRequest().WithPayload(
 				utils.ErrorResponseBadRequest(reqID, msg))
 		}
@@ -117,7 +117,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		})
 		if err != nil {
 			msg := fmt.Sprintf("processing gitlab merge event failed : %v", err)
-			log.WithFields(f).Errorf(msg)
+			log.WithFields(f).Errorf("%s", msg)
 			if errors.Is(err, secretTokenMismatch) {
 				return gitlab_activity.NewGitlabActivityUnauthorized().WithPayload(
 					utils.ErrorResponseUnauthorized(reqID, msg))
@@ -157,7 +157,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		jsonData, err := params.GitlabActivityInput.MarshalJSON()
 		if err != nil {
 			msg := fmt.Sprintf("unmarshall event data failed : %v", err)
-			log.WithFields(f).Debugf(msg)
+			log.WithFields(f).Debugf("%s", msg)
 			// Always return 200 response
 			return gitlab_activity.NewGitlabActivityOK()
 		}
@@ -165,7 +165,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		event, err := gitlabsdk.ParseWebhook(gitlabsdk.EventTypeMergeRequest, jsonData)
 		if err != nil {
 			msg := fmt.Sprintf("parsing gitlab merge event type failed : %v", err)
-			log.WithFields(f).Debugf(msg)
+			log.WithFields(f).Debugf("%s", msg)
 			// Always return 200 response
 			return gitlab_activity.NewGitlabActivityOK()
 		}
@@ -173,7 +173,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 		mergeEvent, ok := event.(*gitlabsdk.MergeEvent)
 		if !ok {
 			msg := fmt.Sprintf("parsing gitlab merge event typecast failed : %v", err)
-			log.WithFields(f).Debugf(msg)
+			log.WithFields(f).Debugf("%s", msg)
 			// Always return 200 response
 			return gitlab_activity.NewGitlabActivityOK()
 		}
@@ -182,7 +182,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 
 			if mergeEvent.ObjectAttributes.State != "opened" && mergeEvent.ObjectAttributes.State != "update" && mergeEvent.ObjectAttributes.State != "reopen" {
 				msg := fmt.Sprintf("parsing gitlab merge event : %s failed, only [open, update, reopen] accepted", mergeEvent.ObjectAttributes.State)
-				log.WithFields(f).Debugf(msg)
+				log.WithFields(f).Debugf("%s", msg)
 				// Always return 200 response
 				return gitlab_activity.NewGitlabActivityOK()
 			}
@@ -190,7 +190,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 			err = service.ProcessMergeOpenedActivity(ctx, params.XGitlabToken, mergeEvent)
 			if err != nil {
 				msg := fmt.Sprintf("processing gitlab merge event failed : %v", err)
-				log.WithFields(f).Debugf(msg)
+				log.WithFields(f).Debugf("%s", msg)
 				// Always return 200 response
 				return gitlab_activity.NewGitlabActivityOK()
 			}
@@ -200,7 +200,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 			err = service.ProcessMergeCommentActivity(ctx, params.XGitlabToken, mergeEvent)
 			if err != nil {
 				msg := fmt.Sprintf("processing gitlab merge comment event failed : %v", err)
-				log.WithFields(f).Debugf(msg)
+				log.WithFields(f).Debugf("%s", msg)
 				// Always return 200 response
 				return gitlab_activity.NewGitlabActivityOK()
 			}
