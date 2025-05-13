@@ -35,7 +35,8 @@ ifeq "$(shell uname -s)" "Linux"
 endif
 
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
-LINT_VERSION=v1.51.2
+# LINT_VERSION=v1.51.2
+LINT_VERSION=v1.64.8
 SWAGGER_DIR=$(ROOT_DIR)/swagger
 SWAGGER_BIN_DIR=/usr/local/bin
 SWAGGER_TOOL_VERSION=v0.30.3
