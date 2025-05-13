@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 module github.com/communitybridge/easycla/cla-backend-go
 
-go 1.22.0
+go 1.20
 
 replace github.com/awslabs/aws-lambda-go-api-proxy => github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
 
