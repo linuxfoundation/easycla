@@ -1034,8 +1034,6 @@ var templateMap = map[string]models.Template{
 		<p>Initial CLA Manager E-Mail: __________________________________________</p>
 		</body></html>`,
 	},
-	// LG: need support in PCC for setting CONTACT_URL template variable instead of CONTACT_EMAIL
-	// LG: update cla-prod-projects project entry for CNCF to have project_template_id = '3c6bec1d-7394-468a-8681-ce1b7226e326'
 	ApacheStyleCNCFTemplateID: {
 		ID:                   ApacheStyleCNCFTemplateID,
 		Name:                 "Apache Style",
@@ -1052,11 +1050,6 @@ var templateMap = map[string]models.Template{
 				Name:             "Project Entity Name",
 				Description:      "The Full Entity Name of the Project.",
 				TemplateVariable: "PROJECT_ENTITY_NAME",
-			},
-			{
-				Name:             "Conctact URL",
-				Description:      "Contact URL (this is usually 'cncf.io/ccla' for CNCF), example: 'If providing a signed PDF, open a ticket at {{ CONTACT_URL }} and attach the scanned form'",
-				TemplateVariable: "CONTACT_URL", // LG: Note that this requires support in PCC
 			},
 		},
 		IclaFields: []*models.Field{
@@ -1260,7 +1253,7 @@ var templateMap = map[string]models.Template{
 		<p>
 			Project Name: {{ PROJECT_NAME }}</br>
 			Project Entity:	{{ PROJECT_ENTITY_NAME }}</br>
-		    If providing a signed PDF, open a ticket at {{ CONTACT_URL }} and attach the scanned form
+		    If providing a signed PDF, open a ticket at cncf.io/icla and attach the scanned form
 		</p>
 
 		<h3 style="text-align: center">Individual Contributor License Agreement (“Agreement”) v2.0</h3>
@@ -1290,7 +1283,7 @@ var templateMap = map[string]models.Template{
 		<p>
 			Project Name: {{ PROJECT_NAME }}</br>
 			Project Entity:	{{ PROJECT_ENTITY_NAME }}</br>
-		    If providing a signed PDF, open a ticket at {{ CONTACT_URL }} and attach the scanned form
+		    If providing a signed PDF, open a ticket at cncf.io/ccla and attach the scanned form
 		</p>
 
 		<h3 style="text-align: center"> Software Grant and Corporate Contributor License Agreement (“Agreement”) v2.0 </h3>
