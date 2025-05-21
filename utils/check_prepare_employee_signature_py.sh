@@ -3,7 +3,7 @@
 # user_id='9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5'
 # company_id='862ff296-6508-4f10-9147-2bc2dd7bfe80'
 # project_id='88ee12de-122b-4c46-9046-19422054ed8d'
-# DEBUG=1 ./utils/check_prepare_employee_signature_py 9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5 862ff296-6508-4f10-9147-2bc2dd7bfe80 88ee12de-122b-4c46-9046-19422054ed8d github 'http://localhost'
+# DEBUG=1 ./utils/check_prepare_employee_signature_py 9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5 862ff296-6508-4f10-9147-2bc2dd7bfe80 88ee12de-122b-4c46-9046-19422054ed8d
 # DEBUG=1 ./utils/check_prepare_employee_signature_py.sh 65d22813-1ac0-4292-bb68-fdcb278473a5 4930fe6e-e023-4f56-9767-6f1996a7b730 43c546ff-bc79-4a32-9454-77dabd6afaee
 
 if [ -z "$1" ]

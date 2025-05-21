@@ -96,6 +96,23 @@ class GitHub(repository_service_interface.RepositoryService):
         else:
             cla.log.debug("github_models.received_activity - Ignoring unsupported action: {}".format(data["action"]))
 
+    def user_from_session(self, request):
+        fn = "github_models.user_from_session"  # function name
+        cla.log.debug(f"{fn} - Loading session from request: {request}...")
+        session = self._get_request_session(request)
+        if "github_oauth2_token" in session:
+            cla.log.debug(f"{fn} - Using existing session GitHub OAuth2 token")
+            user = self.get_or_create_user(request)
+            cla.log.debug(f"{fn} - loaded user {user.to_dict()}")
+            return user
+        else:
+            cla.log.debug(f"{fn} - No existing GitHub OAuth2 token - building authorization url and state")
+            authorization_url, state = self.get_authorization_url_and_state(None, None, None, ["user:email"])
+            cla.log.debug(f"{fn} - Obtained GitHub OAuth2 state from authorization - storing state in the session...")
+            session["github_oauth2_state"] = state
+            cla.log.debug(f"{fn} - GitHub OAuth2 request with state {state} - sending user to {authorization_url}")
+            raise falcon.HTTPFound(authorization_url)
+
     def sign_request(self, installation_id, github_repository_id, change_request_id, request):
         """
         This method gets called when the OAuth2 app (NOT the GitHub App) needs to get info on the
@@ -1836,10 +1853,12 @@ class MockGitHub(GitHub):
         return {}
 
     def get_user_data(self, session, client_id) -> dict:
-        return {"email": "test@user.com", "name": "Test User", "id": 123}
+        return {"email": "test@user.com", "name": "Test User", "login": "testuser", "id": 123}
 
     def get_user_emails(self, session, client_id):
-        return [{"email": "test@user.com", "verified": True, "primary": True, "visibility": "public"}]
+        # LG: updated MockGitHub to return emails in the same way as GitHub class
+        return ["test@user.com"]
+        # return [{"email": "test@user.com", "verified": True, "primary": True, "visibility": "public"}]
 
     def get_pull_request(self, github_repository_id, pull_request_number, installation_id):
         return MockGitHubPullRequest(pull_request_number)

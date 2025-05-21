@@ -2652,6 +2652,32 @@ paths:
       tags:
         - cla-manager
 
+  /user-from-token:
+    get:
+      summary: Get user object from current bearer token
+      description: Get user object from current bearer token
+      operationId: getUserFromToken
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/user'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - current_user
+
   /user/{userID}/request-company-admin:
     post:
       summary: Request Manager
