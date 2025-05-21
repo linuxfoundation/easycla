@@ -4,6 +4,7 @@
 # select key, data:expire from fivetran_ingest.dynamodb_product_us_east_1.cla_prod_store where key like 'active_signature:%' order by data:expire desc limit 1;
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org DEBUG=1 ./utils/active_signature_py.sh '4b344ac4-f8d9-11ed-ac9b-b29c4ace74e9'
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org DEBUG=1 ./utils/active_signature_py.sh '4b344ac4-f8d9-11ed-ac9b-b29c4ace74e9'
+# API_URL=https://api.easycla.lfx.linuxfoundation.org DEBUG='' ./utils/active_signature_py.sh '564e571e-12d7-4857-abd4-898939accdd7'
 
 if [ -z "$1" ]
 then
