@@ -20,5 +20,7 @@ fi
 if [ ! -z "$DEBUG" ]
 then
   echo "curl -s -XGET -H 'Content-Type: application/json' \"${API_URL}/v2/user/${user_id}/active-signature\""
+  curl -s -XGET -H "Content-Type: application/json" "${API_URL}/v2/user/${user_id}/active-signature"
+else
+  curl -s -XGET -H "Content-Type: application/json" "${API_URL}/v2/user/${user_id}/active-signature" | jq -r '.'
 fi
-curl -s -XGET -H "Content-Type: application/json" "${API_URL}/v2/user/${user_id}/active-signature" | jq -r '.'
