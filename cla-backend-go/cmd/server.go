@@ -659,7 +659,7 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 		if !needToStoreUser {
 			return r
 		}
-		ctx := context.WithValue(r.Context(), "user", userModel)
+		ctx := context.WithValue(r.Context(), "user", userModel) // nolint
 		return r.WithContext(ctx)
 	}
 
@@ -678,7 +678,7 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 		if !needToStoreUser {
 			return r
 		}
-		ctx := context.WithValue(r.Context(), "user", userModel)
+		ctx := context.WithValue(r.Context(), "user", userModel) // nolint
 		return r.WithContext(ctx)
 	}
 
@@ -705,6 +705,6 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 	if !needToStoreUser {
 		return r
 	}
-	ctx := context.WithValue(r.Context(), "user", userModel)
+	ctx := context.WithValue(r.Context(), "user", userModel) // nolint
 	return r.WithContext(ctx)
 }
