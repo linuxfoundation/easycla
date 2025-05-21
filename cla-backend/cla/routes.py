@@ -1804,6 +1804,37 @@ def get_event(event_id: hug.types.text, response):
     """
     return cla.controllers.event.get_event(event_id=event_id, response=response)
 
+@hug.get("/user-from-session", versions=2)
+def user_from_session(request, response):
+    """
+    GET: /user-from-session
+    Example: https://api.dev.lfcla.com/v2/user-from-session
+    Returns user object from OAuth2 session
+    Example user returned:
+    {
+      "date_created": "2025-05-21T08:05:19.221609+0000",
+      "date_modified": "2025-05-21T08:09:19.943455+0000",
+      "lf_email": null,
+      "lf_sub": null,
+      "lf_username": null,
+      "note": null,
+      "user_company_id": null,
+      "user_emails": [
+        "test@user.com"
+      ],
+      "user_external_id": null,
+      "user_github_id": "123",
+      "user_github_username": "testuser",
+      "user_gitlab_id": null,
+      "user_gitlab_username": null,
+      "user_id": "78bb15eb-8cbf-44e6-8b64-c713db6ee51b",
+      "user_ldap_id": null,
+      "user_name": "Test User",
+      "version": "v1"
+    }
+    """
+    return cla.controllers.repository_service.user_from_session(request, response)
+
 
 @hug.post("/events", versions=1)
 def create_event(

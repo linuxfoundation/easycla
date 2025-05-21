@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -97,6 +98,7 @@ import (
 	"github.com/communitybridge/easycla/cla-backend-go/user"
 	v2ClaManager "github.com/communitybridge/easycla/cla-backend-go/v2/cla_manager"
 	v2Company "github.com/communitybridge/easycla/cla-backend-go/v2/company"
+	v2CurrentUser "github.com/communitybridge/easycla/cla-backend-go/v2/current_user"
 	v2Health "github.com/communitybridge/easycla/cla-backend-go/v2/health"
 	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
 	v2Template "github.com/communitybridge/easycla/cla-backend-go/v2/template"
@@ -296,6 +298,7 @@ func server(localMode bool) http.Handler {
 	v2ProjectService := v2Project.NewService(v1ProjectService, v1CLAGroupRepo, v1ProjectClaGroupRepo)
 	v1CompanyService := v1Company.NewService(v1CompanyRepo, configFile.CorporateConsoleV1URL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(v1CompanyService, signaturesRepo, v1CLAGroupRepo, usersRepo, v1CompanyRepo, v1ProjectClaGroupRepo, eventsService)
+	v2CurrentUserService := v2CurrentUser.NewService()
 
 	v1RepositoriesService := v1Repositories.NewService(gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo)
 	v2RepositoriesService := v2Repositories.NewService(gitV1Repository, gitV2Repository, v1ProjectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
@@ -358,6 +361,7 @@ func server(localMode bool) http.Handler {
 	gerrits.Configure(api, gerritService, v1ProjectService, eventsService)
 	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, v1ProjectClaGroupRepo)
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL, configFile.CorporateConsoleV1URL)
+	v2CurrentUser.Configure(v2API, v2CurrentUserService)
 	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)
 	v2ClaManager.Configure(v2API, v2ClaManagerService, v1CompanyService, configFile.LFXPortalURL, configFile.CorporateConsoleV2URL, v1ProjectClaGroupRepo, userRepo)
 	cla_groups.Configure(v2API, v2ClaGroupService, v1ProjectService, v1ProjectClaGroupRepo, eventsService)
@@ -371,7 +375,7 @@ func server(localMode bool) http.Handler {
 
 	userCreaterMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			createUserFromRequest(authorizer, usersService, eventsService, r)
+			r = createUserFromRequest(authorizer, usersService, eventsService, r)
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -610,32 +614,35 @@ func responseLoggingMiddleware(next http.Handler) http.Handler {
 
 // create user form http authorization token
 // this function creates user if user does not exist and token is valid
-func createUserFromRequest(authorizer auth.Authorizer, usersService users.Service, eventsService events.Service, r *http.Request) {
+func createUserFromRequest(authorizer auth.Authorizer, usersService users.Service, eventsService events.Service, r *http.Request) *http.Request {
 	f := logrus.Fields{
 		"functionName": "cmd.createUserFromRequest",
 	}
 
 	bToken := r.Header.Get("Authorization")
 	if bToken == "" {
-		return
+		return r
 	}
 	t := strings.Split(bToken, " ")
 	if len(t) != 2 {
 		log.WithFields(f).Warn("parsing of authorization header failed - expected two values separated by a space")
-		return
+		return r
 	}
 
 	// parse user from the auth token
 	claUser, err := authorizer.SecurityAuth(t[1], []string{})
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("parsing failed")
-		return
+		return r
 	}
 	f["claUserName"] = claUser.Name
 	f["claUserID"] = claUser.UserID
 	f["claUserLFUsername"] = claUser.LFUsername
 	f["claUserLFEmail"] = claUser.LFEmail
 	f["claUserEmails"] = strings.Join(claUser.Emails, ",")
+
+	// only needed if API called is /v4/user-from-token
+	needToStoreUser := r.URL.Path == "/v4/user-from-token"
 
 	// search if user exist in database by username
 	userModel, err := usersService.GetUserByLFUserName(claUser.LFUsername)
@@ -644,12 +651,16 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 			log.WithFields(f).Debug("unable to locate user by lf-email")
 		} else {
 			log.WithFields(f).WithError(err).Warn("searching user by lf-username failed")
-			return
+			return r
 		}
 	}
 	// If found - just return
 	if userModel != nil {
-		return
+		if !needToStoreUser {
+			return r
+		}
+		ctx := context.WithValue(r.Context(), "user", userModel)
+		return r.WithContext(ctx)
 	}
 
 	// search if user exist in database by username
@@ -659,12 +670,16 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 			log.WithFields(f).Debug("unable to locate user by lf-email")
 		} else {
 			log.WithFields(f).WithError(err).Warn("searching user by lf-email failed")
-			return
+			return r
 		}
 	}
 	// If found - just return
 	if userModel != nil {
-		return
+		if !needToStoreUser {
+			return r
+		}
+		ctx := context.WithValue(r.Context(), "user", userModel)
+		return r.WithContext(ctx)
 	}
 
 	// Attempt to create the user
@@ -677,7 +692,7 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 	userModel, err = usersService.CreateUser(newUser, nil)
 	if err != nil {
 		log.WithFields(f).WithField("user", newUser).WithError(err).Warn("creating new user failed")
-		return
+		return r
 	}
 
 	// Log the event
@@ -687,4 +702,9 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 		UserModel: userModel,
 		EventData: &events.UserCreatedEventData{},
 	})
+	if !needToStoreUser {
+		return r
+	}
+	ctx := context.WithValue(r.Context(), "user", userModel)
+	return r.WithContext(ctx)
 }
