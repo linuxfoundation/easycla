@@ -2,14 +2,10 @@
 # API_URL=https://[xyz].ngrok-free.app (defaults to localhost:5000)
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org
 # REDIRECT=0|1 DEBUG='' ./utils/get_user_from_session_py.sh
-# API_URL=https://api.lfcla.dev.platform.linuxfoundation.org DEBUG=1 REDIRECT=0 ./utils/get_user_from_session_py.sh 'https://contributor.easycla.lfx.linuxfoundation.org/#/cla/project/68fa91fe-51fe-41ac-a21d-e0a0bf688a53'
+# API_URL=https://api.lfcla.dev.platform.linuxfoundation.org DEBUG=1 REDIRECT=0 ./utils/get_user_from_session_py.sh 'https://contributor.easycla.lfx.linuxfoundation.org'
+# CODE=xyz STAE=xyz
 
-if [ -z "$1" ]
-then
-  echo "$0: you need to specify return URL as a 1st argument, for example: 'https://contributor.easycla.lfx.linuxfoundation.org/#/cla/project/68fa91fe-51fe-41ac-a21d-e0a0bf688a53'"
-  exit 1
-fi
-export redirect_url="$1"
+export redirect_url="${1}"
 export encoded_redirect_url=$(jq -rn --arg x "$redirect_url" '$x|@uri')
 
 if [ -z "$API_URL" ]
@@ -22,7 +18,12 @@ then
   export REDIRECT="0"
 fi
 
-API="${API_URL}/v2/user-from-session?redirect=${REDIRECT}&redirect_url=${encoded_redirect_url}"
+if ( [ -z "${CODE}" ] && [ -z "${STATE}" ] )
+then
+  export API="${API_URL}/v2/user-from-session?redirect=${REDIRECT}&redirect_url=${encoded_redirect_url}"
+else
+  export API="${API_URL}/v2/user-from-session?code=${CODE}&state=${STATE}"
+fi
 
 if [ ! -z "$DEBUG" ]
 then

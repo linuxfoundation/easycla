@@ -96,24 +96,49 @@ class GitHub(repository_service_interface.RepositoryService):
         else:
             cla.log.debug("github_models.received_activity - Ignoring unsupported action: {}".format(data["action"]))
 
-    def user_from_session(self, request, redirect, redirect_url):
-        fn = "github_models.user_from_session"  # function name
+    def user_from_session(self, request, redirect, redirect_url, state, code):
+        fn = "github_models.user_from_session"
         cla.log.debug(f"{fn} - Loading session from request: {request}...")
         session = self._get_request_session(request)
+        cla.log.debug(f"{fn} - redirect: {redirect}, redirect_url: {redirect_url}, state: {state}, code: {code}, session: {session}")
+
+        # we can already have token in the session
         if "github_oauth2_token" in session:
             cla.log.debug(f"{fn} - Using existing session GitHub OAuth2 token")
             user = self.get_or_create_user(request)
             cla.log.debug(f"{fn} - loaded user {user.to_dict()}")
             return user
+
+        # if not then we can either request a new OAuth2 GitHub authentication or user code & state from GitHub to create a session
+        if code and state:
+            session_state = None
+            if "github_oauth2_state" in session:
+                session_state = session["github_oauth2_state"]
+                cla.log.warning(f"{fn} - github_oauth2_state in current session: {session_state}")
+            else:
+                cla.log.warning(f"{fn} - github_oauth2_state not set in current session")
+            if session_state and state != session_state:
+                cla.log.warning(f"{fn} - invalid GitHub OAuth2 state {session_state} expecting {state}")
+                raise falcon.HTTPBadRequest(f"Invalid OAuth2 state: '{session_state}' != '{state}'")
+            token_url = cla.conf["GITHUB_OAUTH_TOKEN_URL"]
+            client_id = os.environ["GH_OAUTH_CLIENT_ID"]
+            client_secret = os.environ["GH_OAUTH_SECRET"]
+            try:
+                token = self._fetch_token(client_id, state, token_url, client_secret, code)
+            except Exception as err:
+                cla.log.warning(f"{fn} - GitHub OAuth2 error: {err}. Likely bad or expired code.")
+                raise falcon.HTTPBadRequest("OAuth2 code is invalid or expired")
+            cla.log.debug(f"{fn} - oauth2 token received for state {state}: {token} - storing token in session")
+            session["github_oauth2_token"] = token
+            user = self.get_or_create_user(request)
+            cla.log.debug(f"{fn} - loaded user {user.to_dict()}")
+            return user
         else:
             cla.log.debug(f"{fn} - No existing GitHub OAuth2 token - building authorization url and state")
-            if redirect_url == '':
-                cla.log.debug(f"{fn} - no redirect_url provided to redirect back after GitHub OAuth2 authorization and no session yet")
-                return None
-            authorization_url, state = self.get_github_oauth2_redirect_url_and_state(redirect_url)
+            authorization_url, new_state = self.get_github_oauth2_redirect_url_and_state(redirect_url)
             cla.log.debug(f"{fn} - Obtained GitHub OAuth2 state from authorization - storing state in the session...")
-            session["github_oauth2_state"] = state
-            cla.log.debug(f"{fn} - GitHub OAuth2 request with state {state} - sending user to {authorization_url}")
+            session["github_oauth2_state"] = new_state
+            cla.log.debug(f"{fn} - GitHub OAuth2 request with state {new_state} - sending user to {authorization_url}")
             if redirect:
                 raise falcon.HTTPFound(authorization_url)
             else:
@@ -183,8 +208,10 @@ class GitHub(repository_service_interface.RepositoryService):
         fn = "github_models.get_github_oauth2_redirect_url_and_state"
         github_oauth_url = cla.conf["GITHUB_OAUTH_AUTHORIZE_URL"]
         github_oauth_client_id = os.environ["GH_OAUTH_CLIENT_ID"]
+        if not redirect_uri:
+            redirect_uri = os.environ.get("CLA_API_BASE", "").strip() + "/v2/user-from-session"
 
-        scope = ["user"]
+        scope = ["user:email"]
         cla.log.debug(
             f"{fn} - Directing user to the github authorization url: {github_oauth_url} via "
             f"our github installation flow: {redirect_uri} "
