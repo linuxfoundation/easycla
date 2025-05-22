@@ -12,7 +12,15 @@ then
 fi
 if [ "${STAGE}" = "prod" ]
 then
+  if [ ! -z "${DEBUG}" ]
+  then
+    echo "snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o timing=false -o output_format=plain -q \"select data from fivetran_ingest.dynamodb_product_us_east_1.cla_prod_store where key = '${1}'\" | jq -r '.'"
+  fi
   snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o timing=false -o output_format=plain -q "select data from fivetran_ingest.dynamodb_product_us_east_1.cla_prod_store where key = '${1}'" | jq -r '.'
 else
+  if [ ! -z "${DEBUG}" ]
+  then
+    echo "snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o timing=false -o output_format=plain -q \"select data from fivetran_ingest.dynamodb_product_us_east1_dev.cla_dev_store where key = '${1}'\" | jq -r '.'"
+  fi
   snowsql $(cat ./snowflake.secret) -o friendly=false -o header=false -o timing=false -o output_format=plain -q "select data from fivetran_ingest.dynamodb_product_us_east1_dev.cla_dev_store where key = '${1}'" | jq -r '.'
 fi

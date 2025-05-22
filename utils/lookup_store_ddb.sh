@@ -11,4 +11,8 @@ then
   export STAGE=dev
 fi
 
+if [ ! -z "${DEBUG}" ]
+then
+  echo "aws --profile \"lfproduct-${STAGE}\" dynamodb get-item --table-name \"cla-${STAGE}-store\" --key '{\"key\": {\"S\": \"${1}\"}}' | jq -r '.'"
+fi
 aws --profile "lfproduct-${STAGE}" dynamodb get-item --table-name "cla-${STAGE}-store" --key "{\"key\": {\"S\": \"${1}\"}}" | jq -r '.'
