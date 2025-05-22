@@ -111,7 +111,6 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.debug(f"{fn} - Obtained GitHub OAuth2 state from authorization - storing state in the session...")
             session["github_oauth2_state"] = state
             cla.log.debug(f"{fn} - GitHub OAuth2 request with state {state} - sending user to {authorization_url}")
-            print(f"redirect {redirect}")
             if redirect:
                 raise falcon.HTTPFound(authorization_url)
             else:
