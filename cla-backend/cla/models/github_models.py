@@ -1853,11 +1853,13 @@ class MockGitHub(GitHub):
         return {}
 
     def get_user_data(self, session, client_id) -> dict:
-        return {"email": "test@user.com", "name": "Test User", "login": "testuser", "id": 123}
+        # LG:
+        return { "id": 20250522666, "login": "mock-user-py-20250522", "name": "Mock User Py 2025-05-22", "email": "u20250522@mock.user.py.pl" }
+        # return {"email": "test@user.com", "name": "Test User", "login": "testuser", "id": 123}
 
     def get_user_emails(self, session, client_id):
         # LG: updated MockGitHub to return emails in the same way as GitHub class
-        return ["test@user.com"]
+        return ["u20250522@mock.user.py.pl"]
         # return [{"email": "test@user.com", "verified": True, "primary": True, "visibility": "public"}]
 
     def get_pull_request(self, github_repository_id, pull_request_number, installation_id):

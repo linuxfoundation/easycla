@@ -75,6 +75,7 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 	// Get the username from the token claims
 	// LG: for V3 endpoints comment this out and set: username, name and email manually for local testing.
 	// username, name, email := "user", "Name Surname", "example@gmail.com"
+	// username, name, email := "mock-user-go-20250522", "Mock User Go 2025-05-22", "u20250522@mock.user.go.pl"
 	usernameClaim, ok := claims[a.authValidator.usernameClaim]
 	if !ok {
 		log.WithFields(f).Warnf("username not found in claims with key: %s", a.authValidator.usernameClaim)
