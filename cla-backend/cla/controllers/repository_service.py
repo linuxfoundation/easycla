@@ -6,7 +6,7 @@ Controller related to repository service provider activity.
 """
 
 import cla
-
+from falcon import HTTP_202, HTTP_404
 
 def received_activity(provider, data):
     """
@@ -34,18 +34,19 @@ def sign_request(provider, installation_id, github_repository_id, change_request
     service = cla.utils.get_repository_service(provider)
     return service.sign_request(installation_id, github_repository_id, change_request_id, request)
 
-def user_from_session(redirect, request, response=None):
+def user_from_session(redirect, redirect_url, state, code, request, response=None):
     """
     Return user from OAuth2 session
     """
     # LG: to test using MockGitHub class
     # import os
     # from cla.models.github_models import MockGitHub
-    # user = MockGitHub(os.environ["GITHUB_OAUTH_TOKEN"]).user_from_session(request)
-    user = cla.utils.get_repository_service('github').user_from_session(request, redirect)
+    # user = MockGitHub(os.environ["GITHUB_OAUTH_TOKEN"]).user_from_session(request, redirect, redirect_url, state, code)
+    user = cla.utils.get_repository_service('github').user_from_session(request, redirect, redirect_url, state, code)
     if user is None:
         response.status = HTTP_404
         return {"errors": "Cannot find user from session"}
     if isinstance(user, dict):
+        response.status = HTTP_202
         return user
     return user.to_dict()
