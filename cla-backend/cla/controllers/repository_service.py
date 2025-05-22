@@ -34,7 +34,7 @@ def sign_request(provider, installation_id, github_repository_id, change_request
     service = cla.utils.get_repository_service(provider)
     return service.sign_request(installation_id, github_repository_id, change_request_id, request)
 
-def user_from_session(request, response=None):
+def user_from_session(redirect, request, response=None):
     """
     Return user from OAuth2 session
     """
@@ -42,8 +42,10 @@ def user_from_session(request, response=None):
     # import os
     # from cla.models.github_models import MockGitHub
     # user = MockGitHub(os.environ["GITHUB_OAUTH_TOKEN"]).user_from_session(request)
-    user = cla.utils.get_repository_service('github').user_from_session(request)
+    user = cla.utils.get_repository_service('github').user_from_session(request, redirect)
     if user is None:
         response.status = HTTP_404
         return {"errors": "Cannot find user from session"}
+    if isinstance(user, dict):
+        return user
     return user.to_dict()

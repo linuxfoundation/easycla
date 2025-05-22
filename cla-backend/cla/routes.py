@@ -1833,7 +1833,9 @@ def user_from_session(request, response):
       "version": "v1"
     }
     """
-    return cla.controllers.repository_service.user_from_session(request, response)
+    raw_redirect = request.params.get('redirect', 'false').lower()
+    redirect = raw_redirect in ('1', 'true', 'yes')
+    return cla.controllers.repository_service.user_from_session(redirect, request, response)
 
 
 @hug.post("/events", versions=1)
