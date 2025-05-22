@@ -9,6 +9,7 @@
   "scripts": {
     "sls": "./node_modules/serverless/bin/serverless.js",
     "serve:dev": "./node_modules/serverless/bin/serverless.js wsgi serve -s 'dev' -r us-east-1 --verbose",
+    "serve:ext": "./node_modules/serverless/bin/serverless.js wsgi serve -s 'dev' -r us-east-1 --verbose --host '0.0.0.0'",
     "deploy:dev": "SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js deploy -s dev -r us-east-1 --verbose",
     "deploy:info:dev": "SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js info -s dev -r us-east-1 --verbose",
     "prune:dev": "SLS_DEBUG=* time ./node_modules/serverless/bin/serverless.js prune -n 10 -s dev -r us-east-1 --verbose",

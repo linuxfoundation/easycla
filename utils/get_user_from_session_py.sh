@@ -4,6 +4,10 @@
 # REDIRECT=0|1 DEBUG='' ./utils/get_user_from_session_py.sh
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org DEBUG=1 REDIRECT=0 ./utils/get_user_from_session_py.sh 'https://contributor.easycla.lfx.linuxfoundation.org'
 # CODE=xyz STAE=xyz
+# ./utils/ngrok.sh then DEBUG='' REDIRECT=0 ./utils/get_user_from_session_py.sh 'https://edc5-147-75-85-27.ngrok-free.app/v2/user-from-session'
+# yarn serve:ext:
+# DEBUG='' REDIRECT=0 ./utils/get_user_from_session_py.sh 'http://147.75.85.27:5000/v2/user-from-session'
+# yarn serve:ext && API_URL='http://147.75.85.27:5000' DEBUG='' REDIRECT=0 ./utils/get_user_from_session_py.sh 'http://147.75.85.27:5000/v2/user-from-session'
 
 export redirect_url="${1}"
 export encoded_redirect_url=$(jq -rn --arg x "$redirect_url" '$x|@uri')
