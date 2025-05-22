@@ -1895,7 +1895,7 @@ class MockGitHub(GitHub):
     def _get_request_session(self, request) -> dict:
         if self.oauth2_token:
             return {
-                "github_oauth2_token": "random-token",
+                "github_oauth2_token": "random-token", # LG: comment this out to see how Mock class woudl attempt to fetch GitHub token using state & code
                 "github_oauth2_state": "random-state",
                 "github_origin_url": "http://github/origin/url",
                 "github_installation_id": 1,
