@@ -96,7 +96,7 @@ class GitHub(repository_service_interface.RepositoryService):
         else:
             cla.log.debug("github_models.received_activity - Ignoring unsupported action: {}".format(data["action"]))
 
-    def user_from_session(self, request):
+    def user_from_session(self, request, redirect):
         fn = "github_models.user_from_session"  # function name
         cla.log.debug(f"{fn} - Loading session from request: {request}...")
         session = self._get_request_session(request)
@@ -111,7 +111,11 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.debug(f"{fn} - Obtained GitHub OAuth2 state from authorization - storing state in the session...")
             session["github_oauth2_state"] = state
             cla.log.debug(f"{fn} - GitHub OAuth2 request with state {state} - sending user to {authorization_url}")
-            raise falcon.HTTPFound(authorization_url)
+            print(f"redirect {redirect}")
+            if redirect:
+                raise falcon.HTTPFound(authorization_url)
+            else:
+                return { "redirect_url": authorization_url }
 
     def sign_request(self, installation_id, github_repository_id, change_request_id, request):
         """
