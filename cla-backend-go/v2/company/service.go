@@ -186,10 +186,23 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyMod
 			continue
 		}
 		for _, user := range sig.SignatureACL {
+			name := user.Username
+			if name == "" {
+				name = user.GithubUsername
+			}
+			if name == "" {
+				name = user.GitlabUsername
+			}
+			email := ""
+			if len(user.Emails) > 0 {
+				email = user.Emails[0]
+			}
 			claManagers = append(claManagers, &models.CompanyClaManager{
 				// DB doesn't have approved_on value
 				ApprovedOn:        sig.SignatureCreated,
 				LfUsername:        user.LfUsername,
+				Name:              name,
+				Email:             strfmt.Email(email),
 				ProjectID:         sig.ProjectID,
 				OrganizationSfid:  v1CompanyModel.CompanyExternalID,
 				OrganizationID:    v1CompanyModel.CompanyID,
