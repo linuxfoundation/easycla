@@ -1809,6 +1809,7 @@ def user_from_session(request, response):
     """
     GET: /user-from-session
     Example: https://api.dev.lfcla.com/v2/user-from-session
+    Example: https://api.dev.lfcla.com/v2/user-from-session?get_redirect_url=1
     Returns user object from OAuth2 session
     Example user returned:
     {
@@ -1833,10 +1834,13 @@ def user_from_session(request, response):
       "version": "v1"
     }
     Will 302 redirect to /v2/github/installation if there is no session and that callback will return user data then
+    WIll return 202 redirect to the same in reponse's JSON 'redirect_url' property if get_redirect_url=1 (param)
     Will return 200 and user data if there is an active GitHub session
     Can return 404 on OAuth2 errors
     """
-    return cla.controllers.repository_service.user_from_session(request, response)
+    raw_redirect = request.params.get('get_redirect_url', 'false').lower()
+    get_redirect_url = raw_redirect in ('1', 'true', 'yes')
+    return cla.controllers.repository_service.user_from_session(get_redirect_url, request, response)
 
 
 @hug.post("/events", versions=1)

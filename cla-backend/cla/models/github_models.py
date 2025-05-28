@@ -98,7 +98,7 @@ class GitHub(repository_service_interface.RepositoryService):
         else:
             cla.log.debug("github_models.received_activity - Ignoring unsupported action: {}".format(data["action"]))
 
-    def user_from_session(self, request):
+    def user_from_session(self, request, get_redirect_url):
         fn = "github_models.user_from_session"
         cla.log.debug(f"{fn} - loading session from request: {request}...")
         session = self._get_request_session(request)
@@ -118,9 +118,13 @@ class GitHub(repository_service_interface.RepositoryService):
         cla.log.debug(f"{fn} - obtained GitHub OAuth2 state from authorization - storing CSRF token in the session...")
         session["github_oauth2_state"] = csrf_token
         cla.log.debug(f"{fn} - GitHub OAuth2 request with CSRF token {csrf_token} - sending user to {authorization_url}")
-        cla.log.debug(f"{fn} - redirecting by returning 302 and redirect URL")
         # We must redirect to GitHub OAuth app for authentication, it will return you to /v2/github/installation which will handle returning user data
-        raise falcon.HTTPFound(authorization_url)
+        if get_redirect_url:
+            cla.log.debug(f"{fn} - sending redirect_url via 202 HTTP status JSON payload")
+            return { "redirect_url": authorization_url }
+        else:
+            cla.log.debug(f"{fn} - redirecting by returning 302 and redirect URL")
+            raise falcon.HTTPFound(authorization_url)
 
     def sign_request(self, installation_id, github_repository_id, change_request_id, request):
         """
