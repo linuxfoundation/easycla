@@ -7,6 +7,8 @@ Holds the GitHub repository service.
 import concurrent.futures
 import json
 import os
+import base64
+import binascii
 import threading
 import time
 import uuid
@@ -96,53 +98,29 @@ class GitHub(repository_service_interface.RepositoryService):
         else:
             cla.log.debug("github_models.received_activity - Ignoring unsupported action: {}".format(data["action"]))
 
-    def user_from_session(self, request, redirect, redirect_url, state, code):
+    def user_from_session(self, request):
         fn = "github_models.user_from_session"
-        cla.log.debug(f"{fn} - Loading session from request: {request}...")
+        cla.log.debug(f"{fn} - loading session from request: {request}...")
         session = self._get_request_session(request)
-        cla.log.debug(f"{fn} - redirect: {redirect}, redirect_url: {redirect_url}, state: {state}, code: {code}, session: {session}")
+        cla.log.debug(f"{fn} - session: {session}")
 
-        # we can already have token in the session
+        # We can already have token in the session
         if "github_oauth2_token" in session:
-            cla.log.debug(f"{fn} - Using existing session GitHub OAuth2 token")
+            cla.log.debug(f"{fn} - using existing session GitHub OAuth2 token")
             user = self.get_or_create_user(request)
-            cla.log.debug(f"{fn} - loaded user {user.to_dict()}")
+            if user is None:
+                cla.log.debug(f"{fn} - cannot find user, returning HTTP 404 status")
+            else:
+                cla.log.debug(f"{fn} - loaded user {user.to_dict()} returning HTTP 200 status")
             return user
 
-        # if not then we can either request a new OAuth2 GitHub authentication or user code & state from GitHub to create a session
-        if code and state:
-            session_state = None
-            if "github_oauth2_state" in session:
-                session_state = session["github_oauth2_state"]
-                cla.log.warning(f"{fn} - github_oauth2_state in current session: {session_state}")
-            else:
-                cla.log.warning(f"{fn} - github_oauth2_state not set in current session")
-            if session_state and state != session_state:
-                cla.log.warning(f"{fn} - invalid GitHub OAuth2 state {session_state} expecting {state}")
-                raise falcon.HTTPBadRequest(f"Invalid OAuth2 state: '{session_state}' != '{state}'")
-            token_url = cla.conf["GITHUB_OAUTH_TOKEN_URL"]
-            client_id = os.environ["GH_OAUTH_CLIENT_ID"]
-            client_secret = os.environ["GH_OAUTH_SECRET"]
-            try:
-                token = self._fetch_token(client_id, state, token_url, client_secret, code)
-            except Exception as err:
-                cla.log.warning(f"{fn} - GitHub OAuth2 error: {err}. Likely bad or expired code.")
-                raise falcon.HTTPBadRequest("OAuth2 code is invalid or expired")
-            cla.log.debug(f"{fn} - oauth2 token received for state {state}: {token} - storing token in session")
-            session["github_oauth2_token"] = token
-            user = self.get_or_create_user(request)
-            cla.log.debug(f"{fn} - loaded user {user.to_dict()}")
-            return user
-        else:
-            cla.log.debug(f"{fn} - No existing GitHub OAuth2 token - building authorization url and state")
-            authorization_url, new_state = self.get_github_oauth2_redirect_url_and_state(redirect_url)
-            cla.log.debug(f"{fn} - Obtained GitHub OAuth2 state from authorization - storing state in the session...")
-            session["github_oauth2_state"] = new_state
-            cla.log.debug(f"{fn} - GitHub OAuth2 request with state {new_state} - sending user to {authorization_url}")
-            if redirect:
-                raise falcon.HTTPFound(authorization_url)
-            else:
-                return { "redirect_url": authorization_url }
+        authorization_url, csrf_token = self.get_authorization_url_and_state(None, None, None, ["user:email"], state='user-from-session')
+        cla.log.debug(f"{fn} - obtained GitHub OAuth2 state from authorization - storing CSRF token in the session...")
+        session["github_oauth2_state"] = csrf_token
+        cla.log.debug(f"{fn} - GitHub OAuth2 request with CSRF token {csrf_token} - sending user to {authorization_url}")
+        cla.log.debug(f"{fn} - redirecting by returning 302 and redirect URL")
+        # We must redirect to GitHub OAuth app for authentication, it will return you to /v2/github/installation which will handle returning user data
+        raise falcon.HTTPFound(authorization_url)
 
     def sign_request(self, installation_id, github_repository_id, change_request_id, request):
         """
@@ -204,26 +182,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
         return session
 
-    def get_github_oauth2_redirect_url_and_state(self, redirect_uri):
-        fn = "github_models.get_github_oauth2_redirect_url_and_state"
-        github_oauth_url = cla.conf["GITHUB_OAUTH_AUTHORIZE_URL"]
-        github_oauth_client_id = os.environ["GH_OAUTH_CLIENT_ID"]
-        if not redirect_uri:
-            redirect_uri = os.environ.get("CLA_API_BASE", "").strip() + "/v2/user-from-session"
-
-        scope = ["user:email"]
-        cla.log.debug(
-            f"{fn} - Directing user to the github authorization url: {github_oauth_url} via "
-            f"our github installation flow: {redirect_uri} "
-            f"using the github oauth client id: {github_oauth_client_id[0:5]} "
-            f"with scope: {scope}"
-        )
-
-        return self._get_authorization_url_and_state(
-            client_id=github_oauth_client_id, redirect_uri=redirect_uri, scope=scope, authorize_url=github_oauth_url
-        )
-
-    def get_authorization_url_and_state(self, installation_id, github_repository_id, pull_request_number, scope):
+    def get_authorization_url_and_state(self, installation_id, github_repository_id, pull_request_number, scope, state=None):
         """
         Helper method to get the GitHub OAuth2 authorization URL and state.
 
@@ -254,14 +213,14 @@ class GitHub(repository_service_interface.RepositoryService):
         )
 
         return self._get_authorization_url_and_state(
-            client_id=github_oauth_client_id, redirect_uri=redirect_uri, scope=scope, authorize_url=github_oauth_url
+            client_id=github_oauth_client_id, redirect_uri=redirect_uri, scope=scope, authorize_url=github_oauth_url, state=state,
         )
 
-    def _get_authorization_url_and_state(self, client_id, redirect_uri, scope, authorize_url):
+    def _get_authorization_url_and_state(self, client_id, redirect_uri, scope, authorize_url, state=None):
         """
         Mockable helper method to do the fetching of the authorization URL and state from GitHub.
         """
-        return cla.utils.get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_url)
+        return cla.utils.get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_url, state)
 
     def oauth2_redirect(self, state, code, request):  # pylint: disable=too-many-arguments
         """
@@ -283,8 +242,38 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.warning(f"{fn} - github_oauth2_state not set in current session")
 
         if state != session_state:
-            cla.log.warning(f"{fn} - invalid GitHub OAuth2 state {session_state} expecting {state}")
-            raise falcon.HTTPBadRequest("Invalid OAuth2 state", state)
+            # Eventually handle user-from-session API callback
+            try:
+                state_data = json.loads(base64.urlsafe_b64decode(state.encode()).decode())
+            except (ValueError, json.JSONDecodeError, binascii.Error):
+                cla.log.warning(f"{fn} - failed to decode state: {state}, error: {err}")
+                raise falcon.HTTPBadRequest("Invalid OAuth2 state", state)
+            state_token = state_data["csrf"]
+            value = state_data["state"]
+            if value != "user-from-session":
+                cla.log.warning(f"{fn} - invalid GitHub OAuth2 state {session_state} expecting {state}, value: {value}")
+                raise falcon.HTTPBadRequest("Invalid OAuth2 state", state)
+            if state_token != session_state:
+                cla.log.warning(f"{fn} - invalid GitHub OAuth2 state {session_state} expecting {state_token} while handling user-from-session callback")
+                raise falcon.HTTPBadRequest(f"Invalid OAuth2 state")
+            cla.log.debug(f"handling user-from-session callback")
+            token_url = cla.conf["GITHUB_OAUTH_TOKEN_URL"]
+            client_id = os.environ["GH_OAUTH_CLIENT_ID"]
+            cla.log.debug(f"{fn} - using client ID {client_id}")
+            client_secret = os.environ["GH_OAUTH_SECRET"]
+            try:
+                token = self._fetch_token(client_id, state, token_url, client_secret, code)
+            except Exception as err:
+                cla.log.warning(f"{fn} - GitHub OAuth2 error: {err}. Likely bad or expired code, returning HTTP 404 state.")
+                raise falcon.HTTPBadRequest("OAuth2 code is invalid or expired")
+            cla.log.debug(f"{fn} - oauth2 token received for state {state}: {token} - storing token in session")
+            session["github_oauth2_token"] = token
+            user = self.get_or_create_user(request)
+            if user is None:
+                cla.log.debug(f"{fn} - cannot find user, returning HTTP 404 status")
+            else:
+                cla.log.debug(f"{fn} - loaded user {user.to_dict()} returning HTTP 200 status")
+            return user.to_dict()
 
         # Get session information for this request.
         cla.log.debug(f"{fn} - attempting to fetch OAuth2 token for state {state}")
@@ -1884,7 +1873,7 @@ class MockGitHub(GitHub):
     def _get_github_client(self, username, token):
         return MockGitHubClient(username, token)
 
-    def _get_authorization_url_and_state(self, client_id, redirect_uri, scope, authorize_url):
+    def _get_authorization_url_and_state(self, client_id, redirect_uri, scope, authorize_url, state=None):
         authorization_url = "http://authorization.url"
         state = "random-state-here"
         return authorization_url, state
@@ -1895,7 +1884,7 @@ class MockGitHub(GitHub):
     def _get_request_session(self, request) -> dict:
         if self.oauth2_token:
             return {
-                "github_oauth2_token": "random-token", # LG: comment this out to see how Mock class woudl attempt to fetch GitHub token using state & code
+                "github_oauth2_token": "random-token", # LG: comment this out to see how Mock class would attempt to fetch GitHub token using state & code
                 "github_oauth2_state": "random-state",
                 "github_origin_url": "http://github/origin/url",
                 "github_installation_id": 1,

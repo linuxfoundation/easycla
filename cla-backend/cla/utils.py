@@ -9,6 +9,8 @@ import inspect
 import json
 import os
 import re
+import secrets
+import base64
 import urllib.parse
 import urllib.parse as urlparse
 from datetime import datetime
@@ -1160,7 +1162,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
     return text + committers_comment
 
 
-def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_url):
+def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_url, state=None):
     """
     Helper function to get an OAuth2 session authorization URL and state.
 
@@ -1174,17 +1176,38 @@ def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_ur
     :type authorize_url: string
     """
     fn = "utils.get_authorization_url_and_state"
-    oauth = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scope)
-    authorization_url, state = oauth.authorization_url(authorize_url)
-    cla.log.debug(
-        f"{fn} - initialized a new oauth session "
-        f"using the github oauth client id: {client_id[0:5]}... "
-        f"with the redirect_uri: {redirect_uri} "
-        f"using scope of: {scope}. Obtained the "
-        f"state: {state} and the "
-        f"generated authorization_url: {authorize_url}"
-    )
-    return authorization_url, state
+    if state is None:
+        oauth = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scope)
+        authorization_url, state = oauth.authorization_url(authorize_url)
+        cla.log.debug(
+            f"{fn} - initialized a new oauth session "
+            f"using the github oauth client id: {client_id[0:5]}... "
+            f"with the redirect_uri: {redirect_uri} "
+            f"using scope of: {scope}. Obtained the "
+            f"state: {state} and the "
+            f"generated authorization_url: {authorize_url}"
+        )
+        return authorization_url, state
+    else:
+        csrf_token = secrets.token_urlsafe(16)
+        state_payload = {"csrf": csrf_token, "state": state }
+        state_json = json.dumps(state_payload)
+        encoded_state = base64.urlsafe_b64encode(state_json.encode()).decode()
+        oauth = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scope)
+        authorization_url, _ = oauth.authorization_url(authorize_url, state=encoded_state)
+
+        # Logging
+        cla.log.debug(
+            f"{fn} - initialized a new oauth session "
+            f"using the github oauth client id: {client_id[0:5]}... "
+            f"with the redirect_uri: {redirect_uri}. "
+            f"using scope of: {scope}. "
+            f"CSRF token: {csrf_token}. "
+            f"custom value: {state}. "
+            f"encoded state: {encoded_state}."
+            f"Generated authorization_url: {authorization_url}"
+        )
+        return authorization_url, csrf_token
 
 
 def fetch_token(client_id, state, token_url, client_secret, code, redirect_uri=None):  # pylint: disable=too-many-arguments
