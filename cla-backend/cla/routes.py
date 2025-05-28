@@ -1808,8 +1808,7 @@ def get_event(event_id: hug.types.text, response):
 def user_from_session(request, response):
     """
     GET: /user-from-session
-    Example: https://api.dev.lfcla.com/v2/user-from-session?redirect=0&redirect_url=localhost%3A4200
-    Example: https://api.dev.lfcla.com/v2/user-from-session?state=xyz&code=xyz
+    Example: https://api.dev.lfcla.com/v2/user-from-session
     Returns user object from OAuth2 session
     Example user returned:
     {
@@ -1833,20 +1832,11 @@ def user_from_session(request, response):
       "user_name": "Test User",
       "version": "v1"
     }
-    Can also return 302 redirect (if redirect mode is set redirect=1|yes|true)
-    Can also return 202 redirect_url for GitHub OAuth2 if redirect mode is not set (redirect=0|no|false) with payload:
-    {
-        "redirect_url": "https://github.com/login/oauth/authorize?response_type=code&client_id=38f6d46ff92b7ed04071&redirect_uri=abc&scope=user%3Aemail&state=VCshZQtMs0hPMw6XuMBBZODVaWAxXX"
-    }
-    Can also return 404 on OAuth2 errors or missing redirect_url when no session present
-    return_url should ideally be "CLA contributor console" URL + /v2/user-from-session, Github will add "?state=xyz&code=xyz"
+    Will 302 redirect to /v2/github/installation if there is no session and that callback will return user data then
+    Will return 200 and user data if there is an active GitHub session
+    Can return 404 on OAuth2 errors
     """
-    raw_redirect = request.params.get('redirect', 'false').lower()
-    redirect = raw_redirect in ('1', 'true', 'yes')
-    redirect_url = request.params.get('redirect_url', '')
-    state = request.params.get('state', '')
-    code = request.params.get('code', '')
-    return cla.controllers.repository_service.user_from_session(redirect, redirect_url, state, code, request, response)
+    return cla.controllers.repository_service.user_from_session(request, response)
 
 
 @hug.post("/events", versions=1)
