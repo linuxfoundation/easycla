@@ -1,4 +1,4 @@
-# How to check why EasyCLA is not covered
+# How to check why EasyCLA is missing signed agreement
 
 1) Open GitHub PR and check for user name: `` select * from FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST_1.CLA_PROD_USERS where data:user_github_username = '<user-name>'; ``. Note `user_id`.
 2) If user has `user_company_id` then note it and get company data: `` select * from FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST_1.CLA_PROD_COMPANIES where company_id = '<user-company-id>'; ``.
