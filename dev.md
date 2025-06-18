@@ -8,14 +8,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Prerequisites
 
-- Go 1.24.x+
-- Python 3.11
-- Node 20+
+- Go 1.24.+
+- Python 3.11, 3.12 currently not working due to known issues with lxml.
+- Node 18+
 
 ## Node Setup
 
 NodeJS is used by [serverless](https://www.serverless.com/) to facilitate
-deployment and location testing. In all but few occasions, we use NodeJS v12+.
+deployment and location testing. In all but few occasions, we use NodeJS v18+.
 
 The frontend UI still requires an older version of NodeJS - version 8. This is
 due to compatibility issues with the Angular and Ionic toolchain for the legacy
@@ -47,7 +47,7 @@ Historical and Current Endpoints:
 
 ### Install Python
 
-You will need to install a local Python 3.11+ runtime.
+You will need to install a local Python 3.11 runtime (possibly via `deadsnakes`).
 
 One easy way to install a Python runtime on a Mac is via the `pipenv` tool.
 Here, we'll use it to install a specific version of Python.  There are other
@@ -62,7 +62,7 @@ To create a new Python installation using `pipenv`, specify the specific version
 using the `--python VERSION` flag, like so:
 
 ```bash
-pipenv --python 3.7
+pipenv --python 3.11
 ```
 
 When given a Python version, like this, Pipenv will automatically scan your
@@ -78,7 +78,7 @@ We prefer to use `virtualenv`.
 pip3 install virtualenv
 ```
 
-Now setup the virtual env using python 3.6+:
+Now setup the virtual env using python 3.11:
 
 ```bash
 # Check your version and grab the appropriate path
@@ -88,7 +88,7 @@ which python
 
 # Setup the virtual env
 cd cla-backend
-virtualenv --python=/usr/local/Cellar/python3/3.7.4/bin/python3 .venv
+virtualenv --python=/usr/local/Cellar/python3/3.11.13/bin/python3 .venv
 ```
 
 This will create a `.venv` folder in the `cla-backend` project folder. We'll
@@ -113,7 +113,7 @@ This will install the dependencies in the `.venv` path.
 
 ### Notes on Ubuntu 24.04 LTS
 
-- Its python `3.12` is "too new" so the followimng steps are needed:
+- Its python `3.12` is "too new" so the followimng steps are needed to install python 3.11:
 ```
 sudo add-apt-repository ppa:deadsnakes/ppa
 sudo apt update
