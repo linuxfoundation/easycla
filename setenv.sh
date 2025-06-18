@@ -1,7 +1,7 @@
 #!/bin/bash
 
 rm -rf /tmp/aws
-cp -R /root/.aws /tmp/.aws
+cp -R ~/.aws /tmp/.aws
 
 dev_arn="$(cat ./product-contractors-role.dev.secret)"
 data="$(aws sts assume-role --role-arn ${dev_arn} --profile lfproduct --role-session-name lfproduct-dev-session)"
