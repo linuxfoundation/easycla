@@ -8,9 +8,9 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Prerequisites
 
-- Go 1.14.x
-- Python 3
-- Node 8/12+
+- Go 1.24.x+
+- Python 3.11
+- Node 20+
 
 ## Node Setup
 
@@ -47,8 +47,7 @@ Historical and Current Endpoints:
 
 ### Install Python
 
-You will need to install a local Python 3.6+ runtime - Python 3.7 will work now
-that we've updated the `hug` library. 
+You will need to install a local Python 3.11+ runtime.
 
 One easy way to install a Python runtime on a Mac is via the `pipenv` tool.
 Here, we'll use it to install a specific version of Python.  There are other
@@ -110,6 +109,20 @@ pip3 install -r requirements.txt
 ```
 
 This will install the dependencies in the `.venv` path.
+
+
+### Notes on Ubuntu 24.04 LTS
+
+- Its python `3.12` is "too new" so the followimng steps are needed:
+```
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.11 python3.11-venv python3.11-dev
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
 
 ### Setup Environment Variables
 
@@ -187,6 +200,8 @@ This will install the `serverless` tool and plugins.
 # You can simply run this launcher:
 # ok to use node v12+
 yarn serve:dev
+# or to start on 0.0.0.0 IP:
+yarn serve:ext
 
 # Or run it using this approach - points to the DEV database/environment
 node_modules/serverless/bin/serverless wsgi serve -s 'dev' 
