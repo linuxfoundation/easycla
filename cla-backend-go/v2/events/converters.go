@@ -4,8 +4,8 @@
 package events
 
 import (
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/jinzhu/copier"
 )
 

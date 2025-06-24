@@ -8,7 +8,7 @@ import (
 
 	emailevent "github.com/LF-Engineering/lfx-models/models/email"
 	"github.com/LF-Engineering/lfx-models/models/event"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 )

@@ -6,7 +6,7 @@ package cla_manager
 import (
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/models"
 
 	"github.com/sirupsen/logrus"
 
@@ -17,8 +17,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/gofrs/uuid"
 )
 

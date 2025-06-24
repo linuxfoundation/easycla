@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/bmizerany/assert"
-	"github.com/communitybridge/easycla/cla-backend-go/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 	"github.com/golang/mock/gomock"
 	"github.com/shurcooL/githubv4"
 )

@@ -8,19 +8,19 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
-	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
-	user_service "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
-	userServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/user-service/models"
+	project_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
+	user_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
+	userServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	eventOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/events"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // constants

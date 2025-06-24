@@ -11,8 +11,8 @@ package mock
 import (
 	reflect "reflect"
 
-	models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	events "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
+	models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	events "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 	gomock "github.com/golang/mock/gomock"
 )
 

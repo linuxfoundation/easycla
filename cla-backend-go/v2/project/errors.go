@@ -6,7 +6,7 @@ package project
 import (
 	"errors"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 )
 
 // errors

@@ -6,11 +6,11 @@ package tests
 import (
 	"testing"
 
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
-	"github.com/communitybridge/easycla/cla-backend-go/token"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	acs_service "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
+	"github.com/linuxfoundation/easycla/cla-backend-go/token"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )

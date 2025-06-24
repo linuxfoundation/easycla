@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	projects_cla_groups "github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	projects_cla_groups "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	gomock "github.com/golang/mock/gomock"
 )
 

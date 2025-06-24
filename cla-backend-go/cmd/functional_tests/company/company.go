@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/test_models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/test_models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/verdverm/frisby"
 )
 

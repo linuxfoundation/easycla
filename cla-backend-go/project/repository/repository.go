@@ -11,18 +11,18 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project/common"
-	models2 "github.com/communitybridge/easycla/cla-backend-go/project/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/common"
+	models2 "github.com/linuxfoundation/easycla/cla-backend-go/project/models"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gerrits"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/project"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/project"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/gofrs/uuid"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -30,8 +30,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // errors

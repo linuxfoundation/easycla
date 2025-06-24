@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/stretchr/testify/assert"
 )
 

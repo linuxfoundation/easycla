@@ -4,7 +4,7 @@
 package common
 
 import (
-	models2 "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	models2 "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 )
 
 // GitLabOrganization is data model for gitlab organizations

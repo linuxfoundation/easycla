@@ -8,8 +8,8 @@ import (
 	"flag"
 	"os"
 
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	gitlab_api "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/xanzy/go-gitlab"
 )
 

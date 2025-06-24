@@ -13,7 +13,7 @@ fi
 if [ ! -z "$GO" ]
 then
   cd cla-backend-go && make test
-  # go test github.com/communitybridge/easycla/cla-backend-go/signatures
+  # go test github.com/linuxfoundation/easycla/cla-backend-go/signatures
   cd ..
 else
   echo "$0: skipping golang backend tests, specify GO=1 to run them"

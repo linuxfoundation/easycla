@@ -12,10 +12,10 @@ import (
 	context "context"
 	reflect "reflect"
 
-	events "github.com/communitybridge/easycla/cla-backend-go/events"
-	models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	events0 "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
-	projects_cla_groups "github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	events "github.com/linuxfoundation/easycla/cla-backend-go/events"
+	models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	events0 "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/events"
+	projects_cla_groups "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	gomock "github.com/golang/mock/gomock"
 )
 

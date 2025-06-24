@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
-	repositoriesmock "github.com/communitybridge/easycla/cla-backend-go/repositories/mock"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
+	repositoriesmock "github.com/linuxfoundation/easycla/cla-backend-go/repositories/mock"
 	"github.com/golang/mock/gomock"
 )
 

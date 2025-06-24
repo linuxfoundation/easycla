@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_sign"
-	gitlabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_sign"
+	gitlabApi "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/gofrs/uuid"
@@ -22,7 +22,7 @@ import (
 	"golang.org/x/oauth2"
 	oauth_gitlab "golang.org/x/oauth2/gitlab"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 const (

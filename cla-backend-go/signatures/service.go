@@ -13,27 +13,27 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
-	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	gitlab_api "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
+	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github"
-	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	githubpkg "github.com/google/go-github/v37/github"
 	"golang.org/x/oauth2"
 )

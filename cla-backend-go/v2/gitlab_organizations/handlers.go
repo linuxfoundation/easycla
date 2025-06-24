@@ -12,26 +12,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/common"
 
 	"github.com/go-openapi/runtime"
 
-	projectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
-	gitlabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
+	gitlabApi "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
 	"github.com/gofrs/uuid"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_organizations"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/savaki/dynastore"
 )

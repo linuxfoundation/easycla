@@ -7,13 +7,13 @@ import (
 	"context"
 	"time"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	eventOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 	"github.com/go-openapi/strfmt"
 )
 

@@ -5,9 +5,9 @@ package dynamo_events
 
 import (
 	"github.com/aws/aws-lambda-go/events"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	"github.com/sirupsen/logrus"
 )
 

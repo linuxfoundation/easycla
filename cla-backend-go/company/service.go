@@ -14,16 +14,16 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/user"
-	organization_service "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
-	orgServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/user"
+	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	orgServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 )
 
 type service struct {

@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/strfmt"
 
 	// "encoding/json"
@@ -21,15 +21,15 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/store"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	gitlab_api "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/common"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/gitlab_organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/store"
 	"github.com/xanzy/go-gitlab"
 )
 

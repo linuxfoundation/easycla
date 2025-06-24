@@ -6,7 +6,7 @@ package gitlab
 import (
 	"sync"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // App is a wrapper for the GitLab configuration items

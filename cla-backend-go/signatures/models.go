@@ -4,8 +4,8 @@
 package signatures
 
 import (
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	v2Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 )
 
 // simpleUserInfoModel is a  simple/temp user model to consolidate the email list, GitHub username list, and GitLab username list

@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/aws/aws-lambda-go/events"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // This function is useful for generating dynamodb events for GitlabOrg testing, the output of this function is used as

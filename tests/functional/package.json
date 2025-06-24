@@ -13,14 +13,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/communitybridge/easycla.git"
+    "url": "git+https://github.com/linuxfoundation/easycla.git"
   },
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/communitybridge/easycla/issues"
+    "url": "https://github.com/linuxfoundation/easycla/issues"
   },
-  "homepage": "https://github.com/communitybridge/easycla#readme",
+  "homepage": "https://github.com/linuxfoundation/easycla#readme",
   "devDependencies": {
     "@types/node": "^20.5.0",
     "cypress": "^12.17.3",

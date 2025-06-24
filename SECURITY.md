@@ -11,4 +11,4 @@ The following versions are currently being supported with security updates.
 
 ## Reporting a Vulnerability
 
-To report a vulnerability, create a new [GitHub issue](https://github.com/communitybridge/easycla/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc).
+To report a vulnerability, create a new [GitHub issue](https://github.com/linuxfoundation/easycla/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc).

@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 )

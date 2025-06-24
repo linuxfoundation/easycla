@@ -7,22 +7,22 @@ import (
 	"context"
 	"sync"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project/common"
-	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/common"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
 
-	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/project"
-	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/project"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gerrits"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // Service interface defines the project service methods/functions

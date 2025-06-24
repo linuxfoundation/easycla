@@ -4,9 +4,9 @@
 package health
 
 import (
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/health"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/health"
 	"github.com/go-openapi/runtime/middleware"
 )
 

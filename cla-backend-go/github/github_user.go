@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/google/go-github/v37/github"
 )

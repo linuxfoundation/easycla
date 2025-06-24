@@ -9,21 +9,21 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/v2/acs-service/client/role"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service/client/role"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/acs-service/client/object_type"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service/client/object_type"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/sirupsen/logrus"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/token"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 
-	"github.com/communitybridge/easycla/cla-backend-go/v2/acs-service/client"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/acs-service/client/invite"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/acs-service/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service/client"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service/client/invite"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service/models"
 	runtimeClient "github.com/go-openapi/runtime/client"
 
 	"errors"

@@ -7,32 +7,32 @@ import (
 	"context"
 	"fmt"
 
-	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
 	"github.com/go-openapi/strfmt"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 
-	user_service "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
+	user_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/emails"
+	"github.com/linuxfoundation/easycla/cla-backend-go/emails"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/cla_manager"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/cla_manager"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-sdk-go/aws"
-	sigAPI "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
-	"github.com/communitybridge/easycla/cla-backend-go/signatures"
+	sigAPI "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/user"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/user"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	"github.com/go-openapi/runtime/middleware"
 )
 

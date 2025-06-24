@@ -10,19 +10,19 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/sirupsen/logrus"
 
 	"github.com/aws/aws-sdk-go/aws"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/token"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/token"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 	runtimeClient "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
 )

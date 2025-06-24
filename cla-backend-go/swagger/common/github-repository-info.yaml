@@ -14,4 +14,4 @@ properties:
     example: "github"
   repositoryUrl:
     type: string
-    example: "https://github.com/communitybridge/easycla"
+    example: "https://github.com/linuxfoundation/easycla"

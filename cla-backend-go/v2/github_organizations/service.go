@@ -10,20 +10,20 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/sirupsen/logrus"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	v1GithubOrg "github.com/communitybridge/easycla/cla-backend-go/github_organizations"
-	gitV1Repository "github.com/communitybridge/easycla/cla-backend-go/repositories"
-	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	v1GithubOrg "github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
+	gitV1Repository "github.com/linuxfoundation/easycla/cla-backend-go/repositories"
+	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	"github.com/jinzhu/copier"
 )
 

@@ -9,20 +9,20 @@ import (
 	"fmt"
 	"strings"
 
-	organization_service "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
+	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 
 	"github.com/aws/aws-sdk-go/aws"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/company"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	"github.com/go-openapi/runtime/middleware"
 )
 

@@ -6,8 +6,8 @@ package tests
 import (
 	"testing"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/project-service/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
 	"github.com/go-openapi/strfmt"
 	"github.com/stretchr/testify/assert"
 )

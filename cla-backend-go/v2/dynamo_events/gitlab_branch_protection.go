@@ -9,10 +9,10 @@ import (
 	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+	gitlab_api "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/common"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )

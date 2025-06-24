@@ -10,23 +10,23 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/go-openapi/runtime"
 
 	"github.com/aws/aws-sdk-go/aws"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	v1Company "github.com/communitybridge/easycla/cla-backend-go/company"
-	v1Events "github.com/communitybridge/easycla/cla-backend-go/events"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/events"
-	v1ProjectService "github.com/communitybridge/easycla/cla-backend-go/project/service"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	v1Company "github.com/linuxfoundation/easycla/cla-backend-go/company"
+	v1Events "github.com/linuxfoundation/easycla/cla-backend-go/events"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/events"
+	v1ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime/middleware"
 )
 

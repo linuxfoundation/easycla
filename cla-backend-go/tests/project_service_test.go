@@ -9,10 +9,10 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	"github.com/communitybridge/easycla/cla-backend-go/token"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	"github.com/linuxfoundation/easycla/cla-backend-go/token"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	project_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	"github.com/stretchr/testify/assert"
 )
 

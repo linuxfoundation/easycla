@@ -10,12 +10,12 @@ import (
 	"strings"
 	"sync"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	v2AcsService "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
-	v2OrgService "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
-	v2UserService "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	v2AcsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
+	v2OrgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
+	v2UserService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 	"github.com/sirupsen/logrus"
 )
 

@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/sirupsen/logrus"
 )
 

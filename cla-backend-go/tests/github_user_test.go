@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github"
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )

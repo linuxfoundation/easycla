@@ -9,32 +9,32 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
 
-	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/common"
 
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	gitLabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	gitLabApi "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github/branch_protection"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/go-openapi/swag"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 
 	"github.com/aws/aws-sdk-go/aws"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	v1Repositories "github.com/communitybridge/easycla/cla-backend-go/repositories"
-	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	v2Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	v1Repositories "github.com/linuxfoundation/easycla/cla-backend-go/repositories"
+	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 )
 
 // ServiceInterface contains functions of the repositories service

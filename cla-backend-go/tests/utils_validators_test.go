@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/gofrs/uuid"
 
 	"github.com/stretchr/testify/assert"

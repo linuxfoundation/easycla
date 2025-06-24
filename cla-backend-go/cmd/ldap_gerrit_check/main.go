@@ -15,11 +15,11 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	// "github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	eventOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/events"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	// "github.com/linuxfoundation/easycla/cla-backend-go/users"
 )
 
 var awsSession = session.Must(session.NewSession(&aws.Config{}))

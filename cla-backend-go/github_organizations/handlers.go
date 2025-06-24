@@ -8,16 +8,16 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/github_organizations"
-	"github.com/communitybridge/easycla/cla-backend-go/github"
-	"github.com/communitybridge/easycla/cla-backend-go/user"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	v2ProjectServiceClient "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/client/project"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/github_organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/user"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	v2ProjectServiceClient "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client/project"
 	"github.com/go-openapi/runtime/middleware"
 )
 

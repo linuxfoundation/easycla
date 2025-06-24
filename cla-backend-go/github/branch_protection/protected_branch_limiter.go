@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 	githubpkg "github.com/google/go-github/v37/github"
 	"github.com/shurcooL/githubv4"
 	"go.uber.org/ratelimit"

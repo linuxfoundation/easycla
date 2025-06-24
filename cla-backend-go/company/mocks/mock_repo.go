@@ -11,9 +11,9 @@ import (
 	context "context"
 	reflect "reflect"
 
-	company "github.com/communitybridge/easycla/cla-backend-go/company"
-	models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	user "github.com/communitybridge/easycla/cla-backend-go/user"
+	company "github.com/linuxfoundation/easycla/cla-backend-go/company"
+	models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	user "github.com/linuxfoundation/easycla/cla-backend-go/user"
 	gomock "github.com/golang/mock/gomock"
 )
 
