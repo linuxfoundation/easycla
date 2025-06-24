@@ -26,6 +26,7 @@ import (
 	sigAPI "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/company"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
@@ -33,7 +34,6 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // isValidUser is a helper function to determine if the user object is valid

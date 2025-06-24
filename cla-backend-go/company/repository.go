@@ -12,8 +12,8 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 
-	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/strfmt"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"

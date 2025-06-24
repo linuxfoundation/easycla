@@ -12,9 +12,9 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	eventOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/events"
-	"github.com/go-openapi/strfmt"
 )
 
 // mockRepository data model

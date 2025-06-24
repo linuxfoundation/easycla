@@ -15,6 +15,8 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/go-openapi/runtime/middleware"
+	"github.com/jinzhu/copier"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
@@ -22,8 +24,6 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/gerrits"
 	v1Gerrits "github.com/linuxfoundation/easycla/cla-backend-go/gerrits"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/runtime/middleware"
-	"github.com/jinzhu/copier"
 )
 
 const decodeErrorMsg = "unable to decode response as a v2 model"

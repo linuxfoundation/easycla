@@ -4,12 +4,12 @@
 package events
 
 import (
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
 	eventOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure setups handlers on api with service

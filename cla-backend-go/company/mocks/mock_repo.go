@@ -11,10 +11,10 @@ import (
 	context "context"
 	reflect "reflect"
 
+	gomock "github.com/golang/mock/gomock"
 	company "github.com/linuxfoundation/easycla/cla-backend-go/company"
 	models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	user "github.com/linuxfoundation/easycla/cla-backend-go/user"
-	gomock "github.com/golang/mock/gomock"
 )
 
 // MockIRepository is a mock of IRepository interface.

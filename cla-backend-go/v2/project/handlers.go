@@ -20,13 +20,13 @@ import (
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	v1ProjectOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/project"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/project"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure establishes the middleware handlers for the project service

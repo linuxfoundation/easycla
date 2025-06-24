@@ -14,6 +14,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/go-openapi/runtime"
+	"github.com/go-openapi/runtime/middleware"
+	"github.com/jinzhu/copier"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	v1Events "github.com/linuxfoundation/easycla/cla-backend-go/events"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
@@ -23,9 +26,6 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	v1Template "github.com/linuxfoundation/easycla/cla-backend-go/template"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/runtime"
-	"github.com/go-openapi/runtime/middleware"
-	"github.com/jinzhu/copier"
 )
 
 // Configure API call

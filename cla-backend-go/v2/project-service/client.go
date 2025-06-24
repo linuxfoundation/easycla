@@ -17,12 +17,12 @@ import (
 
 	"github.com/go-openapi/runtime"
 
+	runtimeClient "github.com/go-openapi/runtime/client"
+	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client/project"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
-	runtimeClient "github.com/go-openapi/runtime/client"
-	"github.com/go-openapi/strfmt"
 )
 
 // constants

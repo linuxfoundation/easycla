@@ -18,12 +18,12 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/sign"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 var (

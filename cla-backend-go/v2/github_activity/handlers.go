@@ -13,12 +13,12 @@ import (
 
 	"github.com/google/go-github/v37/github" // with go modules enabled (GO111MODULE=on or outside GOPATH)0:w
 
+	"github.com/go-openapi/runtime/middleware"
+	"github.com/gofrs/uuid"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/github_activity"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/runtime/middleware"
-	"github.com/gofrs/uuid"
 )
 
 // signatureCheckMiddleware is used to get access to raw http request so can do the

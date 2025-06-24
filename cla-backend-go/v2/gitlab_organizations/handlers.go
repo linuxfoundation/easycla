@@ -18,9 +18,9 @@ import (
 
 	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 
+	"github.com/gofrs/uuid"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_activity"
 	gitlabApi "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
-	"github.com/gofrs/uuid"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
@@ -28,11 +28,11 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_organizations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/runtime/middleware"
 	"github.com/savaki/dynastore"
 )
 

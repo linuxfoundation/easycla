@@ -12,11 +12,11 @@ import (
 	reflect "reflect"
 	sync "sync"
 
+	gomock "github.com/golang/mock/gomock"
 	events "github.com/linuxfoundation/easycla/cla-backend-go/events"
 	models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	signatures "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	signatures0 "github.com/linuxfoundation/easycla/cla-backend-go/signatures"
-	gomock "github.com/golang/mock/gomock"
 )
 
 // MockSignatureRepository is a mock of SignatureRepository interface.

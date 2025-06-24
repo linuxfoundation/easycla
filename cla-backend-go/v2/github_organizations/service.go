@@ -19,12 +19,12 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
+	"github.com/jinzhu/copier"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	v1GithubOrg "github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
 	gitV1Repository "github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
-	"github.com/jinzhu/copier"
 )
 
 func v2GithubOrganizationModel(in *v1Models.GithubOrganization) (*models.GithubOrganization, error) {

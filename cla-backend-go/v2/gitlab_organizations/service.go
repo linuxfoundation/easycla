@@ -25,9 +25,9 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/common"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 	gitlabApi "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
-	"github.com/go-openapi/strfmt"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"

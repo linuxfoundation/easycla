@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-openapi/strfmt"
+	"github.com/gofrs/uuid"
 	"github.com/linuxfoundation/easycla/cla-backend-go/emails"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gerrits"
@@ -31,8 +33,6 @@ import (
 	gitlab_activity "github.com/linuxfoundation/easycla/cla-backend-go/v2/gitlab-activity"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/gitlab_organizations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/store"
-	"github.com/go-openapi/strfmt"
-	"github.com/gofrs/uuid"
 
 	"github.com/sirupsen/logrus"
 

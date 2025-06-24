@@ -6,9 +6,9 @@ package sign
 import (
 	"time"
 
+	"github.com/golang-jwt/jwt"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/golang-jwt/jwt"
 	"github.com/sirupsen/logrus"
 )
 

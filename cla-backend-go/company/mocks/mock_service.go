@@ -11,9 +11,9 @@ import (
 	context "context"
 	reflect "reflect"
 
+	gomock "github.com/golang/mock/gomock"
 	company "github.com/linuxfoundation/easycla/cla-backend-go/company"
 	models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
-	gomock "github.com/golang/mock/gomock"
 )
 
 // MockIService is a mock of IService interface.

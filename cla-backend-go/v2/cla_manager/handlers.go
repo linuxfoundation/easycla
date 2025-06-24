@@ -21,8 +21,8 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/cla_manager"
 	v1User "github.com/linuxfoundation/easycla/cla-backend-go/user"
 
-	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/go-openapi/runtime/middleware"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 const (

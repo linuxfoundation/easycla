@@ -12,9 +12,9 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	project_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 
+	"github.com/imroc/req"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/token"
-	"github.com/imroc/req"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 

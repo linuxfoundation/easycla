@@ -7,13 +7,13 @@ import (
 	"context"
 	"strings"
 
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/gerrits"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // ProjectService contains Project methods

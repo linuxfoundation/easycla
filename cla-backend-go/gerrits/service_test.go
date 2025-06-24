@@ -7,9 +7,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	gerritsMock "github.com/linuxfoundation/easycla/cla-backend-go/gerrits/mocks"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 )
 

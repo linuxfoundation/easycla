@@ -7,8 +7,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/strfmt"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	// "encoding/json"
 	"errors"

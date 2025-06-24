@@ -10,13 +10,13 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/go-openapi/runtime/middleware"
 	v1Company "github.com/linuxfoundation/easycla/cla-backend-go/company"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/metrics"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure setups handlers on api with service

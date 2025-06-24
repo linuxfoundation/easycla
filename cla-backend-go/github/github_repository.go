@@ -15,8 +15,8 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
-	"github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/google/go-github/v37/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 var (

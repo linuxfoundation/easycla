@@ -11,8 +11,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/gofrs/uuid"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"

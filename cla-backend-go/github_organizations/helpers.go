@@ -9,11 +9,11 @@ import (
 	netURL "net/url"
 	"sync"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/strfmt"
 	"github.com/sirupsen/logrus"
 )
 

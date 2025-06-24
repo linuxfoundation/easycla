@@ -35,9 +35,9 @@ import (
 
 	"github.com/gofrs/uuid"
 
+	openapi_runtime "github.com/go-openapi/runtime"
 	"github.com/linuxfoundation/easycla/cla-backend-go/approval_list"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/cla_groups"
-	openapi_runtime "github.com/go-openapi/runtime"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 

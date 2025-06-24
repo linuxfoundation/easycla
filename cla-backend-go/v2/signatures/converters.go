@@ -8,12 +8,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jinzhu/copier"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/approvals"
-	"github.com/jinzhu/copier"
 	"github.com/sirupsen/logrus"
 )
 

@@ -6,10 +6,10 @@ package company
 import (
 	"context"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/strfmt"
 	"github.com/sirupsen/logrus"
 )
 

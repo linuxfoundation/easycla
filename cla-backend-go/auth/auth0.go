@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"path"
 
-	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/golang-jwt/jwt/v4"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // Validator data model

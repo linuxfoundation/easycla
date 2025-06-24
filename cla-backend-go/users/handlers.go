@@ -10,13 +10,13 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/users"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure setups handlers on api with service

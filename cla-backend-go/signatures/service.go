@@ -33,8 +33,8 @@ import (
 
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	githubpkg "github.com/google/go-github/v37/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"golang.org/x/oauth2"
 )
 

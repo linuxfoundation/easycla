@@ -4,9 +4,9 @@
 package docs
 
 import (
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/docs"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure setups handlers on api with Service

@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // validateApprovalListInput is a helper function to validate the update approval list input parameters

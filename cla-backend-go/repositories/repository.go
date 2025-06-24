@@ -12,8 +12,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/gofrs/uuid"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 

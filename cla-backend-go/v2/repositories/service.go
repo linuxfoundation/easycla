@@ -21,8 +21,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/go-openapi/swag"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 

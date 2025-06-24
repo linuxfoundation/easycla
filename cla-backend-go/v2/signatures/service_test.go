@@ -13,12 +13,12 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	// mock_signatures "github.com/linuxfoundation/easycla/cla-backend-go/v2/signatures/mock_v1_signatures"
+	"github.com/golang/mock/gomock"
 	mock_company "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
 	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
 	mock_project "github.com/linuxfoundation/easycla/cla-backend-go/project/mocks"
 	mock_v1_signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures/mocks"
 	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/v2/signatures/mock_users"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 )
 

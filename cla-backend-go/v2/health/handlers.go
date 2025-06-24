@@ -4,13 +4,13 @@
 package health
 
 import (
+	"github.com/go-openapi/runtime/middleware"
+	"github.com/jinzhu/copier"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/health"
 	v1Health "github.com/linuxfoundation/easycla/cla-backend-go/health"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/runtime/middleware"
-	"github.com/jinzhu/copier"
 )
 
 // Configure setups handlers on api with service

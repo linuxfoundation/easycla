@@ -21,10 +21,10 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 
+	runtimeClient "github.com/go-openapi/runtime/client"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service/client"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service/client/invite"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service/models"
-	runtimeClient "github.com/go-openapi/runtime/client"
 
 	"errors"
 

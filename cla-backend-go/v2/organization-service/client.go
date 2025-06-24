@@ -18,13 +18,13 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 
+	runtimeClient "github.com/go-openapi/runtime/client"
+	"github.com/go-openapi/strfmt"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
-	runtimeClient "github.com/go-openapi/runtime/client"
-	"github.com/go-openapi/strfmt"
 )
 
 // Client is client for organization_service

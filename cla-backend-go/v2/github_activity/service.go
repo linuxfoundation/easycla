@@ -25,8 +25,8 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 
-	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/google/go-github/v37/github"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // Service is responsible for handling the github activity events

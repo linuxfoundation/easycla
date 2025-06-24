@@ -18,12 +18,12 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/client/staff"
 
 	"github.com/aws/aws-sdk-go/aws"
+	runtimeClient "github.com/go-openapi/runtime/client"
+	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/client"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/client/user"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
-	runtimeClient "github.com/go-openapi/runtime/client"
-	"github.com/go-openapi/strfmt"
 )
 
 var (

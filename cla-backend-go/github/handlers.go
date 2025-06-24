@@ -14,13 +14,13 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 
-	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
-	gh "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/github"
-	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/gofrs/uuid"
 	ghLib "github.com/google/go-github/v37/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
+	gh "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/github"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/savaki/dynastore"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"

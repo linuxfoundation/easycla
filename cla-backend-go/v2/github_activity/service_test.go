@@ -8,13 +8,13 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/golang/mock/gomock"
+	"github.com/google/go-github/v37/github"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	eventsMock "github.com/linuxfoundation/easycla/cla-backend-go/events/mock"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	githubOrgMock "github.com/linuxfoundation/easycla/cla-backend-go/github_organizations/mock"
 	"github.com/linuxfoundation/easycla/cla-backend-go/repositories/mock"
-	"github.com/golang/mock/gomock"
-	"github.com/google/go-github/v37/github"
 	"github.com/stretchr/testify/assert"
 )
 

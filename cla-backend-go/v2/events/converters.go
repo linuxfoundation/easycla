@@ -4,9 +4,9 @@
 package events
 
 import (
+	"github.com/jinzhu/copier"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
-	"github.com/jinzhu/copier"
 )
 
 func v2EventList(eventList *v1Models.EventList) (*models.EventList, error) {

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/gofrs/uuid"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/stretchr/testify/assert"
 )

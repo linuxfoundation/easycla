@@ -10,6 +10,7 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
@@ -18,7 +19,6 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	v2ProjectServiceClient "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client/project"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure setups handlers on api with service

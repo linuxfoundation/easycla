@@ -19,6 +19,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/go-openapi/runtime/middleware"
 	v1Company "github.com/linuxfoundation/easycla/cla-backend-go/company"
 	v1Events "github.com/linuxfoundation/easycla/cla-backend-go/events"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
@@ -27,7 +28,6 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/events"
 	v1ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure setups handlers on api with service

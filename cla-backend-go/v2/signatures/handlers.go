@@ -29,6 +29,8 @@ import (
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 
+	"github.com/go-openapi/runtime/middleware"
+	"github.com/jinzhu/copier"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	v1Signatures "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
@@ -36,8 +38,6 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	signatureService "github.com/linuxfoundation/easycla/cla-backend-go/signatures"
-	"github.com/go-openapi/runtime/middleware"
-	"github.com/jinzhu/copier"
 	"github.com/savaki/dynastore"
 )
 

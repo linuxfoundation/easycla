@@ -10,9 +10,9 @@ package mock_users
 import (
 	reflect "reflect"
 
+	gomock "github.com/golang/mock/gomock"
 	models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	user "github.com/linuxfoundation/easycla/cla-backend-go/user"
-	gomock "github.com/golang/mock/gomock"
 )
 
 // MockService is a mock of Service interface.

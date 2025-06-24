@@ -22,8 +22,8 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/project"
 
-	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/gofrs/uuid"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"

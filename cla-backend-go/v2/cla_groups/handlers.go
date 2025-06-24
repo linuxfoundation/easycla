@@ -23,6 +23,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/cla_group"
@@ -31,7 +32,6 @@ import (
 	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	v2ProjectServiceClient "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client/project"
 	v2ProjectServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
-	"github.com/go-openapi/runtime/middleware"
 )
 
 // Configure configures the cla group api

@@ -4,10 +4,10 @@
 package signatures
 
 import (
+	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
-	"github.com/go-openapi/strfmt"
 )
 
 // getAddEmailContributors is a helper function to lookup the contributors impacted by the Approval List update

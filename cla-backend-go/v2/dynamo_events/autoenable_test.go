@@ -12,9 +12,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/golang/mock/gomock"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
 	repositoriesmock "github.com/linuxfoundation/easycla/cla-backend-go/repositories/mock"
-	"github.com/golang/mock/gomock"
 )
 
 func TestAutoEnableServiceProvider_AutoEnabledForGithubOrg(t *testing.T) {
