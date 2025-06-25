@@ -49,6 +49,7 @@ def process_data(request, response):
     later on in the other handlers, currently only active on /github/activity
     endpoint because it's an expensive operation.
     """
+    cla.log.info('LG:api-request-path:' + request.path)
     if "/github/activity" in request.path:
         body = request.bounded_stream.read()
         request.bounded_stream.read = lambda: body
