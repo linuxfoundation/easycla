@@ -3,6 +3,11 @@
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org
 # DEBUG='' ./utils/get_user_from_token_go.sh
 # Note: To run manually see cla-backend-go/auth/authorizer.go:SecurityAuth() and update accordingly 'LG:'
+# Or generate a real token using ... and the edit 'cla-backend-go/cmd/server.go' - look for "LG: to test with manual tokens"
+# Or to get a real user data:
+# on local (non remote) computer: ~/get_oauth_token.sh (or ~/get_oauth_token_prod.sh) (will open browser, authenticate to LF, and return token data)
+# edit 'cla-backend-go/cmd/server.go' - look for "LG: to test with manual tokens", then 'cla-backend-go/auth/authorizer.go': LG: to allow local testing", then run ./bin/cla
+# then TOKEN='value from the get_oauth_token.sh script' DEBUG='' ./utils/get_user_from_token_go.sh
 
 if [ -z "$TOKEN" ]
 then

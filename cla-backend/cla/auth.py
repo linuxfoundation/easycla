@@ -11,6 +11,9 @@ from jose import jwt
 
 import cla
 
+# LG: for local environment override
+# os.environ["AUTH0_USERNAME_CLAIM"] = os.getenv("AUTH0_USERNAME_CLAIM_CLI", os.environ["AUTH0_USERNAME_CLAIM"])
+
 auth0_base_url = os.environ.get('AUTH0_DOMAIN', '')
 auth0_username_claim = os.environ.get('AUTH0_USERNAME_CLAIM', '')
 algorithms = [os.environ.get('AUTH0_ALGORITHM', '')]
@@ -95,6 +98,8 @@ def authenticate_user(headers):
                 "n": key["n"],
                 "e": key["e"]
             }
+    # print("Token kid:", unverified_header["kid"])
+    # print("JWKS kids:", [key["kid"] for key in jwks["keys"]])
     if rsa_key:
         try:
             payload = jwt.decode(
@@ -118,7 +123,9 @@ def authenticate_user(headers):
 
         username = payload.get(auth0_username_claim)
         if username is None:
-            raise AuthError('username not found')
+            # LG: to have more info
+            # raise AuthError(f"username not found in {auth0_username_claim}")
+            raise AuthError('username claim not found')
 
         auth_user = AuthUser(payload)
 

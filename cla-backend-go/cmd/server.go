@@ -235,6 +235,8 @@ func server(localMode bool) http.Handler {
 		log.WithFields(f).WithError(err).Panic("unable to setup docraptor client")
 	}
 
+	// LG: to test with manual tokens
+	// configFile.Auth0.UsernameClaim = "http://lfx.dev/claims/username"
 	authValidator, err := auth.NewAuthValidator(
 		configFile.Auth0.Domain,
 		configFile.Auth0.ClientID,

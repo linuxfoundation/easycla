@@ -89,6 +89,10 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 	}
 	f["username"] = username
 
+	// LG: to allow local testing
+	// a.authValidator.nameClaim = "http://lfx.dev/claims/username"
+	// a.authValidator.emailClaim = "http://lfx.dev/claims/email"
+
 	nameClaim, ok := claims[a.authValidator.nameClaim]
 	if !ok {
 		log.WithFields(f).Warnf("name not found: %+v", a.authValidator.nameClaim)
