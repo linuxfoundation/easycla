@@ -6,14 +6,14 @@ package dynamo_events
 import (
 	"context"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github/branch_protection"
 
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 	"github.com/sirupsen/logrus"
 
 	"github.com/aws/aws-lambda-go/events"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 // GithubRepoModifyAddEvent github repository modify add event

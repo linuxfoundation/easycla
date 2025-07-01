@@ -6,12 +6,12 @@ package dynamo_events
 import (
 	"context"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github/branch_protection"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )

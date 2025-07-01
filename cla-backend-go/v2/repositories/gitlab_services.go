@@ -11,19 +11,19 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/common"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 
-	v2GitLabOrg "github.com/communitybridge/easycla/cla-backend-go/v2/common"
+	v2GitLabOrg "github.com/linuxfoundation/easycla/cla-backend-go/v2/common"
 
-	gitLabApi "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	gitLabApi "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
-	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	repoModels "github.com/communitybridge/easycla/cla-backend-go/repositories"
+	v2Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	repoModels "github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 )
 
 // GitLabAddRepositories add a lst of GitLab repositories to the collection - default is not enabled/used/active by a CLA Group

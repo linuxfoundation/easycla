@@ -12,13 +12,13 @@ import (
 	"net/http"
 	"time"
 
-	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	v2Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
 

@@ -10,7 +10,7 @@ import (
 	"path"
 	"strings"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // CommonEmailParams are part of almost every email it's sent from the system

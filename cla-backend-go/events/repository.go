@@ -17,12 +17,12 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
 
 	"github.com/aws/aws-sdk-go/aws"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/gofrs/uuid"
 
@@ -30,8 +30,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	eventOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	eventOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/events"
 )
 
 // errors

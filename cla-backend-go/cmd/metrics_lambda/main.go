@@ -7,21 +7,21 @@ import (
 	"context"
 	"os"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-lambda-go/lambda"
 
-	"github.com/communitybridge/easycla/cla-backend-go/token"
+	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 
-	"github.com/communitybridge/easycla/cla-backend-go/config"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/metrics"
-	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/metrics"
+	project_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 )
 
 var (

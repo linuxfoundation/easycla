@@ -14,16 +14,16 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/user-service/client/staff"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/client/staff"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/communitybridge/easycla/cla-backend-go/token"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/user-service/client"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/user-service/client/user"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/user-service/models"
 	runtimeClient "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
+	"github.com/linuxfoundation/easycla/cla-backend-go/token"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/client"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/client/user"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 )
 
 var (

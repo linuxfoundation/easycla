@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // GetXACLGoogle returns the X-ACL entry for this company

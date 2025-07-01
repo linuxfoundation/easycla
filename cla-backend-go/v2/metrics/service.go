@@ -11,14 +11,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	project_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 )
 
 // constants

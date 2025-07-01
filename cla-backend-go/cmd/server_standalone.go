@@ -13,7 +13,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

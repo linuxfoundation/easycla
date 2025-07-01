@@ -9,29 +9,29 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
-	v1Project "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
+	v1Project "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
 	"github.com/aws/aws-sdk-go/aws"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/foundation"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/foundation"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/cla_group"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
-	v2ProjectServiceClient "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/client/project"
-	v2ProjectServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/models"
 	"github.com/go-openapi/runtime/middleware"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/cla_group"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
+	v2ProjectServiceClient "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client/project"
+	v2ProjectServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
 )
 
 // Configure configures the cla group api

@@ -6,7 +6,7 @@ package docs
 import (
 	"net/http"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi"
 
 	"github.com/go-openapi/runtime"
 )

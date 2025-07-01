@@ -1,6 +1,6 @@
 // Copyright The Linux Foundation and each contributor to CommunityBridge.
 // SPDX-License-Identifier: MIT
-module github.com/communitybridge/easycla/cla-backend-go
+module github.com/linuxfoundation/easycla/cla-backend-go
 
 go 1.24
 

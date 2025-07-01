@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"strings"
 
-	v2AcsService "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
+	v2AcsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/emails"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/emails"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
 

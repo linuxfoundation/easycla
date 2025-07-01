@@ -7,11 +7,11 @@ import (
 	"context"
 	"fmt"
 
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/jinzhu/copier"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	v2Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
 

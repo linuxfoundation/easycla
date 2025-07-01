@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"os"
 
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

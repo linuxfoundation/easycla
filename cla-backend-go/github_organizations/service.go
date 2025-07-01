@@ -6,17 +6,17 @@ package github_organizations
 import (
 	"context"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
-	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 
 	"github.com/sirupsen/logrus"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 )
 
 // ServiceInterface contains functions of GithubOrganizations service

@@ -6,18 +6,18 @@ package main
 import (
 	"os"
 
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/approval_list"
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/cla_group"
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/cla_manager"
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/company"
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/health"
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/signatures"
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/template"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/approval_list"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/cla_group"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/cla_manager"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/health"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/template"
 
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/repositories"
 
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/test_models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/test_models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/verdverm/frisby"
 )
 

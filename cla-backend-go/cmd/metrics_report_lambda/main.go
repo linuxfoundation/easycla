@@ -13,23 +13,23 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-lambda-go/lambda"
 
-	"github.com/communitybridge/easycla/cla-backend-go/token"
+	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 
-	"github.com/communitybridge/easycla/cla-backend-go/config"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 
 	"github.com/LF-Engineering/lfx-models/models/stats"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	awsqs "github.com/aws/aws-sdk-go/service/sqs"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/metrics"
-	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/metrics"
+	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 )
 
 var (

@@ -44,7 +44,7 @@ For EasyCLA version 2, all three consoles are hosted in separate repositories.
 * [Corporate Console](https://organization.lfx.linuxfoundation.org/company/dashboard) contains the old v1 Company Console
   capabilities. This new console includes not only the EasyCLA components, but also the company related features for LF
   ITX and other LFX Platform projects.
-* [Contributor Console](https://github.com/communitybridge/easycla-contributor-console) contains the old v1 Contributor Console
+* [Contributor Console](https://github.com/linuxfoundation/easycla-contributor-console) contains the old v1 Contributor Console
   capabilities with new features that integrate with the LFX Platform (including the Salesforce data).
 
 For EasyCLA version 1, the consoles are:

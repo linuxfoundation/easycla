@@ -9,15 +9,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	acs_service "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
-	organization_service "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
-	user_service "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
+	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
+	user_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/aws/aws-lambda-go/events"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // constants

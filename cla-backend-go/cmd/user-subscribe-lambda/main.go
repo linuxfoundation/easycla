@@ -9,11 +9,11 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/user-subscribe-lambda/cmd"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/user-subscribe-lambda/cmd"
 
 	"github.com/go-openapi/strfmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-models/models/event"
@@ -21,12 +21,12 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/token"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
-	user_service "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/token"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
+	user_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 	"github.com/mitchellh/mapstructure"
 )
 

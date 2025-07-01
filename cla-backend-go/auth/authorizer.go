@@ -12,9 +12,9 @@ import (
 
 	swagerrors "github.com/go-openapi/errors"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/communitybridge/easycla/cla-backend-go/user"
+	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 )
 
 const (

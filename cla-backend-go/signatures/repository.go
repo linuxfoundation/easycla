@@ -17,28 +17,28 @@ import (
 
 	"github.com/gofrs/uuid"
 
-	"github.com/communitybridge/easycla/cla-backend-go/config"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
-	"github.com/communitybridge/easycla/cla-backend-go/github"
-	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/approvals"
+	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gerrits"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/approvals"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"

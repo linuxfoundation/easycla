@@ -6,7 +6,7 @@ package emails
 import (
 	"errors"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 // ApprovalListRejectedTemplateParams is email params for ApprovalListRejectedTemplate

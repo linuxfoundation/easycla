@@ -4,7 +4,7 @@
 package project
 
 import (
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 )
 
 // codedResponse interface

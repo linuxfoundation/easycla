@@ -4,8 +4,8 @@
 package gerrits
 
 import (
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
 	"github.com/go-openapi/strfmt"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 )
 
 // Gerrit represent gerrit instances table

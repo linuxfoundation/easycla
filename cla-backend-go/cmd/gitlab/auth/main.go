@@ -11,9 +11,9 @@ import (
 	"os"
 	"strconv"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/go-resty/resty/v2"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/xanzy/go-gitlab"
 )
 

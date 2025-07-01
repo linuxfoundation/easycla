@@ -6,7 +6,7 @@ package cla_manager
 import (
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/cla_manager"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/cla_manager"
 )
 
 // buildErrorMessageCreate helper function to build an error message

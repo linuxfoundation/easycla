@@ -7,26 +7,26 @@ import (
 	"context"
 	"fmt"
 
-	v1Project "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	v1Project "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
-	projectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
-	v2ProjectServiceModels "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/models"
+	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
+	v2ProjectServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/jinzhu/copier"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	v1ProjectOps "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/project"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/project"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/go-openapi/runtime/middleware"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	v1ProjectOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/project"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/project"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // Configure establishes the middleware handlers for the project service

@@ -4,9 +4,9 @@
 package main
 
 import (
-	"github.com/communitybridge/easycla/cla-backend-go/cmd"
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
-	token "github.com/communitybridge/easycla/cla-backend-go/token"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
+	token "github.com/linuxfoundation/easycla/cla-backend-go/token"
 )
 
 var (

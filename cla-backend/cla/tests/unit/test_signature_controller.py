@@ -15,7 +15,7 @@ from cla.user import CLAUser
 
 def test_canceled_signature_html():
     signature_type = "ccla"
-    signature_return_url = "https://github.com/communitybridge/easycla/pull/227"
+    signature_return_url = "https://github.com/linuxfoundation/easycla/pull/227"
     signature_sign_url = "https://demo.docusign.net/Signing/MTRedeem/v1/4b594c99-d76b-46c4-bf8c-5912b177b0eb?slt=eyJ0eXAiOi"
     signature = Signature(
         signature_type=signature_type,

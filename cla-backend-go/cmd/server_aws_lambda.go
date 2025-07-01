@@ -9,7 +9,7 @@ package cmd
 import (
 	"github.com/LF-Engineering/aws-lambda-go-api-proxy/httpadapter"
 	"github.com/aws/aws-lambda-go/lambda"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/spf13/cobra"
 )
 

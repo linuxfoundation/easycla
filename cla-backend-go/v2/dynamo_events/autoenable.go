@@ -10,17 +10,17 @@ import (
 	"strconv"
 	"strings"
 
-	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
 	"github.com/go-openapi/swag"
 	"github.com/google/go-github/v37/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 	"github.com/sirupsen/logrus"
 )
 

@@ -10,7 +10,7 @@ assignees: ''
 
 Describe what has changed and which documents need updating
 
-* [/docs/doc-to-update.md](https://github.com/communitybridge/easycla/blob/master/docs/)
+* [/docs/doc-to-update.md](https://github.com/linuxfoundation/easycla/blob/master/docs/)
 
 ## Tasks
 

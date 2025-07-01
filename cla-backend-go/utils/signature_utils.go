@@ -5,7 +5,7 @@ package utils
 
 import (
 	"github.com/LF-Engineering/lfx-kit/auth"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 )
 
 // CurrentUserInACL is a helper function to determine if the current logged in user is in the specified CLA Manager list

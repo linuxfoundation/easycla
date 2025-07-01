@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"html/template"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 // RenderTemplate renders the template for given template with given params

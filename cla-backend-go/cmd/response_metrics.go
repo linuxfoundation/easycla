@@ -6,7 +6,7 @@ package cmd
 import (
 	"time"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 // responseMetrics is a small structure for keeping track of the request metrics
