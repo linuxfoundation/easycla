@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/test_models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/test_models"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/verdverm/frisby"

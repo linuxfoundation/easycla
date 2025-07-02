@@ -10,7 +10,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
@@ -24,7 +24,7 @@ import (
 	awslambda "github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 var (

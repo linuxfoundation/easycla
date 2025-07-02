@@ -6,8 +6,8 @@ package utils
 import (
 	"fmt"
 
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 )
 
 // ToV1ErrorResponse is a wrapper function to convert a v2 swagger error response to a v1 swagger error response

@@ -9,12 +9,12 @@ import (
 	"os"
 	"testing"
 
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
 	"github.com/spf13/viper"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
+	gitlab_api "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
 	"github.com/stretchr/testify/assert"
 	"github.com/xanzy/go-gitlab"
 )

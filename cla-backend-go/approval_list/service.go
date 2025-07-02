@@ -9,25 +9,25 @@ import (
 	"fmt"
 	"net/http"
 
-	repository2 "github.com/communitybridge/easycla/cla-backend-go/project/repository"
-	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	repository2 "github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
+	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
-	"github.com/communitybridge/easycla/cla-backend-go/emails"
+	"github.com/linuxfoundation/easycla/cla-backend-go/emails"
 
-	"github.com/communitybridge/easycla/cla-backend-go/signatures"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/user"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/user"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 )
 
 // errors

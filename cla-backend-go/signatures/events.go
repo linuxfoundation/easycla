@@ -6,8 +6,8 @@ package signatures
 import (
 	"context"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 )
 
 func (s service) createEventLogEntries(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, userModel *models.User, approvalList *models.ApprovalList, projectSFID string) {

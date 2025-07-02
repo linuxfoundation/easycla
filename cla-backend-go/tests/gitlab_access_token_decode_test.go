@@ -7,10 +7,10 @@ import (
 	"os"
 	"testing"
 
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
+	gitlab_api "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/gitlab_organizations"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )

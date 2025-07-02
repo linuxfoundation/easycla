@@ -124,7 +124,7 @@ swagger-build-v1-services:
 		--model-package=v1/models \
 		--exclude-main \
 		-A cla \
-		-P github.com/communitybridge/easycla/cla-backend-go/user.CLAUser
+		-P github.com/linuxfoundation/easycla/cla-backend-go/user.CLAUser
 
 swagger-build-v2-services:
 	@echo

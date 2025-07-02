@@ -11,11 +11,11 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/juju/zip"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 

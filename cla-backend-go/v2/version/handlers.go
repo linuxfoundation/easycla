@@ -5,9 +5,9 @@ package version
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/version"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/version"
 
 	"github.com/go-openapi/runtime/middleware"
 )

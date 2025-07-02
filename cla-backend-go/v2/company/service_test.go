@@ -7,16 +7,16 @@ import (
 	"fmt"
 	"testing"
 
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	v1SignatureParams "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
-	v2Ops "github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/company"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	v1SignatureParams "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
+	v2Ops "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
 
-	mock_company_repo "github.com/communitybridge/easycla/cla-backend-go/company/mocks"
-	mock_project_repo "github.com/communitybridge/easycla/cla-backend-go/project/mocks"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	mock_pcg_repo "github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups/mocks"
-	mock_signature_repo "github.com/communitybridge/easycla/cla-backend-go/signatures/mocks"
-	mock_user_repo "github.com/communitybridge/easycla/cla-backend-go/users/mocks"
+	mock_company_repo "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
+	mock_project_repo "github.com/linuxfoundation/easycla/cla-backend-go/project/mocks"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	mock_pcg_repo "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups/mocks"
+	mock_signature_repo "github.com/linuxfoundation/easycla/cla-backend-go/signatures/mocks"
+	mock_user_repo "github.com/linuxfoundation/easycla/cla-backend-go/users/mocks"
 
 	"github.com/golang/mock/gomock"
 

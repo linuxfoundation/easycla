@@ -8,17 +8,17 @@ import (
 	"errors"
 	"testing"
 
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	// mock_signatures "github.com/communitybridge/easycla/cla-backend-go/v2/signatures/mock_v1_signatures"
-	mock_company "github.com/communitybridge/easycla/cla-backend-go/company/mocks"
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
-	mock_project "github.com/communitybridge/easycla/cla-backend-go/project/mocks"
-	mock_v1_signatures "github.com/communitybridge/easycla/cla-backend-go/signatures/mocks"
-	mock_users "github.com/communitybridge/easycla/cla-backend-go/v2/signatures/mock_users"
+	// mock_signatures "github.com/linuxfoundation/easycla/cla-backend-go/v2/signatures/mock_v1_signatures"
 	"github.com/golang/mock/gomock"
+	mock_company "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
+	mock_project "github.com/linuxfoundation/easycla/cla-backend-go/project/mocks"
+	mock_v1_signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures/mocks"
+	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/v2/signatures/mock_users"
 	"github.com/stretchr/testify/assert"
 )
 

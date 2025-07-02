@@ -4,7 +4,7 @@
 package models
 
 import (
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 )
 
 // DBProjectModel data model

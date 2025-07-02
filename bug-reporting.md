@@ -2,7 +2,7 @@
 
 The EasyCLA team welcomes new feature requests and bug reports.  Please file a
 feature request, documentation update, or bug fix using the
-[GitHub Issues](https://github.com/communitybridge/easycla/issues) feature of
+[GitHub Issues](https://github.com/linuxfoundation/easycla/issues) feature of
 this repository.
 
 To file a new ticket, select 'New Issue' from the issues page. Select one of the

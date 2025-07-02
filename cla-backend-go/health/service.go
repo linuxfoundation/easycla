@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
 )
 
 // Service provides an API to the health API

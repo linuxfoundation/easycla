@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/xanzy/go-gitlab"

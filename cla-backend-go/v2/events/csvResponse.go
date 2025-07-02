@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // CSVEventsResponse creates a new response handler for CSV files

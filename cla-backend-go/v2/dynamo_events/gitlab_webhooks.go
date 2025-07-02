@@ -8,11 +8,11 @@ import (
 	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	gitlab_api "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
 

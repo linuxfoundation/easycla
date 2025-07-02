@@ -7,24 +7,24 @@ import (
 	"context"
 	"fmt"
 
-	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/emails"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/emails"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	sigAPI "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/signatures"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	v2UserService "github.com/communitybridge/easycla/cla-backend-go/v2/user-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	sigAPI "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	v2UserService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 )
 
 // IService interface defining the functions for the company service

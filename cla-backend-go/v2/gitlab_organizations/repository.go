@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/communitybridge/easycla/cla-backend-go/v2/common"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/common"
 
 	"github.com/gofrs/uuid"
 
@@ -20,9 +20,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	v2Models "github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	v2Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
 

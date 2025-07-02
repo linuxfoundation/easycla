@@ -9,20 +9,20 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 
-	v1Company "github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/cla_manager"
-	v1User "github.com/communitybridge/easycla/cla-backend-go/user"
+	v1Company "github.com/linuxfoundation/easycla/cla-backend-go/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/cla_manager"
+	v1User "github.com/linuxfoundation/easycla/cla-backend-go/user"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/go-openapi/runtime/middleware"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 const (

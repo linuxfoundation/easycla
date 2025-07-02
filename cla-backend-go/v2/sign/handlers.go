@@ -12,18 +12,18 @@ import (
 	"net/http"
 	"strings"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	"github.com/sirupsen/logrus"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/sign"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	"github.com/go-openapi/runtime/middleware"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/sign"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 )
 
 var (

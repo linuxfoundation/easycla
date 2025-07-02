@@ -17,16 +17,16 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/signatures"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/sign"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/sign"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/sirupsen/logrus"
 )

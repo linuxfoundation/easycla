@@ -8,27 +8,27 @@ import (
 	"fmt"
 	"strings"
 
-	project_service "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	project_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/gitlab_repositories"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github/branch_protection"
 
 	"github.com/sirupsen/logrus"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/github_repositories"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/jinzhu/copier"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/github_repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 // Configure establishes the middleware handlers for the repository service

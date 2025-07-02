@@ -10,23 +10,23 @@ import (
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/communitybridge/easycla/cla-backend-go/emails"
-	v1GithubOrg "github.com/communitybridge/easycla/cla-backend-go/github_organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/emails"
+	v1GithubOrg "github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 
-	"github.com/communitybridge/easycla/cla-backend-go/v2/dynamo_events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/dynamo_events"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/google/go-github/v37/github"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // Service is responsible for handling the github activity events

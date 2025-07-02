@@ -10,15 +10,15 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/user"
+	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
 	"github.com/go-openapi/strfmt"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"

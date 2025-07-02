@@ -12,9 +12,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -23,7 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // constants

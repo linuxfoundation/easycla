@@ -6,20 +6,20 @@ package org_service
 import (
 	"context"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
 
-	"github.com/communitybridge/easycla/cla-backend-go/cmd/functional_tests/test_models"
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	"github.com/communitybridge/easycla/cla-backend-go/config"
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
-	acs_service "github.com/communitybridge/easycla/cla-backend-go/v2/acs-service"
-	organization_service "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cmd/functional_tests/test_models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gerrits"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
+	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
+	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	"github.com/spf13/viper"
 )
 

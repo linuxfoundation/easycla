@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
 

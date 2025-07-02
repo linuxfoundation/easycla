@@ -11,34 +11,34 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
-	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
+	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
-	v2Repositories "github.com/communitybridge/easycla/cla-backend-go/v2/repositories"
+	v2Repositories "github.com/linuxfoundation/easycla/cla-backend-go/v2/repositories"
 
-	gitlab_api "github.com/communitybridge/easycla/cla-backend-go/gitlab_api"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/gitlab_organizations"
+	gitlab_api "github.com/linuxfoundation/easycla/cla-backend-go/gitlab_api"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/gitlab_organizations"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gerrits"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gerrits"
 
-	"github.com/communitybridge/easycla/cla-backend-go/repositories"
+	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github_organizations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
 
-	"github.com/communitybridge/easycla/cla-backend-go/approval_list"
-	"github.com/communitybridge/easycla/cla-backend-go/cla_manager"
+	"github.com/linuxfoundation/easycla/cla-backend-go/approval_list"
+	"github.com/linuxfoundation/easycla/cla-backend-go/cla_manager"
 
-	claevent "github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	claevent "github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	v2Company "github.com/communitybridge/easycla/cla-backend-go/v2/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	v2Company "github.com/linuxfoundation/easycla/cla-backend-go/v2/company"
 
-	"github.com/communitybridge/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 
 	"github.com/sirupsen/logrus"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go/service/dynamodb"

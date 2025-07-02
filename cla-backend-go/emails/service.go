@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 
-	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 // Service is a service with some helper functions for rendering templates and also sending emails

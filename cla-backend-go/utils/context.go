@@ -10,8 +10,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
 	"github.com/gofrs/uuid"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 // NewContext returns a new context object with a new request ID

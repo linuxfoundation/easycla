@@ -8,19 +8,19 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
-	v1Project "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
+	v1Project "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 )
 
 // Service interface defines the v2 project service methods

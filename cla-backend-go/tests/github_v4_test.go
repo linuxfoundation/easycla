@@ -9,13 +9,13 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github/branch_protection"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github/branch_protection"
 
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
 	"github.com/spf13/viper"
 
-	"github.com/communitybridge/easycla/cla-backend-go/github"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 )
 

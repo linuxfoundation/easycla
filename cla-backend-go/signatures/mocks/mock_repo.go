@@ -12,11 +12,11 @@ import (
 	reflect "reflect"
 	sync "sync"
 
-	events "github.com/communitybridge/easycla/cla-backend-go/events"
-	models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	signatures "github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
-	signatures0 "github.com/communitybridge/easycla/cla-backend-go/signatures"
 	gomock "github.com/golang/mock/gomock"
+	events "github.com/linuxfoundation/easycla/cla-backend-go/events"
+	models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	signatures "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
+	signatures0 "github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 )
 
 // MockSignatureRepository is a mock of SignatureRepository interface.

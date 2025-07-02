@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project/service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -18,20 +18,20 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
 	"github.com/jinzhu/copier"
 
-	"github.com/communitybridge/easycla/cla-backend-go/company"
-	v1Models "github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v2/models"
-	v2Sigs "github.com/communitybridge/easycla/cla-backend-go/gen/v2/restapi/operations/signatures"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/signatures"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	"github.com/communitybridge/easycla/cla-backend-go/v2/approvals"
+	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	v2Sigs "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/signatures"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/approvals"
 	"github.com/sirupsen/logrus"
 )
 

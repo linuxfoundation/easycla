@@ -25,7 +25,7 @@ For all other folders which use node, use version 12.x+.
 
 In order to quickly switch between node versions, we recommend you use
 [Node Version Manager - nvm](https://github.com/nvm-sh/nvm). The CircleCI
-[build configuration](https://github.com/communitybridge/easycla/blob/master/.circleci/config.yml)
+[build configuration](https://github.com/linuxfoundation/easycla/blob/master/.circleci/config.yml)
 uses this approach to switch between node versions within the build andx
 deployment.
 
@@ -277,9 +277,9 @@ ln -s <path_to_where_you_really_have_easycla_checked_out>/easycla easycla
 popd
 
 # Confirm everything:
-ls -la $GOPATH/src/github.com/communitybridge/easycla
+ls -la $GOPATH/src/github.com/linuxfoundation/easycla
 # Should see something like:
-lrwxr-xr-x  1 ddeal  staff  29 Jul  7 14:48 /Users/ddeal/projects/go/src/github.com/communitybridge/easycla@ -> /Users/ddeal/projects/easycla
+lrwxr-xr-x  1 ddeal  staff  29 Jul  7 14:48 /Users/ddeal/projects/go/src/github.com/linuxfoundation/easycla@ -> /Users/ddeal/projects/easycla
 ```
 
 ### Configure Git
@@ -309,7 +309,7 @@ repositories.
 
 ```bash
 # Navigate to the go source code and build it - you must be in this path/directory
-pushd $GOPATH/src/github.com/communitybridge/easycla/cla-backend-go
+pushd $GOPATH/src/github.com/linuxfoundation/easycla/cla-backend-go
 
 # First time only, you will need to install the dev tools.  Simply run:
 make setup

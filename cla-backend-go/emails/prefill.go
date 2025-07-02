@@ -7,15 +7,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/communitybridge/easycla/cla-backend-go/project/repository"
-	service2 "github.com/communitybridge/easycla/cla-backend-go/project/service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
+	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
-	v2ProjectService "github.com/communitybridge/easycla/cla-backend-go/v2/project-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 
-	"github.com/communitybridge/easycla/cla-backend-go/projects_cla_groups"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 )
 
 // EmailTemplateService has utility functions needed to pre-fill the email params

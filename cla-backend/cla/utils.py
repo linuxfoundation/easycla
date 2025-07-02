@@ -732,7 +732,7 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
                     f"signature_id: {signature.get_signature_id()}"
                 )
 
-                # Verify if user has been approved: https://github.com/communitybridge/easycla/issues/332
+                # Verify if user has been approved: https://github.com/linuxfoundation/easycla/issues/332
                 cla.log.debug(
                     f"{fn} - CCLA signature check - " "checking to see if the user is in one of the approval lists..."
                 )

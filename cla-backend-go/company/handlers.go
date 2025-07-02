@@ -10,19 +10,19 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/organization"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/organization"
 
-	"github.com/communitybridge/easycla/cla-backend-go/events"
-	"github.com/communitybridge/easycla/cla-backend-go/users"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/restapi/operations/company"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
-	"github.com/communitybridge/easycla/cla-backend-go/user"
-	orgService "github.com/communitybridge/easycla/cla-backend-go/v2/organization-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/company"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/user"
+	orgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 
 	"github.com/go-openapi/runtime/middleware"
 )

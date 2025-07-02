@@ -4,7 +4,7 @@
 package utils
 
 import (
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )

@@ -7,8 +7,8 @@ package tests
 import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/communitybridge/easycla/cla-backend-go/gen/v1/models"
-	ini "github.com/communitybridge/easycla/cla-backend-go/init"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"testing"

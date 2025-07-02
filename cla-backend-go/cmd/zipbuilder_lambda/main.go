@@ -7,15 +7,15 @@ import (
 	"context"
 	"os"
 
-	"github.com/communitybridge/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	"github.com/communitybridge/easycla/cla-backend-go/v2/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/signatures"
 
 	"github.com/aws/aws-lambda-go/lambda"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	log "github.com/communitybridge/easycla/cla-backend-go/logging"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
 var (

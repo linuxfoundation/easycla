@@ -3,7 +3,7 @@
 
 package utils
 
-import "github.com/communitybridge/easycla/cla-backend-go/v2/project-service/models"
+import "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
 
 // GetProjectParentSFID returns the project parent SFID if available, otherwise returns empty string
 func GetProjectParentSFID(project *models.ProjectOutputDetailed) string {
