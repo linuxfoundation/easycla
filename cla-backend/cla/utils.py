@@ -36,7 +36,7 @@ API_BASE_URL = os.environ.get("CLA_API_BASE", "")
 CLA_LOGO_URL = os.environ.get("CLA_BUCKET_LOGO_URL", "")
 CORPORATE_BASE = os.environ.get("CLA_CORPORATE_BASE", "")
 CORPORATE_V2_BASE = os.environ.get("CLA_CORPORATE_V2_BASE", "")
-
+SVG_VERSION = "?v=2"
 
 def get_cla_path():
     """Returns the CLA code root directory on the current system."""
@@ -913,7 +913,7 @@ def get_comment_badge(
 
     alt = "CLA"
     if all_signed:
-        badge_url = f"{CLA_LOGO_URL}/cla-signed.svg"
+        badge_url = f"{CLA_LOGO_URL}/cla-signed.svg{SVG_VERSION}"
         badge_hyperlink = cla.conf["CLA_LANDING_PAGE"]
         badge_hyperlink = os.path.join(badge_hyperlink, "#/")
         badge_hyperlink = append_project_version_to_url(address=badge_hyperlink, project_version=project_version)
@@ -927,7 +927,7 @@ def get_comment_badge(
         badge_hyperlink = sign_url
         text = ""
         if missing_user_id:
-            badge_url = f"{CLA_LOGO_URL}/cla-missing-id.svg"
+            badge_url = f"{CLA_LOGO_URL}/cla-missing-id.svg{SVG_VERSION}"
             alt = "CLA Missing ID"
             text = (
                 f'{text} <a href="{badge_hyperlink}">'
@@ -936,7 +936,7 @@ def get_comment_badge(
             )
 
         if is_approved_by_manager:
-            badge_url = f"{CLA_LOGO_URL}/cla-confirmation-needed.svg"
+            badge_url = f"{CLA_LOGO_URL}/cla-confirmation-needed.svg{SVG_VERSION}"
             alt = "CLA Confirmation Needed"
             text = (
                 f'{text} <a href="{badge_hyperlink}">'
@@ -944,7 +944,7 @@ def get_comment_badge(
                 "</a>"
             )
         else:
-            badge_url = f"{CLA_LOGO_URL}/cla-not-signed.svg"
+            badge_url = f"{CLA_LOGO_URL}/cla-not-signed.svg{SVG_VERSION}"
             alt = "CLA Not Signed"
             text = (
                 f'{text} <a href="{badge_hyperlink}">'

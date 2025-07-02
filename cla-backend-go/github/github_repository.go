@@ -29,6 +29,7 @@ const (
 	unknown      = "Unknown"
 	failureState = "failure"
 	successState = "success"
+	svgVersion   = "?v=2"
 )
 
 func GetGitHubRepository(ctx context.Context, installationID, githubRepositoryID int64) (*github.Repository, error) {
@@ -505,20 +506,20 @@ func getCommentBadge(allSigned bool, signURL string, missingUserId, managerAppro
 	var badgeURL string
 
 	if allSigned {
-		badgeURL = fmt.Sprintf("%s/cla-signed.svg", CLALogoURL)
+		badgeURL = fmt.Sprintf("%s/cla-signed.svg%s", CLALogoURL, svgVersion)
 		badgeHyperLink = fmt.Sprintf("%s/#/?version=2", CLALandingPage)
 		alt = "CLA Signed"
 		return fmt.Sprintf(`<a href="%s"><img src="%s" alt="%s" align="left" height="28" width="328" >`, badgeHyperLink, badgeURL, alt)
 	}
 	badgeHyperLink = signURL
 	if missingUserId {
-		badgeURL = fmt.Sprintf("%s/cla-missing-id.svg", CLALogoURL)
+		badgeURL = fmt.Sprintf("%s/cla-missing-id.svg%s", CLALogoURL, svgVersion)
 		alt = "CLA Missing ID"
 	} else if managerApproved {
-		badgeURL = fmt.Sprintf("%s/cla-confirmation-needed.svg", CLALogoURL)
+		badgeURL = fmt.Sprintf("%s/cla-confirmation-needed.svg%s", CLALogoURL, svgVersion)
 		alt = "CLA Confirmation Needed"
 	} else {
-		badgeURL = fmt.Sprintf("%s/cla-not-signed.svg", CLALogoURL)
+		badgeURL = fmt.Sprintf("%s/cla-not-signed.svg%s", CLALogoURL, svgVersion)
 		alt = "CLA Not Signed"
 	}
 
