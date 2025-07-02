@@ -41,6 +41,10 @@ var (
 	secretTokenMismatch       = errors.New("secret token mismatch")
 )
 
+const (
+	svgVersion = "?v=2"
+)
+
 // ProcessMergeActivityInput is used to pass the data needed to trigger a gitlab mr check
 type ProcessMergeActivityInput struct {
 	ProjectName      string
@@ -317,13 +321,13 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 	}
 
 	coveredBadge := fmt.Sprintf(`<a href="%s">
-	<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-signed.svg" alt="CLA Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+	<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-signed.svg%s" alt="CLA Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink, svgVersion)
 	failedBadge := fmt.Sprintf(`<a href="%s">
-<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-not-signed.svg" alt="CLA Not Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-not-signed.svg%s" alt="CLA Not Signed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink, svgVersion)
 	// 	missingUserIDBadge := fmt.Sprintf(`<a href="%s">
-	// <img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-missing-id.svg" alt="CLA Missing ID" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+	// <img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-missing-id.svg%s" alt="CLA Missing ID" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink, svgVersion)
 	confirmationNeededBadge := fmt.Sprintf(`<a href="%s">
-<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-confirmation-needed.svg" alt="CLA Confirmation Needed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink)
+<img src="https://s3.amazonaws.com/cla-project-logo-dev/cla-confirmation-needed.svg%s" alt="CLA Confirmation Needed" align="left" height="28" width="328" ></a><br/>`, badgeHyperlink, svgVersion)
 
 	var body string
 
