@@ -56,8 +56,6 @@
       2 /v2/health
       1 /v2/user-from-token
       1 /v2/repository-provider/github/icon.svg
-      1 /v2/.env
-      1 /v1/.env
 ```
 
 - `dev` analysis (but this can contain API calls made by developer and not actually used): `` DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-prod.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' | sed -E ':a;s#/([0-9]{1,})(/|$)#/<id>\2#g;ta' | sort | uniq -c | sort -nr ``:
@@ -74,9 +72,7 @@
       1 /v2/user-from-session
       1 /v2/return-url/<uuid>
       1 /v2/check-prepare-employee-signature
-      1 /v2/.env
       1 /v1/users/company/abcd
-      1 /v1/.env
 ```
 
 
