@@ -21,19 +21,23 @@
 - No V1 or V2 APIs used.
 
 5. GitHub/Gitlab/Gerrit ({provider}) app/bot [here]() (there is no list of which particular APIs are used by GitHub/GitLab/Gerrit):
-- `/v2/repository-provider/{provider}/activity` ?
-- `/v2/github/activity` ?
+- `/v2/github/activity`.
+- `/v2/repository-provider/{provider}/sign/{installation_id}/{github_repository_id}/{change_request_id}`.
+- `/v2/github/installation`.
+- `/v1/user/gerrit`.
+
 - `/v2/signed/individual/{installation_id}/{github_repository_id}/{change_request_id}` ?
-- `/v2/repository-provider/{provider}/sign/{installation_id}/{github_repository_id}/{change_request_id}` ?
-- `/v2/repository-provider/{provider}/oauth2_redirect`.
 - `/v2/repository-provider/{provider}/activity` ?
+- `/v2/repository-provider/{provider}/oauth2_redirect` ?
 - `/v2/signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}` ?
-- `/v1/user/gerrit` ?
 - `/v2/signed/gerrit/individual/{user_id}` ?
 - `cla-backend/cla/routes.py`: `GitHub Routes`, `Gerrit Routes`, `Gerrit instance routes`.
 
 6. Manually check which APIs were actually called on `dev` and `prod` via:
-- `dev` analysis: `` DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-dev.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sort | uniq -c | sort -nr``:
+- `prod` analysis: `` DEBUG=1 NO_ECHO=1 STAGE=prod REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-prod.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-prod.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sort | uniq -c | sort -nr``:
+```
+```
+- `dev` analysis (but this can contain API calls made by developer and not actually used): `` DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-dev.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sort | uniq -c | sort -nr``:
 ```
     103 /v2/project/01af041c-fa69-4052-a23c-fb8c1d3bef24
      39 /v2/user/dc24dead-8891-11ee-aa2e-ba555ea5bc40
@@ -63,7 +67,4 @@
       1 /v2/.env
       1 /v1/users/company/abcd
       1 /v1/.env
-```
-- `prod` analysis: `` DEBUG=1 NO_ECHO=1 STAGE=prod REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-prod.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-prod.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sort | uniq -c | sort -nr``:
-```
 ```
