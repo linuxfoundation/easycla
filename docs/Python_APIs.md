@@ -34,35 +34,24 @@
 - `cla-backend/cla/routes.py`: `GitHub Routes`, `Gerrit Routes`, `Gerrit instance routes`.
 
 6. Manually check which APIs were actually called on `dev` and `prod` via:
-- `prod` analysis: `` DEBUG=1 NO_ECHO=1 STAGE=prod REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-prod.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-prod.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sort | uniq -c | sort -nr``:
+- `prod` analysis: `` DEBUG=1 NO_ECHO=1 STAGE=prod REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-prod.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-prod.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' | sed -E 's/\b[0-9]{2,}\b/<id>/g' | sort | uniq -c | sort -nr ``:
 ```
 ```
-- `dev` analysis (but this can contain API calls made by developer and not actually used): `` DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-dev.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sort | uniq -c | sort -nr``:
+- `dev` analysis (but this can contain API calls made by developer and not actually used): `` DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-dev.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' | sed -E 's/\b[0-9]{2,}\b/<id>/g' | sort | uniq -c | sort -nr ``:
 ```
-    103 /v2/project/01af041c-fa69-4052-a23c-fb8c1d3bef24
-     39 /v2/user/dc24dead-8891-11ee-aa2e-ba555ea5bc40
+    113 /v2/project/<uuid>
+     53 /v2/user/<uuid>
      39 /v2/github/activity
-     12 /v2/user/dc24dead-8891-11ee-aa2e-ba555ea5bc40/active-signature
+     14 /v2/user/<uuid>/active-signature
      12 /v2/user-from-token
-     10 /v2/project/554446b5-445e-4910-b6fd-e16ace59f021
+     12 /v2/repository-provider/github/sign/<id>/<id>/<id>
       8 /v2/github/installation
-      7 /v2/user/5bede47f-cd3b-11ed-a293-62301389022b
-      5 /v2/repository-provider/github/sign/35275118/614349032/244
       5 /v2/health
       4 /v2/project/null
-      3 /v2/user/9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5
-      3 /v2/user/93683f73-90ad-472d-a8e6-87fa2c1694ae
-      3 /v2/repository-provider/github/sign/50080694/792406957/21
-      2 /v2/repository-provider/github/sign/50080694/792406957/19
       1 /v2/users/company/abcd
-      1 /v2/user/9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5/active-signature
-      1 /v2/user/5bede47f-cd3b-11ed-a293-62301389022b/active-signature
-      1 /v2/user/4b344ac4-f8d9-11ed-ac9b-b29c4ace74e9
       1 /v2/user-from-session
-      1 /v2/return-url/41b483cd-ccb5-4e98-b065-af68429a7e49
-      1 /v2/repository-provider/github/sign/7374874/247787907/1
-      1 /v2/repository-provider/github/sign/50080694/792406957/20
-      1 /v2/repository-provider/github/sign/35275118/614349032/208
+      1 /v2/return-url/<uuid>
+      1 /v2/repository-provider/github/sign/<id>/<id>/1
       1 /v2/check-prepare-employee-signature
       1 /v2/.env
       1 /v1/users/company/abcd
