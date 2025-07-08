@@ -41,24 +41,22 @@
 
 - `prod` analysis: `` DEBUG=1 NO_ECHO=1 STAGE=prod REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-prod.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-prod.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' | sed -E 's/\b[0-9]{2,}\b/<id>/g' | sort | uniq -c | sort -nr ``:
 ```
- 377727 /v2/github/activity
-   1783 /v2/repository-provider/github/sign/<id>/<id>/<id>
-    347 /v2/github/installation
-    212 /v2/project/<uuid>
-    211 /v2/user/<uuid>
-    187 /v2/user/<uuid>/active-signature
-    157 /v2/check-prepare-employee-signature
-    146 /v2/return-url/<uuid>
-     61 /v2/request-employee-signature
+ 529509 /v2/github/activity
+   2572 /v2/repository-provider/github/sign/<id>/<id>/<id>
+    534 /v2/github/installation
+    332 /v2/project/<uuid>
+    327 /v2/user/<uuid>
+    296 /v2/user/<uuid>/active-signature
+    234 /v2/return-url/<uuid>
+    228 /v2/check-prepare-employee-signature
+     89 /v2/request-employee-signature
      16 /v1/file/icon/seo/<uuid>.png
-      8 /v2/gerrit/<uuid>/corporate/agreementUrl.html
-      7 /v1/user/gerrit
+     13 /v2/gerrit/<uuid>/corporate/agreementUrl.html
+      9 /v1/user/gerrit
       2 /v2/health
-      1 /v2/user-from-token
-      1 /v2/repository-provider/github/icon.svg
 ```
 
-- `dev` analysis (but this can contain API calls made by developer and not actually used): `` DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-prod.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' | sed -E ':a;s#/([0-9]{1,})(/|$)#/<id>\2#g;ta' | sort | uniq -c | sort -nr ``:
+- `dev` analysis (but this can contain API calls made by developer and not actually used): `` DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-dev.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' | sed -E ':a;s#/([0-9]{1,})(/|$)#/<id>\2#g;ta' | sort | uniq -c | sort -nr ``:
 ```
     113 /v2/project/<uuid>
      53 /v2/user/<uuid>
@@ -67,12 +65,10 @@
      13 /v2/repository-provider/github/sign/<id>/<id>/<id>
      12 /v2/user-from-token
       8 /v2/github/installation
-      5 /v2/health
-      1 /v2/users/company/abcd
-      1 /v2/user-from-session
+      6 /v2/health
       1 /v2/return-url/<uuid>
+      1 /v2/gerrit/<uuid>/individual/agreementUrl.html
       1 /v2/check-prepare-employee-signature
-      1 /v1/users/company/abcd
 ```
 
 
