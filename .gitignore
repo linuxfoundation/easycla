@@ -245,3 +245,4 @@ cla-backend/run-python-test-example-*.py
 # LG
 out
 *.secret
+*log*.json
