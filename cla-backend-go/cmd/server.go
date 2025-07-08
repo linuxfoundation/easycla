@@ -236,11 +236,24 @@ func server(localMode bool) http.Handler {
 	}
 
 	// LG: to test with manual tokens
-	// configFile.Auth0.UsernameClaim = "http://lfx.dev/claims/username"
+	customClaimUsername := os.Getenv("AUTH0_USERNAME_CLAIM_CLI")
+	if customClaimUsername != "" {
+		configFile.Auth0.UsernameClaim = customClaimUsername
+	}
+	nameClaimName := os.Getenv("AUTH0_NAME_CLAIM_CLI")
+	if nameClaimName == "" {
+		nameClaimName = "name"
+	}
+	emailClaimName := os.Getenv("AUTH0_EMAIL_CLAIM_CLI")
+	if emailClaimName == "" {
+		emailClaimName = "email"
+	}
 	authValidator, err := auth.NewAuthValidator(
 		configFile.Auth0.Domain,
 		configFile.Auth0.ClientID,
 		configFile.Auth0.UsernameClaim,
+		nameClaimName,
+		emailClaimName,
 		configFile.Auth0.Algorithm)
 	if err != nil {
 		logrus.Panic(err)
