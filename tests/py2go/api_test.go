@@ -60,6 +60,12 @@ func init() {
 	PROJECT_UUID = os.Getenv("PROJECT_UUID")
 }
 
+func debugf(format string, args ...interface{}) {
+	if DEBUG {
+		fmt.Printf(format, args...)
+	}
+}
+
 func tryParseTime(val interface{}) (time.Time, bool) {
 	str, ok := val.(string)
 	if !ok {
@@ -80,11 +86,9 @@ func tryParseTime(val interface{}) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func compareMappedFields(t *testing.T, pyData, goData map[string]interface{}, keyMapping map[string]string, dbg bool) {
+func compareMappedFields(t *testing.T, pyData, goData map[string]interface{}, keyMapping map[string]string) {
 	for pyKey, goKey := range keyMapping {
-		if dbg {
-			fmt.Printf("checking %s - %s\n", pyKey, goKey)
-		}
+		debugf("checking %s - %s\n", pyKey, goKey)
 
 		pyVal, pyOk := pyData[pyKey]
 		goVal, goOk := goData[goKey]
@@ -134,9 +138,7 @@ func TestProjectAPI(t *testing.T) {
 	}
 
 	apiURL := PY_API_URL + fmt.Sprintf(ProjectAPIPath[0], projectId)
-	if DEBUG {
-		fmt.Printf("Py API call: %s\n", apiURL)
-	}
+	debugf("Py API call: %s\n", apiURL)
 	oldResp, err := http.Get(apiURL)
 	if err != nil {
 		t.Fatalf("Failed to call API: %v", err)
@@ -147,15 +149,11 @@ func TestProjectAPI(t *testing.T) {
 	var oldJSON interface{}
 	err = json.Unmarshal(oldBody, &oldJSON)
 	assert.NoError(t, err)
-	if DEBUG {
-		fmt.Printf("Py raw response: %+v\n", string(oldBody))
-		fmt.Printf("Py response: %+v\n", oldJSON)
-	}
+	debugf("Py raw response: %+v\n", string(oldBody))
+	debugf("Py response: %+v\n", oldJSON)
 
 	apiURL = GO_API_URL + fmt.Sprintf(ProjectAPIPath[1], projectId)
-	if DEBUG {
-		fmt.Printf("Go API call: %s\n", apiURL)
-	}
+	debugf("Go API call: %s\n", apiURL)
 	// newResp, err := http.Get(apiURL)
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -175,10 +173,8 @@ func TestProjectAPI(t *testing.T) {
 	var newJSON interface{}
 	err = json.Unmarshal(newBody, &newJSON)
 	assert.NoError(t, err)
-	if DEBUG {
-		fmt.Printf("Go raw Response: %+v\n", string(newBody))
-		fmt.Printf("Go response: %+v\n", newJSON)
-	}
+	debugf("Go raw Response: %+v\n", string(newBody))
+	debugf("Go response: %+v\n", newJSON)
 
 	// For full equality
 	// Strict
@@ -191,7 +187,7 @@ func TestProjectAPI(t *testing.T) {
 	if !ok1 || !ok2 {
 		t.Fatalf("Expected both responses to be JSON objects")
 	}
-	compareMappedFields(t, oldMap, newMap, ProjectAPIKeyMapping, DEBUG)
+	compareMappedFields(t, oldMap, newMap, ProjectAPIKeyMapping)
 
 	if DEBUG {
 		oky := []string{}
@@ -204,7 +200,7 @@ func TestProjectAPI(t *testing.T) {
 			nky = append(nky, k)
 		}
 		sort.Strings(nky)
-		fmt.Printf("old keys: %+v\n", oky)
-		fmt.Printf("new keys: %+v\n", nky)
+		debugf("old keys: %+v\n", oky)
+		debugf("new keys: %+v\n", nky)
 	}
 }
