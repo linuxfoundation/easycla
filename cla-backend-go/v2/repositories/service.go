@@ -69,6 +69,9 @@ type ServiceInterface interface {
 	GitLabEnrollCLAGroupRepositories(ctx context.Context, claGroupID string, enrollValue bool) error
 	GitLabDeleteRepositories(ctx context.Context, gitLabGroupPath string) error
 	GitLabDeleteRepositoryByExternalID(ctx context.Context, gitLabExternalID int64) error
+
+	// All
+	GetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) ([]*v1Repositories.RepositoryDBModel, error)
 }
 
 // GitLabOrgRepo redefine the interface here to avoid circular dependency issues
@@ -663,4 +666,13 @@ func (s *Service) GitHubDisableCLAGroupRepositories(ctx context.Context, claGrou
 		}
 	}
 	return nil
+}
+
+// GetRepositoriesByProjectSFID service function
+func (s *Service) GetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) ([]*v1Repositories.RepositoryDBModel, error) {
+	data, err := s.gitV2Repository.GetRepositoriesByProjectSFID(ctx, projectSFID)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }

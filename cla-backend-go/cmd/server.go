@@ -349,7 +349,7 @@ func server(localMode bool) http.Handler {
 	// Setup our API handlers
 	users.Configure(api, usersService, eventsService)
 	project.Configure(api, v1ProjectService, eventsService, gerritService, v1RepositoriesService, v1SignaturesService)
-	v2Project.Configure(v2API, v1ProjectService, v2ProjectService, eventsService)
+	v2Project.Configure(v2API, v1ProjectService, v2ProjectService, eventsService, v1ProjectClaGroupService, v2RepositoriesService, gerritService)
 	health.Configure(api, healthService)
 	v2Health.Configure(v2API, healthService)
 	template.Configure(api, templateService, eventsService)

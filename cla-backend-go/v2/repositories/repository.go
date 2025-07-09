@@ -6,6 +6,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,7 @@ type RepositoryInterface interface {
 	GitHubGetRepositoriesByCLAGroupDisabled(ctx context.Context, claGroupID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) ([]*repoModels.RepositoryDBModel, error)
 	GitHubGetRepositoriesByOrganizationName(ctx context.Context, orgName string) ([]*repoModels.RepositoryDBModel, error)
+	GetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) ([]*repoModels.RepositoryDBModel, error)
 
 	GitLabGetRepository(ctx context.Context, repositoryID string) (*repoModels.RepositoryDBModel, error)
 	GitLabGetRepositoryByName(ctx context.Context, repositoryName string) (*repoModels.RepositoryDBModel, error)
@@ -241,6 +243,16 @@ func (r *Repository) GitHubGetRepositoriesByCLAGroupDisabled(ctx context.Context
 		return nil, err
 	}
 
+	return records, nil
+}
+
+// GetRepositoriesByProjectSFID returns a list of repositories associated with the specified project
+func (r *Repository) GetRepositoriesByProjectSFID(ctx context.Context, projectSFID string) ([]*repoModels.RepositoryDBModel, error) {
+	condition := expression.Key(repoModels.RepositoryProjectIDColumn).Equal(expression.Value(projectSFID))
+	records, err := r.getRepositoriesWithConditionFilter(ctx, condition, expression.ConditionBuilder{}, repoModels.RepositoryProjectSFIDIndex)
+	if err != nil {
+		return nil, err
+	}
 	return records, nil
 }
 
@@ -548,6 +560,10 @@ func (r *Repository) getRepositoryWithConditionFilter(ctx context.Context, condi
 	return repositories[0], nil
 }
 
+func isZeroCondition(filter expression.ConditionBuilder) bool {
+	return reflect.ValueOf(filter).IsZero()
+}
+
 // getRepositoriesWithConditionFilter fetches the repository entry based on the specified condition and filter criteria
 // using the provided index
 func (r *Repository) getRepositoriesWithConditionFilter(ctx context.Context, condition expression.KeyConditionBuilder, filter expression.ConditionBuilder, indexName string) ([]*repoModels.RepositoryDBModel, error) {
@@ -557,7 +573,11 @@ func (r *Repository) getRepositoriesWithConditionFilter(ctx context.Context, con
 		"indexName":      indexName,
 	}
 
-	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).Build()
+	builder := expression.NewBuilder().WithKeyCondition(condition)
+	if !isZeroCondition(filter) {
+		builder = builder.WithFilter(filter)
+	}
+	expr, err := builder.Build()
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem creating builder")
 		return nil, err

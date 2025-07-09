@@ -889,6 +889,38 @@ paths:
       tags:
         - project
 
+  /project-compat/{projectID}:
+    parameters:
+      - $ref: "#/parameters/x-request-id"
+      - name: projectID
+        in: path
+        type: string
+        required: true
+        pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
+    get:
+      summary: Get project by ID (returns data in the same format as Py V2 API)
+      security: [ ]
+      operationId: getProjectCompat
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/project-compat'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - project
+
   /events/recent:
     get:
       summary: List recent events - requires Admin-level access
@@ -4955,6 +4987,9 @@ definitions:
 
   sf-project-summary:
     $ref: './common/sf-project-summary.yaml'
+
+  project-compat:
+    $ref: './common/project-compat.yaml'
 
   # ---------------------------------------------------------------------------
   # CLA Template Definitions
