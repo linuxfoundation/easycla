@@ -352,7 +352,7 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 			if err.Error() == "project does not exist" {
 				return project.NewGetProjectCompatNotFound().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
-			log.WithFields(f).WithError(err).Warnf("unable to load compat project by ID: %s", params.ProjectID)
+			log.WithFields(f).WithError(err).Warnf("unable to load compat project by ID: %s: %+v", params.ProjectID, err)
 			return project.NewGetProjectCompatBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 		if proj == nil {
@@ -374,11 +374,11 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 			}
 			repos, reposErr := v2RepositoriesService.GetRepositoriesByProjectSFID(ctx, sfid)
 			if reposErr != nil {
-				log.WithFields(f).WithError(err).Warnf("unable to get github/gitlab repos list for SFID: %s: %+v", sfid, reposErr)
+				log.WithFields(f).WithError(reposErr).Warnf("unable to get github/gitlab repos list for SFID: %s: %+v", sfid, reposErr)
 			}
 			gerrits, gerritsErr := gerritService.GetGerritsByProjectSFID(ctx, sfid)
 			if gerritsErr != nil {
-				log.WithFields(f).WithError(err).Warnf("unable to get gerrit repos list for SFID: %s", sfid, gerritsErr)
+				log.WithFields(f).WithError(gerritsErr).Warnf("unable to get gerrit repos list for SFID: %s: %+v", sfid, gerritsErr)
 			}
 			entry := [][2]string{}
 			if reposErr == nil {
