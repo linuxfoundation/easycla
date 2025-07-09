@@ -66,9 +66,9 @@ func putTestItem(tableName, keyName string, keyValue interface{}, keyType string
 		case []string:
 			item[k] = &types.AttributeValueMemberSS{Value: val}
 		case []interface{}:
-			log.Printf("Skipping field %s: generic list not supported directly", k)
+			Debugf("Skipping field %s: generic list not supported directly", k)
 		default:
-			log.Printf("Unsupported type for field %s: %T", k, v)
+			Debugf("Unsupported type for field %s: %T", k, v)
 		}
 	}
 
@@ -80,9 +80,7 @@ func putTestItem(tableName, keyName string, keyValue interface{}, keyType string
 	if err != nil {
 		log.Fatalf("PutItem error: %v", err)
 	}
-	if dbg {
-		fmt.Printf("created entry in %s: %s=%s, %+v\n", tName, keyName, keyValue, extraFields)
-	}
+	Debugf("created entry in %s: %s=%s, %+v\n", tName, keyName, keyValue, extraFields)
 }
 
 func deleteTestItem(tableName, keyName string, keyValue interface{}, keyType string, dbg bool) {
@@ -123,7 +121,5 @@ func deleteTestItem(tableName, keyName string, keyValue interface{}, keyType str
 	if err != nil {
 		log.Fatalf("DeleteItem error: %v", err)
 	}
-	if dbg {
-		fmt.Printf("deleted entry in %s: %s=%s\n", tName, keyName, keyValue)
-	}
+	Debugf("deleted entry in %s: %s=%s\n", tName, keyName, keyValue)
 }

@@ -1,0 +1,128 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Project Model in Py V2 format
+description: Project Model - in Py V2 - minimal fields needed by FE
+properties:
+  project_id:
+    description: Project's UUID
+    example: '88ee12de-122b-4c46-9046-19422054ed8d'
+    type: string
+    x-omitempty: false
+  project_name:
+    description: Project name
+    example: 'Cloud Native Computing Foundation'
+    type: string
+    x-omitempty: false
+  foundation_sfid:
+    description: The salesforce foundation ID
+    example: 'a09410000182dD2AAI'
+    type: string
+    x-omitempty: false
+  project_ccla_enabled:
+    description: Is CCLA enabled?
+    example: true
+    type: boolean
+    x-omitempty: false
+  project_icla_enabled:
+    description: Is ICLA enabled?
+    example: true
+    type: boolean
+    x-omitempty: false
+  project_ccla_requires_icla_signature:
+    description: CCLA requires ICLA signature?
+    example: true
+    type: boolean
+    x-omitempty: false
+  signed_at_foundation_level:
+    description: Is signed at the foundation level?
+    example: true
+    type: boolean
+    x-omitempty: false
+  project_individual_documents:
+    type: array
+    items:
+      type: object
+      properties:
+        document_major_version:
+          description: Document major version
+          example: '2'
+          type: string
+          x-omitempty: false
+        document_minor_version:
+          description: Document minor version
+          example: '0'
+          type: string
+          x-omitempty: false
+  project_corporate_documents:
+    type: array
+    items:
+      type: object
+      properties:
+        document_major_version:
+          description: Document major version
+          example: '2'
+          type: string
+          x-omitempty: false
+        document_minor_version:
+          description: Document minor version
+          example: '0'
+          type: string
+          x-omitempty: false
+  projects:
+    type: array
+    items:
+      type: object
+      properties:
+        cla_group_id:
+          description: Project's UUID
+          example: '88ee12de-122b-4c46-9046-19422054ed8d'
+          type: string
+          x-omitempty: false
+        foundation_sfid:
+          description: The salesforce foundation ID
+          example: 'a09410000182dD2AAI'
+          type: string
+          x-omitempty: false
+        project_sfid:
+          description: The salesforce project ID
+          example: 'a09410000182dD2AAI'
+          type: string
+          x-omitempty: false
+        project_name:
+          description: Project name
+          example: 'Kubernetes'
+          type: string
+          x-omitempty: false
+        github_repos:
+          type: array
+          items:
+            type: object
+            properties:
+              repository_name:
+                description: Repository name
+                example: 'cncf/devstats'
+                type: string
+                x-omitempty: false
+        gitlab_repos:
+          type: array
+          items:
+            type: object
+            properties:
+              repository_name:
+                description: Repository name
+                example: 'cncf/devstats'
+                type: string
+                x-omitempty: false
+        gerrit_repos:
+          type: array
+          items:
+            type: object
+            properties:
+              gerrit_url:
+                description: Repository URL
+                example: 'cncf/devstats'
+                type: string
+                x-omitempty: false
