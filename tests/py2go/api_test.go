@@ -320,13 +320,14 @@ func TestProjectAPI(t *testing.T) {
 	if projectId == "" {
 		projectId = uuid.New().String()
 		putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{
-			"project_name":         "CNCF",
-			"project_icla_enabled": true,
-			"project_ccla_enabled": true,
-			"date_created":         "2022-11-21T10:31:31Z",
-			"date_modified":        "2023-02-23T13:14:48Z",
-			"foundation_sfid":      "sfid",
-			"version":              "2",
+			"project_name":                         "CNCF",
+			"project_icla_enabled":                 true,
+			"project_ccla_enabled":                 true,
+			"project_ccla_requires_icla_signature": true,
+			"date_created":                         "2022-11-21T10:31:31Z",
+			"date_modified":                        "2023-02-23T13:14:48Z",
+			"foundation_sfid":                      "a09410000182dD2AAI",
+			"version":                              "2",
 		}, DEBUG)
 		defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
 	}
