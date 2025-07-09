@@ -217,6 +217,7 @@ func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]int
 			}
 			sortKey, needSort := sortMap[k]
 			if needSort {
+				Debugf("sorting '%s' key values by %s\n", k, sortKey)
 				sortByKey(pyArrayVal, sortKey)
 				sortByKey(goArrayVal, sortKey)
 			}
@@ -253,10 +254,21 @@ func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]int
 }
 
 func TestProjectCompatAPI(t *testing.T) {
-	if PROJECT_UUID == "" {
-		t.Fatalf("PROJECT_UUID environment variable must be set")
-	}
 	projectId := PROJECT_UUID
+	if projectId == "" {
+		projectId = uuid.New().String()
+		putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{
+			"project_name":                         "CNCF",
+			"project_icla_enabled":                 true,
+			"project_ccla_enabled":                 true,
+			"project_ccla_requires_icla_signature": true,
+			"date_created":                         "2022-11-21T10:31:31Z",
+			"date_modified":                        "2023-02-23T13:14:48Z",
+			"foundation_sfid":                      "a09410000182dD2AAI",
+			"version":                              "2",
+		}, DEBUG)
+		defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
+	}
 
 	apiURL := PY_API_URL + fmt.Sprintf(ProjectAPIPath[0], projectId)
 	Debugf("Py API call: %s\n", apiURL)
