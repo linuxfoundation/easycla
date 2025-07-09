@@ -36,6 +36,8 @@ import (
 
 // Configure establishes the middleware handlers for the project service
 func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service Service, eventsService events.Service, projectsClaGroupsService projects_cla_groups.Service, v2RepositoriesService v2Repositories.ServiceInterface, gerritService gerrits.Service) { //nolint
+
+	const projectDoesNotExist = "project does not exist"
 	// Get Projects
 	api.ProjectGetProjectsHandler = project.GetProjectsHandlerFunc(func(params project.GetProjectsParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
@@ -79,7 +81,7 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 		claGroupModel, err := service.GetCLAGroupByID(ctx, params.ProjectSfdcID)
 		if err != nil {
 
-			if err.Error() == "project does not exist" {
+			if err.Error() == projectDoesNotExist {
 				return project.NewGetProjectByIDNotFound().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
 			return project.NewGetProjectByIDBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
@@ -349,7 +351,7 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 
 		proj, err := service.GetCLAGroupByID(ctx, params.ProjectID)
 		if err != nil {
-			if err.Error() == "project does not exist" {
+			if err.Error() == projectDoesNotExist {
 				return project.NewGetProjectCompatNotFound().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
 			log.WithFields(f).WithError(err).Warnf("unable to load compat project by ID: %s: %+v", params.ProjectID, err)
