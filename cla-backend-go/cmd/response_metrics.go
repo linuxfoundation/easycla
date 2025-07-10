@@ -37,7 +37,10 @@ func requestStart(reqID, method string) {
 // getRequestMetrics returns the response metrics based on the request id value
 func getRequestMetrics(reqID string) *responseMetrics {
 	if val, found := reqMap.Load(reqID); found {
-		rm := val.(*responseMetrics)
+		rm, ok := val.(*responseMetrics)
+		if !ok {
+			return nil
+		}
 		now, _ := utils.CurrentTime()
 		rm.elapsed = now.Sub(rm.start)
 		return rm
