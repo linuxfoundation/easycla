@@ -15,5 +15,6 @@
 - `` export XACL="$(cat ../../x-acl.secret)" ``.
 - `` make ``.
 - `` DEBUG=1 PROJECT_UUID=88ee12de-122b-4c46-9046-19422054ed8d PY_API_URL=https://api.lfcla.dev.platform.linuxfoundation.org GO_API_URL=https://api-gw.dev.platform.linuxfoundation.org/cla-service make ``.
+- `` MAX_PARALLEL=8 PY_API_URL=https://api.lfcla.dev.platform.linuxfoundation.org go test -v -run '^TestAllProjectsCompatAPI$' ``.
 - To run a specific test case(s): `` DEBUG=1 PROJECT_UUID=88ee12de-122b-4c46-9046-19422054ed8d PY_API_URL=https://api.lfcla.dev.platform.linuxfoundation.org go test -v -run '^TestProjectCompatAPI$' ``.
 - Manually via `cURL`: `` curl -s -XGET http://127.0.0.1:5001/v4/project-compat/01af041c-fa69-4052-a23c-fb8c1d3bef24 | jq . ``.

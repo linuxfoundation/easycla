@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +23,7 @@ var (
 	PY_API_URL           string
 	GO_API_URL           string
 	DEBUG                bool
+	MAX_PARALLEL         int
 	PROJECT_UUID         string
 	ProjectAPIPath       = [3]string{"/v2/project/%s", "/v4/project/%s", "/v4/project-compat/%s"}
 	ProjectAPIKeyMapping = map[string]string{
@@ -87,6 +91,16 @@ func init() {
 	dbg := os.Getenv("DEBUG")
 	if dbg != "" {
 		DEBUG = true
+	}
+	MAX_PARALLEL = 1
+	par := os.Getenv("MAX_PARALLEL")
+	if par != "" {
+		iPar, err := strconv.Atoi(par)
+		if err != nil {
+			fmt.Printf("MAX_PARALLEL environment value should be integer >= 1\n")
+		} else if iPar > 0 {
+			MAX_PARALLEL = iPar
+		}
 	}
 	PROJECT_UUID = os.Getenv("PROJECT_UUID")
 }
@@ -253,23 +267,7 @@ func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]int
 	}
 }
 
-func TestProjectCompatAPI(t *testing.T) {
-	projectId := PROJECT_UUID
-	if projectId == "" {
-		projectId = uuid.New().String()
-		putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{
-			"project_name":                         "CNCF",
-			"project_icla_enabled":                 true,
-			"project_ccla_enabled":                 true,
-			"project_ccla_requires_icla_signature": true,
-			"date_created":                         "2022-11-21T10:31:31Z",
-			"date_modified":                        "2023-02-23T13:14:48Z",
-			"foundation_sfid":                      "a09410000182dD2AAI",
-			"version":                              "2",
-		}, DEBUG)
-		defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
-	}
-
+func runProjectCompatAPIForProject(t *testing.T, projectId string) {
 	apiURL := PY_API_URL + fmt.Sprintf(ProjectAPIPath[0], projectId)
 	Debugf("Py API call: %s\n", apiURL)
 	oldResp, err := http.Get(apiURL)
@@ -321,6 +319,73 @@ func TestProjectCompatAPI(t *testing.T) {
 		sort.Strings(nky)
 		Debugf("old keys: %+v\n", oky)
 		Debugf("new keys: %+v\n", nky)
+	}
+}
+
+func TestProjectCompatAPI(t *testing.T) {
+	projectId := PROJECT_UUID
+	if projectId == "" {
+		projectId = uuid.New().String()
+		putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{
+			"project_name":                         "CNCF",
+			"project_icla_enabled":                 true,
+			"project_ccla_enabled":                 true,
+			"project_ccla_requires_icla_signature": true,
+			"date_created":                         "2022-11-21T10:31:31Z",
+			"date_modified":                        "2023-02-23T13:14:48Z",
+			"foundation_sfid":                      "a09410000182dD2AAI",
+			"version":                              "2",
+		}, DEBUG)
+		defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
+	}
+
+	runProjectCompatAPIForProject(t, projectId)
+}
+
+func TestAllProjectsCompatAPI(t *testing.T) {
+	allProjects := getAllPrimaryKeys("projects", "project_id", "S")
+
+	var failedProjects []string
+	var mtx sync.Mutex
+	sem := make(chan struct{}, MAX_PARALLEL)
+	var wg sync.WaitGroup
+
+	for _, projectID := range allProjects {
+		projID, ok := projectID.(string)
+		if !ok {
+			t.Errorf("Expected string project_id, got: %T", projectID)
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{}
+
+		go func(projID string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			// Use t.Run in a thread-safe wrapper with a dummy parent test
+			t.Run(fmt.Sprintf("ProjectId=%s", projID), func(t *testing.T) {
+				runProjectCompatAPIForProject(t, projID)
+				if t.Failed() {
+					mtx.Lock()
+					failedProjects = append(failedProjects, projID)
+					mtx.Unlock()
+				}
+			})
+		}(projID)
+	}
+
+	wg.Wait()
+
+	if len(failedProjects) > 0 {
+		fmt.Fprintf(os.Stderr, "\nFailed Project IDs (%d):\n%s\n\n",
+			len(failedProjects),
+			strings.Join(failedProjects, "\n"),
+		)
+		t.Fail() // Mark test as failed
+	} else {
+		fmt.Println("\nAll projects passed.")
 	}
 }
 
