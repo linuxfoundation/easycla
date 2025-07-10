@@ -50,6 +50,7 @@ const (
 type ProjectRepository interface { //nolint
 	CreateCLAGroup(ctx context.Context, claGroupModel *models.ClaGroup) (*models.ClaGroup, error)
 	GetCLAGroupByID(ctx context.Context, claGroupID string, loadRepoDetails bool) (*models.ClaGroup, error)
+	GetCLAGroupByIDCompat(ctx context.Context, claGroupID string, loadRepoDetails bool) (*models.ClaGroup, error)
 	GetCLAGroupsByExternalID(ctx context.Context, params *project.GetProjectsByExternalIDParams, loadRepoDetails bool) (*models.ClaGroups, error)
 	GetCLAGroupByName(ctx context.Context, claGroupName string) (*models.ClaGroup, error)
 	GetExternalCLAGroup(ctx context.Context, claGroupExternalID string) (*models.ClaGroup, error)
@@ -149,7 +150,7 @@ func (repo *repo) CreateCLAGroup(ctx context.Context, claGroupModel *models.ClaG
 	return claGroupModel, nil
 }
 
-func (repo *repo) getCLAGroupByID(ctx context.Context, claGroupID string, loadCLAGroupDetails bool) (*models.ClaGroup, error) {
+func (repo *repo) getCLAGroupByID(ctx context.Context, claGroupID string, loadCLAGroupDetails bool, claEnabledDefaultIsTrue bool) (*models.ClaGroup, error) {
 	f := logrus.Fields{
 		"functionName":       "project.repository.getCLAGroupByID",
 		utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
@@ -188,10 +189,20 @@ func (repo *repo) getCLAGroupByID(ctx context.Context, claGroupID string, loadCL
 		return nil, &utils.CLAGroupNotFound{CLAGroupID: claGroupID}
 	}
 	var dbModel models2.DBProjectModel
-	err = dynamodbattribute.UnmarshalMap(results.Items[0], &dbModel)
+	rawItem := results.Items[0]
+	err = dynamodbattribute.UnmarshalMap(rawItem, &dbModel)
 	if err != nil {
 		log.WithFields(f).Warnf("error unmarshalling db cla group model, error: %+v", err)
 		return nil, err
+	}
+	if claEnabledDefaultIsTrue {
+		// If missing, assume true like Pynamo default=True
+		if _, ok := rawItem["project_icla_enabled"]; !ok {
+			dbModel.ProjectIclaEnabled = true
+		}
+		if _, ok := rawItem["project_ccla_enabled"]; !ok {
+			dbModel.ProjectCclaEnabled = true
+		}
 	}
 
 	// Convert the database model to an API response model
@@ -200,7 +211,14 @@ func (repo *repo) getCLAGroupByID(ctx context.Context, claGroupID string, loadCL
 
 // GetCLAGroupByID returns the cla group model associated for the specified claGroupID
 func (repo *repo) GetCLAGroupByID(ctx context.Context, claGroupID string, loadRepoDetails bool) (*models.ClaGroup, error) {
-	return repo.getCLAGroupByID(ctx, claGroupID, loadRepoDetails)
+	return repo.getCLAGroupByID(ctx, claGroupID, loadRepoDetails, false)
+}
+
+// GetCLAGroupByIDCompat returns the cla group model associated for the specified claGroupID
+func (repo *repo) GetCLAGroupByIDCompat(ctx context.Context, claGroupID string, loadRepoDetails bool) (*models.ClaGroup, error) {
+	// Uses compatible mode (with python v2): claEnabledDefaultIsTrue - means if project_ccla_enabled or project_icla_enabled
+	// aren't set on dynamoDB item - they will default to true as in Py V2 API
+	return repo.getCLAGroupByID(ctx, claGroupID, loadRepoDetails, true)
 }
 
 // GetCLAGroupsByExternalID queries the database and returns a list of the cla groups
@@ -383,7 +401,7 @@ func (repo *repo) GetClaGroupByProjectSFID(ctx context.Context, projectSFID stri
 
 	log.WithFields(f).Debugf("found CLA Group ID: %s for project SFID: %s", claGroupProject.ClaGroupID, projectSFID)
 
-	return repo.getCLAGroupByID(ctx, claGroupProject.ClaGroupID, loadRepoDetails)
+	return repo.getCLAGroupByID(ctx, claGroupProject.ClaGroupID, loadRepoDetails, false)
 }
 
 // GetCLAGroupByName returns the project model associated for the specified project name
