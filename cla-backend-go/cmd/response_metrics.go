@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"sync"
 	"time"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -18,32 +19,33 @@ type responseMetrics struct {
 	expire  time.Time
 }
 
-var reqMap = make(map[string]*responseMetrics, 5)
+var reqMap sync.Map
 
 // requestStart holds the request ID, method and timing information in a small structure
 func requestStart(reqID, method string) {
 	now, _ := utils.CurrentTime()
-	reqMap[reqID] = &responseMetrics{
+	rm := &responseMetrics{
 		reqID:   reqID,
 		method:  method,
 		start:   now,
 		elapsed: 0,
 		expire:  now.Add(time.Minute * 5),
 	}
+	reqMap.Store(reqID, rm)
 }
 
 // getRequestMetrics returns the response metrics based on the request id value
 func getRequestMetrics(reqID string) *responseMetrics {
-	if x, found := reqMap[reqID]; found {
+	if val, found := reqMap.Load(reqID); found {
+		rm := val.(*responseMetrics)
 		now, _ := utils.CurrentTime()
-		x.elapsed = now.Sub(x.start)
-		return x
+		rm.elapsed = now.Sub(rm.start)
+		return rm
 	}
-
 	return nil
 }
 
 // clearRequestMetrics removes the request from the map
 func clearRequestMetrics(reqID string) {
-	delete(reqMap, reqID)
+	reqMap.Delete(reqID)
 }

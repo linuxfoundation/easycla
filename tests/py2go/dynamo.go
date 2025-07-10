@@ -123,3 +123,66 @@ func deleteTestItem(tableName, keyName string, keyValue interface{}, keyType str
 	}
 	Debugf("deleted entry in %s: %s=%s\n", tName, keyName, keyValue)
 }
+
+func getAllPrimaryKeys(tableName, keyName, keyType string) []interface{} {
+	cfg, err := config.LoadDefaultConfig(
+		context.TODO(),
+		config.WithRegion(REGION),
+		config.WithSharedConfigProfile(PROFILE),
+	)
+	if err != nil {
+		log.Fatalf("unable to load SDK config, %v", err)
+	}
+	client := dynamodb.NewFromConfig(cfg)
+
+	tName := "cla-" + STAGE + "-" + tableName
+	Debugf("getting all keys form %s\n", tName)
+	var results []interface{}
+	var lastEvaluatedKey map[string]types.AttributeValue
+
+	for {
+		input := &dynamodb.ScanInput{
+			TableName:            aws.String(tName),
+			ProjectionExpression: aws.String(keyName),
+			ExclusiveStartKey:    lastEvaluatedKey,
+		}
+
+		output, err := client.Scan(context.TODO(), input)
+		if err != nil {
+			log.Fatalf("Scan error on table %s: %v", tName, err)
+		}
+
+		for _, item := range output.Items {
+			attr, ok := item[keyName]
+			if !ok {
+				Debugf("Key %s not found in item: %+v", keyName, item)
+				continue
+			}
+
+			switch keyType {
+			case "S":
+				if v, ok := attr.(*types.AttributeValueMemberS); ok {
+					results = append(results, v.Value)
+				}
+			case "N":
+				if v, ok := attr.(*types.AttributeValueMemberN); ok {
+					results = append(results, v.Value)
+				}
+			case "BOOL":
+				if v, ok := attr.(*types.AttributeValueMemberBOOL); ok {
+					results = append(results, v.Value)
+				}
+			default:
+				log.Fatalf("Unsupported key type: %s", keyType)
+			}
+		}
+
+		if output.LastEvaluatedKey == nil || len(output.LastEvaluatedKey) == 0 {
+			break
+		}
+		lastEvaluatedKey = output.LastEvaluatedKey
+	}
+
+	Debugf("got keys: %+v\n", results)
+	return results
+}
