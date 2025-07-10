@@ -30,6 +30,7 @@ type Service interface {
 	CreateCLAGroup(ctx context.Context, project *models.ClaGroup) (*models.ClaGroup, error)
 	GetCLAGroups(ctx context.Context, params *project.GetProjectsParams) (*models.ClaGroups, error)
 	GetCLAGroupByID(ctx context.Context, claGroupID string) (*models.ClaGroup, error)
+	GetCLAGroupByIDCompat(ctx context.Context, claGroupID string) (*models.ClaGroup, error)
 	GetCLAGroupsByExternalSFID(ctx context.Context, projectSFID string) (*models.ClaGroups, error)
 	GetCLAGroupsByExternalID(ctx context.Context, params *project.GetProjectsByExternalIDParams) (*models.ClaGroups, error)
 	GetCLAGroupByName(ctx context.Context, projectName string) (*models.ClaGroup, error)
@@ -75,6 +76,16 @@ func (s ProjectService) GetCLAGroups(ctx context.Context, params *project.GetPro
 
 // GetCLAGroupByID service method
 func (s ProjectService) GetCLAGroupByID(ctx context.Context, claGroupID string) (*models.ClaGroup, error) {
+	return s.getCLAGroupByID(ctx, claGroupID, false)
+}
+
+// GetCLAGroupByIDCompat service method
+func (s ProjectService) GetCLAGroupByIDCompat(ctx context.Context, claGroupID string) (*models.ClaGroup, error) {
+	return s.getCLAGroupByID(ctx, claGroupID, true)
+}
+
+// getCLAGroupByID service method
+func (s ProjectService) getCLAGroupByID(ctx context.Context, claGroupID string, claEnabledDefaultIsTrue bool) (*models.ClaGroup, error) {
 	f := logrus.Fields{
 		"functionName":    "GetCLAGroupByID",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
@@ -83,7 +94,15 @@ func (s ProjectService) GetCLAGroupByID(ctx context.Context, claGroupID string) 
 	}
 
 	log.WithFields(f).Debug("locating CLA Group by ID...")
-	project, err := s.repo.GetCLAGroupByID(ctx, claGroupID, repository.LoadRepoDetails)
+	var (
+		project *models.ClaGroup
+		err     error
+	)
+	if claEnabledDefaultIsTrue {
+		project, err = s.repo.GetCLAGroupByIDCompat(ctx, claGroupID, repository.LoadRepoDetails)
+	} else {
+		project, err = s.repo.GetCLAGroupByID(ctx, claGroupID, repository.LoadRepoDetails)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -349,7 +349,7 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 			"projectID":      params.ProjectID,
 		}
 
-		proj, err := service.GetCLAGroupByID(ctx, params.ProjectID)
+		proj, err := service.GetCLAGroupByIDCompat(ctx, params.ProjectID)
 		if err != nil {
 			if err.Error() == projectDoesNotExist {
 				return project.NewGetProjectCompatNotFound().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
@@ -448,8 +448,6 @@ func buildCompatProject(project *v1Models.ClaGroup, projectClaGroups []*projects
 			GitlabRepos:    gitlabRepos,
 		})
 	}
-	// fmt.Printf("GERRITS: %+v\n", *project.Gerrits[0])
-	// fmt.Printf("GITHUBS: %+v\n", *project.GithubRepositories[0])
 	return &models.ProjectCompat{
 		FoundationSfid:                   project.FoundationSFID,
 		ProjectName:                      project.ProjectName,

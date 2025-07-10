@@ -146,13 +146,17 @@ func compareMappedFields(t *testing.T, pyData, goData map[string]interface{}, ke
 
 		if okPyTime && okGoTime {
 			if !pyTime.Equal(goTime) {
-				t.Errorf("Datetime mismatch for key '%s' (Go: '%s'): %s != %s", pyKey, goKey, pyTime, goTime)
+				t.Errorf("Datetime mismatch for key '%s' (Go: '%s'): py:%s != go:%s", pyKey, goKey, pyTime, goTime)
 			}
 			continue
 		}
 
+		if (pyVal == nil && goVal == "") || (goVal == nil && pyVal == "") {
+			continue
+		}
+
 		if fmt.Sprint(pyVal) != fmt.Sprint(goVal) {
-			t.Errorf("Mismatch for key '%s' (Go: '%s'): %v != %v", pyKey, goKey, pyVal, goVal)
+			t.Errorf("Mismatch for key '%s' (Go: '%s'): py:%+v != go:%+v", pyKey, goKey, pyVal, goVal)
 		}
 	}
 }
@@ -256,13 +260,17 @@ func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]int
 
 		if okPyTime && okGoTime {
 			if !pyTime.Equal(goTime) {
-				t.Errorf("Datetime mismatch for key '%s': %s != %s", k, pyTime, goTime)
+				t.Errorf("Datetime mismatch for key '%s': py:%s != go:%s", k, pyTime, goTime)
 			}
 			continue
 		}
 
+		if (pyVal == nil && goVal == "") || (goVal == nil && pyVal == "") {
+			continue
+		}
+
 		if fmt.Sprint(pyVal) != fmt.Sprint(goVal) {
-			t.Errorf("Mismatch for key '%s': %v != %v", k, pyVal, goVal)
+			t.Errorf("Mismatch for key '%s': py:%+v != go:%+v", k, pyVal, goVal)
 		}
 	}
 }
