@@ -13,7 +13,6 @@
 - `/v2/check-prepare-employee-signature`.
 - `/v2/request-employee-signature`.
 - `/v2/user/<userId>/project/<projectId>/last-signature`.
-- `/v2/project/<projectId>`.
 
 
 3. EasyCLA corporate console [here](https://github.com/LF-Engineering/lfx-corp-cla-console/blob/main/backend/src/data/cla-api.ts):
