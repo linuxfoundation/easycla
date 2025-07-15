@@ -8,7 +8,7 @@ pynamodb==4.0.0
 pytest==5.3.1
 python-dateutil==2.8.0
 oauthlib==3.1.0
-requests==2.32.2
+requests==2.32.4
 requests-oauthlib==1.2.0
 moto==1.3.14
 networkx>=2.6 # not directly required, pinned by Snyk to avoid a vulnerability
