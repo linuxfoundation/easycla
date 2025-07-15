@@ -15,3 +15,4 @@ networkx>=2.6 # not directly required, pinned by Snyk to avoid a vulnerability
 sympy>=1.12 # not directly required, pinned by Snyk to avoid a vulnerability
 urllib3>=2.2.2 # not directly required, pinned by Snyk to avoid a vulnerability
 zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability
+setuptools>=78.1.1 # not directly required, pinned by Snyk to avoid a vulnerability
