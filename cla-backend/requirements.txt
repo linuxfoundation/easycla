@@ -43,7 +43,7 @@ sentinels==1.0.0
 six==1.13.0
 soupsieve==1.9.5
 termcolor==1.1.0
-urllib3==1.26.18
+urllib3==2.5.0
 vintage==0.4.1
 wcwidth==0.1.7
 Werkzeug==0.15.5
