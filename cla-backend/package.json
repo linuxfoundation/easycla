@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "aws-sdk": "^2.1329.0",
-    "fast-xml-parser": ">=4.4.1",
+    "fast-xml-parser": ">=5.2.5",
     "install": "^0.13.0",
     "node-fetch": "^2.6.7",
     "node.extend": "^2.0.2",
