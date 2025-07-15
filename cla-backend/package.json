@@ -48,7 +48,7 @@
     "serverless-prune-plugin": "^2.0.2",
     "serverless-python-requirements": "^6.0.0",
     "serverless-wsgi": "^3.0.1",
-    "shell-quote": "^1.7.3",
+    "shell-quote": "^1.8.3",
     "simple-git": "^3.16.0",
     "xml2js": "^0.6.0",
     "yarn-audit-fix": "^10.0.0"
