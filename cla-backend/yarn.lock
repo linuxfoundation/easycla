@@ -5256,10 +5256,10 @@ serverless-prune-plugin@^2.0.2:
   dependencies:
     bluebird "^3.7.2"
 
-serverless-python-requirements@^6.0.0:
-  version "6.1.1"
-  resolved "https://registry.yarnpkg.com/serverless-python-requirements/-/serverless-python-requirements-6.1.1.tgz#f7da9f2e0f096387e25f0d4e54baca7bfc1ad97b"
-  integrity sha512-SQsDKjoZXWvRJNsKL7NvHiMM+B6kG0a4RkVexhPCxId/rVMLVyz0UHg7v34kzaklfsXTQIkez+9x7HP3FwdRVQ==
+serverless-python-requirements@^6.1.2:
+  version "6.1.2"
+  resolved "https://registry.yarnpkg.com/serverless-python-requirements/-/serverless-python-requirements-6.1.2.tgz#21a222c06ac52736c969b60e251a7e2f606a6a33"
+  integrity sha512-pas27CBxxaLTU5XMYnCVPJc+LVdm65Ys5olNvRWRqfUaZwTfD/7KSSt2XPSRme8BeJubroslaiOtWPP+IrxTVA==
   dependencies:
     "@iarna/toml" "^2.2.5"
     appdirectory "^0.1.0"
