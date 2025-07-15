@@ -8,6 +8,8 @@
 # on local (non remote) computer: ~/get_oauth_token.sh (or ~/get_oauth_token_prod.sh) (will open browser, authenticate to LF, and return token data)
 # edit 'cla-backend-go/cmd/server.go' - look for "LG: to test with manual tokens", then 'cla-backend-go/auth/authorizer.go': LG: to allow local testing", then run ./bin/cla
 # then TOKEN='value from the get_oauth_token.sh script' DEBUG='' ./utils/get_user_from_token_go.sh
+# DEBUG=1 API_URL='https://api-gw.dev.platform.linuxfoundation.org/cla-service' TOKEN='...' ./utils/get_user_from_token_go.sh
+# DEBUG=1 API_URL='http://localhost:5001/cla-service' TOKEN='...' ./utils/get_user_from_token_go.sh
 
 if [ -z "$TOKEN" ]
 then
