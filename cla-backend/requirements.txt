@@ -34,7 +34,7 @@ pydocusign==2.2
 PyGithub==1.55
 PyJWT==2.7.0
 pyparsing==2.4.5
-python-dateutil==2.8.1
+python-dateutil==2.9.0
 requests==2.31.0
 requests-oauthlib==1.2.0
 rsa==4.7
