@@ -17,11 +17,16 @@ properties:
   repository_id:
     type: string
     description: The unique ID of the associated repository
-    example: repo-abc123
+    example: '168926425'
   pull_request_id:
     type: string
     description: The pull request ID related to the signature
     example: '456'
+  merge_request_id:
+    type: string
+    description: The merge request ID related to the signature
+    example: '456'
+    x-nullable: true
   return_url:
     type: string
     format: uri

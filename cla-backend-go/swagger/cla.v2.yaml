@@ -2485,7 +2485,7 @@ paths:
         '404':
           $ref: '#/responses/not-found'
       tags:
-        - signatures
+        - sign
 
   /signatures/project/{projectSFID}/company/{companyID}/employee:
     get:
