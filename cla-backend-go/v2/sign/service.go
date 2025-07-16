@@ -2852,10 +2852,10 @@ func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*m
 		log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
 		return nil, err
 	}
+	log.WithFields(f).Debugf("active signature metadata: %+v", activeSignatureMetadata)
 	if len(activeSignatureMetadata) == 0 {
 		return nil, nil
 	}
-	log.WithFields(f).Debugf("active signature metadata: %+v", activeSignatureMetadata)
 	var (
 		mergeRequestId *string
 		isGitlab       bool

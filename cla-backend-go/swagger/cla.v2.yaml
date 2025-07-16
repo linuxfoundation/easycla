@@ -2458,12 +2458,12 @@ paths:
       summary: |
         Returns all metadata associated with a user's active signature.
         {
-          'user_id': <user-id>,
-          'project_id': <project-id>,
-          'repository_id': <repository-id>,
-          'pull_request_id': <PR>,
-          *'merge_request_id': <MR> (optional),
-          'return_url': <url-where-user-initiated-signature-from>'
+          'user_id': <user-uuid>,
+          'project_id': <project-uuid>,
+          'repository_id': <repository-id> (as string),
+          'pull_request_id': <PR> (PR number as string),
+          *'merge_request_id': <MR> (optional MR number as string - this property can be missing in JSON),
+          'return_url': <url-where-user-initiated-signature-from> (for example itHub PR path)'
         }
         Returns null if the user does not have an active signature.
       security: [ ]

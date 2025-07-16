@@ -271,7 +271,9 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				return middleware.ResponderFunc(func(w http.ResponseWriter, _ runtime.Producer) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte("null"))
+					if _, err := w.Write([]byte("null")); err != nil {
+						log.WithFields(f).WithError(err).Warn("failed to write null response")
+					}
 				})
 			}
 			return sign.NewGetUserActiveSignatureOK().WithPayload(resp)
