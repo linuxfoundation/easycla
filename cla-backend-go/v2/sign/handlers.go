@@ -24,6 +24,8 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/sign"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+
+	"github.com/go-openapi/runtime"
 )
 
 var (
@@ -264,6 +266,13 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			resp, err = service.GetUserActiveSignature(ctx, params.UserID)
 			if err != nil {
 				return sign.NewGetUserActiveSignatureBadRequest().WithPayload(errorResponse(reqId, err))
+			}
+			if resp == nil {
+				return middleware.ResponderFunc(func(w http.ResponseWriter, _ runtime.Producer) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte("null"))
+				})
 			}
 			return sign.NewGetUserActiveSignatureOK().WithPayload(resp)
 		})
