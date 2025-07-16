@@ -232,7 +232,7 @@ def request_company_ccla(
 #     return cla.controllers.user.request_company_admin_access(str(user_id), str(company_id))
 
 
-# LG: porting this to golang
+# LG: This is ported to golang and no longer used in dev (still used in prod)
 @hug.get("/user/{user_id}/active-signature", versions=2)
 def get_user_active_signature(user_id: hug.types.uuid):
     """

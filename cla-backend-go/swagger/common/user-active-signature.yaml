@@ -10,25 +10,25 @@ description: >
 properties:
   user_id:
     $ref: './common/properties/internal-id.yaml'
-    description: The unique internal ID of the user
+    description: The unique internal UUID of the user
   project_id:
     $ref: './common/properties/internal-id.yaml'
-    description: The unique ID of the associated project
+    description: The unique UUID of the associated project
   repository_id:
     type: string
-    description: The unique ID of the associated repository
+    description: The unique ID of the associated repository (number stored as string)
     example: '168926425'
   pull_request_id:
     type: string
-    description: The pull request ID related to the signature
+    description: The pull request ID related to the signature (number stored as string)
     example: '456'
   merge_request_id:
     type: string
-    description: The merge request ID related to the signature
+    description: The merge request ID related to the signature (optional number stored as string, thsi property can be missing in JSON)
     example: '456'
     x-nullable: true
   return_url:
     type: string
     format: uri
-    description: The return URL where the user initiated the signature
-    example: https://example.com/return
+    description: The return URL where the user initiated the signature (for example GitHub PR path)
+    example: https://github.com/veer-missingid2/repo03/pull/3
