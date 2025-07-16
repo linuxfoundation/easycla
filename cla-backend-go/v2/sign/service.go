@@ -1540,7 +1540,7 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 	if found, ok := metadata["merge_request_id"].(string); ok {
 		mergeRequestID = found
 	} else {
-		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
+		log.WithFields(f).WithError(err).Warnf("unable to get merge request ID for user: %s", userID)
 		return "", err
 	}
 
@@ -1608,11 +1608,28 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 	log.WithFields(f).Debugf("found pull request ID: %s", pullRequestID)
 
 	// Get installation ID through a helper function
-	log.WithFields(f).Debugf("getting repository...")
+	installationId, err = s.getInstallationIDFromRepositoryID(ctx, repositoryID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get github organization for repository ID: %s", repositoryID)
+		return "", err
+	}
+
+	callbackURL := fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID)
+	return callbackURL, nil
+}
+
+func (s *service) getInstallationIDFromRepositoryID(ctx context.Context, repositoryID string) (int64, error) {
+	var installationId int64
+	f := logrus.Fields{
+		"functionName": "sign.getInstallationIDFromRepositoryID",
+		"repositoryID": repositoryID,
+	}
+	// Get installation ID through a helper function
+	log.WithFields(f).Debugf("getting repository for ID=%s...", repositoryID)
 	githubRepository, err := s.repositoryService.GetRepositoryByExternalID(ctx, repositoryID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
-		return "", err
+		return 0, err
 	}
 
 	// Get github organization
@@ -1621,17 +1638,16 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get github organization for repository ID: %s", repositoryID)
-		return "", err
+		return 0, err
 	}
 
 	installationId = githubOrg.OrganizationInstallationID
 	if installationId == 0 {
-		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
-		return "", err
+		log.WithFields(f).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
+		return 0, err
 	}
 
-	callbackURL := fmt.Sprintf("%s/v4/signed/individual/%d/%s/%s", s.ClaV4ApiURL, installationId, repositoryID, pullRequestID)
-	return callbackURL, nil
+	return installationId, nil
 }
 
 //nolint:gocyclo
@@ -2771,6 +2787,60 @@ func claSignatoryEmailContent(params ClaSignatoryEmailParams) (string, string) {
 	return emailSubject, emailBody
 }
 
+func (s *service) getActiveSignatureReturnURL(ctx context.Context, userID string, metadata map[string]interface{}) (string, error) {
+
+	f := logrus.Fields{
+		"functionName": "sign.getActiveSignatureReturnURL",
+	}
+
+	var returnURL, rId string
+	var err, err2 error
+	var pullRequestID int
+	var repositoryID int64
+	var installationID int64
+
+	if found, ok := metadata["pull_request_id"]; ok && found != nil {
+		prId := fmt.Sprintf("%v", found)
+		pullRequestID, err2 = strconv.Atoi(prId)
+		if err2 != nil {
+			log.WithFields(f).WithError(err2).Warnf("unable to get pull request ID for user: %s", userID)
+			return "", err2
+		}
+	} else {
+		err2 = errors.New("missing pull_request_id in metadata")
+		log.WithFields(f).WithError(err2).Warnf("unable to get pull request ID for user: %s", userID)
+		return "", err2
+	}
+
+	if found, ok := metadata["repository_id"]; ok && found != nil {
+		rId = fmt.Sprintf("%v", found)
+		repositoryID, err2 = strconv.ParseInt(rId, 10, 64)
+		if err2 != nil {
+			log.WithFields(f).WithError(err2).Warnf("unable to get repository ID for user: %s", userID)
+			return "", err2
+		}
+	} else {
+		err2 = errors.New("missing repository_id in metadata")
+		log.WithFields(f).WithError(err2).Warnf("unable to get repository ID for user: %s", userID)
+		return "", err2
+	}
+
+	// Get installation ID through a helper function
+	installationID, err = s.getInstallationIDFromRepositoryID(ctx, rId)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get github organization for repository ID: %v", repositoryID)
+		return "", err
+	}
+
+	returnURL, err = github.GetReturnURL(ctx, installationID, repositoryID, pullRequestID)
+
+	if err != nil {
+		return "", err
+	}
+
+	return returnURL, nil
+}
+
 func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*models.UserActiveSignature, error) {
 	f := logrus.Fields{
 		"functionName":   "sign.GetUserActiveSignature",
@@ -2782,40 +2852,48 @@ func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*m
 		log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
 		return nil, err
 	}
-
 	log.WithFields(f).Debugf("active signature metadata: %+v", activeSignatureMetadata)
-	isGitlab := false
-	var mergeRequestId *string
-	if mrId, ok := activeSignatureMetadata["merge_request_id"].(string); ok {
+	var (
+		mergeRequestId *string
+		isGitlab       bool
+		returnURL      string
+		pullRequestId  string
+		repositoryId   string
+	)
+	if mrId, ok := activeSignatureMetadata["merge_request_id"]; ok && mrId != nil {
+		mrStr := fmt.Sprintf("%v", mrId)
+		mergeRequestId = &mrStr
 		isGitlab = true
-		mergeRequestId = &mrId
 	}
-	log.WithFields(f).Debugf("generating signature callback url gitlab=%v...", isGitlab)
-
-	var callBackURL string
 	if isGitlab {
-		callBackURL, err = s.getIndividualSignatureCallbackURLGitlab(ctx, userID, activeSignatureMetadata)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to get gitlab signature callback url for user: %s", userID)
-			return nil, err
+		var ok bool
+		returnURL, ok = activeSignatureMetadata["return_url"].(string)
+		if !ok {
+			log.WithFields(f).Warnf("missing return_url in metadata while merge_request_id is present: %+v", activeSignatureMetadata)
 		}
 	} else {
-		callBackURL, err = s.getIndividualSignatureCallbackURL(ctx, userID, activeSignatureMetadata)
+		returnURL, err = s.getActiveSignatureReturnURL(ctx, userID, activeSignatureMetadata)
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to get github signature callback url for user: %s", userID)
+			log.WithFields(f).WithError(err).Warnf("unable to get active signature return url for user: %s", userID)
 			return nil, err
 		}
 	}
-	log.WithFields(f).Debugf("signature callback url: %s", callBackURL)
-	projectId, _ := activeSignatureMetadata["project_id"].(string)
-	pullRequestId, _ := activeSignatureMetadata["pull_request_id"].(string)
-	repositoryId, _ := activeSignatureMetadata["repository_id"].(string)
+	projectId, ok := activeSignatureMetadata["project_id"].(string)
+	if !ok {
+		log.WithFields(f).Warnf("missing project_id in metadata: %+v", activeSignatureMetadata)
+	}
+	if val, ok := activeSignatureMetadata["pull_request_id"]; ok && val != nil {
+		pullRequestId = fmt.Sprintf("%v", val)
+	}
+	if val, ok := activeSignatureMetadata["repository_id"]; ok && val != nil {
+		repositoryId = fmt.Sprintf("%v", val)
+	}
 	return &models.UserActiveSignature{
 		MergeRequestID: mergeRequestId,
 		ProjectID:      projectId,
 		PullRequestID:  pullRequestId,
 		RepositoryID:   repositoryId,
-		ReturnURL:      strfmt.URI(callBackURL),
+		ReturnURL:      strfmt.URI(returnURL),
 		UserID:         userID,
 	}, nil
 }
