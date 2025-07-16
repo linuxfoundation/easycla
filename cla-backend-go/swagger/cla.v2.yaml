@@ -2445,6 +2445,48 @@ paths:
       tags:
         - signatures
 
+  /user/{userID}/active-signature:
+    parameters:
+      - $ref: "#/parameters/x-request-id"
+      - name: userID
+        description: the user ID
+        in: path
+        type: string
+        required: true
+        pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
+    get:
+      summary: |
+        Returns all metadata associated with a user's active signature.
+        {
+          'user_id': <user-id>,
+          'project_id': <project-id>,
+          'repository_id': <repository-id>,
+          'pull_request_id': <PR>,
+          'return_url': <url-where-user-initiated-signature-from>'
+        }
+        Returns null if the user does not have an active signature.
+      security: [ ]
+      operationId: getUserActiveSignature
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/user-active-signature'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - signatures
+
   /signatures/project/{projectSFID}/company/{companyID}/employee:
     get:
       summary: Get project company signatures for the employees
@@ -5005,6 +5047,9 @@ definitions:
 
   user:
     $ref: './common/user.yaml'
+
+  user-active-signature:
+    $ref: './common/user-active-signature.yaml'
 
   signatures:
     $ref: './common/signatures.yaml'

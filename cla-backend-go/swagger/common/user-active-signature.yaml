@@ -1,0 +1,29 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: true
+title: User Active Signature
+description: >
+  Returns all metadata associated with a user's active signature.
+  Returns `null` if the user does not have an active signature.
+properties:
+  user_id:
+    $ref: './common/properties/internal-id.yaml'
+    description: The unique internal ID of the user
+  project_id:
+    $ref: './common/properties/internal-id.yaml'
+    description: The unique ID of the associated project
+  repository_id:
+    type: string
+    description: The unique ID of the associated repository
+    example: repo-abc123
+  pull_request_id:
+    type: string
+    description: The pull request ID related to the signature
+    example: '456'
+  return_url:
+    type: string
+    format: uri
+    description: The return URL where the user initiated the signature
+    example: https://example.com/return
