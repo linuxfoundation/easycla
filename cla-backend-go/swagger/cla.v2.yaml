@@ -2462,6 +2462,7 @@ paths:
           'project_id': <project-id>,
           'repository_id': <repository-id>,
           'pull_request_id': <PR>,
+          *'merge_request_id': <MR> (optional),
           'return_url': <url-where-user-initiated-signature-from>'
         }
         Returns null if the user does not have an active signature.
