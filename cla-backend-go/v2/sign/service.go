@@ -90,6 +90,7 @@ type Service interface {
 	SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, repositoryID, mergeRequestID string) error
 	SignedIndividualCallbackGerrit(ctx context.Context, payload []byte, userID string) error
 	SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error
+	GetUserActiveSignature(ctx context.Context, userID string) (*models.UserActiveSignature, error)
 }
 
 // service
@@ -2768,4 +2769,53 @@ func claSignatoryEmailContent(params ClaSignatoryEmailParams) (string, string) {
 	// You would need to implement the appendEmailHelpSignOffContent function in Go separately
 
 	return emailSubject, emailBody
+}
+
+func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*models.UserActiveSignature, error) {
+	f := logrus.Fields{
+		"functionName":   "sign.GetUserActiveSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"userID":         userID,
+	}
+	activeSignatureMetadata, err := s.storeRepository.GetActiveSignatureMetaData(ctx, userID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
+		return nil, err
+	}
+
+	log.WithFields(f).Debugf("active signature metadata: %+v", activeSignatureMetadata)
+	isGitlab := false
+	var mergeRequestId *string
+	if mrId, ok := activeSignatureMetadata["merge_request_id"].(string); ok {
+		isGitlab = true
+		mergeRequestId = &mrId
+	}
+	log.WithFields(f).Debugf("generating signature callback url gitlab=%v...", isGitlab)
+
+	var callBackURL string
+	if isGitlab {
+		callBackURL, err = s.getIndividualSignatureCallbackURLGitlab(ctx, userID, activeSignatureMetadata)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get gitlab signature callback url for user: %s", userID)
+			return nil, err
+		}
+	} else {
+		callBackURL, err = s.getIndividualSignatureCallbackURL(ctx, userID, activeSignatureMetadata)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get github signature callback url for user: %s", userID)
+			return nil, err
+		}
+	}
+	log.WithFields(f).Debugf("signature callback url: %s", callBackURL)
+	projectId, _ := activeSignatureMetadata["project_id"].(string)
+	pullRequestId, _ := activeSignatureMetadata["pull_request_id"].(string)
+	repositoryId, _ := activeSignatureMetadata["repository_id"].(string)
+	return &models.UserActiveSignature{
+		MergeRequestID: mergeRequestId,
+		ProjectID:      projectId,
+		PullRequestID:  pullRequestId,
+		RepositoryID:   repositoryId,
+		ReturnURL:      strfmt.URI(callBackURL),
+		UserID:         userID,
+	}, nil
 }

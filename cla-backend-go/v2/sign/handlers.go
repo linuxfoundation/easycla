@@ -248,6 +248,26 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			return sign.NewCclaCallbackOK()
 		})
 
+	api.SignGetUserActiveSignatureHandler = sign.GetUserActiveSignatureHandlerFunc(
+		func(params sign.GetUserActiveSignatureParams) middleware.Responder {
+			reqId := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTIDKey, reqId)
+			f := logrus.Fields{
+				"functionName":   "v2.sign.handlers.SignGetUserActiveSignatureHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"userID":         params.UserID,
+			}
+			var resp *models.UserActiveSignature
+			var err error
+
+			log.WithFields(f).Debug("getting user active signature")
+			resp, err = service.GetUserActiveSignature(ctx, params.UserID)
+			if err != nil {
+				return sign.NewGetUserActiveSignatureBadRequest().WithPayload(errorResponse(reqId, err))
+			}
+			return sign.NewGetUserActiveSignatureOK().WithPayload(resp)
+		})
+
 }
 
 type codedResponse interface {

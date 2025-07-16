@@ -20,7 +20,7 @@ aws --profile "lfproduct-${STAGE}" dynamodb put-item --table-name "cla-${STAGE}-
       "S": "active_signature:'"${1}"'"
     },
     "value": {
-      "S": "{\"user_id\": \"'"${1}"'\", \"project_id\": \"'"${2}"'\", \"repository_id\": 466156917, \"pull_request_id\": 3}"
+      "S": "{\"user_id\": \"'"${1}"'\", \"project_id\": \"'"${2}"'\", \"repository_id\": \"466156917\", \"pull_request_id\": \"3\"}"
     },
     "expire": {
       "N": "'"${EXPIRE_TS}"'"
