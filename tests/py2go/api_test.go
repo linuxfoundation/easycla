@@ -17,6 +17,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	ExampleRepoID   = 466156917
+	ExamplePRNumber = 3
+)
+
 var (
 	TOKEN                string
 	XACL                 string
@@ -25,6 +30,9 @@ var (
 	DEBUG                bool
 	MAX_PARALLEL         int
 	PROJECT_UUID         string
+	USER_UUID            string
+	REPO_ID              int64
+	PR_ID                int64
 	ProjectAPIPath       = [3]string{"/v2/project/%s", "/v4/project/%s", "/v4/project-compat/%s"}
 	ProjectAPIKeyMapping = map[string]string{
 		"date_created":                         "dateCreated",
@@ -75,6 +83,14 @@ var (
 		"gitlab_repos": "repository_name",
 		"gerrit_repos": "gerrit_url",
 	}
+	UserActiveSignatureAPIPath       = [2]string{"/v2/user/%s/active-signature", "/v4/user/%s/active-signature"}
+	UserActiveSignatureAPIKeyMapping = map[string]interface{}{
+		"project_id":      nil,
+		"pull_request_id": nil,
+		"repository_id":   nil,
+		"return_url":      nil,
+		"user_id":         nil,
+	}
 )
 
 func init() {
@@ -103,6 +119,27 @@ func init() {
 		}
 	}
 	PROJECT_UUID = os.Getenv("PROJECT_UUID")
+	USER_UUID = os.Getenv("USER_UUID")
+	REPO_ID = ExampleRepoID
+	par = os.Getenv("REPO_ID")
+	if par != "" {
+		iPar, err := strconv.ParseInt(par, 10, 64)
+		if err != nil {
+			fmt.Printf("REPO_ID environment value should be integer >= 1\n")
+		} else if iPar > 0 {
+			REPO_ID = iPar
+		}
+	}
+	PR_ID = ExamplePRNumber
+	par = os.Getenv("PR_ID")
+	if par != "" {
+		iPar, err := strconv.ParseInt(par, 10, 64)
+		if err != nil {
+			fmt.Printf("PR_ID environment value should be integer >= 1\n")
+		} else if iPar > 0 {
+			PR_ID = iPar
+		}
+	}
 }
 
 func tryParseTime(val interface{}) (time.Time, bool) {
@@ -482,5 +519,142 @@ func TestProjectAPI(t *testing.T) {
 		sort.Strings(nky)
 		Debugf("old keys: %+v\n", oky)
 		Debugf("new keys: %+v\n", nky)
+	}
+}
+
+func runUserActiveSignatureAPIForUser(t *testing.T, userId string) {
+	apiURL := PY_API_URL + fmt.Sprintf(UserActiveSignatureAPIPath[0], userId)
+	Debugf("Py API call: %s\n", apiURL)
+	oldResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusOK, oldResp.StatusCode, "Expected 200 from PY API")
+	defer oldResp.Body.Close()
+	oldBody, _ := io.ReadAll(oldResp.Body)
+	var oldJSON interface{}
+	err = json.Unmarshal(oldBody, &oldJSON)
+	assert.NoError(t, err)
+	Debugf("Py raw response: %+v\n", string(oldBody))
+	Debugf("Py response: %+v\n", oldJSON)
+
+	apiURL = GO_API_URL + fmt.Sprintf(UserActiveSignatureAPIPath[1], userId)
+	Debugf("Go API call: %s\n", apiURL)
+	newResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusOK, newResp.StatusCode, "Expected 200 from GO API")
+	defer newResp.Body.Close()
+	newBody, _ := io.ReadAll(newResp.Body)
+	var newJSON interface{}
+	err = json.Unmarshal(newBody, &newJSON)
+	assert.NoError(t, err)
+	Debugf("Go raw Response: %+v\n", string(newBody))
+	Debugf("Go response: %+v\n", newJSON)
+
+	if string(oldBody) == "null" && string(newBody) == "null" {
+		return
+	}
+
+	oldMap, ok1 := oldJSON.(map[string]interface{})
+	newMap, ok2 := newJSON.(map[string]interface{})
+
+	if !ok1 || !ok2 {
+		t.Fatalf("Expected both responses to be JSON objects")
+	}
+	compareNestedFields(t, oldMap, newMap, UserActiveSignatureAPIKeyMapping, map[string]string{})
+
+	if DEBUG {
+		oky := []string{}
+		for k, _ := range oldMap {
+			oky = append(oky, k)
+		}
+		sort.Strings(oky)
+		nky := []string{}
+		for k, _ := range newMap {
+			nky = append(nky, k)
+		}
+		sort.Strings(nky)
+		Debugf("old keys: %+v\n", oky)
+		Debugf("new keys: %+v\n", nky)
+	}
+}
+
+func TestUserActiveSignatureAPI(t *testing.T) {
+	userId := USER_UUID
+	if userId == "" {
+		userId = uuid.New().String()
+		projectId := uuid.New().String()
+		key := "active_signature:" + userId
+		expire := time.Now().Add(time.Hour).Unix()
+		value, err := json.Marshal(map[string]interface{}{
+			"user_id":         userId,
+			"project_id":      projectId,
+			"repository_id":   fmt.Sprintf("%d", REPO_ID),
+			"pull_request_id": fmt.Sprintf("%d", PR_ID),
+		})
+		if err != nil {
+			t.Fatalf("failed to marshal value: %+v", err)
+		}
+		putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{}, DEBUG)
+		putTestItem("store", "key", key, "S", map[string]interface{}{
+			"value":  string(value),
+			"expire": expire,
+		}, DEBUG)
+		defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
+		defer deleteTestItem("store", "key", key, "S", DEBUG)
+	}
+
+	runUserActiveSignatureAPIForUser(t, userId)
+}
+
+func TestAllUserActiveSignatureAPI(t *testing.T) {
+	allUserActiveSignatures := getAllPrimaryKeys("store", "key", "S")
+
+	var failed []string
+	var mtx sync.Mutex
+	sem := make(chan struct{}, MAX_PARALLEL)
+	var wg sync.WaitGroup
+
+	for _, key := range allUserActiveSignatures {
+		ky, ok := key.(string)
+		if !ok {
+			t.Errorf("Expected string key, got: %T", key)
+			continue
+		}
+		if !strings.HasPrefix(ky, "active_signature:") {
+			continue
+		}
+		userId := strings.TrimPrefix(ky, "active_signature:")
+
+		wg.Add(1)
+		sem <- struct{}{}
+
+		go func(userId string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			t.Run(fmt.Sprintf("UserId=%s", userId), func(t *testing.T) {
+				runUserActiveSignatureAPIForUser(t, userId)
+				if t.Failed() {
+					mtx.Lock()
+					failed = append(failed, userId)
+					mtx.Unlock()
+				}
+			})
+		}(userId)
+	}
+
+	wg.Wait()
+
+	if len(failed) > 0 {
+		fmt.Fprintf(os.Stderr, "\nFailed User IDs (%d):\n%s\n\n",
+			len(failed),
+			strings.Join(failed, "\n"),
+		)
+		t.Fail()
+	} else {
+		fmt.Println("\nAll user active signatures passed.")
 	}
 }

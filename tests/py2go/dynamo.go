@@ -143,8 +143,11 @@ func getAllPrimaryKeys(tableName, keyName, keyType string) []interface{} {
 	for {
 		input := &dynamodb.ScanInput{
 			TableName:            aws.String(tName),
-			ProjectionExpression: aws.String(keyName),
-			ExclusiveStartKey:    lastEvaluatedKey,
+			ProjectionExpression: aws.String("#k"),
+			ExpressionAttributeNames: map[string]string{
+				"#k": keyName,
+			},
+			ExclusiveStartKey: lastEvaluatedKey,
 		}
 
 		output, err := client.Scan(context.TODO(), input)
