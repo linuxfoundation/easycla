@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"sort"
@@ -83,13 +84,15 @@ var (
 		"gitlab_repos": "repository_name",
 		"gerrit_repos": "gerrit_url",
 	}
-	UserActiveSignatureAPIPath       = [2]string{"/v2/user/%s/active-signature", "/v4/user/%s/active-signature"}
+	UserActiveSignatureAPIPath = [2]string{"/v2/user/%s/active-signature", "/v4/user/%s/active-signature"}
+	// Optional field: true means the key may be missing in both APIs and still be valid
 	UserActiveSignatureAPIKeyMapping = map[string]interface{}{
-		"project_id":      nil,
-		"pull_request_id": nil,
-		"repository_id":   nil,
-		"return_url":      nil,
-		"user_id":         nil,
+		"project_id":       nil,
+		"pull_request_id":  nil,
+		"repository_id":    nil,
+		"return_url":       nil,
+		"user_id":          nil,
+		"merge_request_id": true,
 	}
 )
 
@@ -140,6 +143,7 @@ func init() {
 			PR_ID = iPar
 		}
 	}
+	rand.Seed(time.Now().UnixNano())
 }
 
 func tryParseTime(val interface{}) (time.Time, bool) {
@@ -210,12 +214,19 @@ func sortByKey(arr []interface{}, key string) {
 
 func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]interface{}, sortMap map[string]string) {
 	for k, v := range keyMapping {
-		if v == nil {
+		bV, bVOK := v.(bool)
+		if v == nil || bVOK {
 			Debugf("checking values of '%s'\n", k)
 		}
 
 		pyVal, pyOk := pyData[k]
 		goVal, goOk := goData[k]
+
+		// true means fields are optional (nullable), so if v is true and fileds are missing in both Py and go then this is OK
+		if bVOK && bV && !pyOk && !goOk {
+			Debugf("'%s' is not set in both responses, this is ok\n", k)
+			continue
+		}
 		if !pyOk {
 			t.Errorf("Missing key in Python response: %s", k)
 			continue
@@ -588,12 +599,18 @@ func TestUserActiveSignatureAPI(t *testing.T) {
 		projectId := uuid.New().String()
 		key := "active_signature:" + userId
 		expire := time.Now().Add(time.Hour).Unix()
-		value, err := json.Marshal(map[string]interface{}{
+		iValue := map[string]interface{}{
 			"user_id":         userId,
 			"project_id":      projectId,
 			"repository_id":   fmt.Sprintf("%d", REPO_ID),
 			"pull_request_id": fmt.Sprintf("%d", PR_ID),
-		})
+		}
+		if rand.Intn(2) == 0 {
+			mrId := rand.Intn(100)
+			iValue["merge_request_id"] = fmt.Sprintf("%d", mrId)
+			iValue["return_url"] = fmt.Sprintf("https://gitlab.com/gitlab-org/gitlab/-/merge_requests/%d", mrId)
+		}
+		value, err := json.Marshal(iValue)
 		if err != nil {
 			t.Fatalf("failed to marshal value: %+v", err)
 		}
