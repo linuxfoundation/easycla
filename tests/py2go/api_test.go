@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +30,8 @@ var (
 	PY_API_URL           string
 	GO_API_URL           string
 	DEBUG                bool
+	REMOTE               bool
+	PROD                 bool
 	MAX_PARALLEL         int
 	PROJECT_UUID         string
 	USER_UUID            string
@@ -99,19 +102,34 @@ var (
 func init() {
 	TOKEN = os.Getenv("TOKEN")
 	XACL = os.Getenv("XACL")
+	REMOTE = os.Getenv("REMOTE") != ""
+	PROD = os.Getenv("PROD") != ""
 	PY_API_URL = os.Getenv("PY_API_URL")
 	if PY_API_URL == "" {
-		PY_API_URL = "http://127.0.0.1:5000"
+		if REMOTE {
+			if PROD {
+				PY_API_URL = "https://api.easycla.lfx.linuxfoundation.org"
+			} else {
+				PY_API_URL = "https://api.lfcla.dev.platform.linuxfoundation.org"
+			}
+		} else {
+			PY_API_URL = "http://127.0.0.1:5000"
+		}
 	}
 	GO_API_URL = os.Getenv("GO_API_URL")
 	if GO_API_URL == "" {
-		GO_API_URL = "http://127.0.0.1:5001"
+		if REMOTE {
+			if PROD {
+				GO_API_URL = "https://api-gw.platform.linuxfoundation.org/cla-service"
+			} else {
+				GO_API_URL = "https://api-gw.dev.platform.linuxfoundation.org/cla-service"
+			}
+		} else {
+			GO_API_URL = "http://127.0.0.1:5001"
+		}
 	}
-	dbg := os.Getenv("DEBUG")
-	if dbg != "" {
-		DEBUG = true
-	}
-	MAX_PARALLEL = 1
+	DEBUG = os.Getenv("DEBUG") != ""
+	MAX_PARALLEL = runtime.NumCPU()
 	par := os.Getenv("MAX_PARALLEL")
 	if par != "" {
 		iPar, err := strconv.Atoi(par)
