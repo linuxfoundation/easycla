@@ -892,11 +892,7 @@ paths:
   /project-compat/{projectID}:
     parameters:
       - $ref: "#/parameters/x-request-id"
-      - name: projectID
-        in: path
-        type: string
-        required: true
-        pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
+      - $ref: "#/parameters/projectPathUuid"
     get:
       summary: Get project by ID (returns data in the same format as Py V2 API)
       security: [ ]
@@ -2448,12 +2444,7 @@ paths:
   /user/{userID}/active-signature:
     parameters:
       - $ref: "#/parameters/x-request-id"
-      - name: userID
-        description: the user ID
-        in: path
-        type: string
-        required: true
-        pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
+      - $ref: "#/parameters/userPathUuid"
     get:
       summary: |
         Returns all metadata associated with a user's active signature.
@@ -4525,6 +4516,20 @@ responses:
 
 # Common parameters
 parameters:
+  userPathUuid:
+    name: userID
+    in: path
+    required: true
+    description: The user ID (UUID string)
+    type: string
+    pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$' # this is any UUID, not only v4
+  projectPathUuid:
+    name: projectID
+    in: path
+    required: true
+    description: The project ID (UUID string)
+    type: string
+    pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$' # this is any UUID, not only v4
   pageSize:
     name: pageSize
     description: The maximum number of results per page, value must be a positive integer value

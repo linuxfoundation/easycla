@@ -8,8 +8,7 @@ description: Project Model - in Py V2 - minimal fields needed by FE
 properties:
   project_id:
     description: Project's UUID
-    example: '88ee12de-122b-4c46-9046-19422054ed8d'
-    type: string
+    $ref: './common/properties/uuid.yaml'
     x-omitempty: false
   project_name:
     description: Project name
@@ -78,8 +77,7 @@ properties:
       properties:
         cla_group_id:
           description: Project's UUID
-          example: '88ee12de-122b-4c46-9046-19422054ed8d'
-          type: string
+          $ref: './common/properties/uuid.yaml'
           x-omitempty: false
         foundation_sfid:
           description: The salesforce foundation ID
