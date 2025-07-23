@@ -20,8 +20,10 @@ import (
 )
 
 const (
-	ExampleRepoID   = 466156917
-	ExamplePRNumber = 3
+	ExampleRepoID         = 466156917
+	ExamplePRNumber       = 3
+	InvalidUUIDProvided   = "Invalid UUID provided"
+	GoUUIDValidationError = " in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$'"
 )
 
 var (
@@ -30,8 +32,6 @@ var (
 	PY_API_URL           string
 	GO_API_URL           string
 	DEBUG                bool
-	REMOTE               bool
-	PROD                 bool
 	MAX_PARALLEL         int
 	PROJECT_UUID         string
 	USER_UUID            string
@@ -102,31 +102,23 @@ var (
 func init() {
 	TOKEN = os.Getenv("TOKEN")
 	XACL = os.Getenv("XACL")
-	REMOTE = os.Getenv("REMOTE") != ""
-	PROD = os.Getenv("PROD") != ""
 	PY_API_URL = os.Getenv("PY_API_URL")
-	if PY_API_URL == "" {
-		if REMOTE {
-			if PROD {
-				PY_API_URL = "https://api.easycla.lfx.linuxfoundation.org"
-			} else {
-				PY_API_URL = "https://api.lfcla.dev.platform.linuxfoundation.org"
-			}
-		} else {
-			PY_API_URL = "http://127.0.0.1:5000"
-		}
+	switch PY_API_URL {
+	case "local", "":
+		PY_API_URL = "http://127.0.0.1:5000"
+	case "dev":
+		PY_API_URL = "https://api.lfcla.dev.platform.linuxfoundation.org"
+	case "prod":
+		PY_API_URL = "https://api.easycla.lfx.linuxfoundation.org"
 	}
 	GO_API_URL = os.Getenv("GO_API_URL")
-	if GO_API_URL == "" {
-		if REMOTE {
-			if PROD {
-				GO_API_URL = "https://api-gw.platform.linuxfoundation.org/cla-service"
-			} else {
-				GO_API_URL = "https://api-gw.dev.platform.linuxfoundation.org/cla-service"
-			}
-		} else {
-			GO_API_URL = "http://127.0.0.1:5001"
-		}
+	switch GO_API_URL {
+	case "local", "":
+		GO_API_URL = "http://127.0.0.1:5001"
+	case "dev":
+		GO_API_URL = "https://api-gw.dev.platform.linuxfoundation.org/cla-service"
+	case "prod":
+		GO_API_URL = "https://api-gw.platform.linuxfoundation.org/cla-service"
 	}
 	DEBUG = os.Getenv("DEBUG") != ""
 	MAX_PARALLEL = runtime.NumCPU()
@@ -341,6 +333,21 @@ func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]int
 	}
 }
 
+func expectedPyInvalidUUID(field string) map[string]interface{} {
+	return map[string]interface{}{
+		"errors": map[string]interface{}{
+			field: InvalidUUIDProvided,
+		},
+	}
+}
+
+func expectedGoInvalidUUID(field string) map[string]interface{} {
+	return map[string]interface{}{
+		"code":    float64(605),
+		"message": field + GoUUIDValidationError,
+	}
+}
+
 func runProjectCompatAPIForProject(t *testing.T, projectId string) {
 	apiURL := PY_API_URL + fmt.Sprintf(ProjectAPIPath[0], projectId)
 	Debugf("Py API call: %s\n", apiURL)
@@ -396,6 +403,41 @@ func runProjectCompatAPIForProject(t *testing.T, projectId string) {
 	}
 }
 
+func runProjectCompatAPIForProjectExpectFail(t *testing.T, projectId string) {
+	apiURL := PY_API_URL + fmt.Sprintf(ProjectAPIPath[0], projectId)
+	Debugf("Py API call: %s\n", apiURL)
+	oldResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusBadRequest, oldResp.StatusCode, "Expected 400 from Py API")
+	defer oldResp.Body.Close()
+	oldBody, _ := io.ReadAll(oldResp.Body)
+	var oldJSON interface{}
+	err = json.Unmarshal(oldBody, &oldJSON)
+	assert.NoError(t, err)
+	Debugf("Py raw response: %+v\n", string(oldBody))
+	Debugf("Py response: %+v\n", oldJSON)
+
+	apiURL = GO_API_URL + fmt.Sprintf(ProjectAPIPath[2], projectId)
+	Debugf("Go API call: %s\n", apiURL)
+	newResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusUnprocessableEntity, newResp.StatusCode, "Expected 422 from Go API")
+	defer newResp.Body.Close()
+	newBody, _ := io.ReadAll(newResp.Body)
+	var newJSON interface{}
+	err = json.Unmarshal(newBody, &newJSON)
+	assert.NoError(t, err)
+	Debugf("Go raw Response: %+v\n", string(newBody))
+	Debugf("Go response: %+v\n", newJSON)
+
+	assert.Equal(t, expectedPyInvalidUUID("project_id"), oldJSON)
+	assert.Equal(t, expectedGoInvalidUUID("projectID"), newJSON)
+}
+
 func TestProjectCompatAPI(t *testing.T) {
 	projectId := PROJECT_UUID
 	if projectId == "" {
@@ -414,6 +456,40 @@ func TestProjectCompatAPI(t *testing.T) {
 	}
 
 	runProjectCompatAPIForProject(t, projectId)
+}
+
+func TestProjectCompatAPIWithNonV4UUID(t *testing.T) {
+	projectId := "6ba7b810-9dad-11d1-80b4-00c04fd430c8" // Non-v4 UUID
+	putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{
+		"project_name":                         "CNCF",
+		"project_icla_enabled":                 true,
+		"project_ccla_enabled":                 true,
+		"project_ccla_requires_icla_signature": true,
+		"date_created":                         "2022-11-21T10:31:31Z",
+		"date_modified":                        "2023-02-23T13:14:48Z",
+		"foundation_sfid":                      "a09410000182dD2AAI",
+		"version":                              "2",
+	}, DEBUG)
+	defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
+
+	runProjectCompatAPIForProject(t, projectId)
+}
+
+func TestProjectCompatAPIWithInvalidUUID(t *testing.T) {
+	projectId := "6ba7b810-9dad-11d1-80b4-00c04fd430cg" // Invalid UUID - "g" is not a hex digit
+	putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{
+		"project_name":                         "CNCF",
+		"project_icla_enabled":                 true,
+		"project_ccla_enabled":                 true,
+		"project_ccla_requires_icla_signature": true,
+		"date_created":                         "2022-11-21T10:31:31Z",
+		"date_modified":                        "2023-02-23T13:14:48Z",
+		"foundation_sfid":                      "a09410000182dD2AAI",
+		"version":                              "2",
+	}, DEBUG)
+	defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
+
+	runProjectCompatAPIForProjectExpectFail(t, projectId)
 }
 
 func TestAllProjectsCompatAPI(t *testing.T) {
@@ -608,6 +684,96 @@ func runUserActiveSignatureAPIForUser(t *testing.T, userId string) {
 		Debugf("old keys: %+v\n", oky)
 		Debugf("new keys: %+v\n", nky)
 	}
+}
+
+func runUserActiveSignatureAPIForUserExpectFail(t *testing.T, userId string) {
+	apiURL := PY_API_URL + fmt.Sprintf(UserActiveSignatureAPIPath[0], userId)
+	Debugf("Py API call: %s\n", apiURL)
+	oldResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusBadRequest, oldResp.StatusCode, "Expected 400 from Py API")
+	defer oldResp.Body.Close()
+	oldBody, _ := io.ReadAll(oldResp.Body)
+	var oldJSON interface{}
+	err = json.Unmarshal(oldBody, &oldJSON)
+	assert.NoError(t, err)
+	Debugf("Py raw response: %+v\n", string(oldBody))
+	Debugf("Py response: %+v\n", oldJSON)
+
+	apiURL = GO_API_URL + fmt.Sprintf(UserActiveSignatureAPIPath[1], userId)
+	Debugf("Go API call: %s\n", apiURL)
+	newResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusUnprocessableEntity, newResp.StatusCode, "Expected 422 from Go API")
+	defer newResp.Body.Close()
+	newBody, _ := io.ReadAll(newResp.Body)
+	var newJSON interface{}
+	err = json.Unmarshal(newBody, &newJSON)
+	assert.NoError(t, err)
+	Debugf("Go raw Response: %+v\n", string(newBody))
+	Debugf("Go response: %+v\n", newJSON)
+
+	assert.Equal(t, expectedPyInvalidUUID("user_id"), oldJSON)
+	assert.Equal(t, expectedGoInvalidUUID("userID"), newJSON)
+}
+
+func TestUserActiveSignatureAPIWithInvalidUUID(t *testing.T) {
+	userId := "6ba7b810-9dad-11d1-80b4-00c04fd430cg" // Invalid UUID "g" is not a hex digit
+	projectId := uuid.New().String()
+	key := "active_signature:" + userId
+	expire := time.Now().Add(time.Hour).Unix()
+	iValue := map[string]interface{}{
+		"user_id":         userId,
+		"project_id":      projectId,
+		"repository_id":   fmt.Sprintf("%d", REPO_ID),
+		"pull_request_id": fmt.Sprintf("%d", PR_ID),
+	}
+	value, err := json.Marshal(iValue)
+	if err != nil {
+		t.Fatalf("failed to marshal value: %+v", err)
+	}
+	putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{}, DEBUG)
+	putTestItem("store", "key", key, "S", map[string]interface{}{
+		"value":  string(value),
+		"expire": expire,
+	}, DEBUG)
+	defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
+	defer deleteTestItem("store", "key", key, "S", DEBUG)
+	runUserActiveSignatureAPIForUserExpectFail(t, userId)
+}
+
+func TestUserActiveSignatureAPIWithNonV4UUID(t *testing.T) {
+	userId := "6ba7b810-9dad-11d1-80b4-00c04fd430c8" // Non-v4 UUID
+	projectId := uuid.New().String()
+	key := "active_signature:" + userId
+	expire := time.Now().Add(time.Hour).Unix()
+	iValue := map[string]interface{}{
+		"user_id":         userId,
+		"project_id":      projectId,
+		"repository_id":   fmt.Sprintf("%d", REPO_ID),
+		"pull_request_id": fmt.Sprintf("%d", PR_ID),
+	}
+	if rand.Intn(2) == 0 {
+		mrId := rand.Intn(100)
+		iValue["merge_request_id"] = fmt.Sprintf("%d", mrId)
+		iValue["return_url"] = fmt.Sprintf("https://gitlab.com/gitlab-org/gitlab/-/merge_requests/%d", mrId)
+	}
+	value, err := json.Marshal(iValue)
+	if err != nil {
+		t.Fatalf("failed to marshal value: %+v", err)
+	}
+	putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{}, DEBUG)
+	putTestItem("store", "key", key, "S", map[string]interface{}{
+		"value":  string(value),
+		"expire": expire,
+	}, DEBUG)
+	defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
+	defer deleteTestItem("store", "key", key, "S", DEBUG)
+	runUserActiveSignatureAPIForUser(t, userId)
 }
 
 func TestUserActiveSignatureAPI(t *testing.T) {
