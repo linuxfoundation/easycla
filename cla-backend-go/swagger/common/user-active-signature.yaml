@@ -9,10 +9,10 @@ description: >
   Returns `null` if the user does not have an active signature.
 properties:
   user_id:
-    $ref: './common/properties/internal-id.yaml'
+    $ref: './common/properties/uuid.yaml'
     description: The unique internal UUID of the user
   project_id:
-    $ref: './common/properties/internal-id.yaml'
+    $ref: './common/properties/uuid.yaml'
     description: The unique UUID of the associated project
   repository_id:
     type: string
@@ -24,7 +24,7 @@ properties:
     example: '456'
   merge_request_id:
     type: string
-    description: The merge request ID related to the signature (optional number stored as string, thsi property can be missing in JSON)
+    description: The merge request ID related to the signature (optional number stored as string, this property can be missing in JSON)
     example: '456'
     x-nullable: true
   return_url:

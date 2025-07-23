@@ -24,4 +24,8 @@
 - `` DEBUG='' USER_UUID=b817eb57-045a-4fe0-8473-fbb416a01d70 PY_API_URL=https://api.lfcla.dev.platform.linuxfoundation.org go test -v -run '^TestUserActiveSignatureAPI$' ``.
 - `` REPO_ID=466156917 PR_ID=3 DEBUG=1 go test -v -run '^TestUserActiveSignatureAPI$' ``.
 - `` MAX_PARALLEL=2 DEBUG='' go test -v -run '^TestAllUserActiveSignatureAPI$' ``.
-- `` [STAGE=prod PROD=1] REMOTE=1 make ``.
+- `` [STAGE=prod] [PY_API_URL=local|dev|prod] [GO_API_URL=local|dev|prod] make ``.
+- `` GO_API_URL=dev PY_API_URL=dev go test -v -run '^TestUserActiveSignatureAPIWithNonV4UUID$' ``.
+- `` GO_API_URL=dev PY_API_URL=dev go test -v -run '^TestUserActiveSignatureAPIWithInvalidUUID$' ``.
+- `` GO_API_URL=dev PY_API_URL=dev go test -v -run '^TestProjectCompatAPIWithNonV4UUID$' ``.
+- `` GO_API_URL=dev PY_API_URL=dev go test -v -run '^TestProjectCompatAPIWithInvalidUUID$' ``.

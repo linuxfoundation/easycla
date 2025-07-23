@@ -278,7 +278,6 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			}
 			return sign.NewGetUserActiveSignatureOK().WithPayload(resp)
 		})
-
 }
 
 type codedResponse interface {
