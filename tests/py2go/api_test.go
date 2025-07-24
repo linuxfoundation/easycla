@@ -82,7 +82,7 @@ var (
 		}},
 		// "signed_at_foundation_level":           nil,
 	}
-	ProjectCompatAPISortMap = map[string]string{
+	ProjectCompatAPISortMap = map[string]interface{}{
 		"github_repos": "repository_name",
 		"gitlab_repos": "repository_name",
 		"gerrit_repos": "gerrit_url",
@@ -96,6 +96,29 @@ var (
 		"return_url":       nil,
 		"user_id":          nil,
 		"merge_request_id": true,
+	}
+	UserCompatAPIPath = [2]string{"/v2/user/%s", "/v3/user-compat/%s"}
+	// If the value is array with an empty interface it means that each array element should be checked
+	UserCompatAPIKeyMapping = map[string]interface{}{
+		"lf_email":             nil,
+		"lf_sub":               nil,
+		"lf_username":          nil,
+		"note":                 nil,
+		"user_company_id":      nil,
+		"user_external_id":     nil,
+		"user_github_id":       nil,
+		"user_github_username": nil,
+		"user_gitlab_id":       nil,
+		"user_gitlab_username": nil,
+		"user_id":              nil,
+		"user_ldap_id":         nil,
+		"user_name":            nil,
+		"is_sanctioned":        nil,
+		"version":              nil,
+		"user_emails":          []interface{}{map[string]interface{}{}},
+	}
+	UserCompatAPISortMap = map[string]interface{}{
+		"user_emails": nil,
 	}
 )
 
@@ -212,17 +235,24 @@ func compareMappedFields(t *testing.T, pyData, goData map[string]interface{}, ke
 	}
 }
 
-func sortByKey(arr []interface{}, key string) {
-	sort.Slice(arr, func(i, j int) bool {
-		m1, _ := arr[i].(map[string]interface{})
-		m2, _ := arr[j].(map[string]interface{})
-		s1 := fmt.Sprint(m1[key])
-		s2 := fmt.Sprint(m2[key])
-		return s1 < s2
-	})
+func sortByKey(arr []interface{}, key interface{}) {
+	keyStr, okStr := key.(string)
+	if okStr {
+		sort.Slice(arr, func(i, j int) bool {
+			m1, _ := arr[i].(map[string]interface{})
+			m2, _ := arr[j].(map[string]interface{})
+			s1 := fmt.Sprint(m1[keyStr])
+			s2 := fmt.Sprint(m2[keyStr])
+			return s1 < s2
+		})
+	} else {
+		sort.Slice(arr, func(i, j int) bool {
+			return fmt.Sprintf("%v", arr[i]) < fmt.Sprintf("%v", arr[j])
+		})
+	}
 }
 
-func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]interface{}, sortMap map[string]string) {
+func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]interface{}, sortMap map[string]interface{}) {
 	for k, v := range keyMapping {
 		bV, bVOK := v.(bool)
 		if v == nil || bVOK {
@@ -277,6 +307,18 @@ func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]int
 			}
 			pyArrayVal, pyOk := pyVal.([]interface{})
 			goArrayVal, goOk := goVal.([]interface{})
+			if pyOk && len(pyArrayVal) == 0 && goVal == nil {
+				Debugf("py returned [] and go returned nil - this is OK\n")
+				continue
+			}
+			if goOk && len(goArrayVal) == 0 && pyVal == nil {
+				Debugf("py returned null and go returned [] - this is OK\n")
+				continue
+			}
+			if goVal == nil && pyVal == nil {
+				Debugf("both py and go returned null - this is OK\n")
+				continue
+			}
 			if !pyOk {
 				t.Errorf("%s value in Python response is not an array: %+v", k, pyVal)
 				continue
@@ -293,9 +335,34 @@ func compareNestedFields(t *testing.T, pyData, goData, keyMapping map[string]int
 			}
 			sortKey, needSort := sortMap[k]
 			if needSort {
-				Debugf("sorting '%s' key values by %s\n", k, sortKey)
+				Debugf("sorting '%s' key values by %v\n", k, sortKey)
 				sortByKey(pyArrayVal, sortKey)
 				sortByKey(goArrayVal, sortKey)
+			}
+			// This is to support plain arrays - they have single item: []interface{}{map[string]interface{}{}}
+			if len(nestedMapping) == 0 {
+				for idx := range pyArrayVal {
+					pyVal := pyArrayVal[idx]
+					goVal := goArrayVal[idx]
+					pyTime, okPyTime := tryParseTime(pyVal)
+					goTime, okGoTime := tryParseTime(goVal)
+
+					if okPyTime && okGoTime {
+						if !pyTime.Equal(goTime) {
+							t.Errorf("Datetime mismatch for key '%s'[%d]: py:%s != go:%s", k, idx, pyTime, goTime)
+						}
+						continue
+					}
+
+					if (pyVal == nil && goVal == "") || (goVal == nil && pyVal == "") {
+						continue
+					}
+
+					if fmt.Sprint(pyVal) != fmt.Sprint(goVal) {
+						t.Errorf("Mismatch for key '%s'[%d]: py:%+v != go:%+v", k, idx, pyVal, goVal)
+					}
+				}
+				continue
 			}
 			for idx := range pyArrayVal {
 				pyNestedVal, pyOk := pyArrayVal[idx].(map[string]interface{})
@@ -668,7 +735,7 @@ func runUserActiveSignatureAPIForUser(t *testing.T, userId string) {
 	if !ok1 || !ok2 {
 		t.Fatalf("Expected both responses to be JSON objects")
 	}
-	compareNestedFields(t, oldMap, newMap, UserActiveSignatureAPIKeyMapping, map[string]string{})
+	compareNestedFields(t, oldMap, newMap, UserActiveSignatureAPIKeyMapping, map[string]interface{}{})
 
 	if DEBUG {
 		oky := []string{}
@@ -737,11 +804,11 @@ func TestUserActiveSignatureAPIWithInvalidUUID(t *testing.T) {
 		t.Fatalf("failed to marshal value: %+v", err)
 	}
 	putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{}, DEBUG)
+	defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
 	putTestItem("store", "key", key, "S", map[string]interface{}{
 		"value":  string(value),
 		"expire": expire,
 	}, DEBUG)
-	defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
 	defer deleteTestItem("store", "key", key, "S", DEBUG)
 	runUserActiveSignatureAPIForUserExpectFail(t, userId)
 }
@@ -767,11 +834,11 @@ func TestUserActiveSignatureAPIWithNonV4UUID(t *testing.T) {
 		t.Fatalf("failed to marshal value: %+v", err)
 	}
 	putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{}, DEBUG)
+	defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
 	putTestItem("store", "key", key, "S", map[string]interface{}{
 		"value":  string(value),
 		"expire": expire,
 	}, DEBUG)
-	defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
 	defer deleteTestItem("store", "key", key, "S", DEBUG)
 	runUserActiveSignatureAPIForUser(t, userId)
 }
@@ -799,11 +866,11 @@ func TestUserActiveSignatureAPI(t *testing.T) {
 			t.Fatalf("failed to marshal value: %+v", err)
 		}
 		putTestItem("projects", "project_id", projectId, "S", map[string]interface{}{}, DEBUG)
+		defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
 		putTestItem("store", "key", key, "S", map[string]interface{}{
 			"value":  string(value),
 			"expire": expire,
 		}, DEBUG)
-		defer deleteTestItem("projects", "project_id", projectId, "S", DEBUG)
 		defer deleteTestItem("store", "key", key, "S", DEBUG)
 	}
 
@@ -857,5 +924,229 @@ func TestAllUserActiveSignatureAPI(t *testing.T) {
 		t.Fail()
 	} else {
 		fmt.Println("\nAll user active signatures passed.")
+	}
+}
+
+func runUserCompatAPIForUser(t *testing.T, userId string) {
+	apiURL := PY_API_URL + fmt.Sprintf(UserCompatAPIPath[0], userId)
+	Debugf("Py API call: %s\n", apiURL)
+	oldResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusOK, oldResp.StatusCode, "Expected 200 from PY API")
+	defer oldResp.Body.Close()
+	oldBody, _ := io.ReadAll(oldResp.Body)
+	var oldJSON interface{}
+	err = json.Unmarshal(oldBody, &oldJSON)
+	assert.NoError(t, err)
+	Debugf("Py raw response: %+v\n", string(oldBody))
+	Debugf("Py response: %+v\n", oldJSON)
+
+	apiURL = GO_API_URL + fmt.Sprintf(UserCompatAPIPath[1], userId)
+	Debugf("Go API call: %s\n", apiURL)
+	newResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusOK, newResp.StatusCode, "Expected 200 from GO API")
+	defer newResp.Body.Close()
+	newBody, _ := io.ReadAll(newResp.Body)
+	var newJSON interface{}
+	err = json.Unmarshal(newBody, &newJSON)
+	assert.NoError(t, err)
+	Debugf("Go raw Response: %+v\n", string(newBody))
+	Debugf("Go response: %+v\n", newJSON)
+
+	oldMap, ok1 := oldJSON.(map[string]interface{})
+	newMap, ok2 := newJSON.(map[string]interface{})
+
+	if !ok1 || !ok2 {
+		t.Fatalf("Expected both responses to be JSON objects")
+	}
+	compareNestedFields(t, oldMap, newMap, UserCompatAPIKeyMapping, UserCompatAPISortMap)
+
+	if DEBUG {
+		oky := []string{}
+		for k, _ := range oldMap {
+			oky = append(oky, k)
+		}
+		sort.Strings(oky)
+		nky := []string{}
+		for k, _ := range newMap {
+			nky = append(nky, k)
+		}
+		sort.Strings(nky)
+		Debugf("old keys: %+v\n", oky)
+		Debugf("new keys: %+v\n", nky)
+	}
+}
+
+func runUserCompatAPIForUserExpectFail(t *testing.T, userId string) {
+	apiURL := PY_API_URL + fmt.Sprintf(UserCompatAPIPath[0], userId)
+	Debugf("Py API call: %s\n", apiURL)
+	oldResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusBadRequest, oldResp.StatusCode, "Expected 400 from Py API")
+	defer oldResp.Body.Close()
+	oldBody, _ := io.ReadAll(oldResp.Body)
+	var oldJSON interface{}
+	err = json.Unmarshal(oldBody, &oldJSON)
+	assert.NoError(t, err)
+	Debugf("Py raw response: %+v\n", string(oldBody))
+	Debugf("Py response: %+v\n", oldJSON)
+
+	apiURL = GO_API_URL + fmt.Sprintf(UserCompatAPIPath[1], userId)
+	Debugf("Go API call: %s\n", apiURL)
+	newResp, err := http.Get(apiURL)
+	if err != nil {
+		t.Fatalf("Failed to call API: %v", err)
+	}
+	assert.Equal(t, http.StatusUnprocessableEntity, newResp.StatusCode, "Expected 422 from Go API")
+	defer newResp.Body.Close()
+	newBody, _ := io.ReadAll(newResp.Body)
+	var newJSON interface{}
+	err = json.Unmarshal(newBody, &newJSON)
+	assert.NoError(t, err)
+	Debugf("Go raw Response: %+v\n", string(newBody))
+	Debugf("Go response: %+v\n", newJSON)
+
+	assert.Equal(t, expectedPyInvalidUUID("user_id"), oldJSON)
+	assert.Equal(t, expectedGoInvalidUUID("userID"), newJSON)
+}
+
+func TestUserCompatAPI(t *testing.T) {
+	userId := USER_UUID
+	if userId == "" {
+		userId = uuid.New().String()
+		companyId := uuid.New().String()
+		putTestItem("companies", "company_id", companyId, "S", map[string]interface{}{
+			"is_sanctioned": true,
+		}, DEBUG)
+		defer deleteTestItem("companies", "company_id", companyId, "S", DEBUG)
+		putTestItem("users", "user_id", userId, "S", map[string]interface{}{
+			"lf_email":             "lgryglicki@cncf.io",
+			"lf_sub":               nil,
+			"lf_username":          "lukaszgryglicki",
+			"note":                 "Example note",
+			"user_company_id":      companyId,
+			"user_external_id":     "00117000015vpjXAAQ",
+			"user_github_id":       43778,
+			"user_github_username": "lukaszgryglicki",
+			"user_gitlab_id":       567,
+			"user_gitlab_username": "lgryglicki",
+			"user_ldap_id":         nil,
+			"user_name":            "lgryglickilf",
+			"version":              "v1",
+			"user_emails":          []string{"lgryglicki@cncf.io", "lukaszgryglicki@o2.pl", "lgryglicki@contractor.linuxfoundation.com", "lukaszgryglicki1982@gmail.com"},
+		}, DEBUG)
+		defer deleteTestItem("users", "user_id", userId, "S", DEBUG)
+	}
+
+	runUserCompatAPIForUser(t, userId)
+}
+
+func TestUserCompatAPIWithNonV4UUID(t *testing.T) {
+	userId := "6ba7b810-9dad-11d1-80b4-00c04fd430c8" // Non-v4 UUID
+	companyId := uuid.New().String()
+	putTestItem("companies", "company_id", companyId, "S", map[string]interface{}{
+		"is_sanctioned": true,
+	}, DEBUG)
+	defer deleteTestItem("companies", "company_id", companyId, "S", DEBUG)
+	putTestItem("users", "user_id", userId, "S", map[string]interface{}{
+		"lf_email":             "lgryglicki@cncf.io",
+		"lf_sub":               nil,
+		"lf_username":          "lukaszgryglicki",
+		"note":                 "Example note",
+		"user_company_id":      companyId,
+		"user_external_id":     "00117000015vpjXAAQ",
+		"user_github_id":       43778,
+		"user_github_username": "lukaszgryglicki",
+		"user_gitlab_id":       567,
+		"user_gitlab_username": "lgryglicki",
+		"user_ldap_id":         nil,
+		"user_name":            "lgryglickilf",
+		"version":              "v1",
+		"user_emails":          []string{"lgryglicki@cncf.io", "lukaszgryglicki@o2.pl", "lgryglicki@contractor.linuxfoundation.com", "lukaszgryglicki1982@gmail.com"},
+	}, DEBUG)
+	defer deleteTestItem("users", "user_id", userId, "S", DEBUG)
+
+	runUserCompatAPIForUser(t, userId)
+}
+
+func TestUserCompatAPIWithInvalidUUID(t *testing.T) {
+	userId := "6ba7b810-9dad-11d1-80b4-00c04fd430cg" // Invalid UUID - "g" is not a hex digit
+	companyId := uuid.New().String()
+	putTestItem("companies", "company_id", companyId, "S", map[string]interface{}{
+		"is_sanctioned": true,
+	}, DEBUG)
+	defer deleteTestItem("companies", "company_id", companyId, "S", DEBUG)
+	putTestItem("users", "user_id", userId, "S", map[string]interface{}{
+		"lf_email":             "lgryglicki@cncf.io",
+		"lf_sub":               nil,
+		"lf_username":          "lukaszgryglicki",
+		"note":                 "Example note",
+		"user_company_id":      companyId,
+		"user_external_id":     "00117000015vpjXAAQ",
+		"user_github_id":       43778,
+		"user_github_username": "lukaszgryglicki",
+		"user_gitlab_id":       567,
+		"user_gitlab_username": "lgryglicki",
+		"user_ldap_id":         nil,
+		"user_name":            "lgryglickilf",
+		"version":              "v1",
+		"user_emails":          []string{"lgryglicki@cncf.io", "lukaszgryglicki@o2.pl", "lgryglicki@contractor.linuxfoundation.com", "lukaszgryglicki1982@gmail.com"},
+	}, DEBUG)
+	defer deleteTestItem("users", "user_id", userId, "S", DEBUG)
+
+	runUserCompatAPIForUserExpectFail(t, userId)
+}
+
+func TestAllUsersCompatAPI(t *testing.T) {
+	allUsers := getAllPrimaryKeys("users", "user_id", "S")
+
+	var failedUsers []string
+	var mtx sync.Mutex
+	sem := make(chan struct{}, MAX_PARALLEL)
+	var wg sync.WaitGroup
+
+	for _, userID := range allUsers {
+		projID, ok := userID.(string)
+		if !ok {
+			t.Errorf("Expected string user_id, got: %T", userID)
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{}
+
+		go func(projID string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			// Use t.Run in a thread-safe wrapper with a dummy parent test
+			t.Run(fmt.Sprintf("UserId=%s", projID), func(t *testing.T) {
+				runUserCompatAPIForUser(t, projID)
+				if t.Failed() {
+					mtx.Lock()
+					failedUsers = append(failedUsers, projID)
+					mtx.Unlock()
+				}
+			})
+		}(projID)
+	}
+
+	wg.Wait()
+
+	if len(failedUsers) > 0 {
+		fmt.Fprintf(os.Stderr, "\nFailed User IDs (%d):\n%s\n\n",
+			len(failedUsers),
+			strings.Join(failedUsers, "\n"),
+		)
+		t.Fail() // Mark test as failed
+	} else {
+		fmt.Println("\nAll users passed.")
 	}
 }
