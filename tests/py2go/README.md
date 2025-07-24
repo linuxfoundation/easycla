@@ -29,3 +29,5 @@
 - `` GO_API_URL=dev PY_API_URL=dev go test -v -run '^TestUserActiveSignatureAPIWithInvalidUUID$' ``.
 - `` GO_API_URL=dev PY_API_URL=dev go test -v -run '^TestProjectCompatAPIWithNonV4UUID$' ``.
 - `` GO_API_URL=dev PY_API_URL=dev go test -v -run '^TestProjectCompatAPIWithInvalidUUID$' ``.
+- `` GO_API_URL=local PY_API_URL=dev go test -v -run '^TestAllUsersCompatAPI$' ``.
+- `` USER_UUID=7b596ccc-b087-11ef-b61d-6a99096124c1 GO_API_URL=local PY_API_URL=dev go test -v -run '^TestUserCompatAPI$' ``.

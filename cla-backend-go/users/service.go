@@ -6,6 +6,7 @@ package users
 import (
 	"errors"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
@@ -27,6 +28,7 @@ type Service interface {
 	GetUserByGitLabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(field string, searchTerm string, fullMatch bool) (*models.Users, error)
 	UpdateUserCompanyID(userID, companyID, note string) error
+	ConvertUserModelToUserCompatModel(*models.User) (*models.UserCompat, error)
 }
 
 type service struct {
@@ -191,4 +193,47 @@ func (s service) SearchUsers(searchField string, searchTerm string, fullMatch bo
 // UpdateUserCompanyID updates the user's company ID
 func (s service) UpdateUserCompanyID(userID, companyID, note string) error {
 	return s.repo.UpdateUserCompanyID(userID, companyID, note)
+}
+
+func stringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func boolPtr(b bool) *bool {
+	return &b
+}
+
+// ConvertUserModelToUserCompatModel converts User to UserCompat
+func (s service) ConvertUserModelToUserCompatModel(user *models.User) (*models.UserCompat, error) {
+	userEmails := make([]strfmt.Email, len(user.Emails))
+	for i, e := range user.Emails {
+		userEmails[i] = strfmt.Email(e)
+	}
+
+	var lfEmail *strfmt.Email
+	if user.LfEmail != "" {
+		lfEmail = &user.LfEmail
+	}
+
+	return &models.UserCompat{
+		IsSanctioned:       boolPtr(user.IsSanctioned),
+		LfEmail:            lfEmail,
+		LfSub:              stringPtr(user.LfSub),
+		LfUsername:         stringPtr(user.LfUsername),
+		Note:               stringPtr(user.Note),
+		UserCompanyID:      stringPtr(user.CompanyID),
+		UserEmails:         userEmails,
+		UserExternalID:     stringPtr(user.UserExternalID),
+		UserGithubID:       stringPtr(user.GithubID),
+		UserGithubUsername: stringPtr(user.GithubUsername),
+		UserGitlabID:       stringPtr(user.GitlabID),
+		UserGitlabUsername: stringPtr(user.GitlabUsername),
+		UserID:             user.UserID,
+		UserLdapID:         nil,
+		UserName:           stringPtr(user.Username),
+		Version:            "v1",
+	}, nil
 }

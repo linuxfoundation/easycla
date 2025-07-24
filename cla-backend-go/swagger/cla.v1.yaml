@@ -141,6 +141,34 @@ paths:
       tags:
         - users
 
+  /user-compat/{userID}:
+    parameters:
+      - $ref: "#/parameters/x-request-id"
+      - $ref: "#/parameters/userPathUuid"
+    get:
+      summary: Get user by ID (returns data in the same format as Py V2 API)
+      security: [ ]
+      operationId: getUserCompat
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/user-compat'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+      tags:
+        - users
+
   /users/{userID}:
     get:
       summary: Get User by ID
@@ -2429,6 +2457,13 @@ paths:
 
 # Common parameters
 parameters:
+  userPathUuid:
+    name: userID
+    in: path
+    required: true
+    description: The user ID (UUID string)
+    type: string
+    pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$' # this is any UUID, not only v4
   x-request-id:
     name: X-REQUEST-ID
     description: The unique request ID value - assigned/set by the API Gateway based on the login session
@@ -2677,6 +2712,9 @@ definitions:
   user:
     $ref: './common/user.yaml'
 
+  user-compat:
+    $ref: './common/user-compat.yaml'
+
   user-update:
     type: object
     title: User
@@ -2689,6 +2727,8 @@ definitions:
       username:
         type: string
       lfEmail:
+        type: string
+      lfSub:
         type: string
       lfUsername:
         type: string

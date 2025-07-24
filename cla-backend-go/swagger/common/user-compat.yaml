@@ -1,0 +1,101 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: User Model in Py V2 format
+description: User Model - in Py V2 - minimal fields needed by FE
+properties:
+  user_id:
+    description: User's UUID
+    $ref: './common/properties/uuid.yaml'
+    x-omitempty: false
+    x-nullable: false
+  user_external_id:
+    description: External user ID
+    $ref: './common/properties/external-id.yaml'
+    x-omitempty: false
+    x-nullable: true
+  user_emails:
+    description: Set of user emails (may be empty)
+    type: array
+    items:
+      type: string
+      format: email
+      example: user@example.com
+    example: ["user@example.com"]
+    x-omitempty: false
+    x-nullable: false
+  user_name:
+    description: User's name
+    type: string
+    example: "Jane Smith"
+    x-omitempty: false
+    x-nullable: true
+  user_company_id:
+    description: User's company ID
+    $ref: './common/properties/uuid.yaml'
+    x-omitempty: false
+    x-nullable: true
+  user_github_id:
+    description: User's GitHub numeric ID
+    type: string
+    example: "123456"
+    x-omitempty: false
+    x-nullable: true
+  user_github_username:
+    description: User's GitHub username
+    type: string
+    example: "lukaszgryglicki"
+    x-omitempty: false
+    x-nullable: true
+  user_gitlab_id:
+    description: User's GitLab numeric ID
+    type: string
+    example: "78910"
+    x-omitempty: false
+    x-nullable: true
+  user_gitlab_username:
+    description: User's GitLab username
+    type: string
+    example: "gitlabUser"
+    x-omitempty: false
+    x-nullable: true
+  user_ldap_id:
+    description: User's LDAP ID
+    type: string
+    x-omitempty: false
+    x-nullable: true
+  note:
+    description: Optional admin note
+    type: string
+    example: "Pending verification"
+    x-omitempty: false
+    x-nullable: true
+  lf_email:
+    description: LF email
+    $ref: './common/properties/email.yaml'
+    x-omitempty: false
+    x-nullable: true
+  lf_username:
+    description: Linux Foundation username
+    type: string
+    example: "janesmith"
+    x-omitempty: false
+    x-nullable: true
+  lf_sub:
+    type: string
+    x-omitempty: false
+    x-nullable: true
+  is_sanctioned:
+    type: boolean
+    description: "Is this user OFAC sanctioned? This field comes from users's company"
+    example: true
+    x-omitempty: false
+    x-nullable: true
+  version:
+    type: string
+    description: the version identifier for this record
+    example: 'v1'
+    x-omitempty: false
+    x-nullable: false
