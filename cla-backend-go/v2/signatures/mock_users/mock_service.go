@@ -245,3 +245,11 @@ func (mr *MockServiceMockRecorder) UpdateUserCompanyID(userID, companyID, note i
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateUserCompanyID", reflect.TypeOf((*MockService)(nil).UpdateUserCompanyID), userID, companyID, note)
 }
+
+func (m *MockService) ConvertUserModelToUserCompatModel(user *models.User) (*models.UserCompat, error) {
+    ret := m.ctrl.Call(m, "ConvertUserModelToUserCompatModel", user)
+    ret0, _ := ret[0].(*models.UserCompat)
+    ret1, _ := ret[1].(error)
+    return ret0, ret1
+}
+
