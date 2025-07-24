@@ -66,9 +66,11 @@ func putTestItem(tableName, keyName string, keyValue interface{}, keyType string
 		case []string:
 			item[k] = &types.AttributeValueMemberSS{Value: val}
 		case []interface{}:
-			Debugf("Skipping field %s: generic list not supported directly", k)
+			Debugf("Skipping field %s: generic list not supported directly\n", k)
+		case nil:
+			Debugf("Skipping nil field %s\n", k)
 		default:
-			Debugf("Unsupported type for field %s: %T", k, v)
+			Debugf("Unsupported type for field %s: %T\n", k, v)
 		}
 	}
 
@@ -158,7 +160,7 @@ func getAllPrimaryKeys(tableName, keyName, keyType string) []interface{} {
 		for _, item := range output.Items {
 			attr, ok := item[keyName]
 			if !ok {
-				Debugf("Key %s not found in item: %+v", keyName, item)
+				Debugf("Key %s not found in item: %+v\n", keyName, item)
 				continue
 			}
 

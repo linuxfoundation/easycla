@@ -248,6 +248,28 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		return users.NewSearchUsersOK().WithPayload(userModel)
 
 	})
+
+	// Get User by ID compat handler
+	api.UsersGetUserCompatHandler = users.GetUserCompatHandlerFunc(func(params users.GetUserCompatParams) middleware.Responder {
+		f := logrus.Fields{"" +
+			"functionName": "users.GetUserCompatHandlerFunc",
+			"paramsUserID": params.UserID,
+		}
+
+		userModel, err := service.GetUser(params.UserID)
+		if err != nil {
+			log.WithFields(f).Warnf("error retrieving user for user_id: %s, error: %+v", params.UserID, err)
+			return users.NewGetUserCompatBadRequest().WithPayload(errorResponse(err))
+		}
+
+		compatModel, err := service.ConvertUserModelToUserCompatModel(userModel)
+		if err != nil {
+			log.WithFields(f).Warnf("error converting user model to compat model for user_id: %s, error: %+v", params.UserID, err)
+			return users.NewGetUserCompatBadRequest().WithPayload(errorResponse(err))
+		}
+		log.WithFields(f).Debugf("returning compat user model %+v from user model %+v for user_id: %s", compatModel, userModel, params.UserID)
+		return users.NewGetUserCompatOK().WithPayload(compatModel)
+	})
 }
 
 type codedResponse interface {

@@ -129,6 +129,12 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 		}
 	}
 
+	if user.LfSub != "" {
+		attributes["lf_sub"] = &dynamodb.AttributeValue{
+			S: aws.String(user.LfSub),
+		}
+	}
+
 	if len(user.Emails) > 0 {
 		attributes["user_emails"] = &dynamodb.AttributeValue{
 			SS: utils.ArrayStringPointer(user.Emails),
@@ -361,6 +367,13 @@ func (repo repository) Save(user *models.UserUpdate) (*models.User, error) {
 		expressionAttributeNames["#E"] = aws.String("lf_email")
 		expressionAttributeValues[":e"] = &dynamodb.AttributeValue{S: aws.String(user.LfEmail)}
 		updateExpression = updateExpression + " #E = :e, "
+	}
+
+	if user.LfSub != "" && oldUserModel.LfSub != user.LfSub {
+		log.WithFields(f).Debugf("building query - adding lf_sub: %s", user.LfSub)
+		expressionAttributeNames["#SU"] = aws.String("lf_sub")
+		expressionAttributeValues[":su"] = &dynamodb.AttributeValue{S: aws.String(user.LfSub)}
+		updateExpression = updateExpression + " #SU = :su, "
 	}
 
 	if user.UserExternalID != "" && oldUserModel.UserExternalID != user.UserExternalID {
@@ -1313,6 +1326,7 @@ func convertDBUserModel(user DBUser) *models.User {
 		UserExternalID: user.UserExternalID,
 		Admin:          user.Admin,
 		LfEmail:        strfmt.Email(user.LFEmail),
+		LfSub:          user.LFSub,
 		LfUsername:     user.LFUsername,
 		DateCreated:    user.DateCreated,
 		DateModified:   user.DateModified,
@@ -1336,6 +1350,7 @@ func buildUserProjection() expression.ProjectionBuilder {
 		expression.Name("user_company_id"),
 		expression.Name("admin"),
 		expression.Name("lf_email"),
+		expression.Name("lf_sub"),
 		expression.Name("lf_username"),
 		expression.Name("user_name"),
 		expression.Name("user_emails"),

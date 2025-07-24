@@ -108,6 +108,7 @@ def get_health(request):
 #
 
 
+# LG: This is ported to golang and no longer used in dev (still used in prod)
 @hug.get("/user/{user_id}", versions=2)
 def get_user(
         auth_user: check_auth,
