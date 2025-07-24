@@ -1113,7 +1113,7 @@ func TestAllUsersCompatAPI(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for _, userID := range allUsers {
-		projID, ok := userID.(string)
+		usrID, ok := userID.(string)
 		if !ok {
 			t.Errorf("Expected string user_id, got: %T", userID)
 			continue
@@ -1122,20 +1122,20 @@ func TestAllUsersCompatAPI(t *testing.T) {
 		wg.Add(1)
 		sem <- struct{}{}
 
-		go func(projID string) {
+		go func(usrID string) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
 			// Use t.Run in a thread-safe wrapper with a dummy parent test
-			t.Run(fmt.Sprintf("UserId=%s", projID), func(t *testing.T) {
-				runUserCompatAPIForUser(t, projID)
+			t.Run(fmt.Sprintf("UserId=%s", usrID), func(t *testing.T) {
+				runUserCompatAPIForUser(t, usrID)
 				if t.Failed() {
 					mtx.Lock()
-					failedUsers = append(failedUsers, projID)
+					failedUsers = append(failedUsers, usrID)
 					mtx.Unlock()
 				}
 			})
-		}(projID)
+		}(usrID)
 	}
 
 	wg.Wait()
