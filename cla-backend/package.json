@@ -40,7 +40,7 @@
     "node-fetch": "^2.6.7",
     "node.extend": "^2.0.2",
     "qs": "^6.11.0",
-    "serverless": "^3.0.0",
+    "serverless": "^4.17.2",
     "serverless-domain-manager": "^7.0.4",
     "serverless-finch": "^4.0.3",
     "serverless-layers": "^2.6.1",
