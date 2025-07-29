@@ -3901,6 +3901,7 @@ class GitHubOrgModel(BaseModel):
     branch_protection_enabled = BooleanAttribute(null=True)
     enabled = BooleanAttribute(null=True)
     note = UnicodeAttribute(null=True)
+    skip_cla = MapAttribute(of=UnicodeAttribute, null=True)
 
 
 class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-methods
@@ -3910,7 +3911,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
 
     def __init__(
             self, organization_name=None, organization_installation_id=None, organization_sfid=None,
-            auto_enabled=False, branch_protection_enabled=False, note=None, enabled=True
+            auto_enabled=False, branch_protection_enabled=False, note=None, enabled=True, skip_cla=None,
     ):
         super(GitHubOrg).__init__()
         self.model = GitHubOrgModel()
@@ -3923,6 +3924,7 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
         self.model.branch_protection_enabled = branch_protection_enabled
         self.model.note = note
         self.model.enabled = enabled
+        self.model.skip_cla = skip_cla
 
     def __str__(self):
         return (
@@ -3933,8 +3935,9 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
             f'organization company id: {self.model.organization_company_id}, '
             f'auto_enabled: {self.model.auto_enabled},'
             f'branch_protection_enabled: {self.model.branch_protection_enabled},'
-            f'note: {self.model.note}'
-            f'enabled: {self.model.enabled}'
+            f'note: {self.model.note},'
+            f'enabled: {self.model.enabled},'
+            f'skip_cla: {self.model.skip_cla}'
         )
 
     def to_dict(self):
@@ -3980,6 +3983,9 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
     def get_branch_protection_enabled(self):
         return self.model.branch_protection_enabled
 
+    def get_skip_cla(self):
+        return self.model.skip_cla
+
     def get_note(self):
         """
         Getter for the note.
@@ -4016,6 +4022,9 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
 
     def set_branch_protection_enabled(self, branch_protection_enabled):
         self.model.branch_protection_enabled = branch_protection_enabled
+
+    def set_skip_cla(self, skip_cla):
+        self.model.skip_cla = skip_cla
 
     def set_note(self, note):
         self.model.note = note
