@@ -947,7 +947,7 @@ class GitHub(repository_service_interface.RepositoryService):
     def is_actor_skipped(self, actor, config):
         """
         Returns True if the actor should be skipped (whitelisted) based on config pattern.
-        config: '<username_pattern>:<email_pattern>'
+        config: '<username_pattern>;<email_pattern>'
         """
         try:
             if ';' not in config:
@@ -1069,7 +1069,7 @@ class GitHub(repository_service_interface.RepositoryService):
         except Exception as exc:
             cla.log.error(
                 "Exception in skip_whitelisted_bots: %s (repo=%s, actors=%s). Disabling skip_cla logic for this run.",
-                exc, repo, actors
+                exc, org_repo, actors_missing_cla
             )
             # Always return all actors if something breaks
             return actors_missing_cla, []
