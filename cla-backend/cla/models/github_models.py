@@ -7,19 +7,21 @@ Holds the GitHub repository service.
 import concurrent.futures
 import json
 import os
+import re
 import base64
 import binascii
 import threading
 import time
 import uuid
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 import cla
 import falcon
 import github
 from cla.controllers.github_application import GitHubInstallation
 from cla.models import DoesNotExist, repository_service_interface
-from cla.models.dynamo_models import GitHubOrg, Repository
+from cla.models.dynamo_models import GitHubOrg, Repository, Event
+from cla.models.event_types import EventType
 from cla.user import UserCommitSummary
 from cla.utils import (append_project_version_to_url, get_project_instance,
                        set_active_pr_metadata)
@@ -736,6 +738,11 @@ class GitHub(repository_service_interface.RepositoryService):
         for user_commit_summary in commit_authors:
             handle_commit_from_user(project, user_commit_summary, signed, missing)
 
+        # Skip whitelisted bots per org/repo GitHub login/email regexps
+        # repo can be defined as '*' (all repos) or re:<regexp> (regexp to match repo name) or 'repo-name' for exact match
+        # the same for value which is GitHub login match then ; separator and then email match (same matching via * or re:<regexp> or exact-match) 
+        missing, signed = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
+
         # update Merge group status
         self.update_merge_group_status(
             installation_id, github_repository_id, pull_request, merge_group_sha, signed, missing, project.get_version()
@@ -896,6 +903,10 @@ class GitHub(repository_service_interface.RepositoryService):
         for future in concurrent.futures.as_completed(futures):
             cla.log.debug(f"{fn} - ThreadClosed for handle_commit_from_user")
 
+        # Skip whitelisted bots per org/repo GitHub login/email regexps
+        # repo can be defined as '*' (all repos) or re:<regexp> (regexp to match repo name) or 'repo-name' for exact match
+        # the same for value which is GitHub login match then ; separator and then email match (same matching via * or re:<regexp> or exact-match) 
+        missing, signed = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
         # At this point, the signed and missing lists are now filled and updated with the commit user info
 
         cla.log.debug(
@@ -914,6 +925,155 @@ class GitHub(repository_service_interface.RepositoryService):
             missing=missing,
             project_version=project.get_version(),
         )
+
+    def property_matches(self, pattern, value):
+        """
+        Returns True if value matches the pattern.
+        - '*' matches anything
+        - 're:...' matches regex - value must be set
+        - otherwise, exact match
+        """
+        try:
+            if pattern == '*':
+                return True
+            if pattern.startswith('re:'):
+                regex = pattern[3:]
+                return value is not None and re.search(regex, value) is not None
+            return value == pattern
+        except Exception as exc:
+            cla.log.warning("Error in property_matches: pattern=%s, value=%s, exc=%s", pattern, value, exc)
+            return False
+
+    def is_actor_skipped(self, actor, config):
+        """
+        Returns True if the actor should be skipped (whitelisted) based on config pattern.
+        config: '<username_pattern>:<email_pattern>'
+        """
+        try:
+            if ';' not in config:
+                return False
+            username_pattern, email_pattern = config.split(';', 1)
+            username = getattr(actor, "author_login", None)
+            email = getattr(actor, "author_email", None)
+            return self.property_matches(username_pattern, username) and self.property_matches(email_pattern, email)
+        except Exception as exc:
+            cla.log.warning("Error in is_actor_skipped: config=%s, actor=%s, exc=%s", config, actor, exc)
+            return False
+
+    def strip_org(self, repo_full):
+        if '/' in repo_full:
+            return repo_full.split('/', 1)[1]
+        return repo_full
+
+    def skip_whitelisted_bots(self, org_model, org_repo, actors_missing_cla) -> Tuple[List[UserCommitSummary], List[UserCommitSummary]]:
+        """
+        Check if the actors are whitelisted based on the skip_cla configuration.
+        Returns a tuple of two lists:
+        - actors_missing_cla: actors who still need to sign the CLA after checking skip_cla
+        - whitelisted_actors: actors who are skipped due to skip_cla configuration
+        :param org_model: The GitHub organization model instance.
+        :param org_repo: The repository name in the format 'org/repo'.
+        :param actors_missing_cla: List of UserCommitSummary objects representing actors who are missing CLA.
+        :return: Tuple of (actors_missing_cla, whitelisted_actors)
+        : in cla-{stage}-github-orgs table there can be a skip_cla field which is a dict with the following structure:
+        {
+            "repo-name": "<username_pattern>;<email_pattern>",
+            "re:repo-regexp": "<username_pattern>;<email_pattern>",
+            "*": "<username_pattern>;<email_pattern>"
+        }
+        where:
+        - repo-name is the exact repository name (e.g., "my-org/my-repo")
+        - re:repo-regexp is a regex pattern to match repository names
+        - * is a wildcard that applies to all repositories
+        - <username_pattern> is a GitHub username pattern (exact match or regex prefixed by re: or match all '*')
+        - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*')
+        :note: The username and email patterns are separated by a semicolon (;).
+        :note: If the skip_cla is not set, it will skip the whitelisted bots check.
+        """
+        try:
+            repo = self.strip_org(org_repo)
+            skip_cla = org_model.get_skip_cla()
+            if skip_cla is None:
+                cla.log.debug("skip_cla is not set, skipping whitelisted bots check")
+                return actors_missing_cla, []
+
+            if hasattr(skip_cla, "as_dict"):
+                skip_cla = skip_cla.as_dict()
+            config = ''
+            # 1. Exact match
+            if repo in skip_cla:
+                cla.log.debug("skip_cla config found for repo %s: %s (exact hit)", repo, skip_cla[repo])
+                config = skip_cla[repo]
+
+            # 2. Regex pattern (if no exact hit)
+            if config == '':
+                cla.log.debug("No skip_cla config found for repo %s, checking regex patterns", repo)
+                for k, v in skip_cla.items():
+                    if not isinstance(k, str) or not k.startswith("re:"):
+                        continue
+                    pattern = k[3:]
+                    try:
+                        if re.search(pattern, repo):
+                            config = v
+                            cla.log.debug("Found skip_cla config for repo %s: %s via regex pattern: %s", repo, config, pattern)
+                            break
+                    except re.error as e:
+                        cla.log.warning("Invalid regex in skip_cla: %s (%s)", k, e)
+                        continue
+
+            # 3. Wildcard fallback
+            if config == '' and '*' in skip_cla:
+                cla.log.debug("No skip_cla config found for repo %s, using wildcard config", repo)
+                config = skip_cla['*']
+
+            # 4. No match
+            if config == '':
+                cla.log.debug("No skip_cla config found for repo %s, skipping whitelisted bots check", repo)
+                return actors_missing_cla, []
+
+            out_actors_missing_cla = []
+            whitelisted_actors = []
+            for actor in actors_missing_cla:
+                try:
+                    if self.is_actor_skipped(actor, config):
+                        actor_data = "id='{}',login='{}',username='{}',email='{}'".format(
+                            getattr(actor, "author_id", "(null)"),
+                            getattr(actor, "author_login", "(null)"),
+                            getattr(actor, "author_username", "(null)"),
+                            getattr(actor, "author_email", "(null)"),
+                        )
+                        msg = "Skipping CLA check for repo='{}', actor: {} due to skip_cla config: '{}'".format(
+                            org_repo,
+                            actor_data,
+                            config,
+                        )
+                        cla.log.info(msg)
+                        ev = Event.create_event(
+                            event_type=EventType.BypassCLA,
+                            event_data=msg,
+                            event_summary=msg,
+                            event_user_name=actor_data,
+                            contains_pii=True,
+                        )
+                        actor.authorized = True
+                        whitelisted_actors.append(actor)
+                        continue
+                except Exception as e:
+                    cla.log.warning(
+                        "Error checking skip_cla for actor '%s' (login='%s', email='%s'): %s",
+                        actor, getattr(actor, "author_login", None), getattr(actor, "author_email", None), e,
+                    )
+                out_actors_missing_cla.append(actor)
+
+            return out_actors_missing_cla, whitelisted_actors
+        except Exception as exc:
+            cla.log.error(
+                "Exception in skip_whitelisted_bots: %s (repo=%s, actors=%s). Disabling skip_cla logic for this run.",
+                exc, repo, actors
+            )
+            # Always return all actors if something breaks
+            return actors_missing_cla, []
+
 
     def get_pull_request(self, github_repository_id, pull_request_number, installation_id):
         """

@@ -8,9 +8,14 @@ if [ -z "${STAGE}" ]
 then
   export STAGE=dev
 fi
-
+if [ -z "$REGION" ]
+then
+  REGION=us-east-1
+fi
 if [ ! -z "${DEBUG}" ]
 then
-  echo "aws --profile \"lfproduct-${STAGE}\" dynamodb describe-table --table-name \"cla-${STAGE}-${1}\""
+  echo "aws --profile \"lfproduct-${STAGE}\" --region \"${REGION}\" dynamodb describe-table --table-name \"cla-${STAGE}-${1}\""
+  aws --profile "lfproduct-${STAGE}" --region "${REGION}" dynamodb describe-table --table-name "cla-${STAGE}-${1}"
+else
+  aws --profile "lfproduct-${STAGE}" --region "${REGION}" dynamodb describe-table --table-name "cla-${STAGE}-${1}" | jq -r '.Table.AttributeDefinitions'
 fi
-aws --profile "lfproduct-${STAGE}" dynamodb describe-table --table-name "cla-${STAGE}-${1}"
