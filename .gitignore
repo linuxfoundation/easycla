@@ -246,3 +246,8 @@ cla-backend/run-python-test-example-*.py
 out
 *.secret
 *log*.json
+
+# Cypress test outputs
+**/cypress/screenshots/
+**/cypress/videos/
+**/cypress/reports/
