@@ -23,7 +23,7 @@
   "homepage": "https://github.com/linuxfoundation/easycla#readme",
   "devDependencies": {
     "@types/node": "^20.5.0",
-    "cypress": "^12.17.3",
+    "cypress": "^14.5.3",
     "cypress-dotenv": "^3.0.1",
     "typescript": "^5.1.6"
   },
