@@ -3,7 +3,7 @@
 # put-item    Overwrites/adds the entire `skip_cla` entry.
 # add-key     Adds or updates a key/value inside the skip_cla map (preserves other keys)
 # delete-key  Removes a key from the skip_cla map
-# delete-item Deletes the entire `skip_cla`entry.
+# delete-item Deletes the entire `skip_cla` entry.
 #
 # MODE=add-key ./utils/skip_cla_entry.sh sun-test-org 'repo1' 're:vee?rendra' '*'
 # ./utils/scan.sh github-orgs organization_name sun-test-org
