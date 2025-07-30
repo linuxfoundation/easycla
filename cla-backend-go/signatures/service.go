@@ -1114,6 +1114,8 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	}
 
 	log.WithFields(f).Debugf("commit authors status => signed: %+v and missing: %+v", signed, unsigned)
+	unsigned, signed = github.SkipWhitelistedBots(s.eventsService, ghOrg, gitHubRepoName, projectID, unsigned)
+	log.WithFields(f).Debugf("commit authors status after whitelisting bots => signed: %+v and missing: %+v", signed, unsigned)
 
 	// update pull request
 	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, githubRepository.ID, *latestSHA, signed, unsigned, s.claBaseAPIURL, s.claLandingPage, s.claLogoURL)
@@ -1132,7 +1134,7 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 // true, true, nil if user has an ECLA (authorized, with company affiliation, no error)
 func (s service) HasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, *bool, error) {
 	f := logrus.Fields{
-		"functionName": "v1.signatures.service.updateChangeRequest",
+		"functionName": "v1.signatures.service.HasUserSigned",
 		"projectID":    projectID,
 		"user":         user,
 	}

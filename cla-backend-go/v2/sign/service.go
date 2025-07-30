@@ -2847,6 +2847,10 @@ func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*m
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"userID":         userID,
 	}
+	// LG:
+	// _ = s.updateChangeRequest(ctx, 35275118, 614349032, 215, "01af041c-fa69-4052-a23c-fb8c1d3bef24")
+	// return nil, nil
+	// LG:
 	activeSignatureMetadata, err := s.storeRepository.GetActiveSignatureMetaData(ctx, userID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
