@@ -1,9 +1,9 @@
 #!/bin/bash
 # MODE=mode ./utils/skip_cla_entry.sh sun-test-org '*' 'copilot-swe-agent[bot]' '*'
-# put-item    Overwrites the entire item (skip_cla and all other attributes if needed)
+# put-item    Overwrites/adds the entire `skip_cla` entry.
 # add-key     Adds or updates a key/value inside the skip_cla map (preserves other keys)
 # delete-key  Removes a key from the skip_cla map
-# delete-item Deletes the entire DynamoDB item (removes the whole row)
+# delete-item Deletes the entire `skip_cla`entry.
 #
 # MODE=add-key ./utils/skip_cla_entry.sh sun-test-org 'repo1' 're:vee?rendra' '*'
 # ./utils/scan.sh github-orgs organization_name sun-test-org
@@ -27,44 +27,44 @@ case "$MODE" in
       echo "Usage: $0 <organization_name> <repo or *> <bot username> <email regexp>"
       exit 1
     fi
-    aws --profile "lfproduct-${STAGE}" --region "${REGION}" dynamodb update-item \
-      --table-name "cla-${STAGE}-github-orgs" \
-      --key "{\"organization_name\": {\"S\": \"${1}\"}}" \
+    CMD="aws --profile \"lfproduct-${STAGE}\" --region \"${REGION}\" dynamodb update-item \
+      --table-name \"cla-${STAGE}-github-orgs\" \
+      --key '{\"organization_name\": {\"S\": \"${1}\"}}' \
       --update-expression 'SET skip_cla = :val' \
-      --expression-attribute-values "{\":val\": {\"M\": {\"${2}\":{\"S\":\"${3};${4}\"}}}}"
+      --expression-attribute-values '{\":val\": {\"M\": {\"${2}\":{\"S\":\"${3};${4}\"}}}}'"
     ;;
   add-key)
     if ( [ -z "${1}" ] || [ -z "${2}" ] || [ -z "${3}" ] || [ -z "${4}" ] ); then
       echo "Usage: $0 <organization_name> <repo or *> <bot username> <email regexp>"
       exit 1
     fi
-    aws --profile "lfproduct-${STAGE}" --region "${REGION}" dynamodb update-item \
-      --table-name "cla-${STAGE}-github-orgs" \
-      --key "{\"organization_name\": {\"S\": \"${1}\"}}" \
-      --update-expression "SET skip_cla.#repo = :val" \
-      --expression-attribute-names "{\"#repo\": \"${2}\"}" \
-      --expression-attribute-values "{\":val\": {\"S\": \"${3};${4}\"}}"
+    CMD="aws --profile \"lfproduct-${STAGE}\" --region \"${REGION}\" dynamodb update-item \
+      --table-name \"cla-${STAGE}-github-orgs\" \
+      --key '{\"organization_name\": {\"S\": \"${1}\"}}' \
+      --update-expression 'SET skip_cla.#repo = :val' \
+      --expression-attribute-names '{\"#repo\": \"${2}\"}' \
+      --expression-attribute-values '{\":val\": {\"S\": \"${3};${4}\"}}'"
     ;;
   delete-key)
     if ( [ -z "${1}" ] || [ -z "${2}" ] ); then
       echo "Usage: $0 <organization_name> <repo or *>"
       exit 1
     fi
-    aws --profile "lfproduct-${STAGE}" --region "${REGION}" dynamodb update-item \
-      --table-name "cla-${STAGE}-github-orgs" \
-      --key "{\"organization_name\": {\"S\": \"${1}\"}}" \
-      --update-expression "REMOVE skip_cla.#repo" \
-      --expression-attribute-names "{\"#repo\": \"${2}\"}"
+    CMD="aws --profile \"lfproduct-${STAGE}\" --region \"${REGION}\" dynamodb update-item \
+      --table-name \"cla-${STAGE}-github-orgs\" \
+      --key '{\"organization_name\": {\"S\": \"${1}\"}}' \
+      --update-expression 'REMOVE skip_cla.#repo' \
+      --expression-attribute-names '{\"#repo\": \"${2}\"}'"
     ;;
   delete-item)
     if [ -z "${1}" ]; then
       echo "Usage: $0 <organization_name>"
       exit 1
     fi
-    aws --profile "lfproduct-${STAGE}" --region "${REGION}" dynamodb update-item \
-      --table-name "cla-${STAGE}-github-orgs" \
-      --key "{\"organization_name\": {\"S\": \"${1}\"}}" \
-      --update-expression "REMOVE skip_cla"
+    CMD="aws --profile \"lfproduct-${STAGE}\" --region \"${REGION}\" dynamodb update-item \
+      --table-name \"cla-${STAGE}-github-orgs\" \
+      --key '{\"organization_name\": {\"S\": \"${1}\"}}' \
+      --update-expression 'REMOVE skip_cla'"
     ;;
   *)
     echo "$0: Unknown MODE: $MODE"
@@ -72,4 +72,11 @@ case "$MODE" in
     exit 1
     ;;
 esac
+
+if [ ! -z "$DEBUG" ]
+then
+  echo "$CMD"
+fi
+
+eval $CMD
 
