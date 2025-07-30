@@ -69,6 +69,15 @@ properties:
             x-nullable: true
             example: "https://github.com/organizations/deal-test-org-2/settings/installations/1235464"
             format: uri
+  skipCla:
+    type: object
+    additionalProperties:
+      type: string
+    description: |
+      Map of repository name or pattern (e.g. 'repo1', '*', 're:pattern') to a string in the form '<username_pattern>;<email_pattern>' for skipping CLA checks for certain bots. Patterns can be exact, wildcard '*', or regexp prefixed with 're:'.
+    example:
+      "*": "copilot-swe-agent[bot];*"
+      "repo1": "re:vee?rendra;*"
 
   repositories:
     type: object
