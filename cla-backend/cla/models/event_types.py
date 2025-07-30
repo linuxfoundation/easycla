@@ -48,3 +48,4 @@ class EventType(Enum):
     RepositoryRemoved = "Repository Removed"
     RepositoryDisable = "Repository Disabled"
     RepositoryEnabled = "Repository Enabled"
+    BypassCLA = "Bypass CLA"
