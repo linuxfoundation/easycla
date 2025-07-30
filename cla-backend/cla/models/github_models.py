@@ -936,9 +936,11 @@ class GitHub(repository_service_interface.RepositoryService):
         try:
             if pattern == '*':
                 return True
+            if value is None or value == '':
+                return False
             if pattern.startswith('re:'):
                 regex = pattern[3:]
-                return value is not None and re.search(regex, value) is not None
+                return re.search(regex, value) is not None
             return value == pattern
         except Exception as exc:
             cla.log.warning("Error in property_matches: pattern=%s, value=%s, exc=%s", pattern, value, exc)
@@ -951,6 +953,7 @@ class GitHub(repository_service_interface.RepositoryService):
         """
         try:
             if ';' not in config:
+                cla.log.warning("Invalid skip_cla config format: %s, expected '<username_pattern>;<email_pattern>'", config)
                 return False
             username_pattern, email_pattern = config.split(';', 1)
             username = getattr(actor, "author_login", None)
@@ -1051,7 +1054,7 @@ class GitHub(repository_service_interface.RepositoryService):
                             config,
                         )
                         cla.log.info(msg)
-                        ev = Event.create_event(
+                        Event.create_event(
                             event_type=EventType.BypassCLA,
                             event_data=msg,
                             event_summary=msg,
