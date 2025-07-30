@@ -1,6 +1,6 @@
 ## Whitelisting Bots
 
-You can allow specific bot users to automatically pass the CLA check. 
+You can allow specific bot users to automatically pass the CLA check.
 
 This can be done on the GitHub organization level by setting the `skip_cla` property on `cla-{stage}-github-orgs` DynamoDB table.
 
@@ -105,7 +105,7 @@ To see given organization's entry: `./utils/scan.sh github-orgs organization_nam
 
 Or using AWS CLI:
 
-``` 
+```
 aws --profile "lfproduct-prod" dynamodb scan --table-name "cla-prod-github-orgs" --filter-expression "contains(organization_name,:v)" --expression-attribute-values "{\":v\":{\"S\":\"linuxfoundation\"}}" --max-items 100 | jq -r '.Items'
 ```
 
