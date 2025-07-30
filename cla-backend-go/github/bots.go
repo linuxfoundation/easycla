@@ -5,12 +5,13 @@ package github
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/sirupsen/logrus"
-	"regexp"
-	"strings"
 )
 
 // propertyMatches returns true if value matches the pattern.
@@ -74,10 +75,10 @@ func isActorSkipped(actor *UserCommitSummary, config string) bool {
 		username string
 		email    string
 	)
-	if actor.CommitAuthor != nil && actor.CommitAuthor.Login != nil {
+	if actor != nil && actor.CommitAuthor != nil && actor.CommitAuthor.Login != nil {
 		username = *actor.CommitAuthor.Login
 	}
-	if actor.CommitAuthor != nil && actor.CommitAuthor.Email != nil {
+	if actor != nil && actor.CommitAuthor != nil && actor.CommitAuthor.Email != nil {
 		email = *actor.CommitAuthor.Email
 	}
 
@@ -167,10 +168,14 @@ func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization,
 		log.WithFields(f).Debug("No skip_cla config found for repo, skipping whitelisted bots check")
 		return actorsMissingCLA, []*UserCommitSummary{}
 	}
+	const nullStr = "(null)"
 
 	for _, actor := range actorsMissingCLA {
 		if isActorSkipped(actor, config) {
-			id, login, username, email := "(null)", "(null)", "(null)", "(null)"
+			if actor == nil {
+				continue
+			}
+			id, login, username, email := nullStr, nullStr, nullStr, nullStr
 			if actor.CommitAuthor != nil && actor.CommitAuthor.ID != nil {
 				id = fmt.Sprintf("%v", *actor.CommitAuthor.ID)
 			}

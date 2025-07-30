@@ -1040,6 +1040,8 @@ class GitHub(repository_service_interface.RepositoryService):
             out_actors_missing_cla = []
             whitelisted_actors = []
             for actor in actors_missing_cla:
+                if actor is None:
+                    continue
                 try:
                     if self.is_actor_skipped(actor, config):
                         actor_data = "id='{}',login='{}',username='{}',email='{}'".format(
