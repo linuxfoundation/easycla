@@ -961,6 +961,9 @@ class GitHub(repository_service_interface.RepositoryService):
             return False
 
     def strip_org(self, repo_full):
+        """
+        Removes the organization part from the repository name.
+        """
         if '/' in repo_full:
             return repo_full.split('/', 1)[1]
         return repo_full
@@ -982,7 +985,7 @@ class GitHub(repository_service_interface.RepositoryService):
             "*": "<username_pattern>;<email_pattern>"
         }
         where:
-        - repo-name is the exact repository name (e.g., "my-org/my-repo")
+        - repo-name is the exact repository name under given org (e.g., "my-repo" not "my-org/my-repo")
         - re:repo-regexp is a regex pattern to match repository names
         - * is a wildcard that applies to all repositories
         - <username_pattern> is a GitHub username pattern (exact match or regex prefixed by re: or match all '*')
@@ -994,7 +997,7 @@ class GitHub(repository_service_interface.RepositoryService):
             repo = self.strip_org(org_repo)
             skip_cla = org_model.get_skip_cla()
             if skip_cla is None:
-                cla.log.debug("skip_cla is not set, skipping whitelisted bots check")
+                cla.log.debug("skip_cla is not set on '%s', skipping whitelisted bots check", org_repo)
                 return actors_missing_cla, []
 
             if hasattr(skip_cla, "as_dict"):
@@ -1002,12 +1005,12 @@ class GitHub(repository_service_interface.RepositoryService):
             config = ''
             # 1. Exact match
             if repo in skip_cla:
-                cla.log.debug("skip_cla config found for repo %s: %s (exact hit)", repo, skip_cla[repo])
+                cla.log.debug("skip_cla config found for repo %s: %s (exact hit)", org_repo, skip_cla[repo])
                 config = skip_cla[repo]
 
             # 2. Regex pattern (if no exact hit)
             if config == '':
-                cla.log.debug("No skip_cla config found for repo %s, checking regex patterns", repo)
+                cla.log.debug("No skip_cla config found for repo %s, checking regex patterns", org_repo)
                 for k, v in skip_cla.items():
                     if not isinstance(k, str) or not k.startswith("re:"):
                         continue
@@ -1015,20 +1018,20 @@ class GitHub(repository_service_interface.RepositoryService):
                     try:
                         if re.search(pattern, repo):
                             config = v
-                            cla.log.debug("Found skip_cla config for repo %s: %s via regex pattern: %s", repo, config, pattern)
+                            cla.log.debug("Found skip_cla config for repo %s: %s via regex pattern: %s", org_repo, config, pattern)
                             break
                     except re.error as e:
-                        cla.log.warning("Invalid regex in skip_cla: %s (%s)", k, e)
+                        cla.log.warning("Invalid regex in skip_cla: %s (%s) for repo: %s", k, e, org_repo)
                         continue
 
             # 3. Wildcard fallback
             if config == '' and '*' in skip_cla:
-                cla.log.debug("No skip_cla config found for repo %s, using wildcard config", repo)
+                cla.log.debug("No skip_cla config found for repo %s, using wildcard config", org_repo)
                 config = skip_cla['*']
 
             # 4. No match
             if config == '':
-                cla.log.debug("No skip_cla config found for repo %s, skipping whitelisted bots check", repo)
+                cla.log.debug("No skip_cla config found for repo %s, skipping whitelisted bots check", org_repo)
                 return actors_missing_cla, []
 
             out_actors_missing_cla = []
