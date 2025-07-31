@@ -6,7 +6,9 @@
 # delete-item Deletes the entire `skip_cla` entry.
 #
 # MODE=add-key ./utils/skip_cla_entry.sh sun-test-org 'repo1' 're:vee?rendra' '*'
+# MODE=add-key ./utils/skip_cla_entry.sh 'sun-test-org' 'repo1' 'lukaszgryglicki' 're:gryglicki'
 # ./utils/scan.sh github-orgs organization_name sun-test-org
+# STAGE=dev DTFROM='1 hour ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'skip_cla'
 
 if [ -z "$MODE" ]
 then

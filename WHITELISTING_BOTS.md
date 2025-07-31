@@ -109,3 +109,4 @@ Or using AWS CLI:
 aws --profile "lfproduct-prod" dynamodb scan --table-name "cla-prod-github-orgs" --filter-expression "contains(organization_name,:v)" --expression-attribute-values "{\":v\":{\"S\":\"linuxfoundation\"}}" --max-items 100 | jq -r '.Items'
 ```
 
+To check for log entries related to skipping CLA check, you can use the following command: `` STAGE=dev DTFROM='1 hour ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'skip_cla' ``.
