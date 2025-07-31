@@ -31,34 +31,39 @@ case "$MODE" in
       echo "Usage: $0 <organization_name> <repo or re:repo-regexp or *> <patterns or array-of-patterns>"
       exit 1
     fi
+    repo=$(echo "${2}" | sed 's/\\/\\\\/g')
+    pat=$(echo "${3}" | sed 's/\\/\\\\/g')
     CMD="aws --profile \"lfproduct-${STAGE}\" --region \"${REGION}\" dynamodb update-item \
       --table-name \"cla-${STAGE}-github-orgs\" \
       --key '{\"organization_name\": {\"S\": \"${1}\"}}' \
       --update-expression 'SET skip_cla = :val' \
-      --expression-attribute-values '{\":val\": {\"M\": {\"${2}\":{\"S\":\"${3}\"}}}}'"
+      --expression-attribute-values '{\":val\": {\"M\": {\"${repo}\":{\"S\":\"${pat}\"}}}}'"
     ;;
   add-key)
     if ( [ -z "${1}" ] || [ -z "${2}" ] || [ -z "${3}" ] ); then
       echo "Usage: $0 <organization_name> <repo or re:repo-regexp or *> <patterns or array-of-patterns>"
       exit 1
     fi
+    repo=$(echo "${2}" | sed 's/\\/\\\\/g')
+    pat=$(echo "${3}" | sed 's/\\/\\\\/g')
     CMD="aws --profile \"lfproduct-${STAGE}\" --region \"${REGION}\" dynamodb update-item \
       --table-name \"cla-${STAGE}-github-orgs\" \
       --key '{\"organization_name\": {\"S\": \"${1}\"}}' \
       --update-expression 'SET skip_cla.#repo = :val' \
-      --expression-attribute-names '{\"#repo\": \"${2}\"}' \
-      --expression-attribute-values '{\":val\": {\"S\": \"${3}\"}}'"
+      --expression-attribute-names '{\"#repo\": \"${repo}\"}' \
+      --expression-attribute-values '{\":val\": {\"S\": \"${pat}\"}}'"
     ;;
   delete-key)
     if ( [ -z "${1}" ] || [ -z "${2}" ] ); then
       echo "Usage: $0 <organization_name> <repo or re:repo-regexp or *>"
       exit 1
     fi
+    repo=$(echo "${2}" | sed 's/\\/\\\\/g')
     CMD="aws --profile \"lfproduct-${STAGE}\" --region \"${REGION}\" dynamodb update-item \
       --table-name \"cla-${STAGE}-github-orgs\" \
       --key '{\"organization_name\": {\"S\": \"${1}\"}}' \
       --update-expression 'REMOVE skip_cla.#repo' \
-      --expression-attribute-names '{\"#repo\": \"${2}\"}'"
+      --expression-attribute-names '{\"#repo\": \"${repo}\"}'"
     ;;
   delete-item)
     if [ -z "${1}" ]; then
