@@ -969,7 +969,7 @@ class GitHub(repository_service_interface.RepositoryService):
             login_pattern, email_pattern, name_pattern = parts[:3]
             login = getattr(actor, "author_login", None)
             email = getattr(actor, "author_email", None)
-            name = getattr(actor, "author_username", None)
+            name = getattr(actor, "author_name", None)
             return (
                 self.property_matches(login_pattern, login) and
                 self.property_matches(email_pattern, email) and
@@ -1001,6 +1001,12 @@ class GitHub(repository_service_interface.RepositoryService):
         else:
             return [config]
 
+    def safe_getattr(obj, attr, default='(null)'):
+        """Returns obj.attr or default if attr is missing or None."""
+        val = getattr(obj, attr, default)
+        if val is None:
+            return default
+        return val
 
     def skip_whitelisted_bots(self, org_model, org_repo, actors_missing_cla) -> Tuple[List[UserCommitSummary], List[UserCommitSummary]]:
         """
@@ -1014,18 +1020,18 @@ class GitHub(repository_service_interface.RepositoryService):
         :return: Tuple of (actors_missing_cla, whitelisted_actors)
         : in cla-{stage}-github-orgs table there can be a skip_cla field which is a dict with the following structure:
         {
-            "repo-name": "<username_pattern>;<email_pattern>;<name_pattern>",
-            "re:repo-regexp": "[<username_pattern>;<email_pattern>;<name_pattern>||...]",
+            "repo-name": "<login_pattern>;<email_pattern>;<name_pattern>",
+            "re:repo-regexp": "[<login_pattern>;<email_pattern>;<name_pattern>||...]",
             "*": "<login_pattern>"
         }
         where:
         - repo-name is the exact repository name under given org (e.g., "my-repo" not "my-org/my-repo")
         - re:repo-regexp is a regex pattern to match repository names
         - * is a wildcard that applies to all repositories
-        - <username_pattern> is a GitHub username pattern (exact match or regex prefixed by re: or match all '*')
+        - <login_pattern> is a GitHub login pattern (exact match or regex prefixed by re: or match all '*')
         - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') - defaults to '*' if not set
         - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') - defaults to '*' if not set
-        :note: The username/login, email and name patterns are separated by a semicolon (;).
+        :note: The login (sometimes called username it's the same), email and name patterns are separated by a semicolon (;).
         :note: There can be an array of patterns - it must start with [ and with ] and be || separated.
         :note: If the skip_cla is not set, it will skip the whitelisted bots check.
         """
@@ -1071,10 +1077,10 @@ class GitHub(repository_service_interface.RepositoryService):
                 return actors_missing_cla, []
 
             actor_debug_data = [
-                f"id='{getattr(a, 'author_id', '(null)')}',"
-                f"login='{getattr(a, 'author_login', '(null)')}',"
-                f"username='{getattr(a, 'author_username', '(null)')}',"
-                f"email='{getattr(a, 'author_email', '(null)')}'"
+                f"id='{safe_getattr(a, 'author_id')}',"
+                f"login='{safe_getattr(a, 'author_login')}',"
+                f"name='{safe_getattr(a, 'author_name')}',"
+                f"email='{safe_getattr(a, 'author_email')}'"
                 for a in actors_missing_cla
             ]
             config = self.parse_config_patterns(config)
@@ -1085,11 +1091,11 @@ class GitHub(repository_service_interface.RepositoryService):
                 if actor is None:
                     continue
                 try:
-                    actor_data = "id='{}',login='{}',username='{}',email='{}'".format(
-                        getattr(actor, "author_id", "(null)"),
-                        getattr(actor, "author_login", "(null)"),
-                        getattr(actor, "author_username", "(null)"),
-                        getattr(actor, "author_email", "(null)"),
+                    actor_data = "id='{}',login='{}',name='{}',email='{}'".format(
+                        safe_getattr(actor, "author_id"),
+                        safe_getattr(actor, "author_login"),
+                        safe_getattr(actor, "author_name"),
+                        safe_getattr(actor, "author_email"),
                     )
                     cla.log.debug("Checking actor: %s for skip_cla config: %s", actor_data, config)
                     if self.is_actor_skipped(actor, config):
@@ -1111,8 +1117,13 @@ class GitHub(repository_service_interface.RepositoryService):
                         continue
                 except Exception as e:
                     cla.log.warning(
-                        "Error checking skip_cla for actor '%s' (login='%s', email='%s'): %s",
-                        actor, getattr(actor, "author_login", None), getattr(actor, "author_email", None), e,
+                        "Error checking skip_cla for actor '%s' (id='%s', login='%s', name='%s', email='%s'): %s",
+                        actor,
+                        safe_getattr(actor, "author_id"),
+                        safe_getattr(actor, "author_login"),
+                        safe_getattr(actor, "author_name"),
+                        safe_getattr(actor, "author_email"),
+                        e,
                     )
                 out_actors_missing_cla.append(actor)
 
