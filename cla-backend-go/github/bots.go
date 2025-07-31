@@ -134,8 +134,8 @@ func parseConfigPatterns(config string) []string {
 // : in cla-{stage}-github-orgs table there can be a skip_cla field which is a dict with the following structure:
 //
 //	{
-//	    "repo-name": "<username_pattern>;<email_pattern>;<name_pattern>",
-//	    "re:repo-regexp": "[<username_pattern>;<email_pattern>;<name_pattern>||...]",
+//	    "repo-name": "<login_pattern>;<email_pattern>;<name_pattern>",
+//	    "re:repo-regexp": "[<login_pattern>;<email_pattern>;<name_pattern>||...]",
 //	    "*": "<login_pattern>"
 //	}
 //
@@ -143,10 +143,10 @@ func parseConfigPatterns(config string) []string {
 //   - repo-name is the exact repository name under given org (e.g., "my-repo" not "my-org/my-repo")
 //   - re:repo-regexp is a regex pattern to match repository names
 //   - * is a wildcard that applies to all repositories
-//   - <username_pattern> is a GitHub username pattern (exact match or regex prefixed by re: or match all '*')
+//   - <login_pattern> is a GitHub login pattern (exact match or regex prefixed by re: or match all '*')
 //   - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to '*'
 //   - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to '*'
-//     The username/login, email and name patterns are separated by a semicolon (;). Email and name parts are optional.
+//     The login, email and name patterns are separated by a semicolon (;). Email and name parts are optional.
 //     There can be an array of patterns for a single repository, separated by ||. It must start with a '[' and end with a ']': "[...||...||...]"
 //     If the skip_cla is not set, it will skip the whitelisted bots check.
 func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization, orgRepo, projectID string, actorsMissingCLA []*UserCommitSummary) ([]*UserCommitSummary, []*UserCommitSummary) {
