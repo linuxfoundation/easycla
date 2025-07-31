@@ -168,27 +168,53 @@ func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization,
 		log.WithFields(f).Debug("No skip_cla config found for repo, skipping whitelisted bots check")
 		return actorsMissingCLA, []*UserCommitSummary{}
 	}
+
+	// Log full configuration
+	actorDebugData := make([]string, 0, len(actorsMissingCLA))
 	const nullStr = "(null)"
+	for _, a := range actorsMissingCLA {
+		if a == nil {
+			continue
+		}
+		id, login, username, email := nullStr, nullStr, nullStr, nullStr
+		if a.CommitAuthor != nil && a.CommitAuthor.ID != nil {
+			id = fmt.Sprintf("%v", *a.CommitAuthor.ID)
+		}
+		if a.CommitAuthor != nil && a.CommitAuthor.Login != nil {
+			login = *a.CommitAuthor.Login
+		}
+		if a.CommitAuthor != nil && a.CommitAuthor.Name != nil {
+			username = *a.CommitAuthor.Name
+		}
+		if a.CommitAuthor != nil && a.CommitAuthor.Email != nil {
+			email = *a.CommitAuthor.Email
+		}
+		actorDebugData = append(actorDebugData,
+			fmt.Sprintf("id='%v',login='%v',username='%v',email='%v'", id, login, username, email))
+	}
+	log.WithFields(f).Debugf("final skip_cla config for repo %s is %s; actorsMissingCLA: [%s]",
+		orgRepo, config, strings.Join(actorDebugData, "; "))
 
 	for _, actor := range actorsMissingCLA {
+		if actor == nil {
+			continue
+		}
+		id, login, username, email := nullStr, nullStr, nullStr, nullStr
+		if actor.CommitAuthor != nil && actor.CommitAuthor.ID != nil {
+			id = fmt.Sprintf("%v", *actor.CommitAuthor.ID)
+		}
+		if actor.CommitAuthor != nil && actor.CommitAuthor.Login != nil {
+			login = *actor.CommitAuthor.Login
+		}
+		if actor.CommitAuthor != nil && actor.CommitAuthor.Name != nil {
+			username = *actor.CommitAuthor.Name
+		}
+		if actor.CommitAuthor != nil && actor.CommitAuthor.Email != nil {
+			email = *actor.CommitAuthor.Email
+		}
+		actorData := fmt.Sprintf("id='%v',login='%v',username='%v',email='%v'", id, login, username, email)
+		log.WithFields(f).Debugf("Checking actor: %s for skip_cla config: %s", actorData, config)
 		if isActorSkipped(actor, config) {
-			if actor == nil {
-				continue
-			}
-			id, login, username, email := nullStr, nullStr, nullStr, nullStr
-			if actor.CommitAuthor != nil && actor.CommitAuthor.ID != nil {
-				id = fmt.Sprintf("%v", *actor.CommitAuthor.ID)
-			}
-			if actor.CommitAuthor != nil && actor.CommitAuthor.Login != nil {
-				login = *actor.CommitAuthor.Login
-			}
-			if actor.CommitAuthor != nil && actor.CommitAuthor.Name != nil {
-				username = *actor.CommitAuthor.Name
-			}
-			if actor.CommitAuthor != nil && actor.CommitAuthor.Email != nil {
-				email = *actor.CommitAuthor.Email
-			}
-			actorData := fmt.Sprintf("id='%v',login='%v',username='%v',email='%v'", id, login, username, email)
 			msg := fmt.Sprintf(
 				"Skipping CLA check for repo='%s', actor: %s due to skip_cla config: '%s'",
 				orgRepo, actorData, config,
