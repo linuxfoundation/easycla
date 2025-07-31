@@ -597,7 +597,7 @@ class GitHub(repository_service_interface.RepositoryService):
                 f"signing url: {sign_url}"
             )
             cla.log.warning(
-                "{fn} - This is an error condition - "
+                f"{fn} - This is an error condition - "
                 f"should have at least one committer in one of these lists: "
                 f"{len(signed)} passed, {missing}"
             )
@@ -1037,19 +1037,28 @@ class GitHub(repository_service_interface.RepositoryService):
                 cla.log.debug("No skip_cla config found for repo %s, skipping whitelisted bots check", org_repo)
                 return actors_missing_cla, []
 
+            actor_debug_data = [
+                f"id='{getattr(a, 'author_id', '(null)')}',"
+                f"login='{getattr(a, 'author_login', '(null)')}',"
+                f"username='{getattr(a, 'author_username', '(null)')}',"
+                f"email='{getattr(a, 'author_email', '(null)')}'"
+                for a in actors_missing_cla
+            ]
+            cla.log.debug("final skip_cla config for repo %s is %s; actors_missing_cla: [%s]", org_repo, config, ", ".join(actor_debug_data))
             out_actors_missing_cla = []
             whitelisted_actors = []
             for actor in actors_missing_cla:
                 if actor is None:
                     continue
                 try:
+                    actor_data = "id='{}',login='{}',username='{}',email='{}'".format(
+                        getattr(actor, "author_id", "(null)"),
+                        getattr(actor, "author_login", "(null)"),
+                        getattr(actor, "author_username", "(null)"),
+                        getattr(actor, "author_email", "(null)"),
+                    )
+                    cla.log.debug("Checking actor: %s for skip_cla config: %s", actor_data, config)
                     if self.is_actor_skipped(actor, config):
-                        actor_data = "id='{}',login='{}',username='{}',email='{}'".format(
-                            getattr(actor, "author_id", "(null)"),
-                            getattr(actor, "author_login", "(null)"),
-                            getattr(actor, "author_username", "(null)"),
-                            getattr(actor, "author_email", "(null)"),
-                        )
                         msg = "Skipping CLA check for repo='{}', actor: {} due to skip_cla config: '{}'".format(
                             org_repo,
                             actor_data,
@@ -1912,7 +1921,7 @@ def update_pull_request(
                 f"signing url: {sign_url}"
             )
             cla.log.warning(
-                "{fn} - This is an error condition - "
+                f"{fn} - This is an error condition - "
                 f"should have at least one committer in one of these lists: "
                 f"{len(signed)} passed, {missing}"
             )
