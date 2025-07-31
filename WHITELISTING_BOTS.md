@@ -125,3 +125,37 @@ aws --profile "lfproduct-prod" dynamodb scan --table-name "cla-prod-github-orgs"
 
 To check for log entries related to skipping CLA check, you can use the following command: `` STAGE=dev DTFROM='1 hour ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'skip_cla' ``.
 
+# Example setup on prod
+
+To add first `skip_cla` value for an organization:
+```
+aws --profile lfproduct-prod --region us-east-1 dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "open-telemetry"}}' --update-expression 'SET skip_cla = :val' --expression-attribute-values '{":val": {"M": {"otel-arrow":{"S":"copilot-swe-agent[bot];re:^\\d+\\+Copilot@users\\.noreply\\.github\\.com$;*"}}}}'
+aws --profile lfproduct-prod --region us-east-1 dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "openfga"}}' --update-expression 'SET skip_cla = :val' --expression-attribute-values '{":val": {"M": {"vscode-ext":{"S":"copilot-swe-agent[bot];re:^\\d+\\+Copilot@users\\.noreply\\.github\\.com$;*"}}}}'
+```
+
+To add additional repositories entries without overwriting the existing `skip_cla` value:
+```
+aws --profile lfproduct-prod --region us-east-1 dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "open-telemetry"}}' --update-expression 'SET skip_cla.#repo = :val' --expression-attribute-names '{"#repo": "*"}' --expression-attribute-values '{":val": {"S": "copilot-swe-agent[bot];re:^\\d+\\+Copilot@users\\.noreply\\.github\\.com$;*"}}'
+aws --profile lfproduct-prod --region us-east-1 dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "openfga"}}' --update-expression 'SET skip_cla.#repo = :val' --expression-attribute-names '{"#repo": "*"}' --expression-attribute-values '{":val": {"S": "copilot-swe-agent[bot];re:^\\d+\\+Copilot@users\\.noreply\\.github\\.com$;*"}}'
+```
+
+To delete a specific repo entry from `skip_cla`:
+```
+aws --profile "lfproduct-prod" --region "us-east-1" dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "open-telemetry"}}' --update-expression 'REMOVE skip_cla.#repo' --expression-attribute-names '{"#repo": "*"}'
+aws --profile "lfproduct-prod" --region "us-east-1" dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "openfga"}}' --update-expression 'REMOVE skip_cla.#repo' --expression-attribute-names '{"#repo": "*"}'
+```
+
+To delete the entire `skip_cla` attribute:
+```
+aws --profile "lfproduct-prod" --region "us-east-1" dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "open-telemetry"}}' --update-expression 'REMOVE skip_cla'
+aws --profile "lfproduct-prod" --region "us-east-1" dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "openfga"}}' --update-expression 'REMOVE skip_cla'
+```
+
+To check values:
+```
+aws --profile "lfproduct-prod" dynamodb scan --table-name "cla-prod-github-orgs" --filter-expression "contains(organization_name,:v)" --expression-attribute-values "{\":v\":{\"S\":\"open-telemetry\"}}" --max-items 100 | jq -r '.Items'
+aws --profile "lfproduct-prod" dynamodb scan --table-name "cla-prod-github-orgs" --filter-expression "contains(organization_name,:v)" --expression-attribute-values "{\":v\":{\"S\":\"openfga\"}}" --max-items 100 | jq -r '.Items'
+aws --profile "lfproduct-prod" dynamodb scan --table-name "cla-prod-github-orgs" --filter-expression "contains(organization_name,:v)" --expression-attribute-values "{\":v\":{\"S\":\"open-telemetry\"}}" --max-items 100 | jq -r '.Items[0].skip_cla.M["otel-arrow"]["S"]'
+aws --profile "lfproduct-prod" dynamodb scan --table-name "cla-prod-github-orgs" --filter-expression "contains(organization_name,:v)" --expression-attribute-values "{\":v\":{\"S\":\"openfga\"}}" --max-items 100 | jq -r '.Items[0].skip_cla.M["vscode-ext"]["S"]'
+```
+
