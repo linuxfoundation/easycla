@@ -85,6 +85,27 @@ func isActorSkipped(actor *UserCommitSummary, config string) bool {
 	return propertyMatches(usernamePattern, username) && propertyMatches(emailPattern, email)
 }
 
+func actorToString(actor *UserCommitSummary) string {
+	const nullStr = "(null)"
+	if actor == nil {
+		return nullStr
+	}
+	id, login, username, email := nullStr, nullStr, nullStr, nullStr
+	if actor.CommitAuthor != nil && actor.CommitAuthor.ID != nil {
+		id = fmt.Sprintf("%v", *actor.CommitAuthor.ID)
+	}
+	if actor.CommitAuthor != nil && actor.CommitAuthor.Login != nil {
+		login = *actor.CommitAuthor.Login
+	}
+	if actor.CommitAuthor != nil && actor.CommitAuthor.Name != nil {
+		username = *actor.CommitAuthor.Name
+	}
+	if actor.CommitAuthor != nil && actor.CommitAuthor.Email != nil {
+		email = *actor.CommitAuthor.Email
+	}
+	return fmt.Sprintf("id='%v',login='%v',username='%v',email='%v'", id, login, username, email)
+}
+
 // SkipWhitelistedBots- check if the actors are whitelisted based on the skip_cla configuration.
 // Returns two lists:
 // - actors still missing cla: actors who still need to sign the CLA after checking skip_cla
@@ -127,7 +148,6 @@ func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization,
 	}
 
 	var config string
-
 	// 1. Exact match
 	if val, ok := skipCLA[repo]; ok {
 		config = val
@@ -171,48 +191,16 @@ func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization,
 
 	// Log full configuration
 	actorDebugData := make([]string, 0, len(actorsMissingCLA))
-	const nullStr = "(null)"
 	for _, a := range actorsMissingCLA {
-		if a == nil {
-			continue
-		}
-		id, login, username, email := nullStr, nullStr, nullStr, nullStr
-		if a.CommitAuthor != nil && a.CommitAuthor.ID != nil {
-			id = fmt.Sprintf("%v", *a.CommitAuthor.ID)
-		}
-		if a.CommitAuthor != nil && a.CommitAuthor.Login != nil {
-			login = *a.CommitAuthor.Login
-		}
-		if a.CommitAuthor != nil && a.CommitAuthor.Name != nil {
-			username = *a.CommitAuthor.Name
-		}
-		if a.CommitAuthor != nil && a.CommitAuthor.Email != nil {
-			email = *a.CommitAuthor.Email
-		}
-		actorDebugData = append(actorDebugData,
-			fmt.Sprintf("id='%v',login='%v',username='%v',email='%v'", id, login, username, email))
+		actorDebugData = append(actorDebugData, actorToString(a))
 	}
-	log.WithFields(f).Debugf("final skip_cla config for repo %s is %s; actorsMissingCLA: [%s]",
-		orgRepo, config, strings.Join(actorDebugData, "; "))
+	log.WithFields(f).Debugf("final skip_cla config for repo %s is %s; actorsMissingCLA: [%s]", orgRepo, config, strings.Join(actorDebugData, ", "))
 
 	for _, actor := range actorsMissingCLA {
 		if actor == nil {
 			continue
 		}
-		id, login, username, email := nullStr, nullStr, nullStr, nullStr
-		if actor.CommitAuthor != nil && actor.CommitAuthor.ID != nil {
-			id = fmt.Sprintf("%v", *actor.CommitAuthor.ID)
-		}
-		if actor.CommitAuthor != nil && actor.CommitAuthor.Login != nil {
-			login = *actor.CommitAuthor.Login
-		}
-		if actor.CommitAuthor != nil && actor.CommitAuthor.Name != nil {
-			username = *actor.CommitAuthor.Name
-		}
-		if actor.CommitAuthor != nil && actor.CommitAuthor.Email != nil {
-			email = *actor.CommitAuthor.Email
-		}
-		actorData := fmt.Sprintf("id='%v',login='%v',username='%v',email='%v'", id, login, username, email)
+		actorData := actorToString(actor)
 		log.WithFields(f).Debugf("Checking actor: %s for skip_cla config: %s", actorData, config)
 		if isActorSkipped(actor, config) {
 			msg := fmt.Sprintf(
@@ -228,8 +216,6 @@ func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization,
 			ev.LogEvent(&events.LogEventArgs{
 				EventType: events.BypassCLA,
 				EventData: &eventData,
-				UserID:    id,
-				UserName:  login,
 				ProjectID: projectID,
 			})
 			log.WithFields(f).Debugf("event logged")
