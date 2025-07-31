@@ -41,6 +41,15 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 		return errors.New(msg)
 	}
 
+	var ghOrg *models.GithubOrganization
+	if githubRepository.Owner.Login != nil {
+		var ghOrgErr error
+		ghOrg, ghOrgErr = s.githubOrgService.GetGitHubOrganizationByName(ctx, *githubRepository.Owner.Login)
+		if ghOrgErr != nil {
+			log.WithFields(f).WithError(ghOrgErr).Warnf("unable to lookup GitHub organization by name: %s - unable to update GitHub status", *githubRepository.Owner.Login)
+		}
+	}
+
 	gitHubOrgName := utils.StringValue(githubRepository.Owner.Login)
 	gitHubRepoName := utils.StringValue(githubRepository.Name)
 
@@ -138,6 +147,15 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 	}
 
 	log.WithFields(f).Debugf("commit authors status => signed: %+v and missing: %+v", signed, unsigned)
+	if ghOrg != nil {
+		var whitelisted []*github.UserCommitSummary
+		unsigned, whitelisted = github.SkipWhitelistedBots(s.eventsService, ghOrg, gitHubRepoName, projectID, unsigned)
+		if len(whitelisted) > 0 {
+			log.WithFields(f).Debugf("adding %d whitelisted actors to signed list", len(whitelisted))
+			signed = append(signed, whitelisted...)
+		}
+		log.WithFields(f).Debugf("commit authors status after whitelisting bots => signed: %+v, missing: %+v, whitelisted: %+v", signed, unsigned, whitelisted)
+	}
 
 	// update pull request
 	updateErr := github.UpdatePullRequest(ctx, installationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, githubRepository.ID, *latestSHA, signed, unsigned, s.ClaV1ApiURL, s.claLandingPage, s.claLogoURL)
@@ -156,7 +174,7 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 // true, true, nil if user has an ECLA (authorized, with company affiliation, no error)
 func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, *bool, error) {
 	f := logrus.Fields{
-		"functionName": "v1.signatures.service.updateChangeRequest",
+		"functionName": "v1.signatures.service.hasUserSigned",
 		"projectID":    projectID,
 		"user":         user,
 	}
