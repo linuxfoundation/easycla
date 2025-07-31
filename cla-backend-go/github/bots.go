@@ -52,39 +52,40 @@ func stripOrg(repoFull string) string {
 	return repoFull
 }
 
-// isActorSkipped returns true if the given actor should be skipped according to the skip_cla config pattern.
-// config format: "<username_pattern>;<email_pattern>"
-// Actor.CommitAuthor.Login and Actor.CommitAuthor.Email should be *string, can be nil.
-func isActorSkipped(actor *UserCommitSummary, config string) bool {
-	f := logrus.Fields{
-		"functionName": "github.isActorSkipped",
-		"config":       config,
-	}
-	// Defensive: must have exactly one ';'
-	if !strings.Contains(config, ";") {
-		log.WithFields(f).Debugf("Invalid skip_cla config format: %s, expected '<username_pattern>;<email_pattern>'", config)
-		return false
-	}
-	parts := strings.SplitN(config, ";", 2)
-	if len(parts) != 2 {
-		return false
-	}
-	usernamePattern := parts[0]
-	emailPattern := parts[1]
-	var (
-		username string
-		email    string
-	)
-	if actor != nil && actor.CommitAuthor != nil && actor.CommitAuthor.Login != nil {
-		username = *actor.CommitAuthor.Login
-	}
-	if actor != nil && actor.CommitAuthor != nil && actor.CommitAuthor.Email != nil {
-		email = *actor.CommitAuthor.Email
-	}
+// isActorSkipped returns true if the actor should be skipped according to ANY pattern in config.
+// Each config entry is "<login_pattern>;<email_pattern>;<name_pattern>"
+// Any missing pattern defaults to "*"
+func isActorSkipped(actor *UserCommitSummary, config []string) bool {
+	for _, pattern := range config {
+		parts := strings.Split(pattern, ";")
+		for len(parts) < 3 {
+			parts = append(parts, "*")
+		}
+		loginPattern, emailPattern, namePattern := parts[0], parts[1], parts[2]
 
-	return propertyMatches(usernamePattern, username) && propertyMatches(emailPattern, email)
+		var login, email, name string
+		if actor != nil && actor.CommitAuthor != nil {
+			if actor.CommitAuthor.Login != nil {
+				login = *actor.CommitAuthor.Login
+			}
+			if actor.CommitAuthor.Email != nil {
+				email = *actor.CommitAuthor.Email
+			}
+			if actor.CommitAuthor.Name != nil {
+				name = *actor.CommitAuthor.Name
+			}
+		}
+
+		if propertyMatches(loginPattern, login) &&
+			propertyMatches(emailPattern, email) &&
+			propertyMatches(namePattern, name) {
+			return true
+		}
+	}
+	return false
 }
 
+// actorToString converts a UserCommitSummary actor to a string representation.
 func actorToString(actor *UserCommitSummary) string {
 	const nullStr = "(null)"
 	if actor == nil {
@@ -106,6 +107,22 @@ func actorToString(actor *UserCommitSummary) string {
 	return fmt.Sprintf("id='%v',login='%v',username='%v',email='%v'", id, login, username, email)
 }
 
+// parseConfigPatterns takes a config string and returns a slice of pattern strings.
+// If the config starts with '[' and ends with ']', splits by '||' inside; else returns []string{config}.
+// Trims whitespace from each pattern.
+func parseConfigPatterns(config string) []string {
+	config = strings.TrimSpace(config)
+	if len(config) >= 2 && strings.HasPrefix(config, "[") && strings.HasSuffix(config, "]") {
+		inner := config[1 : len(config)-1]
+		parts := strings.Split(inner, "||")
+		for i, p := range parts {
+			parts[i] = strings.TrimSpace(p)
+		}
+		return parts
+	}
+	return []string{config}
+}
+
 // SkipWhitelistedBots- check if the actors are whitelisted based on the skip_cla configuration.
 // Returns two lists:
 // - actors still missing cla: actors who still need to sign the CLA after checking skip_cla
@@ -117,9 +134,9 @@ func actorToString(actor *UserCommitSummary) string {
 // : in cla-{stage}-github-orgs table there can be a skip_cla field which is a dict with the following structure:
 //
 //	{
-//	    "repo-name": "<username_pattern>;<email_pattern>",
-//	    "re:repo-regexp": "<username_pattern>;<email_pattern>",
-//	    "*": "<username_pattern>;<email_pattern>"
+//	    "repo-name": "<username_pattern>;<email_pattern>;<name_pattern>",
+//	    "re:repo-regexp": "[<username_pattern>;<email_pattern>;<name_pattern>||...]",
+//	    "*": "<login_pattern>"
 //	}
 //
 // where:
@@ -127,8 +144,10 @@ func actorToString(actor *UserCommitSummary) string {
 //   - re:repo-regexp is a regex pattern to match repository names
 //   - * is a wildcard that applies to all repositories
 //   - <username_pattern> is a GitHub username pattern (exact match or regex prefixed by re: or match all '*')
-//   - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*')
-//     The username and email patterns are separated by a semicolon (;).
+//   - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to '*'
+//   - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to '*'
+//     The username/login, email and name patterns are separated by a semicolon (;). Email and name parts are optional.
+//     There can be an array of patterns for a single repository, separated by ||. It must start with a '[' and end with a ']': "[...||...||...]"
 //     If the skip_cla is not set, it will skip the whitelisted bots check.
 func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization, orgRepo, projectID string, actorsMissingCLA []*UserCommitSummary) ([]*UserCommitSummary, []*UserCommitSummary) {
 	repo := stripOrg(orgRepo)
@@ -189,23 +208,25 @@ func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization,
 		return actorsMissingCLA, []*UserCommitSummary{}
 	}
 
+	configArray := parseConfigPatterns(config)
+
 	// Log full configuration
 	actorDebugData := make([]string, 0, len(actorsMissingCLA))
 	for _, a := range actorsMissingCLA {
 		actorDebugData = append(actorDebugData, actorToString(a))
 	}
-	log.WithFields(f).Debugf("final skip_cla config for repo %s is %s; actorsMissingCLA: [%s]", orgRepo, config, strings.Join(actorDebugData, ", "))
+	log.WithFields(f).Debugf("final skip_cla config for repo %s is %+v; actorsMissingCLA: [%s]", orgRepo, configArray, strings.Join(actorDebugData, ", "))
 
 	for _, actor := range actorsMissingCLA {
 		if actor == nil {
 			continue
 		}
 		actorData := actorToString(actor)
-		log.WithFields(f).Debugf("Checking actor: %s for skip_cla config: %s", actorData, config)
-		if isActorSkipped(actor, config) {
+		log.WithFields(f).Debugf("Checking actor: %s for skip_cla config: %+v", actorData, configArray)
+		if isActorSkipped(actor, configArray) {
 			msg := fmt.Sprintf(
-				"Skipping CLA check for repo='%s', actor: %s due to skip_cla config: '%s'",
-				orgRepo, actorData, config,
+				"Skipping CLA check for repo='%s', actor: %s due to skip_cla config: %+v",
+				orgRepo, actorData, configArray,
 			)
 			log.WithFields(f).Info(msg)
 			eventData := events.BypassCLAEventData{

@@ -739,8 +739,6 @@ class GitHub(repository_service_interface.RepositoryService):
             handle_commit_from_user(project, user_commit_summary, signed, missing)
 
         # Skip whitelisted bots per org/repo GitHub login/email regexps
-        # repo can be defined as '*' (all repos) or re:<regexp> (regexp to match repo name) or 'repo-name' for exact match
-        # the same for value which is GitHub login match then ; separator and then email match (same matching via * or re:<regexp> or exact-match) 
         missing, whitelisted = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
         if whitelisted is not None and len(whitelisted) > 0:
             cla.log.debug(f"{fn} - adding {len(whitelisted)} whitelisted actors to signed list")
@@ -907,8 +905,6 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.debug(f"{fn} - ThreadClosed for handle_commit_from_user")
 
         # Skip whitelisted bots per org/repo GitHub login/email regexps
-        # repo can be defined as '*' (all repos) or re:<regexp> (regexp to match repo name) or 'repo-name' for exact match
-        # the same for value which is GitHub login match then ; separator and then email match (same matching via * or re:<regexp> or exact-match) 
         missing, whitelisted = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
         if whitelisted is not None and len(whitelisted) > 0:
             cla.log.debug(f"{fn} - adding {len(whitelisted)} whitelisted actors to signed list")
@@ -955,19 +951,34 @@ class GitHub(repository_service_interface.RepositoryService):
     def is_actor_skipped(self, actor, config):
         """
         Returns True if the actor should be skipped (whitelisted) based on config pattern.
-        config: '<username_pattern>;<email_pattern>'
+        config: '<login_pattern>;<email_pattern>;<name_pattern>'
+        If any pattern is missing, it defaults to '*'
+        It returns true if ANY config entry matches or false if there is no match in any config entry.
         """
         try:
-            if ';' not in config:
-                cla.log.warning("Invalid skip_cla config format: %s, expected '<username_pattern>;<email_pattern>'", config)
+            # If config is a list/array, check all
+            if isinstance(config, (list, tuple)):
+                for entry in config:
+                    if self.is_actor_skipped(actor, entry):
+                        return True
                 return False
-            username_pattern, email_pattern = config.split(';', 1)
-            username = getattr(actor, "author_login", None)
+            # Otherwise, treat as string pattern
+            parts = config.split(';')
+            while len(parts) < 3:
+                parts.append('*')
+            login_pattern, email_pattern, name_pattern = parts[:3]
+            login = getattr(actor, "author_login", None)
             email = getattr(actor, "author_email", None)
-            return self.property_matches(username_pattern, username) and self.property_matches(email_pattern, email)
+            name = getattr(actor, "author_username", None)
+            return (
+                self.property_matches(login_pattern, login) and
+                self.property_matches(email_pattern, email) and
+                self.property_matches(name_pattern, name)
+            )
         except Exception as exc:
             cla.log.warning("Error in is_actor_skipped: config=%s, actor=%s, exc=%s", config, actor, exc)
             return False
+
 
     def strip_org(self, repo_full):
         """
@@ -976,6 +987,20 @@ class GitHub(repository_service_interface.RepositoryService):
         if '/' in repo_full:
             return repo_full.split('/', 1)[1]
         return repo_full
+
+    def parse_config_patterns(self, config):
+        """
+        Returns a list of pattern strings.
+        - If config starts with '[' and ends with ']', splits by '||'.
+        - Otherwise, returns [config].
+        """
+        config = config.strip()
+        if config.startswith('[') and config.endswith(']'):
+            inner = config[1:-1]
+            return [p.strip() for p in inner.split('||')]
+        else:
+            return [config]
+
 
     def skip_whitelisted_bots(self, org_model, org_repo, actors_missing_cla) -> Tuple[List[UserCommitSummary], List[UserCommitSummary]]:
         """
@@ -989,17 +1014,19 @@ class GitHub(repository_service_interface.RepositoryService):
         :return: Tuple of (actors_missing_cla, whitelisted_actors)
         : in cla-{stage}-github-orgs table there can be a skip_cla field which is a dict with the following structure:
         {
-            "repo-name": "<username_pattern>;<email_pattern>",
-            "re:repo-regexp": "<username_pattern>;<email_pattern>",
-            "*": "<username_pattern>;<email_pattern>"
+            "repo-name": "<username_pattern>;<email_pattern>;<name_pattern>",
+            "re:repo-regexp": "[<username_pattern>;<email_pattern>;<name_pattern>||...]",
+            "*": "<login_pattern>"
         }
         where:
         - repo-name is the exact repository name under given org (e.g., "my-repo" not "my-org/my-repo")
         - re:repo-regexp is a regex pattern to match repository names
         - * is a wildcard that applies to all repositories
         - <username_pattern> is a GitHub username pattern (exact match or regex prefixed by re: or match all '*')
-        - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*')
-        :note: The username and email patterns are separated by a semicolon (;).
+        - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') - defaults to '*' if not set
+        - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') - defaults to '*' if not set
+        :note: The username/login, email and name patterns are separated by a semicolon (;).
+        :note: There can be an array of patterns - it must start with [ and with ] and be || separated.
         :note: If the skip_cla is not set, it will skip the whitelisted bots check.
         """
         try:
@@ -1050,6 +1077,7 @@ class GitHub(repository_service_interface.RepositoryService):
                 f"email='{getattr(a, 'author_email', '(null)')}'"
                 for a in actors_missing_cla
             ]
+            config = self.parse_config_patterns(config)
             cla.log.debug("final skip_cla config for repo %s is %s; actors_missing_cla: [%s]", org_repo, config, ", ".join(actor_debug_data))
             out_actors_missing_cla = []
             whitelisted_actors = []
