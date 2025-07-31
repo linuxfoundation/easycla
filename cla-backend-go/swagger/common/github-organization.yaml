@@ -81,16 +81,16 @@ properties:
       - Or an OR-array in the form '[<entry1>||<entry2>||...]', where each entry uses the same pattern format above.
 
       Patterns can be:
-      - An exact match (e.g. 'repo1', 'username', 'email@domain').
+      - An exact match (e.g. 'repo1', 'login', 'Name Surname', 'email@domain').
+      - A regular expression prefixed with 're:' (e.g. 're:(?i)^bot.*$').
       - A wildcard '*' to match all.
-      - A regular expression prefixed with 're:' (e.g. 're:(?i)^bot.*').
 
       Example formats:
       - "copilot-swe-agent[bot];*;*"
       - "re:vee?rendra;*;*"
       - "[re:(?i)^l(ukasz)?gryglicki$;re:(?i)^l(ukasz)?gryglicki@;*||copilot-swe-agent[bot]]"
-      - "username;*"
-      - "username;email@domain.com;Real Name"
+      - "login;*"
+      - "login;email@domain.com;Real Name"
     example:
       "*": "copilot-swe-agent[bot];*;*"
       "repo1": "re:vee?rendra;*;*"
