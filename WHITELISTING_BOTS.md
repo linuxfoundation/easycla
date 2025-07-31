@@ -8,9 +8,9 @@ Replace `{stage}` with either `dev` or `prod`.
 
 This property is a Map attribute that contains mapping from repository pattern to bot username (GitHub login), email and name pattern.
 
-Example username/login is lukaszgryglicki (like any username/login that can be accessed via `https://github.com/username`).
+Example `username/login` is `lukaszgryglicki` (like any `username/login` that can be accessed via `https://github.com/username`).
 
-Example name is "Lukasz Gryglicki".
+Example name is `"Lukasz Gryglicki"`.
 
 Email pattern and name pattern are optional and `*` is assumed for them if not specified.
 
@@ -25,6 +25,15 @@ You can also specify multiple patterns so different set is used for multiple use
 
 For example: `"[copilot-swe-agent[bot];*;*||re:(?i)^l(ukasz)?gryglicki$;*;re:Gryglicki]"`.
 
+Full format is like `"repository_pattern": "[github_username_pattern;email_pattern;name_pattern||..]"`.
+
+Other complex example: `"re:(?i)^repo\d*$": "[veerendra||re:(?i)^l(ukasz)?gryglicki$;lukaszgryglicki@o2.pl||*;*;Lukasz Gryglicki]"`.
+
+This matches one of:
+- GitHub username/login `veerendra` no matter the email and name.
+- GitHub username/login like lgryglicki, LukaszGryglicki and similar with email lukaszgryglicki@o2.pl, name doesn't matter.
+- GitHub name "Lukasz Gryglicki" email and username/login doesn't matter.
+
 There can be multiple entries under one Github Organization DynamoDB entry.
 
 Example:
@@ -37,7 +46,7 @@ Example:
     "skip_cla": {
       "M": {
         "*": {
-          "S": "copilot-swe-agent[bot];*;*"
+          "S": "copilot-swe-agent[bot];re:^\\d+\\+Copilot@users\\.noreply\\.github\\.com$;*"
         },
         "re:(?i)^repo[0-9]+$": {
           "S": "re:vee?rendra;*;*"
