@@ -1114,8 +1114,13 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	}
 
 	log.WithFields(f).Debugf("commit authors status => signed: %+v and missing: %+v", signed, unsigned)
-	unsigned, signed = github.SkipWhitelistedBots(s.eventsService, ghOrg, gitHubRepoName, projectID, unsigned)
-	log.WithFields(f).Debugf("commit authors status after whitelisting bots => signed: %+v and missing: %+v", signed, unsigned)
+	var whitelisted []*github.UserCommitSummary
+	unsigned, whitelisted = github.SkipWhitelistedBots(s.eventsService, ghOrg, gitHubRepoName, projectID, unsigned)
+	if len(whitelisted) > 0 {
+		log.WithFields(f).Debugf("adding %d whitelisted actors to signed list", len(whitelisted))
+		signed = append(signed, whitelisted...)
+	}
+	log.WithFields(f).Debugf("commit authors status after whitelisting bots => signed: %+v, missing: %+v, whitelisted: %+v", signed, unsigned, whitelisted)
 
 	// update pull request
 	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, githubRepository.ID, *latestSHA, signed, unsigned, s.claBaseAPIURL, s.claLandingPage, s.claLogoURL)
