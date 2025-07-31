@@ -69,7 +69,32 @@ properties:
             x-nullable: true
             example: "https://github.com/organizations/deal-test-org-2/settings/installations/1235464"
             format: uri
+  skipCla:
+    type: object
+    additionalProperties:
+      type: string
+    description: |
+      Map of repository name or pattern (e.g. 'repo1', '*', 're:pattern') to a string or array-string of pattern entries for skipping CLA checks for certain bots.
 
+      Each value can be either:
+      - A string in the form '<login_pattern>;<email_pattern>;<name_pattern>' (email and name patterns are optional, default to '*').
+      - Or an OR-array in the form '[<entry1>||<entry2>||...]', where each entry uses the same pattern format above.
+
+      Patterns can be:
+      - An exact match (e.g. 'repo1', 'username', 'email@domain').
+      - A wildcard '*' to match all.
+      - A regular expression prefixed with 're:' (e.g. 're:(?i)^bot.*').
+
+      Example formats:
+      - "copilot-swe-agent[bot];*;*"
+      - "re:vee?rendra;*;*"
+      - "[re:(?i)^l(ukasz)?gryglicki$;re:(?i)^l(ukasz)?gryglicki@;*||copilot-swe-agent[bot]]"
+      - "username;*"
+      - "username;email@domain.com;Real Name"
+    example:
+      "*": "copilot-swe-agent[bot];*;*"
+      "repo1": "re:vee?rendra;*;*"
+      "re:(?i)^repo[0-9]+$": "[re:(?i)^l(ukasz)?gryglicki$;re:(?i)^l(ukasz)?gryglicki@;*||copilot-swe-agent[bot]]"
   repositories:
     type: object
     properties:

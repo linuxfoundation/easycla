@@ -99,4 +99,6 @@ const (
 
 	IndividualSignatureSigned = "individual.signature.signed"
 	CorporateSignatureSigned  = "corporate.signature.signed"
+
+	BypassCLA = "Bypass CLA"
 )

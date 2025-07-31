@@ -61,6 +61,10 @@ The following diagram explains the EasyCLA architecture.
 
 ![CLA Architecture](.gitbook/assets/easycla-architecture-overview.png)
 
+## Bot Whitelisting
+
+For whitelisting bots please see the [Whitelisting Bots](WHITELISTING_BOTS.md) documentation.
+
 ## EasyCLA Release Process
 
 The following diagram illustrates the EasyCLA release process:

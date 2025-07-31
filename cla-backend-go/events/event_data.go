@@ -457,6 +457,23 @@ type CorporateSignatureSignedEventData struct {
 	SignatoryName string
 }
 
+// BypassCLAEventData event data model
+type BypassCLAEventData struct {
+	Repo   string
+	Config string
+	Actor  string
+}
+
+func (ed *BypassCLAEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("repo='%s', config='%s', actor='%s'", ed.Repo, ed.Config, ed.Actor)
+	return data, true
+}
+
+func (ed *BypassCLAEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("repo='%s', config='%s', actor='%s'", ed.Repo, ed.Config, ed.Actor)
+	return data, true
+}
+
 func (ed *CorporateSignatureSignedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The signature was signed for the project %s and company %s by %s", args.ProjectName, ed.CompanyName, ed.SignatoryName)
 	if args.UserName != "" {
