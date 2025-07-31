@@ -741,7 +741,10 @@ class GitHub(repository_service_interface.RepositoryService):
         # Skip whitelisted bots per org/repo GitHub login/email regexps
         # repo can be defined as '*' (all repos) or re:<regexp> (regexp to match repo name) or 'repo-name' for exact match
         # the same for value which is GitHub login match then ; separator and then email match (same matching via * or re:<regexp> or exact-match) 
-        missing, signed = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
+        missing, whitelisted = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
+        if whitelisted is not None and len(whitelisted) > 0:
+            cla.log.debug(f"{fn} - adding {len(whitelisted)} whitelisted actors to signed list")
+            signed.extend(whitelisted)
 
         # update Merge group status
         self.update_merge_group_status(
@@ -906,7 +909,10 @@ class GitHub(repository_service_interface.RepositoryService):
         # Skip whitelisted bots per org/repo GitHub login/email regexps
         # repo can be defined as '*' (all repos) or re:<regexp> (regexp to match repo name) or 'repo-name' for exact match
         # the same for value which is GitHub login match then ; separator and then email match (same matching via * or re:<regexp> or exact-match) 
-        missing, signed = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
+        missing, whitelisted = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
+        if whitelisted is not None and len(whitelisted) > 0:
+            cla.log.debug(f"{fn} - adding {len(whitelisted)} whitelisted actors to signed list")
+            signed.extend(whitelisted)
         # At this point, the signed and missing lists are now filled and updated with the commit user info
 
         cla.log.debug(
