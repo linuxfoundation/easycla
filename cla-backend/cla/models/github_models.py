@@ -1001,7 +1001,7 @@ class GitHub(repository_service_interface.RepositoryService):
         else:
             return [config]
 
-    def safe_getattr(obj, attr, default='(null)'):
+    def safe_getattr(self, obj, attr, default='(null)'):
         """Returns obj.attr or default if attr is missing or None."""
         val = getattr(obj, attr, default)
         if val is None:
@@ -1077,10 +1077,10 @@ class GitHub(repository_service_interface.RepositoryService):
                 return actors_missing_cla, []
 
             actor_debug_data = [
-                f"id='{safe_getattr(a, 'author_id')}',"
-                f"login='{safe_getattr(a, 'author_login')}',"
-                f"name='{safe_getattr(a, 'author_name')}',"
-                f"email='{safe_getattr(a, 'author_email')}'"
+                f"id='{self.safe_getattr(a, 'author_id')}',"
+                f"login='{self.safe_getattr(a, 'author_login')}',"
+                f"name='{self.safe_getattr(a, 'author_name')}',"
+                f"email='{self.safe_getattr(a, 'author_email')}'"
                 for a in actors_missing_cla
             ]
             config = self.parse_config_patterns(config)
@@ -1092,10 +1092,10 @@ class GitHub(repository_service_interface.RepositoryService):
                     continue
                 try:
                     actor_data = "id='{}',login='{}',name='{}',email='{}'".format(
-                        safe_getattr(actor, "author_id"),
-                        safe_getattr(actor, "author_login"),
-                        safe_getattr(actor, "author_name"),
-                        safe_getattr(actor, "author_email"),
+                        self.safe_getattr(actor, "author_id"),
+                        self.safe_getattr(actor, "author_login"),
+                        self.safe_getattr(actor, "author_name"),
+                        self.safe_getattr(actor, "author_email"),
                     )
                     cla.log.debug("Checking actor: %s for skip_cla config: %s", actor_data, config)
                     if self.is_actor_skipped(actor, config):
@@ -1119,10 +1119,10 @@ class GitHub(repository_service_interface.RepositoryService):
                     cla.log.warning(
                         "Error checking skip_cla for actor '%s' (id='%s', login='%s', name='%s', email='%s'): %s",
                         actor,
-                        safe_getattr(actor, "author_id"),
-                        safe_getattr(actor, "author_login"),
-                        safe_getattr(actor, "author_name"),
-                        safe_getattr(actor, "author_email"),
+                        self.safe_getattr(actor, "author_id"),
+                        self.safe_getattr(actor, "author_login"),
+                        self.safe_getattr(actor, "author_name"),
+                        self.safe_getattr(actor, "author_email"),
                         e,
                     )
                 out_actors_missing_cla.append(actor)
