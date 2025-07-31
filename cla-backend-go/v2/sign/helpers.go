@@ -148,8 +148,13 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 
 	log.WithFields(f).Debugf("commit authors status => signed: %+v and missing: %+v", signed, unsigned)
 	if ghOrg != nil {
-		unsigned, signed = github.SkipWhitelistedBots(s.eventsService, ghOrg, gitHubRepoName, projectID, unsigned)
-		log.WithFields(f).Debugf("commit authors status after whitelisting bots => signed: %+v and missing: %+v", signed, unsigned)
+		var whitelisted []*github.UserCommitSummary
+		unsigned, whitelisted = github.SkipWhitelistedBots(s.eventsService, ghOrg, gitHubRepoName, projectID, unsigned)
+		if len(whitelisted) > 0 {
+			log.WithFields(f).Debugf("adding %d whitelisted actors to signed list", len(whitelisted))
+			signed = append(signed, whitelisted...)
+		}
+		log.WithFields(f).Debugf("commit authors status after whitelisting bots => signed: %+v, missing: %+v, whitelisted: %+v", signed, unsigned, whitelisted)
 	}
 
 	// update pull request
