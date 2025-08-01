@@ -738,11 +738,11 @@ class GitHub(repository_service_interface.RepositoryService):
         for user_commit_summary in commit_authors:
             handle_commit_from_user(project, user_commit_summary, signed, missing)
 
-        # Skip whitelisted bots per org/repo GitHub login/email regexps
-        missing, whitelisted = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
-        if whitelisted is not None and len(whitelisted) > 0:
-            cla.log.debug(f"{fn} - adding {len(whitelisted)} whitelisted actors to signed list")
-            signed.extend(whitelisted)
+        # Skip allowlisted bots per org/repo GitHub login/email regexps
+        missing, allowlisted = self.skip_allowlisted_bots(github_org, repository.get_repository_name(), missing)
+        if allowlisted is not None and len(allowlisted) > 0:
+            cla.log.debug(f"{fn} - adding {len(allowlisted)} allowlisted actors to signed list")
+            signed.extend(allowlisted)
 
         # update Merge group status
         self.update_merge_group_status(
@@ -904,11 +904,11 @@ class GitHub(repository_service_interface.RepositoryService):
         for future in concurrent.futures.as_completed(futures):
             cla.log.debug(f"{fn} - ThreadClosed for handle_commit_from_user")
 
-        # Skip whitelisted bots per org/repo GitHub login/email regexps
-        missing, whitelisted = self.skip_whitelisted_bots(github_org, repository.get_repository_name(), missing)
-        if whitelisted is not None and len(whitelisted) > 0:
-            cla.log.debug(f"{fn} - adding {len(whitelisted)} whitelisted actors to signed list")
-            signed.extend(whitelisted)
+        # Skip allowlisted bots per org/repo GitHub login/email regexps
+        missing, allowlisted = self.skip_allowlisted_bots(github_org, repository.get_repository_name(), missing)
+        if allowlisted is not None and len(allowlisted) > 0:
+            cla.log.debug(f"{fn} - adding {len(allowlisted)} allowlisted actors to signed list")
+            signed.extend(allowlisted)
         # At this point, the signed and missing lists are now filled and updated with the commit user info
 
         cla.log.debug(
@@ -950,7 +950,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
     def is_actor_skipped(self, actor, config):
         """
-        Returns True if the actor should be skipped (whitelisted) based on config pattern.
+        Returns True if the actor should be skipped (allowlisted) based on config pattern.
         config: '<login_pattern>;<email_pattern>;<name_pattern>'
         If any pattern is missing, it defaults to '*'
         It returns true if ANY config entry matches or false if there is no match in any config entry.
@@ -1008,16 +1008,16 @@ class GitHub(repository_service_interface.RepositoryService):
             return default
         return val
 
-    def skip_whitelisted_bots(self, org_model, org_repo, actors_missing_cla) -> Tuple[List[UserCommitSummary], List[UserCommitSummary]]:
+    def skip_allowlisted_bots(self, org_model, org_repo, actors_missing_cla) -> Tuple[List[UserCommitSummary], List[UserCommitSummary]]:
         """
-        Check if the actors are whitelisted based on the skip_cla configuration.
+        Check if the actors are allowlisted based on the skip_cla configuration.
         Returns a tuple of two lists:
         - actors_missing_cla: actors who still need to sign the CLA after checking skip_cla
-        - whitelisted_actors: actors who are skipped due to skip_cla configuration
+        - allowlisted_actors: actors who are skipped due to skip_cla configuration
         :param org_model: The GitHub organization model instance.
         :param org_repo: The repository name in the format 'org/repo'.
         :param actors_missing_cla: List of UserCommitSummary objects representing actors who are missing CLA.
-        :return: Tuple of (actors_missing_cla, whitelisted_actors)
+        :return: Tuple of (actors_missing_cla, allowlisted_actors)
         : in cla-{stage}-github-orgs table there can be a skip_cla field which is a dict with the following structure:
         {
             "repo-name": "<login_pattern>;<email_pattern>;<name_pattern>",
@@ -1033,13 +1033,13 @@ class GitHub(repository_service_interface.RepositoryService):
         - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') - defaults to '*' if not set
         :note: The login (sometimes called username it's the same), email and name patterns are separated by a semicolon (;).
         :note: There can be an array of patterns - it must start with [ and with ] and be || separated.
-        :note: If the skip_cla is not set, it will skip the whitelisted bots check.
+        :note: If the skip_cla is not set, it will skip the allowlisted bots check.
         """
         try:
             repo = self.strip_org(org_repo)
             skip_cla = org_model.get_skip_cla()
             if skip_cla is None:
-                cla.log.debug("skip_cla is not set on '%s', skipping whitelisted bots check", org_repo)
+                cla.log.debug("skip_cla is not set on '%s', skipping allowlisted bots check", org_repo)
                 return actors_missing_cla, []
 
             if hasattr(skip_cla, "as_dict"):
@@ -1073,7 +1073,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
             # 4. No match
             if config == '':
-                cla.log.debug("No skip_cla config found for repo %s, skipping whitelisted bots check", org_repo)
+                cla.log.debug("No skip_cla config found for repo %s, skipping allowlisted bots check", org_repo)
                 return actors_missing_cla, []
 
             actor_debug_data = [
@@ -1086,7 +1086,7 @@ class GitHub(repository_service_interface.RepositoryService):
             config = self.parse_config_patterns(config)
             cla.log.debug("final skip_cla config for repo %s is %s; actors_missing_cla: [%s]", org_repo, config, ", ".join(actor_debug_data))
             out_actors_missing_cla = []
-            whitelisted_actors = []
+            allowlisted_actors = []
             for actor in actors_missing_cla:
                 if actor is None:
                     continue
@@ -1113,7 +1113,7 @@ class GitHub(repository_service_interface.RepositoryService):
                             contains_pii=True,
                         )
                         actor.authorized = True
-                        whitelisted_actors.append(actor)
+                        allowlisted_actors.append(actor)
                         continue
                 except Exception as e:
                     cla.log.warning(
@@ -1127,10 +1127,10 @@ class GitHub(repository_service_interface.RepositoryService):
                     )
                 out_actors_missing_cla.append(actor)
 
-            return out_actors_missing_cla, whitelisted_actors
+            return out_actors_missing_cla, allowlisted_actors
         except Exception as exc:
             cla.log.error(
-                "Exception in skip_whitelisted_bots: %s (repo=%s, actors=%s). Disabling skip_cla logic for this run.",
+                "Exception in skip_allowlisted_bots: %s (repo=%s, actors=%s). Disabling skip_cla logic for this run.",
                 exc, org_repo, actors_missing_cla
             )
             # Always return all actors if something breaks
