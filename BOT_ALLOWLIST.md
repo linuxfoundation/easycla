@@ -1,4 +1,4 @@
-## Whitelisting Bots
+## Allowlisting Bots
 
 You can allow specific bot users to automatically pass the CLA check.
 
