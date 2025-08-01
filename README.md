@@ -23,7 +23,7 @@ The EasyCL system leverages the following third party services:
 * [GitHub](https://github.com/) for GitHub PR CLA authorization checking/gating
 * Gerrit for CLA authorization review checking/gating
 * Auth0 For Single Sign On
-* Salesforce via the LFX Platform APIs
+* Salesforce via the LFX Platform APIs.
 
 ## CLA Backend
 
