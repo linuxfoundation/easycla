@@ -123,14 +123,14 @@ func parseConfigPatterns(config string) []string {
 	return []string{config}
 }
 
-// SkipWhitelistedBots- check if the actors are whitelisted based on the skip_cla configuration.
+// SkipAllowlistedBots- check if the actors are allowlisted based on the skip_cla configuration.
 // Returns two lists:
 // - actors still missing cla: actors who still need to sign the CLA after checking skip_cla
-// - whitelisted actors: actors who are skipped due to skip_cla configuration
+// - allowlisted actors: actors who are skipped due to skip_cla configuration
 // :param orgModel: The GitHub organization model instance.
 // :param orgRepo: The repository name in the format 'org/repo'.
 // :param actorsMissingCla: List of UserCommitSummary objects representing actors who are missing CLA.
-// :return: two arrays (actors still missing CLA, whitelisted actors)
+// :return: two arrays (actors still missing CLA, allowlisted actors)
 // : in cla-{stage}-github-orgs table there can be a skip_cla field which is a dict with the following structure:
 //
 //	{
@@ -148,21 +148,21 @@ func parseConfigPatterns(config string) []string {
 //   - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to '*'
 //     The login, email and name patterns are separated by a semicolon (;). Email and name parts are optional.
 //     There can be an array of patterns for a single repository, separated by ||. It must start with a '[' and end with a ']': "[...||...||...]"
-//     If the skip_cla is not set, it will skip the whitelisted bots check.
-func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization, orgRepo, projectID string, actorsMissingCLA []*UserCommitSummary) ([]*UserCommitSummary, []*UserCommitSummary) {
+//     If the skip_cla is not set, it will skip the allowlisted bots check.
+func SkipAllowlistedBots(ev events.Service, orgModel *models.GithubOrganization, orgRepo, projectID string, actorsMissingCLA []*UserCommitSummary) ([]*UserCommitSummary, []*UserCommitSummary) {
 	repo := stripOrg(orgRepo)
 	f := logrus.Fields{
-		"functionName": "github.SkipWhitelistedBots",
+		"functionName": "github.SkipAllowlistedBots",
 		"orgRepo":      orgRepo,
 		"repo":         repo,
 		"projectID":    projectID,
 	}
 	outActorsMissingCLA := []*UserCommitSummary{}
-	whitelistedActors := []*UserCommitSummary{}
+	allowlistedActors := []*UserCommitSummary{}
 
 	skipCLA := orgModel.SkipCla
 	if skipCLA == nil {
-		log.WithFields(f).Debug("skip_cla is not set, skipping whitelisted bots check")
+		log.WithFields(f).Debug("skip_cla is not set, skipping allowlisted bots check")
 		return actorsMissingCLA, []*UserCommitSummary{}
 	}
 
@@ -204,7 +204,7 @@ func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization,
 
 	// 4. No match
 	if config == "" {
-		log.WithFields(f).Debug("No skip_cla config found for repo, skipping whitelisted bots check")
+		log.WithFields(f).Debug("No skip_cla config found for repo, skipping allowlisted bots check")
 		return actorsMissingCLA, []*UserCommitSummary{}
 	}
 
@@ -241,11 +241,11 @@ func SkipWhitelistedBots(ev events.Service, orgModel *models.GithubOrganization,
 			})
 			log.WithFields(f).Debugf("event logged")
 			actor.Authorized = true
-			whitelistedActors = append(whitelistedActors, actor)
+			allowlistedActors = append(allowlistedActors, actor)
 		} else {
 			outActorsMissingCLA = append(outActorsMissingCLA, actor)
 		}
 	}
 
-	return outActorsMissingCLA, whitelistedActors
+	return outActorsMissingCLA, allowlistedActors
 }
