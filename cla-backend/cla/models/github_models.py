@@ -932,11 +932,14 @@ class GitHub(repository_service_interface.RepositoryService):
         """
         Returns True if value matches the pattern.
         - '*' matches anything
+        - '' matches None or empty string
         - 're:...' matches regex - value must be set
         - otherwise, exact match
         """
         try:
             if pattern == '*':
+                return True
+            if pattern == '' and (value is None or value == ''):
                 return True
             if value is None or value == '':
                 return False
@@ -952,7 +955,7 @@ class GitHub(repository_service_interface.RepositoryService):
         """
         Returns True if the actor should be skipped (allowlisted) based on config pattern.
         config: '<login_pattern>;<email_pattern>;<name_pattern>'
-        If any pattern is missing, it defaults to '*'
+        If any pattern is missing, it defaults to '' which is special and matches None or empty string.
         It returns true if ANY config entry matches or false if there is no match in any config entry.
         """
         try:
@@ -965,7 +968,7 @@ class GitHub(repository_service_interface.RepositoryService):
             # Otherwise, treat as string pattern
             parts = config.split(';')
             while len(parts) < 3:
-                parts.append('*')
+                parts.append('')
             login_pattern, email_pattern, name_pattern = parts[:3]
             login = getattr(actor, "author_login", None)
             email = getattr(actor, "author_email", None)
@@ -1028,9 +1031,10 @@ class GitHub(repository_service_interface.RepositoryService):
         - repo-name is the exact repository name under given org (e.g., "my-repo" not "my-org/my-repo")
         - re:repo-regexp is a regex pattern to match repository names
         - * is a wildcard that applies to all repositories
-        - <login_pattern> is a GitHub login pattern (exact match or regex prefixed by re: or match all '*')
-        - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') - defaults to '*' if not set
-        - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') - defaults to '*' if not set
+        - <login_pattern> is a GitHub login pattern (exact match or regex prefixed by re: or match all '*') - defaults to '' if not set
+        - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') - defaults to '' if not set
+        - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') - defaults to '' if not set
+        :note: '' is a special pattern that matches None or empty string.
         :note: The login (sometimes called username it's the same), email and name patterns are separated by a semicolon (;).
         :note: There can be an array of patterns - it must start with [ and with ] and be || separated.
         :note: If the skip_cla is not set, it will skip the allowlisted bots check.
