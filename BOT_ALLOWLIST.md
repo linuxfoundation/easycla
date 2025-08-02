@@ -173,3 +173,8 @@ aws --profile "lfproduct-prod" dynamodb scan --table-name "cla-prod-github-orgs"
 aws --profile "lfproduct-prod" dynamodb scan --table-name "cla-prod-github-orgs" --filter-expression "contains(organization_name,:v)" --expression-attribute-values "{\":v\":{\"S\":\"openfga\"}}" --max-items 100 | jq -r '.Items[0].skip_cla.M["vscode-ext"]["S"]'
 ```
 
+Typical adding a new entry for an organization:
+```
+STAGE=prod MODE=add-key DEBUG=1 ./utils/skip_cla_entry.sh 'open-telemetry' 'opentelemetry-rust' '*;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]'
+```
+
