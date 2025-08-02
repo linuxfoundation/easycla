@@ -147,10 +147,10 @@ func parseConfigPatterns(config string) []string {
 //   - repo-name is the exact repository name under given org (e.g., "my-repo" not "my-org/my-repo")
 //   - re:repo-regexp is a regex pattern to match repository names
 //   - * is a wildcard that applies to all repositories
-//   - <login_pattern> is a GitHub login pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to ”
-//   - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to ”
-//   - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to ”
-//     ” matches empty value, null value or missing property
+//   - <login_pattern> is a GitHub login pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to ""
+//   - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to ""
+//   - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to ""
+//     "" matches empty value, null value or missing property
 //     The login, email and name patterns are separated by a semicolon (;). Email and name parts are optional.
 //     There can be an array of patterns for a single repository, separated by ||. It must start with a '[' and end with a ']': "[...||...||...]"
 //     If the skip_cla is not set, it will skip the allowlisted bots check.
