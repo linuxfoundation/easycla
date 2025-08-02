@@ -7,9 +7,9 @@
 2. EasyCLA contributor console [here](https://github.com/communitybridge/easycla-contributor-console/blob/main/src/app/core/services/cla-contributor.service.ts), found via `` find.sh . '*' /vN ``.
 - `/v1/api/health` [here](https://github.com/communitybridge/easycla-contributor-console/blob/main/test/functional/cypress/integration/api-tests/health-check.spec.ts#L4).
 - `/v1/user/gerrit`.
-- `/v2/user/<userId>`.
-- `/v2/project/<projectId>`.
-- `/v2/user/<userId>/active-signature`.
+- `/v2/user/<userId>`. Porting to `/v3/user-compat/<userId>`.
+- `/v2/project/<projectId>`. Ported to `/v4/project-compat/<projectId>`.
+- `/v2/user/<userId>/active-signature`. Ported to `/v4/user/<userId>/active-signature`.
 - `/v2/check-prepare-employee-signature`.
 - `/v2/request-employee-signature`.
 - `/v2/user/<userId>/project/<projectId>/last-signature`.
@@ -43,9 +43,6 @@
  529509 /v2/github/activity
    2572 /v2/repository-provider/github/sign/<id>/<id>/<id>
     534 /v2/github/installation
-    332 /v2/project/<uuid>
-    327 /v2/user/<uuid>
-    296 /v2/user/<uuid>/active-signature
     234 /v2/return-url/<uuid>
     228 /v2/check-prepare-employee-signature
      89 /v2/request-employee-signature
@@ -57,10 +54,7 @@
 
 - `dev` analysis (but this can contain API calls made by developer and not actually used): `` DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && jq -r '.[].message' api-logs-dev.json | grep -o 'LG:api-request-path:[^[:space:]]*' | sed 's/^LG:api-request-path://' | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' | sed -E ':a;s#/([0-9]{1,})(/|$)#/<id>\2#g;ta' | sort | uniq -c | sort -nr ``:
 ```
-    113 /v2/project/<uuid>
-     53 /v2/user/<uuid>
      39 /v2/github/activity
-     14 /v2/user/<uuid>/active-signature
      13 /v2/repository-provider/github/sign/<id>/<id>/<id>
      12 /v2/user-from-token
       8 /v2/github/installation

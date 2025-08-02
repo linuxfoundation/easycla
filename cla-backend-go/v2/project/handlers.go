@@ -6,8 +6,12 @@ package project
 import (
 	"context"
 	"fmt"
+	"sort"
 
+	"github.com/linuxfoundation/easycla/cla-backend-go/gerrits"
 	v1Project "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	v2Repositories "github.com/linuxfoundation/easycla/cla-backend-go/v2/repositories"
 
 	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	v2ProjectServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
@@ -22,6 +26,7 @@ import (
 
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	v1ProjectOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/project"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
@@ -30,7 +35,9 @@ import (
 )
 
 // Configure establishes the middleware handlers for the project service
-func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service Service, eventsService events.Service) { //nolint
+func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service Service, eventsService events.Service, projectsClaGroupsService projects_cla_groups.Service, v2RepositoriesService v2Repositories.ServiceInterface, gerritService gerrits.Service) { //nolint
+
+	const projectDoesNotExist = "project does not exist"
 	// Get Projects
 	api.ProjectGetProjectsHandler = project.GetProjectsHandlerFunc(func(params project.GetProjectsParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
@@ -74,7 +81,7 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 		claGroupModel, err := service.GetCLAGroupByID(ctx, params.ProjectSfdcID)
 		if err != nil {
 
-			if err.Error() == "project does not exist" {
+			if err.Error() == projectDoesNotExist {
 				return project.NewGetProjectByIDNotFound().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
 			return project.NewGetProjectByIDBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
@@ -332,6 +339,127 @@ func Configure(api *operations.EasyclaAPI, service v1Project.Service, v2Service 
 		summary := buildSFProjectSummary(sfProject, parentName)
 		return project.NewGetSFProjectInfoByIDOK().WithXRequestID(reqID).WithPayload(summary)
 	})
+
+	api.ProjectGetProjectCompatHandler = project.GetProjectCompatHandlerFunc(func(params project.GetProjectCompatParams) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		f := logrus.Fields{
+			"functionName":   "v2.project.handlers.ProjectGetProjectCompatHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"projectID":      params.ProjectID,
+		}
+
+		proj, err := service.GetCLAGroupByIDCompat(ctx, params.ProjectID)
+		if err != nil {
+			if err.Error() == projectDoesNotExist {
+				return project.NewGetProjectCompatNotFound().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			}
+			log.WithFields(f).WithError(err).Warnf("unable to load compat project by ID: %s: %+v", params.ProjectID, err)
+			return project.NewGetProjectCompatBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+		}
+		if proj == nil {
+			return project.NewGetProjectCompatNotFound().WithXRequestID(reqID)
+		}
+		projectsClaGroups, err := projectsClaGroupsService.GetProjectsIdsForClaGroup(ctx, params.ProjectID)
+		if err != nil {
+			return project.NewGetProjectCompatBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+		}
+		sfidReposMap := make(map[string][][2]string)
+		for _, prjClaGrp := range projectsClaGroups {
+			sfid := prjClaGrp.ProjectSFID
+			if sfid == "" {
+				continue
+			}
+			_, ok := sfidReposMap[sfid]
+			if ok {
+				continue
+			}
+			repos, reposErr := v2RepositoriesService.GetRepositoriesByProjectSFID(ctx, sfid)
+			if reposErr != nil {
+				log.WithFields(f).WithError(reposErr).Warnf("unable to get github/gitlab repos list for SFID: %s: %+v", sfid, reposErr)
+			}
+			gerrits, gerritsErr := gerritService.GetGerritsByProjectSFID(ctx, sfid)
+			if gerritsErr != nil {
+				log.WithFields(f).WithError(gerritsErr).Warnf("unable to get gerrit repos list for SFID: %s: %+v", sfid, gerritsErr)
+			}
+			entry := [][2]string{}
+			if reposErr == nil {
+				for _, repo := range repos {
+					entry = append(entry, [2]string{repo.RepositoryType, repo.RepositoryName})
+				}
+			}
+			if gerritsErr == nil {
+				for _, repo := range gerrits.List {
+					entry = append(entry, [2]string{"gerrit", string(repo.GerritURL)})
+				}
+			}
+			sort.Slice(entry, func(i, j int) bool {
+				return entry[i][1] < entry[j][1]
+			})
+			sfidReposMap[sfid] = entry
+		}
+		compatProject := buildCompatProject(proj, projectsClaGroups, sfidReposMap)
+		return project.NewGetProjectCompatOK().WithXRequestID(reqID).WithPayload(compatProject)
+	})
+}
+
+func buildCompatProject(project *v1Models.ClaGroup, projectClaGroups []*projects_cla_groups.ProjectClaGroup, sfidReposMap map[string][][2]string) *models.ProjectCompat {
+	projectCorporateDocuments := []*models.ProjectCompatProjectCorporateDocumentsItems0{}
+	for _, doc := range project.ProjectCorporateDocuments {
+		projectCorporateDocuments = append(projectCorporateDocuments, &models.ProjectCompatProjectCorporateDocumentsItems0{
+			DocumentMajorVersion: doc.DocumentMajorVersion,
+			DocumentMinorVersion: doc.DocumentMinorVersion,
+		})
+	}
+	projectIndividualDocuments := []*models.ProjectCompatProjectIndividualDocumentsItems0{}
+	for _, doc := range project.ProjectIndividualDocuments {
+		projectIndividualDocuments = append(projectIndividualDocuments, &models.ProjectCompatProjectIndividualDocumentsItems0{
+			DocumentMajorVersion: doc.DocumentMajorVersion,
+			DocumentMinorVersion: doc.DocumentMinorVersion,
+		})
+	}
+	projects := []*models.ProjectCompatProjectsItems0{}
+	for _, prjClaGrp := range projectClaGroups {
+		gerritRepos := []*models.ProjectCompatProjectsItems0GerritReposItems0{}
+		githubRepos := []*models.ProjectCompatProjectsItems0GithubReposItems0{}
+		gitlabRepos := []*models.ProjectCompatProjectsItems0GitlabReposItems0{}
+		sfid := prjClaGrp.ProjectSFID
+		if sfid != "" {
+			repos, ok := sfidReposMap[sfid]
+			if ok {
+				for _, repo := range repos {
+					if repo[0] == "github" {
+						githubRepos = append(githubRepos, &models.ProjectCompatProjectsItems0GithubReposItems0{RepositoryName: repo[1]})
+					} else if repo[0] == "gitlab" {
+						gitlabRepos = append(gitlabRepos, &models.ProjectCompatProjectsItems0GitlabReposItems0{RepositoryName: repo[1]})
+					} else if repo[0] == "gerrit" {
+						gerritRepos = append(gerritRepos, &models.ProjectCompatProjectsItems0GerritReposItems0{GerritURL: repo[1]})
+					}
+				}
+			}
+		}
+		projects = append(projects, &models.ProjectCompatProjectsItems0{
+			ClaGroupID:     prjClaGrp.ClaGroupID,
+			FoundationSfid: prjClaGrp.FoundationSFID,
+			ProjectName:    prjClaGrp.ProjectName,
+			ProjectSfid:    prjClaGrp.ProjectSFID,
+			GerritRepos:    gerritRepos,
+			GithubRepos:    githubRepos,
+			GitlabRepos:    gitlabRepos,
+		})
+	}
+	return &models.ProjectCompat{
+		FoundationSfid:                   project.FoundationSFID,
+		ProjectName:                      project.ProjectName,
+		ProjectCclaEnabled:               project.ProjectCCLAEnabled,
+		ProjectCclaRequiresIclaSignature: project.ProjectCCLARequiresICLA,
+		ProjectIclaEnabled:               project.ProjectICLAEnabled,
+		ProjectID:                        project.ProjectID,
+		SignedAtFoundationLevel:          project.FoundationLevelCLA,
+		ProjectCorporateDocuments:        projectCorporateDocuments,
+		ProjectIndividualDocuments:       projectIndividualDocuments,
+		Projects:                         projects,
+	}
 }
 
 func buildSFProjectSummary(sfProject *v2ProjectServiceModels.ProjectOutputDetailed, parentName string) *models.SfProjectSummary {

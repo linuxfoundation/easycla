@@ -24,7 +24,7 @@ type Validator struct {
 }
 
 // NewAuthValidator creates a new auth0 validator based on the specified parameters
-func NewAuthValidator(domain, clientID, usernameClaim, algorithm string) (Validator, error) { // nolint
+func NewAuthValidator(domain, clientID, usernameClaim, nameClaim, emailClaim, algorithm string) (Validator, error) { // nolint
 	if domain == "" {
 		return Validator{}, errors.New("missing Domain")
 	}
@@ -43,8 +43,8 @@ func NewAuthValidator(domain, clientID, usernameClaim, algorithm string) (Valida
 		usernameClaim: usernameClaim,
 		algorithm:     algorithm,
 		wellKnownURL:  "https://" + path.Join(domain, ".well-known/jwks.json"),
-		nameClaim:     "name",
-		emailClaim:    "email",
+		nameClaim:     nameClaim,
+		emailClaim:    emailClaim,
 	}
 
 	return validator, nil

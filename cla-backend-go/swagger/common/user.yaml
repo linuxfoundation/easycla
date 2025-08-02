@@ -22,6 +22,8 @@ properties:
     $ref: './common/properties/email.yaml'
   lfUsername:
     type: string
+  lfSub:
+    type: string
   companyID:
     $ref: './common/properties/internal-id.yaml'
     description: the user's optional company ID
