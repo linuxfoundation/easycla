@@ -77,24 +77,25 @@ properties:
       Map of repository name or pattern (e.g. 'repo1', '*', 're:pattern') to a string or array-string of pattern entries for skipping CLA checks for certain bots.
 
       Each value can be either:
-      - A string in the form '<login_pattern>;<email_pattern>;<name_pattern>' (email and name patterns are optional, default to '*').
+      - A string in the form '<login_pattern>;<email_pattern>;<name_pattern>' (email and name patterns are optional, default to '').
       - Or an OR-array in the form '[<entry1>||<entry2>||...]', where each entry uses the same pattern format above.
 
       Patterns can be:
       - An exact match (e.g. 'repo1', 'login', 'Name Surname', 'email@domain').
+      - A special case of exact match is '' pattern - it matches empty string, null property value or missing property.
       - A regular expression prefixed with 're:' (e.g. 're:(?i)^bot.*$').
       - A wildcard '*' to match all.
 
       Example formats:
-      - "copilot-swe-agent[bot];*;*"
+      - ";*;copilot-swe-agent[bot]"
       - "re:vee?rendra;*;*"
       - "[re:(?i)^l(ukasz)?gryglicki$;re:(?i)^l(ukasz)?gryglicki@;*||copilot-swe-agent[bot]]"
-      - "login;*"
+      - "login;*;*"
       - "login;email@domain.com;Real Name"
     example:
-      "*": "copilot-swe-agent[bot];*;*"
+      "*": "some-bot-login;*;*"
       "repo1": "re:vee?rendra;*;*"
-      "re:(?i)^repo[0-9]+$": "[re:(?i)^l(ukasz)?gryglicki$;re:(?i)^l(ukasz)?gryglicki@;*||copilot-swe-agent[bot]]"
+      "re:(?i)^repo[0-9]+$": "[re:(?i)^l(ukasz)?gryglicki$;re:(?i)^l(ukasz)?gryglicki@;*||;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]]"
   repositories:
     type: object
     properties:

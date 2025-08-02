@@ -16,6 +16,7 @@ import (
 
 // propertyMatches returns true if value matches the pattern.
 // - "*" matches anything
+// - "" matches empty value
 // - "re:..." matches regex (value must be non-empty)
 // - otherwise, exact match
 func propertyMatches(pattern, value string) bool {
@@ -25,6 +26,9 @@ func propertyMatches(pattern, value string) bool {
 		"value":        value,
 	}
 	if pattern == "*" {
+		return true
+	}
+	if pattern == "" && value == "" {
 		return true
 	}
 	if value == "" {
@@ -54,12 +58,12 @@ func stripOrg(repoFull string) string {
 
 // isActorSkipped returns true if the actor should be skipped according to ANY pattern in config.
 // Each config entry is "<login_pattern>;<email_pattern>;<name_pattern>"
-// Any missing pattern defaults to "*"
+// Any missing pattern defaults to "" which is special and matches missing property, null property value or empty string property value
 func isActorSkipped(actor *UserCommitSummary, config []string) bool {
 	for _, pattern := range config {
 		parts := strings.Split(pattern, ";")
 		for len(parts) < 3 {
-			parts = append(parts, "*")
+			parts = append(parts, "")
 		}
 		loginPattern, emailPattern, namePattern := parts[0], parts[1], parts[2]
 
@@ -143,9 +147,10 @@ func parseConfigPatterns(config string) []string {
 //   - repo-name is the exact repository name under given org (e.g., "my-repo" not "my-org/my-repo")
 //   - re:repo-regexp is a regex pattern to match repository names
 //   - * is a wildcard that applies to all repositories
-//   - <login_pattern> is a GitHub login pattern (exact match or regex prefixed by re: or match all '*')
-//   - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to '*'
-//   - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to '*'
+//   - <login_pattern> is a GitHub login pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to ”
+//   - <email_pattern> is a GitHub email pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to ”
+//   - <name_pattern> is a GitHub name pattern (exact match or regex prefixed by re: or match all '*') if not specified defaults to ”
+//     ” matches empty value, null value or missing property
 //     The login, email and name patterns are separated by a semicolon (;). Email and name parts are optional.
 //     There can be an array of patterns for a single repository, separated by ||. It must start with a '[' and end with a ']': "[...||...||...]"
 //     If the skip_cla is not set, it will skip the allowlisted bots check.
