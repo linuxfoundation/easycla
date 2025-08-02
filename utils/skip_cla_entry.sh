@@ -11,6 +11,7 @@
 # ./utils/scan.sh github-orgs organization_name sun-test-org
 # STAGE=dev DTFROM='1 hour ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'skip_cla'
 # MODE=delete-key ./utils/skip_cla_entry.sh 'sun-test-org' 're:(?i)^repo[0-9]+$'
+# STAGE=prod MODE=add-key DEBUG=1 ./utils/skip_cla_entry.sh 'open-telemetry' 'opentelemetry-rust' '*;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]'
 
 if [ -z "$MODE" ]
 then
