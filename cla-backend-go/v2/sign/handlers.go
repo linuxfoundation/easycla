@@ -24,6 +24,8 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/sign"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+
+	"github.com/go-openapi/runtime"
 )
 
 var (
@@ -248,6 +250,34 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			return sign.NewCclaCallbackOK()
 		})
 
+	api.SignGetUserActiveSignatureHandler = sign.GetUserActiveSignatureHandlerFunc(
+		func(params sign.GetUserActiveSignatureParams) middleware.Responder {
+			reqId := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTIDKey, reqId)
+			f := logrus.Fields{
+				"functionName":   "v2.sign.handlers.SignGetUserActiveSignatureHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"userID":         params.UserID,
+			}
+			var resp *models.UserActiveSignature
+			var err error
+
+			log.WithFields(f).Debug("getting user active signature")
+			resp, err = service.GetUserActiveSignature(ctx, params.UserID)
+			if err != nil {
+				return sign.NewGetUserActiveSignatureBadRequest().WithPayload(errorResponse(reqId, err))
+			}
+			if resp == nil {
+				return middleware.ResponderFunc(func(w http.ResponseWriter, _ runtime.Producer) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					if _, err := w.Write([]byte("null")); err != nil {
+						log.WithFields(f).WithError(err).Warn("failed to write null response")
+					}
+				})
+			}
+			return sign.NewGetUserActiveSignatureOK().WithPayload(resp)
+		})
 }
 
 type codedResponse interface {

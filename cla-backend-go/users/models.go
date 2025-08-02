@@ -21,6 +21,7 @@ type DBUser struct {
 	UserGitlabUsername string   `json:"user_gitlab_username"`
 	UserCompanyID      string   `json:"user_company_id"`
 	Note               string   `json:"note"`
+	LFSub              string   `json:"lf_sub"`
 }
 
 type UserEmails struct {
