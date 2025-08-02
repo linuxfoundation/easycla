@@ -1091,6 +1091,7 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.debug("final skip_cla config for repo %s is %s; actors_missing_cla: [%s]", org_repo, config, ", ".join(actor_debug_data))
             out_actors_missing_cla = []
             allowlisted_actors = []
+            seen_actors = set()
             for actor in actors_missing_cla:
                 if actor is None:
                     continue
@@ -1103,19 +1104,21 @@ class GitHub(repository_service_interface.RepositoryService):
                     )
                     cla.log.debug("Checking actor: %s for skip_cla config: %s", actor_data, config)
                     if self.is_actor_skipped(actor, config):
-                        msg = "Skipping CLA check for repo='{}', actor: {} due to skip_cla config: '{}'".format(
-                            org_repo,
-                            actor_data,
-                            config,
-                        )
-                        cla.log.info(msg)
-                        Event.create_event(
-                            event_type=EventType.BypassCLA,
-                            event_data=msg,
-                            event_summary=msg,
-                            event_user_name=actor_data,
-                            contains_pii=True,
-                        )
+                        if not actor_data in seen_actors:
+                            seen_actors.add(actor_data)
+                            msg = "Skipping CLA check for repo='{}', actor: {} due to skip_cla config: '{}'".format(
+                                org_repo,
+                                actor_data,
+                                config,
+                            )
+                            cla.log.info(msg)
+                            Event.create_event(
+                                event_type=EventType.BypassCLA,
+                                event_data=msg,
+                                event_summary=msg,
+                                event_user_name=actor_data,
+                                contains_pii=True,
+                            )
                         actor.authorized = True
                         allowlisted_actors.append(actor)
                         continue
