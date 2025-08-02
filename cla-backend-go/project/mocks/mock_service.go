@@ -83,6 +83,21 @@ func (mr *MockServiceMockRecorder) GetCLAGroupByID(ctx, claGroupID interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCLAGroupByID", reflect.TypeOf((*MockService)(nil).GetCLAGroupByID), ctx, claGroupID)
 }
 
+// GetCLAGroupByIDCompat mocks base method.
+func (m *MockService) GetCLAGroupByIDCompat(ctx context.Context, claGroupID string) (*models.ClaGroup, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCLAGroupByIDCompat", ctx, claGroupID)
+	ret0, _ := ret[0].(*models.ClaGroup)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCLAGroupByIDCompat indicates an expected call of GetCLAGroupByIDCompat.
+func (mr *MockServiceMockRecorder) GetCLAGroupByIDCompat(ctx, claGroupID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCLAGroupByIDCompat", reflect.TypeOf((*MockService)(nil).GetCLAGroupByIDCompat), ctx, claGroupID)
+}
+
 // GetCLAGroupByName mocks base method.
 func (m *MockService) GetCLAGroupByName(ctx context.Context, projectName string) (*models.ClaGroup, error) {
 	m.ctrl.T.Helper()

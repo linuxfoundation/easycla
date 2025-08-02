@@ -100,6 +100,7 @@ def get_health(request):
 #
 
 
+# LG: This is ported to golang and no longer used in dev (still used in prod)
 @hug.get("/user/{user_id}", versions=2)
 def get_user(user_id: hug.types.uuid):
     """
@@ -232,6 +233,7 @@ def request_company_ccla(
 #     return cla.controllers.user.request_company_admin_access(str(user_id), str(company_id))
 
 
+# LG: This is ported to golang and no longer used in dev (still used in prod)
 @hug.get("/user/{user_id}/active-signature", versions=2)
 def get_user_active_signature(user_id: hug.types.uuid):
     """
@@ -773,7 +775,7 @@ def get_projects(auth_user: check_auth):
             del project["project_external_id"]
     return projects
 
-
+# LG: This is ported to golang and no longer used in dev (still used in prod).
 @hug.get("/project/{project_id}", versions=2)
 def get_project(project_id: hug.types.uuid):
     """
