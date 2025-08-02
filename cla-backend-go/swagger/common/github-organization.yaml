@@ -93,9 +93,10 @@ properties:
       - "login;*;*"
       - "login;email@domain.com;Real Name"
     example:
-      "*": "some-bot-login;*;*"
-      "repo1": "re:vee?rendra;*;*"
-      "re:(?i)^repo[0-9]+$": "[re:(?i)^l(ukasz)?gryglicki$;re:(?i)^l(ukasz)?gryglicki@;*||;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]]"
+      '*': 'some-bot-login;*;*'
+      'repo1': 're:vee?rendra;*;*'
+      're:(?i)^repo[0-9]+$': '[re:(?i)^l(ukasz)?gryglicki$;re:(?i)^l(ukasz)?gryglicki@;*||;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]]'
+
   repositories:
     type: object
     properties:
