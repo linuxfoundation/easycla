@@ -222,6 +222,7 @@ func SkipAllowlistedBots(ev events.Service, orgModel *models.GithubOrganization,
 	}
 	log.WithFields(f).Debugf("final skip_cla config for repo %s is %+v; actorsMissingCLA: [%s]", orgRepo, configArray, strings.Join(actorDebugData, ", "))
 
+	seenActors := make(map[string]struct{})
 	for _, actor := range actorsMissingCLA {
 		if actor == nil {
 			continue
@@ -229,22 +230,25 @@ func SkipAllowlistedBots(ev events.Service, orgModel *models.GithubOrganization,
 		actorData := actorToString(actor)
 		log.WithFields(f).Debugf("Checking actor: %s for skip_cla config: %+v", actorData, configArray)
 		if isActorSkipped(actor, configArray) {
-			msg := fmt.Sprintf(
-				"Skipping CLA check for repo='%s', actor: %s due to skip_cla config: %+v",
-				orgRepo, actorData, configArray,
-			)
-			log.WithFields(f).Info(msg)
-			eventData := events.BypassCLAEventData{
-				Repo:   orgRepo,
-				Config: config,
-				Actor:  actorData,
+			_, seen := seenActors[actorData]
+			if !seen {
+				seenActors[actorData] = struct{}{}
+				msg := fmt.Sprintf(
+					"Skipping CLA check for repo='%s', actor: %s due to skip_cla config: %+v",
+					orgRepo, actorData, configArray,
+				)
+				log.WithFields(f).Info(msg)
+				eventData := events.BypassCLAEventData{
+					Repo:   orgRepo,
+					Config: config,
+					Actor:  actorData,
+				}
+				ev.LogEvent(&events.LogEventArgs{
+					EventType: events.BypassCLA,
+					EventData: &eventData,
+					ProjectID: projectID,
+				})
 			}
-			ev.LogEvent(&events.LogEventArgs{
-				EventType: events.BypassCLA,
-				EventData: &eventData,
-				ProjectID: projectID,
-			})
-			log.WithFields(f).Debugf("event logged")
 			actor.Authorized = true
 			allowlistedActors = append(allowlistedActors, actor)
 		} else {

@@ -1882,9 +1882,6 @@ def user_from_session(request, response):
     Will return 200 and user data if there is an active GitHub session
     Can return 404 on OAuth2 errors
     """
-    # https://github.com/sun-test-org/repo1/pull/215
-    # from cla.models.github_models import GitHub
-    # GitHub().process_opened_pull_request({"pull_request":{"number":215}, "repository":{"id":614349032}, "installation":{"id":35275118}})
     raw_redirect = request.params.get('get_redirect_url', 'false').lower()
     get_redirect_url = raw_redirect in ('1', 'true', 'yes')
     return cla.controllers.repository_service.user_from_session(get_redirect_url, request, response)
