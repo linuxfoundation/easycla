@@ -42,11 +42,11 @@ const (
 
 // IService interface defines the service methods/functions
 type IService interface {
-	AddCclaApprovalListRequest(ctx context.Context, companyID string, claGroupID string, args models.CclaWhitelistRequestInput) (string, error)
+	AddCclaApprovalListRequest(ctx context.Context, companyID string, claGroupID string, args models.CclaAllowlistRequestInput) (string, error)
 	ApproveCclaApprovalListRequest(ctx context.Context, claUser *user.CLAUser, ClacompanyID, claGroupID, requestID string) error
 	RejectCclaApprovalListRequest(ctx context.Context, companyID, claGroupID, requestID string) error
-	ListCclaApprovalListRequest(companyID string, claGroupID, status *string) (*models.CclaWhitelistRequestList, error)
-	ListCclaApprovalListRequestByCompanyProjectUser(companyID string, claGroupID, status, userID *string) (*models.CclaWhitelistRequestList, error)
+	ListCclaApprovalListRequest(companyID string, claGroupID, status *string) (*models.CclaAllowlistRequestList, error)
+	ListCclaApprovalListRequestByCompanyProjectUser(companyID string, claGroupID, status, userID *string) (*models.CclaAllowlistRequestList, error)
 }
 
 type service struct {
@@ -78,7 +78,7 @@ func NewService(repo IRepository, projectsCLAGroupRepository projects_cla_groups
 	}
 }
 
-func (s service) AddCclaApprovalListRequest(ctx context.Context, companyID string, claGroupID string, args models.CclaWhitelistRequestInput) (string, error) {
+func (s service) AddCclaApprovalListRequest(ctx context.Context, companyID string, claGroupID string, args models.CclaAllowlistRequestInput) (string, error) {
 	f := logrus.Fields{
 		"functionName":     "v1.approval_list.service.AddCclaApprovalListRequest",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
@@ -302,12 +302,12 @@ func (s service) RejectCclaApprovalListRequest(ctx context.Context, companyID, c
 }
 
 // ListCclaApprovalListRequest is the handler for the list CLA request
-func (s service) ListCclaApprovalListRequest(companyID string, claGroupID, status *string) (*models.CclaWhitelistRequestList, error) {
+func (s service) ListCclaApprovalListRequest(companyID string, claGroupID, status *string) (*models.CclaAllowlistRequestList, error) {
 	return s.repo.ListCclaApprovalListRequests(companyID, claGroupID, status, nil)
 }
 
 // ListCclaApprovalListRequestByCompanyProjectUser is the handler for the list CLA request
-func (s service) ListCclaApprovalListRequestByCompanyProjectUser(companyID string, claGroupID, status, userID *string) (*models.CclaWhitelistRequestList, error) {
+func (s service) ListCclaApprovalListRequestByCompanyProjectUser(companyID string, claGroupID, status, userID *string) (*models.CclaAllowlistRequestList, error) {
 	return s.repo.ListCclaApprovalListRequests(companyID, claGroupID, status, userID)
 }
 

@@ -23,13 +23,13 @@ import (
 // Configure setups handlers on api with service
 func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore.Store, signatureService signatures.SignatureService, eventsService events.Service) {
 
-	api.CompanyAddCclaWhitelistRequestHandler = company.AddCclaWhitelistRequestHandlerFunc(
-		func(params company.AddCclaWhitelistRequestParams) middleware.Responder {
+	api.CompanyAddCclaAllowlistRequestHandler = company.AddCclaAllowlistRequestHandlerFunc(
+		func(params company.AddCclaAllowlistRequestParams) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			requestID, err := service.AddCclaApprovalListRequest(ctx, params.CompanyID, params.ProjectID, params.Body)
 			if err != nil {
-				return company.NewAddCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+				return company.NewAddCclaAllowlistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
 
 			eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
@@ -40,16 +40,16 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 				EventData: &events.CCLAApprovalListRequestCreatedEventData{RequestID: requestID},
 			})
 
-			return company.NewAddCclaWhitelistRequestOK().WithXRequestID(reqID)
+			return company.NewAddCclaAllowlistRequestOK().WithXRequestID(reqID)
 		})
 
-	api.CompanyApproveCclaWhitelistRequestHandler = company.ApproveCclaWhitelistRequestHandlerFunc(
-		func(params company.ApproveCclaWhitelistRequestParams, claUser *user.CLAUser) middleware.Responder {
+	api.CompanyApproveCclaAllowlistRequestHandler = company.ApproveCclaAllowlistRequestHandlerFunc(
+		func(params company.ApproveCclaAllowlistRequestParams, claUser *user.CLAUser) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			err := service.ApproveCclaApprovalListRequest(ctx, claUser, params.CompanyID, params.ProjectID, params.RequestID)
 			if err != nil {
-				return company.NewApproveCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+				return company.NewApproveCclaAllowlistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
 
 			eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
@@ -60,16 +60,16 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 				EventData: &events.CCLAApprovalListRequestApprovedEventData{RequestID: params.RequestID},
 			})
 
-			return company.NewApproveCclaWhitelistRequestOK().WithXRequestID(reqID)
+			return company.NewApproveCclaAllowlistRequestOK().WithXRequestID(reqID)
 		})
 
-	api.CompanyRejectCclaWhitelistRequestHandler = company.RejectCclaWhitelistRequestHandlerFunc(
-		func(params company.RejectCclaWhitelistRequestParams, claUser *user.CLAUser) middleware.Responder {
+	api.CompanyRejectCclaAllowlistRequestHandler = company.RejectCclaAllowlistRequestHandlerFunc(
+		func(params company.RejectCclaAllowlistRequestParams, claUser *user.CLAUser) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			err := service.RejectCclaApprovalListRequest(ctx, params.CompanyID, params.ProjectID, params.RequestID)
 			if err != nil {
-				return company.NewRejectCclaWhitelistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+				return company.NewRejectCclaAllowlistRequestBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
 
 			eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
@@ -80,33 +80,33 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 				EventData: &events.CCLAApprovalListRequestRejectedEventData{RequestID: params.RequestID},
 			})
 
-			return company.NewRejectCclaWhitelistRequestOK().WithXRequestID(reqID)
+			return company.NewRejectCclaAllowlistRequestOK().WithXRequestID(reqID)
 		})
 
-	api.CompanyListCclaWhitelistRequestsHandler = company.ListCclaWhitelistRequestsHandlerFunc(
-		func(params company.ListCclaWhitelistRequestsParams, claUser *user.CLAUser) middleware.Responder {
+	api.CompanyListCclaAllowlistRequestsHandler = company.ListCclaAllowlistRequestsHandlerFunc(
+		func(params company.ListCclaAllowlistRequestsParams, claUser *user.CLAUser) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			f := logrus.Fields{
-				"functionName":   "CompanyListCclaWhitelistRequestsHandler",
+				"functionName":   "CompanyListCclaAllowlistRequestsHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			}
 			log.WithFields(f).Debugf("Invoking ListCclaApprovalListRequests with Company ID: %+v, Project ID: %+v, Status: %+v",
 				params.CompanyID, params.ProjectID, params.Status)
 			result, err := service.ListCclaApprovalListRequest(params.CompanyID, params.ProjectID, params.Status)
 			if err != nil {
-				return company.NewListCclaWhitelistRequestsBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+				return company.NewListCclaAllowlistRequestsBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 			}
 
-			return company.NewListCclaWhitelistRequestsOK().WithXRequestID(reqID).WithPayload(result)
+			return company.NewListCclaAllowlistRequestsOK().WithXRequestID(reqID).WithPayload(result)
 		})
 
-	api.CompanyListCclaWhitelistRequestsByCompanyAndProjectHandler = company.ListCclaWhitelistRequestsByCompanyAndProjectHandlerFunc(
-		func(params company.ListCclaWhitelistRequestsByCompanyAndProjectParams, claUser *user.CLAUser) middleware.Responder {
+	api.CompanyListCclaAllowlistRequestsByCompanyAndProjectHandler = company.ListCclaAllowlistRequestsByCompanyAndProjectHandlerFunc(
+		func(params company.ListCclaAllowlistRequestsByCompanyAndProjectParams, claUser *user.CLAUser) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 			f := logrus.Fields{
-				"functionName":      "v1.approval_list.handlers.CompanyListCclaWhitelistRequestsByCompanyAndProjectHandler",
+				"functionName":      "v1.approval_list.handlers.CompanyListCclaAllowlistRequestsByCompanyAndProjectHandler",
 				utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 				"companyID":         params.CompanyID,
 				"projectID":         params.ProjectID,
@@ -120,22 +120,22 @@ func Configure(api *operations.ClaAPI, service IService, sessionStore *dynastore
 				params.CompanyID, params.ProjectID, params.Status)
 			result, err := service.ListCclaApprovalListRequestByCompanyProjectUser(params.CompanyID, &params.ProjectID, params.Status, nil)
 			if err != nil {
-				return company.NewListCclaWhitelistRequestsByCompanyAndProjectBadRequest().WithPayload(errorResponse(err))
+				return company.NewListCclaAllowlistRequestsByCompanyAndProjectBadRequest().WithPayload(errorResponse(err))
 			}
 
-			return company.NewListCclaWhitelistRequestsByCompanyAndProjectOK().WithPayload(result)
+			return company.NewListCclaAllowlistRequestsByCompanyAndProjectOK().WithPayload(result)
 		})
 
-	api.CompanyListCclaWhitelistRequestsByCompanyAndProjectAndUserHandler = company.ListCclaWhitelistRequestsByCompanyAndProjectAndUserHandlerFunc(
-		func(params company.ListCclaWhitelistRequestsByCompanyAndProjectAndUserParams, claUser *user.CLAUser) middleware.Responder {
+	api.CompanyListCclaAllowlistRequestsByCompanyAndProjectAndUserHandler = company.ListCclaAllowlistRequestsByCompanyAndProjectAndUserHandlerFunc(
+		func(params company.ListCclaAllowlistRequestsByCompanyAndProjectAndUserParams, claUser *user.CLAUser) middleware.Responder {
 			log.Debugf("Invoking ListCclaApprovalListRequestByCompanyProjectUser with Company ID: %+v, Project ID: %+v, Status: %+v, User: %+v",
 				params.CompanyID, params.ProjectID, params.Status, claUser.LFUsername)
 			result, err := service.ListCclaApprovalListRequestByCompanyProjectUser(params.CompanyID, &params.ProjectID, params.Status, &claUser.LFUsername)
 			if err != nil {
-				return company.NewListCclaWhitelistRequestsByCompanyAndProjectAndUserBadRequest().WithPayload(errorResponse(err))
+				return company.NewListCclaAllowlistRequestsByCompanyAndProjectAndUserBadRequest().WithPayload(errorResponse(err))
 			}
 
-			return company.NewListCclaWhitelistRequestsByCompanyAndProjectAndUserOK().WithPayload(result)
+			return company.NewListCclaAllowlistRequestsByCompanyAndProjectAndUserOK().WithPayload(result)
 		})
 }
 
