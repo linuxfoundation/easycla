@@ -158,10 +158,10 @@ def update_signature(signature_id,  # pylint: disable=too-many-arguments,too-man
                      signature_embargo_acked=True,
                      signature_return_url=None,
                      signature_sign_url=None,
-                     domain_whitelist=None,
-                     email_whitelist=None,
-                     github_whitelist=None,
-                     github_org_whitelist=None):
+                     domain_allowlist=None,
+                     email_allowlist=None,
+                     github_allowlist=None,
+                     github_org_allowlist=None):
     """
     Updates an signature and returns the newly updated signature in dict format.
     A value of None means the field should not be updated.
@@ -188,10 +188,10 @@ def update_signature(signature_id,  # pylint: disable=too-many-arguments,too-man
     :type signature_return_url: string | None
     :param signature_sign_url: The URL the user must visit to sign the signature.
     :type signature_sign_url: string | None
-    :param domain_whitelist:  the domain allowlist
-    :param email_whitelist:  the email allowlist
-    :param github_whitelist:  the github username allowlist
-    :param github_org_whitelist:  the github org allowlist
+    :param domain_allowlist:  the domain allowlist
+    :param email_allowlist:  the email allowlist
+    :param github_allowlist:  the github username allowlist
+    :param github_org_allowlist:  the github org allowlist
     :return: dict representation of the signature object.
     :rtype: dict
     """
@@ -267,49 +267,49 @@ def update_signature(signature_id,  # pylint: disable=too-many-arguments,too-man
         except KeyError:
             return {'errors': {'signature_sign_url': 'Invalid value passed in for URL field'}}
 
-    if domain_whitelist is not None:
+    if domain_allowlist is not None:
         try:
-            domain_whitelist = hug.types.multiple(domain_whitelist)
-            signature.set_domain_whitelist(domain_whitelist)
-            update_str += f'domain_whitelist updated to {domain_whitelist} \n'
+            domain_allowlist = hug.types.multiple(domain_allowlist)
+            signature.set_domain_allowlist(domain_allowlist)
+            update_str += f'domain_allowlist updated to {domain_allowlist} \n'
         except KeyError:
             return {'errors': {
-                'domain_whitelist': 'Invalid value passed in for the domain whitelist'
+                'domain_allowlist': 'Invalid value passed in for the domain allowlist'
             }}
 
-    if email_whitelist is not None:
+    if email_allowlist is not None:
         try:
-            email_whitelist = hug.types.multiple(email_whitelist)
-            signature.set_email_whitelist(email_whitelist)
-            update_str += f'email_whitelist updated to {email_whitelist} \n'
+            email_allowlist = hug.types.multiple(email_allowlist)
+            signature.set_email_allowlist(email_allowlist)
+            update_str += f'email_allowlist updated to {email_allowlist} \n'
         except KeyError:
             return {'errors': {
-                'email_whitelist': 'Invalid value passed in for the email whitelist'
+                'email_allowlist': 'Invalid value passed in for the email allowlist'
             }}
 
-    if github_whitelist is not None:
+    if github_allowlist is not None:
         try:
-            github_whitelist = hug.types.multiple(github_whitelist)
-            signature.set_github_whitelist(github_whitelist)
+            github_allowlist = hug.types.multiple(github_allowlist)
+            signature.set_github_allowlist(github_allowlist)
 
-            # A little bit of special logic to for GitHub whitelists that have bots
-            bot_list = [github_user for github_user in github_whitelist if is_github_bot(github_user)]
+            # A little bit of special logic to for GitHub allowlists that have bots
+            bot_list = [github_user for github_user in github_allowlist if is_github_bot(github_user)]
             if bot_list is not None:
                 handle_bots(bot_list, signature)
-            update_str += f'github_whitelist updated to {github_whitelist} \n'
+            update_str += f'github_allowlist updated to {github_allowlist} \n'
         except KeyError:
             return {'errors': {
-                'github_whitelist': 'Invalid value passed in for the github whitelist'
+                'github_allowlist': 'Invalid value passed in for the github allowlist'
             }}
 
-    if github_org_whitelist is not None:
+    if github_org_allowlist is not None:
         try:
-            github_org_whitelist = hug.types.multiple(github_org_whitelist)
-            signature.set_github_org_whitelist(github_org_whitelist)
-            update_str += f'github_org_whitelist updated to {github_org_whitelist} \n'
+            github_org_allowlist = hug.types.multiple(github_org_allowlist)
+            signature.set_github_org_allowlist(github_org_allowlist)
+            update_str += f'github_org_allowlist updated to {github_org_allowlist} \n'
         except KeyError:
             return {'errors': {
-                'github_org_whitelist': 'Invalid value passed in for the github org whitelist'
+                'github_org_allowlist': 'Invalid value passed in for the github org allowlist'
             }}
 
     event_data = update_str
@@ -322,7 +322,7 @@ def update_signature(signature_id,  # pylint: disable=too-many-arguments,too-man
     )
 
     signature.save()
-    notify_whitelist_change(auth_user=auth_user, old_signature=old_signature, new_signature=signature)
+    notify_allowlist_change(auth_user=auth_user, old_signature=old_signature, new_signature=signature)
     return signature.to_dict()
 
 
@@ -341,7 +341,7 @@ def change_in_list(old_list, new_list, msg_added, msg_deleted):
     return change, added, deleted
 
 
-def notify_whitelist_change(auth_user, old_signature: Signature, new_signature: Signature):
+def notify_allowlist_change(auth_user, old_signature: Signature, new_signature: Signature):
     company_name = new_signature.get_signature_reference_name()
     project = cla.utils.get_project_instance()
     project.load(new_signature.get_signature_project_id())
@@ -350,32 +350,32 @@ def notify_whitelist_change(auth_user, old_signature: Signature, new_signature: 
     changes = []
     domain_msg_added = 'The domain {} was added to the domain approval list.'
     domain_msg_deleted = 'The domain {} was removed from the domain approval list.'
-    domain_changes, _, _ = change_in_list(old_list=old_signature.get_domain_whitelist(),
-                                          new_list=new_signature.get_domain_whitelist(),
+    domain_changes, _, _ = change_in_list(old_list=old_signature.get_domain_allowlist(),
+                                          new_list=new_signature.get_domain_allowlist(),
                                           msg_added=domain_msg_added,
                                           msg_deleted=domain_msg_deleted)
     changes = changes + domain_changes
 
     email_msg_added = 'The email address {} was added to the email approval list.'
     email_msg_deleted = 'The email address {} was removed from the email approval list.'
-    email_changes, email_added, email_deleted = change_in_list(old_list=old_signature.get_email_whitelist(),
-                                                               new_list=new_signature.get_email_whitelist(),
+    email_changes, email_added, email_deleted = change_in_list(old_list=old_signature.get_email_allowlist(),
+                                                               new_list=new_signature.get_email_allowlist(),
                                                                msg_added=email_msg_added,
                                                                msg_deleted=email_msg_deleted)
     changes = changes + email_changes
 
     github_msg_added = 'The GitHub user {} was added to the GitHub approval list.'
     github_msg_deleted = 'The GitHub user {} was removed from the github approval list.'
-    github_changes, github_added, github_deleted = change_in_list(old_list=old_signature.get_github_whitelist(),
-                                                                  new_list=new_signature.get_github_whitelist(),
+    github_changes, github_added, github_deleted = change_in_list(old_list=old_signature.get_github_allowlist(),
+                                                                  new_list=new_signature.get_github_allowlist(),
                                                                   msg_added=github_msg_added,
                                                                   msg_deleted=github_msg_deleted)
     changes = changes + github_changes
 
     github_org_msg_added = 'The GitHub organization {} was added to the GitHub organization approval list.'
     github_org_msg_deleted = 'The GitHub organization {} was removed from the GitHub organization approval list.'
-    github_org_changes, _, _ = change_in_list(old_list=old_signature.get_github_org_whitelist(),
-                                              new_list=new_signature.get_github_org_whitelist(),
+    github_org_changes, _, _ = change_in_list(old_list=old_signature.get_github_org_allowlist(),
+                                              new_list=new_signature.get_github_org_allowlist(),
                                               msg_added=github_org_msg_added,
                                               msg_deleted=github_org_msg_deleted)
     changes = changes + github_org_changes
@@ -390,7 +390,7 @@ def notify_whitelist_change(auth_user, old_signature: Signature, new_signature: 
 
     cla_manager_name = auth_user.name
     # send email to contributors
-    notify_whitelist_change_to_contributors(project=project,
+    notify_allowlist_change_to_contributors(project=project,
                                             email_added=email_added,
                                             email_removed=email_deleted,
                                             github_users_added=github_added,
@@ -410,16 +410,16 @@ def notify_whitelist_change(auth_user, old_signature: Signature, new_signature: 
     )
 
 
-def notify_whitelist_change_to_contributors(project, email_added, email_removed,
+def notify_allowlist_change_to_contributors(project, email_added, email_removed,
                                             github_users_added, github_users_removed,
                                             company_name, project_name, cla_manager_name):
     for email in email_added:
-        subject, body, recipients = get_contributor_whitelist_update_email_content(
+        subject, body, recipients = get_contributor_allowlist_update_email_content(
             project, 'added', company_name, project_name, cla_manager_name, email)
         get_email_service().send(subject, body, recipients)
 
     for email in email_removed:
-        subject, body, recipients = get_contributor_whitelist_update_email_content(
+        subject, body, recipients = get_contributor_allowlist_update_email_content(
             project, 'deleted', company_name, project_name, cla_manager_name, email)
         get_email_service().send(subject, body, recipients)
 
@@ -429,7 +429,7 @@ def notify_whitelist_change_to_contributors(project, email_added, email_removed,
         if users is not None:
             user = users[0]
             email = user.get_user_email()
-            subject, body, recipients = get_contributor_whitelist_update_email_content(
+            subject, body, recipients = get_contributor_allowlist_update_email_content(
                 project, 'added', company_name, project_name, cla_manager_name, email)
             get_email_service().send(subject, body, recipients)
 
@@ -439,12 +439,12 @@ def notify_whitelist_change_to_contributors(project, email_added, email_removed,
         if users is not None:
             user = users[0]
             email = user.get_user_email()
-            subject, body, recipients = get_contributor_whitelist_update_email_content(
+            subject, body, recipients = get_contributor_allowlist_update_email_content(
                 project, 'deleted', company_name, project_name, cla_manager_name, email)
             get_email_service().send(subject, body, recipients)
 
 
-def get_contributor_whitelist_update_email_content(project, action, company_name, project_name, cla_manager, email):
+def get_contributor_allowlist_update_email_content(project, action, company_name, project_name, cla_manager, email):
     subject = f'EasyCLA: Approval List Update for {project_name}'
     preposition = 'to'
     if action == 'deleted':

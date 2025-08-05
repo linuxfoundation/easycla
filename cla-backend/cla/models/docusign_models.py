@@ -66,7 +66,7 @@ class CCLANotFound(Exception):
     pass
 
 
-class UserNotWhitelisted(Exception):
+class UserNotAllowlisted(Exception):
     pass
 
 

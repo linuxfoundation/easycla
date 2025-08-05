@@ -72,8 +72,8 @@ company.set_company_external_id('company-external-id')
 company.set_company_manager_id(manager.get_user_id())
 company.set_company_name('Test Company')
 company.set_is_sanctioned(False)
-company.set_company_whitelist([])
-company.set_company_whitelist_patterns(['*@listed.org'])
+company.set_company_allowlist([])
+company.set_company_allowlist_patterns(['*@listed.org'])
 company.save()
 
 ## Add another company with same manager ID
@@ -84,8 +84,8 @@ company.set_company_external_id('company-external-id')
 company.set_company_manager_id(manager.get_user_id())
 company.set_company_name('Test Company 2')
 company.set_is_sanctioned(False)
-company.set_company_whitelist([])
-company.set_company_whitelist_patterns(['*@listed.org'])
+company.set_company_allowlist([])
+company.set_company_allowlist_patterns(['*@listed.org'])
 company.save()
 
 ## Signature: Corporate
