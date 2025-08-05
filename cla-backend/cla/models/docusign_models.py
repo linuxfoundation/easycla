@@ -389,7 +389,7 @@ class DocuSign(signing_service_interface.SigningService):
         # Before an employee begins the signing process, ensure that
         # 1. The given project, company, and user exists
         # 2. The company signatory has signed the CCLA for their company.
-        # 3. The user is included as part of the whitelist of the CCLA that the company signed.
+        # 3. The user is included as part of the allowlist of the CCLA that the company signed.
         # Returns an error if any of the above is false.
 
         fn = 'docusign_models.check_and_prepare_employee_signature'

@@ -284,7 +284,7 @@ def invite_cla_manager(contributor_id, contributor_name, contributor_email, cla_
                               cla_manager_name, cla_manager_email,
                               company_name, False)
 
-    # update ccla_whitelist_request
+    # update ccla_allowlist_request
     ccla_whitelist_request = CCLAWhitelistRequest()
     ccla_whitelist_request.set_request_id(str(uuid.uuid4()))
     ccla_whitelist_request.set_company_name(company_name)

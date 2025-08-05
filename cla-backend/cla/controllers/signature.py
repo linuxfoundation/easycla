@@ -188,10 +188,10 @@ def update_signature(signature_id,  # pylint: disable=too-many-arguments,too-man
     :type signature_return_url: string | None
     :param signature_sign_url: The URL the user must visit to sign the signature.
     :type signature_sign_url: string | None
-    :param domain_whitelist:  the domain whitelist
-    :param email_whitelist:  the email whitelist
-    :param github_whitelist:  the github username whitelist
-    :param github_org_whitelist:  the github org whitelist
+    :param domain_whitelist:  the domain allowlist
+    :param email_whitelist:  the email allowlist
+    :param github_whitelist:  the github username allowlist
+    :param github_org_whitelist:  the github org allowlist
     :return: dict representation of the signature object.
     :rtype: dict
     """
@@ -465,7 +465,7 @@ close and re-open the pull request to force a recheck by the EasyCLA system.</p>
 
 
 def approval_list_change_email_content(project, company_name, project_name, cla_managers, changes):
-    """Helper function to get whitelist change email subject, body, recipients"""
+    """Helper function to get allowlist change email subject, body, recipients"""
     subject = f'EasyCLA: Approval List Update for {project_name}'
     # Append suffix / prefix to strings in list
     changes = ["<li>" + txt + "</li>" for txt in changes]
