@@ -3076,7 +3076,7 @@ paths:
     get:
       summary: Signature Update
       description: Updates the specified signature GitHub Organization approval list
-      operationId: getGitHubOrgWhitelist
+      operationId: getGitHubOrgAllowlist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -3110,7 +3110,7 @@ paths:
     delete:
       summary: Signature Delete
       description: Deletes the specified signature GitHub organization approval list
-      operationId: deleteGitHubOrgWhitelist
+      operationId: deleteGitHubOrgAllowlist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -3148,7 +3148,7 @@ paths:
     post:
       summary: Signature Update
       description: Updates the specified signature GitHub organization approval list
-      operationId: addGitHubOrgWhitelist
+      operationId: addGitHubOrgAllowlist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"

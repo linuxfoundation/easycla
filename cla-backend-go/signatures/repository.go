@@ -459,7 +459,7 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 
 	itemFromMap, ok := result.Item["github_org_whitelist"]
 	if !ok {
-		log.WithFields(f).Debugf("signatureID: %s is missing the 'github_org_whitelist' column - will add", signatureID)
+		log.WithFields(f).Debugf("signatureID: %s is missing the 'github_org_allowlist' column - will add", signatureID)
 		itemFromMap = &dynamodb.AttributeValue{}
 	}
 
@@ -552,7 +552,7 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 	if !ok {
 		log.WithFields(f).Warnf("unable to remove github organization approval list entry: %s for signature: %s - list is empty",
 			GitHubOrganizationID, signatureID)
-		return nil, errors.New("no github_org_whitelist column")
+		return nil, errors.New("no github_org_allowlist column")
 	}
 
 	// generate new List L without element to be deleted

@@ -629,7 +629,7 @@ paths:
       summary: Get GitHub Organization Approval List Entries
       security:
         - OauthSecurity: [ ]
-      operationId: getGitHubOrgWhitelist
+      operationId: getGitHubOrgAllowlist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: signatureID
@@ -661,7 +661,7 @@ paths:
       summary: Delete GitHub Organization Approval List Entry
       security:
         - OauthSecurity: [ ]
-      operationId: deleteGitHubOrgWhitelist
+      operationId: deleteGitHubOrgAllowlist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: signatureID
@@ -697,7 +697,7 @@ paths:
       summary: Update GitHub Organization Approval List Entries
       security:
         - OauthSecurity: [ ]
-      operationId: addGitHubOrgWhitelist
+      operationId: addGitHubOrgAllowlist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: signatureID
@@ -1467,7 +1467,7 @@ paths:
       security:
         - OauthSecurity:
             - user
-      operationId: listCclaWhitelistRequestsByCompanyAndProject
+      operationId: listCclaAllowlistRequestsByCompanyAndProject
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1484,7 +1484,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/ccla-whitelist-request-list'
+            $ref: '#/definitions/ccla-allowlist-request-list'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -1498,7 +1498,7 @@ paths:
     post:
       summary: Create Project Company Approval List Entries
       security: [ ]
-      operationId: addCclaWhitelistRequest
+      operationId: addCclaAllowlistRequest
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1506,7 +1506,7 @@ paths:
         - in: body
           name: body
           schema:
-            $ref: '#/definitions/ccla-whitelist-request-input'
+            $ref: '#/definitions/ccla-allowlist-request-input'
           required: true
       responses:
         '200':
@@ -1532,7 +1532,7 @@ paths:
       security:
         - OauthSecurity:
             - user
-      operationId: listCclaWhitelistRequestsByCompanyAndProjectAndUser
+      operationId: listCclaAllowlistRequestsByCompanyAndProjectAndUser
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1550,7 +1550,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/ccla-whitelist-request-list'
+            $ref: '#/definitions/ccla-allowlist-request-list'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -1568,7 +1568,7 @@ paths:
       security:
         - OauthSecurity:
             - company
-      operationId: approveCclaWhitelistRequest
+      operationId: approveCclaAllowlistRequest
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1601,7 +1601,7 @@ paths:
       security:
         - OauthSecurity:
             - company
-      operationId: rejectCclaWhitelistRequest
+      operationId: rejectCclaAllowlistRequest
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1634,7 +1634,7 @@ paths:
       security:
         - OauthSecurity:
             - user
-      operationId: listCclaWhitelistRequests
+      operationId: listCclaAllowlistRequests
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1651,7 +1651,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/ccla-whitelist-request-list'
+            $ref: '#/definitions/ccla-allowlist-request-list'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -3005,7 +3005,7 @@ definitions:
   approval-list:
     $ref: './common/signature-approval-list.yaml'
 
-  ccla-whitelist-request-input:
+  ccla-allowlist-request-input:
     type: object
     x-nullable: false
     title: Ccla allowlist request input
@@ -3024,16 +3024,16 @@ definitions:
       message:
         type: string
 
-  ccla-whitelist-request-list:
+  ccla-allowlist-request-list:
     type: object
     properties:
       list:
         type: array
         items:
-          $ref: '#/definitions/ccla-whitelist-request'
+          $ref: '#/definitions/ccla-allowlist-request'
 
 
-  ccla-whitelist-request:
+  ccla-allowlist-request:
     type: object
     x-nullable: false
     title: Ccla allowlist request
