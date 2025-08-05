@@ -10,7 +10,7 @@ This platform supports both GitHub and Gerrit source code repositories. Addition
 
 ## Announcements
 
-- 06/10/2020 - We have replaced code references from whitelist to Approved List.  This includes package names, code comments, swagger specifications, API endpoints, variable names, and UI components.
+- 8/2025 - We have replaced code references from whitelist to Approved List.  This includes package names, code comments, swagger specifications, API endpoints, variable names, and UI components.
 
 ## Third-party Services
 

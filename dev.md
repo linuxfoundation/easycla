@@ -25,7 +25,7 @@ For all other folders which use node, use version 12.x+.
 
 In order to quickly switch between node versions, we recommend you use
 [Node Version Manager - nvm](https://github.com/nvm-sh/nvm). The CircleCI
-[build configuration](https://github.com/linuxfoundation/easycla/blob/master/.circleci/config.yml)
+[build configuration](https://github.com/linuxfoundation/easycla/blob/main/.github/workflows/build-pr.yml).
 uses this approach to switch between node versions within the build andx
 deployment.
 

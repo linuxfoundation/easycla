@@ -671,7 +671,7 @@ paths:
         - name: body
           in: body
           schema:
-            $ref: '#/definitions/gh-org-whitelist'
+            $ref: '#/definitions/gh-org-allowlist'
       responses:
         '204':
           description: 'Success'
@@ -707,7 +707,7 @@ paths:
         - name: body
           in: body
           schema:
-            $ref: '#/definitions/gh-org-whitelist'
+            $ref: '#/definitions/gh-org-allowlist'
       responses:
         '200':
           description: 'Success'
@@ -2776,8 +2776,8 @@ definitions:
           $ref: '#/definitions/user'
 
 
-  gh-org-whitelist:
-    $ref: './common/gh-org-whitelist.yaml'
+  gh-org-allowlist:
+    $ref: './common/gh-org-allowlist.yaml'
 
   github-org:
     $ref: './common/github-org.yaml'
@@ -3008,8 +3008,8 @@ definitions:
   ccla-whitelist-request-input:
     type: object
     x-nullable: false
-    title: Ccla whitelist request input
-    description: Ccla whitelist request input
+    title: Ccla allowlist request input
+    description: Ccla allowlist request input
     properties:
       contributorId:
         type: string
@@ -3036,8 +3036,8 @@ definitions:
   ccla-whitelist-request:
     type: object
     x-nullable: false
-    title: Ccla whitelist request
-    description: Ccla whitelist request
+    title: Ccla allowlist request
+    description: Ccla allowlist request
     properties:
       requestId:
         type: string

@@ -170,7 +170,7 @@ def request_company_whitelist(
     DATA: {'user_email': <email-selection>, 'message': 'custom message to manager'}
 
     Performs the necessary actions (ie: send email to manager) when the specified user requests to
-    be added the the specified company's whitelist.
+    be added the the specified company's allowlist.
     """
     return cla.controllers.user.request_company_whitelist(
         user_id, str(company_id), str(user_name), str(user_email), str(project_id), message,
@@ -739,7 +739,7 @@ def put_company_whitelist_csv(body, auth_user: check_auth, company_id: hug.types
     """
     PUT: /company/{company_id}/import/whitelist/csv
 
-    Imports a CSV file of whitelisted user emails.
+    Imports a CSV file of allowlisted user emails.
     Expects the first column to have a header in the first row and contain email addresses.
     """
     # staff_verify(user) or company_manager_verify(user, company_id)

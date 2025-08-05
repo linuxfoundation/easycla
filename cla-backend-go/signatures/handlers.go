@@ -205,7 +205,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 
 		ghApprovalList, err := service.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
 		if err != nil {
-			log.Warnf("error adding github organization %s using signature_id: %s to the whitelist, error: %+v",
+			log.Warnf("error adding github organization %s using signature_id: %s to the allowlist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
 			return signatures.NewAddGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
@@ -255,7 +255,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 
 		ghApprovalList, err := service.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
 		if err != nil {
-			log.Warnf("error deleting github organization %s using signature_id: %s from the whitelist, error: %+v",
+			log.Warnf("error deleting github organization %s using signature_id: %s from the allowlist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
 			return signatures.NewDeleteGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}

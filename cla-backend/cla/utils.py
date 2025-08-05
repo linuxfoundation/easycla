@@ -715,7 +715,7 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
                 )
                 return False
 
-            # Get CCLA signature of company to access whitelist
+            # Get CCLA signature of company to access allowlist
             cla.log.debug(
                 f"{fn} - CCLA signature check - loading signed CCLA for project|company, "
                 f"user: {user}, project_id: {project}, company_id: {company_id}"
@@ -742,7 +742,7 @@ def user_signed_project_signature(user: User, project: Project) -> bool:
                 if user.is_approved(signature):
                     ccla_pass = True
                 else:
-                    # Set user signatures approved = false due to user failing whitelist checks
+                    # Set user signatures approved = false due to user failing allowlist checks
                     cla.log.debug(
                         f"{fn} - user not in one of the approval lists - "
                         "marking signature approved = false for "
@@ -1734,18 +1734,18 @@ def update_github_username(github_user: dict, user: User):
 def is_approved(ccla_signature: Signature, email=None, github_username=None, github_id=None):
     """
     Given either email, github username or github id a check is made against ccla signature to
-    check whether a given parameter is whitelisted . This check is vital for a first time user
-    who could have been whitelisted and has not confirmed affiliation
+    check whether a given parameter is allowlisted . This check is vital for a first time user
+    who could have been allowlisted and has not confirmed affiliation
 
-    :param ccla_signature: given signature used to check for ccla whitelists
-    :param email: email that is checked against ccla signature email whitelist
-    :param github_username: A given github username checked against ccla signature github/github-org whitelists
-    :param github_id: A given github id checked against ccla signature github/github-org whitelists
+    :param ccla_signature: given signature used to check for ccla allowlists
+    :param email: email that is checked against ccla signature email allowlist
+    :param github_username: A given github username checked against ccla signature github/github-org allowlists
+    :param github_id: A given github id checked against ccla signature github/github-org allowlists
     """
     fn = "utils.is_approved"
 
     if email:
-        # Checking email whitelist
+        # Checking email allowlist
         whitelist = ccla_signature.get_email_whitelist()
         cla.log.debug(f"{fn} - testing email: {email} with CCLA approval list emails: {whitelist}")
         if whitelist is not None:
@@ -1753,7 +1753,7 @@ def is_approved(ccla_signature: Signature, email=None, github_username=None, git
                 cla.log.debug(f"{fn} found user email in email approval list")
                 return True
 
-        # Checking domain whitelist
+        # Checking domain allowlist
         patterns = ccla_signature.get_domain_whitelist()
         cla.log.debug(
             f"{fn} - testing user email domain: {email} with " f"domain approval list values in database: {patterns}"
@@ -1769,7 +1769,7 @@ def is_approved(ccla_signature: Signature, email=None, github_username=None, git
     if github_id:
         github_username = lookup_user_github_username(github_id)
 
-    # Github username whitelist
+    # Github username allowlist
     if github_username is not None:
         # remove leading and trailing whitespace from github username
         github_username = github_username.strip()

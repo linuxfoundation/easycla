@@ -3123,7 +3123,7 @@ paths:
         - name: body
           in: body
           schema:
-            $ref: '#/definitions/gh-org-whitelist'
+            $ref: '#/definitions/gh-org-allowlist'
       responses:
         '204':
           description: 'Resource Deleted'
@@ -3161,7 +3161,7 @@ paths:
         - name: body
           in: body
           schema:
-            $ref: '#/definitions/gh-org-whitelist'
+            $ref: '#/definitions/gh-org-allowlist'
       responses:
         '200':
           description: 'Success'
@@ -5084,8 +5084,8 @@ definitions:
   github-org:
     $ref: './common/github-org.yaml'
 
-  gh-org-whitelist:
-    $ref: './common/gh-org-whitelist.yaml'
+  gh-org-allowlist:
+    $ref: './common/gh-org-allowlist.yaml'
 
   add-gerrit-input:
     $ref: './common/add-gerrit-input.yaml'

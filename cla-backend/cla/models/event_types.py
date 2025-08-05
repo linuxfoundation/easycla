@@ -7,7 +7,7 @@ from enum import Enum
 class EventType(Enum):
     """
     Enumerator representing type of CLA events
-    across projects, users, signatures, whitelists
+    across projects, users, signatures, allowlists
     """
     CreateUser = "Create User"
     UpdateUser = "Update User"

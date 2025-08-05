@@ -51,7 +51,7 @@ class TestSignatureController(unittest.TestCase):
         old_sig.set_github_whitelist([])
         new_sig.set_github_whitelist(['githubuser'])
 
-        old_sig.set_email_whitelist(['whitelist.email@gmail.com'])
+        old_sig.set_email_whitelist(['allowlist.email@gmail.com'])
         new_sig.set_email_whitelist([])
 
         old_sig.set_github_org_whitelist(['githuborg'])
@@ -78,13 +78,13 @@ class TestSignatureController(unittest.TestCase):
         self.assertNotIn('b.com', body)
         self.assertIn('d.com', body)
         self.assertIn('githubuser', body)
-        self.assertIn('whitelist.email@gmail.com', body)
+        self.assertIn('allowlist.email@gmail.com', body)
         self.assertNotIn('githuborg', body)
         # check email sent to contributor - removed email
         msg = snsClient.emails_sent[1]
         msg = json.loads(msg)
         self.assertEqual(msg['data']['subject'], 'EasyCLA: Approval List Update for Project')
-        self.assertEqual(msg['data']['recipients'], ['whitelist.email@gmail.com'])
+        self.assertEqual(msg['data']['recipients'], ['allowlist.email@gmail.com'])
         body = msg['data']['body']
         self.assertIn('deleted', body)
         self.assertIn('Company', body)

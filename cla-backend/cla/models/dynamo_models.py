@@ -2037,11 +2037,11 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
     def is_approved(self, ccla_signature: Signature) -> bool:
         """
         Helper function to determine whether at least one of the user's email
-        addresses are whitelisted for a particular ccla signature.
+        addresses are allowlisted for a particular ccla signature.
 
         :param ccla_signature: The ccla signature to check against.
         :type ccla_signature: cla.models.Signature
-        :return: True if at least one email is whitelisted, False otherwise.
+        :return: True if at least one email is allowlisted, False otherwise.
         :rtype: bool
         """
         fn = 'dynamo_models.is_approved'
@@ -2051,7 +2051,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             # remove leading and trailing whitespace before checking emails
             emails = [email.strip() for email in emails]
 
-        # First, we check email whitelist
+        # First, we check email allowlist
         whitelist = ccla_signature.get_email_whitelist()
         cla.log.debug(f'{fn} - testing user emails: {emails} with '
                       f'CCLA approval emails: {whitelist}')
@@ -2063,9 +2063,9 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                     cla.log.debug(f'{fn} - found user email in email approval list')
                     return True
         else:
-            cla.log.debug(f'{fn} - no email whitelist match for user: {self}')
+            cla.log.debug(f'{fn} - no email allowlist match for user: {self}')
 
-        # Secondly, let's check domain whitelist
+        # Secondly, let's check domain allowlist
         # If a naked domain (e.g. google.com) is provided, we prefix it with '^.*@',
         # so that sub-domains are not allowed.
         # If a '*', '*.' or '.' prefix is provided, we replace the prefix with '.*\.',
@@ -2083,7 +2083,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             cla.log.debug(f'{fn} - no domain approval patterns defined - '
                           'skipping domain approval checks')
 
-        # Third and Forth, check github whitelists
+        # Third and Forth, check github allowlists
         github_username = self.get_user_github_username()
         github_id = self.get_user_github_id()
 
@@ -2091,7 +2091,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         # Since usernames can be changed, if we have the github_id already - let's
         # lookup the username by id to see if they have changed their username
         # if the username is different, then we should reset the field to the
-        # new value - this will potentially change the github username whitelist
+        # new value - this will potentially change the github username allowlist
         # since the old username is already in the list
 
         # Attempt to fetch the github username based on the github id
@@ -2117,7 +2117,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             github_username = github_username.strip()
             github_whitelist = ccla_signature.get_github_whitelist()
             cla.log.debug(f'{fn} - testing user github username: {github_username} with '
-                          f'CCLA github approval list: {github_whitelist}')
+                          f'CCLA github approval list: {github_allowlist}')
 
             if github_whitelist is not None:
                 # case insensitive search
@@ -2184,7 +2184,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             gitlab_username = gitlab_username.strip()
             gitlab_whitelist = ccla_signature.get_gitlab_username_approval_list()
             cla.log.debug(f'{fn} - testing user github username: {gitlab_username} with '
-                          f'CCLA github approval list: {gitlab_whitelist}')
+                          f'CCLA github approval list: {gitlab_allowlist}')
 
             if gitlab_whitelist is not None:
                 # case insensitive search
@@ -2213,7 +2213,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                     except DoesNotExist as err:
                         cla.log.debug(f'gitlab group with full path: {gl_name} does not exist: {err}')
 
-        cla.log.debug(f'{fn} - unable to find user in any whitelist')
+        cla.log.debug(f'{fn} - unable to find user in any allowlist')
         return False
 
     def get_users_by_company(self, company_id):
@@ -2551,7 +2551,7 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     project_signature_external_id_index = SignatureProjectExternalIndex()
     signature_project_reference_index = SignatureProjectReferenceIndex()
 
-    # approval lists (previously called whitelists) are only used by CCLAs
+    # approval lists (previously called allowlists) are only used by CCLAs
     domain_whitelist = ListAttribute(null=True)
     email_whitelist = ListAttribute(null=True)
     github_whitelist = ListAttribute(null=True)
@@ -2675,8 +2675,8 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             "reference type: {}, "
             "user cla company id: {}, signed: {}, signed_on: {}, signatory_name: {}, signing entity name: {},"
             "sigtype_signed_approved_id: {}, "
-            "approved: {}, embargo_acked: {}, domain whitelist: {}, "
-            "email whitelist: {}, github user whitelist: {}, github domain whitelist: {}, "
+            "approved: {}, embargo_acked: {}, domain allowlist: {}, "
+            "email allowlist: {}, github user allowlist: {}, github domain allowlist: {}, "
             "note: {},signature project external id: {}, signature company signatory id: {}, "
             "signature company signatory name: {}, signature company signatory email: {},"
             "signature company initial manager id: {}, signature company initial manager name: {},"
@@ -2986,7 +2986,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
     def set_signature_company_secondary_manager_list(self, signature_company_secondary_manager_list) -> None:
         self.model.signature_company_secondary_manager_list = signature_company_secondary_manager_list
 
-    # Remove leading and trailing whitespace for all items before setting whitelist
+    # Remove leading and trailing whitespace for all items before setting allowlist
 
     def set_domain_whitelist(self, domain_whitelist) -> None:
         self.model.domain_whitelist = [domain.strip() for domain in domain_whitelist]
