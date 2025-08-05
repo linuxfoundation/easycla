@@ -934,16 +934,16 @@ class Signature(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def get_domain_whitelist(self):
+    def get_domain_allowlist(self):
         raise NotImplementedError()
 
-    def get_email_whitelist(self):
+    def get_email_allowlist(self):
         raise NotImplementedError()
 
-    def get_github_whitelist(self):
+    def get_github_allowlist(self):
         raise NotImplementedError()
 
-    def get_github_org_whitelist(self):
+    def get_github_org_allowlist(self):
         raise NotImplementedError()
 
     def get_gitlab_org_approval_list(self):
@@ -1338,7 +1338,7 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def set_company_whitelist(self, allowlist):
+    def set_company_allowlist(self, allowlist):
         """
         Setter for an company's allowlisted domain names.
 
@@ -1348,7 +1348,7 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def add_company_whitelist(self, allowlist_item):
+    def add_company_allowlist(self, allowlist_item):
         """
         Adds another entry in the list of allowlisted domain names.
         Does not query the DB - save() will take care of that.
@@ -1358,7 +1358,7 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def remove_company_whitelist(self, allowlist_item):
+    def remove_company_allowlist(self, allowlist_item):
         """
         Removes an entry from the list of allowlisted domain names.
         Does not query the DB - save() will take care of that.
@@ -1368,7 +1368,7 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def set_company_whitelist_patterns(self, allowlist_patterns):
+    def set_company_allowlist_patterns(self, allowlist_patterns):
         """
         Setter for an company's allowlist regex patterns.
 
@@ -1380,7 +1380,7 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def add_company_whitelist_pattern(self, allowlist_pattern):
+    def add_company_allowlist_pattern(self, allowlist_pattern):
         """
         Adds another entry in the list of allowlistd patterns.
         Does not query the DB - save() will take care of that.
@@ -1390,7 +1390,7 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def remove_company_whitelist_pattern(self, allowlist_pattern):
+    def remove_company_allowlist_pattern(self, allowlist_pattern):
         """
         Removes an entry from the list of allowlisted domain names.
         Does not query the DB - save() will take care of that.
@@ -2317,9 +2317,9 @@ class ProjectCLAGroup(object):
         raise NotImplementedError()
 
 
-class CCLAWhitelistRequest(object):
+class CCLAAllowlistRequest(object):
     """
-    Interface to the CCLAWhitelistRequest Model
+    Interface to the CCLAAllowlistRequest Model
     """
 
     def to_dict(self):
@@ -2355,7 +2355,7 @@ class CCLAWhitelistRequest(object):
 
     def all(self):
         """
-        Fetches all CCLAWhitelistRequests in the CLA system.
+        Fetches all CCLAAllowlistRequests in the CLA system.
 
         :return: A list of projectCLAGroup objects.
         :rtype: [cla.models.model_interfaces.ProjectCLAGroup]

@@ -26,7 +26,7 @@ class EventType(Enum):
     RemovePermission = "Remove Permission"
     AddProjectManager = "Add Project Manager"
     RemoveProjectManager = "Remove Project Manager"
-    RequestCompanyWL = "Request Company Whitelist"
+    RequestCompanyWL = "Request Company Allowlist"
     InviteAdmin = "Invite Admin"
     RequestCCLA = "Request Company CCLA"
     RequestCompanyAdmin = "Request Company Admin access"

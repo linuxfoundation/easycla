@@ -9,7 +9,7 @@ import uuid
 
 import cla
 from cla.models import DoesNotExist
-from cla.models.dynamo_models import User, Company, Project, Event, CCLAWhitelistRequest, CompanyInvite
+from cla.models.dynamo_models import User, Company, Project, Event, CCLAAllowlistRequest, CompanyInvite
 from cla.models.event_types import EventType
 from cla.utils import get_user_instance, get_company_instance, get_email_service, get_email_sign_off_content, get_email_help_content, \
     append_email_help_sign_off_content
@@ -103,7 +103,7 @@ def get_users_company(user_company_id):
     return [user.to_dict() for user in users]
 
 
-def request_company_whitelist(user_id: str, company_id: str, user_name: str, user_email: str, project_id: str,
+def request_company_allowlist(user_id: str, company_id: str, user_name: str, user_email: str, project_id: str,
                               message: str = None, recipient_name: str = None, recipient_email: str = None):
     """
     Sends email to the specified company manager notifying them that a user has requested to be
@@ -285,15 +285,15 @@ def invite_cla_manager(contributor_id, contributor_name, contributor_email, cla_
                               company_name, False)
 
     # update ccla_allowlist_request
-    ccla_whitelist_request = CCLAWhitelistRequest()
-    ccla_whitelist_request.set_request_id(str(uuid.uuid4()))
-    ccla_whitelist_request.set_company_name(company_name)
-    ccla_whitelist_request.set_project_name(project_name)
-    ccla_whitelist_request.set_user_github_id(contributor_id)
-    ccla_whitelist_request.set_user_github_username(contributor_name)
-    ccla_whitelist_request.set_user_emails(set([contributor_email]))
-    ccla_whitelist_request.set_request_status("pending")
-    ccla_whitelist_request.save()
+    ccla_allowlist_request = CCLAAllowlistRequest()
+    ccla_allowlist_request.set_request_id(str(uuid.uuid4()))
+    ccla_allowlist_request.set_company_name(company_name)
+    ccla_allowlist_request.set_project_name(project_name)
+    ccla_allowlist_request.set_user_github_id(contributor_id)
+    ccla_allowlist_request.set_user_github_username(contributor_name)
+    ccla_allowlist_request.set_user_emails(set([contributor_email]))
+    ccla_allowlist_request.set_request_status("pending")
+    ccla_allowlist_request.save()
 
     Event.create_event(
         event_user_id=contributor_id,
@@ -356,15 +356,15 @@ def request_company_ccla(user_id, user_email, company_id, project_id):
            f'for company {company_name}')
     cla.log.debug(f'creating CCLA approval request table entry for {msg}')
     # Add an entry into the CCLA request table
-    ccla_whitelist_request = CCLAWhitelistRequest()
-    ccla_whitelist_request.set_request_id(str(uuid.uuid4()))
-    ccla_whitelist_request.set_company_name(company_name)
-    ccla_whitelist_request.set_project_name(project_name)
-    ccla_whitelist_request.set_user_github_id(user.get_user_github_id())
-    ccla_whitelist_request.set_user_github_username(user.get_user_github_username())
-    ccla_whitelist_request.set_user_emails({user_email})
-    ccla_whitelist_request.set_request_status("pending")
-    ccla_whitelist_request.save()
+    ccla_allowlist_request = CCLAAllowlistRequest()
+    ccla_allowlist_request.set_request_id(str(uuid.uuid4()))
+    ccla_allowlist_request.set_company_name(company_name)
+    ccla_allowlist_request.set_project_name(project_name)
+    ccla_allowlist_request.set_user_github_id(user.get_user_github_id())
+    ccla_allowlist_request.set_user_github_username(user.get_user_github_username())
+    ccla_allowlist_request.set_user_emails({user_email})
+    ccla_allowlist_request.set_request_status("pending")
+    ccla_allowlist_request.save()
     cla.log.debug(f'created CCLA approval request table entry for {msg}')
 
 

@@ -22,7 +22,7 @@ import falcon
 import requests
 from cla.middleware import CLALogMiddleware
 from cla.models import DoesNotExist
-from cla.models.dynamo_models import (CCLAWhitelistRequest, CLAManagerRequest,
+from cla.models.dynamo_models import (CCLAAllowlistRequest, CLAManagerRequest,
                                       Company, CompanyInvite, Document, Event,
                                       Gerrit, GitHubOrg, GitlabOrg, Project,
                                       ProjectCLAGroup, Repository, Signature,
@@ -132,7 +132,7 @@ def get_database_models(conf=None):
             "Event": Event,
             "CompanyInvites": CompanyInvite,
             "ProjectCLAGroup": ProjectCLAGroup,
-            "CCLAWhitelistRequest": CCLAWhitelistRequest,
+            "CCLAAllowlistRequest": CCLAAllowlistRequest,
             "CLAManagerRequest": CLAManagerRequest,
         }
     else:
@@ -296,17 +296,17 @@ def get_project_cla_group_instance(conf=None) -> ProjectCLAGroup:
     return get_database_models(conf)["ProjectCLAGroup"]()
 
 
-def get_ccla_whitelist_request_instance(conf=None) -> CCLAWhitelistRequest:
+def get_ccla_allowlist_request_instance(conf=None) -> CCLAAllowlistRequest:
     """
-    Helper function to get a database CCLAWhitelistRequest model
+    Helper function to get a database CCLAAllowlistRequest model
 
     :param conf: the configuration model
     :type conf: dict
-    :return: A CCLAWhitelistRequest model instance based on configuration
-    :rtype: cla.models.model_interfaces.CCLAWhitelistRequest
+    :return: A CCLAAllowlistRequest model instance based on configuration
+    :rtype: cla.models.model_interfaces.CCLAAllowlistRequest
     """
 
-    return get_database_models(conf)["CCLAWhitelistRequest"]()
+    return get_database_models(conf)["CCLAAllowlistRequest"]()
 
 
 def get_email_service(conf=None, initialize=True):
@@ -1746,15 +1746,15 @@ def is_approved(ccla_signature: Signature, email=None, github_username=None, git
 
     if email:
         # Checking email allowlist
-        whitelist = ccla_signature.get_email_whitelist()
-        cla.log.debug(f"{fn} - testing email: {email} with CCLA approval list emails: {whitelist}")
-        if whitelist is not None:
-            if email.lower() in (s.lower() for s in whitelist):
+        allowlist = ccla_signature.get_email_allowlist()
+        cla.log.debug(f"{fn} - testing email: {email} with CCLA approval list emails: {allowlist}")
+        if allowlist is not None:
+            if email.lower() in (s.lower() for s in allowlist):
                 cla.log.debug(f"{fn} found user email in email approval list")
                 return True
 
         # Checking domain allowlist
-        patterns = ccla_signature.get_domain_whitelist()
+        patterns = ccla_signature.get_domain_allowlist()
         cla.log.debug(
             f"{fn} - testing user email domain: {email} with " f"domain approval list values in database: {patterns}"
         )
@@ -1773,7 +1773,7 @@ def is_approved(ccla_signature: Signature, email=None, github_username=None, git
     if github_username is not None:
         # remove leading and trailing whitespace from github username
         github_username = github_username.strip()
-        github_approval_list = ccla_signature.get_github_whitelist()
+        github_approval_list = ccla_signature.get_github_allowlist()
         cla.log.debug(
             f"{fn} - testing user github username: {github_username} with "
             f"CCLA github approval list: {github_approval_list}"
@@ -1792,7 +1792,7 @@ def is_approved(ccla_signature: Signature, email=None, github_username=None, git
         github_orgs = cla.utils.lookup_github_organizations(github_username)
         if "error" not in github_orgs:
             # Fetch the list of orgs this user is part of
-            github_org_approval_list = ccla_signature.get_github_org_whitelist()
+            github_org_approval_list = ccla_signature.get_github_org_allowlist()
             cla.log.debug(
                 f"{fn} - testing user github orgs: {github_orgs} with "
                 f"CCLA github org approval list values: {github_org_approval_list}"

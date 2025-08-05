@@ -22,5 +22,5 @@ cla.log.info('Adding allowlist item to all companies: %s', allowlist)
 # User
 companies = get_company_instance().all()
 for company in companies:
-    company.add_company_whitelist(allowlist)
+    company.add_company_allowlist(allowlist)
     company.save()
