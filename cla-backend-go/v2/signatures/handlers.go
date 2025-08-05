@@ -246,7 +246,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			githubAccessToken = ""
 		}
 
-		input := v1Models.GhOrgWhitelist{}
+		input := v1Models.GhOrgAllowlist{}
 		err = copier.Copy(&input, &params.Body)
 		if err != nil {
 			return signatures.NewAddGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
@@ -314,7 +314,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			githubAccessToken = ""
 		}
 
-		input := v1Models.GhOrgWhitelist{}
+		input := v1Models.GhOrgAllowlist{}
 		err = copier.Copy(&input, &params.Body)
 		if err != nil {
 			return signatures.NewDeleteGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
