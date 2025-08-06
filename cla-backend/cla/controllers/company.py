@@ -223,7 +223,7 @@ def update_company_allowlist_csv(content, company_id, username=None):
     # Ready email addresses.
     emails = content.split('\n')
     emails = [email for email in emails if '@' in email]
-    current_allowlist = company.get_company_'allowlist'()
+    current_allowlist = company.get_company_allowlist()
     new_allowlist = list(set(current_allowlist + emails))
     company.set_company_allowlist(new_allowlist)
     company.save()
