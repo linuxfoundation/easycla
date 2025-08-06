@@ -1197,6 +1197,30 @@ class GitHub(repository_service_interface.RepositoryService):
         except BadCredentialsException as err:
             cla.log.error("Invalid GitHub credentials provided: %s", str(err))
 
+
+    def get_github_user_by_login(self, login, installation_id):
+        """
+        Helper method to get the GitHub user object from GitHub by their login (username).
+
+        :param login: The login (username) of the GitHub user.
+        :type login: string
+        :param installation_id: The ID of the GitHub application installed on this repository.
+        :type installation_id: int | None
+        """
+        cla.log.debug("Getting GitHub user by login: %s", login)
+        if self.client is None:
+            self.client = get_github_integration_client(installation_id)
+        try:
+            user = self.client.get_user(login)
+            return user
+        except UnknownObjectException:
+            cla.log.error("Could not find GitHub user with login: %s", login)
+            return None
+        except BadCredentialsException as err:
+            cla.log.error("Invalid GitHub credentials provided: %s", str(err))
+            return None
+
+
     def get_or_create_user(self, request):
         """
         Helper method to either get or create a user based on the GitHub request made.
@@ -1677,13 +1701,9 @@ def get_author_summary(commit, pr, installation_id) -> List[UserCommitSummary]:
             # check for co-author details
             # issue # 3884
             commit_authors.append(commit_author_summary)
-            # co_authors = cla.utils.get_co_authors_from_commit(commit)
-            # with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            #     for co_author in co_authors:
-            #         commit_authors.append(
-            #             executor.submit(get_co_author_commits, co_author, commit, pr, installation_id).result()
-            #         )
-
+            co_authors = cla.utils.get_co_authors_from_commit(commit)
+            for co_author in co_authors:
+                commit_authors.append(get_co_author_commits(co_author, commit, pr, installation_id))
             return commit_authors
         except (GithubException, IncompletableObject) as exc:
             cla.log.warning(f"{fn} - PR: {pr}, unable to get commit author summary: {exc}")
@@ -1708,17 +1728,26 @@ def get_author_summary(commit, pr, installation_id) -> List[UserCommitSummary]:
                 )
                 cla.log.debug(f"{fn} - PR: {pr}, {commit_author_summary}")
                 commit_authors.append(commit_author_summary)
+                co_authors = cla.utils.get_co_authors_from_commit(commit)
+                for co_author in co_authors:
+                    commit_authors.append(get_co_author_commits(co_author, commit, pr, installation_id))
                 return commit_authors
             except (GithubException, IncompletableObject) as exc:
                 cla.log.warning(f"{fn} - PR: {pr}, unable to get commit author summary: {exc}")
                 commit_author_summary = UserCommitSummary(commit.sha, None, None, None, None, False, False)
                 cla.log.warning(f"{fn} - PR: {pr}, " f"could not find any commit author for SHA {commit_author_summary}")
                 commit_authors.append(commit_author_summary)
+                co_authors = cla.utils.get_co_authors_from_commit(commit)
+                for co_author in co_authors:
+                    commit_authors.append(get_co_author_commits(co_author, commit, pr, installation_id))
                 return commit_authors
     else:
         cla.log.warning(f"{fn} - PR: {pr}, " f"could not find any commit author for SHA {commit.sha}")
         commit_author_summary = UserCommitSummary(commit.sha, None, None, None, None, False, False)
         commit_authors.append(commit_author_summary)
+        co_authors = cla.utils.get_co_authors_from_commit(commit)
+        for co_author in co_authors:
+            commit_authors.append(get_co_author_commits(co_author, commit, pr, installation_id))
         return commit_authors
 
 
@@ -1768,20 +1797,32 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
     login, github_id = None, None
     email = co_author[1]
     name = co_author[0]
+
     # get repository service
     github = cla.utils.get_repository_service("github")
+
     cla.log.debug(f"{fn} - getting co-author details: {co_author}, email: {email}, name: {name}")
     try:
         user = github.get_github_user_by_email(email, installation_id)
     except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
         # user not found
-        cla.log.debug(f"{fn} - co-author github user not found : {co_author} with exception: {ex}")
+        cla.log.debug(f"{fn} - co-author github user not found via email {email}: {co_author} with exception: {ex}")
         user = None
+    if user is None:
+        try:
+            # Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
+            user = github.get_github_user_by_login(name, installation_id)
+        except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
+            # user not found
+            cla.log.debug(f"{fn} - co-author github user not found via login=name: {name}: {co_author} with exception: {ex}")
+            user = None
+
     cla.log.debug(f"{fn} - co-author: {co_author}, user: {user}")
+
     if user:
-        cla.log.debug(f"{fn} - co-author github user details found : {co_author}, user: {user}")
         login = user.login
         github_id = user.id
+        cla.log.debug(f"{fn} - co-author github user details found : {co_author}, user: {user}, login: {login}, id: {github_id}")
         co_author_summary = UserCommitSummary(
             commit.sha,
             github_id,
