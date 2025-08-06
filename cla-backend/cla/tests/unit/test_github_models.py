@@ -55,6 +55,7 @@ class TestGetPullRequestCommitAuthors(TestCase):
         commit = MagicMock()
         commit.sha = "fake_sha"
         mock_github_instance.return_value.get_github_user_by_email.return_value = None
+        mock_github_instance.return_value.get_github_user_by_login.return_value = None
         pr = 1
         installation_id = 123
 
@@ -74,6 +75,7 @@ class TestGetPullRequestCommitAuthors(TestCase):
         co_author = ("co_author", "co_author_email.gmail.com")
         commit = MagicMock()
         commit.sha = "fake_sha"
+        mock_github_instance.return_value.get_github_user_by_login.return_value = None
         mock_github_instance.return_value.get_github_user_by_email.return_value = Mock(
             id=123, login="co_author_login"
         )
