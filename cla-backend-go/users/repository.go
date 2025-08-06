@@ -59,7 +59,7 @@ type repository struct {
 	companyTableName string
 }
 
-// NewRepository creates a new instance of the whitelist service
+// NewRepository creates a new instance of the service
 func NewRepository(awsSession *session.Session, stage string) UserRepository {
 	return repository{
 		stage:            stage,

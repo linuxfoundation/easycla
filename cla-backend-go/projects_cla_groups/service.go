@@ -27,7 +27,7 @@ type Service struct {
 	repo Repository
 }
 
-// NewService creates a new whitelist service
+// NewService creates a new service
 func NewService(repo Repository) Service {
 	return Service{
 		repo,

@@ -6,13 +6,24 @@ then
   export STAGE=dev
 fi
 
+if [ -z "${REGION}" ]
+then
+  export REGION="us-east-1"
+fi
+
 if [ -z "${1}" ]
 then
-  echo "$0: you must specify log group name, for example: 'cla-backend-dev-githubactivity', 'cla-backend-dev-apiv2', 'cla-backend-dev-api-v3-lambda', 'cla-backend-go-api-v4-lambda'"
+  echo "$0: you must specify log group name, for example: 'cla-backend-dev-githubactivity', 'cla-backend-prod-apiv2', 'cla-backend-dev-api-v3-lambda', 'cla-backend-go-api-v4-lambda'"
+  echo "or short group name: 'githubactivity', 'apiv2', 'api-v3-lambda'"
   exit 1
 fi
 
 log_group=$(echo "$1" | sed -E "s/\b(dev|prod)\b/${STAGE}/g")
+
+if [[ ! "$log_group" =~ ^cla-backend- ]]
+then
+  log_group="cla-backend-${STAGE}-$log_group"
+fi
 
 if [ -z "${2}" ]
 then
@@ -36,9 +47,9 @@ fi
 
 if [ ! -z "${DEBUG}" ]
 then
-  echo "aws --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern \"${2}\""
-  aws --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${2}\""
+  echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern \"${2}\""
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${2}\""
 else
-  aws --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${2}\"" | jq -r '.events'
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${2}\"" | jq -r '.events'
 fi
 

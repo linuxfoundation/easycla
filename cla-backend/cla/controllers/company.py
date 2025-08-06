@@ -203,13 +203,13 @@ def update_company(company_id: str,  # pylint: disable=too-many-arguments
 
 
 '''
-def update_company_whitelist_csv(content, company_id, username=None):
+def update_company_allowlist_csv(content, company_id, username=None):
     """
-    Adds the CSV of email addresses to this company's whitelist.
+    Adds the CSV of email addresses to this company's allowlist.
 
     :param content: The content posted to this endpoint (CSV data).
     :type content: string
-    :param company_id: The ID of the company to add to the whitelist.
+    :param company_id: The ID of the company to add to the allowlist.
     :type company_id: UUID
     """
     company = Company()
@@ -223,9 +223,9 @@ def update_company_whitelist_csv(content, company_id, username=None):
     # Ready email addresses.
     emails = content.split('\n')
     emails = [email for email in emails if '@' in email]
-    current_whitelist = company.get_company_'whitelist'()
-    new_whitelist = list(set(current_whitelist + emails))
-    company.set_company_whitelist(new_whitelist)
+    current_allowlist = company.get_company_allowlist()
+    new_allowlist = list(set(current_allowlist + emails))
+    company.set_company_allowlist(new_allowlist)
     company.save()
     return company.to_dict()
 '''

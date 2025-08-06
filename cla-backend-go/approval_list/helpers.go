@@ -12,11 +12,11 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
-// buildCclaWhitelistRequestsModels builds the request models
-func buildCclaWhitelistRequestsModels(results *dynamodb.QueryOutput) ([]models.CclaWhitelistRequest, error) {
-	requests := make([]models.CclaWhitelistRequest, 0)
+// buildCclaAllowlistRequestsModels builds the request models
+func buildCclaAllowlistRequestsModels(results *dynamodb.QueryOutput) ([]models.CclaAllowlistRequest, error) {
+	requests := make([]models.CclaAllowlistRequest, 0)
 
-	var itemRequests []CclaWhitelistRequest
+	var itemRequests []CclaAllowlistRequest
 
 	err := dynamodbattribute.UnmarshalListOfMaps(results.Items, &itemRequests)
 	if err != nil {
@@ -25,7 +25,7 @@ func buildCclaWhitelistRequestsModels(results *dynamodb.QueryOutput) ([]models.C
 		return nil, err
 	}
 	for _, r := range itemRequests {
-		requests = append(requests, models.CclaWhitelistRequest{
+		requests = append(requests, models.CclaAllowlistRequest{
 			CompanyID:          r.CompanyID,
 			CompanyName:        r.CompanyName,
 			DateCreated:        r.DateCreated,
