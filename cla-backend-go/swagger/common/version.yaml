@@ -17,7 +17,7 @@ properties:
   branch:
     type: string
     description: the branch name of the software for this version of the product
-    example: 'master'
+    example: 'main'
   buildDate:
     type: string
     description: the build date/time of the software for this version of the product

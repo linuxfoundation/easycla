@@ -152,9 +152,9 @@ def get_users_company(auth_user: check_auth, user_company_id: hug.types.uuid):
     """
     return cla.controllers.user.get_users_company(user_company_id)
 
-
+# We can't change API URL to be inclusive yet as this woudl break all consumers and require acs-cli and lfx-gateway updates
 @hug.post("/user/{user_id}/request-company-whitelist/{company_id}", versions=2)
-def request_company_whitelist(
+def request_company_allowlist(
         user_id: hug.types.uuid,
         company_id: hug.types.uuid,
         user_name: hug.types.text,
@@ -170,9 +170,9 @@ def request_company_whitelist(
     DATA: {'user_email': <email-selection>, 'message': 'custom message to manager'}
 
     Performs the necessary actions (ie: send email to manager) when the specified user requests to
-    be added the the specified company's whitelist.
+    be added the the specified company's allowlist.
     """
-    return cla.controllers.user.request_company_whitelist(
+    return cla.controllers.user.request_company_allowlist(
         user_id, str(company_id), str(user_name), str(user_email), str(project_id), message,
         str(recipient_name), str(recipient_email),
     )
@@ -341,6 +341,7 @@ def post_signature(
     )
 
 
+# We can't change API parameters to be inclusive yet as this woudl break all consumers and require acs-cli and lfx-gateway updates
 @hug.put(
     "/signature",
     versions=1,
@@ -359,7 +360,7 @@ def put_signature(
         signature_embargo_acked=None,
         signature_return_url=None,
         signature_sign_url=None,
-        domain_whitelist=None,
+        domain_whitelist=None, # bacause they come from API parameter we can't change to inclusive names yet
         email_whitelist=None,
         github_whitelist=None,
         github_org_whitelist=None,
@@ -386,10 +387,10 @@ def put_signature(
         signature_embargo_acked=signature_embargo_acked,
         signature_return_url=signature_return_url,
         signature_sign_url=signature_sign_url,
-        domain_whitelist=domain_whitelist,
-        email_whitelist=email_whitelist,
-        github_whitelist=github_whitelist,
-        github_org_whitelist=github_org_whitelist,
+        domain_allowlist=domain_whitelist, # bacause they come from API parameter we can't change to inclusive names yet
+        email_allowlist=email_whitelist,
+        github_allowlist=github_whitelist,
+        github_org_allowlist=github_org_whitelist,
     )
 
 
@@ -734,17 +735,18 @@ def delete_company(auth_user: check_auth, company_id: hug.types.text):
     return cla.controllers.company.delete_company(company_id, username=auth_user.username)
 
 
+# We can't change API URL to be inclusive yet as this woudl break all consumers and require acs-cli and lfx-gateway updates
 @hug.put("/company/{company_id}/import/whitelist/csv", versions=1)
-def put_company_whitelist_csv(body, auth_user: check_auth, company_id: hug.types.uuid):
+def put_company_allowlist_csv(body, auth_user: check_auth, company_id: hug.types.uuid):
     """
     PUT: /company/{company_id}/import/whitelist/csv
 
-    Imports a CSV file of whitelisted user emails.
+    Imports a CSV file of allowlisted user emails.
     Expects the first column to have a header in the first row and contain email addresses.
     """
     # staff_verify(user) or company_manager_verify(user, company_id)
     content = body.read().decode()
-    return cla.controllers.company.update_company_whitelist_csv(content, company_id, username=auth_user.username)
+    return cla.controllers.company.update_company_allowlist_csv(content, company_id, username=auth_user.username)
 
 
 @hug.get("/companies/{manager_id}", version=1)
