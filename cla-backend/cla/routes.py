@@ -152,7 +152,7 @@ def get_users_company(auth_user: check_auth, user_company_id: hug.types.uuid):
     """
     return cla.controllers.user.get_users_company(user_company_id)
 
-# We can't change API URL to be inclusive yet as this woudl break all consumers and require acs-cli and lfx-gateway updates
+# We can't change API URL to be inclusive yet as this would break all consumers and require acs-cli and lfx-gateway updates
 @hug.post("/user/{user_id}/request-company-whitelist/{company_id}", versions=2)
 def request_company_allowlist(
         user_id: hug.types.uuid,
@@ -341,7 +341,7 @@ def post_signature(
     )
 
 
-# We can't change API parameters to be inclusive yet as this woudl break all consumers and require acs-cli and lfx-gateway updates
+# We can't change API parameters to be inclusive yet as this would break all consumers and require acs-cli and lfx-gateway updates
 @hug.put(
     "/signature",
     versions=1,
@@ -360,7 +360,7 @@ def put_signature(
         signature_embargo_acked=None,
         signature_return_url=None,
         signature_sign_url=None,
-        domain_whitelist=None, # bacause they come from API parameter we can't change to inclusive names yet
+        domain_whitelist=None, # because they come from API parameter we can't change to inclusive names yet
         email_whitelist=None,
         github_whitelist=None,
         github_org_whitelist=None,
@@ -387,7 +387,7 @@ def put_signature(
         signature_embargo_acked=signature_embargo_acked,
         signature_return_url=signature_return_url,
         signature_sign_url=signature_sign_url,
-        domain_allowlist=domain_whitelist, # bacause they come from API parameter we can't change to inclusive names yet
+        domain_allowlist=domain_whitelist, # because they come from API parameter we can't change to inclusive names yet
         email_allowlist=email_whitelist,
         github_allowlist=github_whitelist,
         github_org_allowlist=github_org_whitelist,
@@ -735,7 +735,7 @@ def delete_company(auth_user: check_auth, company_id: hug.types.text):
     return cla.controllers.company.delete_company(company_id, username=auth_user.username)
 
 
-# We can't change API URL to be inclusive yet as this woudl break all consumers and require acs-cli and lfx-gateway updates
+# We can't change API URL to be inclusive yet as this would break all consumers and require acs-cli and lfx-gateway updates
 @hug.put("/company/{company_id}/import/whitelist/csv", versions=1)
 def put_company_allowlist_csv(body, auth_user: check_auth, company_id: hug.types.uuid):
     """
