@@ -312,6 +312,7 @@ it("Returns a list of user signatures when provided the user ID", function () {
 it("GET: Updates the specified signature GitHub Organization approval list", function () {
     cy.request({
       method: 'GET',
+      // we can't use inclusive name yet as it is inside API URL.
       url: `${claEndpoint}/signatures/${signatureID}/gh-org-whitelist`,
       auth: {
         'bearer': bearerToken,
@@ -324,6 +325,7 @@ it("GET: Updates the specified signature GitHub Organization approval list", fun
 it.skip("POST: Updates the specified signature GitHub organization approval list", function () {
     cy.request({
       method: 'POST',
+      // we can't use inclusive name yet as it is inside API URL.
       url: `${claEndpoint}/signatures/${signatureID}/gh-org-whitelist`,
       auth: {
         'bearer': bearerToken,

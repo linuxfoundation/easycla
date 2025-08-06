@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from cla.controllers import user as user_controller
-from cla.models.dynamo_models import (CCLAWhitelistRequest, Company,
+from cla.models.dynamo_models import (CCLAAllowlistRequest, Company,
                                       CompanyInvite, Project, User)
 from cla.models.event_types import EventType
 
@@ -56,7 +56,7 @@ class TestRequestCompanyApprovalList:
             Project.get_project_id = Mock(return_value=project.get_project_id())
             user_controller.get_email_service = Mock()
             user_controller.send = Mock()
-            user_controller.request_company_whitelist(
+            user_controller.request_company_allowlist(
                 user.get_user_id(),
                 company.get_company_id(),
                 user.get_user_name(),
@@ -88,12 +88,12 @@ class TestInviteClaManager:
     def setup(self):
         self.user_load = User.load
         self.load_project_by_name = Project.load_project_by_name
-        self.save = CCLAWhitelistRequest.save
+        self.save = CCLAAllowlistRequest.save
 
     def teardown(self):
         User.load = self.user_load
         Project.load_project_by_name = self.load_project_by_name
-        CCLAWhitelistRequest.save = self.save
+        CCLAAllowlistRequest.save = self.save
 
     @patch('cla.controllers.user.Event.create_event')
     def test_invite_cla_manager(self, mock_event, create_event_user, user):
@@ -104,7 +104,7 @@ class TestInviteClaManager:
         Company.get_company_id = Mock(return_value='foo_id')
         User.get_user_id = Mock(return_value='foo_id')
         CompanyInvite.save = Mock()
-        CCLAWhitelistRequest.save = Mock()
+        CCLAAllowlistRequest.save = Mock()
         user_controller.send_email_to_cla_manager = Mock()
         contributor_id = user.get_user_id()
         contributor_name = user.get_user_name()
@@ -163,7 +163,7 @@ class TestRequestCompanyCCLA:
         manager = User(lf_username="harold", user_email="foo@gmail.com")
         Company.get_managers = Mock(return_value=[manager, ])
         event_data = f"Sent email to sign ccla for {project.get_project_name()}"
-        CCLAWhitelistRequest.save = Mock(return_value=None)
+        CCLAAllowlistRequest.save = Mock(return_value=None)
         user_controller.request_company_ccla(
             user.get_user_id(), email, company.get_company_id(), project.get_project_id()
         )

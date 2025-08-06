@@ -146,8 +146,8 @@ func (t *TestBehaviour) RunGetProtectedBranch(assertBranchProtection *models.Git
 				return
 			}
 
-			if response.BranchName == nil || *response.BranchName != "master" {
-				F.AddError("Get Protected Branch - Default Branch Name expected : master")
+			if response.BranchName == nil || *response.BranchName != "main" {
+				F.AddError("Get Protected Branch - Default Branch Name expected : main")
 			}
 
 			if len(response.StatusChecks) == 0 {
@@ -196,7 +196,7 @@ func (t *TestBehaviour) RunUpdateProtectionBranch(msg string, param *models.Gith
 		})
 
 	t.RunGetProtectedBranch(&models.GithubRepositoryBranchProtection{
-		BranchName:        swag.String("master"),
+		BranchName:        swag.String("main"),
 		EnforceAdmin:      *param.EnforceAdmin,
 		ProtectionEnabled: true,
 		StatusChecks:      param.StatusChecks,
