@@ -57,7 +57,7 @@ def create_database():
         GitHubOrgModel,
         GerritModel,
         EventModel,
-        CCLAWhitelistRequestModel,
+        CCLAAllowlistRequestModel,
 
     ]
     # Create all required tables.
@@ -82,7 +82,7 @@ def delete_database():
         StoreModel,
         GitHubOrgModel,
         GerritModel,
-        CCLAWhitelistRequestModel,
+        CCLAAllowlistRequestModel,
     ]
     # Delete all existing tables.
     for table in tables:
@@ -700,7 +700,7 @@ class CompanyIDProjectIDIndex(GlobalSecondaryIndex):
     """
 
     class Meta:
-        """ Meta class for ccla-whitelist-requests company-id-project-id-index """
+        """ Meta class for ccla-allowlist-requests company-id-project-id-index """
         index_name = "company-id-project-id-index"
         write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
         read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
@@ -2037,11 +2037,11 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
     def is_approved(self, ccla_signature: Signature) -> bool:
         """
         Helper function to determine whether at least one of the user's email
-        addresses are whitelisted for a particular ccla signature.
+        addresses are allowlisted for a particular ccla signature.
 
         :param ccla_signature: The ccla signature to check against.
         :type ccla_signature: cla.models.Signature
-        :return: True if at least one email is whitelisted, False otherwise.
+        :return: True if at least one email is allowlisted, False otherwise.
         :rtype: bool
         """
         fn = 'dynamo_models.is_approved'
@@ -2051,26 +2051,26 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             # remove leading and trailing whitespace before checking emails
             emails = [email.strip() for email in emails]
 
-        # First, we check email whitelist
-        whitelist = ccla_signature.get_email_whitelist()
+        # First, we check email allowlist
+        allowlist = ccla_signature.get_email_allowlist()
         cla.log.debug(f'{fn} - testing user emails: {emails} with '
-                      f'CCLA approval emails: {whitelist}')
+                      f'CCLA approval emails: {allowlist}')
 
-        if whitelist is not None:
+        if allowlist is not None:
             for email in emails:
                 # Case insensitive match
-                if email.lower() in (s.lower() for s in whitelist):
+                if email.lower() in (s.lower() for s in allowlist):
                     cla.log.debug(f'{fn} - found user email in email approval list')
                     return True
         else:
-            cla.log.debug(f'{fn} - no email whitelist match for user: {self}')
+            cla.log.debug(f'{fn} - no email allowlist match for user: {self}')
 
-        # Secondly, let's check domain whitelist
+        # Secondly, let's check domain allowlist
         # If a naked domain (e.g. google.com) is provided, we prefix it with '^.*@',
         # so that sub-domains are not allowed.
         # If a '*', '*.' or '.' prefix is provided, we replace the prefix with '.*\.',
         # which will allow subdomains.
-        patterns = ccla_signature.get_domain_whitelist()
+        patterns = ccla_signature.get_domain_allowlist()
         cla.log.debug(f'{fn} - testing user email domains: {emails} with '
                       f'domain approval values: {patterns}')
 
@@ -2083,7 +2083,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
             cla.log.debug(f'{fn} - no domain approval patterns defined - '
                           'skipping domain approval checks')
 
-        # Third and Forth, check github whitelists
+        # Third and Forth, check github allowlists
         github_username = self.get_user_github_username()
         github_id = self.get_user_github_id()
 
@@ -2091,7 +2091,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         # Since usernames can be changed, if we have the github_id already - let's
         # lookup the username by id to see if they have changed their username
         # if the username is different, then we should reset the field to the
-        # new value - this will potentially change the github username whitelist
+        # new value - this will potentially change the github username allowlist
         # since the old username is already in the list
 
         # Attempt to fetch the github username based on the github id
@@ -2115,13 +2115,13 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         if github_username is not None:
             # remove leading and trailing whitespace from github username
             github_username = github_username.strip()
-            github_whitelist = ccla_signature.get_github_whitelist()
+            github_allowlist = ccla_signature.get_github_allowlist()
             cla.log.debug(f'{fn} - testing user github username: {github_username} with '
-                          f'CCLA github approval list: {github_whitelist}')
+                          f'CCLA github approval list: {github_allowlist}')
 
-            if github_whitelist is not None:
+            if github_allowlist is not None:
                 # case insensitive search
-                if github_username.lower() in (s.lower() for s in github_whitelist):
+                if github_username.lower() in (s.lower() for s in github_allowlist):
                     cla.log.debug(f'{fn} - found github username in github approval list')
                     return True
         else:
@@ -2131,7 +2131,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         # Check github org approval list
         if github_username is not None:
             # Load the github org approval list for this CCLA signature record
-            github_org_approval_list = ccla_signature.get_github_org_whitelist()
+            github_org_approval_list = ccla_signature.get_github_org_allowlist()
             if github_org_approval_list is not None:
                 # Fetch the list of orgs associated with this user
                 cla.log.debug(f'{fn} - determining if github user {github_username} is associated '
@@ -2182,13 +2182,13 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         if gitlab_username is not None:
             # remove leading and trailing whitespace from gitlab username
             gitlab_username = gitlab_username.strip()
-            gitlab_whitelist = ccla_signature.get_gitlab_username_approval_list()
+            gitlab_allowlist = ccla_signature.get_gitlab_username_approval_list()
             cla.log.debug(f'{fn} - testing user github username: {gitlab_username} with '
-                          f'CCLA github approval list: {gitlab_whitelist}')
+                          f'CCLA github approval list: {gitlab_allowlist}')
 
-            if gitlab_whitelist is not None:
+            if gitlab_allowlist is not None:
                 # case insensitive search
-                if gitlab_username.lower() in (s.lower() for s in gitlab_whitelist):
+                if gitlab_username.lower() in (s.lower() for s in gitlab_allowlist):
                     cla.log.debug(f'{fn} - found gitlab username in gitlab approval list')
                     return True
         else:
@@ -2213,7 +2213,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
                     except DoesNotExist as err:
                         cla.log.debug(f'gitlab group with full path: {gl_name} does not exist: {err}')
 
-        cla.log.debug(f'{fn} - unable to find user in any whitelist')
+        cla.log.debug(f'{fn} - unable to find user in any allowlist')
         return False
 
     def get_users_by_company(self, company_id):
@@ -2551,7 +2551,8 @@ class SignatureModel(BaseModel):  # pylint: disable=too-many-instance-attributes
     project_signature_external_id_index = SignatureProjectExternalIndex()
     signature_project_reference_index = SignatureProjectReferenceIndex()
 
-    # approval lists (previously called whitelists) are only used by CCLAs
+    # approval lists (previously called allowlists) are only used by CCLAs
+    # we can't update their names to be inclusive yet as they are DynamoDB item properties
     domain_whitelist = ListAttribute(null=True)
     email_whitelist = ListAttribute(null=True)
     github_whitelist = ListAttribute(null=True)
@@ -2601,10 +2602,10 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             signature_acl=set(),
             signature_return_url_type=None,
             signature_envelope_id=None,
-            domain_whitelist=None,
-            email_whitelist=None,
-            github_whitelist=None,
-            github_org_whitelist=None,
+            domain_allowlist=None,
+            email_allowlist=None,
+            github_allowlist=None,
+            github_org_allowlist=None,
             note=None,
             signature_project_external_id=None,
             signature_company_signatory_id=None,
@@ -2649,10 +2650,11 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
         self.model.signature_acl = signature_acl
         self.model.signature_return_url_type = signature_return_url_type
         self.model.signature_envelope_id = signature_envelope_id
-        self.model.domain_whitelist = domain_whitelist
-        self.model.email_whitelist = email_whitelist
-        self.model.github_whitelist = github_whitelist
-        self.model.github_org_whitelist = github_org_whitelist
+        # we can't update their names to be inclusive yet as they are DynamoDB item properties
+        self.model.domain_whitelist = domain_allowlist
+        self.model.email_whitelist = email_allowlist
+        self.model.github_whitelist = github_allowlist
+        self.model.github_org_whitelist = github_org_allowlist
         self.model.note = note
         self.model.signature_project_external_id = signature_project_external_id
         self.model.signature_company_signatory_id = signature_company_signatory_id
@@ -2675,8 +2677,8 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             "reference type: {}, "
             "user cla company id: {}, signed: {}, signed_on: {}, signatory_name: {}, signing entity name: {},"
             "sigtype_signed_approved_id: {}, "
-            "approved: {}, embargo_acked: {}, domain whitelist: {}, "
-            "email whitelist: {}, github user whitelist: {}, github domain whitelist: {}, "
+            "approved: {}, embargo_acked: {}, domain allowlist: {}, "
+            "email allowlist: {}, github user allowlist: {}, github domain allowlist: {}, "
             "note: {},signature project external id: {}, signature company signatory id: {}, "
             "signature company signatory name: {}, signature company signatory email: {},"
             "signature company initial manager id: {}, signature company initial manager name: {},"
@@ -2700,6 +2702,7 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
             self.model.sigtype_signed_approved_id,
             self.model.signature_approved,
             self.model.signature_embargo_acked,
+            # we can't update their names to be inclusive yet as they are DynamoDB item properties
             self.model.domain_whitelist,
             self.model.email_whitelist,
             self.model.github_whitelist,
@@ -2826,16 +2829,20 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
     def get_signature_envelope_id(self):
         return self.model.signature_envelope_id
 
-    def get_domain_whitelist(self):
+    # we can't update their names to be inclusive yet as they are DynamoDB item properties
+    def get_domain_allowlist(self):
         return self.model.domain_whitelist
 
-    def get_email_whitelist(self):
+    # we can't update their names to be inclusive yet as they are DynamoDB item properties
+    def get_email_allowlist(self):
         return self.model.email_whitelist
 
-    def get_github_whitelist(self):
+    # we can't update their names to be inclusive yet as they are DynamoDB item properties
+    def get_github_allowlist(self):
         return self.model.github_whitelist
 
-    def get_github_org_whitelist(self):
+    # we can't update their names to be inclusive yet as they are DynamoDB item properties
+    def get_github_org_allowlist(self):
         return self.model.github_org_whitelist
 
     def get_gitlab_org_approval_list(self):
@@ -2986,19 +2993,23 @@ class Signature(model_interfaces.Signature):  # pylint: disable=too-many-public-
     def set_signature_company_secondary_manager_list(self, signature_company_secondary_manager_list) -> None:
         self.model.signature_company_secondary_manager_list = signature_company_secondary_manager_list
 
-    # Remove leading and trailing whitespace for all items before setting whitelist
+    # Remove leading and trailing whitespace for all items before setting allowlist
 
-    def set_domain_whitelist(self, domain_whitelist) -> None:
-        self.model.domain_whitelist = [domain.strip() for domain in domain_whitelist]
+    # we can't update their names to be inclusive yet as they are DynamoDB item properties
+    def set_domain_allowlist(self, domain_allowlist) -> None:
+        self.model.domain_whitelist = [domain.strip() for domain in domain_allowlist]
 
-    def set_email_whitelist(self, email_whitelist) -> None:
-        self.model.email_whitelist = [email.strip() for email in email_whitelist]
+    # we can't update their names to be inclusive yet as they are DynamoDB item properties
+    def set_email_allowlist(self, email_allowlist) -> None:
+        self.model.email_whitelist = [email.strip() for email in email_allowlist]
 
-    def set_github_whitelist(self, github_whitelist) -> None:
-        self.model.github_whitelist = [github_user.strip() for github_user in github_whitelist]
+    # we can't update their names to be inclusive yet as they are DynamoDB item properties
+    def set_github_allowlist(self, github_allowlist) -> None:
+        self.model.github_whitelist = [github_user.strip() for github_user in github_allowlist]
 
-    def set_github_org_whitelist(self, github_org_whitelist) -> None:
-        self.model.github_org_whitelist = [github_org.strip() for github_org in github_org_whitelist]
+    # we can't update their names to be inclusive yet as they are DynamoDB item properties
+    def set_github_org_allowlist(self, github_org_allowlist) -> None:
+        self.model.github_org_whitelist = [github_org.strip() for github_org in github_org_allowlist]
 
     def set_gitlab_username_approval_list(self, gitlab_username_approval_list) -> None:
         self.model.gitlab_username_approval_list = [gitlab_user.strip() for gitlab_user in
@@ -5305,14 +5316,15 @@ class Event(model_interfaces.Event):
             return {"errors": {"event_id": str(err)}}
 
 
-class CCLAWhitelistRequestModel(BaseModel):
+class CCLAAllowlistRequestModel(BaseModel):
     """
-    Represents a CCLAWhitelistRequest in the database
+    Represents a CCLAAllowlistRequest in the database
     """
 
     class Meta:
-        """ Meta class for cclawhitelistrequest """
+        """ Meta class for cclaallowlistrequest """
 
+        # we can't update this to be inclusive yet as it is a DynamoDB table name
         table_name = "cla-{}-ccla-whitelist-requests".format(stage)
         if stage == "local":
             host = "http://localhost:8000"
@@ -5332,9 +5344,9 @@ class CCLAWhitelistRequestModel(BaseModel):
     company_id_project_id_index = CompanyIDProjectIDIndex()
 
 
-class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
+class CCLAAllowlistRequest(model_interfaces.CCLAAllowlistRequest):
     """
-    ORM-agnostic wrapper for the DynamoDB CCLAWhitelistRequestModel
+    ORM-agnostic wrapper for the DynamoDB CCLAAllowlistRequestModel
     """
 
     def __init__(
@@ -5352,8 +5364,8 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
             user_name=None,
             project_external_id=None,
     ):
-        super(CCLAWhitelistRequest).__init__()
-        self.model = CCLAWhitelistRequestModel()
+        super(CCLAAllowlistRequest).__init__()
+        self.model = CCLAAllowlistRequestModel()
         self.model.request_id = request_id
         self.model.company_id = company_id
         self.model.company_name = company_name
@@ -5391,9 +5403,9 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
 
     def load(self, request_id):
         try:
-            ccla_whitelist_request = self.model.get(str(request_id))
-        except CCLAWhitelistRequest.DoesNotExist:
-            raise cla.models.DoesNotExist("CCLAWhitelistRequest not found")
+            ccla_allowlist_request = self.model.get(str(request_id))
+        except CCLAAllowlistRequest.DoesNotExist:
+            raise cla.models.DoesNotExist("CCLAAllowlistRequest not found")
 
     def delete(self):
         self.model.delete()
@@ -5480,10 +5492,10 @@ class CCLAWhitelistRequest(model_interfaces.CCLAWhitelistRequest):
         self.model.project_external_id = project_external_id
 
     def all(self):
-        ccla_whitelist_requests = self.model.scan()
+        ccla_allowlist_requests = self.model.scan()
         ret = []
-        for request in ccla_whitelist_requests:
-            ccla_whitelist_request = CCLAWhitelistRequest()
-            ccla_whitelist_request.model = request
-            ret.append(ccla_whitelist_request)
+        for request in ccla_allowlist_requests:
+            ccla_allowlist_request = CCLAAllowlistRequest()
+            ccla_allowlist_request.model = request
+            ret.append(ccla_allowlist_request)
         return ret

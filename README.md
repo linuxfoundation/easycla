@@ -1,6 +1,6 @@
 # Introduction to EasyCLA
 
-[![CircleCI](https://circleci.com/gh/communitybridge/easycla.svg?style=svg)](https://circleci.com/gh/communitybridge/easycla)
+[![Build Status](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml/badge.svg)](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml)
 
 The Contributor License Agreement \(CLA\) service of the Linux Foundation lets project contributors read, sign, and submit contributor license agreements easily.
 
@@ -10,7 +10,7 @@ This platform supports both GitHub and Gerrit source code repositories. Addition
 
 ## Announcements
 
-- 06/10/2020 - We have replaced code references from whitelist to Approved List.  This includes package names, code comments, swagger specifications, API endpoints, variable names, and UI components.
+- 8/2025 - We have replaced code references from whitelist to Approved List.  This includes package names, code comments, swagger specifications, API endpoints, variable names, and UI components.
 
 ## Third-party Services
 

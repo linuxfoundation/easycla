@@ -51,10 +51,10 @@ type Signature struct {
 	SignatureReferenceType        string   `json:"signature_reference_type"`
 	SignatureType                 string   `json:"signature_type"`
 	SignatureUserCompanyID        string   `json:"signature_user_ccla_company_id"`
-	EmailWhitelist                []string `json:"email_whitelist"`
-	DomainWhitelist               []string `json:"domain_whitelist"`
-	GitHubWhitelist               []string `json:"github_whitelist"`
-	GitHubOrgWhitelist            []string `json:"github_org_whitelist"`
+	EmailAllowlist                []string `json:"email_whitelist"`
+	DomainAllowlist               []string `json:"domain_whitelist"`
+	GitHubAllowlist               []string `json:"github_whitelist"`
+	GitHubOrgAllowlist            []string `json:"github_org_whitelist"`
 	SignatureACL                  []string `json:"signature_acl"`
 	SigtypeSignedApprovedID       string   `json:"sigtype_signed_approved_id"`
 	UserGithubUsername            string   `json:"user_github_username"`

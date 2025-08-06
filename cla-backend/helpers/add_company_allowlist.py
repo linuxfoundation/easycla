@@ -11,16 +11,16 @@ import sys
 sys.path.append('../')
 
 if len(sys.argv) != 2:
-    print('Usage: python3 add_company_whitelist.py <email@address.com>')
+    print('Usage: python3 add_company_allowlist.py <email@address.com>')
     exit()
-whitelist = sys.argv[1]
+allowlist = sys.argv[1]
 
 import cla
 from cla.utils import get_company_instance
 
-cla.log.info('Adding whitelist item to all companies: %s', whitelist)
+cla.log.info('Adding allowlist item to all companies: %s', allowlist)
 # User
 companies = get_company_instance().all()
 for company in companies:
-    company.add_company_whitelist(whitelist)
+    company.add_company_allowlist(allowlist)
     company.save()
