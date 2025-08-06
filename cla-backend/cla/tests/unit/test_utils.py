@@ -121,34 +121,34 @@ class TestUtils(unittest.TestCase):
             organizations = cla.utils.lookup_github_organizations('dealakooooooooo')
             self.assertTrue('error' in organizations, 'Find 0 github organizations')
 
-    def test_is_allowlisted_for_email(self) -> None:
+    def test_is_whitelisted_for_email(self) -> None:
         """
-        Test a given email to check if allowlisted against ccla_signature
+        Test a given email to check if whitelisted against ccla_signature
         """
         signature = Signature()
-        signature.get_email_allowlist = Mock(return_value={"foo@gmail.com"})
+        signature.get_email_whitelist = Mock(return_value={"foo@gmail.com"})
         self.assertTrue(utils.is_approved(signature, email="foo@gmail.com"))
         self.assertFalse(utils.is_approved(signature, email="bar@gmail.com"))
 
-    def test_is_allowlisted_for_domain(self) -> None:
+    def test_is_whitelisted_for_domain(self) -> None:
         """
-        Test a given email passes domain allowlist check against ccla_signature
+        Test a given email passes domain whitelist check against ccla_signature
         """
         signature = Signature()
-        signature.get_domain_allowlist = Mock(return_value=[".gmail.com"])
+        signature.get_domain_whitelist = Mock(return_value=[".gmail.com"])
         self.assertTrue(utils.is_approved(signature, email="random@gmail.com"))
         self.assertFalse(utils.is_approved(signature, email="foo@invalid.com"))
 
-    def test_is_allowlisted_for_github(self) -> None:
+    def test_is_whitelisted_for_github(self) -> None:
         """
-        Test given github user passes github allowlist check against ccla_signature
+        Test given github user passes github whitelist check against ccla_signature
         """
         signature = Signature()
-        signature.get_github_allowlist = Mock(return_value=['foo'])
+        signature.get_github_whitelist = Mock(return_value=['foo'])
         self.assertTrue(utils.is_approved(signature, github_username='foo'))
         self.assertFalse(utils.is_approved(signature, github_username='bar'))
 
-    def test_is_allowlisted_for_github_org(self) -> None:
+    def test_is_whitelisted_for_github_org(self) -> None:
         """
         Test given github user passes github org check against ccla_signature
         """
@@ -159,7 +159,7 @@ class TestUtils(unittest.TestCase):
         self.mock_get.return_value = Mock()
         self.mock_get.return_value.json.return_value = github_orgs
         signature = Signature()
-        signature.get_github_org_allowlist = Mock(return_value=['foo-org'])
+        signature.get_github_org_whitelist = Mock(return_value=['foo-org'])
         self.assertTrue(utils.is_approved(signature, github_username='foo'))
 
 

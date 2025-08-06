@@ -133,8 +133,6 @@ SPDX-License-Identifier: CC-BY-4.0
 | github\_whitelist | The Github username approved list for the CCLA signature |
 | github\_org\_whitelist | The Github organization approved list for the CCLA signature |
 
-Note: 4 above columns names will be updated to change from `whitelist` to `allowlist`. 
-
 ## User-Permissions
 
 | Column Name | Description |

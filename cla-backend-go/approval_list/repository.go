@@ -24,9 +24,9 @@ import (
 )
 
 const (
-	// Version is version of CclaAllowlistRequest
+	// Version is version of CclaWhitelistRequest
 	Version = "v1"
-	// StatusPending is status of CclaAllowlistRequest
+	// StatusPending is status of CclaWhitelistRequest
 	StatusPending = "pending"
 
 	// ProjectIDIndex is the index for for the project_id secondary index
@@ -39,7 +39,7 @@ type IRepository interface {
 	GetCclaApprovalListRequest(requestID string) (*CLARequestModel, error)
 	ApproveCclaApprovalListRequest(requestID string) error
 	RejectCclaApprovalListRequest(requestID string) error
-	ListCclaApprovalListRequests(companyID string, projectID, status, userID *string) (*models.CclaAllowlistRequestList, error)
+	ListCclaApprovalListRequests(companyID string, projectID, status, userID *string) (*models.CclaWhitelistRequestList, error)
 	GetRequestsByCLAGroup(claGroupID string) ([]CLARequestModel, error)
 	UpdateRequestsByCLAGroup(model *models2.DBProjectModel) error
 }
@@ -214,7 +214,7 @@ func (repo repository) RejectCclaApprovalListRequest(requestID string) error {
 }
 
 // ListCclaApprovalListRequests list the requests for the specified query parameters
-func (repo repository) ListCclaApprovalListRequests(companyID string, projectID, status, userID *string) (*models.CclaAllowlistRequestList, error) {
+func (repo repository) ListCclaApprovalListRequests(companyID string, projectID, status, userID *string) (*models.CclaWhitelistRequestList, error) {
 	f := logrus.Fields{
 		"functionName": "v1.approval_list.repository.ListCclaApprovalListRequests",
 		"companyID":    companyID,
@@ -282,13 +282,13 @@ func (repo repository) ListCclaApprovalListRequests(companyID string, projectID,
 		return nil, queryErr
 	}
 
-	list, err := buildCclaAllowlistRequestsModels(queryOutput)
+	list, err := buildCclaWhitelistRequestsModels(queryOutput)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unmarshall requests error while decoding the response, error: %+v", err)
 		return nil, err
 	}
 
-	return &models.CclaAllowlistRequestList{List: list}, nil
+	return &models.CclaWhitelistRequestList{List: list}, nil
 }
 
 // GetRequestsByCLAGroup retrieves a list of requests for the specified CLA Group

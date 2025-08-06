@@ -6,7 +6,7 @@ import uuid
 from unittest.mock import Mock
 
 import cla
-from cla.controllers.signature import notify_allowlist_change
+from cla.controllers.signature import notify_whitelist_change
 from cla.controllers.signing import canceled_signature_html
 from cla.models.dynamo_models import Project, Signature, User
 from cla.models.sns_email_models import MockSNS
@@ -39,23 +39,23 @@ def test_canceled_signature_html():
 
 
 class TestSignatureController(unittest.TestCase):
-    def test_notify_allowlist_change(self):
+    def test_notify_whitelist_change(self):
         old_sig = Signature()
         new_sig = Signature()
         new_sig.set_signature_reference_name('Company')
         new_sig.set_signature_project_id('projectID')
         cla_manager = CLAUser({'name': 'CLA Manager'})
-        old_sig.set_domain_allowlist(['a.com', 'b.com'])
-        new_sig.set_domain_allowlist(['b.com', 'd.com'])
+        old_sig.set_domain_whitelist(['a.com', 'b.com'])
+        new_sig.set_domain_whitelist(['b.com', 'd.com'])
 
-        old_sig.set_github_allowlist([])
-        new_sig.set_github_allowlist(['githubuser'])
+        old_sig.set_github_whitelist([])
+        new_sig.set_github_whitelist(['githubuser'])
 
-        old_sig.set_email_allowlist(['allowlist.email@gmail.com'])
-        new_sig.set_email_allowlist([])
+        old_sig.set_email_whitelist(['whitelist.email@gmail.com'])
+        new_sig.set_email_whitelist([])
 
-        old_sig.set_github_org_allowlist(['githuborg'])
-        new_sig.set_github_org_allowlist(['githuborg'])
+        old_sig.set_github_org_whitelist(['githuborg'])
+        new_sig.set_github_org_whitelist(['githuborg'])
 
         snsClient = MockSNS()
         cla.controllers.signature.get_email_service = Mock()
@@ -66,7 +66,7 @@ class TestSignatureController(unittest.TestCase):
         cla.models.dynamo_models.Project.get_project_name = Mock()
         cla.models.dynamo_models.Project.get_project_name.return_value = 'Project'
         cla.models.dynamo_models.User.get_user_by_github_username = Mock(side_effect=mock_get_user_by_github_username)
-        notify_allowlist_change(cla_manager, old_sig, new_sig)
+        notify_whitelist_change(cla_manager, old_sig, new_sig)
         self.assertEqual(len(snsClient.emails_sent), 3)
         # check email to cla manager
         msg = snsClient.emails_sent[0]
@@ -78,13 +78,13 @@ class TestSignatureController(unittest.TestCase):
         self.assertNotIn('b.com', body)
         self.assertIn('d.com', body)
         self.assertIn('githubuser', body)
-        self.assertIn('allowlist.email@gmail.com', body)
+        self.assertIn('whitelist.email@gmail.com', body)
         self.assertNotIn('githuborg', body)
         # check email sent to contributor - removed email
         msg = snsClient.emails_sent[1]
         msg = json.loads(msg)
         self.assertEqual(msg['data']['subject'], 'EasyCLA: Approval List Update for Project')
-        self.assertEqual(msg['data']['recipients'], ['allowlist.email@gmail.com'])
+        self.assertEqual(msg['data']['recipients'], ['whitelist.email@gmail.com'])
         body = msg['data']['body']
         self.assertIn('deleted', body)
         self.assertIn('Company', body)

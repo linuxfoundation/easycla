@@ -162,13 +162,13 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 	})
 
 	// Retrieve GitHub Approval List Entries
-	api.SignaturesGetGitHubOrgAllowlistHandler = signatures.GetGitHubOrgAllowlistHandlerFunc(func(params signatures.GetGitHubOrgAllowlistParams, claUser *user.CLAUser) middleware.Responder {
+	api.SignaturesGetGitHubOrgWhitelistHandler = signatures.GetGitHubOrgWhitelistHandlerFunc(func(params signatures.GetGitHubOrgWhitelistParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		session, err := sessionStore.Get(params.HTTPRequest, github.SessionStoreKey)
 		if err != nil {
 			log.Warnf("error retrieving session from the session store, error: %+v", err)
-			return signatures.NewGetGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+			return signatures.NewGetGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
 		githubAccessToken, ok := session.Values["github_access_token"].(string)
@@ -181,20 +181,20 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		if err != nil {
 			log.Warnf("error fetching github organization approval list entries v using signature_id: %s, error: %+v",
 				params.SignatureID, err)
-			return signatures.NewGetGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+			return signatures.NewGetGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
-		return signatures.NewGetGitHubOrgAllowlistOK().WithXRequestID(reqID).WithPayload(ghApprovalList)
+		return signatures.NewGetGitHubOrgWhitelistOK().WithXRequestID(reqID).WithPayload(ghApprovalList)
 	})
 
 	// Add GitHub Approval List Entries
-	api.SignaturesAddGitHubOrgAllowlistHandler = signatures.AddGitHubOrgAllowlistHandlerFunc(func(params signatures.AddGitHubOrgAllowlistParams, claUser *user.CLAUser) middleware.Responder {
+	api.SignaturesAddGitHubOrgWhitelistHandler = signatures.AddGitHubOrgWhitelistHandlerFunc(func(params signatures.AddGitHubOrgWhitelistParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		session, err := sessionStore.Get(params.HTTPRequest, github.SessionStoreKey)
 		if err != nil {
 			log.Warnf("error retrieving session from the session store, error: %+v", err)
-			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+			return signatures.NewAddGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
 		githubAccessToken, ok := session.Values["github_access_token"].(string)
@@ -205,9 +205,9 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 
 		ghApprovalList, err := service.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
 		if err != nil {
-			log.Warnf("error adding github organization %s using signature_id: %s to the allowlist, error: %+v",
+			log.Warnf("error adding github organization %s using signature_id: %s to the whitelist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
-			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+			return signatures.NewAddGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
 		// Create an event
@@ -233,18 +233,18 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			},
 		})
 
-		return signatures.NewAddGitHubOrgAllowlistOK().WithXRequestID(reqID).WithPayload(ghApprovalList)
+		return signatures.NewAddGitHubOrgWhitelistOK().WithXRequestID(reqID).WithPayload(ghApprovalList)
 	})
 
 	// Delete GitHub Approval List Entries
-	api.SignaturesDeleteGitHubOrgAllowlistHandler = signatures.DeleteGitHubOrgAllowlistHandlerFunc(func(params signatures.DeleteGitHubOrgAllowlistParams, claUser *user.CLAUser) middleware.Responder {
+	api.SignaturesDeleteGitHubOrgWhitelistHandler = signatures.DeleteGitHubOrgWhitelistHandlerFunc(func(params signatures.DeleteGitHubOrgWhitelistParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
 		session, err := sessionStore.Get(params.HTTPRequest, github.SessionStoreKey)
 		if err != nil {
 			log.Warnf("error retrieving session from the session store, error: %+v", err)
-			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+			return signatures.NewDeleteGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
 		githubAccessToken, ok := session.Values["github_access_token"].(string)
@@ -255,9 +255,9 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 
 		ghApprovalList, err := service.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
 		if err != nil {
-			log.Warnf("error deleting github organization %s using signature_id: %s from the allowlist, error: %+v",
+			log.Warnf("error deleting github organization %s using signature_id: %s from the whitelist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
-			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+			return signatures.NewDeleteGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
 		// Create an event
@@ -284,7 +284,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			},
 		})
 
-		return signatures.NewDeleteGitHubOrgAllowlistNoContent().WithXRequestID(reqID).WithPayload(ghApprovalList)
+		return signatures.NewDeleteGitHubOrgWhitelistNoContent().WithXRequestID(reqID).WithPayload(ghApprovalList)
 	})
 
 	// Get Project Signatures

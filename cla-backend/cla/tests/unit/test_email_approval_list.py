@@ -67,8 +67,8 @@ def test_pattern_with_dot_prefix(create_user):
 def test_email_approval_list_fail(create_user):
     """Test email that fails domain and email approval list checks """
     signature = Signature()
-    signature.get_email_allowlist = MagicMock(return_value={"foo@gmail.com"})
-    signature.get_domain_allowlist = MagicMock(return_value=["foo.com"])
+    signature.get_email_whitelist = MagicMock(return_value={"foo@gmail.com"})
+    signature.get_domain_whitelist = MagicMock(return_value=["foo.com"])
     create_user.get_all_user_emails = MagicMock(return_value=["bar@gmail.com"])
     assert create_user.is_approved(signature) == False
 
@@ -76,6 +76,6 @@ def test_email_approval_list_fail(create_user):
 def test_gerrit_project_approval_listing(create_user):
     """Test for email in signature approval list"""
     signature = Signature()
-    signature.get_email_allowlist = MagicMock(return_value={"phillip.leigh@amdocs.com"})
+    signature.get_email_whitelist = MagicMock(return_value={"phillip.leigh@amdocs.com"})
     create_user.get_all_user_emails = MagicMock(return_value=["phillip.leigh@amdocs.com"])
     assert create_user.is_approved(signature) == True

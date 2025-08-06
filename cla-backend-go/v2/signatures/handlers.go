@@ -185,19 +185,19 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 	})
 
 	// Retrieve GitHub Approval Entries
-	api.SignaturesGetGitHubOrgAllowlistHandler = signatures.GetGitHubOrgAllowlistHandlerFunc(func(params signatures.GetGitHubOrgAllowlistParams, authUser *auth.User) middleware.Responder {
+	api.SignaturesGetGitHubOrgWhitelistHandler = signatures.GetGitHubOrgWhitelistHandlerFunc(func(params signatures.GetGitHubOrgWhitelistParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "v2.signatures.handlers.SignaturesGetGitHubOrgAllowlistHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesGetGitHubOrgWhitelistHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"signatureID":    params.SignatureID,
 		}
 		session, err := sessionStore.Get(params.HTTPRequest, github.SessionStoreKey)
 		if err != nil {
 			log.WithFields(f).Warnf("error retrieving session from the session store, error: %+v", err)
-			return signatures.NewGetGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewGetGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		githubAccessToken, ok := session.Values["github_access_token"].(string)
@@ -210,25 +210,25 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		if err != nil {
 			log.WithFields(f).Warnf("error fetching github organization approval list entries using signature_id: %s, error: %+v",
 				params.SignatureID, err)
-			return signatures.NewGetGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewGetGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		var response []models.GithubOrg
 		err = copier.Copy(&response, ghOrgApprovalList)
 		if err != nil {
-			return signatures.NewGetGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewGetGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
-		return signatures.NewGetGitHubOrgAllowlistOK().WithXRequestID(reqID).WithPayload(response)
+		return signatures.NewGetGitHubOrgWhitelistOK().WithXRequestID(reqID).WithPayload(response)
 	})
 
 	// Add GitHub Approval Entries
-	api.SignaturesAddGitHubOrgAllowlistHandler = signatures.AddGitHubOrgAllowlistHandlerFunc(func(params signatures.AddGitHubOrgAllowlistParams, authUser *auth.User) middleware.Responder {
+	api.SignaturesAddGitHubOrgWhitelistHandler = signatures.AddGitHubOrgWhitelistHandlerFunc(func(params signatures.AddGitHubOrgWhitelistParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "v2.signatures.handlers.SignaturesAddGitHubOrgAllowlistHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesAddGitHubOrgWhitelistHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"signatureID":    params.SignatureID,
 		}
@@ -237,7 +237,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		session, err := sessionStore.Get(params.HTTPRequest, github.SessionStoreKey)
 		if err != nil {
 			log.WithFields(f).Warnf("error retrieving session from the session store, error: %+v", err)
-			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewAddGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		githubAccessToken, ok := session.Values["github_access_token"].(string)
@@ -246,17 +246,17 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			githubAccessToken = ""
 		}
 
-		input := v1Models.GhOrgAllowlist{}
+		input := v1Models.GhOrgWhitelist{}
 		err = copier.Copy(&input, &params.Body)
 		if err != nil {
-			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewAddGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		ghApprovalList, err := v1SignatureService.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, input, githubAccessToken)
 		if err != nil {
 			log.WithFields(f).Warnf("error adding github organization %s using signature_id: %s to the approval list, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
-			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewAddGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		// Create an event
@@ -285,19 +285,19 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		var response []models.GithubOrg
 		err = copier.Copy(&response, ghApprovalList)
 		if err != nil {
-			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewAddGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
-		return signatures.NewAddGitHubOrgAllowlistOK().WithXRequestID(reqID).WithPayload(response)
+		return signatures.NewAddGitHubOrgWhitelistOK().WithXRequestID(reqID).WithPayload(response)
 	})
 
 	// Delete GitHub Approval List Entries
-	api.SignaturesDeleteGitHubOrgAllowlistHandler = signatures.DeleteGitHubOrgAllowlistHandlerFunc(func(params signatures.DeleteGitHubOrgAllowlistParams, authUser *auth.User) middleware.Responder {
+	api.SignaturesDeleteGitHubOrgWhitelistHandler = signatures.DeleteGitHubOrgWhitelistHandlerFunc(func(params signatures.DeleteGitHubOrgWhitelistParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		f := logrus.Fields{
-			"functionName":   "v2.signatures.handlers.SignaturesDeleteGitHubOrgAllowlistHandler",
+			"functionName":   "v2.signatures.handlers.SignaturesDeleteGitHubOrgWhitelistHandler",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"signatureID":    params.SignatureID,
 		}
@@ -305,7 +305,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		session, err := sessionStore.Get(params.HTTPRequest, github.SessionStoreKey)
 		if err != nil {
 			log.WithFields(f).Warnf("error retrieving session from the session store, error: %+v", err)
-			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewDeleteGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		githubAccessToken, ok := session.Values["github_access_token"].(string)
@@ -314,17 +314,17 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			githubAccessToken = ""
 		}
 
-		input := v1Models.GhOrgAllowlist{}
+		input := v1Models.GhOrgWhitelist{}
 		err = copier.Copy(&input, &params.Body)
 		if err != nil {
-			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewDeleteGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		ghApprovalList, err := v1SignatureService.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, input, githubAccessToken)
 		if err != nil {
 			log.WithFields(f).Warnf("error deleting github organization %s using signature_id: %s from the approval list, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
-			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewDeleteGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		// Create an event
@@ -351,10 +351,10 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		var response []models.GithubOrg
 		err = copier.Copy(&response, ghApprovalList)
 		if err != nil {
-			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
+			return signatures.NewDeleteGitHubOrgWhitelistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
-		return signatures.NewDeleteGitHubOrgAllowlistNoContent().WithXRequestID(reqID).WithPayload(response)
+		return signatures.NewDeleteGitHubOrgWhitelistNoContent().WithXRequestID(reqID).WithPayload(response)
 	})
 
 	// Get Project Signatures

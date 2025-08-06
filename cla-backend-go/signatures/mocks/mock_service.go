@@ -57,7 +57,7 @@ func (mr *MockSignatureServiceMockRecorder) AddCLAManager(ctx, signatureID, claM
 }
 
 // AddGithubOrganizationToApprovalList mocks base method.
-func (m *MockSignatureService) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken string) ([]models.GithubOrg, error) {
+func (m *MockSignatureService) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddGithubOrganizationToApprovalList", ctx, signatureID, approvalListParams, githubAccessToken)
 	ret0, _ := ret[0].([]models.GithubOrg)
@@ -116,7 +116,7 @@ func (mr *MockSignatureServiceMockRecorder) CreateSignature(ctx, signature inter
 }
 
 // DeleteGithubOrganizationFromApprovalList mocks base method.
-func (m *MockSignatureService) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken string) ([]models.GithubOrg, error) {
+func (m *MockSignatureService) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgWhitelist, githubAccessToken string) ([]models.GithubOrg, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteGithubOrganizationFromApprovalList", ctx, signatureID, approvalListParams, githubAccessToken)
 	ret0, _ := ret[0].([]models.GithubOrg)

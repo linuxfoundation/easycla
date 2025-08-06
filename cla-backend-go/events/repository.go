@@ -111,7 +111,7 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 	}
 	eventID, err := uuid.NewV4()
 	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("Unable to generate a UUID for a allowlist request, error: %v", err)
+		log.WithFields(f).WithError(err).Warnf("Unable to generate a UUID for a whitelist request, error: %v", err)
 		return err
 	}
 

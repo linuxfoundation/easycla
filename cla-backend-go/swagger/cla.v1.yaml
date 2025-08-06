@@ -629,7 +629,7 @@ paths:
       summary: Get GitHub Organization Approval List Entries
       security:
         - OauthSecurity: [ ]
-      operationId: getGitHubOrgAllowlist
+      operationId: getGitHubOrgWhitelist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: signatureID
@@ -661,7 +661,7 @@ paths:
       summary: Delete GitHub Organization Approval List Entry
       security:
         - OauthSecurity: [ ]
-      operationId: deleteGitHubOrgAllowlist
+      operationId: deleteGitHubOrgWhitelist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: signatureID
@@ -671,7 +671,7 @@ paths:
         - name: body
           in: body
           schema:
-            $ref: '#/definitions/gh-org-allowlist'
+            $ref: '#/definitions/gh-org-whitelist'
       responses:
         '204':
           description: 'Success'
@@ -697,7 +697,7 @@ paths:
       summary: Update GitHub Organization Approval List Entries
       security:
         - OauthSecurity: [ ]
-      operationId: addGitHubOrgAllowlist
+      operationId: addGitHubOrgWhitelist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - name: signatureID
@@ -707,7 +707,7 @@ paths:
         - name: body
           in: body
           schema:
-            $ref: '#/definitions/gh-org-allowlist'
+            $ref: '#/definitions/gh-org-whitelist'
       responses:
         '200':
           description: 'Success'
@@ -1467,7 +1467,7 @@ paths:
       security:
         - OauthSecurity:
             - user
-      operationId: listCclaAllowlistRequestsByCompanyAndProject
+      operationId: listCclaWhitelistRequestsByCompanyAndProject
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1484,7 +1484,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/ccla-allowlist-request-list'
+            $ref: '#/definitions/ccla-whitelist-request-list'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -1498,7 +1498,7 @@ paths:
     post:
       summary: Create Project Company Approval List Entries
       security: [ ]
-      operationId: addCclaAllowlistRequest
+      operationId: addCclaWhitelistRequest
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1506,7 +1506,7 @@ paths:
         - in: body
           name: body
           schema:
-            $ref: '#/definitions/ccla-allowlist-request-input'
+            $ref: '#/definitions/ccla-whitelist-request-input'
           required: true
       responses:
         '200':
@@ -1532,7 +1532,7 @@ paths:
       security:
         - OauthSecurity:
             - user
-      operationId: listCclaAllowlistRequestsByCompanyAndProjectAndUser
+      operationId: listCclaWhitelistRequestsByCompanyAndProjectAndUser
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1550,7 +1550,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/ccla-allowlist-request-list'
+            $ref: '#/definitions/ccla-whitelist-request-list'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -1568,7 +1568,7 @@ paths:
       security:
         - OauthSecurity:
             - company
-      operationId: approveCclaAllowlistRequest
+      operationId: approveCclaWhitelistRequest
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1601,7 +1601,7 @@ paths:
       security:
         - OauthSecurity:
             - company
-      operationId: rejectCclaAllowlistRequest
+      operationId: rejectCclaWhitelistRequest
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1634,7 +1634,7 @@ paths:
       security:
         - OauthSecurity:
             - user
-      operationId: listCclaAllowlistRequests
+      operationId: listCclaWhitelistRequests
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/path-companyID"
@@ -1651,7 +1651,7 @@ paths:
               type: string
               description: The unique request ID value - assigned/set by the API Gateway based on the session
           schema:
-            $ref: '#/definitions/ccla-allowlist-request-list'
+            $ref: '#/definitions/ccla-whitelist-request-list'
         '400':
           $ref: '#/responses/invalid-request'
         '401':
@@ -2776,8 +2776,8 @@ definitions:
           $ref: '#/definitions/user'
 
 
-  gh-org-allowlist:
-    $ref: './common/gh-org-allowlist.yaml'
+  gh-org-whitelist:
+    $ref: './common/gh-org-whitelist.yaml'
 
   github-org:
     $ref: './common/github-org.yaml'
@@ -3005,11 +3005,11 @@ definitions:
   approval-list:
     $ref: './common/signature-approval-list.yaml'
 
-  ccla-allowlist-request-input:
+  ccla-whitelist-request-input:
     type: object
     x-nullable: false
-    title: Ccla allowlist request input
-    description: Ccla allowlist request input
+    title: Ccla whitelist request input
+    description: Ccla whitelist request input
     properties:
       contributorId:
         type: string
@@ -3024,20 +3024,20 @@ definitions:
       message:
         type: string
 
-  ccla-allowlist-request-list:
+  ccla-whitelist-request-list:
     type: object
     properties:
       list:
         type: array
         items:
-          $ref: '#/definitions/ccla-allowlist-request'
+          $ref: '#/definitions/ccla-whitelist-request'
 
 
-  ccla-allowlist-request:
+  ccla-whitelist-request:
     type: object
     x-nullable: false
-    title: Ccla allowlist request
-    description: Ccla allowlist request
+    title: Ccla whitelist request
+    description: Ccla whitelist request
     properties:
       requestId:
         type: string

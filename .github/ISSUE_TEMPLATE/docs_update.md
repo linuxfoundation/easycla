@@ -10,7 +10,7 @@ assignees: ''
 
 Describe what has changed and which documents need updating
 
-* [/docs/doc-to-update.md](https://github.com/linuxfoundation/easycla/blob/main/docs/)
+* [/docs/doc-to-update.md](https://github.com/linuxfoundation/easycla/blob/master/docs/)
 
 ## Tasks
 
@@ -29,7 +29,7 @@ The "done" criteria when this feature or problem is resolved. Such as:
 
 1. Documentation changes submitted as a Pull Request
 1. Pull Request Reviewed and Approved by Product Owner
-1. Documentation changes merged to 'main' branch
+1. Documentation changes merged to 'master' branch
 
 ## Images
 

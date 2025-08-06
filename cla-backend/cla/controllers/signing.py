@@ -76,7 +76,7 @@ def request_corporate_signature(auth_user,
     :type signing_entity_name: string
     :param send_as_email: the send as email flag
     :type send_as_email: bool
-    :param authority_name: the company manager/authority who is responsible for allowlisting/managing the company, but
+    :param authority_name: the company manager/authority who is responsible for whitelisting/managing the company, but
     may not be a CLA signatory
     :type authority_name: str
     :param authority_email: the company manager/authority email
@@ -139,7 +139,7 @@ def check_and_prepare_employee_signature(project_id, company_id, user_id):
     Checks that 
     1. The given project, company, and user exists 
     2. The company signatory has signed the CCLA for their company. 
-    3. The user is included as part of the allowlist of the CCLA that the company signed. 
+    3. The user is included as part of the whitelist of the CCLA that the company signed. 
 
     :param project_id: The ID of the CLA Group (project) the user is signing a CCLA for.
     :type project_id: string

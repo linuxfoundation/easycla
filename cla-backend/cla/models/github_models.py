@@ -1514,7 +1514,7 @@ def handle_commit_from_user(
             # projects like CNCF which significantly delays updating the GH PR status.
             # Revisit once we add more indexes to the table
 
-            # # Check to see if not found user is allowlisted to assist in triaging github comment
+            # # Check to see if not found user is whitelisted to assist in triaging github comment
             # # Search for the CCLA signatures for this project - wish we had a company ID to restrict the query...
             # signatures = cla.utils.get_signature_instance().get_signatures_by_project(
             #     project.get_project_id(),
@@ -1524,16 +1524,16 @@ def handle_commit_from_user(
             #
             # list_author_info = list(author_info)
             # for signature in signatures:
-            #     if cla.utils.is_allowlisted(
+            #     if cla.utils.is_whitelisted(
             #             signature,
             #             email=author_email,
             #             github_id=author_id,
             #             github_username=author_username
             #     ):
-            #         # Append allowlisted flag to the author info list
+            #         # Append whitelisted flag to the author info list
             #         cla.log.debug(f'Github user(id:{author_id}, '
             #                       f'user: {author_username}, '
-            #                       f'email {author_email}) is allowlisted but not a CLA user')
+            #                       f'email {author_email}) is whitelisted but not a CLA user')
             #         list_author_info.append(True)
             #         break
             # missing.append((commit_sha, list_author_info))
@@ -1877,7 +1877,7 @@ def update_pull_request(
                     "github", str(installation_id), github_repository_id, pull_request.number, project_version
                 )
 
-            # check if unsigned user is allowlisted
+            # check if unsigned user is whitelisted
             if user_commit_summary.commit_sha != last_commit.sha:
                 continue
 

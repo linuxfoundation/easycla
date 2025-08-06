@@ -3076,7 +3076,7 @@ paths:
     get:
       summary: Signature Update
       description: Updates the specified signature GitHub Organization approval list
-      operationId: getGitHubOrgAllowlist
+      operationId: getGitHubOrgWhitelist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -3110,7 +3110,7 @@ paths:
     delete:
       summary: Signature Delete
       description: Deletes the specified signature GitHub organization approval list
-      operationId: deleteGitHubOrgAllowlist
+      operationId: deleteGitHubOrgWhitelist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -3123,7 +3123,7 @@ paths:
         - name: body
           in: body
           schema:
-            $ref: '#/definitions/gh-org-allowlist'
+            $ref: '#/definitions/gh-org-whitelist'
       responses:
         '204':
           description: 'Resource Deleted'
@@ -3148,7 +3148,7 @@ paths:
     post:
       summary: Signature Update
       description: Updates the specified signature GitHub organization approval list
-      operationId: addGitHubOrgAllowlist
+      operationId: addGitHubOrgWhitelist
       parameters:
         - $ref: "#/parameters/x-request-id"
         - $ref: "#/parameters/x-acl"
@@ -3161,7 +3161,7 @@ paths:
         - name: body
           in: body
           schema:
-            $ref: '#/definitions/gh-org-allowlist'
+            $ref: '#/definitions/gh-org-whitelist'
       responses:
         '200':
           description: 'Success'
@@ -5084,8 +5084,8 @@ definitions:
   github-org:
     $ref: './common/github-org.yaml'
 
-  gh-org-allowlist:
-    $ref: './common/gh-org-allowlist.yaml'
+  gh-org-whitelist:
+    $ref: './common/gh-org-whitelist.yaml'
 
   add-gerrit-input:
     $ref: './common/add-gerrit-input.yaml'

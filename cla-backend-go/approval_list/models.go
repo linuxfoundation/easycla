@@ -23,8 +23,8 @@ type CLARequestModel struct {
 	Version            string   `dynamodbav:"version"`
 }
 
-// CclaAllowlistRequest data model
-type CclaAllowlistRequest struct {
+// CclaWhitelistRequest data model
+type CclaWhitelistRequest struct {
 	RequestID          string   `dynamodbav:"request_id"`
 	RequestStatus      string   `dynamodbav:"request_status"`
 	CompanyID          string   `dynamodbav:"company_id"`

@@ -11115,7 +11115,7 @@ A Git object ID.
 scalar GitObjectID
 
 """
-A fully qualified reference name (e.g. `refs/heads/main`).
+A fully qualified reference name (e.g. `refs/heads/master`).
 """
 scalar GitRefname @preview(toggledBy: "update-refs-preview")
 
@@ -29928,7 +29928,7 @@ type Repository implements Node & PackageOwner & ProjectOwner & RepositoryInfo &
   ref(
     """
     The ref to retrieve. Fully qualified matches are checked in order
-    (`refs/heads/main`) before falling back onto checks for short name matches (`main`).
+    (`refs/heads/master`) before falling back onto checks for short name matches (`master`).
     """
     qualifiedName: String!
   ): Ref

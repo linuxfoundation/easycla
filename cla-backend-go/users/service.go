@@ -36,7 +36,7 @@ type service struct {
 	events events.Service
 }
 
-// NewService creates a new service
+// NewService creates a new whitelist service
 func NewService(repo UserRepository, events events.Service) Service {
 	return service{
 		repo,

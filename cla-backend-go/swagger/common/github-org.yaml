@@ -4,7 +4,7 @@
 type: object
 x-nullable: false
 title: Github Organization
-description: Github Organiation object used for CCLA allowlist
+description: Github Organiation object used for CCLA whitelist
 properties:
   id:
     type: string

@@ -3,8 +3,8 @@
 
 type: object
 x-nullable: false
-title: Github Organization Allowlist
-description: Github Organiation Allowlist
+title: Github Organization Whitelist
+description: Github Organiation Whitelist
 properties:
   organization_id:
     type: string

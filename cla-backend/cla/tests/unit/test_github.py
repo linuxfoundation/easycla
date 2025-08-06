@@ -77,14 +77,14 @@ GITHUB_FAKE_SHA_2 = "fake_sha_2"
 #     assert response == expected
 
 
-# def test_get_comment_body_allowlisted_missing_user():
+# def test_get_comment_body_whitelisted_missing_user():
 #     """
-#     Test CLA comment body for case of a allowlisted user that has not confirmed affiliation
+#     Test CLA comment body for case of a whitelisted user that has not confirmed affiliation
 #     """
-#     is_allowlisted = True
+#     is_whitelisted = True
 #     author = "foo"
 #     signed = []
-#     missing = [(GITHUB_FAKE_SHA, ["12", author, "foo@gmail.com", is_allowlisted])]
+#     missing = [(GITHUB_FAKE_SHA, ["12", author, "foo@gmail.com", is_whitelisted])]
 #     response = get_comment_body("github", SIGN_URL, signed, missing)
 #     expected = (
 #             f"<ul><li>{author} ({' ,'.join([GITHUB_FAKE_SHA])}) "
@@ -111,9 +111,9 @@ def test_get_comment_badge_with_no_user_id():
     assert missing_id_badge in response
 
 
-def test_comment_badge_with_missing_allowlisted_user():
+def test_comment_badge_with_missing_whitelisted_user():
     """
-    Test CLA badge for CLA fail check and allowlisted user
+    Test CLA badge for CLA fail check and whitelisted user
     """
     confirmation_needed_badge = "cla-confirmation-needed.svg"
     response = get_comment_badge("github", False, SIGN_URL, "v1", missing_user_id=False, is_approved_by_manager=True)
