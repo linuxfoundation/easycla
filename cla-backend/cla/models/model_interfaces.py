@@ -934,16 +934,16 @@ class Signature(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def get_domain_whitelist(self):
+    def get_domain_allowlist(self):
         raise NotImplementedError()
 
-    def get_email_whitelist(self):
+    def get_email_allowlist(self):
         raise NotImplementedError()
 
-    def get_github_whitelist(self):
+    def get_github_allowlist(self):
         raise NotImplementedError()
 
-    def get_github_org_whitelist(self):
+    def get_github_org_allowlist(self):
         raise NotImplementedError()
 
     def get_gitlab_org_approval_list(self):
@@ -1338,66 +1338,66 @@ class Company(object):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedError()
 
-    def set_company_whitelist(self, whitelist):
+    def set_company_allowlist(self, allowlist):
         """
-        Setter for an company's whitelisted domain names.
+        Setter for an company's allowlisted domain names.
 
-        :param whitelist: The list of domain names to mark as safe.
+        :param allowlist: The list of domain names to mark as safe.
             Example: ['ibm.com', 'ibm.ca']
-        :type whitelist: list of strings
+        :type allowlist: list of strings
         """
         raise NotImplementedError()
 
-    def add_company_whitelist(self, whitelist_item):
+    def add_company_allowlist(self, allowlist_item):
         """
-        Adds another entry in the list of whitelisted domain names.
+        Adds another entry in the list of allowlisted domain names.
         Does not query the DB - save() will take care of that.
 
-        :param whitelist_item: A domain name to add to the whitelist of this company.
-        :type whitelist_item: string
+        :param allowlist_item: A domain name to add to the allowlist of this company.
+        :type allowlist_item: string
         """
         raise NotImplementedError()
 
-    def remove_company_whitelist(self, whitelist_item):
+    def remove_company_allowlist(self, allowlist_item):
         """
-        Removes an entry from the list of whitelisted domain names.
+        Removes an entry from the list of allowlisted domain names.
         Does not query the DB - save() will take care of that.
 
-        :param whitelist_item: A domain name to remove from the whitelist of this company.
-        :type whitelist_item: string
+        :param allowlist_item: A domain name to remove from the allowlist of this company.
+        :type allowlist_item: string
         """
         raise NotImplementedError()
 
-    def set_company_whitelist_patterns(self, whitelist_patterns):
+    def set_company_allowlist_patterns(self, allowlist_patterns):
         """
-        Setter for an company's whitelist regex patterns.
+        Setter for an company's allowlist regex patterns.
 
-        :param whitelist_patterns: The list of email patterns to exlude from signing.
+        :param allowlist_patterns: The list of email patterns to exlude from signing.
             Example: ['.*@ibm.co.uk$', '^info.*']
-        :type whitelist_patterns: list of strings
+        :type allowlist_patterns: list of strings
 
         :todo: Need to actually test out those examples.
         """
         raise NotImplementedError()
 
-    def add_company_whitelist_pattern(self, whitelist_pattern):
+    def add_company_allowlist_pattern(self, allowlist_pattern):
         """
-        Adds another entry in the list of whitelistd patterns.
+        Adds another entry in the list of allowlistd patterns.
         Does not query the DB - save() will take care of that.
 
-        :param whitelist_pattern: A regex string to add to the excluded patterns of this company.
-        :type whitelist_pattern: string
+        :param allowlist_pattern: A regex string to add to the excluded patterns of this company.
+        :type allowlist_pattern: string
         """
         raise NotImplementedError()
 
-    def remove_company_whitelist_pattern(self, whitelist_pattern):
+    def remove_company_allowlist_pattern(self, allowlist_pattern):
         """
-        Removes an entry from the list of whitelisted domain names.
+        Removes an entry from the list of allowlisted domain names.
         Does not query the DB - save() will take care of that.
 
-        :param whitelist_pattern: A regex string to remove from the exluded patterns
+        :param allowlist_pattern: A regex string to remove from the exluded patterns
             of this company.
-        :type whitelist_pattern: string
+        :type allowlist_pattern: string
         """
         raise NotImplementedError()
 
@@ -2317,9 +2317,9 @@ class ProjectCLAGroup(object):
         raise NotImplementedError()
 
 
-class CCLAWhitelistRequest(object):
+class CCLAAllowlistRequest(object):
     """
-    Interface to the CCLAWhitelistRequest Model
+    Interface to the CCLAAllowlistRequest Model
     """
 
     def to_dict(self):
@@ -2348,14 +2348,14 @@ class CCLAWhitelistRequest(object):
         Simple abstraction around the supported ORMs to load a model
         Populates the current object.
 
-        :param request_id: The id of the ccla whitelist request
+        :param request_id: The id of the ccla allowlist request
         :type request_id: string
         """
         raise NotImplementedError()
 
     def all(self):
         """
-        Fetches all CCLAWhitelistRequests in the CLA system.
+        Fetches all CCLAAllowlistRequests in the CLA system.
 
         :return: A list of projectCLAGroup objects.
         :rtype: [cla.models.model_interfaces.ProjectCLAGroup]

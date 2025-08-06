@@ -302,12 +302,12 @@ class TestGitHubController(unittest.TestCase):
                     "forks": 0,
                     "open_issues": 0,
                     "watchers": 0,
-                    "default_branch": "master"
+                    "default_branch": "main"
                 }
             },
             "base": {
-                "label": "grpc:master",
-                "ref": "master",
+                "label": "grpc:main",
+                "ref": "main",
                 "sha": "9999999999999999999999999999999999999999",
                 "user": {
                     "login": "grpc",
@@ -427,7 +427,7 @@ class TestGitHubController(unittest.TestCase):
                     "forks": 5530,
                     "open_issues": 886,
                     "watchers": 23364,
-                    "default_branch": "master"
+                    "default_branch": "main"
                 }
             },
             "_links": {
@@ -556,7 +556,7 @@ class TestGitHubController(unittest.TestCase):
             "forks": 5530,
             "open_issues": 886,
             "watchers": 23364,
-            "default_branch": "master"
+            "default_branch": "main"
         },
         "organization": {
             "login": "grpc",
