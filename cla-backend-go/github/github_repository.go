@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -170,6 +171,181 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 	return strings.Replace(sb.String(), "/ $", "", -1)
 }
 
+// SearchGithubUserByEmail searches for a GitHub user by email using the GitHub search API.
+// Returns the first found *github.User, or nil if not found or on error.
+func SearchGithubUserByEmail(ctx context.Context, client *github.Client, email string) (*github.User, error) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.SearchGithubUserByEmail",
+		"email":        email,
+	}
+	log.WithFields(f).Debugf("Searching for GitHub user by email: %s", email)
+
+	query := fmt.Sprintf("%s in:email", email)
+	opts := &github.SearchOptions{
+		ListOptions: github.ListOptions{PerPage: 1},
+	}
+	result, _, err := client.Search.Users(ctx, query, opts)
+	if err != nil {
+		log.WithFields(f).WithError(err).Errorf("Error searching for user by email: %s", email)
+		return nil, err
+	}
+	if result.GetTotal() == 0 || len(result.Users) == 0 {
+		log.WithFields(f).Debugf("No GitHub user found with email: %s", email)
+		return nil, nil
+	}
+	log.WithFields(f).Debugf("Found GitHub user by email: %s", *result.Users[0].Login)
+	return result.Users[0], nil
+}
+
+// GetGitHubUserByLogin fetches a GitHub user by their login (username).
+// Returns (*github.User, nil) if found, (nil, nil) if not found, or (nil, error) on error.
+func SearchGithubUserByLogin(ctx context.Context, client *github.Client, login string) (*github.User, error) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.GetGitHubUserByLogin",
+		"login":        login,
+	}
+	log.WithFields(f).Debugf("Getting GitHub user by login: %s", login)
+	user, _, err := client.Users.Get(ctx, login)
+	if err != nil {
+		if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == 404 {
+			log.WithFields(f).Debugf("Could not find GitHub user with login: %s", login)
+			return nil, nil
+		}
+		log.WithFields(f).WithError(err).Errorf("Error getting GitHub user with login: %s", login)
+		return nil, err
+	}
+	if user == nil {
+		log.WithFields(f).Debugf("No user object returned for login: %s", login)
+		return nil, nil
+	}
+	log.WithFields(f).Debugf("Found GitHub user by login: %s", login)
+	return user, nil
+}
+
+// GetCoAuthorsFromCommit returns a slice of [2]string, each representing [name, email] of a co-author.
+func GetCoAuthorsFromCommit(
+	ctx context.Context,
+	commit *github.RepositoryCommit,
+) [][2]string {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.GetCoAuthorsFromCommit",
+	}
+	var coAuthors [][2]string
+	if commit != nil && commit.Commit != nil && commit.Commit.Message != nil {
+		commitMessage := commit.GetCommit().GetMessage()
+		// log.WithFields(f).Debugf("commit message: %s", commitMessage)
+
+		re := regexp.MustCompile(`(?i)co-authored-by: (.*) <(.*)>`)
+		matches := re.FindAllStringSubmatch(commitMessage, -1)
+		for _, match := range matches {
+			name := strings.TrimSpace(match[1])
+			email := strings.TrimSpace(match[2])
+			coAuthors = append(coAuthors, [2]string{name, email})
+			log.WithFields(f).Debugf("found co-author: name: %s, email: %s", name, email)
+		}
+	}
+	return coAuthors
+}
+
+// ExpandWithCoAuthors appends UserCommitSummary objects for all co-authors to commitAuthors slice.
+func ExpandWithCoAuthors(
+	ctx context.Context,
+	client *github.Client,
+	commit *github.RepositoryCommit,
+	pr int,
+	installationID int64,
+	commitAuthors *[]*UserCommitSummary,
+) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.ExpandWithCoAuthors",
+		"pr":           pr,
+	}
+	coAuthors := GetCoAuthorsFromCommit(ctx, commit)
+	log.WithFields(f).Debugf("co-authors found: %s", coAuthors)
+	for _, coAuthor := range coAuthors {
+		summary := GetCoAuthorCommits(ctx, client, coAuthor, commit, pr, installationID)
+		*commitAuthors = append(*commitAuthors, summary)
+	}
+}
+
+func GetCoAuthorCommits(
+	ctx context.Context,
+	client *github.Client,
+	coAuthor [2]string,
+	commit *github.RepositoryCommit,
+	pr int,
+	installationID int64,
+) *UserCommitSummary {
+	f := logrus.Fields{
+		"functionName":    "github.github_repository.GetCoAuthorCommits",
+		"pr":              pr,
+		"installation-id": installationID,
+		"co-author-name":  coAuthor[0],
+		"co-author-email": coAuthor[1],
+	}
+
+	var (
+		user               *github.User
+		githubID           int64
+		name, email, login string
+		err                error
+	)
+	name = strings.TrimSpace(coAuthor[0])
+	email = strings.TrimSpace(coAuthor[1])
+
+	log.WithFields(f).Debugf("Getting co-author details: %+v", coAuthor)
+
+	// Try to find user by email
+	user, err = SearchGithubUserByEmail(ctx, client, email)
+	if err != nil {
+		log.WithFields(f).Debugf("Co-author GitHub user not found via email %s: %v (error: %v)", email, coAuthor, err)
+		user = nil
+	}
+
+	if user == nil {
+		// Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
+		user, err = SearchGithubUserByLogin(ctx, client, name)
+		if err != nil {
+			log.WithFields(f).Debugf("Co-author GitHub user not found via name=login=%s: %v (error: %v)", name, coAuthor, err)
+			user = nil
+		}
+	}
+	log.WithFields(f).Debugf("Co-author: %v, user: %+v", coAuthor, user)
+
+	var summary *UserCommitSummary
+	if user != nil {
+		if user.Login != nil {
+			login = *user.Login
+		}
+		if user.ID != nil {
+			githubID = *user.ID
+		}
+		log.WithFields(f).Debugf("Co-author GitHub user details found: %v, user: %+v, login: %s, id: %d", coAuthor, user, login, githubID)
+		summary = &UserCommitSummary{
+			SHA:          utils.StringValue(commit.SHA),
+			CommitAuthor: user,
+			Affiliated:   false,
+			Authorized:   false,
+		}
+		log.WithFields(f).Debugf("PR: %d, %+v", pr, summary)
+	} else {
+		summary = &UserCommitSummary{
+			SHA: utils.StringValue(commit.SHA),
+			CommitAuthor: &github.User{
+				Login: nil,
+				ID:    nil,
+				Name:  &name,
+				Email: &email,
+			},
+			Affiliated: false,
+			Authorized: false,
+		}
+		log.WithFields(f).Debugf("Co-author GitHub user details not found: %v", coAuthor)
+	}
+
+	return summary
+}
+
 func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pullRequestID int, owner, repo string) ([]*UserCommitSummary, *string, error) {
 	f := logrus.Fields{
 		"functionName":  "github.github_repository.GetPullRequestCommitAuthors",
@@ -212,6 +388,7 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 			Affiliated:   false,
 			Authorized:   false,
 		})
+		ExpandWithCoAuthors(ctx, client, commit, pullRequestID, installationID, &userCommitSummary)
 	}
 
 	// get latest commit SHA
