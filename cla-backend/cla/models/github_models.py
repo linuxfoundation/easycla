@@ -37,6 +37,43 @@ EXCLUDE_GITHUB_EMAILS = ["noreply.github.com"]
 NOREPLY_ID_PATTERN = re.compile(r"^(\d+)\+([a-zA-Z0-9-]+)@users\.noreply\.github\.com$")
 NOREPLY_USER_PATTERN = re.compile(r"^([a-zA-Z0-9-]+)@users\.noreply\.github\.com$")
 
+class TTLCache:
+    def __init__(self, ttl_seconds=86400):
+        self.data = {}
+        self.ttl = ttl_seconds
+        self.lock = threading.Lock()
+
+    def get(self, key):
+        with self.lock:
+            item = self.data.get(key, None)
+            if item is None:
+                return None, False
+            value, expires_at = item
+            if time.time() > expires_at:
+                self.data.pop(key, None)
+                return None, False
+            return value, True
+
+    def set(self, key, value):
+        with self.lock:
+            self.data[key] = (value, time.time() + self.ttl)
+
+    def cleanup(self):
+        with self.lock:
+            now = time.time()
+            keys_to_delete = [k for k, (v, expires_at) in self.data.items() if now > expires_at]
+            for k in keys_to_delete:
+                del self.data[k]
+
+github_user_cache = TTLCache(ttl_seconds=86400)
+def start_cache_cleanup():
+    def run():
+        while True:
+            time.sleep(3600)
+            github_user_cache.cleanup()
+    threading.Thread(target=run, daemon=True).start()
+
+start_cache_cleanup()
 
 class GitHub(repository_service_interface.RepositoryService):
     """
@@ -726,8 +763,7 @@ class GitHub(repository_service_interface.RepositoryService):
                 f"{fn} - PR: {pull_request.number}, Failed to update change request "
                 f"of repository {github_repository_id} - returning"
             )
-            # XXX
-            # return
+            return
 
         project_id = repository.get_repository_project_id()
         project = get_project_instance()
@@ -868,8 +904,7 @@ class GitHub(repository_service_interface.RepositoryService):
                 f"{fn} - PR: {pull_request.number}, Failed to update change request "
                 f"of repository {github_repository_id} - returning"
             )
-            # XXX
-            # return
+            return
 
         # Retrieve project ID from the repository.
         project_id = repository.get_repository_project_id()
@@ -1816,6 +1851,39 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
     email = co_author[1].strip()
     name = co_author[0].strip()
 
+    # caching starts
+    cache_key = (name, email)
+    cached_user, hit = github_user_cache.get(cache_key)
+
+    if hit:
+        if cached_user is not None:
+            cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: {cached_user}")
+            # Build UserCommitSummary using cached_user
+            summary = UserCommitSummary(
+                commit.sha,
+                getattr(cached_user, 'id', None),
+                getattr(cached_user, 'login', None),
+                name,
+                email,
+                False,
+                False,
+            )
+        else:
+            cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: (information that this user is missing)")
+            summary = UserCommitSummary(
+                commit.sha,
+                None,
+                None,
+                name,
+                email,
+                False,
+                False,
+            )
+
+        cla.log.debug(f"{fn} - PR: {pr}, {summary} (from cache)")
+        return summary
+    # caching ends
+
     # get repository service
     github = cla.utils.get_repository_service("github")
     user = None
@@ -1874,13 +1942,13 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
         final_email = email
         try:
             n = user.name
-            if n and n.strip():
+            if isinstance(n, str) and n.strip():
                 final_name = n
         except (AttributeError, GithubException, IncompletableObject):
             pass
         try:
             e = user.email
-            if e and e.strip():
+            if isinstance(e, str) and e.strip():
                 final_email = e
         except (AttributeError, GithubException, IncompletableObject):
             pass
@@ -1901,6 +1969,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
         )
         cla.log.debug(f"{fn} - co-author github user details not found : {co_author}")
 
+    github_user_cache.set((name, email), user)
     return co_author_summary
 
 
