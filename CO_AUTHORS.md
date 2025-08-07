@@ -144,3 +144,19 @@ Typical adding a new entry for an organization:
 STAGE=prod MODE=add-key DEBUG=1 ./utils/enable_co_authors_entry.sh 'open-telemetry' 'opentelemetry-rust' t
 ```
 
+
+# How co-authors are processed
+
+When a commit is made to a repository that has co-authors support enabled, the backend will check if the commit message contains `co-authored-by:` lines/commit trailers (case insensitive).
+
+If it does, the backend will process the co-authors as follows, assume trailer value is `name <email>` like `Lukasz Gryglicki <lukaszgryglicki@o2.pl>`:
+
+- First we check if email is in format `nuber+username@users.noreply.github.com`. If it is we use number part as GitHub user ID and fetch the user from GitHub API. If the user is found, we use that user as co-author.
+
+- Second we check if email is in format `username@users.noreply.github.com`. If it is we use username part as GitHub username/login and fetch the user from GitHub API. If the user is found, we use that user as co-author.
+
+- Thirs we lookup for email using GitHub API. If the user is found, we use that user as co-author.
+
+- Finally we use the name part for `name <email>` and lookup using GitHub API assuming that this name is GitHub username/login (this is the case for some bots). If the user is found, we use that user as co-author.
+
+We use internal caching while doing all those lookups with cache key `name` and `email` and TTL 24 hours. We even cache by `(name, email)` when nothing is found becaus ethis is the most time consuming option. It will have a channce yo be found in the future (up to 24 hours from lookup).
