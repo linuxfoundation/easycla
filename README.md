@@ -65,7 +65,7 @@ The following diagram explains the EasyCLA architecture.
 
 See [BOT_ALLOWLIST.md](BOT_ALLOWLIST.md) for information on configuring bots that are exempt from CLA checks.
 
-## Co-authrs support
+## Co-authors support
 
 See [CO_AUTHORS.md](CO_AUTHORS.md) for information on configuring co-authors support.
 
