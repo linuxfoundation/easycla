@@ -155,7 +155,7 @@ If it does, the backend will process the co-authors as follows, assume trailer v
 
 - Second we check if email is in format `username@users.noreply.github.com`. If it is we use username part as GitHub username/login and fetch the user from GitHub API. If the user is found, we use that user as co-author.
 
-- Thirs we lookup for email using GitHub API. If the user is found, we use that user as co-author.
+- Third we lookup for email using GitHub API. If the user is found, we use that user as co-author.
 
 - Finally we use the name part for `name <email>` and lookup using GitHub API assuming that this name is GitHub username/login (this is the case for some bots). If the user is found, we use that user as co-author.
 
