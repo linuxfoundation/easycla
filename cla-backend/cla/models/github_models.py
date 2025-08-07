@@ -660,6 +660,43 @@ class GitHub(repository_service_interface.RepositoryService):
 
         create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, sign_url, body, context)
 
+    def is_co_authors_enabled_for_repo(self, enable_co_authors, org_repo):
+        if enable_co_authors is None:
+            cla.log.debug("enable_co_authors is not set on '%s', skipping co-authors", org_repo)
+            return False
+
+        repo = self.strip_org(org_repo)
+        if hasattr(enable_co_authors, "as_dict"):
+            enable_co_authors = enable_co_authors.as_dict()
+
+        # 1. Exact match
+        if repo in enable_co_authors:
+            cla.log.debug("enable_co_authors found for repo %s: %s (exact hit)", org_repo, enable_co_authors[repo])
+            return enable_co_authors[repo]
+
+        # 2. Regex pattern (if no exact hit)
+        cla.log.debug("No enable_co_authors found for repo %s, checking regex patterns", org_repo)
+        for k, v in enable_co_authors.items():
+            if not isinstance(k, str) or not k.startswith("re:"):
+                continue
+            pattern = k[3:]
+            try:
+                if re.search(pattern, repo):
+                    cla.log.debug("Found enable_co_authors for repo %s: %s via regex pattern: %s", org_repo, v, pattern)
+                    return v
+            except re.error as e:
+                cla.log.warning("Invalid regex in enable_co_authors: %s (%s) for repo: %s", k, e, org_repo)
+                continue
+
+        # 3. Wildcard fallback
+        if '*' in enable_co_authors:
+            cla.log.debug("No enable_co_authors found for repo %s, using wildcard: %s", org_repo, enable_co_authors['*'])
+            return enable_co_authors['*']
+
+        # 4. No match
+        cla.log.debug("No enable_co_authors found for repo %s, skipping co-authors", org_repo)
+        return False
+
     def update_merge_group(self, installation_id, github_repository_id, merge_group_sha, pull_request_id):
         fn = "update_queue_entry"
 
@@ -677,17 +714,6 @@ class GitHub(repository_service_interface.RepositoryService):
         except Exception as e:
             cla.log.warning(
                 f"{fn} - unable to load PR {pull_request_id} from GitHub repository "
-                f"{github_repository_id} using installation id {installation_id} - error: {e}"
-            )
-            return
-
-        try:
-            # Get Commit authors
-            commit_authors = get_pull_request_commit_authors(pull_request, installation_id)
-            cla.log.debug(f"{fn} - commit authors: {commit_authors}")
-        except Exception as e:
-            cla.log.warning(
-                f"{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository "
                 f"{github_repository_id} using installation id {installation_id} - error: {e}"
             )
             return
@@ -762,6 +788,18 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.error(
                 f"{fn} - PR: {pull_request.number}, Failed to update change request "
                 f"of repository {github_repository_id} - returning"
+            )
+            return
+
+        try:
+            # Get Commit authors
+            with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
+            commit_authors = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
+            cla.log.debug(f"{fn} - commit authors: {commit_authors}")
+        except Exception as e:
+            cla.log.warning(
+                f"{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository "
+                f"{github_repository_id} using installation id {installation_id} - error: {e}"
             )
             return
 
@@ -825,14 +863,6 @@ class GitHub(repository_service_interface.RepositoryService):
             break
         cla.log.debug(f"{fn} - retrieved pull request: {pull_request}")
 
-        # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
-        commit_authors = get_pull_request_commit_authors(pull_request, installation_id)
-
-        cla.log.debug(
-            f"{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit authors "
-            f"for pull request: {pull_request.number}"
-        )
-
         try:
             # Get existing repository info using the repository's external ID,
             # which is the repository ID assigned by github.
@@ -905,6 +935,15 @@ class GitHub(repository_service_interface.RepositoryService):
                 f"of repository {github_repository_id} - returning"
             )
             return
+
+        # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
+        with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
+        commit_authors = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
+
+        cla.log.debug(
+            f"{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit authors "
+            f"for pull request: {pull_request.number}"
+        )
 
         # Retrieve project ID from the repository.
         project_id = repository.get_repository_project_id()
@@ -1745,7 +1784,7 @@ def expand_with_co_authors(commit, pr, installation_id, commit_authors):
         commit_authors.append(get_co_author_commits(co_author, commit, pr, installation_id))
 
 
-def get_author_summary(commit, pr, installation_id) -> List[UserCommitSummary]:
+def get_author_summary(commit, pr, installation_id, with_co_authors) -> List[UserCommitSummary]:
     """
     Helper function to extract author information from a GitHub commit.
     :param commit: A GitHub commit object.
@@ -1800,11 +1839,12 @@ def get_author_summary(commit, pr, installation_id) -> List[UserCommitSummary]:
     )
     cla.log.debug(f"{fn} - PR: {pr}, {commit_author_summary}")
     commit_authors.append(commit_author_summary)
-    expand_with_co_authors(commit, pr, installation_id, commit_authors)
+    if with_co_authors is True:
+        expand_with_co_authors(commit, pr, installation_id, commit_authors)
     return commit_authors
 
 
-def get_pull_request_commit_authors(pull_request, installation_id) -> List[UserCommitSummary]:
+def get_pull_request_commit_authors(pull_request, installation_id, with_co_authors) -> List[UserCommitSummary]:
     """
     Helper function to extract all committer information for a GitHub PR.
 
@@ -1829,7 +1869,7 @@ def get_pull_request_commit_authors(pull_request, installation_id) -> List[UserC
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
         future_to_commit = {
-            executor.submit(get_author_summary, commit, pull_request.number, installation_id): commit
+            executor.submit(get_author_summary, commit, pull_request.number, installation_id, with_co_authors): commit
             for commit in pull_request.get_commits()
         }
         for future in concurrent.futures.as_completed(future_to_commit):

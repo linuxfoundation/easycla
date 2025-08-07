@@ -20,6 +20,7 @@ type GithubOrganization struct {
 	AutoEnabledClaGroupID      string            `json:"auto_enabled_cla_group_id,omitempty"`
 	Version                    string            `json:"version,omitempty"`
 	SkipCLA                    map[string]string `json:"skip_cla,omitempty"`
+	EnableCoAuthors            map[string]bool   `json:"enable_co_authors,omitempty"`
 }
 
 // ToModel converts to models.GithubOrganization
@@ -37,6 +38,7 @@ func ToModel(in *GithubOrganization) *models.GithubOrganization {
 		BranchProtectionEnabled:    in.BranchProtectionEnabled,
 		ProjectSFID:                in.ProjectSFID,
 		SkipCla:                    in.SkipCLA,
+		EnableCoAuthors:            in.EnableCoAuthors,
 	}
 }
 
