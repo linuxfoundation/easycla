@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -23,6 +25,8 @@ import (
 var (
 	// ErrGitHubRepositoryNotFound is returned when github repository is not found
 	ErrGitHubRepositoryNotFound = errors.New("github repository not found")
+	NoreplyIDPattern            = regexp.MustCompile(`^(\d+)\+([a-zA-Z0-9-]+)@users\.noreply\.github\.com$`)
+	NoreplyUserPattern          = regexp.MustCompile(`^([a-zA-Z0-9-]+)@users\.noreply\.github\.com$`)
 )
 
 const (
@@ -32,6 +36,68 @@ const (
 	successState = "success"
 	svgVersion   = "?v=2"
 )
+
+type cacheEntry struct {
+	value     *github.User
+	expiresAt time.Time
+}
+
+type Cache struct {
+	data map[[2]string]cacheEntry
+	mu   sync.Mutex
+	ttl  time.Duration
+}
+
+func NewCache(ttl time.Duration) *Cache {
+	return &Cache{
+		data: make(map[[2]string]cacheEntry),
+		ttl:  ttl,
+	}
+}
+
+func (c *Cache) Get(key [2]string) (*github.User, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, found := c.data[key]
+	if !found || time.Now().After(entry.expiresAt) {
+		if found {
+			delete(c.data, key)
+		}
+		return nil, false
+	}
+	return entry.value, true
+}
+
+func (c *Cache) Set(key [2]string, value *github.User) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[key] = cacheEntry{
+		value:     value,
+		expiresAt: time.Now().Add(c.ttl),
+	}
+}
+
+func (c *Cache) Cleanup() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	for k, v := range c.data {
+		if now.After(v.expiresAt) {
+			delete(c.data, k)
+		}
+	}
+}
+
+var GithubUserCache = NewCache(24 * time.Hour)
+
+func init() {
+	go func() {
+		for {
+			time.Sleep(time.Hour)
+			GithubUserCache.Cleanup()
+		}
+	}()
+}
 
 func GetGitHubRepository(ctx context.Context, installationID, githubRepositoryID int64) (*github.Repository, error) {
 	f := logrus.Fields{
@@ -199,7 +265,7 @@ func SearchGithubUserByEmail(ctx context.Context, client *github.Client, email s
 
 // GetGitHubUserByLogin fetches a GitHub user by their login (username).
 // Returns (*github.User, nil) if found, (nil, nil) if not found, or (nil, error) on error.
-func SearchGithubUserByLogin(ctx context.Context, client *github.Client, login string) (*github.User, error) {
+func GetGithubUserByLogin(ctx context.Context, client *github.Client, login string) (*github.User, error) {
 	f := logrus.Fields{
 		"functionName": "github.github_repository.GetGitHubUserByLogin",
 		"login":        login,
@@ -219,6 +285,31 @@ func SearchGithubUserByLogin(ctx context.Context, client *github.Client, login s
 		return nil, nil
 	}
 	log.WithFields(f).Debugf("Found GitHub user by login: %s", login)
+	return user, nil
+}
+
+// GetGitHubUserByID fetches a GitHub user by their GitHubID.
+// Returns (*github.User, nil) if found, (nil, nil) if not found, or (nil, error) on error.
+func GetGithubUserByID(ctx context.Context, client *github.Client, githubID int64) (*github.User, error) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.GetGitHubUserByID",
+		"githubID":     githubID,
+	}
+	log.WithFields(f).Debugf("Getting GitHub user by GitHub ID: %d", githubID)
+	user, _, err := client.Users.GetByID(ctx, githubID)
+	if err != nil {
+		if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == 404 {
+			log.WithFields(f).Debugf("Could not find GitHub user with GitHub ID: %d", githubID)
+			return nil, nil
+		}
+		log.WithFields(f).WithError(err).Errorf("Error getting GitHub user with GitHub ID: %d", githubID)
+		return nil, err
+	}
+	if user == nil {
+		log.WithFields(f).Debugf("No user object returned for GitHub ID: %d", githubID)
+		return nil, nil
+	}
+	log.WithFields(f).Debugf("Found GitHub user by GitHub ID: %d", githubID)
 	return user, nil
 }
 
@@ -293,23 +384,80 @@ func GetCoAuthorCommits(
 	name = strings.TrimSpace(coAuthor[0])
 	email = strings.TrimSpace(coAuthor[1])
 
-	log.WithFields(f).Debugf("Getting co-author details: %+v", coAuthor)
-
-	// Try to find user by email
-	user, err = SearchGithubUserByEmail(ctx, client, email)
-	if err != nil {
-		log.WithFields(f).Debugf("Co-author GitHub user not found via email %s: %v (error: %v)", email, coAuthor, err)
-		user = nil
+	if cachedUser, ok := GithubUserCache.Get([2]string{name, email}); ok {
+		log.WithFields(f).Debugf("GitHub user found in cache for name/email: %s/%s: %+v", name, email, cachedUser)
+		var summary *UserCommitSummary
+		if cachedUser != nil {
+			summary = &UserCommitSummary{
+				SHA:          utils.StringValue(commit.SHA),
+				CommitAuthor: cachedUser,
+				Affiliated:   false,
+				Authorized:   false,
+			}
+		} else {
+			summary = &UserCommitSummary{
+				SHA: utils.StringValue(commit.SHA),
+				CommitAuthor: &github.User{
+					Login: nil,
+					ID:    nil,
+					Name:  &name,
+					Email: &email,
+				},
+				Affiliated: false,
+				Authorized: false,
+			}
+		}
+		log.WithFields(f).Debugf("PR: %d, %+v (from cache)", pr, summary)
+		return summary
 	}
 
+	log.WithFields(f).Debugf("Getting co-author details: %+v", coAuthor)
+
+	// Check for email in "id+username@users.noreply.github.com" format:
+	if matches := NoreplyIDPattern.FindStringSubmatch(email); matches != nil {
+		idStr, loginStr := matches[1], matches[2]
+		if githubID, err = strconv.ParseInt(idStr, 10, 64); err == nil {
+			log.WithFields(f).Debugf("Detected noreply GitHub email with ID: %s, login: %s", idStr, loginStr)
+			user, err = GetGithubUserByID(ctx, client, githubID)
+			if err != nil {
+				log.WithFields(f).Warnf("Error fetching user by ID %d: %v", githubID, err)
+				user = nil
+			}
+		}
+	}
+
+	// Check for email in "username@users.noreply.github.com" format:
+	if user == nil {
+		if matches := NoreplyUserPattern.FindStringSubmatch(email); matches != nil {
+			loginStr := matches[1]
+			log.WithFields(f).Debugf("Detected noreply GitHub email with login: %s", loginStr)
+			user, err = GetGithubUserByLogin(ctx, client, loginStr)
+			if err != nil {
+				log.WithFields(f).Warnf("Error fetching user by login %s: %v", loginStr, err)
+				user = nil
+			}
+		}
+	}
+
+	// Try to find user by email
+	if user == nil {
+		user, err = SearchGithubUserByEmail(ctx, client, email)
+		if err != nil {
+			log.WithFields(f).Debugf("Co-author GitHub user not found via email %s: %v (error: %v)", email, coAuthor, err)
+			user = nil
+		}
+	}
+
+	// Last resort - try to find by name=login
 	if user == nil {
 		// Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
-		user, err = SearchGithubUserByLogin(ctx, client, name)
+		user, err = GetGithubUserByLogin(ctx, client, name)
 		if err != nil {
 			log.WithFields(f).Debugf("Co-author GitHub user not found via name=login=%s: %v (error: %v)", name, coAuthor, err)
 			user = nil
 		}
 	}
+
 	log.WithFields(f).Debugf("Co-author: %v, user: %+v", coAuthor, user)
 
 	var summary *UserCommitSummary
@@ -320,7 +468,13 @@ func GetCoAuthorCommits(
 		if user.ID != nil {
 			githubID = *user.ID
 		}
-		log.WithFields(f).Debugf("Co-author GitHub user details found: %v, user: %+v, login: %s, id: %d", coAuthor, user, login, githubID)
+		if user.Name == nil || (user.Name != nil && strings.TrimSpace(*user.Name) == "") {
+			user.Name = &name
+		}
+		if user.Email == nil || (user.Email != nil && strings.TrimSpace(*user.Email) == "") {
+			user.Email = &email
+		}
+		log.WithFields(f).Debugf("Co-author GitHub user details found: %v, user: %+v, login: %s, id: %d for email=%s, name=%s", coAuthor, user, login, githubID, email, name)
 		summary = &UserCommitSummary{
 			SHA:          utils.StringValue(commit.SHA),
 			CommitAuthor: user,
@@ -343,6 +497,7 @@ func GetCoAuthorCommits(
 		log.WithFields(f).Debugf("Co-author GitHub user details not found: %v", coAuthor)
 	}
 
+	GithubUserCache.Set([2]string{name, email}, user)
 	return summary
 }
 
@@ -381,7 +536,18 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 			log.WithFields(f).Debugf("commit.Author.Login: %s", utils.StringValue(commit.Author.Login))
 			commitAuthor = utils.StringValue(commit.Author.Login)
 		}
-		log.WithFields(f).Debugf("commitAuthor: %s", commitAuthor)
+		name, email := "", ""
+		if commit.Commit != nil && commit.Commit.Author != nil {
+			name = utils.StringValue(commit.Commit.Author.Name)
+			email = utils.StringValue(commit.Commit.Author.Email)
+			if strings.TrimSpace(name) != "" && (commit.Author.Name == nil || (commit.Author.Name != nil && strings.TrimSpace(*commit.Author.Name) == "")) {
+				commit.Author.Name = &name
+			}
+			if strings.TrimSpace(email) != "" && (commit.Author.Email == nil || (commit.Author.Email != nil && strings.TrimSpace(*commit.Author.Email) == "")) {
+				commit.Author.Email = &email
+			}
+		}
+		log.WithFields(f).Debugf("commitAuthor: %s, name: %s, email: %s", commitAuthor, name, email)
 		userCommitSummary = append(userCommitSummary, &UserCommitSummary{
 			SHA:          *commit.SHA,
 			CommitAuthor: commit.Author,
@@ -393,6 +559,13 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 
 	// get latest commit SHA
 	latestCommitSHA := commits[len(commits)-1].SHA
+	// log.WithFields(f).Debugf("user commit summaries: %+v", userCommitSummary)
+	// for _, summary := range userCommitSummary {
+	//	if summary == nil {
+	//		continue
+	//	}
+	//	log.WithFields(f).Debugf("user commit summary: %+v", *summary)
+	//}
 	return userCommitSummary, latestCommitSHA, nil
 }
 
