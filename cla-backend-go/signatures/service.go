@@ -1021,8 +1021,9 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	gitHubRepoName := utils.StringValue(githubRepository.Name)
 
 	// Fetch committers
+	withCoAuthors := github.IsCoAuthorsEnabledForRepo(ghOrg.EnableCoAuthors, gitHubRepoName)
 	log.WithFields(f).Debugf("fetching commit authors for PR: %d using repository owner: %s, repo: %s", pullRequestID, gitHubOrgName, gitHubRepoName)
-	authors, latestSHA, authorsErr := github.GetPullRequestCommitAuthors(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName)
+	authors, latestSHA, authorsErr := github.GetPullRequestCommitAuthors(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, withCoAuthors)
 	if authorsErr != nil {
 		log.WithFields(f).WithError(authorsErr).Warnf("unable to get commit authors for %s/%s for PR: %d", gitHubOrgName, gitHubRepoName, pullRequestID)
 		return authorsErr
