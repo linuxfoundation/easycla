@@ -3913,7 +3913,7 @@ class GitHubOrgModel(BaseModel):
     enabled = BooleanAttribute(null=True)
     note = UnicodeAttribute(null=True)
     skip_cla = MapAttribute(of=UnicodeAttribute, null=True)
-    enable_co_authors = MapAttribute(of=UnicodeAttribute, null=True)
+    enable_co_authors = MapAttribute(of=BooleanAttribute, null=True)
 
 
 class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-methods

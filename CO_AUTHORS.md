@@ -36,7 +36,7 @@ Example:
 This enables co-authors support on all repos under "linuxfoundation", except for those matching the regular expression `re:(?i)^repo[0-9]+$`.
 
 Algorithm to match pattern is as follows:
-- First we check repository name for exact match. Repository name is without the organization name, so for `https://github.com/linuxfoundation/easycla` it is just `easycla`. If we find an entry in `skip_cla` for `easycla` that entry is used and we stop searching.
+- First we check repository name for exact match. Repository name is without the organization name, so for `https://github.com/linuxfoundation/easycla` it is just `easycla`. If we find an entry in `enable_co_authors` for `easycla` that entry is used and we stop searching.
 - If no exact match is found, we check for regular expression match. Only keys starting with `re:` are considered. If we find a match, we use that entry and stop searching.
 - If no match is found, we check for `*` entry. If it exists, we use that entry and stop searching.
 - If no match is found, we don't support co-authors for that repository. Default is no co-author support.
@@ -159,4 +159,4 @@ If it does, the backend will process the co-authors as follows, assume trailer v
 
 - Finally we use the name part for `name <email>` and lookup using GitHub API assuming that this name is GitHub username/login (this is the case for some bots). If the user is found, we use that user as co-author.
 
-We use internal caching while doing all those lookups with cache key `name` and `email` and TTL 24 hours. We even cache by `(name, email)` when nothing is found becaus ethis is the most time consuming option. It will have a channce yo be found in the future (up to 24 hours from lookup).
+We use internal caching while doing all those lookups with cache key `name` and `email` and TTL 24 hours. We even cache by `(name, email)` when nothing is found because this is the most time consuming option. It will have a chance to be found in the future (up to 24 hours from lookup).
