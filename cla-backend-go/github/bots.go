@@ -127,6 +127,54 @@ func parseConfigPatterns(config string) []string {
 	return []string{config}
 }
 
+// IsCoAuthorsEnabledForRepo returns whether co-authors are enabled for this repo
+func IsCoAuthorsEnabledForRepo(enableCoAuthors map[string]bool, orgRepo string) bool {
+	repo := stripOrg(orgRepo)
+	f := logrus.Fields{
+		"functionName": "github.IsCoAuthorsEnabledForRepo",
+		"orgRepo":      orgRepo,
+		"repo":         repo,
+	}
+	if enableCoAuthors == nil {
+		log.WithFields(f).Debugf("enable_co_authors is not set on '%s', skipping co-authors", orgRepo)
+		return false
+	}
+
+	// 1. Exact match
+	if v, ok := enableCoAuthors[repo]; ok {
+		log.WithFields(f).Debugf("enable_co_authors found for repo %s: %t (exact hit)", orgRepo, v)
+		return v
+	}
+
+	// 2. Regex pattern
+	log.WithFields(f).Debugf("No enable_co_authors found for repo %s, checking regex patterns", orgRepo)
+	for k, v := range enableCoAuthors {
+		if !strings.HasPrefix(k, "re:") {
+			continue
+		}
+		pattern := k[3:]
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			log.WithFields(f).Debugf("Invalid regex in enable_co_authors: %s (%v) for repo: %s", k, err, orgRepo)
+			continue
+		}
+		if re.MatchString(repo) {
+			log.WithFields(f).Debugf("Found enable_co_authors for repo %s: %t via regex pattern: %s", orgRepo, v, pattern)
+			return v
+		}
+	}
+
+	// 3. Wildcard fallback
+	if v, ok := enableCoAuthors["*"]; ok {
+		log.WithFields(f).Debugf("No enable_co_authors found for repo %s, using wildcard: %t", orgRepo, v)
+		return v
+	}
+
+	// 4. No match
+	log.WithFields(f).Debugf("No enable_co_authors found for repo %s, skipping co-authors", orgRepo)
+	return false
+}
+
 // SkipAllowlistedBots- check if the actors are allowlisted based on the skip_cla configuration.
 // Returns two lists:
 // - actors still missing cla: actors who still need to sign the CLA after checking skip_cla
