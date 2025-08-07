@@ -6,11 +6,15 @@ from unittest import TestCase
 from unittest.mock import MagicMock, Mock, patch
 
 from cla.models.github_models import (UserCommitSummary, get_author_summary,
-                                      get_co_author_commits,
+                                      get_co_author_commits, github_user_cache,
                                       get_pull_request_commit_authors)
 
 
 class TestGetPullRequestCommitAuthors(TestCase):
+    def setUp(self):
+        # Clear the GitHub user cache before each test to avoid cross-test pollution
+        with github_user_cache.lock:
+            github_user_cache.data.clear()
     # @patch("cla.utils.get_repository_service")
     # def test_get_pull_request_commit_with_co_author(self, mock_github_instance):
     #     # Mock data
