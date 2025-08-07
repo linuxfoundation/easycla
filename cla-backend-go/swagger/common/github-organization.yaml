@@ -96,6 +96,20 @@ properties:
       '*': 'some-bot-login;*;*'
       'repo1': 're:vee?rendra;*;*'
       're:(?i)^repo[0-9]+$': '[re:(?i)^l(ukasz)?gryglicki$;re:(?i)^l(ukasz)?gryglicki@;*||;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]]'
+  enableCoAuthors:
+    type: object
+    additionalProperties:
+      type: boolean
+    description: |
+      Map of repository name or pattern (e.g. 'repo1', '*', 're:pattern') to a bool value (true/false) specifying co-authors support for given repo(s). 
+      Patterns can be:
+      - An exact match (e.g. 'repo1').
+      - A regular expression prefixed with 're:' (e.g. 're:(?i)^repo[0-9]+$').
+      - A wildcard '*' to match all.
+    example:
+      '*': true
+      'repo1': false
+      're:(?i)^repo[0-9]+$': true
 
   repositories:
     type: object

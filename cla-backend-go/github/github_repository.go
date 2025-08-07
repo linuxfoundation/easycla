@@ -225,7 +225,7 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 		tagValue = "@"
 	}
 	if u.CommitAuthor != nil {
-		if *u.CommitAuthor.Login != "" {
+		if u.CommitAuthor.Login != nil && *u.CommitAuthor.Login != "" {
 			sb.WriteString(fmt.Sprintf("login: %s%s / ", tagValue, *u.CommitAuthor.Login))
 		}
 
@@ -501,10 +501,11 @@ func GetCoAuthorCommits(
 	return summary
 }
 
-func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pullRequestID int, owner, repo string) ([]*UserCommitSummary, *string, error) {
+func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, *string, error) {
 	f := logrus.Fields{
 		"functionName":  "github.github_repository.GetPullRequestCommitAuthors",
 		"pullRequestID": pullRequestID,
+		"withCoAuthors": withCoAuthors,
 	}
 	var userCommitSummary []*UserCommitSummary
 
@@ -554,7 +555,9 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 			Affiliated:   false,
 			Authorized:   false,
 		})
-		ExpandWithCoAuthors(ctx, client, commit, pullRequestID, installationID, &userCommitSummary)
+		if withCoAuthors {
+			ExpandWithCoAuthors(ctx, client, commit, pullRequestID, installationID, &userCommitSummary)
+		}
 	}
 
 	// get latest commit SHA
