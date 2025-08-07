@@ -413,7 +413,7 @@ func GetCoAuthorCommits(
 
 	log.WithFields(f).Debugf("Getting co-author details: %+v", coAuthor)
 
-	// Check for email in "id+username@users.noreply.github.com" format:
+	// 1. Check for email in "id+username@users.noreply.github.com" format:
 	if matches := NoreplyIDPattern.FindStringSubmatch(email); matches != nil {
 		idStr, loginStr := matches[1], matches[2]
 		if githubID, err = strconv.ParseInt(idStr, 10, 64); err == nil {
@@ -426,7 +426,7 @@ func GetCoAuthorCommits(
 		}
 	}
 
-	// Check for email in "username@users.noreply.github.com" format:
+	// 2. Check for email in "username@users.noreply.github.com" format:
 	if user == nil {
 		if matches := NoreplyUserPattern.FindStringSubmatch(email); matches != nil {
 			loginStr := matches[1]
@@ -439,7 +439,7 @@ func GetCoAuthorCommits(
 		}
 	}
 
-	// Try to find user by email
+	// 3. Try to find user by email
 	if user == nil {
 		user, err = SearchGithubUserByEmail(ctx, client, email)
 		if err != nil {
@@ -448,7 +448,7 @@ func GetCoAuthorCommits(
 		}
 	}
 
-	// Last resort - try to find by name=login
+	// 4. Last resort - try to find by name=login
 	if user == nil {
 		// Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
 		user, err = GetGithubUserByLogin(ctx, client, name)
