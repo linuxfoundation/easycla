@@ -15,6 +15,7 @@
 # STAGE=dev MODE=add-key ./utils/skip_cla_entry.sh 'open-telemetry' '*' 'Copilot;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]'
 # STAGE=dev MODE=add-key ./utils/skip_cla_entry.sh 'openfga' 'vscode-ext' 'Copilot;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]'
 # STAGE=prod MODE=add-key DEBUG=1 ./utils/skip_cla_entry.sh 'open-telemetry' 'opentelemetry-rust' '*;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]'
+# STAGE=prod MODE=add-key ./utils/skip_cla_entry.sh 'openfga' 'vscode-ext' '[Copilot;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]||;re:^\d+\+Copilot@users\.noreply\.github\.com$;copilot-swe-agent[bot]]'
 
 if [ -z "$MODE" ]
 then
