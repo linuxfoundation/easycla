@@ -1,5 +1,5 @@
 #!/bin/bash
-# MODE=mode ./utils/skip_cla_entry.sh sun-test-org '*' 'copilot-swe-agent[bot]' '*'
+# MODE=mode ./utils/skip_cla_entry.sh sun-test-org '*' 'patterns'
 # put-item    Overwrites/adds the entire `skip_cla` entry.
 # add-key     Adds or updates a key/value inside the skip_cla map (preserves other keys)
 # delete-key  Removes a key from the skip_cla map
