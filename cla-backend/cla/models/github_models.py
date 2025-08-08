@@ -1957,6 +1957,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
     # 3. Try to find user by email
     if user is None:
         try:
+            cla.log.debug(f"{fn} - Lookup via GitHub email: {email}")
             user = github.get_github_user_by_email(email, installation_id)
         except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
             # user not found
@@ -1967,6 +1968,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
     if user is None:
         try:
             # Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
+            cla.log.debug(f"{fn} - Lookup via login=name: {name}")
             user = github.get_github_user_by_login(name, installation_id)
         except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
             # user not found
@@ -2007,7 +2009,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
         co_author_summary = UserCommitSummary(
             commit.sha, None, None, name, email, False, False  # default not authorized - will be evaluated and updated later
         )
-        cla.log.debug(f"{fn} - co-author github user details not found : {co_author}")
+        cla.log.debug(f"{fn} - co-author github user details not found: {co_author}")
 
     github_user_cache.set((name, email), user)
     return co_author_summary
