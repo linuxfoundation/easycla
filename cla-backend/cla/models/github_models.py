@@ -34,7 +34,46 @@ from requests_oauthlib import OAuth2Session
 
 # some emails we want to exclude when we register the users
 EXCLUDE_GITHUB_EMAILS = ["noreply.github.com"]
+NOREPLY_ID_PATTERN = re.compile(r"^(\d+)\+([a-zA-Z0-9-]+)@users\.noreply\.github\.com$")
+NOREPLY_USER_PATTERN = re.compile(r"^([a-zA-Z0-9-]+)@users\.noreply\.github\.com$")
 
+class TTLCache:
+    def __init__(self, ttl_seconds=86400):
+        self.data = {}
+        self.ttl = ttl_seconds
+        self.lock = threading.Lock()
+
+    def get(self, key):
+        with self.lock:
+            item = self.data.get(key, None)
+            if item is None:
+                return None, False
+            value, expires_at = item
+            if time.time() > expires_at:
+                self.data.pop(key, None)
+                return None, False
+            return value, True
+
+    def set(self, key, value):
+        with self.lock:
+            self.data[key] = (value, time.time() + self.ttl)
+
+    def cleanup(self):
+        with self.lock:
+            now = time.time()
+            keys_to_delete = [k for k, (v, expires_at) in self.data.items() if now > expires_at]
+            for k in keys_to_delete:
+                del self.data[k]
+
+github_user_cache = TTLCache(ttl_seconds=86400)
+def start_cache_cleanup():
+    def run():
+        while True:
+            time.sleep(3600)
+            github_user_cache.cleanup()
+    threading.Thread(target=run, daemon=True).start()
+
+start_cache_cleanup()
 
 class GitHub(repository_service_interface.RepositoryService):
     """
@@ -621,6 +660,43 @@ class GitHub(repository_service_interface.RepositoryService):
 
         create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, sign_url, body, context)
 
+    def is_co_authors_enabled_for_repo(self, enable_co_authors, org_repo):
+        if enable_co_authors is None:
+            cla.log.debug("enable_co_authors is not set on '%s', skipping co-authors", org_repo)
+            return False
+
+        repo = self.strip_org(org_repo)
+        if hasattr(enable_co_authors, "as_dict"):
+            enable_co_authors = enable_co_authors.as_dict()
+
+        # 1. Exact match
+        if repo in enable_co_authors:
+            cla.log.debug("enable_co_authors found for repo %s: %s (exact hit)", org_repo, enable_co_authors[repo])
+            return enable_co_authors[repo]
+
+        # 2. Regex pattern (if no exact hit)
+        cla.log.debug("No enable_co_authors found for repo %s, checking regex patterns", org_repo)
+        for k, v in enable_co_authors.items():
+            if not isinstance(k, str) or not k.startswith("re:"):
+                continue
+            pattern = k[3:]
+            try:
+                if re.search(pattern, repo):
+                    cla.log.debug("Found enable_co_authors for repo %s: %s via regex pattern: %s", org_repo, v, pattern)
+                    return v
+            except re.error as e:
+                cla.log.warning("Invalid regex in enable_co_authors: %s (%s) for repo: %s", k, e, org_repo)
+                continue
+
+        # 3. Wildcard fallback
+        if '*' in enable_co_authors:
+            cla.log.debug("No enable_co_authors found for repo %s, using wildcard: %s", org_repo, enable_co_authors['*'])
+            return enable_co_authors['*']
+
+        # 4. No match
+        cla.log.debug("No enable_co_authors found for repo %s, skipping co-authors", org_repo)
+        return False
+
     def update_merge_group(self, installation_id, github_repository_id, merge_group_sha, pull_request_id):
         fn = "update_queue_entry"
 
@@ -638,17 +714,6 @@ class GitHub(repository_service_interface.RepositoryService):
         except Exception as e:
             cla.log.warning(
                 f"{fn} - unable to load PR {pull_request_id} from GitHub repository "
-                f"{github_repository_id} using installation id {installation_id} - error: {e}"
-            )
-            return
-
-        try:
-            # Get Commit authors
-            commit_authors = get_pull_request_commit_authors(pull_request, installation_id)
-            cla.log.debug(f"{fn} - commit authors: {commit_authors}")
-        except Exception as e:
-            cla.log.warning(
-                f"{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository "
                 f"{github_repository_id} using installation id {installation_id} - error: {e}"
             )
             return
@@ -723,6 +788,18 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.error(
                 f"{fn} - PR: {pull_request.number}, Failed to update change request "
                 f"of repository {github_repository_id} - returning"
+            )
+            return
+
+        try:
+            # Get Commit authors
+            with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
+            commit_authors = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
+            cla.log.debug(f"{fn} - commit authors: {commit_authors}")
+        except Exception as e:
+            cla.log.warning(
+                f"{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository "
+                f"{github_repository_id} using installation id {installation_id} - error: {e}"
             )
             return
 
@@ -786,14 +863,6 @@ class GitHub(repository_service_interface.RepositoryService):
             break
         cla.log.debug(f"{fn} - retrieved pull request: {pull_request}")
 
-        # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
-        commit_authors = get_pull_request_commit_authors(pull_request, installation_id)
-
-        cla.log.debug(
-            f"{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit authors "
-            f"for pull request: {pull_request.number}"
-        )
-
         try:
             # Get existing repository info using the repository's external ID,
             # which is the repository ID assigned by github.
@@ -866,6 +935,15 @@ class GitHub(repository_service_interface.RepositoryService):
                 f"of repository {github_repository_id} - returning"
             )
             return
+
+        # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
+        with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
+        commit_authors = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
+
+        cla.log.debug(
+            f"{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit authors "
+            f"for pull request: {pull_request.number}"
+        )
 
         # Retrieve project ID from the repository.
         project_id = repository.get_repository_project_id()
@@ -1196,6 +1274,52 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.error("Could not find GitHub user %s", email)
         except BadCredentialsException as err:
             cla.log.error("Invalid GitHub credentials provided: %s", str(err))
+
+
+    def get_github_user_by_login(self, login, installation_id):
+        """
+        Helper method to get the GitHub user object from GitHub by their login (username).
+
+        :param login: The login (username) of the GitHub user.
+        :type login: string
+        :param installation_id: The ID of the GitHub application installed on this repository.
+        :type installation_id: int | None
+        """
+        cla.log.debug("Getting GitHub user by login: %s", login)
+        if self.client is None:
+            self.client = get_github_integration_client(installation_id)
+        try:
+            user = self.client.get_user(login)
+            return user
+        except UnknownObjectException:
+            cla.log.error("Could not find GitHub user with login: %s", login)
+            return None
+        except BadCredentialsException as err:
+            cla.log.error("Invalid GitHub credentials provided: %s", str(err))
+            return None
+
+    def get_github_user_by_id(self, github_id, installation_id):
+        """
+        Helper method to get the GitHub user object from GitHub by their numeric ID.
+
+        :param github_id: The numeric GitHub user ID.
+        :type github_id: int
+        :param installation_id: The ID of the GitHub app installation for this repo.
+        :type installation_id: int | None
+        """
+        cla.log.debug("Getting GitHub user by ID: %s", github_id)
+        if self.client is None:
+            self.client = get_github_integration_client(installation_id)
+        try:
+            user = self.client.get_user_by_id(github_id)
+            return user
+        except UnknownObjectException:
+            cla.log.error("Could not find GitHub user with ID: %s", github_id)
+            return None
+        except BadCredentialsException as err:
+            cla.log.error("Invalid GitHub credentials provided: %s", str(err))
+            return None
+
 
     def get_or_create_user(self, request):
         """
@@ -1651,8 +1775,16 @@ def get_merge_group_commit_authors(merge_group_sha, installation_id=None) -> Lis
 
     return commit_authors
 
+def expand_with_co_authors(commit, pr, installation_id, commit_authors):
+    """
+    Helper to append UserCommitSummary objects for all co-authors to commit_authors list.
+    """
+    co_authors = cla.utils.get_co_authors_from_commit(commit)
+    for co_author in co_authors:
+        commit_authors.append(get_co_author_commits(co_author, commit, pr, installation_id))
 
-def get_author_summary(commit, pr, installation_id) -> List[UserCommitSummary]:
+
+def get_author_summary(commit, pr, installation_id, with_co_authors) -> List[UserCommitSummary]:
     """
     Helper function to extract author information from a GitHub commit.
     :param commit: A GitHub commit object.
@@ -1662,67 +1794,57 @@ def get_author_summary(commit, pr, installation_id) -> List[UserCommitSummary]:
     """
     fn = "cla.models.github_models.get_author_summary"
     commit_authors = []
-    if commit.author:
+
+    # get id, login, name, email from commit.author and commit.commit.author
+    id, login, name, email = None, None, None, None
+    try:
+        id = commit.author.id
+    except (AttributeError, GithubException, IncompletableObject):
+        pass
+
+    try:
+        login = commit.author.login
+    except (AttributeError, GithubException, IncompletableObject):
+        pass
+
+    try:
+        name = commit.author.name
+        if name is None or name.strip() == "":
+            name = commit.commit.author.name
+    except (AttributeError, GithubException, IncompletableObject):
         try:
-            commit_author_summary = UserCommitSummary(
-                commit.sha,
-                commit.author.id,
-                commit.author.login,
-                commit.author.name,
-                commit.author.email,
-                False,
-                False,  # default not authorized - will be evaluated and updated later
-            )
-            cla.log.debug(f"{fn} - PR: {pr}, {commit_author_summary}")
-            # check for co-author details
-            # issue # 3884
-            commit_authors.append(commit_author_summary)
-            # co_authors = cla.utils.get_co_authors_from_commit(commit)
-            # with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            #     for co_author in co_authors:
-            #         commit_authors.append(
-            #             executor.submit(get_co_author_commits, co_author, commit, pr, installation_id).result()
-            #         )
+            name = commit.commit.author.name
+        except (AttributeError, GithubException, IncompletableObject):
+            pass
 
-            return commit_authors
-        except (GithubException, IncompletableObject) as exc:
-            cla.log.warning(f"{fn} - PR: {pr}, unable to get commit author summary: {exc}")
-            try:
-                # commit.commit.author is a github.GitAuthor.GitAuthor object type - object
-                # only has date, name and email attributes - no ID attribute/value
-                # https://pygithub.readthedocs.io/en/latest/github_objects/GitAuthor.html
-                commit_author_summary = UserCommitSummary(
-                    commit.sha,
-                    None,
-                    None,
-                    commit.commit.author.name,
-                    commit.commit.author.email,
-                    False,
-                    False,  # default not authorized - will be evaluated and updated later
-                )
-                cla.log.debug(f"{fn} - github.GitAuthor.GitAuthor object: {commit.commit.author}")
-                cla.log.debug(
-                    f"{fn} - PR: {pr}, "
-                    f"GitHub NamedUser author NOT found for commit SHA {commit_author_summary} "
-                    f"however, we did find GitAuthor info"
-                )
-                cla.log.debug(f"{fn} - PR: {pr}, {commit_author_summary}")
-                commit_authors.append(commit_author_summary)
-                return commit_authors
-            except (GithubException, IncompletableObject) as exc:
-                cla.log.warning(f"{fn} - PR: {pr}, unable to get commit author summary: {exc}")
-                commit_author_summary = UserCommitSummary(commit.sha, None, None, None, None, False, False)
-                cla.log.warning(f"{fn} - PR: {pr}, " f"could not find any commit author for SHA {commit_author_summary}")
-                commit_authors.append(commit_author_summary)
-                return commit_authors
-    else:
-        cla.log.warning(f"{fn} - PR: {pr}, " f"could not find any commit author for SHA {commit.sha}")
-        commit_author_summary = UserCommitSummary(commit.sha, None, None, None, None, False, False)
-        commit_authors.append(commit_author_summary)
-        return commit_authors
+    try:
+        email = commit.author.email
+        if email is None or email.strip() == "":
+            email = commit.commit.author.email
+    except (AttributeError, GithubException, IncompletableObject):
+        try:
+            email = commit.commit.author.email
+        except (AttributeError, GithubException, IncompletableObject):
+            pass
+
+    cla.log.debug(f"{fn}: (id: {id}, login: {login}, name: {name}, email: {email})")
+    commit_author_summary = UserCommitSummary(
+        commit.sha,
+        id,
+        login,
+        name,
+        email,
+        False,
+        False,  # default not authorized - will be evaluated and updated later
+    )
+    cla.log.debug(f"{fn} - PR: {pr}, {commit_author_summary}")
+    commit_authors.append(commit_author_summary)
+    if with_co_authors is True:
+        expand_with_co_authors(commit, pr, installation_id, commit_authors)
+    return commit_authors
 
 
-def get_pull_request_commit_authors(pull_request, installation_id) -> List[UserCommitSummary]:
+def get_pull_request_commit_authors(pull_request, installation_id, with_co_authors) -> List[UserCommitSummary]:
     """
     Helper function to extract all committer information for a GitHub PR.
 
@@ -1747,7 +1869,7 @@ def get_pull_request_commit_authors(pull_request, installation_id) -> List[UserC
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
         future_to_commit = {
-            executor.submit(get_author_summary, commit, pull_request.number, installation_id): commit
+            executor.submit(get_author_summary, commit, pull_request.number, installation_id, with_co_authors): commit
             for commit in pull_request.get_commits()
         }
         for future in concurrent.futures.as_completed(future_to_commit):
@@ -1766,28 +1888,117 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
     # check if co-author is a github user
     co_author_summary = None
     login, github_id = None, None
-    email = co_author[1]
-    name = co_author[0]
+    email = co_author[1].strip()
+    name = co_author[0].strip()
+
+    # caching starts
+    cache_key = (name, email)
+    cached_user, hit = github_user_cache.get(cache_key)
+
+    if hit:
+        if cached_user is not None:
+            cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: {cached_user}")
+            # Build UserCommitSummary using cached_user
+            summary = UserCommitSummary(
+                commit.sha,
+                getattr(cached_user, 'id', None),
+                getattr(cached_user, 'login', None),
+                name,
+                email,
+                False,
+                False,
+            )
+        else:
+            cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: (information that this user is missing)")
+            summary = UserCommitSummary(
+                commit.sha,
+                None,
+                None,
+                name,
+                email,
+                False,
+                False,
+            )
+
+        cla.log.debug(f"{fn} - PR: {pr}, {summary} (from cache)")
+        return summary
+    # caching ends
+
     # get repository service
     github = cla.utils.get_repository_service("github")
+    user = None
+
     cla.log.debug(f"{fn} - getting co-author details: {co_author}, email: {email}, name: {name}")
-    try:
-        user = github.get_github_user_by_email(email, installation_id)
-    except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
-        # user not found
-        cla.log.debug(f"{fn} - co-author github user not found : {co_author} with exception: {ex}")
-        user = None
+
+    # 1. Check for "id+username@users.noreply.github.com"
+    m = NOREPLY_ID_PATTERN.match(email)
+    if m:
+        id_str, login_str = m.groups()
+        try:
+            github_id = int(id_str)
+            cla.log.debug(f"{fn} - Detected noreply GitHub email with ID: {id_str}, login: {login_str}")
+            user = github.get_github_user_by_id(github_id, installation_id)
+        except Exception as ex:
+            cla.log.warning(f"{fn} - Error fetching user by ID {id_str}: {ex}")
+            user = None
+
+    # 2. Check for "username@users.noreply.github.com"
+    if user is None:
+        m = NOREPLY_USER_PATTERN.match(email)
+        if m:
+            login_str = m.group(1)
+            try:
+                cla.log.debug(f"{fn} - Detected noreply GitHub email with login: {login_str}")
+                user = github.get_github_user_by_login(login_str, installation_id)
+            except Exception as ex:
+                cla.log.warning(f"{fn} - Error fetching user by login {login_str}: {ex}")
+                user = None
+
+    # 3. Try to find user by email
+    if user is None:
+        try:
+            user = github.get_github_user_by_email(email, installation_id)
+        except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
+            # user not found
+            cla.log.debug(f"{fn} - co-author github user not found via email {email}: {co_author} with exception: {ex}")
+            user = None
+
+    # 4. Last resort: try to find by name (login)
+    if user is None:
+        try:
+            # Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
+            user = github.get_github_user_by_login(name, installation_id)
+        except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
+            # user not found
+            cla.log.debug(f"{fn} - co-author github user not found via login=name: {name}: {co_author} with exception: {ex}")
+            user = None
+
     cla.log.debug(f"{fn} - co-author: {co_author}, user: {user}")
+
     if user:
-        cla.log.debug(f"{fn} - co-author github user details found : {co_author}, user: {user}")
         login = user.login
         github_id = user.id
+        final_name = name
+        final_email = email
+        try:
+            n = user.name
+            if isinstance(n, str) and n.strip():
+                final_name = n
+        except (AttributeError, GithubException, IncompletableObject):
+            pass
+        try:
+            e = user.email
+            if isinstance(e, str) and e.strip():
+                final_email = e
+        except (AttributeError, GithubException, IncompletableObject):
+            pass
+        cla.log.debug(f"{fn} - co-author github user details found: {co_author}, user: {user}, login: {login}, id: {github_id}, name: {final_name}, email: {final_email}")
         co_author_summary = UserCommitSummary(
             commit.sha,
             github_id,
             login,
-            name,
-            email,
+            final_name,
+            final_email,
             False,
             False,  # default not authorized - will be evaluated and updated later
         )
@@ -1798,6 +2009,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
         )
         cla.log.debug(f"{fn} - co-author github user details not found : {co_author}")
 
+    github_user_cache.set((name, email), user)
     return co_author_summary
 
 
