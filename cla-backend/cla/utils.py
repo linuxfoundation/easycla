@@ -1947,7 +1947,7 @@ def get_co_authors_from_commit(commit):
     co_authors = []
     if commit.commit:
         commit_message = commit.commit.message
-        cla.log.debug(f"{fn} - commit message: {commit_message}")
+        # cla.log.debug(f"{fn} - commit message: {commit_message}")
         if commit_message:
             matches = re.findall(r"co-authored-by: (.*) <(.*)>", commit_message, re.I)
             co_authors = [(name.strip(), email.strip()) for name, email in matches]
