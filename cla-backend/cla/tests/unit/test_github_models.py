@@ -6,11 +6,15 @@ from unittest import TestCase
 from unittest.mock import MagicMock, Mock, patch
 
 from cla.models.github_models import (UserCommitSummary, get_author_summary,
-                                      get_co_author_commits,
+                                      get_co_author_commits, github_user_cache,
                                       get_pull_request_commit_authors)
 
 
 class TestGetPullRequestCommitAuthors(TestCase):
+    def setUp(self):
+        # Clear the GitHub user cache before each test to avoid cross-test pollution
+        with github_user_cache.lock:
+            github_user_cache.data.clear()
     # @patch("cla.utils.get_repository_service")
     # def test_get_pull_request_commit_with_co_author(self, mock_github_instance):
     #     # Mock data
@@ -55,6 +59,7 @@ class TestGetPullRequestCommitAuthors(TestCase):
         commit = MagicMock()
         commit.sha = "fake_sha"
         mock_github_instance.return_value.get_github_user_by_email.return_value = None
+        mock_github_instance.return_value.get_github_user_by_login.return_value = None
         pr = 1
         installation_id = 123
 
@@ -74,6 +79,7 @@ class TestGetPullRequestCommitAuthors(TestCase):
         co_author = ("co_author", "co_author_email.gmail.com")
         commit = MagicMock()
         commit.sha = "fake_sha"
+        mock_github_instance.return_value.get_github_user_by_login.return_value = None
         mock_github_instance.return_value.get_github_user_by_email.return_value = Mock(
             id=123, login="co_author_login"
         )
