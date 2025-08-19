@@ -1,8 +1,13 @@
 #!/bin/bash
 # API_URL=https://[xyz].ngrok-free.app (defaults to localhost:5000)
-# API_URL=https://api.lfcla.dev.platform.linuxfoundation.org
+# API_URL=ttps://api-gw.platform.linuxfoundation.org/cla-service
+# API_URL=ttps://api-gw.dev.platform.linuxfoundation.org/cla-service
 # DEBUG='' ./utils/get_company_project_cla_managers.sh f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc a09P000000DsCE5IAN
 # Note: To run manually see cla-backend-go/auth/authorizer.go:SecurityAuth() and update accordingly 'LG:'
+# STAGE=prod ./utils/scan.sh projects-cla-groups project_name 'Cloud Native Computing Foundation (CNCF)'
+# STAGE=prod ./utils/scan.sh companies company_name 'Red Hat, Inc.'
+# ./get_oauth_token_prod.sh
+# DEBUG='' API_URL=https://api-gw.platform.linuxfoundation.org/cla-service ./utils/get_company_project_cla_managers.sh '86fda258-9866-45e3-b4fe-50502ac0957c' 'a0941000002wBz4AAE'
 
 if [ -z "$TOKEN" ]
 then
