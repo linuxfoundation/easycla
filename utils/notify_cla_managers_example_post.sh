@@ -1,6 +1,6 @@
 #!/bin/bash
-# API_URL=ttps://api-gw.platform.linuxfoundation.org/cla-service
-# API_URL=ttps://api-gw.dev.platform.linuxfoundation.org/cla-service
+# API_URL=https://api-gw.platform.linuxfoundation.org/cla-service
+# API_URL=https://api-gw.dev.platform.linuxfoundation.org/cla-service
 # STAGE=prod ./utils/scan.sh projects project_id d8cead54-92b7-48c5-a2c8-b1e295e8f7f1
 # STAGE=prod ./utils/scan.sh projects-cla-groups project_name 'Cloud Native Computing Foundation (CNCF)'
 # STAGE=prod ./utils/scan.sh companies company_name 'Red Hat, Inc.'
