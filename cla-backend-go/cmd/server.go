@@ -144,6 +144,15 @@ type combinedRepo struct {
 	projects_cla_groups.Repository
 }
 
+// in cmd/server.go (top-level imports already use logrus)
+func apiPathLogger(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        log.Infof("LG:api-request-path:%s", r.URL.Path)
+        next.ServeHTTP(w, r)
+    })
+}
+
+
 // server function called by environment specific server functions
 func server(localMode bool) http.Handler {
 	f := logrus.Fields{
@@ -398,7 +407,7 @@ func server(localMode bool) http.Handler {
 	// The middleware configuration is for the handler executors. These do not apply to the swagger.json document.
 	// The middleware executes after routing but before authentication, binding and validation
 	middlewareSetupfunc := func(handler http.Handler) http.Handler {
-		return setRequestIDHandler(responseLoggingMiddleware(userCreaterMiddleware(handler)))
+		return apiPathLogger(setRequestIDHandler(responseLoggingMiddleware(userCreaterMiddleware(handler))))
 	}
 
 	v2API.CsvProducer = openapi_runtime.ProducerFunc(func(w io.Writer, data interface{}) error {
