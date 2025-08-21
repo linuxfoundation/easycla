@@ -151,7 +151,7 @@ When a commit is made to a repository that has co-authors support enabled, the b
 
 If it does, the backend will process the co-authors as follows, assume trailer value is `name <email>` like `Lukasz Gryglicki <lukaszgryglicki@o2.pl>`:
 
-- First we check if email is in format `nuber+username@users.noreply.github.com`. If it is we use number part as GitHub user ID and fetch the user from GitHub API. If the user is found, we use that user as co-author.
+- First we check if email is in format `number+username@users.noreply.github.com`. If it is we use number part as GitHub user ID and fetch the user from GitHub API. If the user is found, we use that user as co-author.
 
 - Second we check if email is in format `username@users.noreply.github.com`. If it is we use username part as GitHub username/login and fetch the user from GitHub API. If the user is found, we use that user as co-author.
 
