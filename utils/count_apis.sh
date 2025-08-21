@@ -17,4 +17,5 @@ jq -r '
 ' "${1}" \
 | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' \
 | sed -E ':a;s#/([0-9]{1,})(/|$)#/<id>\2#g;ta' \
+| sed -E 's#/(00|a0)[A-Za-z0-9]{13,16}(/|$)#/<sfid>\2#g' \
 | sort | uniq -c | sort -nr
