@@ -27,6 +27,7 @@ var (
 	ErrGitHubRepositoryNotFound = errors.New("github repository not found")
 	NoreplyIDPattern            = regexp.MustCompile(`^(\d+)\+([a-zA-Z0-9-]+)@users\.noreply\.github\.com$`)
 	NoreplyUserPattern          = regexp.MustCompile(`^([a-zA-Z0-9-]+)@users\.noreply\.github\.com$`)
+	GithubUsernameRegex         = regexp.MustCompile(`^[A-Za-z0-9-]{3,39}$`)
 )
 
 const (
@@ -359,6 +360,20 @@ func ExpandWithCoAuthors(
 	}
 }
 
+// IsValidGitHubUsername checks if the provided username is a valid GitHub username.
+func IsValidGitHubUsername(username string) bool {
+	if !GithubUsernameRegex.MatchString(username) {
+		return false
+	}
+	if strings.HasPrefix(username, "-") || strings.HasSuffix(username, "-") {
+		return false
+	}
+	if strings.Contains(username, "--") {
+		return false
+	}
+	return true
+}
+
 func GetCoAuthorCommits(
 	ctx context.Context,
 	client *github.Client,
@@ -449,7 +464,7 @@ func GetCoAuthorCommits(
 	}
 
 	// 4. Last resort - try to find by name=login
-	if user == nil {
+	if user == nil && IsValidGitHubUsername(name) {
 		// Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
 		user, err = GetGithubUserByLogin(ctx, client, name)
 		if err != nil {
