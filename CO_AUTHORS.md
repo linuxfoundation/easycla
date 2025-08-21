@@ -157,6 +157,17 @@ If it does, the backend will process the co-authors as follows, assume trailer v
 
 - Third we lookup for email using GitHub API. If the user is found, we use that user as co-author.
 
-- Finally we use the name part for `name <email>` and lookup using GitHub API assuming that this name is GitHub username/login (this is the case for some bots). If the user is found, we use that user as co-author.
+- Finally we use the name part for `name <email>`. If the name matches the GitHub username pattern (alphanumeric characters or hyphens, must be 3–39 characters long, cannot start or end with a hyphen, and cannot contain consecutive hyphens), then we lookup using the GitHub API assuming that this name is a GitHub username/login (this is the case for some bots). If the user is found, we use that user as co-author.
 
 We use internal caching while doing all those lookups with cache key `name` and `email` and TTL 24 hours. We even cache by `(name, email)` when nothing is found because this is the most time consuming option. It will have a chance to be found in the future (up to 24 hours from lookup).
+
+
+# How to fix missing commit author message
+
+Make sure that co-authors use one of the following formats in their commit message:
+
+- `Co-authored-by: Any name <ID+username@users.noreply.github.com>` - exact GitHub user will be found by unique `ID` part.
+- `Co-authored-by: Any name <username@users.noreply.github.com>` - exact GitHub user will be found by unique `username` part.
+- `Co-authored-by: Any name <public-email>` - GitHub user will be found by `public-email` part - that must be made public on GitHub.
+- `Co-authored-by: github-login <any-email>` - GitHub user will be found by `github-login` part, (must be at least 3 characters long).
+

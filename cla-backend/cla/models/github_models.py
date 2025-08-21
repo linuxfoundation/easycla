@@ -36,6 +36,9 @@ from requests_oauthlib import OAuth2Session
 EXCLUDE_GITHUB_EMAILS = ["noreply.github.com"]
 NOREPLY_ID_PATTERN = re.compile(r"^(\d+)\+([a-zA-Z0-9-]+)@users\.noreply\.github\.com$")
 NOREPLY_USER_PATTERN = re.compile(r"^([a-zA-Z0-9-]+)@users\.noreply\.github\.com$")
+# GitHub usernames must be 3-39 characters long, can only contain alphanumeric characters or hyphens,
+# cannot begin or end with a hyphen, and cannot contain consecutive hyphens.
+GITHUB_USERNAME_REGEX = re.compile(r'^(?!-)(?!.*--)[A-Za-z0-9-]{3,39}(?<!-)$')
 
 class TTLCache:
     def __init__(self, ttl_seconds=86400):
@@ -1882,6 +1885,8 @@ def get_pull_request_commit_authors(pull_request, installation_id, with_co_autho
 
     return commit_authors
 
+def is_valid_github_username(username: str) -> bool:
+    return bool(GITHUB_USERNAME_REGEX.match(username))
 
 def get_co_author_commits(co_author, commit, pr, installation_id):
     fn = "cla.models.github_models.get_co_author_commits"
@@ -1965,7 +1970,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
             user = None
 
     # 4. Last resort: try to find by name (login)
-    if user is None:
+    if user is None and is_valid_github_username(name):
         try:
             # Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
             cla.log.debug(f"{fn} - Lookup via login=name: {name}")
