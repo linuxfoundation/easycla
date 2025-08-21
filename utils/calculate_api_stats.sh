@@ -1,6 +1,8 @@
 #!/bin/bash
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
+
+
 if [ -z "$STAGE" ]
 then
   export STAGE=prod
