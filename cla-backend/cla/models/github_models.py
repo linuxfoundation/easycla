@@ -36,6 +36,8 @@ from requests_oauthlib import OAuth2Session
 EXCLUDE_GITHUB_EMAILS = ["noreply.github.com"]
 NOREPLY_ID_PATTERN = re.compile(r"^(\d+)\+([a-zA-Z0-9-]+)@users\.noreply\.github\.com$")
 NOREPLY_USER_PATTERN = re.compile(r"^([a-zA-Z0-9-]+)@users\.noreply\.github\.com$")
+# GitHub usernames must be 3-39 characters long, can only contain alphanumeric characters or hyphens,
+# cannot begin or end with a hyphen, and cannot contain consecutive hyphens.
 GITHUB_USERNAME_REGEX = re.compile(r'^(?!-)(?!.*--)[A-Za-z0-9-]{3,39}(?<!-)$')
 
 class TTLCache:
