@@ -164,7 +164,7 @@ We use internal caching while doing all those lookups with cache key `name` and 
 
 # How to fix missing commit author message
 
-make sure that co-authors use one of the following formats in their commit message:
+Make sure that co-authors use one of the following formats in their commit message:
 
 - `Co-authored-by: Any name <ID+username@users.noreply.github.com>` - exact GitHub user will be found by unique `ID` part.
 - `Co-authored-by: Any name <username@users.noreply.github.com>` - exact GitHub user will be found by unique `username` part.
