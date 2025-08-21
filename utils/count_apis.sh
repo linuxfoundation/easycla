@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
 if [ -z "${1}" ]
 then
   echo "Usage: $0 <path-to-api-logs>"
