@@ -1949,10 +1949,13 @@ def get_co_authors_from_commit(commit):
         commit_message = commit.commit.message
         # cla.log.debug(f"{fn} - commit message: {commit_message}")
         if commit_message:
-            matches = re.findall(r"co-authored-by: (.*) <(.*)>", commit_message, re.I)
-            co_authors = [(name.strip(), email.strip()) for name, email in matches]
+            matches = re.findall(r"co-authored-by:\s*(.+?)\s*<([^<>]+)>", commit_message, re.I)
+            co_authors = [
+                (name.strip(), email.strip().lower())
+                for name, email in matches
+                if name.strip() and email.strip()
+            ]
     return co_authors
-
 
 def extract_pull_request_number(pull_request_message):
     """
