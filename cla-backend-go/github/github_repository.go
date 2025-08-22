@@ -15,6 +15,7 @@ import (
 	"time"
 
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
@@ -327,13 +328,15 @@ func GetCoAuthorsFromCommit(
 		commitMessage := commit.GetCommit().GetMessage()
 		// log.WithFields(f).Debugf("commit message: %s", commitMessage)
 
-		re := regexp.MustCompile(`(?i)co-authored-by: (.*) <(.*)>`)
+		re := regexp.MustCompile(`(?i)co-authored-by:\s*(.+?)\s*<([^<>]+)>`)
 		matches := re.FindAllStringSubmatch(commitMessage, -1)
 		for _, match := range matches {
 			name := strings.TrimSpace(match[1])
-			email := strings.TrimSpace(match[2])
-			coAuthors = append(coAuthors, [2]string{name, email})
-			log.WithFields(f).Debugf("found co-author: name: %s, email: %s", name, email)
+			email := strings.ToLower(strings.TrimSpace(match[2]))
+			if name != "" && email != "" {
+				coAuthors = append(coAuthors, [2]string{name, email})
+				log.WithFields(f).Debugf("found co-author: name: %s, email: %s", name, email)
+			}
 		}
 	}
 	return coAuthors
@@ -343,6 +346,7 @@ func GetCoAuthorsFromCommit(
 func ExpandWithCoAuthors(
 	ctx context.Context,
 	client *github.Client,
+	usersService users.Service,
 	commit *github.RepositoryCommit,
 	pr int,
 	installationID int64,
@@ -355,7 +359,7 @@ func ExpandWithCoAuthors(
 	coAuthors := GetCoAuthorsFromCommit(ctx, commit)
 	log.WithFields(f).Debugf("co-authors found: %s", coAuthors)
 	for _, coAuthor := range coAuthors {
-		summary := GetCoAuthorCommits(ctx, client, coAuthor, commit, pr, installationID)
+		summary := GetCoAuthorCommits(ctx, client, usersService, coAuthor, commit, pr, installationID)
 		*commitAuthors = append(*commitAuthors, summary)
 	}
 }
@@ -374,9 +378,11 @@ func IsValidGitHubUsername(username string) bool {
 	return true
 }
 
+//nolint:gocyclo // complexity is acceptable for now
 func GetCoAuthorCommits(
 	ctx context.Context,
 	client *github.Client,
+	usersService users.Service,
 	coAuthor [2]string,
 	commit *github.RepositoryCommit,
 	pr int,
@@ -398,8 +404,10 @@ func GetCoAuthorCommits(
 	)
 	name = strings.TrimSpace(coAuthor[0])
 	email = strings.TrimSpace(coAuthor[1])
+	lName := strings.ToLower(name)
 
-	if cachedUser, ok := GithubUserCache.Get([2]string{name, email}); ok {
+	cacheKey := [2]string{lName, email}
+	if cachedUser, ok := GithubUserCache.Get(cacheKey); ok {
 		log.WithFields(f).Debugf("GitHub user found in cache for name/email: %s/%s: %+v", name, email, cachedUser)
 		var summary *UserCommitSummary
 		if cachedUser != nil {
@@ -454,19 +462,63 @@ func GetCoAuthorCommits(
 		}
 	}
 
-	// 3. Try to find user by email
+	// 3. Try to find user by email via GitHub APIs
 	if user == nil {
 		user, err = SearchGithubUserByEmail(ctx, client, email)
 		if err != nil {
-			log.WithFields(f).Debugf("Co-author GitHub user not found via email %s: %v (error: %v)", email, coAuthor, err)
+			log.WithFields(f).Debugf("Co-author GitHub user not found via github email %s: %v (error: %v)", email, coAuthor, err)
 			user = nil
 		}
 	}
 
+	//	3b. Try to find user by email in our database
+	if user == nil {
+		var githubID string
+		dbUsers, err2 := usersService.GetUsersByLFEmail(email)
+		if err2 == nil {
+			for _, dbUser := range dbUsers {
+				if dbUser.GithubID != "" {
+					githubID = dbUser.GithubID
+					// log.WithFields(f).Debugf("FOUND githubID.1 = %s", githubID)
+					break
+				}
+			}
+		} else {
+			log.WithFields(f).Debugf("Co-author GitHub user not found via lf email %s: %v (error: %v)", email, coAuthor, err2)
+		}
+		if githubID == "" {
+			dbUsers, err2 := usersService.GetUsersByEmail(email)
+			if err2 == nil {
+				for _, dbUser := range dbUsers {
+					if dbUser.GithubID != "" {
+						githubID = dbUser.GithubID
+						// log.WithFields(f).Debugf("FOUND githubID.2 = %s", githubID)
+						break
+					}
+				}
+			} else {
+				log.WithFields(f).Debugf("Co-author GitHub user not found via emails %s: %v (error: %v)", email, coAuthor, err2)
+			}
+		}
+		if githubID != "" {
+			githubIDInt, err2 := strconv.ParseInt(githubID, 10, 64)
+			if err2 != nil {
+				log.WithFields(f).Debugf("Co-author GitHub user not found via lf email %s, wrong GitHub ID: %s: %v (error: %v)", email, githubID, coAuthor, err2)
+			} else {
+				user, err = GetGithubUserByID(ctx, client, githubIDInt)
+				if err != nil {
+					log.WithFields(f).Debugf("Error fetching user by ID %d: %v", githubIDInt, err)
+					user = nil
+				}
+				// log.WithFields(f).Debugf("FOUND user = (%s, %d, %s, %s)", *user.Login, *user.ID, *user.Name, *user.Email)
+			}
+		}
+	}
+
 	// 4. Last resort - try to find by name=login
-	if user == nil && IsValidGitHubUsername(name) {
+	if user == nil && IsValidGitHubUsername(lName) {
 		// Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
-		user, err = GetGithubUserByLogin(ctx, client, name)
+		user, err = GetGithubUserByLogin(ctx, client, lName)
 		if err != nil {
 			log.WithFields(f).Debugf("Co-author GitHub user not found via name=login=%s: %v (error: %v)", name, coAuthor, err)
 			user = nil
@@ -512,11 +564,11 @@ func GetCoAuthorCommits(
 		log.WithFields(f).Debugf("Co-author GitHub user details not found: %v", coAuthor)
 	}
 
-	GithubUserCache.Set([2]string{name, email}, user)
+	GithubUserCache.Set(cacheKey, user)
 	return summary
 }
 
-func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, *string, error) {
+func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, *string, error) {
 	f := logrus.Fields{
 		"functionName":  "github.github_repository.GetPullRequestCommitAuthors",
 		"pullRequestID": pullRequestID,
@@ -571,7 +623,7 @@ func GetPullRequestCommitAuthors(ctx context.Context, installationID int64, pull
 			Authorized:   false,
 		})
 		if withCoAuthors {
-			ExpandWithCoAuthors(ctx, client, commit, pullRequestID, installationID, &userCommitSummary)
+			ExpandWithCoAuthors(ctx, client, usersService, commit, pullRequestID, installationID, &userCommitSummary)
 		}
 	}
 

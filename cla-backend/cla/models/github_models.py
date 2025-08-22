@@ -1376,10 +1376,11 @@ class GitHub(repository_service_interface.RepositoryService):
         # User not found by GitHub ID, trying by email.
         cla.log.debug(f"{fn} - Could not find GitHub user by GitHub ID: %s", github_user["id"])
         # TODO: This is very slow and needs to be improved - may need a DB schema change.
+        # LG: at least it now tries search by index lf_email first and only falls back to slow scan if nothing is found
         users = None
         user = cla.utils.get_user_instance()
         for email in emails:
-            users = user.get_user_by_email(email)
+            users = user.get_user_by_email_fast(email)
             if users is not None:
                 break
 
@@ -1893,11 +1894,13 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
     # check if co-author is a github user
     co_author_summary = None
     login, github_id = None, None
-    email = co_author[1].strip()
-    name = co_author[0].strip()
+    # We don't need to strip() or lower() here, as get_co_authors_from_commit already does that
+    email = co_author[1]
+    name = co_author[0]
+    lname = name.lower()
 
     # caching starts
-    cache_key = (name, email)
+    cache_key = (lname, email)
     cached_user, hit = github_user_cache.get(cache_key)
 
     if hit:
@@ -1959,14 +1962,45 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
                 cla.log.warning(f"{fn} - Error fetching user by login {login_str}: {ex}")
                 user = None
 
-    # 3. Try to find user by email
+    # 3. Try to find user by email via GitHub APIs
     if user is None:
         try:
             cla.log.debug(f"{fn} - Lookup via GitHub email: {email}")
             user = github.get_github_user_by_email(email, installation_id)
         except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
             # user not found
-            cla.log.debug(f"{fn} - co-author github user not found via email {email}: {co_author} with exception: {ex}")
+            cla.log.debug(f"{fn} - co-author github user not found via github email {email}: {co_author} with exception: {ex}")
+            user = None
+
+    # 3b. Try to find user by email in our database
+    if user is None:
+        try:
+            cla.log.debug(f"{fn} - Lookup via lf email: {email}")
+            user_model = cla.utils.get_user_instance()
+            db_users = user_model.get_user_by_lf_email(email)
+            github_id = None
+            if db_users is not None:
+                for db_user in db_users:
+                    github_id = db_user.get_user_github_id()
+                    if github_id is not None:
+                        break
+            if not github_id:
+                db_users = user_model.get_user_by_email(email)
+                if db_users is not None:
+                    for db_user in db_users:
+                        github_id = db_user.get_user_github_id()
+                        if github_id is not None:
+                            break
+            if github_id:
+                cla.log.debug(f"{fn} - Found GitHub ID {github_id} for lf email: {email} in EasyCLA DB")
+                try:
+                    user = github.get_github_user_by_id(github_id, installation_id)
+                except Exception as ex:
+                    cla.log.warning(f"{fn} - Error fetching user by ID {github_id}: {ex}")
+                    user = None
+        except Exception as ex:
+            # user not found
+            cla.log.debug(f"{fn} - co-author github user not found via lf email {email}: {co_author} with exception: {ex}")
             user = None
 
     # 4. Last resort: try to find by name (login)
@@ -1974,7 +2008,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
         try:
             # Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
             cla.log.debug(f"{fn} - Lookup via login=name: {name}")
-            user = github.get_github_user_by_login(name, installation_id)
+            user = github.get_github_user_by_login(lname, installation_id)
         except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
             # user not found
             cla.log.debug(f"{fn} - co-author github user not found via login=name: {name}: {co_author} with exception: {ex}")
@@ -2016,7 +2050,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
         )
         cla.log.debug(f"{fn} - co-author github user details not found: {co_author}")
 
-    github_user_cache.set((name, email), user)
+    github_user_cache.set(cache_key, user)
     return co_author_summary
 
 

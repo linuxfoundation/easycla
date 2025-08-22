@@ -97,6 +97,46 @@ func (mr *MockServiceMockRecorder) GetUserByEmail(userEmail interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserByEmail", reflect.TypeOf((*MockService)(nil).GetUserByEmail), userEmail)
 }
 
+// GetUsersByEmail mocks base method.
+func (m *MockService) GetUsersByEmail(userEmail string) ([]*models.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUsersByEmail", userEmail)
+	ret0, _ := ret[0].([]*models.User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUsersByEmail indicates an expected call of GetUsersByEmail.
+func (mr *MockServiceMockRecorder) GetUsersByEmail(userEmail interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(
+		mr.mock,
+		"GetUsersByEmail",
+		reflect.TypeOf((*MockService)(nil).GetUsersByEmail),
+		userEmail,
+	)
+}
+
+// GetUsersByLFEmail mocks base method.
+func (m *MockService) GetUsersByLFEmail(userEmail string) ([]*models.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUsersByLFEmail", userEmail)
+	ret0, _ := ret[0].([]*models.User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUsersByLFEmail indicates an expected call of GetUsersByLFEmail.
+func (mr *MockServiceMockRecorder) GetUsersByLFEmail(userEmail interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(
+		mr.mock,
+		"GetUsersByLFEmail",
+		reflect.TypeOf((*MockService)(nil).GetUsersByLFEmail),
+		userEmail,
+	)
+}
+
 // GetUserByGitHubID mocks base method.
 func (m *MockService) GetUserByGitHubID(gitHubID string) (*models.User, error) {
 	m.ctrl.T.Helper()
@@ -247,9 +287,8 @@ func (mr *MockServiceMockRecorder) UpdateUserCompanyID(userID, companyID, note i
 }
 
 func (m *MockService) ConvertUserModelToUserCompatModel(user *models.User) (*models.UserCompat, error) {
-    ret := m.ctrl.Call(m, "ConvertUserModelToUserCompatModel", user)
-    ret0, _ := ret[0].(*models.UserCompat)
-    ret1, _ := ret[1].(error)
-    return ret0, ret1
+	ret := m.ctrl.Call(m, "ConvertUserModelToUserCompatModel", user)
+	ret0, _ := ret[0].(*models.UserCompat)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
-

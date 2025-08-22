@@ -42,6 +42,7 @@ type UserRepository interface {
 	GetUserByExternalID(userExternalID string) (*models.User, error)
 	GetUserByUserName(userName string, fullMatch bool) (*models.User, error)
 	GetUserByEmail(userEmail string) (*models.User, error)
+	GetUsersByLFEmail(userEmail string) ([]*models.User, error)
 	GetUserByGitHubID(gitHubID string) (*models.User, error)
 	GetUserByGitHubUsername(gitHubUsername string) (*models.User, error)
 	GetUserByGitlabID(gitlabID int) (*models.User, error)
@@ -125,7 +126,7 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 
 	if user.LfEmail != "" {
 		attributes["lf_email"] = &dynamodb.AttributeValue{
-			S: aws.String(user.LfEmail.String()),
+			S: aws.String(strings.ToLower(user.LfEmail.String())),
 		}
 	}
 
@@ -340,6 +341,7 @@ func (repo repository) Save(user *models.UserUpdate) (*models.User, error) {
 		"tableName":        repo.tableName,
 	}
 
+	user.LfEmail = strings.ToLower(user.LfEmail)
 	var oldUserModel *models.User
 	var err error
 	oldUserModel, err = repo.getUserByUpdateModel(user)
@@ -881,12 +883,76 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	return users, nil
 }
 
+// GetUsersByLFEmail fetches the user record by email
+func (repo repository) GetUsersByLFEmail(userEmail string) ([]*models.User, error) {
+	f := logrus.Fields{
+		"functionName": "users.repository.GetUsersByLFEmail",
+		"userEmail":    userEmail,
+	}
+	userEmail = strings.ToLower(userEmail)
+	// This is the key we want to match
+	condition := expression.Key("lf_email").Equal(expression.Value(userEmail))
+
+	// These are the columns we want returned
+	projection := buildUserProjection()
+
+	// Use the nice builder to create the expression
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithProjection(projection).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error building expression for lf_email : %s, error: %v", userEmail, err)
+		return []*models.User{}, err
+	}
+
+	// Assemble the query input parameters
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.tableName),
+		IndexName:                 aws.String("lf-email-index"),
+	}
+
+	// Make the DynamoDB Query API call
+	result, err := repo.dynamoDBClient.Query(queryInput)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error retrieving user by lf_email: %s, error: %+v", userEmail, err)
+		return []*models.User{}, err
+	}
+
+	// The user model
+	var dbUserModels []DBUser
+
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &dbUserModels)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error unmarshalling user record from database for lf_email: %s, error: %+v", userEmail, err)
+		return []*models.User{}, err
+	}
+
+	if len(dbUserModels) == 0 {
+		return []*models.User{}, &utils.UserNotFound{
+			Message:   fmt.Sprintf("user not found when searching by lf email: %s", userEmail),
+			UserLFID:  "",
+			UserName:  "",
+			UserEmail: userEmail,
+			Err:       nil,
+		}
+	}
+
+	usrs := make([]*models.User, 0, len(dbUserModels))
+	for _, dbUser := range dbUserModels {
+		usrs = append(usrs, convertDBUserModel(dbUser))
+	}
+	return usrs, nil
+}
+
 // GetUserByEmail fetches the user record by email
 func (repo repository) GetUserByEmail(userEmail string) (*models.User, error) {
 	f := logrus.Fields{
 		"functionName": "users.repository.GetUserByEmail",
 		"userEmail":    userEmail,
 	}
+	userEmail = strings.ToLower(userEmail)
 	// This is the key we want to match
 	condition := expression.Key("lf_email").Equal(expression.Value(userEmail))
 
@@ -1325,7 +1391,7 @@ func convertDBUserModel(user DBUser) *models.User {
 		UserID:         user.UserID,
 		UserExternalID: user.UserExternalID,
 		Admin:          user.Admin,
-		LfEmail:        strfmt.Email(user.LFEmail),
+		LfEmail:        strfmt.Email(strings.ToLower(user.LFEmail)),
 		LfSub:          user.LFSub,
 		LfUsername:     user.LFUsername,
 		DateCreated:    user.DateCreated,
