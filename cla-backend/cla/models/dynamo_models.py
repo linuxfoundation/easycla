@@ -236,6 +236,23 @@ class LFUsernameIndex(GlobalSecondaryIndex):
     # This attribute is the hash key for the index.
     lf_username = UnicodeAttribute(hash_key=True)
 
+class LFEmailIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying users by LF Emails.
+    """
+
+    class Meta:
+        """Meta class for LF Email index."""
+
+        index_name = "lf-email-index"
+        write_capacity_units = int(cla.conf["DYNAMO_WRITE_UNITS"])
+        read_capacity_units = int(cla.conf["DYNAMO_READ_UNITS"])
+        # All attributes are projected - not sure if this is necessary.
+        projection = AllProjection()
+
+    # This attribute is the hash key for the index.
+    lf_email = UnicodeAttribute(hash_key=True)
+
 
 class ProjectRepositoryIndex(GlobalSecondaryIndex):
     """
@@ -1625,6 +1642,7 @@ class UserModel(BaseModel):
     lf_email = UnicodeAttribute(null=True)
     lf_username = UnicodeAttribute(null=True)
     lf_username_index = LFUsernameIndex()
+    lf_email_index = LFEmailIndex()
     lf_sub = UnicodeAttribute(null=True)
 
 
@@ -1826,7 +1844,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         self.model.user_external_id = user_external_id
 
     def set_lf_email(self, lf_email):
-        self.model.lf_email = lf_email
+        self.model.lf_email = (lf_email or "").strip().lower()
 
     def set_lf_sub(self, sub):
         self.model.sub = sub
@@ -1872,6 +1890,16 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
     def set_note(self, note):
         self.model.note = note
 
+    def get_user_by_email_fast(self, user_email) -> Optional[List[User]]:
+        if user_email is None:
+            cla.log.warning("Unable to lookup user by lf_email/user_email - email is empty")
+            return None
+
+        users = self.get_user_by_lf_email(user_email)
+        if users:
+            return users
+        return self.get_user_by_email(user_email)
+
     def get_user_by_email(self, user_email) -> Optional[List[User]]:
         if user_email is None:
             cla.log.warning("Unable to lookup user by user_email - email is empty")
@@ -1879,6 +1907,22 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
 
         users = []
         for user_model in UserModel.scan(UserModel.user_emails.contains(user_email)):
+            user = User()
+            user.model = user_model
+            users.append(user)
+        if len(users) > 0:
+            return users
+        else:
+            return None
+
+    def get_user_by_lf_email(self, lf_email) -> Optional[List[User]]:
+        if lf_email is None:
+            cla.log.warning("Unable to lookup user by lf_email - lf_email is empty")
+            return None
+
+        lf_email_norm = lf_email.strip().lower()
+        users = []
+        for user_model in self.model.lf_email_index.query(lf_email_norm):
             user = User()
             user.model = user_model
             users.append(user)
