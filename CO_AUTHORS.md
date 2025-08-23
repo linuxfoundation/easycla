@@ -155,7 +155,7 @@ If it does, the backend will process the co-authors as follows, assume trailer v
 
 - Second we check if email is in format `username@users.noreply.github.com`. If it is we use username part as GitHub username/login and fetch the user from GitHub API. If the user is found, we use that user as co-author.
 
-- Third we lookup for email using GitHub API. If the user is found, we use that user as co-author.
+- Third we lookup for email using GitHub API. If the user is found, we use that user as co-author. If not we lookup for this user in EasyCLA database by email (first by primary/LF email and then by other emails). If found, we use that user as co-author.
 
 - Finally we use the name part for `name <email>`. If the name matches the GitHub username pattern (alphanumeric characters or hyphens, must be 3–39 characters long, cannot start or end with a hyphen, and cannot contain consecutive hyphens), then we lookup using the GitHub API assuming that this name is a GitHub username/login (this is the case for some bots). If the user is found, we use that user as co-author.
 
