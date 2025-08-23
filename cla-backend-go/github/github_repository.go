@@ -31,6 +31,31 @@ var (
 	GithubUsernameRegex         = regexp.MustCompile(`^[A-Za-z0-9-]{3,39}$`)
 )
 
+// Note: we use | and ||| as placeholders for inline and fenced code, then swap to backticks at render time.
+const MissingCoAuthorsMessage = `
+
+One or more co-authors of this pull request were not found. You must specify co-authors in commit message trailer via:
+
+|||
+Co-authored-by: name <email>
+|||
+
+Supported |Co-authored-by:| formats include:
+
+1) |Anything <id+login@users.noreply.github.com>| - it will locate your GitHub user by |id| part.
+2) |Anything <login@users.noreply.github.com>| - it will locate your GitHub user by |login| part.
+3) |Anything <public-email>| - it will locate your GitHub user by |public-email| part. Note that this email must be made public on Github.
+4) |Anything <other-email>| - it will locate your GitHub user by |other-email| part but only if that email was used before for any other CLA as a main commit author.
+5) |login <any-valid-email>| - it will locate your GitHub user by |login| part, note that |login| part must be at least 3 characters long.
+
+Please update your commit message(s) by doing |git commit --amend| and then |git push [--force]| and then request re-running CLA check via commenting on this pull request:
+
+|||
+/easycla
+|||
+
+`
+
 const (
 	help         = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
 	unknown      = "Unknown"
@@ -351,17 +376,22 @@ func ExpandWithCoAuthors(
 	pr int,
 	installationID int64,
 	commitAuthors *[]*UserCommitSummary,
-) {
+) bool {
 	f := logrus.Fields{
 		"functionName": "github.github_repository.ExpandWithCoAuthors",
 		"pr":           pr,
 	}
 	coAuthors := GetCoAuthorsFromCommit(ctx, commit)
 	log.WithFields(f).Debugf("co-authors found: %s", coAuthors)
+	missing := false
 	for _, coAuthor := range coAuthors {
-		summary := GetCoAuthorCommits(ctx, client, usersService, coAuthor, commit, pr, installationID)
+		summary, found := GetCoAuthorCommits(ctx, client, usersService, coAuthor, commit, pr, installationID)
 		*commitAuthors = append(*commitAuthors, summary)
+		if !missing && !found {
+			missing = true
+		}
 	}
+	return missing
 }
 
 // IsValidGitHubUsername checks if the provided username is a valid GitHub username.
@@ -387,7 +417,7 @@ func GetCoAuthorCommits(
 	commit *github.RepositoryCommit,
 	pr int,
 	installationID int64,
-) *UserCommitSummary {
+) (*UserCommitSummary, bool) {
 	f := logrus.Fields{
 		"functionName":    "github.github_repository.GetCoAuthorCommits",
 		"pr":              pr,
@@ -409,6 +439,7 @@ func GetCoAuthorCommits(
 	cacheKey := [2]string{lName, email}
 	if cachedUser, ok := GithubUserCache.Get(cacheKey); ok {
 		log.WithFields(f).Debugf("GitHub user found in cache for name/email: %s/%s: %+v", name, email, cachedUser)
+		found := false
 		var summary *UserCommitSummary
 		if cachedUser != nil {
 			summary = &UserCommitSummary{
@@ -417,6 +448,7 @@ func GetCoAuthorCommits(
 				Affiliated:   false,
 				Authorized:   false,
 			}
+			found = cachedUser.ID != nil
 		} else {
 			summary = &UserCommitSummary{
 				SHA: utils.StringValue(commit.SHA),
@@ -431,7 +463,7 @@ func GetCoAuthorCommits(
 			}
 		}
 		log.WithFields(f).Debugf("PR: %d, %+v (from cache)", pr, summary)
-		return summary
+		return summary, found
 	}
 
 	log.WithFields(f).Debugf("Getting co-author details: %+v", coAuthor)
@@ -528,12 +560,14 @@ func GetCoAuthorCommits(
 	log.WithFields(f).Debugf("Co-author: %v, user: %+v", coAuthor, user)
 
 	var summary *UserCommitSummary
+	found := false
 	if user != nil {
 		if user.Login != nil {
 			login = *user.Login
 		}
 		if user.ID != nil {
 			githubID = *user.ID
+			found = true
 		}
 		if user.Name == nil || (user.Name != nil && strings.TrimSpace(*user.Name) == "") {
 			user.Name = &name
@@ -565,10 +599,10 @@ func GetCoAuthorCommits(
 	}
 
 	GithubUserCache.Set(cacheKey, user)
-	return summary
+	return summary, found
 }
 
-func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, *string, error) {
+func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, *string, bool, error) {
 	f := logrus.Fields{
 		"functionName":  "github.github_repository.GetPullRequestCommitAuthors",
 		"pullRequestID": pullRequestID,
@@ -579,21 +613,22 @@ func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service
 	client, err := NewGithubAppClient(installationID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to create Github client")
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	commits, resp, comErr := client.PullRequests.ListCommits(ctx, owner, repo, pullRequestID, &github.ListOptions{})
 	if comErr != nil {
 		log.WithFields(f).WithError(comErr).Warnf("problem listing commits for repo: %s/%s pull request: %d", owner, repo, pullRequestID)
-		return nil, nil, comErr
+		return nil, nil, false, comErr
 	}
 	if resp.StatusCode != http.StatusOK {
 		msg := fmt.Sprintf("unexpected status code: %d - expected: %d", resp.StatusCode, http.StatusOK)
 		log.WithFields(f).Warn(msg)
-		return nil, nil, errors.New(msg)
+		return nil, nil, false, errors.New(msg)
 	}
 
 	log.WithFields(f).Debugf("found %d commits for pull request: %d", len(commits), pullRequestID)
+	anyMissing := false
 	for _, commit := range commits {
 		log.WithFields(f).Debugf("loaded commit: %+v", commit)
 		commitAuthor := ""
@@ -623,7 +658,10 @@ func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service
 			Authorized:   false,
 		})
 		if withCoAuthors {
-			ExpandWithCoAuthors(ctx, client, usersService, commit, pullRequestID, installationID, &userCommitSummary)
+			missing := ExpandWithCoAuthors(ctx, client, usersService, commit, pullRequestID, installationID, &userCommitSummary)
+			if !anyMissing && missing {
+				anyMissing = true
+			}
 		}
 	}
 
@@ -636,10 +674,10 @@ func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service
 	//	}
 	//	log.WithFields(f).Debugf("user commit summary: %+v", *summary)
 	//}
-	return userCommitSummary, latestCommitSHA, nil
+	return userCommitSummary, latestCommitSHA, anyMissing, nil
 }
 
-func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, repoID *int64, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary, CLABaseAPIURL, CLALandingPage, CLALogoURL string) error {
+func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, repoID *int64, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary, anyMissing bool, CLABaseAPIURL, CLALandingPage, CLALogoURL string) error {
 	f := logrus.Fields{
 		"functionName":   "github.github_repository.UpdatePullRequest",
 		"installationID": installationID,
@@ -670,7 +708,7 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 		return failedErr
 	}
 
-	body := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, CLABaseAPIURL, CLALogoURL, CLALandingPage)
+	body := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, anyMissing, CLABaseAPIURL, CLALogoURL, CLALandingPage)
 
 	if len(missing) == 0 {
 		// All contributors are passing
@@ -701,7 +739,7 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 			// If we have previously succeeded, then we also need to update the comment (pass => fail)
 			log.WithFields(f).Debugf("Found previously succeeeded checks - updating the CLA comment in the PR : %d", pullRequestID)
 			// Generate a new comment with all the failed CLA info
-			failedComment := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, CLABaseAPIURL, CLALogoURL, CLALandingPage)
+			failedComment := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, anyMissing, CLABaseAPIURL, CLALogoURL, CLALandingPage)
 			previousSucceededComment.Body = &failedComment
 			_, _, err = client.Issues.EditComment(ctx, owner, repo, *previousSucceededComment.ID, previousSucceededComment)
 			if err != nil {
@@ -818,7 +856,7 @@ func assembleCLAStatus(authorName string, signed bool) (string, string) {
 	return authorName, "Missing CLA Authorization."
 }
 
-func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, repositoryID *int64, signed, missing []*UserCommitSummary, apiBaseURL, CLALogoURL, CLALandingPage string) string {
+func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, repositoryID *int64, signed, missing []*UserCommitSummary, anyMissing bool, apiBaseURL, CLALogoURL, CLALandingPage string) string {
 	f := logrus.Fields{
 		"functionName":   "github.github_repository.assembleCLAComment",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -838,13 +876,13 @@ func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, 
 
 	log.WithFields(f).Debug("Building CLAComment body ")
 	signURL := getFullSignURL(repositoryType, strconv.Itoa(installationID), strconv.Itoa(int(*repositoryID)), strconv.Itoa(pullRequestID), apiBaseURL)
-	commentBody := getCommentBody(repositoryType, signURL, signed, missing)
+	commentBody := getCommentBody(repositoryType, signURL, signed, missing, anyMissing)
 	allSigned := len(missing) == 0
 	badge := getCommentBadge(allSigned, signURL, missingID, false, CLALandingPage, CLALogoURL)
 	return fmt.Sprintf("%s<br >%s", badge, commentBody)
 }
 
-func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommitSummary) string {
+func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommitSummary, anyMissing bool) string {
 	f := logrus.Fields{
 		"functionName":   "github.github_repository:getCommentBody",
 		"repositoryType": repositoryType,
@@ -916,6 +954,10 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 		text = "<br>The committers listed above are authorized under a signed CLA."
 	}
 
+	if anyMissing {
+		committersComment.WriteString(strings.ReplaceAll(MissingCoAuthorsMessage, "|", "`"))
+		log.WithFields(f).Debug("some co-authors are missing for this PR, added the missing co-author message")
+	}
 	return fmt.Sprintf("%s%s", committersComment.String(), text)
 }
 

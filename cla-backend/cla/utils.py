@@ -37,6 +37,29 @@ CLA_LOGO_URL = os.environ.get("CLA_BUCKET_LOGO_URL", "")
 CORPORATE_BASE = os.environ.get("CLA_CORPORATE_BASE", "")
 CORPORATE_V2_BASE = os.environ.get("CLA_CORPORATE_V2_BASE", "")
 SVG_VERSION = "?v=2"
+MISSING_CO_AUTHOR_MESSAGE='''
+
+One or more co-authors of this pull request were not found. You must specify co-authors in commit message trailer via:
+
+```
+Co-authored-by: name <email>
+```
+
+Supported `Co-authored-by:` formats include:
+
+1) `Anything <id+login@users.noreply.github.com>` - it will locate your GitHub user by `id` part.
+2) `Anything <login@users.noreply.github.com>` - it will locate your GitHub user by `login` part.
+3) `Anything <public-email>` - it will locate your GitHub user by `public-email` part. Note that this email must be made public on Github.
+4) `Anything <other-email>` - it will locate your GitHub user by `other-email` part but only if that email was used before for any other CLA as a main commit author.
+5) `login <any-valid-email>` - it will locate your GitHub user by `login` part, note that `login` part must be at least 3 characters long.
+
+Please update your commit message(s) by doing `git commit --amend` and then `git push [--force]` and then request re-running CLA check via commenting on this pull request:
+
+```
+/easycla
+```
+
+'''
 
 def get_cla_path():
     """Returns the CLA code root directory on the current system."""
@@ -981,6 +1004,7 @@ def assemble_cla_comment(
     change_request_id,
     signed: List[UserCommitSummary],
     missing: List[UserCommitSummary],
+    any_missing: bool,
     project_version,
 ):
     """
@@ -1004,6 +1028,8 @@ def assemble_cla_comment(
     :param missing: The list of user commit summary objects indicating which authors have not signed for this
         change request.
     :type missing: List[UserCommitSummary]
+    :param any_missing: Whether or not there are any missing co-authors
+    :type any_missing: boolean
     :param project_version: Project version associated with PR comment
     :type project_version: string
     """
@@ -1018,7 +1044,7 @@ def assemble_cla_comment(
     # approved_ids = list(filter(lambda x: len(x[1]) == 4 and x[1][3] is True, missing))
     # approved_by_manager = len(approved_ids) > 0
     sign_url = get_full_sign_url(repository_type, installation_id, github_repository_id, change_request_id, project_version)
-    comment = get_comment_body(repository_type, sign_url, signed, missing)
+    comment = get_comment_body(repository_type, sign_url, signed, missing, any_missing)
     all_signed = len(missing) == 0
     badge = get_comment_badge(
         repository_type=repository_type,
@@ -1030,7 +1056,7 @@ def assemble_cla_comment(
     return badge + "<br />" + comment
 
 
-def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary], missing: List[UserCommitSummary]):
+def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary], missing: List[UserCommitSummary], any_missing: bool):
     """
     Returns the CLA comment that will appear on the repository provider's change request item.
 
@@ -1042,6 +1068,8 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
     :type: signed: List[UserCommitSummary]
     :param: missing: List of user commit summary objects containing the commit and author name of not-signed users.
     :type: missing: List[UserCommitSummary]
+    :param any_missing: Whether or not there are any missing co-authors
+    :type any_missing: boolean
     """
     fn = "utils.get_comment_body"
     cla.log.info(f"{fn} - Getting comment body for repository type: %s", repository_type)
@@ -1157,8 +1185,13 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
     committers_comment += '<!-- Date Modified: ' + str(datetime.now()) + ' -->'
 
     if len(signed) > 0 and len(missing) == 0:
-        text = "The committers listed above are authorized under a signed CLA."
+        text += "The committers listed above are authorized under a signed CLA."
 
+    if any_missing:
+        committers_comment += MISSING_CO_AUTHOR_MESSAGE
+        cla.log.info(f"{fn} - some co-authors are missing for this PR, added the missing co-author message")
+    # else:
+    #     cla.log.info(f"{fn} - all co-authors are present for this PR, no missing co-author message added")
     return text + committers_comment
 
 
