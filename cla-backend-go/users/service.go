@@ -22,6 +22,8 @@ type Service interface {
 	GetUserByLFUserName(lfUserName string) (*models.User, error)
 	GetUserByUserName(userName string, fullMatch bool) (*models.User, error)
 	GetUserByEmail(userEmail string) (*models.User, error)
+	GetUsersByEmail(userEmail string) ([]*models.User, error)
+	GetUsersByLFEmail(userEmail string) ([]*models.User, error)
 	GetUserByGitHubID(gitHubID string) (*models.User, error)
 	GetUserByGitHubUsername(gitlabUsername string) (*models.User, error)
 	GetUserByGitlabID(gitHubID int) (*models.User, error)
@@ -154,6 +156,22 @@ func (s service) GetUserByEmail(userEmail string) (*models.User, error) {
 		return nil, errors.New("userEmail is empty")
 	}
 	return s.repo.GetUserByEmail(userEmail)
+}
+
+// GetUsersByEmail fetches the users by email
+func (s service) GetUsersByEmail(userEmail string) ([]*models.User, error) {
+	if userEmail == "" {
+		return nil, errors.New("userEmail is empty")
+	}
+	return s.repo.GetUsersByEmail(userEmail)
+}
+
+// GetUsersByLFEmail fetches the users by email
+func (s service) GetUsersByLFEmail(userEmail string) ([]*models.User, error) {
+	if userEmail == "" {
+		return nil, errors.New("userEmail is empty")
+	}
+	return s.repo.GetUsersByLFEmail(userEmail)
 }
 
 // GetUserByGitHubID fetches the user by GitHub ID
