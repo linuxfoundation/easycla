@@ -511,6 +511,28 @@ class User(object):
     def set_lf_sub(self, sub):
         raise NotImplementedError()
 
+    def get_user_by_email_fast(self, user_email):
+        """
+        Fetches the user object that matches the email specified.
+
+        :param user_email: The user's email.
+        :type user_email: string
+        :return: The user object with the matching email address - None if not found.
+        :rtype: cla.models.model_interfaces.User | None
+        """
+        raise NotImplementedError()
+
+    def get_user_by_lf_email(self, user_email):
+        """
+        Fetches the user object that matches the lf_email specified.
+
+        :param user_email: The user's email.
+        :type user_email: string
+        :return: The user object with the matching email address - None if not found.
+        :rtype: cla.models.model_interfaces.User | None
+        """
+        raise NotImplementedError()
+
     def get_user_by_email(self, user_email):
         """
         Fetches the user object that matches the email specified.

@@ -588,7 +588,7 @@ class GitHub(repository_service_interface.RepositoryService):
         return pull_request
 
     def update_merge_group_status(
-        self, installation_id, repository_id, pull_request, merge_commit_sha, signed, missing, project_version
+        self, installation_id, repository_id, pull_request, merge_commit_sha, signed, missing, any_missing, project_version
     ):
         """
         Helper function to update a merge queue entrys status based on the list of signers.
@@ -609,7 +609,7 @@ class GitHub(repository_service_interface.RepositoryService):
                 "github", str(installation_id), repository_id, pull_request.number, project_version
             )
             cla.log.debug(
-                f"{fn} - Creating new CLA '{state}' status - {len(signed)} passed, {missing} failed, "
+                f"{fn} - Creating new CLA '{state}' status - {len(signed)} passed, {missing} failed, any_co_author_missing: {any_missing}, "
                 f"signing url: {sign_url}"
             )
         elif signed is not None and len(signed) > 0:
@@ -794,10 +794,11 @@ class GitHub(repository_service_interface.RepositoryService):
             )
             return
 
+        any_missing = False
         try:
             # Get Commit authors
             with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
-            commit_authors = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
+            commit_authors, any_missing = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
             cla.log.debug(f"{fn} - commit authors: {commit_authors}")
         except Exception as e:
             cla.log.warning(
@@ -826,7 +827,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
         # update Merge group status
         self.update_merge_group_status(
-            installation_id, github_repository_id, pull_request, merge_group_sha, signed, missing, project.get_version()
+            installation_id, github_repository_id, pull_request, merge_group_sha, signed, missing, any_missing, project.get_version()
         )
 
     def update_change_request(self, installation_id, github_repository_id, change_request_id):
@@ -941,7 +942,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
         # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
         with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
-        commit_authors = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
+        commit_authors, any_missing = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
 
         cla.log.debug(
             f"{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit authors "
@@ -1006,6 +1007,7 @@ class GitHub(repository_service_interface.RepositoryService):
             repository_name=repository_name,
             signed=signed,
             missing=missing,
+            any_missing=any_missing,
             project_version=project.get_version(),
         )
 
@@ -1376,10 +1378,11 @@ class GitHub(repository_service_interface.RepositoryService):
         # User not found by GitHub ID, trying by email.
         cla.log.debug(f"{fn} - Could not find GitHub user by GitHub ID: %s", github_user["id"])
         # TODO: This is very slow and needs to be improved - may need a DB schema change.
+        # LG: at least it now tries search by index lf_email first and only falls back to slow scan if nothing is found
         users = None
         user = cla.utils.get_user_instance()
         for email in emails:
-            users = user.get_user_by_email(email)
+            users = user.get_user_by_email_fast(email)
             if users is not None:
                 break
 
@@ -1778,16 +1781,21 @@ def get_merge_group_commit_authors(merge_group_sha, installation_id=None) -> Lis
 
     return commit_authors
 
-def expand_with_co_authors(commit, pr, installation_id, commit_authors):
+def expand_with_co_authors(commit, pr, installation_id, commit_authors) -> bool:
     """
     Helper to append UserCommitSummary objects for all co-authors to commit_authors list.
     """
     co_authors = cla.utils.get_co_authors_from_commit(commit)
+    missing = False
     for co_author in co_authors:
-        commit_authors.append(get_co_author_commits(co_author, commit, pr, installation_id))
+        summary, found = get_co_author_commits(co_author, commit, pr, installation_id)
+        commit_authors.append(summary)
+        if not missing and not found:
+            missing = True
+    return missing
 
 
-def get_author_summary(commit, pr, installation_id, with_co_authors) -> List[UserCommitSummary]:
+def get_author_summary(commit, pr, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
     """
     Helper function to extract author information from a GitHub commit.
     :param commit: A GitHub commit object.
@@ -1842,12 +1850,13 @@ def get_author_summary(commit, pr, installation_id, with_co_authors) -> List[Use
     )
     cla.log.debug(f"{fn} - PR: {pr}, {commit_author_summary}")
     commit_authors.append(commit_author_summary)
+    missing = False
     if with_co_authors is True:
-        expand_with_co_authors(commit, pr, installation_id, commit_authors)
-    return commit_authors
+        missing = expand_with_co_authors(commit, pr, installation_id, commit_authors)
+    return (commit_authors, missing)
 
 
-def get_pull_request_commit_authors(pull_request, installation_id, with_co_authors) -> List[UserCommitSummary]:
+def get_pull_request_commit_authors(pull_request, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
     """
     Helper function to extract all committer information for a GitHub PR.
 
@@ -1869,6 +1878,7 @@ def get_pull_request_commit_authors(pull_request, installation_id, with_co_autho
     cla.log.debug(f"{fn} - PR: {pull_request.number}, number of commits: {no_commits}")
 
     commit_authors = []
+    any_missing = False
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
         future_to_commit = {
@@ -1878,29 +1888,35 @@ def get_pull_request_commit_authors(pull_request, installation_id, with_co_autho
         for future in concurrent.futures.as_completed(future_to_commit):
             future_to_commit[future]
             try:
-                commit_authors.extend(future.result())
+                authors, missing = future.result()
+                if not any_missing and missing:
+                    any_missing = True
+                commit_authors.extend(authors)
             except Exception as exc:
                 cla.log.warning(f"{fn} - PR: {pull_request.number}, get_author_summary generated an exception: {exc}")
                 raise exc
 
-    return commit_authors
+    return (commit_authors, any_missing)
 
 def is_valid_github_username(username: str) -> bool:
     return bool(GITHUB_USERNAME_REGEX.match(username))
 
-def get_co_author_commits(co_author, commit, pr, installation_id):
+def get_co_author_commits(co_author, commit, pr, installation_id) -> Tuple[UserCommitSummary, bool]:
     fn = "cla.models.github_models.get_co_author_commits"
     # check if co-author is a github user
     co_author_summary = None
     login, github_id = None, None
-    email = co_author[1].strip()
-    name = co_author[0].strip()
+    # We don't need to strip() or lower() here, as get_co_authors_from_commit already does that
+    email = co_author[1]
+    name = co_author[0]
+    lname = name.lower()
 
     # caching starts
-    cache_key = (name, email)
+    cache_key = (lname, email)
     cached_user, hit = github_user_cache.get(cache_key)
 
     if hit:
+        found = False
         if cached_user is not None:
             cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: {cached_user}")
             # Build UserCommitSummary using cached_user
@@ -1913,6 +1929,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
                 False,
                 False,
             )
+            found = getattr(cached_user, 'id', None) is not None
         else:
             cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: (information that this user is missing)")
             summary = UserCommitSummary(
@@ -1926,7 +1943,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
             )
 
         cla.log.debug(f"{fn} - PR: {pr}, {summary} (from cache)")
-        return summary
+        return (summary, found)
     # caching ends
 
     # get repository service
@@ -1959,14 +1976,45 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
                 cla.log.warning(f"{fn} - Error fetching user by login {login_str}: {ex}")
                 user = None
 
-    # 3. Try to find user by email
+    # 3. Try to find user by email via GitHub APIs
     if user is None:
         try:
             cla.log.debug(f"{fn} - Lookup via GitHub email: {email}")
             user = github.get_github_user_by_email(email, installation_id)
         except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
             # user not found
-            cla.log.debug(f"{fn} - co-author github user not found via email {email}: {co_author} with exception: {ex}")
+            cla.log.debug(f"{fn} - co-author github user not found via github email {email}: {co_author} with exception: {ex}")
+            user = None
+
+    # 3b. Try to find user by email in our database
+    if user is None:
+        try:
+            cla.log.debug(f"{fn} - Lookup via lf email: {email}")
+            user_model = cla.utils.get_user_instance()
+            db_users = user_model.get_user_by_lf_email(email)
+            github_id = None
+            if db_users is not None:
+                for db_user in db_users:
+                    github_id = db_user.get_user_github_id()
+                    if github_id is not None:
+                        break
+            if not github_id:
+                db_users = user_model.get_user_by_email(email)
+                if db_users is not None:
+                    for db_user in db_users:
+                        github_id = db_user.get_user_github_id()
+                        if github_id is not None:
+                            break
+            if github_id:
+                cla.log.debug(f"{fn} - Found GitHub ID {github_id} for lf email: {email} in EasyCLA DB")
+                try:
+                    user = github.get_github_user_by_id(github_id, installation_id)
+                except Exception as ex:
+                    cla.log.warning(f"{fn} - Error fetching user by ID {github_id}: {ex}")
+                    user = None
+        except Exception as ex:
+            # user not found
+            cla.log.debug(f"{fn} - co-author github user not found via lf email {email}: {co_author} with exception: {ex}")
             user = None
 
     # 4. Last resort: try to find by name (login)
@@ -1974,7 +2022,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
         try:
             # Note that Co-authored-by: name <email> is not actually a GitHub login but rather a name - but we are trying hard to find a GitHub profile
             cla.log.debug(f"{fn} - Lookup via login=name: {name}")
-            user = github.get_github_user_by_login(name, installation_id)
+            user = github.get_github_user_by_login(lname, installation_id)
         except (GithubException, IncompletableObject, RateLimitExceededException) as ex:
             # user not found
             cla.log.debug(f"{fn} - co-author github user not found via login=name: {name}: {co_author} with exception: {ex}")
@@ -1982,6 +2030,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
 
     cla.log.debug(f"{fn} - co-author: {co_author}, user: {user}")
 
+    found = False
     if user:
         login = user.login
         github_id = user.id
@@ -2010,14 +2059,15 @@ def get_co_author_commits(co_author, commit, pr, installation_id):
             False,  # default not authorized - will be evaluated and updated later
         )
         cla.log.debug(f"{fn} - PR: {pr}, {co_author_summary}")
+        found = github_id is not None
     else:
         co_author_summary = UserCommitSummary(
             commit.sha, None, None, name, email, False, False  # default not authorized - will be evaluated and updated later
         )
         cla.log.debug(f"{fn} - co-author github user details not found: {co_author}")
 
-    github_user_cache.set((name, email), user)
-    return co_author_summary
+    github_user_cache.set(cache_key, user)
+    return (co_author_summary, found)
 
 
 def has_check_previously_passed_or_failed(pull_request: PullRequest):
@@ -2054,6 +2104,7 @@ def update_pull_request(
     repository_name,
     signed: List[UserCommitSummary],
     missing: List[UserCommitSummary],
+    any_missing: bool,
     project_version,
 ):  # pylint: disable=too-many-locals
     """
@@ -2071,6 +2122,8 @@ def update_pull_request(
     :type: signed: List[UserCommitSummary]
     :param: missing: The list of User Commit Summary objects for this PR.
     :type: missing: List[UserCommitSummary]
+    :param: any_missing: Boolean flag indicating if any co-authors are missing.
+    :type: any_missing: bool
     :param: project_version: Project version associated with PR
     :type: missing: string
     """
@@ -2120,11 +2173,11 @@ def update_pull_request(
     # Update the comment
     if both or notification == "comment":
         body = cla.utils.assemble_cla_comment(
-            "github", str(installation_id), github_repository_id, pull_request.number, signed, missing, project_version
+            "github", str(installation_id), github_repository_id, pull_request.number, signed, missing, any_missing, project_version
         )
         previously_pass_or_failed, comment = has_check_previously_passed_or_failed(pull_request)
         if not missing:
-            # After Issue #167 wsa in place, they decided via Issue #289 that we
+            # After Issue #167 was in place, they decided via Issue #289 that we
             # DO want to update the comment, but only after we've previously failed
             if previously_pass_or_failed:
                 cla.log.debug(f"{fn} - Found previously passed or failed checks - updating CLA comment in PR.")
