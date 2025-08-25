@@ -216,6 +216,21 @@ func (mr *MockUserRepositoryMockRecorder) GetUsersByEmail(userEmail interface{})
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUsersByEmail", reflect.TypeOf((*MockUserRepository)(nil).GetUsersByEmail), userEmail)
 }
 
+// GetUsersByLFEmail mocks base method.
+func (m *MockUserRepository) GetUsersByLFEmail(userEmail string) ([]*models.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUsersByLFEmail", userEmail)
+	ret0, _ := ret[0].([]*models.User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUsersByLFEmail indicates an expected call of GetUsersByLFEmail.
+func (mr *MockUserRepositoryMockRecorder) GetUsersByLFEmail(userEmail interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUsersByLFEmail", reflect.TypeOf((*MockUserRepository)(nil).GetUsersByLFEmail), userEmail)
+}
+
 // Save mocks base method.
 func (m *MockUserRepository) Save(user *models.UserUpdate) (*models.User, error) {
 	m.ctrl.T.Helper()

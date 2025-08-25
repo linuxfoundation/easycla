@@ -45,7 +45,7 @@ def get_user(user_id=None, user_email=None, user_github_id=None):
         except DoesNotExist as err:
             return {'errors': {'user_id': str(err)}}
     elif user_email is not None:
-        users = get_user_instance().get_user_by_email(str(user_email).lower())
+        users = get_user_instance().get_user_by_email_fast(str(user_email).lower())
         if users is None:
             return {'errors': {'user_email': 'User not found'}}
         # Use the first user for now - need to revisit - what if multiple are returned?
