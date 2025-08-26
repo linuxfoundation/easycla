@@ -4001,10 +4001,20 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
 
     def to_dict(self):
         ret = dict(self.model)
-        if ret["organization_installation_id"] == "null":
+
+        if "organization_installation_id" not in ret:
             ret["organization_installation_id"] = None
-        if ret["organization_sfid"] == "null":
+        if "organization_sfid" not in ret:
             ret["organization_sfid"] = None
+
+        val = ret.get("organization_installation_id")
+        if isinstance(val, str) and val.strip().lower() in ("null", "none", ""):
+            ret["organization_installation_id"] = None
+
+        val = ret.get("organization_sfid")
+        if isinstance(val, str) and val.strip().lower() in ("null", "none", ""):
+            ret["organization_sfid"] = None
+
         return ret
 
     def save(self) -> None:
