@@ -470,6 +470,16 @@ class GitHub(repository_service_interface.RepositoryService):
         github_repository_id = data.get("repository", {}).get("id")
         installation_id = data.get("installation", {}).get("id")
         pull_request_id = data.get("pull_request", {}).get("number")
+        if None in (installation_id, github_repository_id, merge_group_sha, pull_request_id):
+            cla.log.warning(
+                "process_enqueued_pull_request: Missing required field(s): "
+                f"installation_id={installation_id}, "
+                f"github_repository_id={github_repository_id}, "
+                f"merge_group_sha={merge_group_sha}, "
+                f"pull_request_id={pull_request_id}. "
+                "Aborting update_merge_group."
+            )
+            return
 
         self.update_merge_group(installation_id, github_repository_id, merge_group_sha, pull_request_id)
 
