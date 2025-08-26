@@ -466,10 +466,12 @@ class GitHub(repository_service_interface.RepositoryService):
         :param data: The data returned from GitHub on this webhook.
         :type data: dict
         """
-        pull_request_id = data["pull_request"]["number"]
-        github_repository_id = data["repository"]["id"]
-        installation_id = data["installation"]["id"]
-        self.update_change_request(installation_id, github_repository_id, pull_request_id)
+        merge_group_sha = data.get("pull_request", {}).get("merge_commit_sha")
+        github_repository_id = data.get("repository", {}).get("id")
+        installation_id = data.get("installation", {}).get("id")
+        pull_request_id = data.get("pull_request", {}).get("number")
+
+        self.update_merge_group(installation_id, github_repository_id, merge_group_sha, pull_request_id)
 
     def process_checks_requested_merge_group(self, data):
         """
