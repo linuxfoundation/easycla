@@ -15,6 +15,15 @@ jq -r '
   | select(.)                                             # drop non-matches
   | .p
 ' "${1}" \
+| sed -E 's#/{2,}#/#g' \
+| sed -E 's#/$##' \
+| sed -E 's#\.(png|svg|css|js|json|xml)$#.<asset>#g' \
+| sed -E 's#^/v[0-9]+/swagger\.<asset>$#/v*/swagger#g' \
+| sed -E 's#^/v[0-9]+/api-docs$#/v*/api-docs#g' \
+| sed -E 's#^/v[0-9]+/(api/)?graphql(\.php)?$#/v*/graphql#g' \
+| sed -E 's#^/v[0-9]+/graph(i)?ql(/.*)?$#/v*/graphiql#g' \
+| sed -E 's#^/v[0-9]+/(explorer|console|playground|altair)$#/v*/graphql-ui#g' \
+| sed -E 's#/([A-Za-z0-9]{5,8})(/|$)#/<shortid>\2#g' \
 | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' \
 | sed -E ':a;s#/([0-9]{1,})(/|$)#/<id>\2#g;ta' \
 | sed -E 's#/(00|a0)[A-Za-z0-9]{13,16}(/|$)#/<sfid>\2#g' \
