@@ -257,3 +257,4 @@ cover.out
 .env
 src.txt
 src.txt.*
+out.json
