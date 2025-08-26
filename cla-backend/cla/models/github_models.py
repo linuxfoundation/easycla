@@ -139,6 +139,9 @@ class GitHub(repository_service_interface.RepositoryService):
         elif data["action"] == "checks_requested":
             cla.log.debug("github_models.received_activity - Handling checks requested pull request")
             return self.process_checks_requested_merge_group(data)
+        elif data["action"] == "enqueued":
+            cla.log.debug("github_models.received_activity - Handling enqueued pull request")
+            return self.process_enqueued_pull_request(data)
         else:
             cla.log.debug("github_models.received_activity - Ignoring unsupported action: {}".format(data["action"]))
 
@@ -447,6 +450,18 @@ class GitHub(repository_service_interface.RepositoryService):
     def process_opened_pull_request(self, data):
         """
         Helper method to handle a webhook fired from GitHub for an opened PR.
+
+        :param data: The data returned from GitHub on this webhook.
+        :type data: dict
+        """
+        pull_request_id = data["pull_request"]["number"]
+        github_repository_id = data["repository"]["id"]
+        installation_id = data["installation"]["id"]
+        self.update_change_request(installation_id, github_repository_id, pull_request_id)
+
+    def process_enqueued_pull_request(self, data):
+        """
+        Helper method to handle a webhook fired from GitHub for an enqueued PR.
 
         :param data: The data returned from GitHub on this webhook.
         :type data: dict
