@@ -48,7 +48,7 @@ def get_organization(organization_name):
     try:
         cla.log.debug(f'Loading GitHub by organization name: {organization_name}..')
         org = github_organization.get_organization_by_lower_name(organization_name)
-        cla.log.debug(f'Loaded GitHub by organization name: {org}')
+        cla.log.debug(f'Loaded GitHub organization by name: {org}')
     except DoesNotExist as err:
         cla.log.warning(f'organization name {organization_name} does not exist')
         return {'errors': {'organization_name': str(err)}}
@@ -68,7 +68,7 @@ def get_organization_model(organization_name) -> Optional[GitHubOrg]:
     try:
         cla.log.debug(f'Loading GitHub by organization name: {organization_name}..')
         org = github_organization.get_organization_by_lower_name(organization_name)
-        cla.log.debug(f'Loaded GitHub by organization name: {org}')
+        cla.log.debug(f'Loaded GitHub organization model by name: {org}')
         return org
     except DoesNotExist as err:
         cla.log.warning(f'organization name {organization_name} does not exist, error: {err}')
@@ -138,9 +138,13 @@ def update_organization(organization_name,  # pylint: disable=too-many-arguments
     if organization_sfid:
         github_organization.set_organization_sfid(organization_sfid)
 
-    github_organization.save()
-    cla.log.debug('updated organization: {}'.format(organization_name))
-    return github_organization.to_dict()
+    try:
+        github_organization.save()
+        cla.log.debug('updated organization: {}'.format(organization_name))
+        return github_organization.to_dict()
+    except Exception as err:
+        cla.log.error(f"failed to save organization {organization_name}: {err}")
+        return {"errors": {"organization_name": str(err)}}
 
 
 def delete_organization(auth_user, organization_name):
@@ -296,6 +300,12 @@ def activity(action: str, event_type: str, body: dict):
 def handle_installation_event(action: str, body: dict):
     func_name = 'github.activity.handle_installation_event'
     cla.log.debug(f'{func_name} - processing github [installation] activity callback...')
+    installation_id = None
+    try:
+        installation_id = body['installation']['id']
+    except KeyError:
+        cla.log.warning(f'{func_name} - unable to determine installation id from body: {json.dumps(body)}.')
+    cla.log.debug(f'{func_name} - processing github installation {installation_id}...')
 
     # New Installations
     if action == 'created':
@@ -306,7 +316,7 @@ def handle_installation_event(action: str, body: dict):
             cla.log.warning(f'{func_name} - Unable to determine organization name from the github installation event '
                             f'with action: {action}'
                             f'event body: {json.dumps(body)}')
-            return {'status', f'GitHub installation {action} event malformed.'}
+            return {'status': f'GitHub installation {action} event malformed.'}
 
         cla.log.debug(f'Locating organization using name: {org_name}')
         existing = get_organization(org_name)
@@ -315,23 +325,16 @@ def handle_installation_event(action: str, body: dict):
                             'but the organization is not configured in EasyCLA')
             # TODO: Need a way of keeping track of new organizations that don't have projects yet.
             return {'status': 'Github Organization must be created through the Project Management Console.'}
-        elif not existing['organization_installation_id']:
-            update_organization(
-                existing['organization_name'],
-                existing['organization_sfid'],
-                body['installation']['id'],
-            )
-            cla.log.info(f'{func_name} - Organization enrollment completed: {existing["organization_name"]}')
+        elif not existing.get('organization_installation_id'):
+            cla.log.info(f'{func_name} - Setting installation ID for github organization: {existing.get("organization_name")} to {installation_id}')
+            update_organization(existing.get('organization_name'), existing.get('organization_sfid'), installation_id)
+            cla.log.info(f'{func_name} - Organization enrollment completed: {existing.get("organization_name")}')
             return {'status': 'Organization Enrollment Completed. CLA System is operational'}
         else:
-            cla.log.info(f'{func_name} - Organization already enrolled: {existing["organization_name"]}')
-            cla.log.info(f'{func_name} - Updating installation ID for '
-                         f'github organization: {existing["organization_name"]}')
-            update_organization(
-                existing['organization_name'],
-                existing['organization_sfid'],
-                body['installation']['id'],
-            )
+            cla.log.info(f'{func_name} - Organization already enrolled: {existing.get("organization_name")}')
+            cla.log.info(f'{func_name} - installation ID: {existing.get("organization_installation_id")}')
+            cla.log.info(f'{func_name} - Updating installation ID for github organization: {existing.get("organization_name")} to {installation_id}')
+            update_organization(existing.get('organization_name'), existing.get('organization_sfid'), installation_id)
             return {'status': 'Already Enrolled Organization Updated. CLA System is operational'}
 
     elif action == 'deleted':
@@ -341,7 +344,7 @@ def handle_installation_event(action: str, body: dict):
             cla.log.warning('Unable to determine organization name from the github installation event '
                             f'with action: {action}'
                             f'event body: {json.dumps(body)}')
-            return {'status', f'GitHub installation {action} event malformed.'}
+            return {'status': f'GitHub installation {action} event malformed.'}
         repositories = Repository().get_repositories_by_organization(org_name)
         notify_project_managers(repositories)
         return
