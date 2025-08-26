@@ -39,14 +39,20 @@ if [ -z "${DTFROM}" ]
 then
   export DTFROM="$(date -d '3 days ago' +%s)000"
 else
-  export DTFROM="$(date -d "${DTFROM}" +%s)000"
+  if [[ ! "$DTFROM" =~ ^[0-9]+$ ]]
+  then
+    export DTFROM="$(date -d "${DTFROM}" +%s)000"
+  fi
 fi
 
 if [ -z "${DTTO}" ]
 then
   export DTTO="$(date +%s)000"
 else
-  export DTTO="$(date -d "${DTTO}" +%s)000"
+  if [[ ! "$DTTO" =~ ^[0-9]+$ ]]
+  then
+    export DTTO="$(date -d "${DTTO}" +%s)000"
+  fi
 fi
 
 if [ ! -z "${DEBUG}" ]
