@@ -4000,6 +4000,10 @@ class GitHubOrg(model_interfaces.GitHubOrg):  # pylint: disable=too-many-public-
         )
 
     def to_dict(self):
+        if getattr(self.model, 'skip_cla', None) is None:
+            self.model.skip_cla = {}
+        if getattr(self.model, 'enable_co_authors', None) is None:
+            self.model.enable_co_authors = {}
         ret = dict(self.model)
 
         if "organization_installation_id" not in ret:
