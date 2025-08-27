@@ -8,7 +8,6 @@ import hmac
 import json
 import os
 import uuid
-import traceback
 from datetime import datetime
 from pprint import pprint
 from typing import Optional, List
@@ -320,34 +319,23 @@ def handle_installation_event(action: str, body: dict):
             return {'status': f'GitHub installation {action} event malformed.'}
 
         cla.log.debug(f'Locating organization using name: {org_name}')
-        try:
-            existing = get_organization(org_name)
-            cla.log.debug(
-                f"{func_name} - post-get_organization type={type(existing)} "
-                f"keys={list(existing.keys()) if isinstance(existing, dict) else '(n/a)'} "
-                f"values={list(existing.values()) if isinstance(existing, dict) else '(n/a)'}"
-            )
-            if 'errors' in existing:
-                cla.log.warning(f'{func_name} - Received github installation created event for organization: {org_name}, '
-                                'but the organization is not configured in EasyCLA')
-                # TODO: Need a way of keeping track of new organizations that don't have projects yet.
-                return {'status': 'Github Organization must be created through the Project Management Console.'}
-            elif not existing.get('organization_installation_id'):
-                cla.log.info(f'{func_name} - Setting installation ID for github organization: {existing.get("organization_name")} to {installation_id}')
-                update_organization(existing.get('organization_name'), existing.get('organization_sfid'), installation_id)
-                cla.log.info(f'{func_name} - Organization enrollment completed: {existing.get("organization_name")}')
-                return {'status': 'Organization Enrollment Completed. CLA System is operational'}
-            else:
-                cla.log.info(f'{func_name} - Organization already enrolled: {existing.get("organization_name")}')
-                cla.log.info(f'{func_name} - installation ID: {existing.get("organization_installation_id")}')
-                cla.log.info(f'{func_name} - Updating installation ID for github organization: {existing.get("organization_name")} to {installation_id}')
-                update_organization(existing.get('organization_name'), existing.get('organization_sfid'), installation_id)
-                return {'status': 'Already Enrolled Organization Updated. CLA System is operational'}
-        except Exception as e:
-            cla.log.error(f"{func_name} - exception entering/enforcing enrollment branches: {type(e).__name__}: {e}\n"
-                f"{traceback.format_exc()}"
-            )
-            raise
+        existing = get_organization(org_name)
+        if 'errors' in existing:
+            cla.log.warning(f'{func_name} - Received github installation created event for organization: {org_name}, '
+                            'but the organization is not configured in EasyCLA')
+            # TODO: Need a way of keeping track of new organizations that don't have projects yet.
+            return {'status': 'Github Organization must be created through the Project Management Console.'}
+        elif not existing.get('organization_installation_id'):
+            cla.log.info(f'{func_name} - Setting installation ID for github organization: {existing.get("organization_name")} to {installation_id}')
+            update_organization(existing.get('organization_name'), existing.get('organization_sfid'), installation_id)
+            cla.log.info(f'{func_name} - Organization enrollment completed: {existing.get("organization_name")}')
+            return {'status': 'Organization Enrollment Completed. CLA System is operational'}
+        else:
+            cla.log.info(f'{func_name} - Organization already enrolled: {existing.get("organization_name")}')
+            cla.log.info(f'{func_name} - installation ID: {existing.get("organization_installation_id")}')
+            cla.log.info(f'{func_name} - Updating installation ID for github organization: {existing.get("organization_name")} to {installation_id}')
+            update_organization(existing.get('organization_name'), existing.get('organization_sfid'), installation_id)
+            return {'status': 'Already Enrolled Organization Updated. CLA System is operational'}
 
     elif action == 'deleted':
         cla.log.debug(f'{func_name} - processing github installation activity for action: {action}')
