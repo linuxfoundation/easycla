@@ -35,24 +35,34 @@ then
   exit 2
 fi
 
+to_epoch_ms () {
+  local v="$1"
+  if [[ "$v" =~ ^[0-9]{13}$ ]]
+  then
+    echo "$v"; return
+  fi
+  if [[ "$v" =~ ^[0-9]{10}$ ]]
+  then
+    echo "${v}000"; return
+  fi
+  v="${v/T/ }"
+  v="${v/Z/ UTC}"
+  echo "$(date -d "$v" +%s)000"
+}
+
 if [ -z "${DTFROM}" ]
 then
-  export DTFROM="$(date -d '3 days ago' +%s)000"
+  export DTFROM="$(to_epoch_ms '3 days ago')"
 else
-  if [[ ! "$DTFROM" =~ ^[0-9]+$ ]]
-  then
-    export DTFROM="$(date -d "${DTFROM}" +%s)000"
-  fi
+  export DTFROM="$(to_epoch_ms "${DTFROM}")"
 fi
 
+# DTTO
 if [ -z "${DTTO}" ]
 then
-  export DTTO="$(date +%s)000"
+  export DTTO="$(to_epoch_ms 'now')"
 else
-  if [[ ! "$DTTO" =~ ^[0-9]+$ ]]
-  then
-    export DTTO="$(date -d "${DTTO}" +%s)000"
-  fi
+  export DTTO="$(to_epoch_ms "${DTTO}")"
 fi
 
 if [ ! -z "${DEBUG}" ]
