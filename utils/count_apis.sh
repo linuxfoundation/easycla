@@ -21,7 +21,7 @@ jq -r '
 ' "${1}" \
 | sed -E 's#/{2,}#/#g' \
 | sed -E 's#/$##' \
-| sed -E 's#\.(png|svg|css|js|json|xml)$#.<asset>#g' \
+| sed -E 's#\.(png|svg|css|js|json|xml|htm|html)$#.<asset>#g' \
 | sed -E 's#^/v[0-9]+/swagger\.<asset>$#/v*/swagger#g' \
 | sed -E 's#^/v[0-9]+/api-docs$#/v*/api-docs#g' \
 | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' \
