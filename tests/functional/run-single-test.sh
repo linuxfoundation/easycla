@@ -1,6 +1,6 @@
 #!/bin/bash
 # requires "npm i -D @cypress/grep"
-# ALLOW_FAIL=1 - means dont' fail early on HTTP 4xx, 5xx errors
+# ALLOW_FAIL=1 - means don't fail early on HTTP 4xx, 5xx errors
 # Example: ALLOW_FAIL=1 ./run-single-test.sh github-repositories 'Get GitHub branch protection for given repository - Record should Returns 200 Response'
 
 if [ -z "$1" ]
