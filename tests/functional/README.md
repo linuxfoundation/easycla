@@ -90,6 +90,8 @@ You can ask for example `.env` file over slack.
 - Run `npx cypress install`
 - Run tests using cmd `npx cypress run`. Or `xvfb-run -a npx cypress run` when runnign over SSH.
 - Run tests using UI `npx cypress open`. Choose **E2E testing**, select **Chrome** browser.
+- Run single E2E spec file: `` [ALLOW_FAIL=1] ./run-single-test.sh github-repositories ``.
+- Run single test from E2E spec file: `` [ALLOW_FAIL=1] ./run-single-test.sh github-repositories 'test name regexp' ``.
 - View test reports in the `cypress-report` directory.
 - Explore source code files for detailed implementation.
 
