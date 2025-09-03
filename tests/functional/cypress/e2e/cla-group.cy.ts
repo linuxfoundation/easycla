@@ -131,7 +131,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/foundation/${projectSfid}-xyz/cla-groups`,
-      failOnStatusCode: allowFail,
+      failOnStatusCode: false,
       auth: {
         bearer: bearerToken,
       },
