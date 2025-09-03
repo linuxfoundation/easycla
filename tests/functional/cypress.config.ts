@@ -9,6 +9,19 @@ export default defineConfig({
   e2e: {
     // baseUrl: 'http://localhost:1234',
     specPattern: 'cypress/e2e/**/**/*.{js,jsx,ts,tsx}',
+    setupNodeEvents(on, config) {
+      on('task', {
+        log(message: string) {
+          console.log(message);
+          return null;
+        },
+        table(rows: any[]) {
+          console.table(rows);
+          return null;
+        },
+      });
+      return config;
+    },
   },
   env: {
     APP_URL: process.env.APP_URL,
@@ -19,6 +32,5 @@ export default defineConfig({
     AUTH0_CLIENT_SECRET: process.env.AUTH0_CLIENT_SECRET,
     AUTH0_CLIENT_ID: process.env.AUTH0_CLIENT_ID,
     CYPRESS_ENV: process.env.CYPRESS_ENV,
-  }
+  },
 });
-
