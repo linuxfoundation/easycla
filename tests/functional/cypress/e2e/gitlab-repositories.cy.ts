@@ -20,6 +20,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
   const gitLabGroupID = appConfig.groupId;
   let claGroupId = '';
   let repoExternalId = '';
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   let bearerToken: string = null;
   before(() => {
@@ -35,6 +36,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -57,6 +59,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -82,6 +85,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },

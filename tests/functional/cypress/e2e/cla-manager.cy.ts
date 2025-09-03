@@ -29,6 +29,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
   let companySFID = '';
   let userLFID = 'veerendrat';
   let userId = appConfig.userIdclaManager; //"c5ac2857-c263-11ed-94d1-d2349de32229";//veerendrat
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   before(() => {
     if (bearerToken == null) {
@@ -43,6 +44,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}company/${companyID}/claGroup/${claGroupID}/cla-manager-designee`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -69,11 +71,11 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID}/cla-manager`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
       },
-      failOnStatusCode: false,
       body: {
         firstName: 'veerendrat',
         lastName: 'thakur',
@@ -99,6 +101,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID}/cla-manager/${userLFID}`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -113,6 +116,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID_Designee}/cla-manager-designee`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -136,6 +140,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID_Designee}/cla-manager/requests`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -159,6 +164,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}notify-cla-managers`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -185,6 +191,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}user/${userId}/invite-company-admin`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -207,6 +214,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'GET',
       url: `${claEndpoint}company/${companySFID}/user/${userLFID}/claGroupID/${claGroupID}/is-cla-manager-designee`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },

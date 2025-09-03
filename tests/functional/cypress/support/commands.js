@@ -32,6 +32,12 @@ export function validate_200_Status(response) {
   cy.log(jsonResponse);
 }
 
+export function validate_404_Status(response) {
+  expect(response.status).to.eq(404);
+  expect(response.statusText).to.eq("Not Found");
+  expect(response.body.Code).to.eq("404");
+}
+
 let bearerToken = '';
 export function getTokenKey() {
   cy.request({

@@ -19,6 +19,7 @@ describe('To Validate events are properly capture via API call', function () {
   const projectSfid = appConfig.childProjectSFID; //project name: easyAutom-child2
   const companyID = appConfig.companyID; //Infosys Limited
   const compProjectSFID = appConfig.projectSFID; //sun
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   let bearerToken: string = null;
   before(() => {
@@ -35,6 +36,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpointForNextKey}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -62,6 +64,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpointForNextKey}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -89,6 +92,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfid}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -115,6 +119,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/recent?pageSize=2`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -140,6 +145,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/foundation/${foundationSFID}/csv`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -152,6 +158,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfid}/csv`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -165,6 +172,7 @@ describe('To Validate events are properly capture via API call', function () {
       cy.request({
         method: 'GET',
         url: `${URL}?nextKey=${NextKey}&pageSize=50`,
+        failOnStatusCode: allowFail,
         auth: {
           bearer: bearerToken,
         },
