@@ -15,7 +15,7 @@ describe('To Validate & check cla version via API call', function () {
     }
   });
 
-  it('Returns the application version information- Record should Returns 200 Response', function () {
+  it('Returns the application version information- Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/ops/version`,

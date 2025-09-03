@@ -15,7 +15,7 @@ describe('To Validate & get api-docs via API call', function () {
     }
   });
 
-  it('Endpoint to render the API documentation- Record should Returns 200 Response', function () {
+  it('Endpoint to render the API documentation- Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/api-docs`,
@@ -28,7 +28,7 @@ describe('To Validate & get api-docs via API call', function () {
     });
   });
 
-  it('Returns the Swagger specification as a JSON document- Record should Returns 200 Response', function () {
+  it('Returns the Swagger specification as a JSON document- Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/swagger.json`,

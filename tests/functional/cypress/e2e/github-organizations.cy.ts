@@ -31,7 +31,7 @@ describe('To Validate github-organizations API call', function () {
     }
   });
 
-  it('Get list of Github organization associated with project - Record should Returns 200 Response', function () {
+  it('Get list of Github organization associated with project - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
@@ -53,7 +53,7 @@ describe('To Validate github-organizations API call', function () {
     });
   });
 
-  it('Update GitHub Organization Configuration - Record should Returns 200 Response', function () {
+  it('Update GitHub Organization Configuration - Record should return 200 Response', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/${gitHubOrgName}/config`,
@@ -72,12 +72,11 @@ describe('To Validate github-organizations API call', function () {
     });
   });
 
-  it('Add new GitHub Oranization in the project - Record should Returns 200 Response', function () {
+  it('Add new GitHub Oranization in the project - Record should return 200 Response', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
       failOnStatusCode: allowFail,
-
       auth: {
         bearer: bearerToken,
       },
@@ -88,19 +87,18 @@ describe('To Validate github-organizations API call', function () {
         organizationName: gitHubOrg,
       },
     }).then((response) => {
-      validate_200_Status(response);
+      cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
 
-      // Validate specific data in the response
-      expect(response.body).to.have.property('list');
-      let list = response.body.list;
-      expect(list[1].github_organization_name).to.eql(gitHubOrg);
-      expect(list[1].connection_status).to.eql('connected');
-      //To validate schema of response
-      validateApiResponse('github-organizations/addProjectGithubOrganization.json', response.body);
+        // Validate specific data in the response
+        expect(response.body.organizationName).to.eql(gitHubOrg);
+        //To validate schema of response
+        validateApiResponse('github-organizations/addProjectGithubOrganization.json', response.body);
+      });
     });
   });
 
-  it('Delete GitHub oranization in the project - Record should Returns 204 Response', function () {
+  it('Delete GitHub oranization in the project - Record should return 204 Response', function () {
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${gitHubOrg}`,

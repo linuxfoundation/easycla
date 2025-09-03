@@ -47,7 +47,7 @@ describe('To Validate github-organizations API call', function () {
     }
   });
 
-  it('Get the GitHub repositories of the project which are CLA Enforced- Record should Returns 200 Response', function () {
+  it('Get the GitHub repositories of the project which are CLA Enforced- Record should return 200 Response', function () {
     cy.task('log', `--> GET ${claEndpoint}`);
 
     cy.request({
@@ -79,7 +79,7 @@ describe('To Validate github-organizations API call', function () {
     });
   });
 
-  it("Remove 'disable CLA Enforced' the GitHub repository from the project - Record should Returns 204 Response", function () {
+  it("Remove 'disable CLA Enforced' the GitHub repository from the project - Record should return 204 Response", function () {
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${repository_id}`,
@@ -92,7 +92,7 @@ describe('To Validate github-organizations API call', function () {
     });
   });
 
-  it("User should able to Add 'CLA Enforced' a GitHub repository to the project - Record should Returns 200 Response", function () {
+  it("User should able to Add 'CLA Enforced' a GitHub repository to the project - Record should return 200 Response", function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
@@ -124,7 +124,7 @@ describe('To Validate github-organizations API call', function () {
     });
   });
 
-  it('Get GitHub branch protection for given repository - Record should Returns 200 Response', function () {
+  it('Get GitHub branch protection for given repository - Record should return 200 Response', function () {
     // cy.logJson("appConfig", appConfig);
     const url = `${claEndpoint}/${repository_id}/branch-protection`;
     cy.task('log', `--> GET ${url}`);
@@ -154,7 +154,7 @@ describe('To Validate github-organizations API call', function () {
     });
   });
 
-  it('Update github branch protection for given repository - Record should Returns 200 Response', function () {
+  it('Update github branch protection for given repository - Record should return 200 Response', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}/${repository_id}/branch-protection`,
