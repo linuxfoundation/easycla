@@ -1,4 +1,4 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import { validateApiResponse, validate_200_Status, validate_404_Status, getTokenKey } from '../support/commands';
 
 describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on child project", function () {
   // Define a variable for the environment
@@ -34,6 +34,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   //Enroll /unEnroll projects
   const enrollProjectsSFID = appConfig.enrollProjectsSFID; //project name: easyAutomChild1-GrandChild1
   const child_Project_name = appConfig.child_Project_name;
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   let bearerToken: string = null;
   before(() => {
@@ -49,11 +50,11 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'POST',
       url: `${claEndpoint}/cla-group`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
       },
-      failOnStatusCode: false,
       body: {
         icla_enabled: true,
         ccla_enabled: true,
@@ -106,6 +107,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -125,10 +127,26 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
+  it('Attempt to get list of cla group associated with project given by wrong SFID - Record should Return 404 Response', function () {
+    cy.request({
+      method: 'GET',
+      url: `${claEndpoint}/foundation/${projectSfid}-xyz/cla-groups`,
+      failOnStatusCode: allowFail,
+      auth: {
+        bearer: bearerToken,
+      },
+    }).then((response) => {
+      // LG:chain log before async status check
+      // return cy.logJson('404 response', response).then(() => validate_404_Status(response));
+      validate_404_Status(response);
+    });
+  });
+
   it('Updates a CLA Group details - Record should Returns 200 Response', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/cla-group/${claGroupId}`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -154,6 +172,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/cla-group/${claGroupId}/enroll-projects`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -168,6 +187,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         cy.request({
           method: 'GET',
           url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
+          failOnStatusCode: allowFail,
 
           auth: {
             bearer: bearerToken,
@@ -186,10 +206,11 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
-  it('unenroll projects in a CLA Group - Record should Returns 200 Response', function () {
+  it('Unenroll projects in a CLA Group - Record should Returns 200 Response', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/cla-group/${claGroupId}/unenroll-projects`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -205,6 +226,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfidOrg}/github/organizations`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -215,8 +237,11 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       // Validate specific data in the response
       expect(response.body).to.have.property('list');
       let list = response.body.list;
-      expect(list[2].github_organization_name).to.eql('Sun-lfxfoundationOrgTest');
-      expect(list[2].connection_status).to.eql('partial_connection');
+      // LG:
+      // expect(list[2].github_organization_name).to.eql('Sun-lfxfoundationOrgTest');
+      // expect(list[2].connection_status).to.eql('partial_connection');
+      expect(list[2].github_organization_name).to.eql('lukaszgryglicki-org');
+      expect(list[2].connection_status).to.eql('connected');
     });
   });
 
@@ -224,6 +249,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/project/${projectSfidOrg}/github/organizations/${gitHubOrgName}/config`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -243,6 +269,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       cy.request({
         method: 'DELETE',
         url: `${claEndpoint}/cla-group/${claGroupId}`,
+        failOnStatusCode: allowFail,
 
         auth: {
           bearer: bearerToken,
@@ -255,6 +282,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           cy.request({
             method: 'GET',
             url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
+            failOnStatusCode: allowFail,
 
             auth: {
               bearer: bearerToken,

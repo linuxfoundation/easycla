@@ -20,6 +20,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
   let gitLabOrganizationFullPath = appConfig.gitLabOrganizationFullPath; // it will update on POST request
   let claGroupId = '';
   let organizationExternalId = '';
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   let bearerToken: string = null;
   before(() => {
@@ -39,6 +40,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/gitlab/group/${organizationExternalId}/members`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -53,6 +55,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/project/${projectSFID}/gitlab/group/${gitLabGroupID}/config`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -73,6 +76,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'POST',
       url: `${claEndpoint}/project/${projectSFID}/gitlab/organizations`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -83,7 +87,6 @@ describe('To Validate & get list of gitlab-organizations via API call', function
         group_id: parseInt(gitLabGroupID, 10),
         organization_full_path: gitLabOrganizationFullPath,
       },
-      failOnStatusCode: false,
     }).then((response) => {
       validate_200_Status(response);
       //To validate schema of response
@@ -101,10 +104,10 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/project/${projectSFID}/gitlab/organization?organization_full_path=${gitLabOrganizationFullPath}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
-      failOnStatusCode: false,
     }).then((response) => {
       expect(response.status).to.eq(204);
     });
@@ -114,6 +117,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/project/${projectSFID}/gitlab/organizations`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },

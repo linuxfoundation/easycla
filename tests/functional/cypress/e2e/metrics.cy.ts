@@ -19,6 +19,7 @@ describe('To Validate cla-manager API call', function () {
   const projectSFID = appConfig.projectSFID; //SUN
   let projectID = appConfig.projectID;
   let claEndpointForNextKey = '';
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   let bearerToken: string = null;
 
   before(() => {
@@ -34,6 +35,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}cla-manager-distribution`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -47,6 +49,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}company/${companyID}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -62,6 +65,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -81,6 +85,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}project`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -97,6 +102,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}project?=${projectID}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -110,6 +116,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}top-companies`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -123,6 +130,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}top-projects`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -136,6 +144,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}total-count`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -150,6 +159,7 @@ describe('To Validate cla-manager API call', function () {
       cy.request({
         method: 'GET',
         url: `${URL}?nextKey=${NextKey}&pageSize=100`,
+        failOnStatusCode: allowFail,
         auth: {
           bearer: bearerToken,
         },

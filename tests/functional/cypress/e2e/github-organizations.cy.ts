@@ -19,6 +19,7 @@ describe('To Validate github-organizations API call', function () {
 
   const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/project/${projectSfidOrg}/github/organizations`;
   const claGroupId: string = appConfig.claGroupId;
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   let bearerToken: string = null;
   before(() => {
@@ -34,6 +35,7 @@ describe('To Validate github-organizations API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -55,6 +57,7 @@ describe('To Validate github-organizations API call', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/${gitHubOrgName}/config`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -73,6 +76,7 @@ describe('To Validate github-organizations API call', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,
@@ -100,6 +104,7 @@ describe('To Validate github-organizations API call', function () {
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${gitHubOrg}`,
+      failOnStatusCode: allowFail,
 
       auth: {
         bearer: bearerToken,

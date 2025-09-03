@@ -19,6 +19,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
   let projectSfid = appConfig.foundationSFID; //project name: easyAutom foundation
   let externalID = appConfig.foundationSFID; //project name: easyAutom foundation
   let projectName = appConfig.projectName;
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   before(() => {
     if (bearerToken == null) {
@@ -33,6 +34,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -46,6 +48,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/enabled/${foundationSFID}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -63,6 +66,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/external/${externalID}}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -76,6 +80,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/name/${projectName}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -88,6 +93,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/${projectSfid}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
@@ -100,10 +106,10 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}-info/${projectSfid}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
-      failOnStatusCode: false,
     }).then((response) => {
       // validate_200_Status(response);
       const jsonResponse = JSON.stringify(response.body, null, 2);
@@ -115,10 +121,10 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${projectSfid}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
-      failOnStatusCode: false,
     }).then((response) => {
       // validate_200_Status(response);
       const jsonResponse = JSON.stringify(response.body, null, 2);

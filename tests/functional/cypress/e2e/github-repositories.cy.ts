@@ -1,5 +1,7 @@
 import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
 
+// LG:
+/*
 beforeEach(function () {
   cy.task('log', `>>> starting test: ${Cypress.currentTest?.title || '(unknown)'}`);
 });
@@ -7,6 +9,7 @@ beforeEach(function () {
 afterEach(function () {
   cy.task('log', `<<< finished test: ${Cypress.currentTest?.title || '(unknown)'}`);
 });
+*/
 
 describe('To Validate github-organizations API call', function () {
   // Define a variable for the environment

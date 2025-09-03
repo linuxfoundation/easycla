@@ -2,6 +2,7 @@ import { validate_200_Status, getTokenKey } from '../support/commands';
 describe('To Validate & get GitHub Activity Callback via API call', function () {
   //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-activity
   const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/github/activity`;
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   let bearerToken: string = null;
   before(() => {
@@ -17,6 +18,7 @@ describe('To Validate & get GitHub Activity Callback via API call', function () 
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
+      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
