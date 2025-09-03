@@ -46,7 +46,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     }
   });
 
-  it('Creates a new CLA Group at child level - Record should Returns 200 Response', function () {
+  it('Creates a new CLA Group at child level - Record should return 200 Response', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}/cla-group`,
@@ -103,7 +103,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
-  it('Get list of cla group associated with project - Record should Returns 200 Response', function () {
+  it('Get list of cla group associated with project - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
@@ -142,7 +142,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
-  it('Updates a CLA Group details - Record should Returns 200 Response', function () {
+  it('Updates a CLA Group details - Record should return 200 Response', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/cla-group/${claGroupId}`,
@@ -168,7 +168,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
-  it('Enroll projects in a CLA Group - Record should Returns 200 Response', function () {
+  it('Enroll projects in a CLA Group - Record should return 200 Response', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/cla-group/${claGroupId}/enroll-projects`,
@@ -206,7 +206,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
-  it('Unenroll projects in a CLA Group - Record should Returns 200 Response', function () {
+  it('Unenroll projects in a CLA Group - Record should return 200 Response', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/cla-group/${claGroupId}/unenroll-projects`,
@@ -222,7 +222,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
-  it('Get list of Github organization associated with project - Record should Returns 200 Response', function () {
+  it('Get list of Github organization associated with project - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfidOrg}/github/organizations`,
@@ -245,7 +245,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
-  it('Update GitHub Organization Configuration - Record should Returns 200 Response', function () {
+  it('Update GitHub Organization Configuration - Record should return 200 Response', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/project/${projectSfidOrg}/github/organizations/${gitHubOrgName}/config`,
@@ -264,7 +264,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
-  it('Deletes the CLA Group - Record should Returns 204 Response', function () {
+  it('Deletes the CLA Group - Record should return 204 Response', function () {
     if (claGroupId != null) {
       cy.request({
         method: 'DELETE',

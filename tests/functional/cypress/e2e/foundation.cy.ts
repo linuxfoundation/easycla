@@ -27,7 +27,7 @@ describe('To Validate & get list of Foundation ClaGroups via API call', function
     }
   });
 
-  it('Get CLA Groups under a foundation- Record should Returns 200 Response', function () {
+  it('Get CLA Groups under a foundation- Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}?foundationSFID=${foundationSFID}`,

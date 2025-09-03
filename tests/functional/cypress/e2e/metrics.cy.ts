@@ -31,7 +31,7 @@ describe('To Validate cla-manager API call', function () {
     }
   });
 
-  it('Get CLA manager distribution for EasyCLA - Record should Returns 200 Response', function () {
+  it('Get CLA manager distribution for EasyCLA - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}cla-manager-distribution`,
@@ -45,7 +45,7 @@ describe('To Validate cla-manager API call', function () {
     });
   });
 
-  it('Get & Returns metrics of company - Record should Returns 200 Response', function () {
+  it('Get & Returns metrics of company - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}company/${companyID}`,
@@ -61,7 +61,7 @@ describe('To Validate cla-manager API call', function () {
     });
   });
 
-  it('Get & Returns metrics of company - Record should Returns 200 Response', function () {
+  it('Get & Returns metrics of company - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID}`,
@@ -80,7 +80,7 @@ describe('To Validate cla-manager API call', function () {
     });
   });
 
-  it('List the metrics for the projects - Record should Returns 200 Response', function () {
+  it('List the metrics for the projects - Record should return 200 Response', function () {
     claEndpointForNextKey = `${claEndpoint}project`;
     cy.request({
       method: 'GET',
@@ -98,7 +98,7 @@ describe('To Validate cla-manager API call', function () {
     });
   });
 
-  it('Get & Returns metrics of company - Record should Returns 200 Response', function () {
+  it('Get & Returns metrics of company - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}project?=${projectID}`,
@@ -112,7 +112,7 @@ describe('To Validate cla-manager API call', function () {
     });
   });
 
-  it('Get top company metrics - Record should Returns 200 Response', function () {
+  it('Get top company metrics - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}top-companies`,

@@ -31,7 +31,7 @@ describe('To Validate events are properly capture via API call', function () {
     }
   });
 
-  it('Get recent events of company and project - Record should Returns 200 Response', function () {
+  it('Get recent events of company and project - Record should return 200 Response', function () {
     claEndpointForNextKey = `${Cypress.env('APP_URL')}cla-service/v4/company/${companyID}/project/${compProjectSFID}/events`;
     cy.request({
       method: 'GET',
@@ -59,7 +59,7 @@ describe('To Validate events are properly capture via API call', function () {
     });
   });
 
-  it('Get events of foundation project - Record should Returns 200 Response', function () {
+  it('Get events of foundation project - Record should return 200 Response', function () {
     claEndpointForNextKey = `${claEndpoint}/foundation/${foundationSFID}`;
     cy.request({
       method: 'GET',
@@ -87,7 +87,7 @@ describe('To Validate events are properly capture via API call', function () {
     });
   });
 
-  it('Get events of child project - Record should Returns 200 Response', function () {
+  it('Get events of child project - Record should return 200 Response', function () {
     claEndpointForNextKey = `${claEndpoint}/project/${projectSfid}`;
     cy.request({
       method: 'GET',
@@ -115,7 +115,7 @@ describe('To Validate events are properly capture via API call', function () {
     });
   });
 
-  it.skip('Get List of recent events - requires Admin-level access - Record should Returns 200 Response', function () {
+  it.skip('Get List of recent events - requires Admin-level access - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/recent?pageSize=2`,
@@ -141,7 +141,7 @@ describe('To Validate events are properly capture via API call', function () {
     });
   });
 
-  it('Download all the events for the foundation as a CSV document - Record should Returns 200 Response', function () {
+  it('Download all the events for the foundation as a CSV document - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/foundation/${foundationSFID}/csv`,
@@ -154,7 +154,7 @@ describe('To Validate events are properly capture via API call', function () {
     });
   });
 
-  it('Download all the events for the project as a CSV document - Record should Returns 200 Response', function () {
+  it('Download all the events for the project as a CSV document - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfid}/csv`,

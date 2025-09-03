@@ -15,7 +15,7 @@ describe('To Validate & get health status via API call', function () {
     }
   });
 
-  it('Returns the Health of the application- Record should Returns 200 Response', function () {
+  it('Returns the Health of the application- Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/ops/health`,
