@@ -1167,8 +1167,14 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 	// Search for Easy CLA User
 	log.WithFields(f).Debugf("Getting user by ID: %s", notifyCLAManagers.UserID)
 	userModel, userErr := s.easyCLAUserService.GetUser(notifyCLAManagers.UserID)
+	// log.WithFields(f).Debugf("Got user by ID: %s -> (%+v, %+v)", notifyCLAManagers.UserID, userModel, userErr)
 	if userErr != nil {
-		msg := fmt.Sprintf("Problem getting user by ID: %s ", notifyCLAManagers.UserID)
+		msg := fmt.Sprintf("Problem getting user by ID: %s: %v", notifyCLAManagers.UserID, userErr)
+		log.WithFields(f).Warn(msg)
+		return ErrCLAUserNotFound
+	}
+	if userModel == nil {
+		msg := fmt.Sprintf("Problem getting user by ID: %s", notifyCLAManagers.UserID)
 		log.WithFields(f).Warn(msg)
 		return ErrCLAUserNotFound
 	}
