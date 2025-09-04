@@ -1,4 +1,10 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 
 describe('To Validate & Get the GitLab repositories of the project via API call', function () {
   // Define a variable for the environment
@@ -14,7 +20,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/gitlab-repositories
   const projectSFID = appConfig.projectSFID; //project name: sun
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/project/${projectSFID}/gitlab/repositories`;
+  const claEndpoint = getAPIBaseURL('v4') + `project/${projectSFID}/gitlab/repositories`;
 
   let gitLabOrgName = appConfig.gitLabOrganizationName;
   const gitLabGroupID = appConfig.groupId;
@@ -37,6 +43,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
       method: 'GET',
       url: `${claEndpoint}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -60,6 +67,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
       method: 'PUT',
       url: `${claEndpoint}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -86,6 +94,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
       method: 'PUT',
       url: `${claEndpoint}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },

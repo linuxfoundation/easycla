@@ -1,8 +1,14 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 
 describe('To Validate & get api-docs via API call', function () {
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/docs
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4`;
+  const claEndpoint = getAPIBaseURL('v4');
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   let bearerToken: string = null;
@@ -18,8 +24,9 @@ describe('To Validate & get api-docs via API call', function () {
   it('Endpoint to render the API documentation- Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/api-docs`,
+      url: `${claEndpoint}api-docs`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -31,8 +38,9 @@ describe('To Validate & get api-docs via API call', function () {
   it('Returns the Swagger specification as a JSON document- Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/swagger.json`,
+      url: `${claEndpoint}swagger.json`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },

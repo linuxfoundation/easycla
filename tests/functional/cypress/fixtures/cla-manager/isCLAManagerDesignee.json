@@ -1,20 +1,16 @@
 {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "type": "object",
-    "properties": {
-      "companySFID": {
-        "type": "string"
-      },
-      "hasRole": {
-        "type": "boolean"
-      },
-      "lfUsername": {
-        "type": "string"
-      }
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "companySFID": {
+      "type": "string"
     },
-    "required": [
-      "companySFID",
-      "hasRole",
-      "lfUsername"
-    ]
-  }
+    "hasRole": {
+      "type": "boolean"
+    },
+    "lfUsername": {
+      "type": "string"
+    }
+  },
+  "required": ["companySFID", "hasRole", "lfUsername"]
+}

@@ -1,4 +1,10 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 //import {appConfig} from  '../support/config.${Cypress.env("CYPRESS_ENV")}'
 describe('To Validate & get list of signatures of ClaGroups via API call', function () {
   // Define a variable for the environment
@@ -13,7 +19,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   }
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/signatures
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4`;
+  const claEndpoint = getAPIBaseURL('v4');
   const claGroupID = appConfig.claGroupId_projectSFID; //Sun
   const lfid = appConfig.lfid;
   const companyID = appConfig.companyID; //Infosys Limited
@@ -47,8 +53,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Returns a list of corporate contributor for the CLA Group', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/cla-group/${claGroupID}/corporate-contributors?companyID=${companyID}`,
+      url: `${claEndpoint}cla-group/${claGroupID}/corporate-contributors?companyID=${companyID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -76,8 +83,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Returns the signature when provided the signature ID, ecla records', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/id/${signatureCclaID}`,
+      url: `${claEndpoint}signatures/id/${signatureCclaID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -92,8 +100,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Returns a list of individual signatures for a CLA Group', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/cla-group/${claGroupID}/icla/signatures`,
+      url: `${claEndpoint}cla-group/${claGroupID}/icla/signatures`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -107,8 +116,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Returns a list of individual signatures for a CLA Group with searchTerm', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/cla-group/${claGroupID}/icla/signatures?approved=true&signed=true&sortOrder=asc`,
+      url: `${claEndpoint}cla-group/${claGroupID}/icla/signatures?approved=true&signed=true&sortOrder=asc`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -127,8 +137,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Returns the signature when provided the signature ID, icla records', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/id/${signatureIclaID}`,
+      url: `${claEndpoint}signatures/id/${signatureIclaID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -143,8 +154,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Returns a list of company signatures when provided the company ID', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/company/${companyID}?signatureType=ccla`,
+      url: `${claEndpoint}signatures/company/${companyID}?signatureType=ccla`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -162,8 +174,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Returns a list of project signature models when provided the project ID', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${claGroupID}?pageSize=10`,
+      url: `${claEndpoint}signatures/project/${claGroupID}?pageSize=10`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -177,8 +190,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Downloads the corporate CLA information as a CSV document for this project', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${claGroupID}/ccla/csv`,
+      url: `${claEndpoint}signatures/project/${claGroupID}/ccla/csv`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -188,11 +202,12 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     });
   });
 
-  it.skip('Downloads all the corporate CLAs for this project, as pdf', function () {
+  it('Downloads all the corporate CLAs for this project, as pdf', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${claGroupID}/ccla/pdfs`,
+      url: `${claEndpoint}signatures/project/${claGroupID}/ccla/pdfs`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -205,8 +220,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it.skip('Downloads the corporate CLA for this project, as pdf', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${claGroupID}/ccla/${signatureCclaID}/pdf`,
+      url: `${claEndpoint}signatures/project/${claGroupID}/ccla/${signatureCclaID}/pdf`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -219,8 +235,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it.skip('Downloads all employee CLA information as a CSV document for this project', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${claGroupID}/company/${companyID}/employee/csv`,
+      url: `${claEndpoint}signatures/project/${claGroupID}/company/${companyID}/employee/csv`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -232,8 +249,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Downloads all ICLA information as a CSV document for this project', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${claGroupID}/icla/csv`,
+      url: `${claEndpoint}signatures/project/${claGroupID}/icla/csv`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -245,8 +263,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it.skip('Downloads all ICLAs for this project', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${claGroupID}/icla/pdfs`,
+      url: `${claEndpoint}signatures/project/${claGroupID}/icla/pdfs`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -258,8 +277,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it.skip("Downloads the user's ICLA for this project", function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${claGroupID}/icla/${signatureIclaID}/pdf`,
+      url: `${claEndpoint}signatures/project/${claGroupID}/icla/${signatureIclaID}/pdf`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -271,8 +291,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Returns a list of ccla signature models when provided the project ID and company ID', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -290,8 +311,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Get project company signatures for the employees', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/employee`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/employee`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -308,8 +330,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Returns a list of user signatures when provided the user ID', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/user/${userID}`,
+      url: `${claEndpoint}signatures/user/${userID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -329,8 +352,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       // we can't use inclusive name yet as it is inside API URL.
-      url: `${claEndpoint}/signatures/${signatureID}/gh-org-whitelist`,
+      url: `${claEndpoint}signatures/${signatureID}/gh-org-whitelist`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -343,8 +367,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'POST',
       // we can't use inclusive name yet as it is inside API URL.
-      url: `${claEndpoint}/signatures/${signatureID}/gh-org-whitelist`,
+      url: `${claEndpoint}signatures/${signatureID}/gh-org-whitelist`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -359,8 +384,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it.skip('Returns the signature signed document when provided the signature ID', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/signatures/${signatureID}/signed-document`,
+      url: `${claEndpoint}signatures/${signatureID}/signed-document`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -374,8 +400,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Add Email as Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -392,8 +419,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Remove Email form Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -414,8 +442,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Add GithubOrg as Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -432,8 +461,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Remove GithubOrg form Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -454,8 +484,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Add Github Username as Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -479,8 +510,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Remove Github Username form Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -501,8 +533,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Add GitLab Username as Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -526,8 +559,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Remove GitLab Username form Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -548,8 +582,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Add GitLab Org as Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -573,8 +608,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Remove GitLab Org form Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -595,8 +631,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Add domain as Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -620,8 +657,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Remove domain form Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -644,8 +682,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Updates CCLA signature record for the auto_create_ecla flag to false', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/company/${companyID}/clagroup/${claGroupID}/ecla-auto-create`,
+      url: `${claEndpoint}signatures/company/${companyID}/clagroup/${claGroupID}/ecla-auto-create`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -657,8 +696,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       if (response.status === 200) {
         cy.request({
           method: 'GET',
-          url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}`,
+          url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}`,
           failOnStatusCode: allowFail,
+          headers: getXACLHeader(),
           auth: {
             bearer: bearerToken,
           },
@@ -674,8 +714,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   it('Updates CCLA signature record for the auto_create_ecla flag to true', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/signatures/company/${companyID}/clagroup/${claGroupID}/ecla-auto-create`,
+      url: `${claEndpoint}signatures/company/${companyID}/clagroup/${claGroupID}/ecla-auto-create`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -687,8 +728,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       if (response.status === 200) {
         cy.request({
           method: 'GET',
-          url: `${claEndpoint}/signatures/project/${projectSFID}/company/${companyID}`,
+          url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}`,
           failOnStatusCode: allowFail,
+          headers: getXACLHeader(),
           auth: {
             bearer: bearerToken,
           },
@@ -708,8 +750,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     let user_id = '23121f2a-d48b-11ed-b70f-d2f23b35d89e';
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/cla-group/${claGroupID}/user/${user_id}/icla`,
+      url: `${claEndpoint}cla-group/${claGroupID}/user/${user_id}/icla`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },

@@ -381,6 +381,10 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 		log.WithFields(f).Debug("unable to get user record")
 		return userErr
 	}
+	if user == nil {
+		log.WithFields(f).Debug("unable to get user record")
+		return fmt.Errorf("user not found for userID: %s", userID)
+	}
 
 	log.WithFields(f).Debug("invalidating signature record ...")
 	note := fmt.Sprintf("Signature invalidated (approved set to false) by %s for %s ", authUser.UserName, utils.GetBestUsername(user))

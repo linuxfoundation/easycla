@@ -1,4 +1,10 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 describe('To Validate github-organizations API call', function () {
   // Define a variable for the environment
   const environment = Cypress.env('CYPRESS_ENV');
@@ -17,7 +23,7 @@ describe('To Validate github-organizations API call', function () {
   const projectSfidOrg = appConfig.childProjectSFID; //project name: easyAutom-child2
   const gitHubOrg = appConfig.gitHubNewOrg;
 
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/project/${projectSfidOrg}/github/organizations`;
+  const claEndpoint = getAPIBaseURL('v4') + `project/${projectSfidOrg}/github/organizations`;
   const claGroupId: string = appConfig.claGroupId;
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
@@ -36,7 +42,7 @@ describe('To Validate github-organizations API call', function () {
       method: 'GET',
       url: `${claEndpoint}`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -58,7 +64,7 @@ describe('To Validate github-organizations API call', function () {
       method: 'PUT',
       url: `${claEndpoint}/${gitHubOrgName}/config`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -77,6 +83,7 @@ describe('To Validate github-organizations API call', function () {
       method: 'POST',
       url: `${claEndpoint}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -103,7 +110,7 @@ describe('To Validate github-organizations API call', function () {
       method: 'DELETE',
       url: `${claEndpoint}/${gitHubOrg}`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },

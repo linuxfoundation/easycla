@@ -1,4 +1,10 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 describe('To Validate & get projects Activity Callback via API call', function () {
   // Define a variable for the environment
   const environment = Cypress.env('CYPRESS_ENV');
@@ -12,7 +18,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
   }
 
   //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/project
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/project`;
+  const claEndpoint = getAPIBaseURL('v4') + 'project';
 
   let foundationSFID = appConfig.foundationSFID; //project name: easyAutom foundation
   let bearerToken: string = null;
@@ -35,6 +41,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
       method: 'GET',
       url: `${claEndpoint}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -49,6 +56,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
       method: 'GET',
       url: `${claEndpoint}/enabled/${foundationSFID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -67,6 +75,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
       method: 'GET',
       url: `${claEndpoint}/external/${externalID}}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -81,6 +90,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
       method: 'GET',
       url: `${claEndpoint}/name/${projectName}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -94,6 +104,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
       method: 'GET',
       url: `${claEndpoint}/${projectSfid}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -107,6 +118,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
       method: 'GET',
       url: `${claEndpoint}-info/${projectSfid}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -122,6 +134,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
       method: 'DELETE',
       url: `${claEndpoint}/${projectSfid}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
