@@ -1,4 +1,10 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 
 describe('To Validate & get list of gitlab-organizations via API call', function () {
   // Define a variable for the environment
@@ -13,7 +19,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
   }
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/gitlab-organizations
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4`;
+  const claEndpoint = getAPIBaseURL('v4');
   const projectSFID = appConfig.projectSFID; //project name: sun
   let gitLabOrgName = appConfig.gitLabOrganizationName;
   const gitLabGroupID = appConfig.groupId;
@@ -39,8 +45,9 @@ describe('To Validate & get list of gitlab-organizations via API call', function
   it('List members of a given GitLab group', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/gitlab/group/${organizationExternalId}/members`,
+      url: `${claEndpoint}gitlab/group/${organizationExternalId}/members`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -54,8 +61,9 @@ describe('To Validate & get list of gitlab-organizations via API call', function
   it('Update Gitlab Group/Organization Configuration', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/project/${projectSFID}/gitlab/group/${gitLabGroupID}/config`,
+      url: `${claEndpoint}project/${projectSFID}/gitlab/group/${gitLabGroupID}/config`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -75,8 +83,9 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     console.log('gitLabOrganizationFullPath: ' + gitLabOrganizationFullPath);
     cy.request({
       method: 'POST',
-      url: `${claEndpoint}/project/${projectSFID}/gitlab/organizations`,
+      url: `${claEndpoint}project/${projectSFID}/gitlab/organizations`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -103,8 +112,9 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.log(gitLabOrganizationFullPath);
     cy.request({
       method: 'DELETE',
-      url: `${claEndpoint}/project/${projectSFID}/gitlab/organization?organization_full_path=${gitLabOrganizationFullPath}`,
+      url: `${claEndpoint}project/${projectSFID}/gitlab/organization?organization_full_path=${gitLabOrganizationFullPath}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -116,8 +126,9 @@ describe('To Validate & get list of gitlab-organizations via API call', function
   function getGitLabGroupMembers() {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/project/${projectSFID}/gitlab/organizations`,
+      url: `${claEndpoint}project/${projectSFID}/gitlab/organizations`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
