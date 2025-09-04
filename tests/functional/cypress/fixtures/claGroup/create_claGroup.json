@@ -51,11 +51,7 @@
               "type": "integer"
             }
           },
-          "required": [
-            "project_name",
-            "project_sfid",
-            "repositories_count"
-          ]
+          "required": ["project_name", "project_sfid", "repositories_count"]
         }
       ]
     },

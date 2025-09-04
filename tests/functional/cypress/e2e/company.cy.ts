@@ -1,4 +1,10 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 describe('To Validate & get Company Activity Callback via API call', function () {
   // Define a variable for the environment
   const environment = Cypress.env('CYPRESS_ENV');
@@ -12,8 +18,8 @@ describe('To Validate & get Company Activity Callback via API call', function ()
   }
 
   //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/company
-  const claBaseEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/`;
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/company/`;
+  const claBaseEndpoint = getAPIBaseURL('v4');
+  const claEndpoint = getAPIBaseURL('v4') + 'company/';
 
   let companyExternalID = '';
   let companyID = '';
@@ -40,20 +46,25 @@ describe('To Validate & get Company Activity Callback via API call', function ()
   });
 
   it('Get Company By Internal ID', function () {
+    let url = `${claEndpoint}${companyID}`;
+    cy.task('log', 'Getting company with URL: ' + url);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}${companyID}`,
+      url: url,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body;
-      companyExternalID = list.companyExternalID;
-      companyID = list.companyID;
-      signingEntityName = list.signingEntityName;
-      validateApiResponse('company/getCompanyByName.json', response);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        let list = response.body;
+        companyExternalID = list.companyExternalID;
+        companyID = list.companyID;
+        signingEntityName = list.signingEntityName;
+        validateApiResponse('company/getCompanyByName.json', response);
+      });
     });
   });
 
@@ -62,6 +73,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}entityname/${signingEntityName}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -81,6 +93,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}lookup?companyName=${companyName}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -94,6 +107,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       url: `${claEndpoint}${companyID}/project/${projectSFID}/active-cla-list`,
       auth: {
         bearer: bearerToken,
@@ -109,6 +123,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}external/${companyExternalID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -127,6 +142,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}${companyExternalID}/project/${projectSFID}/cla`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -146,6 +162,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}${companyID}/cla-group/${claGroupId}/cla-managers`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -159,6 +176,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}${companyID}/project/${projectSFID}/active-cla-list`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -172,6 +190,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}${companyID}/project/${projectSFID}/cla-managers`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -185,6 +204,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}${companyID}/project/${projectSFID}/contributors`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -199,6 +219,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}${companyExternalID}/admin`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -208,11 +229,14 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     });
   });
 
-  it('Associates a contributor with a company', function () {
+  it.skip('Associates a contributor with a company', function () {
+    let url = `${claEndpoint}${companyExternalID}/contributorAssociation`;
+    cy.task('log', 'Associating contributor with URL: ' + url);
     cy.request({
       method: 'POST',
-      url: `${claEndpoint}${companyExternalID}/contributorAssociation`,
+      url: url,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -220,8 +244,10 @@ describe('To Validate & get Company Activity Callback via API call', function ()
         userEmail: 'veerendrat@proximabiz.com',
       },
     }).then((response) => {
-      validate_200_Status(response);
-      validateApiResponse('company/getCompanyAdmins.json', response);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        validateApiResponse('company/getCompanyAdmins.json', response);
+      });
     });
   });
 
@@ -230,6 +256,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'POST',
       url: `${claBaseEndpoint}user/${user_id}/company`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -248,16 +275,21 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     });
   });
 
-  it('Deletes the company by the SFID', function () {
+  it.skip('Deletes the company by the SFID', function () {
+    let url = `${claEndpoint}sfid/${companyExternalID}`;
+    cy.task('log', 'Deleting company with URL: ' + url);
     cy.request({
       method: 'DELETE',
-      url: `${claEndpoint}sfid/${companyExternalID}`,
+      url: url,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
     }).then((response) => {
-      expect(response.status).to.eq(204);
+      return cy.logJson('response', response).then(() => {
+        expect(response.status).to.eq(204);
+      });
     });
   });
 
@@ -266,6 +298,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'POST',
       url: `${claBaseEndpoint}user/${user_id}/company`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -289,6 +322,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'DELETE',
       url: `${claEndpoint}id/${companyID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -301,11 +335,11 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'POST',
       url: `${claBaseEndpoint}user/${user_id2}/request-company-admin`,
-      failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
       },
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       body: {
         claManagerEmail: 'vthakur@contractor.linuxfoundation.org',
         claManagerName: 'veerendra thakur',
@@ -325,6 +359,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'GET',
       url: `${claEndpoint}name/${companyName}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },

@@ -1,7 +1,12 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 
 // LG:
-/*
 beforeEach(function () {
   cy.task('log', `>>> starting test: ${Cypress.currentTest?.title || '(unknown)'}`);
 });
@@ -9,7 +14,6 @@ beforeEach(function () {
 afterEach(function () {
   cy.task('log', `<<< finished test: ${Cypress.currentTest?.title || '(unknown)'}`);
 });
-*/
 
 describe('To Validate github-organizations API call', function () {
   // Define a variable for the environment
@@ -28,7 +32,7 @@ describe('To Validate github-organizations API call', function () {
   //Variable for GitHub
   const projectSfidOrg = appConfig.childProjectSFID; //project name: easyAutom-child2
 
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/project/${projectSfidOrg}/github/repositories`;
+  const claEndpoint = getAPIBaseURL('v4') + `project/${projectSfidOrg}/github/repositories`;
   let claGroupId: string = appConfig.claGroupId;
   let repository_id: string = 'f577ae5d-5616-453f-a77e-9a76ff2910ec';
   let repository_external_id: string = '';
@@ -54,6 +58,7 @@ describe('To Validate github-organizations API call', function () {
       method: 'GET',
       url: `${claEndpoint}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: { bearer: bearerToken },
     }).then((response) => {
       return cy
@@ -84,6 +89,7 @@ describe('To Validate github-organizations API call', function () {
       method: 'DELETE',
       url: `${claEndpoint}/${repository_id}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -97,6 +103,7 @@ describe('To Validate github-organizations API call', function () {
       method: 'POST',
       url: `${claEndpoint}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -133,6 +140,7 @@ describe('To Validate github-organizations API call', function () {
       method: 'GET',
       url: url,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -159,6 +167,7 @@ describe('To Validate github-organizations API call', function () {
       method: 'POST',
       url: `${claEndpoint}/${repository_id}/branch-protection`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },

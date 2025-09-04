@@ -1,4 +1,11 @@
-import { validateApiResponse, validate_200_Status, validate_404_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  validate_404_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 
 describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on child project", function () {
   // Define a variable for the environment
@@ -14,7 +21,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/cla-group
 
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4`;
+  const claEndpoint = getAPIBaseURL('v4');
   let claGroupId: string = '';
 
   //Variable for create cla group
@@ -49,9 +56,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   it('Creates a new CLA Group at child level - Record should return 200 Response', function () {
     cy.request({
       method: 'POST',
-      url: `${claEndpoint}/cla-group`,
+      url: `${claEndpoint}cla-group`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -106,9 +113,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   it('Get list of cla group associated with project - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
+      url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -130,8 +137,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   it('Attempt to get list of cla group associated with project given by wrong SFID - Record should Return 404 Response', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/foundation/${projectSfid}-xyz/cla-groups`,
+      url: `${claEndpoint}foundation/${projectSfid}-xyz/cla-groups`,
       failOnStatusCode: false,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -145,9 +153,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   it('Updates a CLA Group details - Record should return 200 Response', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/cla-group/${claGroupId}`,
+      url: `${claEndpoint}cla-group/${claGroupId}`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -171,9 +179,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   it('Enroll projects in a CLA Group - Record should return 200 Response', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/cla-group/${claGroupId}/enroll-projects`,
+      url: `${claEndpoint}cla-group/${claGroupId}/enroll-projects`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -186,9 +194,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         // Run the second API request
         cy.request({
           method: 'GET',
-          url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
+          url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
           failOnStatusCode: allowFail,
-
+          headers: getXACLHeader(),
           auth: {
             bearer: bearerToken,
           },
@@ -209,9 +217,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   it('Unenroll projects in a CLA Group - Record should return 200 Response', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/cla-group/${claGroupId}/unenroll-projects`,
+      url: `${claEndpoint}cla-group/${claGroupId}/unenroll-projects`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -225,9 +233,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   it('Get list of Github organization associated with project - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/project/${projectSfidOrg}/github/organizations`,
+      url: `${claEndpoint}project/${projectSfidOrg}/github/organizations`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -248,9 +256,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   it('Update GitHub Organization Configuration - Record should return 200 Response', function () {
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}/project/${projectSfidOrg}/github/organizations/${gitHubOrgName}/config`,
+      url: `${claEndpoint}project/${projectSfidOrg}/github/organizations/${gitHubOrgName}/config`,
       failOnStatusCode: allowFail,
-
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -268,9 +276,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     if (claGroupId != null) {
       cy.request({
         method: 'DELETE',
-        url: `${claEndpoint}/cla-group/${claGroupId}`,
+        url: `${claEndpoint}cla-group/${claGroupId}`,
         failOnStatusCode: allowFail,
-
+        headers: getXACLHeader(),
         auth: {
           bearer: bearerToken,
         },
@@ -281,9 +289,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           // Run the second API request
           cy.request({
             method: 'GET',
-            url: `${claEndpoint}/foundation/${projectSfid}/cla-groups`,
+            url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
             failOnStatusCode: allowFail,
-
+            headers: getXACLHeader(),
             auth: {
               bearer: bearerToken,
             },
