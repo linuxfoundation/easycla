@@ -12,11 +12,15 @@ export default defineConfig({
     setupNodeEvents(on, config) {
       on('task', {
         log(message: string) {
-          console.log(message);
+          if (process.env.DEBUG) {
+            console.log(message);
+          }
           return null;
         },
         table(rows: any[]) {
-          console.table(rows);
+          if (process.env.DEBUG) {
+            console.table(rows);
+          }
           return null;
         },
       });

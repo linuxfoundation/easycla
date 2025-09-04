@@ -1,4 +1,10 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 describe('To Validate events are properly capture via API call', function () {
   // Define a variable for the environment
   const environment = Cypress.env('CYPRESS_ENV');
@@ -12,7 +18,7 @@ describe('To Validate events are properly capture via API call', function () {
   }
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/events
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/events`;
+  const claEndpoint = getAPIBaseURL('v4') + '/events';
   let claEndpointForNextKey = '';
   let NextKey: string = '';
   const foundationSFID = appConfig.foundationSFID; //project name: easyAutom foundation
@@ -37,6 +43,7 @@ describe('To Validate events are properly capture via API call', function () {
       method: 'GET',
       url: `${claEndpointForNextKey}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -65,6 +72,7 @@ describe('To Validate events are properly capture via API call', function () {
       method: 'GET',
       url: `${claEndpointForNextKey}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -93,6 +101,7 @@ describe('To Validate events are properly capture via API call', function () {
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfid}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -120,6 +129,7 @@ describe('To Validate events are properly capture via API call', function () {
       method: 'GET',
       url: `${claEndpoint}/recent?pageSize=2`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -146,6 +156,7 @@ describe('To Validate events are properly capture via API call', function () {
       method: 'GET',
       url: `${claEndpoint}/foundation/${foundationSFID}/csv`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -159,6 +170,7 @@ describe('To Validate events are properly capture via API call', function () {
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfid}/csv`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -173,6 +185,7 @@ describe('To Validate events are properly capture via API call', function () {
         method: 'GET',
         url: `${URL}?nextKey=${NextKey}&pageSize=50`,
         failOnStatusCode: allowFail,
+        headers: getXACLHeader(),
         auth: {
           bearer: bearerToken,
         },

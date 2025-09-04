@@ -32,14 +32,65 @@ export function validate_200_Status(response) {
   cy.log(jsonResponse);
 }
 
+export function validate_204_Status(response) {
+  expect(response.status).to.eq(204);
+  expect(response.body).to.not.be.null;
+  const jsonResponse = JSON.stringify(response.body, null, 2);
+  cy.log(jsonResponse);
+}
+
 export function validate_404_Status(response) {
   expect(response.status).to.eq(404);
-  expect(response.statusText).to.eq("Not Found");
-  expect(response.body.Code).to.eq("404");
+  expect(response.statusText).to.eq('Not Found');
+  expect(response.body.Code).to.eq('404');
+}
+
+export function shortenMiddle(str) {
+  if (str.length <= 6) return str;
+  const first = str.slice(0, 3);
+  const last = str.slice(-3);
+  return `${first}...${last}`;
+}
+
+export function getAPIBaseURL(version) {
+  const local = Cypress.env('LOCAL');
+  switch (version) {
+    case 'v4':
+      if (local) {
+        return 'http://localhost:5001/v4/';
+      }
+      return `${Cypress.env('APP_URL')}cla-service/v4/`;
+    default:
+      cy.task('log', `--> unknown API version ${version}`);
+  }
+}
+
+export function getXACLHeader() {
+  const xacl = Cypress.env('XACL');
+  if (xacl) {
+    // cy.task('log', `--> using X-ACL ${shortenMiddle(xacl)} from env`);
+    return {
+      'X-ACL': xacl,
+      'X-USERNAME': 'lgryglicki',
+      'X-EMAIL': 'lukaszgryglicki@o2.pl',
+    };
+  }
+  return {};
 }
 
 let bearerToken = '';
 export function getTokenKey() {
+  const envToken = Cypress.env('TOKEN');
+  if (envToken) {
+    cy.task('log', `--> getting token from env`);
+    bearerToken = envToken;
+    cy.window().then((win) => {
+      win.localStorage.setItem('bearerToken', envToken);
+      cy.task('log', `--> got token ${shortenMiddle(envToken)} from env`);
+    });
+    return;
+  }
+  cy.task('log', `--> getting token by request`);
   cy.request({
     method: 'POST',
     url: Cypress.env('AUTH0_TOKEN_API'),
@@ -58,11 +109,14 @@ export function getTokenKey() {
     bearerToken = response.body.access_token;
     cy.window().then((win) => {
       win.localStorage.setItem('bearerToken', response.body.access_token);
+      cy.task('log', `--> got token ${shortenMiddle(response.body.access_token)} from request`);
     });
   });
 }
 
 Cypress.Commands.add('logJson', (label, value) => {
+  const dbg = Cypress.env('DEBUG');
+  if (!dbg) return;
   const seen = new WeakSet();
   const safe = JSON.stringify(
     value,

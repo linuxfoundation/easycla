@@ -1,4 +1,10 @@
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 //import {appConfig} from  '../support/config.${Cypress.env("CYPRESS_ENV")}'
 describe('To Validate & get list of Foundation ClaGroups via API call', function () {
   // Define a variable for the environment
@@ -13,7 +19,7 @@ describe('To Validate & get list of Foundation ClaGroups via API call', function
   }
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/foundation
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/foundation-mapping`;
+  const claEndpoint = getAPIBaseURL('v4') + '/foundation-mapping';
   const foundationSFID = appConfig.foundationSFID; //project name: easyAutom foundation
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
@@ -32,6 +38,7 @@ describe('To Validate & get list of Foundation ClaGroups via API call', function
       method: 'GET',
       url: `${claEndpoint}?foundationSFID=${foundationSFID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },

@@ -736,9 +736,5 @@
       "type": "integer"
     }
   },
-  "required": [
-    "Events",
-    "NextKey",
-    "ResultCount"
-  ]
+  "required": ["Events", "NextKey", "ResultCount"]
 }

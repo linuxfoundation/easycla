@@ -1,5 +1,11 @@
 import { isNull } from 'cypress/types/lodash';
-import { validateApiResponse, validate_200_Status, getTokenKey } from '../support/commands';
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 describe('To Validate cla-manager API call', function () {
   // Define a variable for the environment
   const environment = Cypress.env('CYPRESS_ENV');
@@ -13,7 +19,7 @@ describe('To Validate cla-manager API call', function () {
   }
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/metrics
-  const claEndpoint = `${Cypress.env('APP_URL')}cla-service/v4/metrics/`;
+  const claEndpoint = getAPIBaseURL('v4') + 'metrics/';
   const companyID = appConfig.companyID; //infosys limited
   const companyName = appConfig.companyName; //Infosys Limited
   const projectSFID = appConfig.projectSFID; //SUN
@@ -36,6 +42,7 @@ describe('To Validate cla-manager API call', function () {
       method: 'GET',
       url: `${claEndpoint}cla-manager-distribution`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -50,6 +57,7 @@ describe('To Validate cla-manager API call', function () {
       method: 'GET',
       url: `${claEndpoint}company/${companyID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -66,6 +74,7 @@ describe('To Validate cla-manager API call', function () {
       method: 'GET',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -86,6 +95,7 @@ describe('To Validate cla-manager API call', function () {
       method: 'GET',
       url: `${claEndpoint}project`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -103,6 +113,7 @@ describe('To Validate cla-manager API call', function () {
       method: 'GET',
       url: `${claEndpoint}project?=${projectID}`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -117,6 +128,7 @@ describe('To Validate cla-manager API call', function () {
       method: 'GET',
       url: `${claEndpoint}top-companies`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -131,6 +143,7 @@ describe('To Validate cla-manager API call', function () {
       method: 'GET',
       url: `${claEndpoint}top-projects`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -145,6 +158,7 @@ describe('To Validate cla-manager API call', function () {
       method: 'GET',
       url: `${claEndpoint}total-count`,
       failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
@@ -160,6 +174,7 @@ describe('To Validate cla-manager API call', function () {
         method: 'GET',
         url: `${URL}?nextKey=${NextKey}&pageSize=100`,
         failOnStatusCode: allowFail,
+        headers: getXACLHeader(),
         auth: {
           bearer: bearerToken,
         },
