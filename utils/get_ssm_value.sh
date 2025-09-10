@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+export AWS_PAGER=""
 if [ -z "$1" ]
 then
   echo "Usage: $0 <ssm-parameter-name>"

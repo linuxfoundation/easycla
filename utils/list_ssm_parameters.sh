@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
+export AWS_PAGER=""
 if [ -z "$REGION" ]
 then
   REGION="us-east-2"
 fi
-
 if [ -z "$STAGE" ]
 then
   STAGE="dev"
