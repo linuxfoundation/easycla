@@ -75,7 +75,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
   it('Get CLA Groups By SFDC ID', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/external/${externalID}}`,
+      url: `${claEndpoint}/external/${externalID}`,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
