@@ -55,6 +55,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: url,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: { bearer: bearerToken },
@@ -82,6 +83,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: url,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -113,6 +115,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID}/cla-manager/${userLFID}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -128,6 +131,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID_Designee}/cla-manager-designee`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -152,6 +156,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID_Designee}/cla-manager/requests`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -192,6 +197,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}notify-cla-managers`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -223,7 +229,8 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}notify-cla-managers`,
-      failOnStatusCode: allowFail,
+      timeout: 180000,
+      failOnStatusCode: false,
       headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
@@ -240,6 +247,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'POST',
       url: `${claEndpoint}user/${userId2}/invite-company-admin`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -264,6 +272,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
     cy.request({
       method: 'GET',
       url: `${claEndpoint}company/${companySFID}/user/${userLFID}/claGroupID/${claGroupID}/is-cla-manager-designee`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {

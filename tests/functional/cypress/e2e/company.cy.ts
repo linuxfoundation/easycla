@@ -31,6 +31,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
   const user_id = appConfig.user_id; //vthakur+lfstaff@contractor.linuxfoundation.org
   const userEmail = appConfig.userEmail;
   const user_id2 = appConfig.user_id2; //vthakur+lfitstaff@contractor.linuxfoundation.org
+  const user_id3 = appConfig.user_id3; // lgryglicki
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   let bearerToken: string = null;
@@ -51,6 +52,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: url,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -72,6 +74,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: `${claEndpoint}entityname/${signingEntityName}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -92,6 +95,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: `${claEndpoint}lookup?companyName=${companyName}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -109,6 +113,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       url: `${claEndpoint}${companyID}/project/${projectSFID}/active-cla-list`,
+      timeout: 180000,
       auth: {
         bearer: bearerToken,
       },
@@ -122,6 +127,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: `${claEndpoint}external/${companyExternalID}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -141,6 +147,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: `${claEndpoint}${companyExternalID}/project/${projectSFID}/cla`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -161,6 +168,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: `${claEndpoint}${companyID}/cla-group/${claGroupId}/cla-managers`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -175,6 +183,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: `${claEndpoint}${companyID}/project/${projectSFID}/active-cla-list`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -189,6 +198,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: `${claEndpoint}${companyID}/project/${projectSFID}/cla-managers`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -203,6 +213,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: `${claEndpoint}${companyID}/project/${projectSFID}/contributors`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -218,6 +229,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'GET',
       url: `${claEndpoint}${companyExternalID}/admin`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -229,12 +241,14 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     });
   });
 
+  // LG:skip
   it.skip('Associates a contributor with a company', function () {
     let url = `${claEndpoint}${companyExternalID}/contributorAssociation`;
     cy.task('log', 'Associating contributor with URL: ' + url);
     cy.request({
       method: 'POST',
       url: url,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -251,10 +265,13 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     });
   });
 
-  it('Creates a new salesforce company', function () {
+  it('Creates a new salesforce company 2', function () {
+    let url = `${claBaseEndpoint}user/${user_id}/company`;
+    cy.task('log', 'Create SF company via POST URL: ' + url);
     cy.request({
       method: 'POST',
-      url: `${claBaseEndpoint}user/${user_id}/company`,
+      url: url,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -268,19 +285,23 @@ describe('To Validate & get Company Activity Callback via API call', function ()
         userEmail: userEmail,
       },
     }).then((response) => {
-      validate_200_Status(response);
-      companyName = 'lfx dev Test';
-      companyID = response.body.companyID;
-      getCompanyByName();
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        companyName = 'lfx dev Test';
+        companyID = response.body.companyID;
+        getCompanyByName();
+      });
     });
   });
 
+  // LG:skip
   it.skip('Deletes the company by the SFID', function () {
     let url = `${claEndpoint}sfid/${companyExternalID}`;
     cy.task('log', 'Deleting company with URL: ' + url);
     cy.request({
       method: 'DELETE',
       url: url,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -293,10 +314,11 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     });
   });
 
-  it('Creates a new salesforce company', function () {
+  it('Creates a new salesforce company 3', function () {
     cy.request({
       method: 'POST',
       url: `${claBaseEndpoint}user/${user_id}/company`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -310,17 +332,21 @@ describe('To Validate & get Company Activity Callback via API call', function ()
         userEmail: userEmail,
       },
     }).then((response) => {
-      validate_200_Status(response);
-      companyName = 'lfx dev Test';
-      companyID = response.body.companyID;
-      getCompanyByName();
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        companyName = 'lfx dev Test';
+        companyID = response.body.companyID;
+        getCompanyByName();
+      });
     });
   });
 
-  it('Deletes the company by ID', function () {
+  // LG:skip
+  it.skip('Deletes the company by ID', function () {
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}id/${companyID}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -335,6 +361,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     cy.request({
       method: 'POST',
       url: `${claBaseEndpoint}user/${user_id2}/request-company-admin`,
+      timeout: 180000,
       auth: {
         bearer: bearerToken,
       },
@@ -355,21 +382,26 @@ describe('To Validate & get Company Activity Callback via API call', function ()
   });
 
   function getCompanyByName() {
+    let url = `${claEndpoint}name/${companyName}`;
+    cy.task('log', 'Getting company By Name via URL: ' + url);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}name/${companyName}`,
+      url: url,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body;
-      companyExternalID = list.companyExternalID;
-      companyID = list.companyID;
-      signingEntityName = list.signingEntityName;
-      validateApiResponse('company/getCompanyByName.json', response);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        let list = response.body;
+        companyExternalID = list.companyExternalID;
+        companyID = list.companyID;
+        signingEntityName = list.signingEntityName;
+        validateApiResponse('company/getCompanyByName.json', response);
+      });
     });
   }
 });

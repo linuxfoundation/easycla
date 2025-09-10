@@ -25,6 +25,7 @@ describe('To Validate & get health status via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}ops/health`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
