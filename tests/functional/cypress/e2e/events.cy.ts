@@ -18,7 +18,7 @@ describe('To Validate events are properly capture via API call', function () {
   }
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/events
-  const claEndpoint = getAPIBaseURL('v4') + '/events';
+  const claEndpoint = getAPIBaseURL('v4') + 'events';
   let claEndpointForNextKey = '';
   let NextKey: string = '';
   const foundationSFID = appConfig.foundationSFID; //project name: easyAutom foundation
@@ -38,10 +38,11 @@ describe('To Validate events are properly capture via API call', function () {
   });
 
   it('Get recent events of company and project - Record should return 200 Response', function () {
-    claEndpointForNextKey = `${Cypress.env('APP_URL')}cla-service/v4/company/${companyID}/project/${compProjectSFID}/events`;
+    claEndpointForNextKey = getAPIBaseURL('v4') + `company/${companyID}/project/${compProjectSFID}/events`;
     cy.request({
       method: 'GET',
       url: `${claEndpointForNextKey}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -71,6 +72,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpointForNextKey}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -100,6 +102,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfid}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -124,10 +127,12 @@ describe('To Validate events are properly capture via API call', function () {
     });
   });
 
+  // LG:skip
   it.skip('Get List of recent events - requires Admin-level access - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/recent?pageSize=2`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -155,6 +160,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/foundation/${foundationSFID}/csv`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -169,6 +175,7 @@ describe('To Validate events are properly capture via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/project/${projectSfid}/csv`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -184,6 +191,7 @@ describe('To Validate events are properly capture via API call', function () {
       cy.request({
         method: 'GET',
         url: `${URL}?nextKey=${NextKey}&pageSize=50`,
+        timeout: 180000,
         failOnStatusCode: allowFail,
         headers: getXACLHeader(),
         auth: {

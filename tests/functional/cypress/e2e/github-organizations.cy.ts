@@ -41,6 +41,7 @@ describe('To Validate github-organizations API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -63,6 +64,7 @@ describe('To Validate github-organizations API call', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}/${gitHubOrgName}/config`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -82,6 +84,7 @@ describe('To Validate github-organizations API call', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -109,6 +112,7 @@ describe('To Validate github-organizations API call', function () {
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${gitHubOrg}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {

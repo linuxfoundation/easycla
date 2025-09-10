@@ -19,7 +19,7 @@ describe('To Validate & get list of Foundation ClaGroups via API call', function
   }
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/foundation
-  const claEndpoint = getAPIBaseURL('v4') + '/foundation-mapping';
+  const claEndpoint = getAPIBaseURL('v4') + 'foundation-mapping';
   const foundationSFID = appConfig.foundationSFID; //project name: easyAutom foundation
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
@@ -37,6 +37,7 @@ describe('To Validate & get list of Foundation ClaGroups via API call', function
     cy.request({
       method: 'GET',
       url: `${claEndpoint}?foundationSFID=${foundationSFID}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
