@@ -2,7 +2,7 @@
 # SINGLE=1 will print each parameter one by one
 for f in $(./utils/list_ssm_parameters.sh)
 do
-  if [ -z "$SINGLE" ]
+  if [ -z "${SINGLE}" ]
   then
     if [ -z "${params}" ]
     then
