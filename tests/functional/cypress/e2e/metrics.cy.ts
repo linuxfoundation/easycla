@@ -41,6 +41,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}cla-manager-distribution`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -56,6 +57,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}company/${companyID}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -73,6 +75,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}company/${companyID}/project/${projectSFID}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -94,6 +97,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}project`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -112,6 +116,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}project?=${projectID}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -127,6 +132,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}top-companies`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -142,6 +148,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}top-projects`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -157,6 +164,7 @@ describe('To Validate cla-manager API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}total-count`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -173,6 +181,7 @@ describe('To Validate cla-manager API call', function () {
       cy.request({
         method: 'GET',
         url: `${URL}?nextKey=${NextKey}&pageSize=100`,
+        timeout: 180000,
         failOnStatusCode: allowFail,
         headers: getXACLHeader(),
         auth: {

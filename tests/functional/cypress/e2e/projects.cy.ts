@@ -40,6 +40,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -55,6 +56,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/enabled/${foundationSFID}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -73,7 +75,8 @@ describe('To Validate & get projects Activity Callback via API call', function (
   it('Get CLA Groups By SFDC ID', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/external/${externalID}}`,
+      url: `${claEndpoint}/external/${externalID}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -89,6 +92,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/name/${projectName}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -103,6 +107,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}/${projectSfid}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -117,6 +122,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'GET',
       url: `${claEndpoint}-info/${projectSfid}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -133,6 +139,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${projectSfid}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {

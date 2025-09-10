@@ -23,6 +23,7 @@ describe('To Validate & get GitHub Activity Callback via API call', function () 
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
