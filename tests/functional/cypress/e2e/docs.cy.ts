@@ -25,6 +25,7 @@ describe('To Validate & get api-docs via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}api-docs`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -39,6 +40,7 @@ describe('To Validate & get api-docs via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}swagger.json`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {

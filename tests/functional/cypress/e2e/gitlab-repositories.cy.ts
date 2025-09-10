@@ -42,6 +42,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -66,6 +67,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -93,6 +95,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {

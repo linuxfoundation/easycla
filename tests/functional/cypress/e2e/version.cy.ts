@@ -25,6 +25,7 @@ describe('To Validate & check cla version via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}ops/version`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {

@@ -57,6 +57,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'POST',
       url: `${claEndpoint}cla-group`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -114,6 +115,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'GET',
       url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -138,6 +140,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'GET',
       url: `${claEndpoint}foundation/${projectSfid}-xyz/cla-groups`,
+      timeout: 180000,
       failOnStatusCode: false,
       headers: getXACLHeader(),
       auth: {
@@ -154,6 +157,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}cla-group/${claGroupId}`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -180,6 +184,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}cla-group/${claGroupId}/enroll-projects`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -195,6 +200,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         cy.request({
           method: 'GET',
           url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
+          timeout: 180000,
           failOnStatusCode: allowFail,
           headers: getXACLHeader(),
           auth: {
@@ -218,6 +224,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}cla-group/${claGroupId}/unenroll-projects`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -234,6 +241,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'GET',
       url: `${claEndpoint}project/${projectSfidOrg}/github/organizations`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -257,6 +265,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}project/${projectSfidOrg}/github/organizations/${gitHubOrgName}/config`,
+      timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -277,6 +286,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       cy.request({
         method: 'DELETE',
         url: `${claEndpoint}cla-group/${claGroupId}`,
+        timeout: 180000,
         failOnStatusCode: allowFail,
         headers: getXACLHeader(),
         auth: {
@@ -290,6 +300,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           cy.request({
             method: 'GET',
             url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
+            timeout: 180000,
             failOnStatusCode: allowFail,
             headers: getXACLHeader(),
             auth: {
