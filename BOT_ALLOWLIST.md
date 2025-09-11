@@ -146,6 +146,7 @@ To add first `skip_cla` value for an organization:
 ```
 aws --profile lfproduct-prod --region us-east-1 dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "open-telemetry"}}' --update-expression 'SET skip_cla = :val' --expression-attribute-values '{":val": {"M": {"otel-arrow":{"S":";re:^\\d+\\+Copilot@users\\.noreply\\.github\\.com$;copilot-swe-agent[bot]"}}}}'
 aws --profile lfproduct-prod --region us-east-1 dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "openfga"}}' --update-expression 'SET skip_cla = :val' --expression-attribute-values '{":val": {"M": {"vscode-ext":{"S":";re:^\\d+\\+Copilot@users\\.noreply\\.github\\.com$;copilot-swe-agent[bot]"}}}}'
+aws --profile lfproduct-prod --region us-east-1 dynamodb update-item --table-name "cla-prod-github-orgs" --key '{"organization_name": {"S": "eslint"}}' --update-expression 'SET skip_cla = :val' --expression-attribute-values '{":val": {"M": {"*":{"S":"[Copilot;re:^\\d+\\+Copilot@users\\.noreply\\.github\\.com$;copilot-swe-agent[bot]||;re:^\\d+\\+Copilot@users\\.noreply\\.github\\.com$;copilot-swe-agent[bot]||Copilot;re:^\\d+\\+copilot@users\\.noreply\\.github\\.com$;Copilot]"}}}}'
 ```
 
 To add additional repositories entries without overwriting the existing `skip_cla` value:

@@ -38,6 +38,10 @@ export const appConfig = {
 
   /* project */
   projectName: 'easyAutom-child2',
+  projectName2: 'child-2-cla-group',
+  projectSFID2: 'a092h000004wlQQAAY',
+  projectSFID3: 'a0941000002wBz4AAE',
+  projectID2: 'e48f8c9f-2d24-4d3f-9123-51eabe34bcc0',
 
   /* GitLab-Organization*/
   gitLabOrganizationName: 'sunGitlabGroup',
@@ -58,4 +62,5 @@ export const appConfig = {
   gitUsernameApprovalList2: 'lukaszgryglicki',
   gitLabOrgApprovalList2: 'https://gitlab.com/lukaszgryglicki',
   domainApprovalList2: 'o2.pl',
+  lfid3: 'vthakur.github',
 };
