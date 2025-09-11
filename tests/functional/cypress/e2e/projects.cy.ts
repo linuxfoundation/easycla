@@ -23,8 +23,12 @@ describe('To Validate & get projects Activity Callback via API call', function (
   let foundationSFID = appConfig.foundationSFID; //project name: easyAutom foundation
   let bearerToken: string = null;
   let projectSfid = appConfig.foundationSFID; //project name: easyAutom foundation
+  let projectSfid2 = appConfig.projectSFID2;
+  let projectSfid3 = appConfig.projectSFID3;
+  let projectId2 = appConfig.projectID2;
   let externalID = appConfig.foundationSFID; //project name: easyAutom foundation
   let projectName = appConfig.projectName;
+  let projectName2 = appConfig.projectName2;
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
 
   before(() => {
@@ -63,19 +67,28 @@ describe('To Validate & get projects Activity Callback via API call', function (
         bearer: bearerToken,
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body.list;
-      projectSfid = list[0].project_sfid;
-      externalID = projectSfid;
-      projectName = list[0].project_name;
-      validateApiResponse('projects/getCLAProjectsByID.json', response);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        let list = response.body.list;
+        let projectItem = list.find((item) => item.project_type === 'Project');
+        if (!projectItem) {
+          throw new Error("No project with type 'Project' found in response");
+        }
+        projectSfid = projectItem.project_sfid;
+        externalID = projectSfid;
+        projectName = projectItem.project_name;
+        validateApiResponse('projects/getCLAProjectsByID.json', response);
+      });
     });
   });
 
   it('Get CLA Groups By SFDC ID', function () {
+    externalID = appConfig.foundationSFID;
+    let url = `${claEndpoint}/external/${externalID}`;
+    cy.task('log', 'Getting project by externalID with URL: ' + url);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/external/${externalID}`,
+      url: url,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -89,9 +102,11 @@ describe('To Validate & get projects Activity Callback via API call', function (
   });
 
   it('Get Project By Name', function () {
+    let url = `${claEndpoint}/name/${projectName2}`;
+    cy.task('log', 'Getting project by name with URL: ' + url);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/name/${projectName}`,
+      url: url,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -99,14 +114,18 @@ describe('To Validate & get projects Activity Callback via API call', function (
         bearer: bearerToken,
       },
     }).then((response) => {
-      validate_200_Status(response);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+      });
     });
   });
 
   it('Get Project by ID', function () {
+    let url = `${claEndpoint}/${projectId2}`;
+    cy.task('log', 'Getting project by ID with URL: ' + url);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/${projectSfid}`,
+      url: url,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -114,14 +133,19 @@ describe('To Validate & get projects Activity Callback via API call', function (
         bearer: bearerToken,
       },
     }).then((response) => {
-      validate_200_Status(response);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+      });
     });
   });
 
-  it('Get SF Project Info by ID', function () {
+  // This endpoint is not used by consumers and is not considered in ACS.
+  it.skip('Get SF Project Info by ID', function () {
+    let url = `${claEndpoint}-info/${projectSfid3}`;
+    cy.task('log', 'Getting project info by ID with URL: ' + url);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}-info/${projectSfid}`,
+      url: url,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -129,9 +153,9 @@ describe('To Validate & get projects Activity Callback via API call', function (
         bearer: bearerToken,
       },
     }).then((response) => {
-      // validate_200_Status(response);
-      const jsonResponse = JSON.stringify(response.body, null, 2);
-      cy.log(jsonResponse);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+      });
     });
   });
 
