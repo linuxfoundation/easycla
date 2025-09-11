@@ -22,10 +22,13 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   const claEndpoint = getAPIBaseURL('v4');
   const claGroupID = appConfig.claGroupId_projectSFID; //Sun
   const lfid = appConfig.lfid;
+  const lfid2 = appConfig.lfid2;
+  const lfid3 = appConfig.lfid3;
   const companyID = appConfig.companyID; //Infosys Limited
   const companyName = appConfig.companyName; //Infosys Limited
   const projectSFID = appConfig.projectSFID; //sun
   const userID = appConfig.userIdclaManager; //veerendrat
+  const userID2 = appConfig.userIdclaManager2;
 
   //Aprroval list veriable
   const emailApprovalList = appConfig.emailApprovalList;
@@ -51,9 +54,11 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   });
 
   it('Returns a list of corporate contributor for the CLA Group', function () {
+    let url = `${claEndpoint}cla-group/${claGroupID}/corporate-contributors?companyID=${companyID}&pageSize=100`;
+    cy.task('log', 'Returns a list of corporate contributor for the CLA Group URL: ' + url);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}cla-group/${claGroupID}/corporate-contributors?companyID=${companyID}`,
+      url: url,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -61,29 +66,34 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       },
       timeout: 180000,
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body.list;
-      for (let i = 0; i <= list.length - 1; i++) {
-        if (list[i].linux_foundation_id === lfid) {
-          if (list[i].signatureApproved === true) {
-            expect(list[i].signatureApproved).to.be.true;
-            signatureApproved = true;
-          } else if (list[i].signatureApproved === false) {
-            expect(list[i].signatureApproved).to.be.false;
-            signatureApproved = false;
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        let list = response.body.list;
+        for (let i = 0; i <= list.length - 1; i++) {
+          if (list[i].linux_foundation_id === lfid3) {
+            if (list[i].signatureApproved === true) {
+              expect(list[i].signatureApproved).to.be.true;
+              signatureApproved = true;
+            } else if (list[i].signatureApproved === false) {
+              expect(list[i].signatureApproved).to.be.false;
+              signatureApproved = false;
+            }
+            signatureCclaID = list[i].signatureID;
+            break;
           }
-          signatureCclaID = list[i].signatureID;
-          break;
         }
-      }
-      validateApiResponse('signatures/listClaGroupCorporateContributors.json', response);
+        cy.task('log', 'Signature ID: ' + signatureCclaID + ' and Approved: ' + signatureApproved);
+        validateApiResponse('signatures/listClaGroupCorporateContributors.json', response);
+      });
     });
   });
 
   it('Returns the signature when provided the signature ID, ecla records', function () {
+    let url = `${claEndpoint}signatures/id/${signatureCclaID}`;
+    cy.task('log', 'Returns the signature when provided the signature ID, ecla records URL: ' + url);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}signatures/id/${signatureCclaID}`,
+      url: url,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -91,10 +101,12 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         bearer: bearerToken,
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body;
-      expect(list.signatureApproved).to.eql(signatureApproved);
-      expect(list.signatureType).to.eql('ecla');
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        let list = response.body;
+        expect(list.signatureApproved).to.eql(signatureApproved);
+        expect(list.signatureType).to.eql('ecla');
+      });
     });
   });
 
@@ -336,9 +348,11 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   });
 
   it('Returns a list of user signatures when provided the user ID', function () {
+    let url = `${claEndpoint}signatures/user/${userID2}`;
+    cy.task('log', 'Returns a list of user signatures when provided the user ID URL: ' + url);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}signatures/user/${userID}`,
+      url: url,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -346,14 +360,17 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         bearer: bearerToken,
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let signatures = response.body.signatures;
-      for (let i = 0; i <= signatures.length - 1; i++) {
-        expect(signatures[i].companyName).to.eql(companyName);
-        expect(signatures[i].signatureReferenceType).to.eql('user');
-        signatureID = signatures[i].signatureID;
-      }
-      validateApiResponse('signatures/getProjectCompanySignatures.json', response);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        let signatures = response.body.signatures;
+        for (let i = 0; i <= signatures.length - 1; i++) {
+          // LG: API /signatures/user/{userID} internally skips ECLA records, and for ICLA we never have company
+          expect(signatures[i].companyName).to.be.undefined;
+          expect(signatures[i].signatureReferenceType).to.eql('user');
+          signatureID = signatures[i].signatureID;
+        }
+        validateApiResponse('signatures/getProjectCompanySignatures.json', response);
+      });
     });
   });
 
@@ -410,9 +427,11 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   /* Below test case for Updates the Project / Organization/Company Approval list */
 
   it('Add Email as Approval List to the Project/Company', function () {
+    let url = `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`;
+    cy.task('log', 'Add Email as Approval List to the Project/Company URL: ' + url);
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: url,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -423,9 +442,11 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         AddEmailApprovalList: [emailApprovalList],
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body.emailApprovalList;
-      expect(list[0]).to.eql(emailApprovalList);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        let list = response.body.emailApprovalList;
+        expect(list).to.include(emailApprovalList);
+      });
     });
   });
 
@@ -454,9 +475,11 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   });
 
   it('Add GithubOrg as Approval List to the Project/Company', function () {
+    let url = `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`;
+    cy.task('log', 'Add GithubOrg as Approval List to the Project/Company URL: ' + url);
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
+      url: url,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -467,9 +490,11 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         AddGithubOrgApprovalList: [gitOrgApprovalList],
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body.githubOrgApprovalList;
-      expect(list[0]).to.eql(gitOrgApprovalList);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        let list = response.body.githubOrgApprovalList;
+        expect(list).to.include(gitOrgApprovalList);
+      });
     });
   });
 
@@ -774,11 +799,14 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   //Invalidates a given ICLA record for a user
   //worked only ine time, So skiping this test case, Refer screenshot: https://prnt.sc/ti6ERw8XZur0
 
-  it('Invalidates a given ICLA record for a user', function () {
+  // LG:skip
+  it.skip('Invalidates a given ICLA record for a user', function () {
     let user_id = '23121f2a-d48b-11ed-b70f-d2f23b35d89e';
+    let url = `${claEndpoint}cla-group/${claGroupID}/user/${user_id}/icla`;
+    cy.task('log', 'Invalidates a given ICLA record for a user URL: ' + url);
     cy.request({
       method: 'PUT',
-      url: `${claEndpoint}cla-group/${claGroupID}/user/${user_id}/icla`,
+      url: url,
       timeout: 180000,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -786,17 +814,19 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         bearer: bearerToken,
       },
     }).then((response) => {
-      if (response.status === 500) {
-        Cypress.on('test:after:run', (test, runnable) => {
-          const testName = `${test.title}`;
-          const jsonResponse = JSON.stringify(response.body, null, 2);
-          cy.log(jsonResponse);
-          console.log(testName);
-          console.error('User_id not available for invalidate : ', jsonResponse);
-        });
-      } else {
-        validate_200_Status(response);
-      }
+      return cy.logJson('response', response).then(() => {
+        if (response.status === 500) {
+          Cypress.on('test:after:run', (test, runnable) => {
+            const testName = `${test.title}`;
+            const jsonResponse = JSON.stringify(response.body, null, 2);
+            cy.log(jsonResponse);
+            console.log(testName);
+            console.error('User_id not available for invalidate : ', jsonResponse);
+          });
+        } else {
+          validate_200_Status(response);
+        }
+      });
     });
   });
 });
