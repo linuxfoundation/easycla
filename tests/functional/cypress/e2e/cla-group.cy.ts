@@ -460,9 +460,6 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
       const filtered = requests.filter((r) => r.mode === 'both' || r.mode === effectiveMode);
       cy.wrap(filtered).each((req: any) => {
         const { method, url, expectedStatus, expectedCode, expectedMsg, mode } = req;
-        if ((mode === 'local' && !local) || (mode === 'remote' && local)) {
-          return;
-        }
         cy.task('log', `--> ${method} ${url}`);
         cy.request({
           method: method,
