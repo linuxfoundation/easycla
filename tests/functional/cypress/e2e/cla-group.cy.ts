@@ -3,6 +3,7 @@ import {
   validate_200_Status,
   validate_400_Status,
   validate_401_Status,
+  validate_403_Status,
   validate_404_Status,
   validate_404_Status_and_Message,
   validate_404_Status_and_Message2,
@@ -175,6 +176,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 422,
           expectedCode: 602,
           expectedMsg: 'claGroupInput in body is required',
+          mode: 'both',
         },
 
         // List CLA groups for a project - wrong SFID (missing)
@@ -184,6 +186,17 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 404,
           expectedCode: 1,
           expectedMsg: 'path /v4/foundation//cla-groups was not found',
+          mode: 'local',
+        },
+
+        // List CLA groups for a project - wrong SFID (missing)
+        {
+          method: 'GET',
+          url: `${claEndpoint}foundation//cla-groups`,
+          expectedStatus: 403,
+          expectedCode: 403,
+          expectedMsg: '',
+          mode: 'remote',
         },
 
         // List CLA groups for a project - wrong SFID (too short)
@@ -193,6 +206,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 422,
           expectedCode: 604,
           expectedMsg: 'projectSFID in path should be at least 15 chars long',
+          mode: 'both',
         },
 
         // List CLA groups for a project - wrong SFID (not matching regexp)
@@ -202,6 +216,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 422,
           expectedCode: 605,
           expectedMsg: "projectSFID in path should match '^([0-9A-Za-z]{15}|[0-9A-Za-z]{18})$'",
+          mode: 'both',
         },
 
         // List CLA groups for a project (wrong SFID - too long)
@@ -211,6 +226,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 422,
           expectedCode: 603,
           expectedMsg: 'projectSFID in path should be at most 18 chars long',
+          mode: 'both',
         },
 
         // Update CLA group (using dummy ID which isn't correct UUID v4)
@@ -221,15 +237,17 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedCode: 605,
           expectedMsg:
             "claGroupID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+          mode: 'both',
         },
 
-        // Update CLA group (using dummy ID which is well-formed but no body paramaters)
+        // Update CLA group (using dummy ID which is well-formed but no body parameters)
         {
           method: 'PUT',
           url: `${claEndpoint}cla-group/${exampleClaGroupId}`,
           expectedStatus: 400,
           expectedCode: 602,
           expectedMsg: 'EasyCLA - 400 Bad Request - missing update parameters - body missing required values',
+          mode: 'both',
         },
 
         // Enroll projects (using dummy ID - incorrect UUIDv4)
@@ -240,6 +258,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedCode: 605,
           expectedMsg:
             "claGroupID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+          mode: 'both',
         },
 
         // Enroll projects (using correct but non existing ID)
@@ -249,6 +268,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 404,
           expectedCode: 2,
           expectedMsg: `EasyCLA - 404 Not Found - problem loading CLA Group by ID: ${exampleClaGroupId} - error: cla group ${exampleClaGroupId} not found`,
+          mode: 'both',
         },
 
         // Enroll projects (using correct ID - but without PUT data)
@@ -259,6 +279,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedCode: 400,
           expectedMsg:
             'EasyCLA - 400 Bad Request - unable to enroll projects in CLA Group - error: enroll validation error: invalid project ID value due to error: validation failure - there should be at least one project provided for the enroll request',
+          mode: 'both',
         },
 
         // Unenroll projects (using dummy ID - incorrect UUIDv4)
@@ -269,6 +290,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedCode: 605,
           expectedMsg:
             "claGroupID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+          mode: 'both',
         },
 
         // Unenroll projects (using correct but non-existing ID)
@@ -278,6 +300,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 404,
           expectedCode: 2,
           expectedMsg: `EasyCLA - 404 Not Found - unable to locate CLA Group by ID: ${exampleClaGroupId} - error: cla group ${exampleClaGroupId} not found`,
+          mode: 'both',
         },
 
         // Unenroll projects (using correct ID - but without PUT data)
@@ -288,6 +311,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedCode: 400,
           expectedMsg:
             'EasyCLA - 400 Bad Request - unable to enroll projects in CLA Group - error: unenroll validation error: invalid project ID value due to error: validation failure - there should be at least one project provided for the unenroll request',
+          mode: 'both',
         },
 
         // Get GitHub orgs for project - no project provided
@@ -297,6 +321,17 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 404,
           expectedCode: 1,
           expectedMsg: 'path /v4/project//github/organizations was not found',
+          mode: 'local',
+        },
+
+        // Get GitHub orgs for project - no project provided
+        {
+          method: 'GET',
+          url: `${claEndpoint}project//github/organizations`,
+          expectedStatus: 403,
+          expectedCode: 403,
+          expectedMsg: '',
+          mode: 'remote',
         },
 
         // LG: Get GitHub orgs for project - wrong SFID provided, but API is not verifying this in swagger
@@ -306,6 +341,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 404,
           expectedCode: 2,
           expectedMsg: 'EasyCLA - 404 Not Found - github organization with project SFID not found: aaaa',
+          mode: 'both',
         },
 
         // Update GitHub org config missing project and github org name and update configuration data
@@ -315,6 +351,17 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 404,
           expectedCode: 1,
           expectedMsg: 'path /v4/project//github/organizations//config was not found',
+          mode: 'local',
+        },
+
+        // Update GitHub org config missing project and github org name and update configuration data
+        {
+          method: 'PUT',
+          url: `${claEndpoint}project//github/organizations//config`,
+          expectedStatus: 403,
+          expectedCode: 403,
+          expectedMsg: '',
+          mode: 'remote',
         },
 
         // Update GitHub org config missing github org name and update configuration data
@@ -324,6 +371,17 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 404,
           expectedCode: 1,
           expectedMsg: 'path /v4/project//github/organizations/org/config was not found',
+          mode: 'local',
+        },
+
+        // Update GitHub org config missing github org name and update configuration data
+        {
+          method: 'PUT',
+          url: `${claEndpoint}project//github/organizations/org/config`,
+          expectedStatus: 403,
+          expectedCode: 403,
+          expectedMsg: '',
+          mode: 'remote',
         },
 
         // Update GitHub org config missing project and update configuration data
@@ -333,6 +391,17 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 405,
           expectedCode: 405,
           expectedMsg: 'method PUT is not allowed, but [DELETE] are',
+          mode: 'local',
+        },
+
+        // Update GitHub org config missing project and update configuration data
+        {
+          method: 'PUT',
+          url: `${claEndpoint}project/aaa/github/organizations//config`,
+          expectedStatus: 403,
+          expectedCode: 403,
+          expectedMsg: '',
+          mode: 'remote',
         },
 
         // Update GitHub org config missing update configuration data
@@ -342,6 +411,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 422,
           expectedCode: 602,
           expectedMsg: 'body in body is required',
+          mode: 'both',
         },
 
         // Delete CLA group - but not specifying claGroupID at all
@@ -351,6 +421,17 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 405,
           expectedCode: 405,
           expectedMsg: 'method DELETE is not allowed, but [POST] are',
+          mode: 'local',
+        },
+
+        // Delete CLA group - but not specifying claGroupID at all
+        {
+          method: 'DELETE',
+          url: `${claEndpoint}cla-group/`,
+          expectedStatus: 403,
+          expectedCode: 403,
+          expectedMsg: '',
+          mode: 'remote',
         },
 
         // Delete CLA group specifying dummy ID which is not a correct UUIDv4
@@ -361,6 +442,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedCode: 605,
           expectedMsg:
             "claGroupID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+          mode: 'both',
         },
 
         // Delete CLA group specifying an ID that does not exist
@@ -370,11 +452,14 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           expectedStatus: 404,
           expectedCode: 2,
           expectedMsg: `EasyCLA - 404 Not Found - cla group ${exampleClaGroupId} not found`,
+          mode: 'both',
         },
       ];
 
-      cy.wrap(requests).each((req: any) => {
-        const { method, url, expectedStatus, expectedCode, expectedMsg } = req;
+      const effectiveMode = local ? 'local' : 'remote';
+      const filtered = requests.filter((r) => r.mode === 'both' || r.mode === effectiveMode);
+      cy.wrap(filtered).each((req: any) => {
+        const { method, url, expectedStatus, expectedCode, expectedMsg, mode } = req;
         cy.task('log', `--> ${method} ${url}`);
         cy.request({
           method: method,
@@ -391,6 +476,8 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
             switch (expectedStatus) {
               case 400:
                 return validate_400_Status(response, expectedMsg);
+              case 403:
+                return validate_403_Status(response);
               case 404:
                 if (expectedCode === 1) {
                   return validate_404_Status_and_Message(response, expectedMsg);
