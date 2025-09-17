@@ -240,7 +240,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           mode: 'both',
         },
 
-        // Update CLA group (using dummy ID which is well-formed but no body paramaters)
+        // Update CLA group (using dummy ID which is well-formed but no body parameters)
         {
           method: 'PUT',
           url: `${claEndpoint}cla-group/${exampleClaGroupId}`,
@@ -456,7 +456,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
         },
       ];
 
-      cy.wrap(requests).each((req: any) => {
+      const effectiveMode = local ? 'local' : 'remote';
+      const filtered = requests.filter((r) => r.mode === 'both' || r.mode === effectiveMode);
+      cy.wrap(filtered).each((req: any) => {
         const { method, url, expectedStatus, expectedCode, expectedMsg, mode } = req;
         if ((mode === 'local' && !local) || (mode === 'remote' && local)) {
           return;
