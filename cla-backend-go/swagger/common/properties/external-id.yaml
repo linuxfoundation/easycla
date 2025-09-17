@@ -3,4 +3,6 @@
 
 type: string
 example: "00117000015vpjXAAQ"
-pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
+pattern: '^([0-9A-Za-z]{15}|[0-9A-Za-z]{18})$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
+minLength: 15
+maxLength: 18
