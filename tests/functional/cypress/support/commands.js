@@ -39,10 +39,61 @@ export function validate_204_Status(response) {
   cy.log(jsonResponse);
 }
 
+export function validate_400_Status(response, message) {
+  expect(response.status).to.eq(400);
+  expect(response.statusText).to.eq('Bad Request');
+  expect(response.body.Code).to.eq('400');
+  expect(response.body.Message).to.eq(message);
+}
+
+export function validate_401_Status(response, local) {
+  expect(response.status).to.eq(401);
+  expect(response.statusText).to.eq('Unauthorized');
+  if (local === true) {
+    expect(response.body.message).to.eq('unauthenticated for invalid credentials');
+  } else {
+    expect(response.body).to.eq("no token provided\n");
+  }
+}
+
+export function validate_403_Status(response) {
+  expect(response.status).to.eq(403);
+  expect(response.statusText).to.eq('Forbidden');
+  expect(response.body.Code).to.eq('403');
+}
+
 export function validate_404_Status(response) {
   expect(response.status).to.eq(404);
   expect(response.statusText).to.eq('Not Found');
   expect(response.body.Code).to.eq('404');
+}
+
+export function validate_404_Status_and_Message(response, message) {
+  expect(response.status).to.eq(404);
+  expect(response.statusText).to.eq('Not Found');
+  expect(response.body.code).to.eq(404);
+  expect(response.body.message).to.eq(message);
+}
+
+export function validate_404_Status_and_Message2(response, message) {
+  expect(response.status).to.eq(404);
+  expect(response.statusText).to.eq('Not Found');
+  expect(response.body.Code).to.eq("404");
+  expect(response.body.Message).to.eq(message);
+}
+
+export function validate_405_Status_and_Message(response, message) {
+  expect(response.status).to.eq(405);
+  expect(response.statusText).to.eq('Method Not Allowed');
+  expect(response.body.code).to.eq(405);
+  expect(response.body.message).to.eq(message);
+}
+
+export function validate_422_Status(response, bodyCode, bodyMessage) {
+  expect(response.status).to.eq(422);
+  expect(response.statusText).to.eq('Unprocessable Entity');
+  expect(response.body.code).to.eq(bodyCode);
+  expect(response.body.message).to.eq(bodyMessage);
 }
 
 export function shortenMiddle(str) {
