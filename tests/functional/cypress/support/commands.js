@@ -52,14 +52,26 @@ export function validate_401_Status(response, local) {
   if (local === true) {
     expect(response.body.message).to.eq('unauthenticated for invalid credentials');
   } else {
-    expect(response.body).to.eq("no token provided\n");
+    expect(response.body).to.eq('no token provided\n');
   }
 }
 
+function parseJsonBody(resp) {
+  if (resp && typeof resp.body === 'string') {
+    const s = resp.body.trim();
+    try {
+      return JSON.parse(s);
+    } catch (e) {}
+  }
+  return resp.body;
+}
+
 export function validate_403_Status(response) {
+  const body = parseJsonBody(response);
   expect(response.status).to.eq(403);
   expect(response.statusText).to.eq('Forbidden');
-  expect(response.body.Code).to.eq('403');
+  const code = body && (body.Code ?? body.code);
+  expect(code).to.eq(403);
 }
 
 export function validate_404_Status(response) {
@@ -78,7 +90,7 @@ export function validate_404_Status_and_Message(response, message) {
 export function validate_404_Status_and_Message2(response, message) {
   expect(response.status).to.eq(404);
   expect(response.statusText).to.eq('Not Found');
-  expect(response.body.Code).to.eq("404");
+  expect(response.body.Code).to.eq('404');
   expect(response.body.Message).to.eq(message);
 }
 
