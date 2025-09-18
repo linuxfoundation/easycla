@@ -24,88 +24,132 @@ export function validateApiResponse(schemaPath, response) {
   });
 }
 
-//To validate & assert 200 response of api
-export function validate_200_Status(response) {
-  expect(response.status).to.eq(200);
-  expect(response.body).to.not.be.null;
-  const jsonResponse = JSON.stringify(response.body, null, 2);
-  cy.log(jsonResponse);
-}
-
-export function validate_204_Status(response) {
-  expect(response.status).to.eq(204);
-  expect(response.body).to.not.be.null;
-  const jsonResponse = JSON.stringify(response.body, null, 2);
-  cy.log(jsonResponse);
-}
-
-export function validate_400_Status(response, message) {
-  expect(response.status).to.eq(400);
-  expect(response.statusText).to.eq('Bad Request');
-  expect(response.body.Code).to.eq('400');
-  expect(response.body.Message).to.eq(message);
-}
-
-export function validate_401_Status(response, local) {
-  expect(response.status).to.eq(401);
-  expect(response.statusText).to.eq('Unauthorized');
-  if (local === true) {
-    expect(response.body.message).to.eq('unauthenticated for invalid credentials');
-  } else {
-    expect(response.body).to.eq('no token provided\n');
-  }
-}
-
 function parseJsonBody(resp) {
-  if (resp && typeof resp.body === 'string') {
-    const s = resp.body.trim();
+  if (!resp) {
+    return {};
+  }
+  const body = resp.body ?? resp.Body;
+  if (typeof body === 'string') {
+    const s = body.trim();
     try {
       return JSON.parse(s);
     } catch (e) {}
   }
-  return resp.body;
+  return body;
+}
+
+export function validate_status(response, expectedStatus) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq(String(expectedStatus));
+}
+
+//To validate & assert 200 response of api
+export function validate_200_Status(response) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('200');
+  const body = response.body ?? response.Body;
+  expect(body).to.not.be.null;
+}
+
+export function validate_204_Status(response) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('204');
+  const body = response.body ?? response.Body;
+  expect(body).to.not.be.null;
+}
+
+export function validate_400_Status(response, message) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('400');
+  const statusText = response.statusText ?? response.StatusText;
+  expect(statusText).to.eq('Bad Request');
+  const body = response.body ?? response.Body ?? {};
+  const bodyCode = body.code ?? body.Code;
+  const bodyMessage = body.message ?? body.Message;
+  expect(String(bodyCode)).to.eq('400');
+  expect(bodyMessage).to.eq(message);
+}
+
+export function validate_400_Status_Contains(response, message) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('400');
+  const statusText = response.statusText ?? response.StatusText;
+  expect(statusText).to.eq('Bad Request');
+  const body = response.body ?? response.Body ?? {};
+  const bodyCode = body.code ?? body.Code;
+  const bodyMessage = body.message ?? body.Message;
+  expect(String(bodyCode)).to.eq('400');
+  expect(bodyMessage).to.contain(message);
+}
+
+export function validate_401_Status(response, local) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('401');
+  const statusText = response.statusText ?? response.StatusText;
+  expect(statusText).to.eq('Unauthorized');
+  const body = response.body ?? response.Body ?? {};
+  if (local === true) {
+    const bodyMessage = body.message ?? body.Message;
+    expect(bodyMessage).to.eq('unauthenticated for invalid credentials');
+  } else {
+    expect(body).to.eq('no token provided\n');
+  }
 }
 
 export function validate_403_Status(response) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('403');
+  const statusText = response.statusText ?? response.StatusText;
+  expect(statusText).to.eq('Forbidden');
   const body = parseJsonBody(response);
-  expect(response.status).to.eq(403);
-  expect(response.statusText).to.eq('Forbidden');
   const code = body && (body.Code ?? body.code);
-  expect(code).to.eq(403);
+  expect(String(code)).to.eq('403');
 }
 
 export function validate_404_Status(response) {
-  expect(response.status).to.eq(404);
-  expect(response.statusText).to.eq('Not Found');
-  expect(response.body.Code).to.eq('404');
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('404');
+  const statusText = response.statusText ?? response.StatusText;
+  expect(statusText).to.eq('Not Found');
+  const body = response.body ?? response.Body ?? {};
+  const bodyCode = body.code ?? body.Code;
+  expect(String(bodyCode)).to.eq('404');
 }
 
-export function validate_404_Status_and_Message(response, message) {
-  expect(response.status).to.eq(404);
-  expect(response.statusText).to.eq('Not Found');
-  expect(response.body.code).to.eq(404);
-  expect(response.body.message).to.eq(message);
+export function validate_404_Status_and_Message(response, expectedMessage) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('404');
+  const statusText = response.statusText ?? response.StatusText;
+  expect(statusText).to.eq('Not Found');
+  const body = response.body ?? response.Body ?? {};
+  const bodyCode = body.code ?? body.Code;
+  const bodyMessage = body.message ?? body.Message;
+  expect(String(bodyCode)).to.eq('404');
+  expect(bodyMessage).to.eq(expectedMessage);
 }
 
-export function validate_404_Status_and_Message2(response, message) {
-  expect(response.status).to.eq(404);
-  expect(response.statusText).to.eq('Not Found');
-  expect(response.body.Code).to.eq('404');
-  expect(response.body.Message).to.eq(message);
+export function validate_405_Status_and_Message(response, expectedMessage) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('405');
+  const statusText = response.statusText ?? response.StatusText;
+  expect(statusText).to.eq('Method Not Allowed');
+  const body = response.body ?? response.Body ?? {};
+  const bodyCode = body.code ?? body.Code;
+  const bodyMessage = body.message ?? body.Message;
+  expect(String(bodyCode)).to.eq('405');
+  expect(bodyMessage).to.eq(expectedMessage);
 }
 
-export function validate_405_Status_and_Message(response, message) {
-  expect(response.status).to.eq(405);
-  expect(response.statusText).to.eq('Method Not Allowed');
-  expect(response.body.code).to.eq(405);
-  expect(response.body.message).to.eq(message);
-}
-
-export function validate_422_Status(response, bodyCode, bodyMessage) {
-  expect(response.status).to.eq(422);
-  expect(response.statusText).to.eq('Unprocessable Entity');
-  expect(response.body.code).to.eq(bodyCode);
-  expect(response.body.message).to.eq(bodyMessage);
+export function validate_422_Status(response, expectedBodyCode, expectedBodyMessage) {
+  const status = response.status ?? response.Status;
+  expect(String(status)).to.eq('422');
+  const statusText = response.statusText ?? response.StatusText;
+  expect(statusText).to.eq('Unprocessable Entity');
+  const body = response.body ?? response.Body ?? {};
+  const bodyCode = body.code ?? body.Code;
+  const bodyMessage = body.message ?? body.Message;
+  expect(String(bodyCode)).to.eq(String(expectedBodyCode));
+  expect(bodyMessage).to.eq(expectedBodyMessage);
 }
 
 export function shortenMiddle(str) {

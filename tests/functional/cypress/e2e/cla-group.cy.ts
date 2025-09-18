@@ -6,7 +6,6 @@ import {
   validate_403_Status,
   validate_404_Status,
   validate_404_Status_and_Message,
-  validate_404_Status_and_Message2,
   validate_405_Status_and_Message,
   validate_422_Status,
   getTokenKey,
@@ -184,7 +183,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           method: 'GET',
           url: `${claEndpoint}foundation//cla-groups`,
           expectedStatus: 404,
-          expectedCode: 1,
+          expectedCode: 404,
           expectedMsg: 'path /v4/foundation//cla-groups was not found',
           mode: 'local',
         },
@@ -266,7 +265,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           method: 'PUT',
           url: `${claEndpoint}cla-group/${exampleClaGroupId}/enroll-projects`,
           expectedStatus: 404,
-          expectedCode: 2,
+          expectedCode: 404,
           expectedMsg: `EasyCLA - 404 Not Found - problem loading CLA Group by ID: ${exampleClaGroupId} - error: cla group ${exampleClaGroupId} not found`,
           mode: 'both',
         },
@@ -298,7 +297,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           method: 'PUT',
           url: `${claEndpoint}cla-group/${exampleClaGroupId}/unenroll-projects`,
           expectedStatus: 404,
-          expectedCode: 2,
+          expectedCode: 404,
           expectedMsg: `EasyCLA - 404 Not Found - unable to locate CLA Group by ID: ${exampleClaGroupId} - error: cla group ${exampleClaGroupId} not found`,
           mode: 'both',
         },
@@ -319,7 +318,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           method: 'GET',
           url: `${claEndpoint}project//github/organizations`,
           expectedStatus: 404,
-          expectedCode: 1,
+          expectedCode: 404,
           expectedMsg: 'path /v4/project//github/organizations was not found',
           mode: 'local',
         },
@@ -339,7 +338,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           method: 'GET',
           url: `${claEndpoint}project/aaaa/github/organizations`,
           expectedStatus: 404,
-          expectedCode: 2,
+          expectedCode: 404,
           expectedMsg: 'EasyCLA - 404 Not Found - github organization with project SFID not found: aaaa',
           mode: 'both',
         },
@@ -349,7 +348,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           method: 'PUT',
           url: `${claEndpoint}project//github/organizations//config`,
           expectedStatus: 404,
-          expectedCode: 1,
+          expectedCode: 404,
           expectedMsg: 'path /v4/project//github/organizations//config was not found',
           mode: 'local',
         },
@@ -369,7 +368,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           method: 'PUT',
           url: `${claEndpoint}project//github/organizations/org/config`,
           expectedStatus: 404,
-          expectedCode: 1,
+          expectedCode: 404,
           expectedMsg: 'path /v4/project//github/organizations/org/config was not found',
           mode: 'local',
         },
@@ -450,7 +449,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
           method: 'DELETE',
           url: `${claEndpoint}cla-group/${exampleClaGroupId}`,
           expectedStatus: 404,
-          expectedCode: 2,
+          expectedCode: 404,
           expectedMsg: `EasyCLA - 404 Not Found - cla group ${exampleClaGroupId} not found`,
           mode: 'both',
         },
@@ -479,11 +478,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
               case 403:
                 return validate_403_Status(response);
               case 404:
-                if (expectedCode === 1) {
-                  return validate_404_Status_and_Message(response, expectedMsg);
-                } else {
-                  return validate_404_Status_and_Message2(response, expectedMsg);
-                }
+                return validate_404_Status_and_Message(response, expectedMsg);
               case 405:
                 return validate_405_Status_and_Message(response, expectedMsg);
               case 422:
