@@ -58,6 +58,7 @@ if [ ! -z "${ENV_ARGS}" ]; then
   CMD="${CMD} --env ${ENV_ARGS}"
 fi
 
+npx prettier --write cypress/e2e/* cypress/support/* cypress/appConfig/* cypress.config.ts
 if [ ! -z "${DEBUG}" ]
 then
   echo "Running: ${CMD}"

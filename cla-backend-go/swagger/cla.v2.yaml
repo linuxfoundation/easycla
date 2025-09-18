@@ -2664,6 +2664,7 @@ paths:
         - $ref: "#/parameters/path-userID"
         - name: body
           in: body
+          required: true
           schema:
             type: object
             required:
@@ -2830,6 +2831,7 @@ paths:
         - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-projectSFID"
         - name: body
+          required: true
           in: body
           schema:
             type: object
@@ -2999,6 +3001,7 @@ paths:
         - $ref: "#/parameters/path-companyID"
         - name: body
           in: body
+          required: true
           schema:
             type: object
             x-nullable: false
@@ -3044,6 +3047,7 @@ paths:
         - $ref: "#/parameters/path-companyID"
         - name: body
           in: body
+          required: true
           schema:
             type: object
             x-nullable: false
