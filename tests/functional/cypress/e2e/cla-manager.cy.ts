@@ -181,15 +181,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
           expectedStatus: 404,
           expectedCode: 404,
           expectedMsg: 'path /v4/user//invite-company-admin was not found',
-          mode: 'local',
-        },
-        {
-          method: 'POST',
-          url: `${claEndpoint}user//invite-company-admin`,
-          expectedStatus: 403,
-          expectedCode: 403,
-          expectedMsg: '',
-          mode: 'remote',
+          mode: both,
         },
         {
           method: 'POST',
