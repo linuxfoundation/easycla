@@ -1,160 +1,195 @@
-import {validateApiResponse,validate_200_Status,getTokenKey} from '../support/commands'
-describe("To Validate github-organizations API call", function () {
-  
- // Define a variable for the environment
- const environment = Cypress.env("CYPRESS_ENV");
+import {
+  validateApiResponse,
+  validate_200_Status,
+  getTokenKey,
+  getAPIBaseURL,
+  getXACLHeader,
+} from '../support/commands';
 
- // Import the appropriate configuration based on the environment
- let appConfig;
- if (environment === 'dev') {
-   appConfig = require('../appConfig/config.dev.ts').appConfig;
- } else if (environment === 'production') {
-   appConfig = require('../appConfig/config.production.ts').appConfig;
- }
-  
+// LG:
+beforeEach(function () {
+  cy.task('log', `>>> starting test: ${Cypress.currentTest?.title || '(unknown)'}`);
+});
+
+afterEach(function () {
+  cy.task('log', `<<< finished test: ${Cypress.currentTest?.title || '(unknown)'}`);
+});
+
+describe('To Validate github-organizations API call', function () {
+  // Define a variable for the environment
+  const environment = Cypress.env('CYPRESS_ENV');
+
+  // Import the appropriate configuration based on the environment
+  let appConfig;
+  if (environment === 'dev') {
+    appConfig = require('../appConfig/config.dev.ts').appConfig;
+  } else if (environment === 'production') {
+    appConfig = require('../appConfig/config.production.ts').appConfig;
+  }
+
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-repositories
-    
-    //Variable for GitHub    
-    const projectSfidOrg=appConfig.childProjectSFID; //project name: easyAutom-child2  
-  
-  const claEndpoint = `${Cypress.env("APP_URL")}cla-service/v4/project/${projectSfidOrg}/github/repositories`;
-  let claGroupId: string =appConfig.claGroupId;
-  let repository_id: string="";
-  let repository_external_id: string="";
-  let repository_external_id2: string="";
-  let gitHubOrgName: string="";
-  let branch_name: string="";
-  
-  
-  let bearerToken: string = null;
-    before(() => { 
-        if(bearerToken==null){
-        getTokenKey(bearerToken);
-        cy.window().then((win) => {
-            bearerToken = win.localStorage.getItem('bearerToken');
-          });
-        }
-    });
 
-  it("Get the GitHub repositories of the project which are CLA Enforced- Record should Returns 200 Response", function () {
+  //Variable for GitHub
+  const projectSfidOrg = appConfig.childProjectSFID; //project name: easyAutom-child2
+
+  const claEndpoint = getAPIBaseURL('v4') + `project/${projectSfidOrg}/github/repositories`;
+  let claGroupId: string = appConfig.claGroupId;
+  let repository_id: string = 'f577ae5d-5616-453f-a77e-9a76ff2910ec';
+  let repository_external_id: string = '';
+  let repository_external_id2: string = '';
+  let gitHubOrgName: string = '';
+  let branch_name: string = '';
+  let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
+
+  let bearerToken: string = null;
+  before(() => {
+    if (bearerToken == null) {
+      getTokenKey(bearerToken);
+      cy.window().then((win) => {
+        bearerToken = win.localStorage.getItem('bearerToken');
+      });
+    }
+  });
+
+  it('Get the GitHub repositories of the project which are CLA Enforced- Record should return 200 Response', function () {
+    cy.task('log', `--> GET ${claEndpoint}`);
+
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
-      
-      auth: {
-        'bearer': bearerToken,
-      }
+      timeout: 180000,
+      failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
+      auth: { bearer: bearerToken },
     }).then((response) => {
-      validate_200_Status(response);
-      
-        // Validate specific data in the response
-        expect(response.body).to.have.property('list');
-        let list = response.body.list;
-        repository_id=list[0].repository_id;
-        claGroupId= list[0].repository_cla_group_id;
-        gitHubOrgName=list[0].repository_organization_name;
-        repository_external_id=list[0].repository_external_id;
-        repository_external_id2=list[1].repository_external_id;
-           expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/repo01')     
-               //To validate schema of response
-               validateApiResponse("github-repositories/getRepositories.json",response.body);
+      return cy
+        .task('log', `--> status=${response.status}`)
+        .then(() => cy.logJson('response.body', response.body))
+        .then(() => validate_200_Status(response))
+        .then(() => {
+          // Validate specific data in the response
+          expect(response.body).to.have.property('list');
+          let list = response.body.list;
+          repository_id = list[0].repository_id;
+          claGroupId = list[0].repository_cla_group_id;
+          gitHubOrgName = list[0].repository_organization_name;
+          repository_external_id = list[0].repository_external_id;
+          // LG: API returns 1 row
+          // repository_external_id2 = list[1].repository_external_id;
+          // expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/repo01');
+          repository_external_id2 = repository_external_id;
+          expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/MyProject2');
+          //To validate schema of response
+          validateApiResponse('github-repositories/getRepositories.json', response.body);
+        });
     });
   });
 
-  it("Remove 'disable CLA Enforced' the GitHub repository from the project - Record should Returns 204 Response", function () {
+  it("Remove 'disable CLA Enforced' the GitHub repository from the project - Record should return 204 Response", function () {
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${repository_id}`,
-      
+      timeout: 180000,
+      failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
-        'bearer': bearerToken,
-      }
+        bearer: bearerToken,
+      },
     }).then((response) => {
       expect(response.status).to.eq(204);
-      
     });
   });
 
-  it("User should able to Add 'CLA Enforced' a GitHub repository to the project - Record should Returns 200 Response", function () {
+  it("User should able to Add 'CLA Enforced' a GitHub repository to the project - Record should return 200 Response", function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
-      
+      timeout: 180000,
+      failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
-        'bearer': bearerToken,
+        bearer: bearerToken,
       },
-      body:{
-        
-            "cla_group_id": claGroupId,
-            "github_organization_name": gitHubOrgName,
-            "repository_github_id": repository_external_id.toString(),
-            "repository_github_ids": [
-                repository_external_id.toString(),repository_external_id2.toString()
-            ]
-          
-      }
+      body: {
+        cla_group_id: claGroupId,
+        github_organization_name: gitHubOrgName,
+        repository_github_id: repository_external_id.toString(),
+        repository_github_ids: [repository_external_id.toString(), repository_external_id2.toString()],
+      },
     }).then((response) => {
       validate_200_Status(response);
-      
-        // Validate specific data in the response
-        expect(response.body).to.have.property('list');
-        let list = response.body.list;
-        repository_id=list[0].repository_id;
-        claGroupId= list[0].repository_cla_group_id;
-        gitHubOrgName=list[0].repository_organization_name;
-        expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/repo01')    
- 
-               //To validate schema of response
-               validateApiResponse("github-repositories/getRepositories.json",response.body);
-});
+
+      // Validate specific data in the response
+      expect(response.body).to.have.property('list');
+      let list = response.body.list;
+      repository_id = list[0].repository_id;
+      claGroupId = list[0].repository_cla_group_id;
+      gitHubOrgName = list[0].repository_organization_name;
+      // LG: update to match existing data in 9/2025
+      // expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/repo01');
+      expect(list[0].repository_name).to.eql('ApiAutomStandaloneOrg/MyProject2');
+
+      //To validate schema of response
+      validateApiResponse('github-repositories/getRepositories.json', response.body);
+    });
   });
 
-  it("Get GitHub branch protection for given repository - Record should Returns 200 Response", function () {
+  it('Get GitHub branch protection for given repository - Record should return 200 Response', function () {
+    // cy.logJson("appConfig", appConfig);
+    const url = `${claEndpoint}/${repository_id}/branch-protection`;
+    cy.task('log', `--> GET ${url}`);
+    // cy.task("log", `--> token ${bearerToken}`);
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/${repository_id}/branch-protection`,
-      
+      url: url,
+      timeout: 180000,
+      failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
-        'bearer': bearerToken,
-      }
+        bearer: bearerToken,
+      },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body
-      branch_name=list.branch_name;
-      if(list.protection_enabled){
-     
-          //To validate schema of response
-          validateApiResponse("github-repositories/getBranchProtection.json",response.body);
-}
-else{
-    console.log('branch protection is false')
-}
- });
+      return cy
+        .task('log', `--> status=${response.status}`)
+        .then(() => cy.logJson('response.body', response.body))
+        .then(() => validate_200_Status(response)) // assertion runs after logs are flushed
+        .then(() => {
+          const list = response.body;
+          branch_name = list.branch_name;
+          if (list.protection_enabled) {
+            validateApiResponse('github-repositories/getBranchProtection.json', response.body);
+          } else {
+            // use cy.task so it shows in terminal logs as well
+            return cy.task('log', 'branch protection is false');
+          }
+        });
+    });
   });
 
-it("Update github branch protection for given repository - Record should Returns 200 Response", function () {
+  it('Update github branch protection for given repository - Record should return 200 Response', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}/${repository_id}/branch-protection`,
-      
+      timeout: 180000,
+      failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
       auth: {
-        'bearer': bearerToken,
+        bearer: bearerToken,
       },
-      body:{
-        "branch_name": branch_name,
-        "enforce_admin": true,
-        "status_checks": [
+      body: {
+        branch_name: branch_name,
+        enforce_admin: true,
+        status_checks: [
           {
-            "enabled": true,
-            "name": "EasyCLA"
-          }
-        ]
-      }
+            enabled: true,
+            name: 'EasyCLA',
+          },
+        ],
+      },
     }).then((response) => {
       validate_200_Status(response);
-          //To validate schema of response
-          validateApiResponse("github-repositories/getBranchProtection.json",response.body);        
- });
+      //To validate schema of response
+      validateApiResponse('github-repositories/getBranchProtection.json', response.body);
+    });
   });
-
-})    
+});

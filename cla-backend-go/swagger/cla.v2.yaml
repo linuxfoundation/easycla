@@ -351,6 +351,7 @@ paths:
         - $ref: "#/parameters/x-email"
         - name: claGroupInput
           in: body
+          required: true
           schema:
             $ref: '#/definitions/create-cla-group-input'
       responses:
@@ -2663,6 +2664,7 @@ paths:
         - $ref: "#/parameters/path-userID"
         - name: body
           in: body
+          required: true
           schema:
             type: object
             required:
@@ -2829,6 +2831,7 @@ paths:
         - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-projectSFID"
         - name: body
+          required: true
           in: body
           schema:
             type: object
@@ -2998,6 +3001,7 @@ paths:
         - $ref: "#/parameters/path-companyID"
         - name: body
           in: body
+          required: true
           schema:
             type: object
             x-nullable: false
@@ -3043,6 +3047,7 @@ paths:
         - $ref: "#/parameters/path-companyID"
         - name: body
           in: body
+          required: true
           schema:
             type: object
             x-nullable: false
@@ -4637,7 +4642,9 @@ parameters:
     description: the Salesforce ID of the Foundation
     in: query
     type: string
-    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
+    pattern: '^([0-9A-Za-z]{15}|[0-9A-Za-z]{18})$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
+    minLength: 15
+    maxLength: 18
   companyID:
     name: companyID
     description: The internal company ID representing signing entity name instance (EasyCLA)
@@ -4658,18 +4665,18 @@ parameters:
     in: path
     type: string
     required: true
-    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
-    minLength: 5
-    maxLength: 255
+    pattern: '^([0-9A-Za-z]{15}|[0-9A-Za-z]{18})$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
+    minLength: 15
+    maxLength: 18
   path-projectSFID:
     name: projectSFID
     description: the Salesforce ID of the project
     in: path
     type: string
     required: true
-    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
-    minLength: 5
-    maxLength: 255
+    pattern: '^([0-9A-Za-z]{15}|[0-9A-Za-z]{18})$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
+    minLength: 15
+    maxLength: 18
   path-userID:
     name: userID
     description: v1 EasyCLA user Admin ID
@@ -4699,7 +4706,9 @@ parameters:
     in: path
     type: string
     required: true
-    pattern: '^[a-zA-Z0-9]{18}|[a-zA-Z0-9]{15}$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
+    pattern: '^([0-9A-Za-z]{15}|[0-9A-Za-z]{18})$' # see: https://stackoverflow.com/questions/9742913/validating-a-salesforce-id
+    minLength: 15
+    maxLength: 18
   path-companyName:
     name: companyName
     description: the company name
