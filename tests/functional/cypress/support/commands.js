@@ -152,6 +152,51 @@ export function validate_422_Status(response, expectedBodyCode, expectedBodyMess
   expect(bodyMessage).to.eq(expectedBodyMessage);
 }
 
+export function validate_expected_status(
+  response,
+  expectedStatus,
+  expectedCode,
+  expectedMessage,
+  expectedMessageContains,
+) {
+  if (expectedStatus !== undefined && expectedStatus !== null) {
+    const status = response.status ?? response.Status;
+    expect(String(status)).to.eq(String(expectedStatus));
+  }
+
+  const statusText = response.statusText ?? response.StatusText;
+
+  if (expectedStatus === 400) {
+    expect(statusText).to.eq('Bad Request');
+  } else if (expectedStatus === 401) {
+    expect(statusText).to.eq('Unauthorized');
+  } else if (expectedStatus === 403) {
+    expect(statusText).to.eq('Forbidden');
+  } else if (expectedStatus === 404) {
+    expect(statusText).to.eq('Not Found');
+  } else if (expectedStatus === 405) {
+    expect(statusText).to.eq('Method Not Allowed');
+  } else if (expectedStatus === 422) {
+    expect(statusText).to.eq('Unprocessable Entity');
+  }
+
+  const body = parseJsonBody(response);
+  const bodyCode = body.code ?? body.Code;
+  const bodyMessage = body.message ?? body.Message;
+
+  if (expectedCode !== undefined && expectedCode !== null) {
+    expect(String(bodyCode)).to.eq(String(expectedCode));
+  }
+
+  if (expectedMessage !== undefined && expectedMessage !== null) {
+    if (expectedMessageContains) {
+      expect(bodyMessage).to.contain(expectedMessage);
+    } else {
+      expect(bodyMessage).to.eq(expectedMessage);
+    }
+  }
+}
+
 export function shortenMiddle(str) {
   if (str.length <= 6) return str;
   const first = str.slice(0, 3);
