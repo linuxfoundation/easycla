@@ -401,7 +401,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
         {
           title: 'GET /company/{companyID}/cla-group/{claGroupID}/cla-managers with empty companyID',
           method: 'GET',
-          url: `${claEndpoint} /cla-group/${exampleV4}/cla-managers`.replace('company/ ', 'company/'),
+          url: `${claEndpoint}/cla-group/${exampleV4}/cla-managers`,
           expectedStatus: 404,
           expectedCode: 404,
           expectedMessage: `path /v4/company//cla-group/${exampleV4}/cla-managers was not found`,
