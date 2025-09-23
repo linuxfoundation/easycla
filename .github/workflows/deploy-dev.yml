@@ -164,7 +164,7 @@ jobs:
           echo "Validating v2 backend using endpoint: ${v2_url}"
           curl --fail -XGET ${v2_url}
           exit_code=$?
-          if [[ ${exit_coe} -eq 0 ]]; then
+          if [[ ${exit_code} -eq 0 ]]; then
             echo "Successful response from endpoint: ${v2_url}"
           else
             echo "Failed to get a successful response from endpoint: ${v2_url}"
@@ -174,7 +174,7 @@ jobs:
           echo "Validating v3 backend using endpoint: ${v3_url}"
           curl --fail -XGET ${v3_url}
           exit_code=$?
-          if [[ ${exit_coe} -eq 0 ]]; then
+          if [[ ${exit_code} -eq 0 ]]; then
             echo "Successful response from endpoint: ${v3_url}"
             # JSON response should include "Status": "healthy"
             if [[ `curl -s -XGET ${v3_url} | jq -r '.Status'` == "healthy" ]]; then
@@ -207,7 +207,7 @@ jobs:
           echo "Validating v4 backend using endpoint: ${v4_url}"
           curl --fail -XGET ${v4_url}
           exit_code=$?
-          if [[ ${exit_coe} -eq 0 ]]; then
+          if [[ ${exit_code} -eq 0 ]]; then
             echo "Successful response from endpoint: ${v4_url}"
             # JSON response should include "Status": "healthy"
             if [[ `curl -s -XGET ${v4_url} | jq -r '.Status'` == "healthy" ]]; then
