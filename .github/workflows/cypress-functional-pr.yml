@@ -1,0 +1,95 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+name: Cypress Functional Tests (PR) - runs on *currently* deployed dev API, not the new one from this PR.
+
+on:
+  pull_request:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  cypress-functional:
+    if: ${{ github.event.pull_request.head.repo.fork == false }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: tests/functional
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install system dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # Core deps for Cypress/Electron under Xvfb
+          sudo apt-get install -y \
+            xvfb \
+            libgtk-3-0 \
+            libgbm1 \
+            libnss3 \
+            libxss1 \
+            xauth \
+            fonts-liberation \
+            xdg-utils \
+            ca-certificates \
+            libatk-bridge2.0-0 \
+            libatspi2.0-0 \
+            libdrm2
+          # Optional/legacy GTK2 (ok if missing)
+          sudo apt-get install -y libgtk2.0-0 || true
+          # Audio lib: Noble uses libasound2t64 (fallback to libasound2 on older images)
+          sudo apt-get install -y libasound2t64 || sudo apt-get install -y libasound2 || true
+          # Notify lib: prefer runtime package; fall back to -dev if needed
+          sudo apt-get install -y libnotify4 || sudo apt-get install -y libnotify-dev || true
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env from secrets and constants
+        run: |
+          cat > .env <<'EOF'
+          APP_URL=https://api-gw.dev.platform.linuxfoundation.org/
+          AUTH0_TOKEN_API=https://linuxfoundation-dev.auth0.com/oauth/token
+          CYPRESS_ENV=dev
+
+          AUTH0_USER_NAME=${{ secrets.AUTH0_USER_NAME }}
+          AUTH0_PASSWORD=${{ secrets.AUTH0_PASSWORD }}
+          LFX_API_TOKEN=${{ secrets.LFX_API_TOKEN }}
+          AUTH0_CLIENT_SECRET=${{ secrets.AUTH0_CLIENT_SECRET }}
+          AUTH0_CLIENT_ID=${{ secrets.AUTH0_CLIENT_ID }}
+          EOF
+          echo "Wrote $(pwd)/.env"
+
+      - name: Show Cypress version
+        run: npx cypress --version
+
+      - name: Verify Cypress binary
+        run: npx cypress verify
+
+      - name: Run Cypress (xvfb)
+        run: xvfb-run -a npx cypress run
+
+      - name: Upload Cypress Artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-artifacts
+          path: |
+            tests/functional/cypress/screenshots
+            tests/functional/cypress/videos
+          if-no-files-found: ignore
+
