@@ -67,7 +67,12 @@ fi
 npx prettier --write cypress/e2e/* cypress/support/* cypress/appConfig/* cypress.config.ts
 if [ ! -z "${DEBUG}" ]
 then
-  echo "Running: ${CMD}"
+  if [ ! -z "${CYPRESS_grep}" ]
+  then
+    echo "Running: CYPRESS_grep='${CYPRESS_grep}' ${CMD}"
+  else
+    echo "Running: ${CMD}"
+  fi
 fi
 
 eval "${CMD}"
