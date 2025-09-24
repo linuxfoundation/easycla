@@ -1,7 +1,7 @@
 # Copyright The Linux Foundation and each contributor to CommunityBridge.
 # SPDX-License-Identifier: MIT
 
-name: Cypress Functional Tests (PR) - runs on *currently* deployed dev API, not the new one from thsi PR 
+name: Cypress Functional Tests (PR) - runs on *currently* deployed dev API, not the new one from this PR
 
 on:
   pull_request:
@@ -28,23 +28,31 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      # System deps for Cypress + xvfb
       - name: Install system dependencies
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
+          # Core deps for Cypress/Electron under Xvfb
           sudo apt-get install -y \
             xvfb \
-            libgtk2.0-0 \
             libgtk-3-0 \
             libgbm1 \
-            libnotify-dev \
             libnss3 \
             libxss1 \
-            libasound2 \
             xauth \
             fonts-liberation \
             xdg-utils \
-            ca-certificates
+            ca-certificates \
+            libatk-bridge2.0-0 \
+            libatspi2.0-0 \
+            libdrm2
+          # Optional/legacy GTK2 (ok if missing)
+          sudo apt-get install -y libgtk2.0-0 || true
+          # Audio lib: Noble uses libasound2t64 (fallback to libasound2 on older images)
+          sudo apt-get install -y libasound2t64 || sudo apt-get install -y libasound2 || true
+          # Notify lib: prefer runtime package; fall back to -dev if needed
+          sudo apt-get install -y libnotify4 || sudo apt-get install -y libnotify-dev || true
 
       - name: Install dependencies
         run: npm ci

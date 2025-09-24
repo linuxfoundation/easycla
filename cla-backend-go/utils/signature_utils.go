@@ -24,7 +24,7 @@ func CurrentUserInACL(authUser *auth.User, managers []v1Models.User) bool {
 	var inACL = false
 	for _, manager := range managers {
 		log.WithFields(f).Debugf("ACL check: %+v", manager)
-		if manager.LfUsername == authUser.UserName {
+		if authUser != nil && manager.LfUsername == authUser.UserName {
 			inACL = true
 			break
 		}
