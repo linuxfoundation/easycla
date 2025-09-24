@@ -493,6 +493,8 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 
 	// Ensure current user is in the Signature ACL
 	claManagers := corporateSigModel.SignatureACL
+	// LG: for debugging signatures ACLs
+	// log.WithFields(f).Debugf("corporateSigModel = %+v", corporateSigModel)
 	if !utils.CurrentUserInACL(authUser, claManagers) {
 		msg := fmt.Sprintf("EasyCLA - 403 Forbidden - CLA Manager %s / %s is not authorized to approve request for company ID: %s / %s / %s, project ID: %s / %s / %s",
 			authUser.UserName, authUser.Email,
