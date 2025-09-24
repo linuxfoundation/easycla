@@ -684,7 +684,7 @@ https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api-docs#tag/Role/operati
       method: 'POST',
       url: url,
       timeout: timeout,
-      failOnStatusCode: allowFail,
+      failOnStatusCode: false,
       headers: getXACLHeader(),
       auth: { bearer: bearerToken },
       body: { userEmail: userEmail },
