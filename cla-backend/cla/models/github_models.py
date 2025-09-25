@@ -1622,8 +1622,8 @@ def handle_commit_from_user(
                 cla.log.debug(f"{fn} - per-project cache: aff mode: no company_id, missing")
                 return
             user_commit_summary.affiliated = True
-            # LG: this should return user_commit_summary as signed IMHO (see flow for general cache, it also adds to missig as the original code does the same)
-            # General caching checks for project signature but also adds top missing no matter if signature is found or not, same with "cold" code path (no cache hit)
+            # LG: this should return user_commit_summary as signed IMHO (see flow for general cache, it also adds to missing as the original code does the same)
+            # General caching checks for project signature but also adds to missing no matter if signature is found or not, same with "cold" code path (no cache hit)
             cla.log.debug(f"{fn} - per-project cache: aff mode: affiliated, but adding to missing")
             missing.append(user_commit_summary)
         else:
