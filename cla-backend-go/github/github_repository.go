@@ -59,11 +59,12 @@ Please update your commit message(s) by doing |git commit --amend| and then |git
 `
 
 const (
-	help         = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
-	unknown      = "Unknown"
-	failureState = "failure"
-	successState = "success"
-	svgVersion   = "?v=2"
+	help          = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
+	unknown       = "Unknown"
+	failureState  = "failure"
+	successState  = "success"
+	svgVersion    = "?v=2"
+	QuickCacheTTL = 5 * time.Minute
 )
 
 type cacheEntry struct {
@@ -159,6 +160,15 @@ func (c *UserCache) Set(key [3]string, value *models.User) {
 	}
 }
 
+func (c *UserCache) SetWithTTL(key [3]string, value *models.User, tl time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[key] = userCacheEntry{
+		value:     value,
+		expiresAt: time.Now().Add(tl),
+	}
+}
+
 func (c *UserCache) Cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -205,6 +215,17 @@ func (c *ProjectUserCache) Get(key [4]string) (*models.User, bool, bool, bool) {
 	return entry.value, entry.signed, entry.affiliated, true
 }
 
+func (c *ProjectUserCache) SetWithTTL(key [4]string, value *models.User, signed, affiliated bool, tl time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[key] = projectUserCacheEntry{
+		value:      value,
+		signed:     signed,
+		affiliated: affiliated,
+		expiresAt:  time.Now().Add(tl),
+	}
+}
+
 func (c *ProjectUserCache) Set(key [4]string, value *models.User, signed, affiliated bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -231,7 +252,7 @@ func (c *ProjectUserCache) Delete(key [4]string) { c.mu.Lock(); delete(c.data, k
 
 var GithubUserCache = NewCache(24 * time.Hour)
 var ModelUserCache = NewUserCache(24 * time.Hour)
-var ModelProjectUserCache = NewProjectUserCache(24 * time.Hour)
+var ModelProjectUserCache = NewProjectUserCache(6 * time.Hour)
 
 func init() {
 	go func() {
@@ -739,14 +760,17 @@ func GetCommitAuthorSignedStatus(
 	unsigned *[]*UserCommitSummary,
 	mu *sync.Mutex,
 ) {
+	// here userSummary is NOT nil
 	f := logrus.Fields{
 		"functionName": "github.github_repository.GetCommitAuthorSignedStatus",
 		"projectID":    projectID,
-		"userSummary":  *userSummary,
 	}
 	commitAuthorID := userSummary.GetCommitAuthorID()
 	commitAuthorUsername := userSummary.GetCommitAuthorUsername()
 	commitAuthorEmail := userSummary.GetCommitAuthorEmail()
+	f["authorID"] = commitAuthorID
+	f["authorLogin"] = commitAuthorUsername
+	f["authorEmail"] = commitAuthorEmail
 
 	log.WithFields(f).Debugf("checking user - sha: %s, user ID: %s, username: %s, email: %s",
 		userSummary.SHA, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
@@ -759,7 +783,7 @@ func GetCommitAuthorSignedStatus(
 	if cachedUser != nil {
 		log.WithFields(f).Debugf("per-project cache: %+v -> (%+v, %v, %v, %v)", projectCacheKey, *cachedUser, authorized, affiliated, ok)
 	} else {
-		log.WithFields(f).Debugf("per-project cache: %+v -> (%+v, nil, %v, %v)", projectCacheKey, authorized, affiliated, ok)
+		log.WithFields(f).Debugf("per-project cache: %+v -> (nil, %v, %v, %v)", projectCacheKey, authorized, affiliated, ok)
 	}
 	if ok {
 		if cachedUser == nil {
@@ -795,22 +819,22 @@ func GetCommitAuthorSignedStatus(
 	}
 	if ok {
 		if cachedUser == nil {
-			log.WithFields(f).Debugf("general cache: unsigned, user is null")
 			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
 			mu.Unlock()
-			ModelProjectUserCache.Set(projectCacheKey, nil, false, false)
+			log.WithFields(f).Debugf("store per-project cache: unsigned, user is null (%+v)", projectCacheKey)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, nil, false, false, QuickCacheTTL)
 			return
 		}
 		user := cachedUser
 		userSigned, companyAffiliation, signedErr := hasUserSigned(ctx, user, projectID)
 		if signedErr != nil {
 			log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
-			log.WithFields(f).Debugf("general cache: unsigned, hasUserSigned error")
 			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
 			mu.Unlock()
-			ModelProjectUserCache.Set(projectCacheKey, user, false, false)
+			log.WithFields(f).Debugf("store per-project cache: unsigned, hasUserSigned error (%+v)", projectCacheKey)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, false, QuickCacheTTL)
 			return
 		}
 
@@ -821,24 +845,24 @@ func GetCommitAuthorSignedStatus(
 		if userSigned != nil {
 			userSummary.Authorized = *userSigned
 			if userSummary.Authorized {
-				log.WithFields(f).Debugf("general cache: signed")
 				mu.Lock()
 				*signed = append(*signed, userSummary)
 				mu.Unlock()
+				log.WithFields(f).Debugf("store per-project cache: signed (%+v)", projectCacheKey)
 				ModelProjectUserCache.Set(projectCacheKey, user, true, userSummary.Affiliated)
 			} else {
-				log.WithFields(f).Debugf("general cache: unsigned, authorized is false")
 				mu.Lock()
 				*unsigned = append(*unsigned, userSummary)
 				mu.Unlock()
-				ModelProjectUserCache.Set(projectCacheKey, user, false, userSummary.Affiliated)
+				log.WithFields(f).Debugf("store per-project cache: unsigned, authorized is false (%+v)", projectCacheKey)
+				ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
 			}
 		} else {
-			log.WithFields(f).Debugf("general cache: unsigned, userSigned is null")
 			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
 			mu.Unlock()
-			ModelProjectUserCache.Set(projectCacheKey, user, false, userSummary.Affiliated)
+			log.WithFields(f).Debugf("store per-project cache: unsigned, userSigned is null (%+v)", projectCacheKey)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
 		}
 		return
 	}
@@ -881,12 +905,12 @@ func GetCommitAuthorSignedStatus(
 	if user == nil {
 		log.WithFields(f).Debugf("unable to find user for commit author - sha: %s, user ID: %s, username: %s, email: %s",
 			userSummary.SHA, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
-		log.WithFields(f).Debugf("store caches: unsigned, user is null")
+		log.WithFields(f).Debugf("store caches: unsigned, user is null (%+v)", projectCacheKey)
 		mu.Lock()
 		*unsigned = append(*unsigned, userSummary)
 		mu.Unlock()
-		ModelProjectUserCache.Set(projectCacheKey, nil, false, false)
-		ModelUserCache.Set(cacheKey, nil)
+		ModelProjectUserCache.SetWithTTL(projectCacheKey, nil, false, false, QuickCacheTTL)
+		ModelUserCache.SetWithTTL(cacheKey, nil, QuickCacheTTL)
 		return
 	}
 
@@ -894,12 +918,12 @@ func GetCommitAuthorSignedStatus(
 	userSigned, companyAffiliation, signedErr := hasUserSigned(ctx, user, projectID)
 	if signedErr != nil {
 		log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
-		log.WithFields(f).Debugf("store caches: unsigned, hasUserSigned error")
+		log.WithFields(f).Debugf("store caches: unsigned, hasUserSigned error (%+v)", projectCacheKey)
 		mu.Lock()
 		*unsigned = append(*unsigned, userSummary)
 		mu.Unlock()
-		ModelProjectUserCache.Set(projectCacheKey, user, false, false)
-		ModelUserCache.Set(cacheKey, user)
+		ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, false, QuickCacheTTL)
+		ModelUserCache.SetWithTTL(cacheKey, user, QuickCacheTTL)
 		return
 	}
 
@@ -910,27 +934,27 @@ func GetCommitAuthorSignedStatus(
 	if userSigned != nil {
 		userSummary.Authorized = *userSigned
 		if userSummary.Authorized {
-			log.WithFields(f).Debugf("store caches: signed")
+			log.WithFields(f).Debugf("store caches: signed (%+v)", projectCacheKey)
 			mu.Lock()
 			*signed = append(*signed, userSummary)
 			mu.Unlock()
 			ModelProjectUserCache.Set(projectCacheKey, user, true, userSummary.Affiliated)
 			ModelUserCache.Set(cacheKey, user)
 		} else {
-			log.WithFields(f).Debugf("store caches: unsigned, authorized is false")
+			log.WithFields(f).Debugf("store caches: unsigned, authorized is false (%+v)", projectCacheKey)
 			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
 			mu.Unlock()
-			ModelProjectUserCache.Set(projectCacheKey, user, false, userSummary.Affiliated)
-			ModelUserCache.Set(cacheKey, user)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
+			ModelUserCache.SetWithTTL(cacheKey, user, QuickCacheTTL)
 		}
 	} else {
-		log.WithFields(f).Debugf("store caches: unsigned, userSigned is null")
+		log.WithFields(f).Debugf("store caches: unsigned, userSigned is null (%+v)", projectCacheKey)
 		mu.Lock()
 		*unsigned = append(*unsigned, userSummary)
 		mu.Unlock()
-		ModelProjectUserCache.Set(projectCacheKey, user, false, userSummary.Affiliated)
-		ModelUserCache.Set(cacheKey, user)
+		ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
+		ModelUserCache.SetWithTTL(cacheKey, user, QuickCacheTTL)
 	}
 }
 
