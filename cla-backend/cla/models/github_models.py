@@ -39,6 +39,7 @@ NOREPLY_USER_PATTERN = re.compile(r"^([a-zA-Z0-9-]+)@users\.noreply\.github\.com
 # GitHub usernames must be 3-39 characters long, can only contain alphanumeric characters or hyphens,
 # cannot begin or end with a hyphen, and cannot contain consecutive hyphens.
 GITHUB_USERNAME_REGEX = re.compile(r'^(?!-)(?!.*--)[A-Za-z0-9-]{3,39}(?<!-)$')
+QUICK_CACHE_TTL = 300  # 5 minutes for quick cache
 
 class TTLCache:
     def __init__(self, ttl_seconds=86400):
@@ -60,6 +61,10 @@ class TTLCache:
     def set(self, key, value):
         with self.lock:
             self.data[key] = (value, time.time() + self.ttl)
+
+    def set_with_ttl(self, key, value, tl):
+        with self.lock:
+            self.data[key] = (value, time.time() + tl)
 
     def cleanup(self):
         with self.lock:
@@ -1651,7 +1656,7 @@ def handle_commit_from_user(
         if user is None:
             missing.append(user_commit_summary)
             cla.log.debug(f"{fn} - cache: negative case: aff mode: {check_aff}")
-            github_user_cache.set(project_cache_key, (None, False, False, False))
+            github_user_cache.set_with_ttl(project_cache_key, (None, False, False, False), QUICK_CACHE_TTL)
             return
         if check_aff:
             cla.log.debug(f"{fn} - cache: aff mode, user: {user}")
@@ -1664,7 +1669,7 @@ def handle_commit_from_user(
             if user.get_user_company_id() is None:
                 missing.append(user_commit_summary)
                 cla.log.debug(f"{fn} - cache: aff mode: no company_id, missing")
-                github_user_cache.set(project_cache_key, (user, True, False, False))
+                github_user_cache.set_with_ttl(project_cache_key, (user, True, False, False), QUICK_CACHE_TTL)
                 return
             user_commit_summary.affiliated = True
             cla.log.debug(f"{fn} - cache: aff mode: affiliated")
@@ -1696,7 +1701,7 @@ def handle_commit_from_user(
             else:
                 cla.log.debug(f"{fn} - cache: aff mode: no authorized found, adding to missing")
             missing.append(user_commit_summary)
-            github_user_cache.set(project_cache_key, (user, True, False, True))
+            github_user_cache.set_with_ttl(project_cache_key, (user, True, False, True), QUICK_CACHE_TTL)
         else:
             cla.log.debug(f"{fn} - cache: non-aff mode, user: {user}")
             if cla.utils.user_signed_project_signature(user, project):
@@ -1707,7 +1712,7 @@ def handle_commit_from_user(
                 return
             cla.log.debug(f"{fn} - cache: non-aff mode: no authorized, missing")
             missing.append(user_commit_summary)
-            github_user_cache.set(project_cache_key, (user, False, False, False))
+            github_user_cache.set_with_ttl(project_cache_key, (user, False, False, False), QUICK_CACHE_TTL)
         cla.log.debug(f"{fn} - cache: done, returning")
         return
     # LG: cache_authors - end
@@ -1798,8 +1803,8 @@ def handle_commit_from_user(
             missing.append(user_commit_summary)
         # set check_aff flag to false as in this case we didn't check affiliated flag, this can also store None (negative cache)
         cla.log.debug(f"{fn} - store cache non-aff mode: missing: {project_cache_key}: {users}")
-        github_user_cache.set(project_cache_key, (None, False, False, False))
-        github_user_cache.set(cache_key, (None, False))
+        github_user_cache.set_with_ttl(project_cache_key, (None, False, False, False), QUICK_CACHE_TTL)
+        github_user_cache.set_with_ttl(cache_key, (None, False), QUICK_CACHE_TTL)
     else:
         cla.log.debug(
             f"{fn} - Found {len(users)} GitHub user(s) matching "
@@ -1832,8 +1837,8 @@ def handle_commit_from_user(
             missing.append(user_commit_summary)
             # set check_aff flag to true in this case, as this code branch checks for affiliation, also store only 1st user as this branches considers only 1st user
             cla.log.debug(f"{fn} - store cache aff mode: no company_id: {project_cache_key}: {user}")
-            github_user_cache.set(project_cache_key, (user, True, False, False))
-            github_user_cache.set(cache_key, (user, True))
+            github_user_cache.set_with_ttl(project_cache_key, (user, True, False, False), QUICK_CACHE_TTL)
+            github_user_cache.set_with_ttl(cache_key, (user, True), QUICK_CACHE_TTL)
             return
 
         # Mark the user as having a company affiliation
@@ -1878,8 +1883,8 @@ def handle_commit_from_user(
         missing.append(user_commit_summary)
         # set check_aff flag to true in this case, as this code branch checks for affiliation, also store only 1st user as this branches considers only 1st user
         cla.log.debug(f"{fn} - store cache aff mode: missing: {project_cache_key}: {user}")
-        github_user_cache.set(project_cache_key, (user, True, False, True))
-        github_user_cache.set(cache_key, (user, True))
+        github_user_cache.set_with_ttl(project_cache_key, (user, True, False, True), QUICK_CACHE_TTL)
+        github_user_cache.set_with_ttl(cache_key, (user, True), QUICK_CACHE_TTL)
 
 
 def get_merge_group_commit_authors(merge_group_sha, installation_id=None) -> List[UserCommitSummary]:
