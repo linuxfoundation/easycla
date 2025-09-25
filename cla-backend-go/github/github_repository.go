@@ -736,6 +736,7 @@ func GetCommitAuthorSignedStatus(
 	userSummary *UserCommitSummary,
 	signed *[]*UserCommitSummary,
 	unsigned *[]*UserCommitSummary,
+	mu *sync.Mutex,
 ) {
 	f := logrus.Fields{
 		"functionName": "github.github_repository.GetCommitAuthorsSignedStatuses",
@@ -762,17 +763,23 @@ func GetCommitAuthorSignedStatus(
 	if ok {
 		if cachedUser == nil {
 			log.WithFields(f).Debugf("per-project cache: unsigned, user is null")
+			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
 			return
 		}
 		userSummary.Affiliated = affiliated
 		if authorized {
 			userSummary.Authorized = authorized
 			log.WithFields(f).Debugf("per-project cache: signed")
+			mu.Lock()
 			*signed = append(*signed, userSummary)
+			mu.Unlock()
 		} else {
 			log.WithFields(f).Debugf("per-project cache: unsigned, authorized is false")
+			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
 		}
 		return
 	}
@@ -788,7 +795,9 @@ func GetCommitAuthorSignedStatus(
 	if ok {
 		if cachedUser == nil {
 			log.WithFields(f).Debugf("general cache: unsigned, user is null")
+			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
 			ModelProjectUserCache.Set(projectCacheKey, nil, false, false)
 			return
 		}
@@ -797,7 +806,9 @@ func GetCommitAuthorSignedStatus(
 		if signedErr != nil {
 			log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
 			log.WithFields(f).Debugf("general cache: unsigned, hasUserSigned error")
+			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
 			ModelProjectUserCache.Set(projectCacheKey, user, false, false)
 			return
 		}
@@ -810,16 +821,22 @@ func GetCommitAuthorSignedStatus(
 			userSummary.Authorized = *userSigned
 			if userSummary.Authorized {
 				log.WithFields(f).Debugf("general cache: signed")
+				mu.Lock()
 				*signed = append(*signed, userSummary)
+				mu.Unlock()
 				ModelProjectUserCache.Set(projectCacheKey, user, true, userSummary.Affiliated)
 			} else {
 				log.WithFields(f).Debugf("general cache: unsigned, authorized is false")
+				mu.Lock()
 				*unsigned = append(*unsigned, userSummary)
+				mu.Unlock()
 				ModelProjectUserCache.Set(projectCacheKey, user, false, userSummary.Affiliated)
 			}
 		} else {
 			log.WithFields(f).Debugf("general cache: unsigned, userSigned is null")
+			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
 			ModelProjectUserCache.Set(projectCacheKey, user, false, userSummary.Affiliated)
 		}
 		return
@@ -864,7 +881,9 @@ func GetCommitAuthorSignedStatus(
 		log.WithFields(f).Debugf("unable to find user for commit author - sha: %s, user ID: %s, username: %s, email: %s",
 			userSummary.SHA, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
 		log.WithFields(f).Debugf("store caches: unsigned, user is null")
+		mu.Lock()
 		*unsigned = append(*unsigned, userSummary)
+		mu.Unlock()
 		ModelProjectUserCache.Set(projectCacheKey, nil, false, false)
 		ModelUserCache.Set(cacheKey, nil)
 		return
@@ -875,7 +894,9 @@ func GetCommitAuthorSignedStatus(
 	if signedErr != nil {
 		log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
 		log.WithFields(f).Debugf("store caches: unsigned, hasUserSigned error")
+		mu.Lock()
 		*unsigned = append(*unsigned, userSummary)
+		mu.Unlock()
 		ModelProjectUserCache.Set(projectCacheKey, user, false, false)
 		ModelUserCache.Set(cacheKey, user)
 		return
@@ -889,18 +910,24 @@ func GetCommitAuthorSignedStatus(
 		userSummary.Authorized = *userSigned
 		if userSummary.Authorized {
 			log.WithFields(f).Debugf("store caches: signed")
+			mu.Lock()
 			*signed = append(*signed, userSummary)
+			mu.Unlock()
 			ModelProjectUserCache.Set(projectCacheKey, user, true, userSummary.Affiliated)
 			ModelUserCache.Set(cacheKey, user)
 		} else {
 			log.WithFields(f).Debugf("store caches: unsigned, authorized is false")
+			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
 			ModelProjectUserCache.Set(projectCacheKey, user, false, userSummary.Affiliated)
 			ModelUserCache.Set(cacheKey, user)
 		}
 	} else {
 		log.WithFields(f).Debugf("store caches: unsigned, userSigned is null")
+		mu.Lock()
 		*unsigned = append(*unsigned, userSummary)
+		mu.Unlock()
 		ModelProjectUserCache.Set(projectCacheKey, user, false, userSummary.Affiliated)
 		ModelUserCache.Set(cacheKey, user)
 	}
@@ -918,23 +945,35 @@ func GetCommitAuthorsSignedStatuses(
 		"functionName": "github.github_repository.GetCommitAuthorsSignedStatuses",
 		"projectID":    projectID,
 	}
-	signed := make([]*UserCommitSummary, 0)
-	unsigned := make([]*UserCommitSummary, 0)
-
-	// triage signed and unsigned users
 	log.WithFields(f).Debugf("checking %d commit authors", len(authors))
-	for _, userSummary := range authors {
-		if userSummary == nil || !userSummary.IsValid() {
-			if userSummary == nil {
-				log.WithFields(f).Debugf("invalid user summary: nil")
-			} else {
-				log.WithFields(f).Debugf("invalid user summary: %+v", *userSummary)
+
+	signed := make([]*UserCommitSummary, 0, len(authors))
+	unsigned := make([]*UserCommitSummary, 0, len(authors))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, us := range authors {
+		wg.Add(1)
+		go func(userSummary *UserCommitSummary) {
+			defer wg.Done()
+
+			if userSummary == nil || !userSummary.IsValid() {
+				if userSummary == nil {
+					log.WithFields(f).Debugf("invalid user summary: nil")
+				} else {
+					log.WithFields(f).Debugf("invalid user summary: %+v", userSummary)
+				}
+				mu.Lock()
+				unsigned = append(unsigned, userSummary)
+				mu.Unlock()
+				return
 			}
-			unsigned = append(unsigned, userSummary)
-			continue
-		}
-		GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned)
+
+			GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned, &mu)
+		}(us)
 	}
+
+	wg.Wait()
 	return signed, unsigned
 }
 
@@ -966,7 +1005,7 @@ func GetCommitAuthorsSignedStatusesST(
 			unsigned = append(unsigned, userSummary)
 			continue
 		}
-		GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned)
+		GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned, &sync.Mutex{})
 	}
 	return signed, unsigned
 }
