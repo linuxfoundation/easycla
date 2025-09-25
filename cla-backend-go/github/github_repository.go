@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -739,7 +740,7 @@ func GetCommitAuthorSignedStatus(
 	mu *sync.Mutex,
 ) {
 	f := logrus.Fields{
-		"functionName": "github.github_repository.GetCommitAuthorsSignedStatuses",
+		"functionName": "github.github_repository.GetCommitAuthorSignedStatus",
 		"projectID":    projectID,
 		"userSummary":  *userSummary,
 	}
@@ -933,8 +934,9 @@ func GetCommitAuthorSignedStatus(
 	}
 }
 
-// GetCommitAuthorsSignedStatuses returns two slices of UserCommitSummary - signed and unsigned for the given project and commit authors
-func GetCommitAuthorsSignedStatuses(
+// GetCommitAuthorsSignedStatusesUL returns two slices of UserCommitSummary - signed and unsigned for the given project and commit authors
+// UL suffix = unbounded concurrency version (launches a goroutine for each author without limiting concurrency)
+func GetCommitAuthorsSignedStatusesUL(
 	ctx context.Context,
 	usersService users.Service,
 	hasUserSigned func(context.Context, *models.User, string) (*bool, *bool, error),
@@ -942,7 +944,7 @@ func GetCommitAuthorsSignedStatuses(
 	authors []*UserCommitSummary,
 ) ([]*UserCommitSummary, []*UserCommitSummary) {
 	f := logrus.Fields{
-		"functionName": "github.github_repository.GetCommitAuthorsSignedStatuses",
+		"functionName": "github.github_repository.GetCommitAuthorsSignedStatusesUL",
 		"projectID":    projectID,
 	}
 	log.WithFields(f).Debugf("checking %d commit authors", len(authors))
@@ -968,6 +970,50 @@ func GetCommitAuthorsSignedStatuses(
 				mu.Unlock()
 				return
 			}
+
+			GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned, &mu)
+		}(us)
+	}
+
+	wg.Wait()
+	return signed, unsigned
+}
+
+func GetCommitAuthorsSignedStatuses(
+	ctx context.Context,
+	usersService users.Service,
+	hasUserSigned func(context.Context, *models.User, string) (*bool, *bool, error),
+	projectID string,
+	authors []*UserCommitSummary,
+) ([]*UserCommitSummary, []*UserCommitSummary) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.GetCommitAuthorsSignedStatuses",
+		"projectID":    projectID,
+	}
+	log.WithFields(f).Debugf("checking %d commit authors", len(authors))
+	signed := make([]*UserCommitSummary, 0, len(authors))
+	unsigned := make([]*UserCommitSummary, 0, len(authors))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	maxConc := runtime.NumCPU()
+	if maxConc < 1 {
+		maxConc = 1
+	}
+	sem := make(chan struct{}, maxConc)
+	for _, us := range authors {
+		if us == nil || !us.IsValid() {
+			log.WithFields(f).Debugf("invalid user summary: %v", us)
+			mu.Lock()
+			unsigned = append(unsigned, us)
+			mu.Unlock()
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{} // acquire a slot
+		go func(userSummary *UserCommitSummary) {
+			defer wg.Done()
+			defer func() { <-sem }() // release slot
 
 			GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned, &mu)
 		}(us)
