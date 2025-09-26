@@ -39,6 +39,7 @@ NOREPLY_USER_PATTERN = re.compile(r"^([a-zA-Z0-9-]+)@users\.noreply\.github\.com
 # GitHub usernames must be 3-39 characters long, can only contain alphanumeric characters or hyphens,
 # cannot begin or end with a hyphen, and cannot contain consecutive hyphens.
 GITHUB_USERNAME_REGEX = re.compile(r'^(?!-)(?!.*--)[A-Za-z0-9-]{3,39}(?<!-)$')
+QUICK_CACHE_TTL = 300  # 5 minutes for quick cache
 
 class TTLCache:
     def __init__(self, ttl_seconds=86400):
@@ -60,6 +61,10 @@ class TTLCache:
     def set(self, key, value):
         with self.lock:
             self.data[key] = (value, time.time() + self.ttl)
+
+    def set_with_ttl(self, key, value, tl):
+        with self.lock:
+            self.data[key] = (value, time.time() + tl)
 
     def cleanup(self):
         with self.lock:
@@ -1592,6 +1597,126 @@ def handle_commit_from_user(
         missing.append(user_commit_summary)
         return
 
+    # LG: cache_authors - start
+    project_cache_key = (
+        project.get_project_id(),
+        user_commit_summary.author_id,
+        (user_commit_summary.author_login or '').lower(),
+        (user_commit_summary.author_email or '').strip().lower(),
+    )
+    # Per-project cache - also caches per-project signatures status and affiliation
+    # (project_id, id, login, email) -> (user || None, check_aff, authorized, affiliated)
+    # check_aff flag is needed because below code only checked for affiliation in else branch (when user was found by author_id)
+    value, hit = github_user_cache.get(project_cache_key)
+    cla.log.debug(f"{fn} - per-project cache: {project_cache_key} -> ({value}, {hit})")
+    if hit:
+        user, check_aff, authorized, affiliated = value
+        if user is None:
+            missing.append(user_commit_summary)
+            cla.log.debug(f"{fn} - per-project cache: negative case: aff mode: {check_aff}")
+            return
+        if check_aff:
+            cla.log.debug(f"{fn} - per-project cache: aff mode, user: {user}")
+            if authorized:
+                user_commit_summary.authorized = True
+                signed.append(user_commit_summary)
+                cla.log.debug(f"{fn} - per-project cache: aff mode: authorized & signed")
+                return
+            if not affiliated:
+                missing.append(user_commit_summary)
+                cla.log.debug(f"{fn} - per-project cache: aff mode: no company_id, missing")
+                return
+            user_commit_summary.affiliated = True
+            # LG: this should return user_commit_summary as signed IMHO (see flow for general cache, it also adds to missing as the original code does the same)
+            # General caching checks for project signature but also adds to missing no matter if signature is found or not, same with "cold" code path (no cache hit)
+            cla.log.debug(f"{fn} - per-project cache: aff mode: affiliated, but adding to missing")
+            missing.append(user_commit_summary)
+        else:
+            cla.log.debug(f"{fn} - per-project cache: non-aff mode, user: {user}")
+            if authorized:
+                user_commit_summary.authorized = True
+                signed.append(user_commit_summary)
+                cla.log.debug(f"{fn} - per-project cache: non-aff mode: authorized & signed")
+                return
+            cla.log.debug(f"{fn} - per-project cache: non-aff mode: no authorized, missing")
+            missing.append(user_commit_summary)
+        cla.log.debug(f"{fn} - per-project cache: done, returning")
+        return
+    # General cache (without project) - can only cache author details, but not per-project signature details
+    # (id, login, email) -> (user || None, check_aff)
+    cache_key = (
+        user_commit_summary.author_id,
+        (user_commit_summary.author_login or '').lower(),
+        (user_commit_summary.author_email or '').strip().lower(),
+    )
+    value, hit = github_user_cache.get(cache_key)
+    cla.log.debug(f"{fn} - cache: {cache_key} -> ({value}, {hit})")
+    if hit:
+        user, check_aff = value
+        if user is None:
+            missing.append(user_commit_summary)
+            cla.log.debug(f"{fn} - cache: negative case: aff mode: {check_aff}")
+            github_user_cache.set_with_ttl(project_cache_key, (None, False, False, False), QUICK_CACHE_TTL)
+            return
+        if check_aff:
+            cla.log.debug(f"{fn} - cache: aff mode, user: {user}")
+            if cla.utils.user_signed_project_signature(user, project):
+                user_commit_summary.authorized = True
+                signed.append(user_commit_summary)
+                cla.log.debug(f"{fn} - cache: aff mode: authorized & signed")
+                github_user_cache.set(project_cache_key, (user, True, True, False))
+                return
+            if user.get_user_company_id() is None:
+                missing.append(user_commit_summary)
+                cla.log.debug(f"{fn} - cache: aff mode: no company_id, missing")
+                github_user_cache.set_with_ttl(project_cache_key, (user, True, False, False), QUICK_CACHE_TTL)
+                return
+            user_commit_summary.affiliated = True
+            cla.log.debug(f"{fn} - cache: aff mode: affiliated")
+            signatures = cla.utils.get_signature_instance().get_signatures_by_project(
+                project_id=project.get_project_id(),
+                signature_signed=True,
+                signature_approved=True,
+                signature_type="ccla",
+                signature_reference_type="company",
+                signature_reference_id=user.get_user_company_id(),
+                signature_user_ccla_company_id=None,
+            )
+            cla.log.debug(f"{fn} - cache: aff mode: #signatures: {len(signatures)}")
+            approved = False
+            for signature in signatures:
+                if cla.utils.is_approved(
+                    signature,
+                    email=user_commit_summary.author_email,
+                    github_id=user_commit_summary.author_id,
+                    github_username=user_commit_summary.author_login,
+                ):
+                    user_commit_summary.authorized = True
+                    approved = True
+                    cla.log.debug(f"{fn} - cache: aff mode: authorized signature")
+                    break
+            if approved:
+                # LG: this should return user_commit_summary as signed IMHO, but I'm keeping this logic for compatibility
+                cla.log.debug(f"{fn} - cache: aff mode: authorized found, but adding to missing")
+            else:
+                cla.log.debug(f"{fn} - cache: aff mode: no authorized found, adding to missing")
+            missing.append(user_commit_summary)
+            github_user_cache.set_with_ttl(project_cache_key, (user, True, False, True), QUICK_CACHE_TTL)
+        else:
+            cla.log.debug(f"{fn} - cache: non-aff mode, user: {user}")
+            if cla.utils.user_signed_project_signature(user, project):
+                user_commit_summary.authorized = True
+                signed.append(user_commit_summary)
+                cla.log.debug(f"{fn} - cache: non-aff mode: authorized & signed")
+                github_user_cache.set(project_cache_key, (user, False, True, False))
+                return
+            cla.log.debug(f"{fn} - cache: non-aff mode: no authorized, missing")
+            missing.append(user_commit_summary)
+            github_user_cache.set_with_ttl(project_cache_key, (user, False, False, False), QUICK_CACHE_TTL)
+        cla.log.debug(f"{fn} - cache: done, returning")
+        return
+    # LG: cache_authors - end
+
     # attempt to lookup the user in our database by GH id -
     # may return multiple users that match this author_id
     users = cla.utils.get_user_instance().get_user_by_github_id(user_commit_summary.author_id)
@@ -1629,6 +1754,10 @@ def handle_commit_from_user(
                 if cla.utils.user_signed_project_signature(user, project):
                     user_commit_summary.authorized = True
                     signed.append(user_commit_summary)
+                    # set check_aff flag to false as in this case we didn't check affiliated flag
+                    cla.log.debug(f"{fn} - store cache non-aff mode: authorized: {project_cache_key}: {users}")
+                    github_user_cache.set(project_cache_key, (user, False, True, False))
+                    github_user_cache.set(cache_key, (user, False))
                     return
 
             # Didn't find a signed signature for this project - add to our missing bucket list
@@ -1672,6 +1801,10 @@ def handle_commit_from_user(
             # the approved list for any company/signature
             # author_info consists of: [author_id, author_login, author_username, author_email]
             missing.append(user_commit_summary)
+        # set check_aff flag to false as in this case we didn't check affiliated flag, this can also store None (negative cache)
+        cla.log.debug(f"{fn} - store cache non-aff mode: missing: {project_cache_key}: {users}")
+        github_user_cache.set_with_ttl(project_cache_key, (None, False, False, False), QUICK_CACHE_TTL)
+        github_user_cache.set_with_ttl(cache_key, (None, False), QUICK_CACHE_TTL)
     else:
         cla.log.debug(
             f"{fn} - Found {len(users)} GitHub user(s) matching "
@@ -1691,6 +1824,10 @@ def handle_commit_from_user(
         if cla.utils.user_signed_project_signature(user, project):
             user_commit_summary.authorized = True
             signed.append(user_commit_summary)
+            # set check_aff flag to true in this case, as this code branch checks for affiliation, also store only 1st user as this branches considers only 1st user
+            cla.log.debug(f"{fn} - store cache aff mode: authorized: {project_cache_key}: {user}")
+            github_user_cache.set(project_cache_key, (user, True, True, False))
+            github_user_cache.set(cache_key, (user, True))
             return
 
         # If the user does not have a company ID assigned, then they have not been associated with a company as
@@ -1698,6 +1835,10 @@ def handle_commit_from_user(
         if user.get_user_company_id() is None:
             # User is not affiliated with a company
             missing.append(user_commit_summary)
+            # set check_aff flag to true in this case, as this code branch checks for affiliation, also store only 1st user as this branches considers only 1st user
+            cla.log.debug(f"{fn} - store cache aff mode: no company_id: {project_cache_key}: {user}")
+            github_user_cache.set_with_ttl(project_cache_key, (user, True, False, False), QUICK_CACHE_TTL)
+            github_user_cache.set_with_ttl(cache_key, (user, True), QUICK_CACHE_TTL)
             return
 
         # Mark the user as having a company affiliation
@@ -1736,9 +1877,14 @@ def handle_commit_from_user(
                     "is on one of the approval lists, but not affiliated with a company"
                 )
                 user_commit_summary.authorized = True
+                # LG: user_commit_summary should be added to signed in this case IMHO, but not changing it now, if changed then caching must be updated as well (it currently keeps the same logic for compatibility)
                 break
 
         missing.append(user_commit_summary)
+        # set check_aff flag to true in this case, as this code branch checks for affiliation, also store only 1st user as this branches considers only 1st user
+        cla.log.debug(f"{fn} - store cache aff mode: missing: {project_cache_key}: {user}")
+        github_user_cache.set_with_ttl(project_cache_key, (user, True, False, True), QUICK_CACHE_TTL)
+        github_user_cache.set_with_ttl(cache_key, (user, True), QUICK_CACHE_TTL)
 
 
 def get_merge_group_commit_authors(merge_group_sha, installation_id=None) -> List[UserCommitSummary]:

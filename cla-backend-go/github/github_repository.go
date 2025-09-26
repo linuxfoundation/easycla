@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/google/go-github/v37/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
@@ -57,11 +59,12 @@ Please update your commit message(s) by doing |git commit --amend| and then |git
 `
 
 const (
-	help         = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
-	unknown      = "Unknown"
-	failureState = "failure"
-	successState = "success"
-	svgVersion   = "?v=2"
+	help          = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
+	unknown       = "Unknown"
+	failureState  = "failure"
+	successState  = "success"
+	svgVersion    = "?v=2"
+	QuickCacheTTL = 5 * time.Minute
 )
 
 type cacheEntry struct {
@@ -115,13 +118,149 @@ func (c *Cache) Cleanup() {
 	}
 }
 
+func (c *Cache) Delete(key [2]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
+
+type userCacheEntry struct {
+	value     *models.User
+	expiresAt time.Time
+}
+
+type UserCache struct {
+	data map[[3]string]userCacheEntry
+	mu   sync.Mutex
+	ttl  time.Duration
+}
+
+func NewUserCache(ttl time.Duration) *UserCache {
+	return &UserCache{
+		data: make(map[[3]string]userCacheEntry),
+		ttl:  ttl,
+	}
+}
+
+func (c *UserCache) Get(key [3]string) (*models.User, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, found := c.data[key]
+	if !found || time.Now().After(entry.expiresAt) {
+		if found {
+			delete(c.data, key)
+		}
+		return nil, false
+	}
+	return entry.value, true
+}
+
+func (c *UserCache) Set(key [3]string, value *models.User) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[key] = userCacheEntry{
+		value:     value,
+		expiresAt: time.Now().Add(c.ttl),
+	}
+}
+
+func (c *UserCache) SetWithTTL(key [3]string, value *models.User, tl time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[key] = userCacheEntry{
+		value:     value,
+		expiresAt: time.Now().Add(tl),
+	}
+}
+
+func (c *UserCache) Cleanup() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	for k, v := range c.data {
+		if now.After(v.expiresAt) {
+			delete(c.data, k)
+		}
+	}
+}
+
+func (c *UserCache) Delete(key [3]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
+
+type projectUserCacheEntry struct {
+	value      *models.User
+	signed     bool
+	affiliated bool
+	expiresAt  time.Time
+}
+
+type ProjectUserCache struct {
+	data map[[4]string]projectUserCacheEntry
+	mu   sync.Mutex
+	ttl  time.Duration
+}
+
+func NewProjectUserCache(ttl time.Duration) *ProjectUserCache {
+	return &ProjectUserCache{
+		data: make(map[[4]string]projectUserCacheEntry),
+		ttl:  ttl,
+	}
+}
+
+func (c *ProjectUserCache) Get(key [4]string) (*models.User, bool, bool, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, found := c.data[key]
+	if !found || time.Now().After(entry.expiresAt) {
+		if found {
+			delete(c.data, key)
+		}
+		return nil, false, false, false
+	}
+	return entry.value, entry.signed, entry.affiliated, true
+}
+
+func (c *ProjectUserCache) SetWithTTL(key [4]string, value *models.User, signed, affiliated bool, tl time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[key] = projectUserCacheEntry{
+		value:      value,
+		signed:     signed,
+		affiliated: affiliated,
+		expiresAt:  time.Now().Add(tl),
+	}
+}
+
+func (c *ProjectUserCache) Set(key [4]string, value *models.User, signed, affiliated bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[key] = projectUserCacheEntry{
+		value:      value,
+		signed:     signed,
+		affiliated: affiliated,
+		expiresAt:  time.Now().Add(c.ttl),
+	}
+}
+
+func (c *ProjectUserCache) Cleanup() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	for k, v := range c.data {
+		if now.After(v.expiresAt) {
+			delete(c.data, k)
+		}
+	}
+}
+
+func (c *ProjectUserCache) Delete(key [4]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
+
 var GithubUserCache = NewCache(24 * time.Hour)
+var ModelUserCache = NewUserCache(24 * time.Hour)
+var ModelProjectUserCache = NewProjectUserCache(6 * time.Hour)
 
 func init() {
 	go func() {
 		for {
 			time.Sleep(time.Hour)
 			GithubUserCache.Cleanup()
+			ModelUserCache.Cleanup()
+			ModelProjectUserCache.Cleanup()
 		}
 	}()
 }
@@ -600,6 +739,345 @@ func GetCoAuthorCommits(
 
 	GithubUserCache.Set(cacheKey, user)
 	return summary, found
+}
+
+func UserKey(id, login, email string) [3]string {
+	return [3]string{id, strings.ToLower(login), strings.ToLower(strings.TrimSpace(email))}
+}
+
+func ProjectUserKey(projectID, id, login, email string) [4]string {
+	return [4]string{projectID, id, strings.ToLower(login), strings.ToLower(strings.TrimSpace(email))}
+}
+
+// GetCommitAuthorSignedStatus checks if the commit author has signed the CLA for the given project
+func GetCommitAuthorSignedStatus(
+	ctx context.Context,
+	usersService users.Service,
+	hasUserSigned func(context.Context, *models.User, string) (*bool, *bool, error),
+	projectID string,
+	userSummary *UserCommitSummary,
+	signed *[]*UserCommitSummary,
+	unsigned *[]*UserCommitSummary,
+	mu *sync.Mutex,
+) {
+	// here userSummary is NOT nil
+	f := logrus.Fields{
+		"functionName": "github.github_repository.GetCommitAuthorSignedStatus",
+		"projectID":    projectID,
+	}
+	commitAuthorID := userSummary.GetCommitAuthorID()
+	commitAuthorUsername := userSummary.GetCommitAuthorUsername()
+	commitAuthorEmail := userSummary.GetCommitAuthorEmail()
+	f["authorID"] = commitAuthorID
+	f["authorLogin"] = commitAuthorUsername
+	f["authorEmail"] = commitAuthorEmail
+
+	log.WithFields(f).Debugf("checking user - sha: %s, user ID: %s, username: %s, email: %s",
+		userSummary.SHA, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
+
+	// LG: cache_authors - start
+	// Per-project cache - also caches per-project signatures status and affiliation
+	// (project_id, id, login, email) -> (user || None, authorized, affiliated)
+	projectCacheKey := ProjectUserKey(projectID, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
+	cachedUser, authorized, affiliated, ok := ModelProjectUserCache.Get(projectCacheKey)
+	if cachedUser != nil {
+		log.WithFields(f).Debugf("per-project cache: %+v -> (%+v, %v, %v, %v)", projectCacheKey, *cachedUser, authorized, affiliated, ok)
+	} else {
+		log.WithFields(f).Debugf("per-project cache: %+v -> (nil, %v, %v, %v)", projectCacheKey, authorized, affiliated, ok)
+	}
+	if ok {
+		if cachedUser == nil {
+			log.WithFields(f).Debugf("per-project cache: unsigned, user is null")
+			mu.Lock()
+			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
+			return
+		}
+		userSummary.Affiliated = affiliated
+		if authorized {
+			userSummary.Authorized = authorized
+			log.WithFields(f).Debugf("per-project cache: signed")
+			mu.Lock()
+			*signed = append(*signed, userSummary)
+			mu.Unlock()
+		} else {
+			log.WithFields(f).Debugf("per-project cache: unsigned, authorized is false")
+			mu.Lock()
+			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
+		}
+		return
+	}
+	// General cache (without project) - can only cache author details, but not per-project signature details
+	// (id, login, email) -> (user || None)
+	cacheKey := UserKey(commitAuthorID, commitAuthorUsername, commitAuthorEmail)
+	cachedUser, ok = ModelUserCache.Get(cacheKey)
+	if cachedUser != nil {
+		log.WithFields(f).Debugf("general cache: %+v -> (%+v, %v)", cacheKey, *cachedUser, ok)
+	} else {
+		log.WithFields(f).Debugf("general cache: %+v -> (nil, %v)", cacheKey, ok)
+	}
+	if ok {
+		if cachedUser == nil {
+			mu.Lock()
+			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
+			log.WithFields(f).Debugf("store per-project cache: unsigned, user is null (%+v)", projectCacheKey)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, nil, false, false, QuickCacheTTL)
+			return
+		}
+		user := cachedUser
+		userSigned, companyAffiliation, signedErr := hasUserSigned(ctx, user, projectID)
+		if signedErr != nil {
+			log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
+			mu.Lock()
+			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
+			log.WithFields(f).Debugf("store per-project cache: unsigned, hasUserSigned error (%+v)", projectCacheKey)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, false, QuickCacheTTL)
+			return
+		}
+
+		if companyAffiliation != nil {
+			userSummary.Affiliated = *companyAffiliation
+		}
+
+		if userSigned != nil {
+			userSummary.Authorized = *userSigned
+			if userSummary.Authorized {
+				mu.Lock()
+				*signed = append(*signed, userSummary)
+				mu.Unlock()
+				log.WithFields(f).Debugf("store per-project cache: signed (%+v)", projectCacheKey)
+				ModelProjectUserCache.Set(projectCacheKey, user, true, userSummary.Affiliated)
+			} else {
+				mu.Lock()
+				*unsigned = append(*unsigned, userSummary)
+				mu.Unlock()
+				log.WithFields(f).Debugf("store per-project cache: unsigned, authorized is false (%+v)", projectCacheKey)
+				ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
+			}
+		} else {
+			mu.Lock()
+			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
+			log.WithFields(f).Debugf("store per-project cache: unsigned, userSigned is null (%+v)", projectCacheKey)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
+		}
+		return
+	}
+	// LG: cache_authors - end
+
+	var user *models.User
+	var userErr error
+
+	if commitAuthorID != "" {
+		log.WithFields(f).Debugf("looking up user by ID: %s", commitAuthorID)
+		user, userErr = usersService.GetUserByGitHubID(commitAuthorID)
+		if userErr != nil {
+			log.WithFields(f).WithError(userErr).Warnf("unable to get user by github id: %s", commitAuthorID)
+		}
+		if user != nil {
+			log.WithFields(f).Debugf("found user by ID: %s", commitAuthorID)
+		}
+	}
+	if user == nil && commitAuthorUsername != "" {
+		log.WithFields(f).Debugf("looking up user by username: %s", commitAuthorUsername)
+		user, userErr = usersService.GetUserByGitHubUsername(commitAuthorUsername)
+		if userErr != nil {
+			log.WithFields(f).WithError(userErr).Warnf("unable to get user by github username: %s", commitAuthorUsername)
+		}
+		if user != nil {
+			log.WithFields(f).Debugf("found user by username: %s", commitAuthorUsername)
+		}
+	}
+	if user == nil && commitAuthorEmail != "" {
+		log.WithFields(f).Debugf("looking up user by email: %s", commitAuthorEmail)
+		user, userErr = usersService.GetUserByEmail(commitAuthorEmail)
+		if userErr != nil {
+			log.WithFields(f).WithError(userErr).Warnf("unable to get user by user email: %s", commitAuthorEmail)
+		}
+		if user != nil {
+			log.WithFields(f).Debugf("found user by email: %s", commitAuthorEmail)
+		}
+	}
+
+	if user == nil {
+		log.WithFields(f).Debugf("unable to find user for commit author - sha: %s, user ID: %s, username: %s, email: %s",
+			userSummary.SHA, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
+		log.WithFields(f).Debugf("store caches: unsigned, user is null (%+v)", projectCacheKey)
+		mu.Lock()
+		*unsigned = append(*unsigned, userSummary)
+		mu.Unlock()
+		ModelProjectUserCache.SetWithTTL(projectCacheKey, nil, false, false, QuickCacheTTL)
+		ModelUserCache.SetWithTTL(cacheKey, nil, QuickCacheTTL)
+		return
+	}
+
+	log.WithFields(f).Debugf("checking to see if user has signed an ICLA or ECLA for project: %s", projectID)
+	userSigned, companyAffiliation, signedErr := hasUserSigned(ctx, user, projectID)
+	if signedErr != nil {
+		log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
+		log.WithFields(f).Debugf("store caches: unsigned, hasUserSigned error (%+v)", projectCacheKey)
+		mu.Lock()
+		*unsigned = append(*unsigned, userSummary)
+		mu.Unlock()
+		ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, false, QuickCacheTTL)
+		ModelUserCache.SetWithTTL(cacheKey, user, QuickCacheTTL)
+		return
+	}
+
+	if companyAffiliation != nil {
+		userSummary.Affiliated = *companyAffiliation
+	}
+
+	if userSigned != nil {
+		userSummary.Authorized = *userSigned
+		if userSummary.Authorized {
+			log.WithFields(f).Debugf("store caches: signed (%+v)", projectCacheKey)
+			mu.Lock()
+			*signed = append(*signed, userSummary)
+			mu.Unlock()
+			ModelProjectUserCache.Set(projectCacheKey, user, true, userSummary.Affiliated)
+			ModelUserCache.Set(cacheKey, user)
+		} else {
+			log.WithFields(f).Debugf("store caches: unsigned, authorized is false (%+v)", projectCacheKey)
+			mu.Lock()
+			*unsigned = append(*unsigned, userSummary)
+			mu.Unlock()
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
+			ModelUserCache.SetWithTTL(cacheKey, user, QuickCacheTTL)
+		}
+	} else {
+		log.WithFields(f).Debugf("store caches: unsigned, userSigned is null (%+v)", projectCacheKey)
+		mu.Lock()
+		*unsigned = append(*unsigned, userSummary)
+		mu.Unlock()
+		ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
+		ModelUserCache.SetWithTTL(cacheKey, user, QuickCacheTTL)
+	}
+}
+
+// GetCommitAuthorsSignedStatusesUL returns two slices of UserCommitSummary - signed and unsigned for the given project and commit authors
+// UL suffix = unbounded concurrency version (launches a goroutine for each author without limiting concurrency)
+func GetCommitAuthorsSignedStatusesUL(
+	ctx context.Context,
+	usersService users.Service,
+	hasUserSigned func(context.Context, *models.User, string) (*bool, *bool, error),
+	projectID string,
+	authors []*UserCommitSummary,
+) ([]*UserCommitSummary, []*UserCommitSummary) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.GetCommitAuthorsSignedStatusesUL",
+		"projectID":    projectID,
+	}
+	log.WithFields(f).Debugf("checking %d commit authors", len(authors))
+
+	signed := make([]*UserCommitSummary, 0, len(authors))
+	unsigned := make([]*UserCommitSummary, 0, len(authors))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, us := range authors {
+		wg.Add(1)
+		go func(userSummary *UserCommitSummary) {
+			defer wg.Done()
+
+			if userSummary == nil || !userSummary.IsValid() {
+				if userSummary == nil {
+					log.WithFields(f).Debugf("invalid user summary: nil")
+				} else {
+					log.WithFields(f).Debugf("invalid user summary: %+v", userSummary)
+				}
+				mu.Lock()
+				unsigned = append(unsigned, userSummary)
+				mu.Unlock()
+				return
+			}
+
+			GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned, &mu)
+		}(us)
+	}
+
+	wg.Wait()
+	return signed, unsigned
+}
+
+func GetCommitAuthorsSignedStatuses(
+	ctx context.Context,
+	usersService users.Service,
+	hasUserSigned func(context.Context, *models.User, string) (*bool, *bool, error),
+	projectID string,
+	authors []*UserCommitSummary,
+) ([]*UserCommitSummary, []*UserCommitSummary) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.GetCommitAuthorsSignedStatuses",
+		"projectID":    projectID,
+	}
+	log.WithFields(f).Debugf("checking %d commit authors", len(authors))
+	signed := make([]*UserCommitSummary, 0, len(authors))
+	unsigned := make([]*UserCommitSummary, 0, len(authors))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	maxConc := runtime.NumCPU()
+	if maxConc < 1 {
+		maxConc = 1
+	}
+	sem := make(chan struct{}, maxConc)
+	for _, us := range authors {
+		if us == nil || !us.IsValid() {
+			log.WithFields(f).Debugf("invalid user summary: %v", us)
+			mu.Lock()
+			unsigned = append(unsigned, us)
+			mu.Unlock()
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{} // acquire a slot
+		go func(userSummary *UserCommitSummary) {
+			defer wg.Done()
+			defer func() { <-sem }() // release slot
+
+			GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned, &mu)
+		}(us)
+	}
+
+	wg.Wait()
+	return signed, unsigned
+}
+
+// GetCommitAuthorsSignedStatusesST returns two slices of UserCommitSummary - signed and unsigned for the given project and commit authors
+// ST suffix = single threaded version
+func GetCommitAuthorsSignedStatusesST(
+	ctx context.Context,
+	usersService users.Service,
+	hasUserSigned func(context.Context, *models.User, string) (*bool, *bool, error),
+	projectID string,
+	authors []*UserCommitSummary,
+) ([]*UserCommitSummary, []*UserCommitSummary) {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.GetCommitAuthorsSignedStatusesST",
+		"projectID":    projectID,
+	}
+	signed := make([]*UserCommitSummary, 0)
+	unsigned := make([]*UserCommitSummary, 0)
+
+	// triage signed and unsigned users
+	log.WithFields(f).Debugf("checking %d commit authors", len(authors))
+	for _, userSummary := range authors {
+		if userSummary == nil || !userSummary.IsValid() {
+			if userSummary == nil {
+				log.WithFields(f).Debugf("invalid user summary: nil")
+			} else {
+				log.WithFields(f).Debugf("invalid user summary: %+v", *userSummary)
+			}
+			unsigned = append(unsigned, userSummary)
+			continue
+		}
+		GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned, &sync.Mutex{})
+	}
+	return signed, unsigned
 }
 
 func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, *string, bool, error) {
