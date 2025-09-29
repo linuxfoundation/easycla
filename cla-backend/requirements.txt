@@ -48,7 +48,7 @@ vintage==0.4.1
 wcwidth==0.1.7
 Werkzeug==0.15.5
 zipp==3.15.0
-markupsafe==2.0.1
+markupsafe==3.0.3
 # LG:
 python-jose==3.4.0
 pynamodb==6.0.2
