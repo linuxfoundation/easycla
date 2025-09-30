@@ -5,6 +5,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
@@ -66,6 +68,78 @@ const (
 	svgVersion    = "?v=2"
 	QuickCacheTTL = 5 * time.Minute
 )
+
+// GraphQL related types
+type gqlRequest struct {
+	Query         string                 `json:"query"`
+	OperationName string                 `json:"operationName,omitempty"`
+	Variables     map[string]interface{} `json:"variables,omitempty"`
+}
+
+type gqlError struct {
+	Message string `json:"message"`
+	Type    string `json:"type,omitempty"` // sometimes "RATE_LIMITED"
+}
+
+type gqlResponse struct {
+	Data   json.RawMessage `json:"data"`
+	Errors []gqlError      `json:"errors,omitempty"`
+}
+
+// doGraphQL posts to /graphql using v3 client and unmarshals the "data" field into v.
+// No retries; if GraphQL returns "errors", returns an error.
+func doGraphQL(ctx context.Context, c *github.Client, query string, variables map[string]interface{}, v any) (*github.Response, error) {
+	reqBody := gqlRequest{Query: query, Variables: variables}
+	req, err := c.NewRequest("POST", "graphql", reqBody) // -> https://api.github.com/graphql
+	if err != nil {
+		return nil, err
+	}
+	var gr gqlResponse
+	resp, err := c.Do(ctx, req, &gr)
+	if err != nil {
+		return resp, err
+	}
+	if len(gr.Errors) > 0 {
+		first := gr.Errors[0]
+		return resp, fmt.Errorf("graphql error: %s", first.Message)
+	}
+	if v != nil && len(gr.Data) > 0 {
+		if err := json.Unmarshal(gr.Data, v); err != nil {
+			return resp, fmt.Errorf("unmarshal graphql data: %w", err)
+		}
+	}
+	return resp, nil
+}
+
+type prCommitsPage struct {
+	Repository struct {
+		PullRequest struct {
+			Commits struct {
+				TotalCount int `json:"totalCount"`
+				PageInfo   struct {
+					HasNextPage bool   `json:"hasNextPage"`
+					EndCursor   string `json:"endCursor"`
+				} `json:"pageInfo"`
+				Nodes []struct {
+					Commit struct {
+						OID     string `json:"oid"`
+						Message string `json:"message"`
+						Author  struct {
+							Name  string `json:"name"`  // commit metadata author
+							Email string `json:"email"` // commit metadata author
+							User  struct {
+								DatabaseID int    `json:"databaseId"`
+								Login      string `json:"login"`
+								Name       string `json:"name"`  // profile
+								Email      string `json:"email"` // profile (often empty)
+							} `json:"user"`
+						} `json:"author"`
+					} `json:"commit"`
+				} `json:"nodes"`
+			} `json:"commits"`
+		} `json:"pullRequest"`
+	} `json:"repository"`
+}
 
 type cacheEntry struct {
 	value     *github.User
@@ -515,6 +589,7 @@ func ExpandWithCoAuthors(
 	pr int,
 	installationID int64,
 	commitAuthors *[]*UserCommitSummary,
+	mu *sync.Mutex,
 ) bool {
 	f := logrus.Fields{
 		"functionName": "github.github_repository.ExpandWithCoAuthors",
@@ -525,7 +600,9 @@ func ExpandWithCoAuthors(
 	missing := false
 	for _, coAuthor := range coAuthors {
 		summary, found := GetCoAuthorCommits(ctx, client, usersService, coAuthor, commit, pr, installationID)
+		mu.Lock()
 		*commitAuthors = append(*commitAuthors, summary)
+		mu.Unlock()
 		if !missing && !found {
 			missing = true
 		}
@@ -958,51 +1035,6 @@ func GetCommitAuthorSignedStatus(
 	}
 }
 
-// GetCommitAuthorsSignedStatusesUL returns two slices of UserCommitSummary - signed and unsigned for the given project and commit authors
-// UL suffix = unbounded concurrency version (launches a goroutine for each author without limiting concurrency)
-func GetCommitAuthorsSignedStatusesUL(
-	ctx context.Context,
-	usersService users.Service,
-	hasUserSigned func(context.Context, *models.User, string) (*bool, *bool, error),
-	projectID string,
-	authors []*UserCommitSummary,
-) ([]*UserCommitSummary, []*UserCommitSummary) {
-	f := logrus.Fields{
-		"functionName": "github.github_repository.GetCommitAuthorsSignedStatusesUL",
-		"projectID":    projectID,
-	}
-	log.WithFields(f).Debugf("checking %d commit authors", len(authors))
-
-	signed := make([]*UserCommitSummary, 0, len(authors))
-	unsigned := make([]*UserCommitSummary, 0, len(authors))
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for _, us := range authors {
-		wg.Add(1)
-		go func(userSummary *UserCommitSummary) {
-			defer wg.Done()
-
-			if userSummary == nil || !userSummary.IsValid() {
-				if userSummary == nil {
-					log.WithFields(f).Debugf("invalid user summary: nil")
-				} else {
-					log.WithFields(f).Debugf("invalid user summary: %+v", userSummary)
-				}
-				mu.Lock()
-				unsigned = append(unsigned, userSummary)
-				mu.Unlock()
-				return
-			}
-
-			GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned, &mu)
-		}(us)
-	}
-
-	wg.Wait()
-	return signed, unsigned
-}
-
 func GetCommitAuthorsSignedStatuses(
 	ctx context.Context,
 	usersService users.Service,
@@ -1047,46 +1079,19 @@ func GetCommitAuthorsSignedStatuses(
 	return signed, unsigned
 }
 
-// GetCommitAuthorsSignedStatusesST returns two slices of UserCommitSummary - signed and unsigned for the given project and commit authors
-// ST suffix = single threaded version
-func GetCommitAuthorsSignedStatusesST(
+func GetPullRequestCommitAuthors(
 	ctx context.Context,
 	usersService users.Service,
-	hasUserSigned func(context.Context, *models.User, string) (*bool, *bool, error),
-	projectID string,
-	authors []*UserCommitSummary,
-) ([]*UserCommitSummary, []*UserCommitSummary) {
-	f := logrus.Fields{
-		"functionName": "github.github_repository.GetCommitAuthorsSignedStatusesST",
-		"projectID":    projectID,
-	}
-	signed := make([]*UserCommitSummary, 0)
-	unsigned := make([]*UserCommitSummary, 0)
-
-	// triage signed and unsigned users
-	log.WithFields(f).Debugf("checking %d commit authors", len(authors))
-	for _, userSummary := range authors {
-		if userSummary == nil || !userSummary.IsValid() {
-			if userSummary == nil {
-				log.WithFields(f).Debugf("invalid user summary: nil")
-			} else {
-				log.WithFields(f).Debugf("invalid user summary: %+v", *userSummary)
-			}
-			unsigned = append(unsigned, userSummary)
-			continue
-		}
-		GetCommitAuthorSignedStatus(ctx, usersService, hasUserSigned, projectID, userSummary, &signed, &unsigned, &sync.Mutex{})
-	}
-	return signed, unsigned
-}
-
-func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, *string, bool, error) {
+	installationID int64,
+	pullRequestID int,
+	owner, repo string,
+	withCoAuthors bool,
+) ([]*UserCommitSummary, *string, bool, error) {
 	f := logrus.Fields{
 		"functionName":  "github.github_repository.GetPullRequestCommitAuthors",
 		"pullRequestID": pullRequestID,
 		"withCoAuthors": withCoAuthors,
 	}
-	var userCommitSummary []*UserCommitSummary
 
 	client, err := NewGithubAppClient(installationID)
 	if err != nil {
@@ -1094,65 +1099,180 @@ func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service
 		return nil, nil, false, err
 	}
 
-	commits, resp, comErr := client.PullRequests.ListCommits(ctx, owner, repo, pullRequestID, &github.ListOptions{})
-	if comErr != nil {
-		log.WithFields(f).WithError(comErr).Warnf("problem listing commits for repo: %s/%s pull request: %d", owner, repo, pullRequestID)
-		return nil, nil, false, comErr
+	const pageSize = 100 // GraphQL max
+	const query = `
+query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:String) {
+  repository(owner:$owner, name:$name) {
+    pullRequest(number:$number) {
+      commits(first:$pageSize, after:$cursor) {
+        totalCount
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          commit {
+            oid
+            message
+            author {
+              name
+              email
+              user {
+                databaseId
+                login
+                name
+                email
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+
+	var (
+		userCommitSummary []*UserCommitSummary
+		anyMissing        atomic.Bool
+		latestCommitSHA   *string
+
+		mu      sync.Mutex
+		wg      sync.WaitGroup
+		maxConc = runtime.NumCPU()
+	)
+	if maxConc < 1 {
+		maxConc = 1
 	}
-	if resp.StatusCode != http.StatusOK {
-		msg := fmt.Sprintf("unexpected status code: %d - expected: %d", resp.StatusCode, http.StatusOK)
-		log.WithFields(f).Warn(msg)
-		return nil, nil, false, errors.New(msg)
+	sem := make(chan struct{}, maxConc)
+
+	var (
+		cursor      *string
+		totalLogged bool
+		lastSeenSHA string
+	)
+
+	for {
+		vars := map[string]interface{}{
+			"owner":    owner,
+			"name":     repo,
+			"number":   pullRequestID,
+			"pageSize": pageSize,
+			"cursor":   nil,
+		}
+		if cursor != nil {
+			vars["cursor"] = *cursor
+		}
+
+		var page prCommitsPage
+		if _, err := doGraphQL(ctx, client, query, vars, &page); err != nil {
+			log.WithFields(f).WithError(err).Warnf("problem listing commits via GraphQL for %s/%s PR #%d", owner, repo, pullRequestID)
+			return nil, nil, false, err
+		}
+
+		c := page.Repository.PullRequest.Commits
+		if !totalLogged {
+			log.WithFields(f).Debugf("found %d commits (totalCount) for pull request: %d", c.TotalCount, pullRequestID)
+			totalLogged = true
+			userCommitSummary = make([]*UserCommitSummary, 0, c.TotalCount)
+		}
+		if n := len(c.Nodes); n > 0 {
+			lastSeenSHA = c.Nodes[n-1].Commit.OID
+		}
+
+		// Launch per-commit workers for this page
+		for _, node := range c.Nodes {
+			n := node // capture
+			wg.Add(1)
+			sem <- struct{}{} // acquire slot
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }() // release slot
+
+				sha := n.Commit.OID
+				msg := n.Commit.Message
+				a := n.Commit.Author
+				u := a.User
+
+				// Legacy precedence: user.* preferred, else commit author fields
+				var (
+					id64  *int64
+					login *string
+					name  *string
+					email *string
+				)
+				if u.DatabaseID != 0 {
+					tmp := int64(u.DatabaseID)
+					id64 = &tmp
+				}
+				if u.Login != "" {
+					tmp := u.Login
+					login = &tmp
+				}
+				if u.Name != "" {
+					tmp := u.Name
+					name = &tmp
+				} else if a.Name != "" {
+					tmp := a.Name
+					name = &tmp
+				}
+				if u.Email != "" {
+					tmp := u.Email
+					email = &tmp
+				} else if a.Email != "" {
+					tmp := a.Email
+					email = &tmp
+				}
+
+				// Minimal go-github objects to keep ExpandWithCoAuthors working
+				ghUser := &github.User{
+					ID:    id64,
+					Login: login,
+					Name:  name,
+					Email: email,
+				}
+				rc := &github.RepositoryCommit{
+					SHA: &sha,
+					Commit: &github.Commit{
+						Message: github.String(msg),
+						Author: &github.CommitAuthor{
+							Name:  github.String(a.Name),
+							Email: github.String(a.Email),
+						},
+					},
+					Author: ghUser,
+				}
+
+				// Append main author summary
+				mu.Lock()
+				userCommitSummary = append(userCommitSummary, &UserCommitSummary{
+					SHA:          sha,
+					CommitAuthor: ghUser,
+					Affiliated:   false,
+					Authorized:   false,
+				})
+				mu.Unlock()
+
+				if withCoAuthors {
+					if ExpandWithCoAuthors(ctx, client, usersService, rc, pullRequestID, installationID, &userCommitSummary, &mu) {
+						anyMissing.Store(true)
+					}
+				}
+			}()
+		}
+
+		if !c.PageInfo.HasNextPage {
+			break
+		}
+		cur := c.PageInfo.EndCursor
+		cursor = &cur
 	}
 
-	log.WithFields(f).Debugf("found %d commits for pull request: %d", len(commits), pullRequestID)
-	anyMissing := false
-	for _, commit := range commits {
-		log.WithFields(f).Debugf("loaded commit: %+v", commit)
-		commitAuthor := ""
-		if commit.Commit != nil && commit.Commit.Author != nil && commit.Commit.Author.Login != nil {
-			log.WithFields(f).Debugf("commit.Commit.Author: %s", utils.StringValue(commit.Commit.Author.Login))
-			commitAuthor = utils.StringValue(commit.Commit.Author.Login)
-		} else if commit.Author != nil && commit.Author.Login != nil {
-			log.WithFields(f).Debugf("commit.Author.Login: %s", utils.StringValue(commit.Author.Login))
-			commitAuthor = utils.StringValue(commit.Author.Login)
-		}
-		name, email := "", ""
-		if commit.Commit != nil && commit.Commit.Author != nil {
-			name = utils.StringValue(commit.Commit.Author.Name)
-			email = utils.StringValue(commit.Commit.Author.Email)
-			if strings.TrimSpace(name) != "" && (commit.Author.Name == nil || (commit.Author.Name != nil && strings.TrimSpace(*commit.Author.Name) == "")) {
-				commit.Author.Name = &name
-			}
-			if strings.TrimSpace(email) != "" && (commit.Author.Email == nil || (commit.Author.Email != nil && strings.TrimSpace(*commit.Author.Email) == "")) {
-				commit.Author.Email = &email
-			}
-		}
-		log.WithFields(f).Debugf("commitAuthor: %s, name: %s, email: %s", commitAuthor, name, email)
-		userCommitSummary = append(userCommitSummary, &UserCommitSummary{
-			SHA:          *commit.SHA,
-			CommitAuthor: commit.Author,
-			Affiliated:   false,
-			Authorized:   false,
-		})
-		if withCoAuthors {
-			missing := ExpandWithCoAuthors(ctx, client, usersService, commit, pullRequestID, installationID, &userCommitSummary)
-			if !anyMissing && missing {
-				anyMissing = true
-			}
-		}
+	// Wait for all workers to finish
+	wg.Wait()
+
+	if lastSeenSHA != "" {
+		latestCommitSHA = &lastSeenSHA
 	}
 
-	// get latest commit SHA
-	latestCommitSHA := commits[len(commits)-1].SHA
-	// log.WithFields(f).Debugf("user commit summaries: %+v", userCommitSummary)
-	// for _, summary := range userCommitSummary {
-	//	if summary == nil {
-	//		continue
-	//	}
-	//	log.WithFields(f).Debugf("user commit summary: %+v", *summary)
-	//}
-	return userCommitSummary, latestCommitSHA, anyMissing, nil
+	log.WithFields(f).Debugf("total commit author summaries (including co-authors) for PR %d: %d, any missing: %v, latest SHA: %s", pullRequestID, len(userCommitSummary), anyMissing.Load(), utils.StringValue(latestCommitSHA))
+	return userCommitSummary, latestCommitSHA, anyMissing.Load(), nil
 }
 
 func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, repoID *int64, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary, anyMissing bool, CLABaseAPIURL, CLALandingPage, CLALogoURL string) error {

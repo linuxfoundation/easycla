@@ -13,7 +13,7 @@ import binascii
 import threading
 import time
 import uuid
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Union, Tuple, Iterable
 
 import cla
 import falcon
@@ -31,6 +31,8 @@ from github.GithubException import (BadCredentialsException, GithubException,
                                     RateLimitExceededException,
                                     UnknownObjectException)
 from requests_oauthlib import OAuth2Session
+from dataclasses import dataclass
+from itertools import islice
 
 # some emails we want to exclude when we register the users
 EXCLUDE_GITHUB_EMAILS = ["noreply.github.com"]
@@ -82,6 +84,15 @@ def start_cache_cleanup():
     threading.Thread(target=run, daemon=True).start()
 
 start_cache_cleanup()
+
+@dataclass
+class CommitLite:
+    sha: str
+    author_id: Optional[int]
+    author_login: Optional[str]
+    author_name: Optional[str]
+    author_email: Optional[str]
+    message: Optional[str]
 
 class GitHub(repository_service_interface.RepositoryService):
     """
@@ -803,8 +814,8 @@ class GitHub(repository_service_interface.RepositoryService):
         try:
             # Get Commit authors
             with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
-            commit_authors, any_missing = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
-            cla.log.debug(f"{fn} - commit authors: {commit_authors}")
+            commit_authors, any_missing = get_pull_request_commit_authors(self.client, organization_name, pull_request, installation_id, with_co_authors)
+            cla.log.debug(f"{fn} - commit author summaries: {commit_authors}")
         except Exception as e:
             cla.log.warning(
                 f"{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository "
@@ -947,10 +958,10 @@ class GitHub(repository_service_interface.RepositoryService):
 
         # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
         with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
-        commit_authors, any_missing = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
+        commit_authors, any_missing = get_pull_request_commit_authors(self.client, organization_name, pull_request, installation_id, with_co_authors)
 
         cla.log.debug(
-            f"{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit authors "
+            f"{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit author summaries "
             f"for pull request: {pull_request.number}"
         )
 
@@ -982,14 +993,18 @@ class GitHub(repository_service_interface.RepositoryService):
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
             for user_commit_summary in commit_authors:
-                cla.log.debug(f"{fn} - PR: {pull_request.number} for user: {user_commit_summary}")
+                # cla.log.debug(f"{fn} - PR: {pull_request.number} for user: {user_commit_summary}")
                 futures.append(executor.submit(handle_commit_from_user, project, user_commit_summary, signed, missing))
 
             # Wait for all threads to be finished before moving on
             executor.shutdown(wait=True)
 
         for future in concurrent.futures.as_completed(futures):
-            cla.log.debug(f"{fn} - ThreadClosed for handle_commit_from_user")
+            # cla.log.debug(f"{fn} - ThreadClosed for handle_commit_from_user")
+            try:
+                future.result()
+            except Exception as e:
+                cla.log.error(f"{fn} - Exception in commit author thread for PR: {pull_request.number}, error: {e}")
 
         # Skip allowlisted bots per org/repo GitHub login/email regexps
         missing, allowlisted = self.skip_allowlisted_bots(github_org, repository.get_repository_name(), missing)
@@ -1594,6 +1609,7 @@ def handle_commit_from_user(
     fn = "cla.models.github_models.handle_commit_from_user"
     # handle edge case of non existant users
     if not user_commit_summary.is_valid_user():
+        cla.log.debug(f"{fn} - summary for an unknown user, adding to missing: {user_commit_summary}")
         missing.append(user_commit_summary)
         return
 
@@ -1934,7 +1950,20 @@ def expand_with_co_authors(commit, pr, installation_id, commit_authors) -> bool:
     co_authors = cla.utils.get_co_authors_from_commit(commit)
     missing = False
     for co_author in co_authors:
-        summary, found = get_co_author_commits(co_author, commit, pr, installation_id)
+        summary, found = get_co_author_commits(co_author, commit.sha, pr, installation_id)
+        commit_authors.append(summary)
+        if not missing and not found:
+            missing = True
+    return missing
+
+def expand_with_co_authors_from_message(commit_sha: str, message: Optional[str], pr: int, installation_id, commit_authors) -> bool:
+    """
+    Append UserCommitSummary objects for co-authors parsed from message.
+    """
+    co_authors = cla.utils.get_co_authors_from_message(message)
+    missing = False
+    for co_author in co_authors:
+        summary, found = get_co_author_commits(co_author, commit_sha, pr, installation_id)
         commit_authors.append(summary)
         if not missing and not found:
             missing = True
@@ -2001,8 +2030,166 @@ def get_author_summary(commit, pr, installation_id, with_co_authors) -> Tuple[Li
         missing = expand_with_co_authors(commit, pr, installation_id, commit_authors)
     return (commit_authors, missing)
 
+def pygithub_graphql(g, query: str, variables: dict | None = None):
+    """
+    Minimal GraphQL client using PyGithub's internal requester.
+    Works on older PyGithub versions lacking Github.graphql().
+    """
+    try:
+        headers, data = g._Github__requester.requestJsonAndCheck(
+            "POST",
+            "/graphql",
+            input={"query": query, "variables": variables or {}},
+        )
+        if isinstance(data, dict) and data.get("errors"):
+            msg = data["errors"][0].get("message", "GraphQL error")
+            cla.log.error(f"GraphQL errors: {msg} (all={data['errors']!r})")
+            return None
+        return data.get("data")
+    except Exception as exc:
+        cla.log.error(f"GraphQL query: {query} failed: {exc}")
+        return None
 
-def get_pull_request_commit_authors(pull_request, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
+def iter_pr_commits_full(g, owner: str, repo_name: str, number: int, page_size: int = 100):
+    page_size = max(1, min(100, page_size))
+    query = """
+    query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:String) {
+      repository(owner:$owner, name:$name) {
+        pullRequest(number:$number) {
+          commits(first:$pageSize, after:$cursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              commit {
+                oid
+                message
+                author {
+                  name       # commit metadata author name
+                  email      # commit metadata author email
+                  user {
+                    databaseId   # numeric id (REST-compatible)
+                    login
+                    name         # profile name (preferred)
+                    email        # profile email (often null without extra scopes)
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }"""
+    cursor = None
+    while True:
+        res = pygithub_graphql(
+            g,
+            query,
+            {"owner": owner, "name": repo_name, "number": number,
+             "pageSize": page_size, "cursor": cursor},
+        )
+        if res is None:
+            cla.log.error(f"Failed to fetch commits for {owner}/{repo_name} PR #{number}")
+            return
+        commits = res["repository"]["pullRequest"]["commits"]
+        for n in commits["nodes"]:
+            c = n["commit"]
+            a = c.get("author") or {}
+            u = a.get("user") or {}
+
+            # id     := commit.author.id
+            # login  := commit.author.login
+            # name   := commit.author.name or commit.commit.author.name
+            # email  := commit.author.email or commit.commit.author.email
+            author_id    = u.get("databaseId")
+            author_login = u.get("login")
+
+            user_name    = (u.get("name") or "").strip() if isinstance(u.get("name"), str) else None
+            commit_name  = (a.get("name") or "").strip() if isinstance(a.get("name"), str) else None
+            author_name  = user_name or commit_name or None
+
+            user_email   = (u.get("email") or "").strip() if isinstance(u.get("email"), str) else None
+            commit_email = (a.get("email") or "").strip() if isinstance(a.get("email"), str) else None
+            author_email = user_email or commit_email or None
+
+            yield CommitLite(
+                sha=c["oid"],
+                author_id=author_id,
+                author_login=author_login,
+                author_name=author_name,
+                author_email=author_email,
+                message=c.get("message"),
+            )
+
+        if not commits["pageInfo"]["hasNextPage"]:
+            break
+        cursor = commits["pageInfo"]["endCursor"]
+
+def get_author_summary_gql(commit: CommitLite, pr: int, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
+    fn = "cla.models.github_models.get_author_summary_gql"
+    commit_authors: List[UserCommitSummary] = []
+
+    # Prefer linked user fields when present; fallback to raw author fields.
+    id_val    = commit.author_id
+    login_val = commit.author_login
+    name_val  = commit.author_name
+    email_val = commit.author_email
+
+    # Nothing to "try/except": GraphQL gives plain values; just normalize empties.
+    def norm(s):
+        return s if isinstance(s, str) and s.strip() else None
+
+    name_val  = norm(name_val)
+    email_val = norm(email_val)
+
+    cla.log.debug(f"{fn}: (id: {id_val}, login: {login_val}, name: {name_val}, email: {email_val})")
+
+    commit_author_summary = UserCommitSummary(
+        commit.sha,
+        id_val,
+        login_val,
+        name_val,
+        email_val,
+        False,
+        False,  # default not authorized - will be evaluated and updated later
+    )
+    cla.log.debug(f"{fn} - PR: {pr}, {commit_author_summary}")
+    commit_authors.append(commit_author_summary)
+
+    missing = False
+    if with_co_authors and commit.message:
+        # Use the message string instead of the PyGithub commit object
+        missing = expand_with_co_authors_from_message(commit.sha, commit.message, pr, installation_id, commit_authors)
+
+    return (commit_authors, missing)
+
+def get_pr_commit_count_gql(g, owner: str, repo: str, number: int) -> int | None:
+    # Single, cheap GraphQL count for logging (no pagination)
+    query = """
+    query($owner:String!, $name:String!, $number:Int!) {
+      repository(owner:$owner, name:$name) {
+        pullRequest(number:$number) {
+          commits { totalCount }
+        }
+      }
+    }"""
+    try:
+        data = pygithub_graphql(g, query, {"owner": owner, "name": repo, "number": number})
+        if data is None:
+            cla.log.debug(f"get_pr_commit_count_gql: no data returned")
+            return None
+        return data["repository"]["pullRequest"]["commits"]["totalCount"]
+    except Exception as e:
+        cla.log.debug(f"get_pr_commit_count_gql: failed to fetch count: {e}")
+        return None
+
+def iter_chunks(it: Iterable, n: int):
+    it = iter(it)
+    while True:
+        chunk = list(islice(it, n))
+        if not chunk:
+            return
+        yield chunk
+
+def get_pull_request_commit_authors(client, org, pull_request, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
     """
     Helper function to extract all committer information for a GitHub PR.
 
@@ -2020,34 +2207,39 @@ def get_pull_request_commit_authors(pull_request, installation_id, with_co_autho
     """
     fn = "cla.models.github_models.get_pull_request_commit_authors"
     cla.log.debug(f"{fn} - Querying pull request commits for author information...")
-    no_commits = pull_request.get_commits().totalCount
-    cla.log.debug(f"{fn} - PR: {pull_request.number}, number of commits: {no_commits}")
+
+    pr_number = pull_request.number
+    repo_name = pull_request.base.repo.name
+    count = get_pr_commit_count_gql(client, org, repo_name, pr_number)
+    if count is not None:
+        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits: {count}")
+    else:
+        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits: (unknown)")
 
     commit_authors = []
     any_missing = False
+    max_workers = 16
+    submit_chunk = 256
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
-        future_to_commit = {
-            executor.submit(get_author_summary, commit, pull_request.number, installation_id, with_co_authors): commit
-            for commit in pull_request.get_commits()
-        }
-        for future in concurrent.futures.as_completed(future_to_commit):
-            future_to_commit[future]
-            try:
-                authors, missing = future.result()
-                if not any_missing and missing:
-                    any_missing = True
-                commit_authors.extend(authors)
-            except Exception as exc:
-                cla.log.warning(f"{fn} - PR: {pull_request.number}, get_author_summary generated an exception: {exc}")
-                raise exc
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for chunk in iter_chunks(iter_pr_commits_full(client, org, repo_name, pr_number), submit_chunk):
+                futures = [executor.submit(get_author_summary_gql, c, pr_number, installation_id, with_co_authors)
+                           for c in chunk]
+                for fut in concurrent.futures.as_completed(futures):
+                    authors, missing = fut.result()
+                    any_missing = any_missing or missing
+                    commit_authors.extend(authors)
+    except Exception as exc:
+        cla.log.warning(f"{fn} - PR: {pr_number}, get_author_summary_gql raised: {exc}")
+        raise
 
     return (commit_authors, any_missing)
 
 def is_valid_github_username(username: str) -> bool:
     return bool(GITHUB_USERNAME_REGEX.match(username))
 
-def get_co_author_commits(co_author, commit, pr, installation_id) -> Tuple[UserCommitSummary, bool]:
+def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[UserCommitSummary, bool]:
     fn = "cla.models.github_models.get_co_author_commits"
     # check if co-author is a github user
     co_author_summary = None
@@ -2067,7 +2259,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id) -> Tuple[UserC
             cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: {cached_user}")
             # Build UserCommitSummary using cached_user
             summary = UserCommitSummary(
-                commit.sha,
+                commit_sha,
                 getattr(cached_user, 'id', None),
                 getattr(cached_user, 'login', None),
                 name,
@@ -2079,7 +2271,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id) -> Tuple[UserC
         else:
             cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: (information that this user is missing)")
             summary = UserCommitSummary(
-                commit.sha,
+                commit_sha,
                 None,
                 None,
                 name,
@@ -2196,7 +2388,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id) -> Tuple[UserC
             pass
         cla.log.debug(f"{fn} - co-author github user details found: {co_author}, user: {user}, login: {login}, id: {github_id}, name: {final_name}, email: {final_email}")
         co_author_summary = UserCommitSummary(
-            commit.sha,
+            commit_sha,
             github_id,
             login,
             final_name,
@@ -2208,7 +2400,7 @@ def get_co_author_commits(co_author, commit, pr, installation_id) -> Tuple[UserC
         found = github_id is not None
     else:
         co_author_summary = UserCommitSummary(
-            commit.sha, None, None, name, email, False, False  # default not authorized - will be evaluated and updated later
+            commit_sha, None, None, name, email, False, False  # default not authorized - will be evaluated and updated later
         )
         cla.log.debug(f"{fn} - co-author github user details not found: {co_author}")
 
