@@ -1025,7 +1025,7 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	// Fetch committers
 	withCoAuthors := github.IsCoAuthorsEnabledForRepo(ghOrg.EnableCoAuthors, gitHubRepoName)
 	log.WithFields(f).Debugf("fetching commit authors for PR: %d using repository owner: %s, repo: %s", pullRequestID, gitHubOrgName, gitHubRepoName)
-	authors, latestSHA, anyMissing, authorsErr := github.GetPullRequestCommitAuthors(ctx, s.usersService, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, withCoAuthors)
+	authors, anyMissing, authorsErr := github.GetPullRequestCommitAuthors(ctx, s.usersService, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, withCoAuthors)
 	if authorsErr != nil {
 		log.WithFields(f).WithError(authorsErr).Warnf("unable to get commit authors for %s/%s for PR: %d", gitHubOrgName, gitHubRepoName, pullRequestID)
 		return authorsErr
@@ -1045,10 +1045,12 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 		log.WithFields(f).Debugf("adding %d allowlisted actors to signed list", len(allowlisted))
 		signed = append(signed, allowlisted...)
 	}
+	signed = github.DedupAndSortCommitSummaries(signed)
+	unsigned = github.DedupAndSortCommitSummaries(unsigned)
 	log.WithFields(f).Debugf("commit authors status after allowlisting bots => signed: %+v, missing: %+v, allowlisted: %+v", signed, unsigned, allowlisted)
 
 	// update pull request
-	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, githubRepository.ID, *latestSHA, signed, unsigned, anyMissing, s.claBaseAPIURL, s.claLandingPage, s.claLogoURL)
+	updateErr := github.UpdatePullRequest(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, githubRepository.ID, signed, unsigned, anyMissing, s.claBaseAPIURL, s.claLandingPage, s.claLogoURL)
 	if updateErr != nil {
 		log.WithFields(f).Debugf("unable to update PR: %d", pullRequestID)
 		return updateErr
