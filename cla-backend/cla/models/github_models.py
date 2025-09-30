@@ -867,7 +867,7 @@ class GitHub(repository_service_interface.RepositoryService):
         if allowlisted is not None and len(allowlisted) > 0:
             cla.log.debug(f"{fn} - adding {len(allowlisted)} allowlisted actors to signed list")
             signed.extend(allowlisted)
-        signed  = dedup_and_sort(signed)
+        signed = dedup_and_sort(signed)
         missing = dedup_and_sort(missing)
 
         # update Merge group status
@@ -1040,7 +1040,7 @@ class GitHub(repository_service_interface.RepositoryService):
         if allowlisted is not None and len(allowlisted) > 0:
             cla.log.debug(f"{fn} - adding {len(allowlisted)} allowlisted actors to signed list")
             signed.extend(allowlisted)
-        signed  = dedup_and_sort(signed)
+        signed = dedup_and_sort(signed)
         missing = dedup_and_sort(missing)
         # At this point, the signed and missing lists are now filled and updated with the commit user info
 
@@ -2662,7 +2662,7 @@ def create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, si
 
 def create_commit_status(commit_obj, state, sign_url, body, context):
     """
-    Helper function to create a commit status message given the PR and commit hash.
+    Helper function to create a commit status message given the commit object.
 
     :param commit_obj: The commit to post a status on.
     :type commit_obj: Commit
