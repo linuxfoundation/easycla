@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
@@ -1129,7 +1130,7 @@ query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:Strin
 
 	var (
 		userCommitSummary []*UserCommitSummary
-		anyMissing        bool
+		anyMissing        atomic.Bool
 		latestCommitSHA   *string
 
 		mu      sync.Mutex
@@ -1143,6 +1144,7 @@ query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:Strin
 
 	var (
 		cursor      *string
+		totalLogged bool
 		lastSeenSHA string
 	)
 
@@ -1165,8 +1167,11 @@ query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:Strin
 		}
 
 		c := page.Repository.PullRequest.Commits
-		log.WithFields(f).Debugf("found %d commits (totalCount) for pull request: %d", c.TotalCount, pullRequestID)
-		userCommitSummary = make([]*UserCommitSummary, 0, c.TotalCount)
+		if !totalLogged {
+			log.WithFields(f).Debugf("found %d commits (totalCount) for pull request: %d", c.TotalCount, pullRequestID)
+			totalLogged = true
+			userCommitSummary = make([]*UserCommitSummary, 0, c.TotalCount)
+		}
 		if n := len(c.Nodes); n > 0 {
 			lastSeenSHA = c.Nodes[n-1].Commit.OID
 		}
@@ -1244,15 +1249,10 @@ query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:Strin
 				})
 				mu.Unlock()
 
-				// Expand co-authors (this function appends to the shared slice),
-				// so guard the whole call with the same mutex to avoid races.
 				if withCoAuthors {
-					missing := ExpandWithCoAuthors(ctx, client, usersService, rc, pullRequestID, installationID, &userCommitSummary, &mu)
-					mu.Lock()
-					if missing && !anyMissing {
-						anyMissing = true
+					if ExpandWithCoAuthors(ctx, client, usersService, rc, pullRequestID, installationID, &userCommitSummary, &mu) {
+						anyMissing.Store(true)
 					}
-					mu.Unlock()
 				}
 			}()
 		}
@@ -1271,8 +1271,8 @@ query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:Strin
 		latestCommitSHA = &lastSeenSHA
 	}
 
-	log.WithFields(f).Debugf("total commit author summaries (including co-authors) for PR %d: %d, any missing: %v, latest SHA: %s", pullRequestID, len(userCommitSummary), anyMissing, utils.StringValue(latestCommitSHA))
-	return userCommitSummary, latestCommitSHA, anyMissing, nil
+	log.WithFields(f).Debugf("total commit author summaries (including co-authors) for PR %d: %d, any missing: %v, latest SHA: %s", pullRequestID, len(userCommitSummary), anyMissing.Load(), utils.StringValue(latestCommitSHA))
+	return userCommitSummary, latestCommitSHA, anyMissing.Load(), nil
 }
 
 func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, repoID *int64, latestSHA string, signed []*UserCommitSummary, missing []*UserCommitSummary, anyMissing bool, CLABaseAPIURL, CLALandingPage, CLALogoURL string) error {
