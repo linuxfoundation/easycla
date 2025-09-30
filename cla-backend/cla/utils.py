@@ -1990,6 +1990,21 @@ def get_co_authors_from_commit(commit):
             ]
     return co_authors
 
+def get_co_authors_from_message(message):
+    """
+    Helper function to return co-authors from commit
+    """
+    fn = "get_co_authors_from_message"
+    co_authors = []
+    if message:
+        matches = re.findall(r"co-authored-by:\s*(.+?)\s*<([^<>]+)>", message, re.I)
+        co_authors = [
+            (name.strip(), email.strip().lower())
+            for name, email in matches
+            if name.strip() and email.strip()
+        ]
+    return co_authors
+
 def extract_pull_request_number(pull_request_message):
     """
     Helper function to return pull request number from pull request message
