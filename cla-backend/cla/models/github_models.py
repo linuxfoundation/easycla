@@ -1001,7 +1001,10 @@ class GitHub(repository_service_interface.RepositoryService):
 
         for future in concurrent.futures.as_completed(futures):
             # cla.log.debug(f"{fn} - ThreadClosed for handle_commit_from_user")
-            future.result()
+            try:
+                future.result()
+            except Exception as e:
+                cla.log.error(f"{fn} - Exception in commit author thread for PR: {pull_request.number}, error: {e}")
 
         # Skip allowlisted bots per org/repo GitHub login/email regexps
         missing, allowlisted = self.skip_allowlisted_bots(github_org, repository.get_repository_name(), missing)
