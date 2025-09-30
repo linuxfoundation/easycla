@@ -94,6 +94,33 @@ class CommitLite:
     author_email: Optional[str]
     message: Optional[str]
 
+
+def str_strip_lower(s): return (s or "").strip().lower()
+
+def dedup_and_sort(items):
+    seen = set()
+    uniq = []
+    for s in items:
+        if s is None:
+            continue
+        key = (
+            getattr(s, "author_id", None),
+            str_strip_lower(getattr(s, "author_login", None)),
+            str_strip_lower(getattr(s, "author_email", None)),
+            getattr(s, "commit_sha", None),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(s)
+    uniq.sort(key=lambda s: (
+        str_strip_lower(getattr(s, "author_login", None)),
+        str_strip_lower(getattr(s, "author_name", None)),
+        str_strip_lower(getattr(s, "author_email", None)),
+        getattr(s, "commit_sha", "") or "",
+    ))
+    return uniq
+
 class GitHub(repository_service_interface.RepositoryService):
     """
     The GitHub repository service.
@@ -840,6 +867,8 @@ class GitHub(repository_service_interface.RepositoryService):
         if allowlisted is not None and len(allowlisted) > 0:
             cla.log.debug(f"{fn} - adding {len(allowlisted)} allowlisted actors to signed list")
             signed.extend(allowlisted)
+        signed = dedup_and_sort(signed)
+        missing = dedup_and_sort(missing)
 
         # update Merge group status
         self.update_merge_group_status(
@@ -1011,6 +1040,8 @@ class GitHub(repository_service_interface.RepositoryService):
         if allowlisted is not None and len(allowlisted) > 0:
             cla.log.debug(f"{fn} - adding {len(allowlisted)} allowlisted actors to signed list")
             signed.extend(allowlisted)
+        signed = dedup_and_sort(signed)
+        missing = dedup_and_sort(missing)
         # At this point, the signed and missing lists are now filled and updated with the commit user info
 
         cla.log.debug(
@@ -2434,6 +2465,12 @@ def has_check_previously_passed_or_failed(pull_request: PullRequest):
             return True, comment
     return False, None
 
+def normalize_comment(s: str) -> str:
+    s = (s or "").replace("\r\n", "\n")
+    lines = [ln.rstrip(" \t") for ln in s.split("\n")]
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
 
 def update_pull_request(
     installation_id,
@@ -2468,7 +2505,11 @@ def update_pull_request(
     fn = "cla.models.github_models.update_pull_request"
     notification = cla.conf["GITHUB_PR_NOTIFICATION"]
     both = notification == "status+comment" or notification == "comment+status"
-    last_commit = pull_request.get_commits().reversed[0]
+    last_commit_sha = getattr(getattr(pull_request, "head", None), "sha", None)
+    if not last_commit_sha:
+        cla.log.error(f"{fn} - PR {pull_request.number}: missing head.sha; cannot create statuses")
+        return
+    commit_obj = pull_request.base.repo.get_commit(last_commit_sha)
 
     # Here we update the PR status by adding/updating the PR body - this is the way the EasyCLA app
     # knows if it is pass/fail.
@@ -2488,14 +2529,14 @@ def update_pull_request(
                 )
 
             # check if unsigned user is allowlisted
-            if user_commit_summary.commit_sha != last_commit.sha:
+            if user_commit_summary.commit_sha != last_commit_sha:
                 continue
 
             text += user_commit_summary.get_display_text(tag_user=True)
 
         payload = {
             "name": "CLA check",
-            "head_sha": last_commit.sha,
+            "head_sha": last_commit_sha,
             "status": "completed",
             "conclusion": "action_required",
             "details_url": help_url,
@@ -2517,16 +2558,21 @@ def update_pull_request(
         if not missing:
             # After Issue #167 was in place, they decided via Issue #289 that we
             # DO want to update the comment, but only after we've previously failed
-            if previously_pass_or_failed:
-                cla.log.debug(f"{fn} - Found previously passed or failed checks - updating CLA comment in PR.")
+            if previously_pass_or_failed and normalize_comment(comment.body) != normalize_comment(body):
+                cla.log.debug(f"{fn} - Found previously passed or failed checks and comment body changed - updating CLA comment in PR.")
+                cla.log.debug(f"{fn} - Old comment: {comment.body}")
+                cla.log.debug(f"{fn} - New comment: {body}")
                 comment.edit(body)
             cla.log.debug(f"{fn} - EasyCLA App checks pass for PR: {pull_request.number} with authors: {signed}")
         else:
             # Per Issue #167, only add a comment if check fails
             # update_cla_comment(pull_request, body)
             if previously_pass_or_failed:
-                cla.log.debug(f"{fn} - Found previously failed checks - updating CLA comment in PR.")
-                comment.edit(body)
+                if normalize_comment(comment.body) != normalize_comment(body):
+                    cla.log.debug(f"{fn} - Found previously failed checks and comment body changed - updating CLA comment in PR.")
+                    cla.log.debug(f"{fn} - Old comment: {comment.body}")
+                    cla.log.debug(f"{fn} - New comment: {body}")
+                    comment.edit(body)
             else:
                 pull_request.create_issue_comment(body)
 
@@ -2554,7 +2600,7 @@ def update_pull_request(
                 f"{fn} - Creating new CLA '{state}' status - {len(signed)} passed, {missing} failed, "
                 f"signing url: {sign_url}"
             )
-            create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
+            create_commit_status(commit_obj, state, sign_url, body, context)
         elif signed is not None and len(signed) > 0:
             state = "success"
             # For status, we change the context from author_name to 'communitybridge/cla' or the
@@ -2567,7 +2613,7 @@ def update_pull_request(
                 f"{fn} - Creating new CLA '{state}' status - {len(signed)} passed, {missing} failed, "
                 f"signing url: {sign_url}"
             )
-            create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
+            create_commit_status(commit_obj, state, sign_url, body, context)
         else:
             # error condition - should have at least one committer, and they would be in one of the above
             # lists: missing or signed
@@ -2587,7 +2633,7 @@ def update_pull_request(
                 f"should have at least one committer in one of these lists: "
                 f"{len(signed)} passed, {missing}"
             )
-            create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
+            create_commit_status(commit_obj, state, sign_url, body, context)
 
 
 def create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, sign_url, body, context):
@@ -2614,14 +2660,12 @@ def create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, si
         cla.log.warning(f"Unable to create commit status for  " f"and merge commit {merge_commit_sha}: {e}")
 
 
-def create_commit_status(pull_request, commit_hash, state, sign_url, body, context):
+def create_commit_status(commit_obj, state, sign_url, body, context):
     """
-    Helper function to create a pull request commit status message given the PR and commit hash.
+    Helper function to create a commit status message given the commit object.
 
-    :param pull_request: The GitHub Pull Request object.
-    :type pull_request: github.PullRequest
-    :param commit_hash: The commit hash to post a status on.
-    :type commit_hash: string
+    :param commit_obj: The commit to post a status on.
+    :type commit_obj: Commit
     :param state: The state of the status.
     :type state: string
     :param sign_url: The link the user will be taken to when clicking on the status message.
@@ -2630,33 +2674,20 @@ def create_commit_status(pull_request, commit_hash, state, sign_url, body, conte
     :type body: string
     """
     try:
-        commit_obj = None
-        for commit in pull_request.get_commits():
-            if commit.sha == commit_hash:
-                commit_obj = commit
-                break
-        if commit_obj is None:
-            cla.log.error(
-                f"Could not post status {state} on " f"PR: {pull_request.number}, " f"Commit: {commit_hash} not found"
-            )
-            return
-        # context is a string label to differentiate one signer status from another signer status.
-        # committer name is used as context label
-        cla.log.info(f"Updating status with state '{state}' on PR {pull_request.number} for commit {commit_hash}...")
-        # returns github.CommitStatus.CommitStatus
+        sha = getattr(commit_obj, "sha", "(unknown)")
         resp = commit_obj.create_status(state, sign_url, body, context)
         cla.log.info(
-            f"Successfully posted status '{state}' on PR {pull_request.number}: Commit {commit_hash} "
+            f"Successfully posted status '{state}': Commit {sha} "
             f"with SignUrl : {sign_url} with response: {resp}"
         )
     except GithubException as exc:
+        sha = getattr(commit_obj, "sha", "(unknown)")
         cla.log.error(
-            f"Could not post status '{state}' on PR: {pull_request.number}, "
-            f"Commit: {commit_hash}, "
+            f"Could not post status '{state}' on "
+            f"Commit: {sha}, "
             f"Response Code: {exc.status}, "
             f"Message: {exc.data}"
         )
-
 
 # def update_cla_comment(pull_request, body):
 #     """
