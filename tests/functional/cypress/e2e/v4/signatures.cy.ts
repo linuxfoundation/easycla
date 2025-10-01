@@ -4,8 +4,8 @@ import {
   getTokenKey,
   getAPIBaseURL,
   getXACLHeader,
-} from '../support/commands';
-//import {appConfig} from  '../support/config.${Cypress.env("CYPRESS_ENV")}'
+} from '../../support/commands';
+//import {appConfig} from  '../../support/config.${Cypress.env("CYPRESS_ENV")}'
 describe('To Validate & get list of signatures of ClaGroups via API call', function () {
   // Define a variable for the environment
   const environment = Cypress.env('CYPRESS_ENV');
@@ -13,9 +13,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   // Import the appropriate configuration based on the environment
   let appConfig;
   if (environment === 'dev') {
-    appConfig = require('../appConfig/config.dev.ts').appConfig;
+    appConfig = require('../../appConfig/config.dev.ts').appConfig;
   } else if (environment === 'production') {
-    appConfig = require('../appConfig/config.production.ts').appConfig;
+    appConfig = require('../../appConfig/config.production.ts').appConfig;
   }
 
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/signatures
@@ -467,7 +467,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       validate_200_Status(response);
       let list = response.body.emailApprovalList;
       if (list != null) {
-        for (let i = 0; i <= list.length; i++) {
+        for (let i = 0; i < list.length; i++) {
           expect(list[i]).to.not.equal(emailApprovalList);
         }
       }
@@ -515,7 +515,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       validate_200_Status(response);
       let list = response.body.githubOrgApprovalList;
       if (list != null) {
-        for (let i = 0; i <= list.length; i++) {
+        for (let i = 0; i < list.length; i++) {
           expect(list[i]).to.not.equal(gitOrgApprovalList);
         }
       }
@@ -538,13 +538,16 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.githubUsernameApprovalList;
-      for (let i = 0; i <= list.length; i++) {
+      let found = false;
+      for (let i = 0; i < list.length; i++) {
         if (list[i] === gitUsernameApprovalList) {
           expect(list[i]).to.eql(gitUsernameApprovalList);
+          found = true;
           break;
-        } else if (i == list.length) {
-          expect(list[i]).to.eql(gitUsernameApprovalList);
         }
+      }
+      if (!found) {
+        expect.fail('GitHub Username not found in approval list');
       }
     });
   });
@@ -566,7 +569,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       validate_200_Status(response);
       let list = response.body.githubUsernameApprovalList;
       if (list != null) {
-        for (let i = 0; i <= list.length; i++) {
+        for (let i = 0; i < list.length; i++) {
           expect(list[i]).to.not.equal(gitUsernameApprovalList);
         }
       }
@@ -589,13 +592,16 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.gitlabUsernameApprovalList;
-      for (let i = 0; i <= list.length; i++) {
+      let found = false;
+      for (let i = 0; i < list.length; i++) {
         if (list[i] === gitUsernameApprovalList) {
           expect(list[i]).to.eql(gitUsernameApprovalList);
+          found = true;
           break;
-        } else if (i == list.length) {
-          expect(list[i]).to.eql(gitUsernameApprovalList);
         }
+      }
+      if (!found) {
+        expect.fail('GitLab Username not found in approval list');
       }
     });
   });
@@ -617,7 +623,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       validate_200_Status(response);
       let list = response.body.gitlabUsernameApprovalList;
       if (list != null) {
-        for (let i = 0; i <= list.length; i++) {
+        for (let i = 0; i < list.length; i++) {
           expect(list[i]).to.not.equal(gitUsernameApprovalList);
         }
       }
@@ -640,13 +646,16 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.gitlabOrgApprovalList;
-      for (let i = 0; i <= list.length; i++) {
+      let found = false;
+      for (let i = 0; i < list.length; i++) {
         if (list[i] === gitLabOrgApprovalList) {
           expect(list[i]).to.eql(gitLabOrgApprovalList);
+          found = true;
           break;
-        } else if (i == list.length) {
-          expect(list[i]).to.eql(gitLabOrgApprovalList);
         }
+      }
+      if (!found) {
+        expect.fail('GitLab Org not found in approval list');
       }
     });
   });
@@ -668,7 +677,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       validate_200_Status(response);
       let list = response.body.gitlabOrgApprovalList;
       if (list != null) {
-        for (let i = 0; i <= list.length; i++) {
+        for (let i = 0; i < list.length; i++) {
           expect(list[i]).to.not.equal(gitLabOrgApprovalList);
         }
       }
@@ -691,13 +700,16 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.domainApprovalList;
-      for (let i = 0; i <= list.length; i++) {
+      let found = false;
+      for (let i = 0; i < list.length; i++) {
         if (list[i] === domainApprovalList) {
           expect(list[i]).to.eql(domainApprovalList);
+          found = true;
           break;
-        } else if (i == list.length) {
-          expect(list[i]).to.eql(domainApprovalList);
         }
+      }
+      if (!found) {
+        expect.fail('Domain not found in approval list');
       }
     });
   });
@@ -719,7 +731,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       validate_200_Status(response);
       let list = response.body.domainApprovalList;
       if (list != null) {
-        for (let i = 0; i <= list.length; i++) {
+        for (let i = 0; i < list.length; i++) {
           expect(list[i]).to.not.equal(domainApprovalList);
         }
       }

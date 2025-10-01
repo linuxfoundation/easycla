@@ -64,7 +64,7 @@ class TestGetPullRequestCommitAuthors(TestCase):
         installation_id = 123
 
         # Call the function
-        result, _ = get_co_author_commits(co_author,commit, pr, installation_id)
+        result, _ = get_co_author_commits(co_author, commit.sha, pr, installation_id)
 
         # Assertions
         self.assertEqual(result.commit_sha, "fake_sha")
@@ -87,7 +87,7 @@ class TestGetPullRequestCommitAuthors(TestCase):
         installation_id = 123
 
         # Call the function
-        result, _ = get_co_author_commits(co_author,commit, pr, installation_id)
+        result, _ = get_co_author_commits(co_author, commit.sha, pr, installation_id)
 
         # Assertions
         self.assertEqual(result.commit_sha, "fake_sha")
