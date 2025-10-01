@@ -1,6 +1,6 @@
-# EasyCLA (Python): Author Caching + Large-PR Support
+# EasyCLA: Author and Co-author Caching + Large-PR Support
 
-- **Two-level caching** for author identity & per-project signature decisions.
+- **Two-level caching** for author and co-author identity & identity plus per-project signature decisions.
 - **GraphQL-based commit ingestion** that comfortably handles PRs with **250+ commits (and beyond)**.
 
 ---
@@ -12,12 +12,12 @@
 
 ---
 
-## Caching (at a glance)
+## Caching 
 - **General cache key**: `(author_id, lower(login), lower(email)) → (user | None)`
 - **Per-project cache key**: `(project_id, author_id, lower(login), lower(email)) → (user | None, authorized, affiliated)`
 - **TTL policy**: positives **~24h**; negative/uncertain states use **Quick TTL = 5m**.
 - **Flow**: per-project cache → general cache → cold DB path. Results are stored back with the appropriate TTL.
-- Thread-safe with periodic cleanup; logs explain cache hits/misses and decisions.
+- Thread-safe with periodic expired entries cleanup (once per hour).
 
 ---
 
