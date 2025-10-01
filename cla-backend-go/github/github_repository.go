@@ -1776,7 +1776,7 @@ func getCommentBadge(allSigned bool, signURL string, missingUserId, managerAppro
 		badgeURL = fmt.Sprintf("%s/cla-signed.svg%s", CLALogoURL, svgVersion)
 		badgeHyperLink = fmt.Sprintf("%s/#/?version=2", CLALandingPage)
 		alt = "CLA Signed"
-		return fmt.Sprintf(`<a href="%s"><img src="%s" alt="%s" align="left" height="28" width="328" >`, badgeHyperLink, badgeURL, alt)
+		return fmt.Sprintf(`<a href="%s"><img src="%s" alt="%s" align="left" height="28" width="328" ></a>`, badgeHyperLink, badgeURL, alt)
 	}
 	badgeHyperLink = signURL
 	if missingUserId {
@@ -1790,7 +1790,7 @@ func getCommentBadge(allSigned bool, signURL string, missingUserId, managerAppro
 		alt = "CLA Not Signed"
 	}
 
-	text = fmt.Sprintf(`<a href="%s"><img src="%s" alt="%s" align="left" height="28" width="328" >`, badgeHyperLink, badgeURL, alt)
+	text = fmt.Sprintf(`<a href="%s"><img src="%s" alt="%s" align="left" height="28" width="328" ></a>`, badgeHyperLink, badgeURL, alt)
 	return fmt.Sprintf("%s<br/>", text)
 }
 
