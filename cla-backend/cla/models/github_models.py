@@ -2067,6 +2067,8 @@ def pygithub_graphql(g, query: str, variables: dict | None = None):
     Works on older PyGithub versions lacking Github.graphql().
     """
     try:
+        # LG: note that this uses internal PyGithub API - may break in future versions:
+        # g._Github__requester.requestJsonAndCheck
         headers, data = g._Github__requester.requestJsonAndCheck(
             "POST",
             "/graphql",
