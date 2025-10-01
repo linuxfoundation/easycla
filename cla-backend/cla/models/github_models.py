@@ -2466,7 +2466,7 @@ def has_check_previously_passed_or_failed(pull_request: PullRequest):
     return False, None
 
 def normalize_comment(s: str) -> str:
-    s = (s or "").replace("\r\n", "\n")
+    s = (s or "").replace("\r\n", "\n").replace("\r", "\n")
     lines = [ln.rstrip(" \t") for ln in s.split("\n")]
     while lines and lines[-1] == "":
         lines.pop()

@@ -62,7 +62,6 @@ Please update your commit message(s) by doing |git commit --amend| and then |git
 `
 
 const (
-	help          = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
 	unknown       = "Unknown"
 	failureState  = "failure"
 	successState  = "success"
@@ -475,7 +474,7 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 		}
 	}
 
-	return strings.Replace(sb.String(), "/ $", "", -1)
+	return strings.TrimSuffix(sb.String(), " / ")
 }
 
 // SearchGithubUserByEmail searches for a GitHub user by email using the GitHub search API.
@@ -1599,6 +1598,9 @@ func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, 
 	return fmt.Sprintf("%s<br >%s", badge, commentBody)
 }
 
+// getCommentBody mirrors the Python get_comment_body behavior.
+//
+//nolint:gocyclo // complexity is acceptable for now
 func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommitSummary, anyMissing bool) string {
 	f := logrus.Fields{
 		"functionName":   "github.github_repository.getCommentBody",
@@ -1606,7 +1608,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 		"signURL":        signURL,
 	}
 	failed := ":x:"
-	_success := ":white_check_mark:" // avoid shadowing success var elsewhere
+	success := ":white_check_mark:"
 
 	var committersComment strings.Builder
 	text := ""
@@ -1619,39 +1621,76 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 		committersComment.WriteString("<ul>")
 	}
 
-	// --- Signed section (group by author label; list SHAs) ---
+	// ---------- Signed section (group by author) ----------
 	if numSigned > 0 {
-		// Group commits by author label (no tagging for signed)
-		committers := getAuthorInfoCommits(signed, false) // map[string][]*UserCommitSummary
+		committers := make(map[string][]*UserCommitSummary, numSigned)
+		for _, ucs := range signed {
+			var authorInfo string
+			if ucs != nil && ucs.IsValid() {
+				authorInfo = ucs.getUserInfo(false)
+			} else {
+				authorInfo = unknown
+			}
+			committers[authorInfo] = append(committers[authorInfo], ucs)
+		}
 
-		for authorInfo, summaries := range committers {
-			// Build list of SHAs
+		// sort keys for stable output
+		keys := make([]string, 0, len(committers))
+		for k := range committers {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		for _, authorInfo := range keys {
+			summaries := committers[authorInfo]
 			shas := make([]string, 0, len(summaries))
 			for _, s := range summaries {
-				shas = append(shas, s.SHA)
+				if s != nil {
+					shas = append(shas, s.SHA)
+				}
 			}
-			log.WithFields(f).Infof("SHAs for signed users: %v", shas)
+			log.WithFields(f).Debugf("SHAs for signed users: %v", shas)
 			committersComment.WriteString(
-				fmt.Sprintf("<li>%s %s (%s)</li>", _success, authorInfo, strings.Join(shas, ", ")),
+				fmt.Sprintf("<li>%s %s (%s)</li>", success, authorInfo, strings.Join(shas, ", ")),
 			)
 		}
 	}
 
-	// --- Missing section (group by author label; list SHAs; guidance) ---
+	// ---------- Missing section (group by author) ----------
 	if numMissing > 0 {
 		supportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
 		missingIDHelpURL := "https://linuxfoundation.atlassian.net/wiki/spaces/LP/pages/160923756/Missing+ID+on+Commit+but+I+have+an+agreement+on+file"
 		githubHelpURL := "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
 
-		// Tag users for missing (mentions)
-		committers := getAuthorInfoCommits(missing, true) // map[string][]*UserCommitSummary
+		committers := make(map[string][]*UserCommitSummary, numMissing)
+		for _, ucs := range missing {
+			var authorInfo string
+			if ucs != nil && ucs.IsValid() {
+				authorInfo = ucs.getUserInfo(true)
+				if strings.TrimSpace(authorInfo) == "" {
+					authorInfo = unknown
+				}
+			} else {
+				authorInfo = unknown
+			}
+			committers[authorInfo] = append(committers[authorInfo], ucs)
+		}
 
-		for authorInfo, summaries := range committers {
-			// Unknown author branch
+		// sort keys for stable output
+		keys := make([]string, 0, len(committers))
+		for k := range committers {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		for _, authorInfo := range keys {
+			summaries := committers[authorInfo]
 			if authorInfo == unknown {
 				shas := make([]string, 0, len(summaries))
 				for _, s := range summaries {
-					shas = append(shas, s.SHA)
+					if s != nil {
+						shas = append(shas, s.SHA)
+					}
 				}
 				committersComment.WriteString(fmt.Sprintf(
 					"<li> %s The email address for the commit (%s) is not linked to the GitHub account, preventing the EasyCLA check. "+
@@ -1665,39 +1704,41 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 				continue
 			}
 
-			// Check for users who are authorized but missing affiliation
 			missingAffiliations := make([]*UserCommitSummary, 0, len(summaries))
 			for _, s := range summaries {
-				if !s.Affiliated && s.Authorized {
+				if s != nil && !s.Affiliated && s.Authorized {
 					missingAffiliations = append(missingAffiliations, s)
 				}
 			}
-
 			if len(missingAffiliations) > 0 {
-				// SHAs only for those missing affiliation
 				shas := make([]string, 0, len(missingAffiliations))
 				for _, s := range missingAffiliations {
-					shas = append(shas, s.SHA)
+					if s != nil {
+						shas = append(shas, s.SHA)
+					}
 				}
-				log.WithFields(f).Infof("SHAs for users with missing company affiliations: %v", shas)
+				log.WithFields(f).Debugf("SHAs for users with missing company affiliations: %v", shas)
 				committersComment.WriteString(fmt.Sprintf(
 					`<li>%s %s (%s). This user is authorized, but they must confirm their affiliation with their company. `+
 						`Start the authorization process <a href='%s' target='_blank'> by clicking here</a>, `+
 						`click "Corporate", select the appropriate company from the list, then confirm your affiliation on the page that appears. `+
 						`For further assistance with EasyCLA, <a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`,
-					failed, authorInfo, strings.Join(shas, ", "), signURL, supportURL,
+					failed, authorInfo, strings.Join(shas, ", "),
+					signURL, supportURL,
 				))
 			} else {
-				// Not authorized (list all SHAs)
 				shas := make([]string, 0, len(summaries))
 				for _, s := range summaries {
-					shas = append(shas, s.SHA)
+					if s != nil {
+						shas = append(shas, s.SHA)
+					}
 				}
 				committersComment.WriteString(fmt.Sprintf(
 					`<li><a href='%s' target='_blank'>%s</a> - %s. The commit (%s) is not authorized under a signed CLA. `+
 						`<a href='%s' target='_blank'>Please click here to be authorized</a>. `+
 						`For further assistance with EasyCLA, <a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`,
-					signURL, failed, authorInfo, strings.Join(shas, ", "), signURL, supportURL,
+					signURL, failed, authorInfo, strings.Join(shas, ", "),
+					signURL, supportURL,
 				))
 			}
 		}
@@ -1708,8 +1749,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 		committersComment.WriteString("</ul>")
 	}
 
-	// LG: we don't need this as this will change the comment body every time
-	// committersComment.WriteString(fmt.Sprintf("<!-- Date Modified: %s -->", time.Now().Format(time.RFC3339)))
+	// Python has a Date Modified footer, but that causes churn; intentionally omitted.
 
 	// Success note if everyone is signed
 	if numSigned > 0 && numMissing == 0 {
@@ -1756,25 +1796,6 @@ func getCommentBadge(allSigned bool, signURL string, missingUserId, managerAppro
 
 func getFullSignURL(repositoryType, installationID, githubRepositoryID, pullRequestID, apiBaseURL string) string {
 	return fmt.Sprintf("%s/v2/repository-provider/%s/sign/%s/%s/%s/#/?version=2", apiBaseURL, repositoryType, installationID, githubRepositoryID, pullRequestID)
-}
-
-func getAuthorInfoCommits(userSummary []*UserCommitSummary, tagUser bool) map[string][]*UserCommitSummary {
-	f := logrus.Fields{
-		"functioName": "github.github_repository.getAuthorInfoCommits",
-	}
-	result := make(map[string][]*UserCommitSummary)
-	for _, author := range userSummary {
-		log.WithFields(f).WithFields(f).Debugf("checking user summary for : %s", author.getUserInfo(tagUser))
-		if _, ok := result[author.getUserInfo(tagUser)]; !ok {
-
-			result[author.getUserInfo(tagUser)] = []*UserCommitSummary{
-				author,
-			}
-		} else {
-			result[author.getUserInfo(tagUser)] = append(result[author.getUserInfo(tagUser)], author)
-		}
-	}
-	return result
 }
 
 // GetRepositoryByExternalID finds github repository by github repository id
