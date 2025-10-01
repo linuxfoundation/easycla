@@ -1103,7 +1103,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
         for author_info, user_commit_summaries in committers.items():
             # build a quick list of just the commit hash values
             commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
-            cla.log.info(f"{fn} SHAs for signed users: {commit_shas}")
+            cla.log.debug(f"{fn} SHAs for signed users: {commit_shas}")
             committers_comment += f'<li>{success} {author_info} ({", ".join(commit_shas)})</li>'
 
     if num_missing > 0:
@@ -1153,7 +1153,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                         for user_commit_summary in user_commit_summaries
                         if not user_commit_summary.affiliated
                     ]
-                    cla.log.info(f"{fn} SHAs for users with missing company affiliations: {commit_shas}")
+                    cla.log.debug(f"{fn} SHAs for users with missing company affiliations: {commit_shas}")
                     committers_comment += (
                         f'<li>{failed} {author_info} ({", ".join(commit_shas)}). '
                         f"This user is authorized, but they must confirm their affiliation with their company. "
