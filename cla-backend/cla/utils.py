@@ -1103,7 +1103,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
         for author_info, user_commit_summaries in committers.items():
             # build a quick list of just the commit hash values
             commit_shas = [user_commit_summary.commit_sha for user_commit_summary in user_commit_summaries]
-            cla.log.info(f"{fn} SHAs for signed users: {commit_shas}")
+            cla.log.debug(f"{fn} SHAs for signed users: {commit_shas}")
             committers_comment += f'<li>{success} {author_info} ({", ".join(commit_shas)})</li>'
 
     if num_missing > 0:
@@ -1153,7 +1153,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                         for user_commit_summary in user_commit_summaries
                         if not user_commit_summary.affiliated
                     ]
-                    cla.log.info(f"{fn} SHAs for users with missing company affiliations: {commit_shas}")
+                    cla.log.debug(f"{fn} SHAs for users with missing company affiliations: {commit_shas}")
                     committers_comment += (
                         f'<li>{failed} {author_info} ({", ".join(commit_shas)}). '
                         f"This user is authorized, but they must confirm their affiliation with their company. "
@@ -1182,7 +1182,8 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
     if len(signed) > 0 or len(missing) > 0:
         committers_comment += "</ul>"
 
-    committers_comment += '<!-- Date Modified: ' + str(datetime.now()) + ' -->'
+    # LG: we don't need this because this will change comment body every time
+    # committers_comment += '<!-- Date Modified: ' + str(datetime.now()) + ' -->'
 
     if len(signed) > 0 and len(missing) == 0:
         text += "The committers listed above are authorized under a signed CLA."
@@ -1988,6 +1989,21 @@ def get_co_authors_from_commit(commit):
                 for name, email in matches
                 if name.strip() and email.strip()
             ]
+    return co_authors
+
+def get_co_authors_from_message(message):
+    """
+    Helper function to return co-authors from commit
+    """
+    fn = "get_co_authors_from_message"
+    co_authors = []
+    if message:
+        matches = re.findall(r"co-authored-by:\s*(.+?)\s*<([^<>]+)>", message, re.I)
+        co_authors = [
+            (name.strip(), email.strip().lower())
+            for name, email in matches
+            if name.strip() and email.strip()
+        ]
     return co_authors
 
 def extract_pull_request_number(pull_request_message):

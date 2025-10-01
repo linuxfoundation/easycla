@@ -1,4 +1,4 @@
-import { validate_200_Status, getTokenKey, getAPIBaseURL, getXACLHeader } from '../support/commands';
+import { validate_200_Status, getTokenKey, getAPIBaseURL, getXACLHeader } from '../../support/commands';
 describe('To Validate & get GitHub Activity Callback via API call', function () {
   //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-activity
   const claEndpoint = getAPIBaseURL('v4') + `github/activity`;
