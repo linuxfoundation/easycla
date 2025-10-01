@@ -1599,6 +1599,8 @@ func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, 
 }
 
 // getCommentBody mirrors the Python get_comment_body behavior.
+//
+//nolint:gocyclo // complexity is acceptable for now
 func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommitSummary, anyMissing bool) string {
 	f := logrus.Fields{
 		"functionName":   "github.github_repository.getCommentBody",
