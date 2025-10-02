@@ -79,6 +79,21 @@ func CCLADocusignMiddleware(next http.Handler) http.Handler {
 // Configure API call
 func Configure(api *operations.EasyclaAPI, service Service, userService users.Service) {
 	// Retrieve a list of available templates
+	api.SignClearCachesHandler = sign.ClearCachesHandlerFunc(
+		func(params sign.ClearCachesParams, user *auth.User) middleware.Responder {
+			reqID := utils.GetRequestID(params.XREQUESTID)
+			ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, user) // nolint
+			utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
+			resp, err := service.ClearCaches(ctx)
+			if err != nil {
+				if strings.Contains(err.Error(), "internal server error") {
+					return sign.NewClearCachesInternalServerError().WithPayload(errorResponse(reqID, err))
+				}
+				return sign.NewClearCachesBadRequest().WithPayload(errorResponse(reqID, err))
+			}
+			return sign.NewClearCachesOK().WithPayload(resp)
+		})
+
 	api.SignRequestCorporateSignatureHandler = sign.RequestCorporateSignatureHandlerFunc(
 		func(params sign.RequestCorporateSignatureParams, user *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
