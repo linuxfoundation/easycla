@@ -28,6 +28,7 @@ from cla.models import DoesNotExist, signing_service_interface
 from cla.models.dynamo_models import (Company, Document, Event, Gerrit,
                                       Project, Signature, User)
 from cla.models.event_types import EventType
+from cla.models.github_models import update_cache_after_signature
 from cla.models.s3_storage import S3Storage
 from cla.user_service import UserService
 from cla.utils import (append_email_help_sign_off_content, get_corporate_url,
@@ -1618,6 +1619,10 @@ class DocuSign(signing_service_interface.SigningService):
                     contains_pii=False,
                 )
                 cla.log.debug(f'{fn} - created an event log entry for event_type: {EventType.IndividualSignatureSigned}')
+
+                # Update cache to mark this user as authorized for the project
+                update_cache_after_signature(user, project)
+
             except DoesNotExist as err:
                 msg = (f'{fn} - unable to load project by CLA Group ID: {signature.get_signature_project_id()}, '
                        f'unable to send audit event, error: {err}')
@@ -1693,7 +1698,6 @@ class DocuSign(signing_service_interface.SigningService):
                     except Exception as e:
                         cla.log.error(f'{fn} - failed in adding user to the LDAP group: {e}')
                         return
-
             # Get signed document
             document_data = self.get_signed_document(envelope_id, user)
             # Send email with signed document.
@@ -1794,7 +1798,6 @@ class DocuSign(signing_service_interface.SigningService):
                        f'unable to send audit event, error: {err}')
                 cla.log.warning(msg)
                 return
-
             # Remove the active signature metadata.
             cla.utils.delete_active_signature_metadata(user.get_user_id())
 
@@ -1930,6 +1933,10 @@ class DocuSign(signing_service_interface.SigningService):
                     event_summary=event_summary,
                     contains_pii=False,
                 )
+
+                # Update cache to mark this user as authorized for the project
+                update_cache_after_signature(user, project)
+
             elif signature.get_signature_reference_type() == 'company':
                 event_data = (f'A corporate signature '
                               f'was signed for project {project.get_project_name()} '

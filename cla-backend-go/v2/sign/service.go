@@ -83,6 +83,7 @@ type Service interface {
 	GetSignedDocument(ctx context.Context, envelopeID, documentID string) ([]byte, error)
 	GetEnvelopeDocuments(ctx context.Context, envelopeID string) ([]DocuSignDocument, error)
 
+	ClearCaches(ctx context.Context) (*models.ClearCacheOutput, error)
 	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
 	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error)
 	RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
@@ -179,6 +180,18 @@ func validateCorporateSignatureInput(input *models.CorporateSignatureInput) erro
 		return errors.New("require company_sfid")
 	}
 	return nil
+}
+
+func (s *service) ClearCaches(ctx context.Context) (*models.ClearCacheOutput, error) {
+	f := logrus.Fields{
+		"functionName":   "sign.ClearCaches",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+	}
+	log.WithFields(f).Debug("clearing caches...")
+	github.ClearCaches()
+	return &models.ClearCacheOutput{
+		Status: "OK",
+	}, nil
 }
 
 func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error) { // nolint
@@ -600,6 +613,11 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 		}
 		log.WithFields(f).Debugf("logging event: %+v", eventArgs)
 		s.eventsService.LogEvent(eventArgs)
+		err = github.UpdateCacheAfterSignature(context.Background(), claUser, signature.ProjectID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to update cache for user: %s, project ID: %s", claUser.Username, signature.ProjectID)
+			return nil
+		}
 
 	} else {
 		log.WithFields(f).Debugf("envelope not signed - status: %s", status)
@@ -1209,6 +1227,11 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 		CompanyID:   companyID,
 		CompanySFID: companyModel.CompanyExternalID,
 	})
+	err = github.UpdateCacheAfterSignature(context.Background(), user, signature.ProjectID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to update cache for company: %v, user: %s, project ID: %s", companyID, user.Username, signature.ProjectID)
+		return err
+	}
 
 	// Check if project is a gerrit instance
 	//	var gerrits []*v1Models.Gerrit
