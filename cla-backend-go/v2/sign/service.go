@@ -616,7 +616,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 		err = github.UpdateCacheAfterSignature(context.Background(), claUser, signature.ProjectID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to update cache for user: %s, project ID: %s", claUser.Username, signature.ProjectID)
-			return err
+			return nil
 		}
 
 	} else {

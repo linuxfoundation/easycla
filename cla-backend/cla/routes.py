@@ -1879,10 +1879,10 @@ def user_from_token(auth_user: check_auth, request, response):
     """
     return cla.controllers.user.get_or_create_user(auth_user).to_dict()
 
-@hug.get("/clear-cache", versions=2)
+@hug.post("/clear-cache", versions=2)
 def clear_cache(auth_user: check_auth):
     """
-    GET: /clear-cache  (v2)
+    POST: /clear-cache
 
     Requires a valid Bearer token.
     Clears in-memory caches used by the Python GitHub layer and returns
