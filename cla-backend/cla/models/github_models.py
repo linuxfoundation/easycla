@@ -41,7 +41,7 @@ NOREPLY_USER_PATTERN = re.compile(r"^([a-zA-Z0-9-]+)@users\.noreply\.github\.com
 # GitHub usernames must be 3-39 characters long, can only contain alphanumeric characters or hyphens,
 # cannot begin or end with a hyphen, and cannot contain consecutive hyphens.
 GITHUB_USERNAME_REGEX = re.compile(r'^(?!-)(?!.*--)[A-Za-z0-9-]{3,39}(?<!-)$')
-NEGATIVE_CACHE_TTL = 180  # 3 minutes TTL for quick cache (all negative cases)
+NEGATIVE_CACHE_TTL = 180  # 3 minutes TTL for negative cache (all negative cases)
 PROJECT_CACHE_TTL = 10800  # 3 hours TTL for project cache (positive cases)
 
 class TTLCache:
@@ -2517,7 +2517,8 @@ def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[U
     if found:
         github_user_cache.set(cache_key, user)
     else:
-        github_user_cache.set_with_ttl(cache_key, user, 1800)  # negative cache for 30 minutes
+        # negative cache for 30 minutes (this is for GitHub user not found)
+        github_user_cache.set_with_ttl(cache_key, user, 1800)
     return (co_author_summary, found)
 
 

@@ -838,7 +838,6 @@ func GetCoAuthorCommits(
 			Authorized:   false,
 		}
 		log.WithFields(f).Debugf("PR: %d, %+v", pr, summary)
-		GithubUserCache.Set(cacheKey, user)
 	} else {
 		summary = &UserCommitSummary{
 			SHA: utils.StringValue(commit.SHA),
@@ -852,7 +851,12 @@ func GetCoAuthorCommits(
 			Authorized: false,
 		}
 		log.WithFields(f).Debugf("Co-author GitHub user details not found: %v", coAuthor)
-		GithubUserCache.SetWithTTL(cacheKey, user, 30*time.Minute) // negative cache for 30 minutes
+	}
+	if found {
+		GithubUserCache.Set(cacheKey, user)
+	} else {
+		// negative cache for 30 minutes (this is for GitHub user not found)
+		GithubUserCache.SetWithTTL(cacheKey, user, 30*time.Minute)
 	}
 
 	return summary, found

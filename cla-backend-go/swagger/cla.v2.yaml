@@ -4047,7 +4047,7 @@ paths:
         - sign
 
   /clear-cache:
-    get:
+    post:
       summary: Clear cache
       description: Clears the service cache
       operationId: clearCaches
