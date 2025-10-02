@@ -14,14 +14,14 @@
 ---
 
 ## Caching 
-- **Co-authors cache key** are cached based on their commit traile's (`Co-authored-by:`) normalized email and name.
+- **Co-author cache keys** are based on normalized email and name from the commit trailers (`Co-authored-by:`).
 - **General cache key**: `(author_id, lower(login), lower(email)) → (user | None)`
 - **Per-project cache key**: `(project_id, author_id, lower(login), lower(email)) → (user | None, authorized, affiliated)`
 - **TTL policy**: positives **~12h** (**~3h** for per-project with signature status); negative/uncertain states use **Negative TTL = 3m**.
 - **Flow**: per-project cache → general cache → cold DB path. Results are stored back with the appropriate TTL.
 - **When signature is signed**: per-project and general caches are updated to reflect the new status (general cache is updated because given user could have no DynamoDB entry yet before signing the CLA).
-- There are /v2/clear-cache and /v4/clear-cache endpoints to clear the caches (for testing and operational purposes).
 - Thread-safe with periodic expired entries cleanup (once per hour).
+- There are `/v2/clear-cache` and `/v4/clear-cache` endpoints to clear caches (testing & ops).
 
 ---
 

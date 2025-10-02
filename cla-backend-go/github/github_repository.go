@@ -370,7 +370,7 @@ func init() {
 // ClearCaches clears all in-memory caches maintained by the GitHub module.
 func ClearCaches() {
 	f := logrus.Fields{
-		"functionName": "github.github_repository.ClearAllCaches",
+		"functionName": "github.github_repository.ClearCaches",
 	}
 	GithubUserCache.Clear()
 	ModelUserCache.Clear()
