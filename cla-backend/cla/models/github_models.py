@@ -90,11 +90,11 @@ def start_cache_cleanup():
 
 start_cache_cleanup()
 
-def clear_all_caches():
+def clear_caches():
     """
     Clears in-memory caches maintained by this module.
     """
-    fn = "cla.models.github_models.clear_all_caches"
+    fn = "cla.models.github_models.clear_caches"
     try:
         github_user_cache.clear()
         cla.log.info(f"{fn} - cleared github_user_cache")
