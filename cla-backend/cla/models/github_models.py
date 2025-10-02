@@ -1685,12 +1685,14 @@ def update_cache_after_signature(user, project):
 
         # Update project-specific cache with authorized=True
         # Format: (user, check_aff: True/False, authorized, affiliated)
-        github_user_cache.set_with_ttl(project_cache_key, (user, False, True, affiliated), PROJECT_CACHE_TTL)
+        # LG: to write with non-aff mode
+        # github_user_cache.set_with_ttl(project_cache_key, (user, False, True, affiliated), PROJECT_CACHE_TTL)
         github_user_cache.set_with_ttl(project_cache_key, (user, True, True, affiliated), PROJECT_CACHE_TTL)
 
         # Update general cache
         # Format: (user, check_aff: True/False)
-        github_user_cache.set(cache_key, (user, False))
+        # LG: to write with non-aff mode
+        # github_user_cache.set(cache_key, (user, False))
         github_user_cache.set(cache_key, (user, True))
 
     cla.log.info(f"{fn} - updated github_user_cache for user {github_username} (ID: {github_id}, emails: {all_emails}) "
