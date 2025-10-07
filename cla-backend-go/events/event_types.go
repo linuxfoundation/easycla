@@ -97,8 +97,11 @@ const (
 	ProjectServiceCLADisabled      = "project.service.cla.disabled"
 	SignatureAutoCreateECLAUpdated = "signature.auto_create_ecla.updated"
 
+	EmployeeSignatureCreated = "employee.signature.created"
+
 	IndividualSignatureSigned = "individual.signature.signed"
 	CorporateSignatureSigned  = "corporate.signature.signed"
+	EmployeeSignatureSigned   = "employee.signature.signed"
 
 	BypassCLA = "Bypass CLA"
 )
