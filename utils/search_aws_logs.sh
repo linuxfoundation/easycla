@@ -6,6 +6,7 @@
 # REGION=us-east-1|us-east-2 STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' OUT=logs.json ./utils/search_aws_logs.sh 'error'
 # DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && ./utils/count_apis.sh api-logs-dev.json
 # DEBUG=1 STAGE=prod REGION=us-east-1 NO_ECHO=1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-prod.json ./utils/search_aws_logs.sh 'LG:api-request-path' && ./utils/count_apis.sh api-logs-prod.json
+# REVERSE=1 - reverse logs order - newest on top.
 # To find distinct log groups: | jq -r 'map(.logGroupName) | unique | .[]'
 # in us-east-1 (mostly V1, V2 and V3):
 # To see specific log group: | jq 'map(select(.logGroupName == "/aws/lambda/cla-backend-dev-apiv1"))'
@@ -96,7 +97,7 @@ do
   --start-time "${DTFROM}" \
   --end-time "${DTTO}" \
   --filter-pattern "\"${search}\"" | jq --arg logGroupName "$log_group" '
-  .events[] |
+  .events[]? |
   .logGroupName = $logGroupName |
   .dt = ( (.timestamp / 1000) | strftime("%Y-%m-%d %H:%M:%S") ) + "." + ( (.timestamp % 1000 | tostring) | if length == 1 then "00" + . elif length == 2 then "0" + . else . end )
   ')
@@ -117,9 +118,19 @@ done
 
 if [ ! -z "${OUT}" ]
 then
-  echo "$jsons" | jq -s 'sort_by(.dt) | reverse' > "${OUT}"
+  if [ ! -z "${REVERSE}" ]
+  then
+    echo "$jsons" | jq -s '(. // []) | sort_by(.dt) | reverse' > "${OUT}"
+  else
+    echo "$jsons" | jq -s '(. // []) | sort_by(.dt)' > "${OUT}"
+  fi
 fi
 if [ -z "${NO_ECHO}" ]
 then
-  echo "$jsons" | jq -s 'sort_by(.dt) | reverse'
+  if [ ! -z "${REVERSE}" ]
+  then
+    echo "$jsons" | jq -s '(. // []) | sort_by(.dt) | reverse'
+  else
+    echo "$jsons" | jq -s '(. // []) | sort_by(.dt)'
+  fi
 fi
