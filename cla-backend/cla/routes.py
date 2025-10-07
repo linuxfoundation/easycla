@@ -29,6 +29,7 @@ from cla.controllers.github import get_github_activity_action
 from cla.controllers.github_activity import v4_easycla_github_activity
 from cla.controllers.project_cla_group import get_project_cla_group
 from cla.models.dynamo_models import Repository, Gerrit
+from cla.models.github_models import clear_caches
 from cla.project_service import ProjectService
 from cla.utils import (
     get_supported_repository_providers,
@@ -1918,6 +1919,17 @@ def user_from_token(auth_user: check_auth, request, response):
     Can return 404 on token errors
     """
     return cla.controllers.user.get_or_create_user(auth_user).to_dict()
+
+@hug.post("/clear-cache", versions=2)
+def clear_cache(auth_user: check_auth):
+    """
+    POST: /clear-cache
+
+    Requires a valid Bearer token.
+    Clears in-memory caches used by the Python GitHub layer and returns
+    before/after sizes for basic observability.
+    """
+    return clear_caches()
 
 @hug.post("/events", versions=1)
 def create_event(
