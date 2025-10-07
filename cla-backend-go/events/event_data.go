@@ -508,13 +508,13 @@ func (ed *CorporateSignatureSignedEventData) GetEventSummaryString(args *LogEven
 }
 
 func (ed *EmployeeSignatureCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The ECLA signature was created for the project %s and company %s by %s", args.ProjectName, ed.CompanyName, ed.EmployeeUserName)
+	data := fmt.Sprintf("The ECLA signature was created for the project %s and company %s by %s", ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
 	data = fmt.Sprintf("%s.", data)
 	return data, true
 }
 
 func (ed *EmployeeSignatureSignedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The ECLA signature was signed for the project %s and company %s by %s", args.ProjectName, ed.CompanyName, ed.EmployeeUserName)
+	data := fmt.Sprintf("The ECLA signature was signed for the project %s and company %s by %s", ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
 	data = fmt.Sprintf("%s.", data)
 	return data, true
 }
