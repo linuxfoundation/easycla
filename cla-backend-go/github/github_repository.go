@@ -62,11 +62,12 @@ Please update your commit message(s) by doing |git commit --amend| and then |git
 `
 
 const (
-	unknown       = "Unknown"
-	failureState  = "failure"
-	successState  = "success"
-	svgVersion    = "?v=2"
-	QuickCacheTTL = 5 * time.Minute
+	unknown          = "Unknown"
+	failureState     = "failure"
+	successState     = "success"
+	svgVersion       = "?v=2"
+	NegativeCacheTTL = 3 * time.Minute // Used for negative caching of missing/not-signed users
+	ProjectCacheTTL  = 3 * time.Hour   // Used for per-project caching of signed users
 )
 
 // GraphQL related types
@@ -181,6 +182,15 @@ func (c *Cache) Set(key [2]string, value *github.User) {
 	}
 }
 
+func (c *Cache) SetWithTTL(key [2]string, value *github.User, tl time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[key] = cacheEntry{
+		value:     value,
+		expiresAt: time.Now().Add(tl),
+	}
+}
+
 func (c *Cache) Cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -190,6 +200,12 @@ func (c *Cache) Cleanup() {
 			delete(c.data, k)
 		}
 	}
+}
+
+func (c *Cache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data = make(map[[2]string]cacheEntry)
 }
 
 func (c *Cache) Delete(key [2]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
@@ -252,6 +268,12 @@ func (c *UserCache) Cleanup() {
 			delete(c.data, k)
 		}
 	}
+}
+
+func (c *UserCache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data = make(map[[3]string]userCacheEntry)
 }
 
 func (c *UserCache) Delete(key [3]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
@@ -322,11 +344,17 @@ func (c *ProjectUserCache) Cleanup() {
 	}
 }
 
+func (c *ProjectUserCache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data = make(map[[4]string]projectUserCacheEntry)
+}
+
 func (c *ProjectUserCache) Delete(key [4]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
 
-var GithubUserCache = NewCache(24 * time.Hour)
-var ModelUserCache = NewUserCache(24 * time.Hour)
-var ModelProjectUserCache = NewProjectUserCache(6 * time.Hour)
+var GithubUserCache = NewCache(12 * time.Hour)
+var ModelUserCache = NewUserCache(12 * time.Hour)
+var ModelProjectUserCache = NewProjectUserCache(3 * time.Hour)
 
 func init() {
 	go func() {
@@ -337,6 +365,17 @@ func init() {
 			ModelProjectUserCache.Cleanup()
 		}
 	}()
+}
+
+// ClearCaches clears all in-memory caches maintained by the GitHub module.
+func ClearCaches() {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.ClearCaches",
+	}
+	GithubUserCache.Clear()
+	ModelUserCache.Clear()
+	ModelProjectUserCache.Clear()
+	log.WithFields(f).Info("cleared caches")
 }
 
 func GetGitHubRepository(ctx context.Context, installationID, githubRepositoryID int64) (*github.Repository, error) {
@@ -813,8 +852,13 @@ func GetCoAuthorCommits(
 		}
 		log.WithFields(f).Debugf("Co-author GitHub user details not found: %v", coAuthor)
 	}
+	if found {
+		GithubUserCache.Set(cacheKey, user)
+	} else {
+		// negative cache for 30 minutes (this is for GitHub user not found)
+		GithubUserCache.SetWithTTL(cacheKey, user, 30*time.Minute)
+	}
 
-	GithubUserCache.Set(cacheKey, user)
 	return summary, found
 }
 
@@ -973,7 +1017,7 @@ func GetCommitAuthorSignedStatus(
 			*unsigned = append(*unsigned, userSummary)
 			mu.Unlock()
 			log.WithFields(f).Debugf("store per-project cache: unsigned, user is null (%+v)", projectCacheKey)
-			ModelProjectUserCache.SetWithTTL(projectCacheKey, nil, false, false, QuickCacheTTL)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, nil, false, false, NegativeCacheTTL)
 			return
 		}
 		user := cachedUser
@@ -984,7 +1028,7 @@ func GetCommitAuthorSignedStatus(
 			*unsigned = append(*unsigned, userSummary)
 			mu.Unlock()
 			log.WithFields(f).Debugf("store per-project cache: unsigned, hasUserSigned error (%+v)", projectCacheKey)
-			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, false, QuickCacheTTL)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, false, NegativeCacheTTL)
 			return
 		}
 
@@ -1005,14 +1049,14 @@ func GetCommitAuthorSignedStatus(
 				*unsigned = append(*unsigned, userSummary)
 				mu.Unlock()
 				log.WithFields(f).Debugf("store per-project cache: unsigned, authorized is false (%+v)", projectCacheKey)
-				ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
+				ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, NegativeCacheTTL)
 			}
 		} else {
 			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
 			mu.Unlock()
 			log.WithFields(f).Debugf("store per-project cache: unsigned, userSigned is null (%+v)", projectCacheKey)
-			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, NegativeCacheTTL)
 		}
 		return
 	}
@@ -1059,8 +1103,8 @@ func GetCommitAuthorSignedStatus(
 		mu.Lock()
 		*unsigned = append(*unsigned, userSummary)
 		mu.Unlock()
-		ModelProjectUserCache.SetWithTTL(projectCacheKey, nil, false, false, QuickCacheTTL)
-		ModelUserCache.SetWithTTL(cacheKey, nil, QuickCacheTTL)
+		ModelProjectUserCache.SetWithTTL(projectCacheKey, nil, false, false, NegativeCacheTTL)
+		ModelUserCache.SetWithTTL(cacheKey, nil, NegativeCacheTTL)
 		return
 	}
 
@@ -1072,8 +1116,8 @@ func GetCommitAuthorSignedStatus(
 		mu.Lock()
 		*unsigned = append(*unsigned, userSummary)
 		mu.Unlock()
-		ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, false, QuickCacheTTL)
-		ModelUserCache.SetWithTTL(cacheKey, user, QuickCacheTTL)
+		ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, false, NegativeCacheTTL)
+		ModelUserCache.SetWithTTL(cacheKey, user, NegativeCacheTTL)
 		return
 	}
 
@@ -1095,16 +1139,16 @@ func GetCommitAuthorSignedStatus(
 			mu.Lock()
 			*unsigned = append(*unsigned, userSummary)
 			mu.Unlock()
-			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
-			ModelUserCache.SetWithTTL(cacheKey, user, QuickCacheTTL)
+			ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, NegativeCacheTTL)
+			ModelUserCache.SetWithTTL(cacheKey, user, NegativeCacheTTL)
 		}
 	} else {
 		log.WithFields(f).Debugf("store caches: unsigned, userSigned is null (%+v)", projectCacheKey)
 		mu.Lock()
 		*unsigned = append(*unsigned, userSummary)
 		mu.Unlock()
-		ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, QuickCacheTTL)
-		ModelUserCache.SetWithTTL(cacheKey, user, QuickCacheTTL)
+		ModelProjectUserCache.SetWithTTL(projectCacheKey, user, false, userSummary.Affiliated, NegativeCacheTTL)
+		ModelUserCache.SetWithTTL(cacheKey, user, NegativeCacheTTL)
 	}
 }
 
@@ -1540,6 +1584,79 @@ func hasCheckPreviouslyFailed(ctx context.Context, client *github.Client, owner,
 		}
 	}
 	return false, nil, nil
+}
+
+// UpdateCacheAfterSignature marks the user as authorized for the given project
+func UpdateCacheAfterSignature(ctx context.Context, user *models.User, projectID string) error {
+	f := logrus.Fields{
+		"functionName": "github.github_repository.UpdateCacheAfterSignature",
+		"projectID":    projectID,
+	}
+
+	if user == nil {
+		log.WithFields(f).Warn("nil user passed to UpdateCacheAfterSignature")
+		return fmt.Errorf("nil user")
+	}
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		log.WithFields(f).Warn("empty projectID passed to UpdateCacheAfterSignature")
+		return fmt.Errorf("empty projectID")
+	}
+
+	githubID := strings.TrimSpace(user.GithubID)
+	githubLogin := strings.TrimSpace(user.GithubUsername)
+
+	if githubID == "" || githubLogin == "" {
+		log.WithFields(f).Debugf("user lacks GitHub ID or username - skipping cache update (githubID=%q, login=%q)", githubID, githubLogin)
+		return nil
+	}
+
+	affiliated := strings.TrimSpace(user.CompanyID) != ""
+
+	emails := collectUserEmails(user)
+	if len(emails) == 0 {
+		log.WithFields(f).Debugf("no emails found for user (githubID=%s, login=%s) - nothing to cache", githubID, githubLogin)
+		return nil
+	}
+
+	loginLower := strings.ToLower(githubLogin)
+
+	for _, email := range emails {
+		genKey := UserKey(githubID, loginLower, email)
+		ModelUserCache.Set(genKey, user)
+
+		projKey := ProjectUserKey(projectID, githubID, loginLower, email)
+		ModelProjectUserCache.Set(projKey, user, true, affiliated)
+	}
+
+	log.WithFields(f).Infof("updated caches for user login=%s (GitHubID=%s), project=%s: marked as authorized for %d email(s)",
+		loginLower, githubID, projectID, len(emails))
+
+	return nil
+}
+
+// collectUserEmails returns a de-duplicated, lowercased list of the user's emails.
+func collectUserEmails(u *models.User) []string {
+	uniq := make(map[string]struct{}, 4)
+	add := func(s string) {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s != "" {
+			uniq[s] = struct{}{}
+		}
+	}
+
+	add(string(u.LfEmail))
+
+	for _, em := range u.Emails {
+		add(em)
+	}
+
+	out := make([]string, 0, len(uniq))
+	for e := range uniq {
+		out = append(out, e)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func hasCheckPreviouslySucceeded(ctx context.Context, client *github.Client, owner, repo string, pullRequestID int) (bool, *github.IssueComment, error) {
