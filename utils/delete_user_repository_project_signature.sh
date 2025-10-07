@@ -7,7 +7,7 @@ then
 fi
 if [ -z "$1" ]
 then
-  echo "$0: you need to provide the repositiry name, for example: 'mlehotskylf-org2/easycla-dev'"
+  echo "$0: you need to provide the repository name, for example: 'mlehotskylf-org2/easycla-dev'"
   exit 1
 fi
 REPO_NAME=$1
