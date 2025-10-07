@@ -776,6 +776,19 @@ class DocuSign(signing_service_interface.SigningService):
             event_summary=event_summary,
             contains_pii=True,
         )
+        Event.create_event(
+            event_type=EventType.EmployeeSignatureSigned,
+            event_company_id=company_id,
+            event_cla_group_id=project_id,
+            event_user_id=user_id,
+            event_user_name=user.get_user_name() if user else None,
+            event_data=event_data,
+            event_summary=event_summary,
+            contains_pii=True,
+        )
+        if return_url_type.lower() == "github":
+            # Update cache to mark this user as authorized for the project - we only need this for GitHub as we only use caching in GitHub
+            update_cache_after_signature(user, project)
 
         # If the project does not require an ICLA to be signed, update the pull request and remove the active
         # signature metadata.
