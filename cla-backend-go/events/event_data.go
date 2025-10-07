@@ -2818,11 +2818,11 @@ func (ed *IndividualSignatureSignedEventData) GetEventDetailsString(args *LogEve
 func (ed *EmployeeSignatureCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The user %s created an employee (ECLA) signature for project %s, company %s, employee %s.",
 		args.LfUsername, ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
-	return data, false
+	return data, true
 }
 
 func (ed *EmployeeSignatureSignedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The user %s signed an employee (ECLA) signature for project %s, company %s, employee %s.",
 		args.LfUsername, ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
-	return data, false
+	return data, true
 }
