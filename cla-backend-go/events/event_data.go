@@ -508,14 +508,12 @@ func (ed *CorporateSignatureSignedEventData) GetEventSummaryString(args *LogEven
 }
 
 func (ed *EmployeeSignatureCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The ECLA signature was created for the project %s and company %s by %s", ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
-	data = fmt.Sprintf("%s.", data)
+	data := fmt.Sprintf("The ECLA signature was created for the project %s and company %s by %s.", ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
 	return data, true
 }
 
 func (ed *EmployeeSignatureSignedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The ECLA signature was signed for the project %s and company %s by %s", ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
-	data = fmt.Sprintf("%s.", data)
+	data := fmt.Sprintf("The ECLA signature was signed for the project %s and company %s by %s.", ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
 	return data, true
 }
 
@@ -2818,13 +2816,13 @@ func (ed *IndividualSignatureSignedEventData) GetEventDetailsString(args *LogEve
 }
 
 func (ed *EmployeeSignatureCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s created an employee (ECLA) for project %s, company %s, employee %s",
+	data := fmt.Sprintf("The user %s created an employee (ECLA) signature for project %s, company %s, employee %s.",
 		args.LfUsername, ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
 	return data, false
 }
 
 func (ed *EmployeeSignatureSignedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s signed an employee (ECLA) for project %s, company %s, employee %s",
+	data := fmt.Sprintf("The user %s signed an employee (ECLA) signature for project %s, company %s, employee %s.",
 		args.LfUsername, ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
 	return data, false
 }

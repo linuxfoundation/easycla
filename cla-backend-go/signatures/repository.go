@@ -2621,11 +2621,10 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 	}
 	log.WithFields(f).Debugf("logging event: %+v", eventArgs)
 	repo.eventsService.LogEvent(eventArgs)
-	err = github.UpdateCacheAfterSignature(context.Background(), employeeUserModel, claGroupModel.ProjectID)
+	err = github.UpdateCacheAfterSignature(ctx, employeeUserModel, claGroupModel.ProjectID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to update cache for user: %s, project ID: %s", employeeUserName, claGroupModel.ProjectID)
 	}
-
 	return nil
 }
 
