@@ -1,4 +1,6 @@
 #!/bin/bash
+# DRY=1 - dry run
+# DRY=1 ./utils/delete_user_repository_project_signature.sh mlehotskylf-org2/easycla-dev lukaszgryglicki
 if [ -z "$STAGE" ]
 then
   export STAGE=dev
@@ -48,6 +50,13 @@ do
       }' --output json | jq -r '.Items[].signature_id.S')
     for SIG in $SIGS
     do
+      if [ ! -z "$DRY" ]
+      then
+          echo "DRY RUN: would delete this signature:"
+          ./utils/scan.sh signatures signature_id "${SIG}"
+          echo "DRY RUN: would delete this ^ signature."
+          continue
+      fi
       echo "Deleting signature ID ${SIG}"
       aws dynamodb delete-item --profile "lfproduct-${STAGE}" --table-name "cla-${STAGE}-signatures" --key '{"signature_id": {"S":"'"${SIG}"'"}}'
     done
