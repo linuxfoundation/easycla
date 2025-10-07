@@ -613,10 +613,9 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 		}
 		log.WithFields(f).Debugf("logging event: %+v", eventArgs)
 		s.eventsService.LogEvent(eventArgs)
-		err = github.UpdateCacheAfterSignature(context.Background(), claUser, signature.ProjectID)
+		err = github.UpdateCacheAfterSignature(ctx, claUser, signature.ProjectID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to update cache for user: %s, project ID: %s", claUser.Username, signature.ProjectID)
-			return nil
 		}
 
 	} else {
@@ -1227,10 +1226,9 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 		CompanyID:   companyID,
 		CompanySFID: companyModel.CompanyExternalID,
 	})
-	err = github.UpdateCacheAfterSignature(context.Background(), user, signature.ProjectID)
+	err = github.UpdateCacheAfterSignature(ctx, user, signature.ProjectID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to update cache for company: %v, user: %s, project ID: %s", companyID, user.Username, signature.ProjectID)
-		return err
 	}
 
 	// Check if project is a gerrit instance

@@ -1629,7 +1629,7 @@ func UpdateCacheAfterSignature(ctx context.Context, user *models.User, projectID
 		ModelProjectUserCache.Set(projKey, user, true, affiliated)
 	}
 
-	log.WithFields(f).Infof("updated caches for user login=%q (GitHubID=%s), project=%s: marked as authorized for %d email(s)",
+	log.WithFields(f).Infof("updated caches for user login=%s (GitHubID=%s), project=%s: marked as authorized for %d email(s)",
 		loginLower, githubID, projectID, len(emails))
 
 	return nil
