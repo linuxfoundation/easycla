@@ -1,6 +1,7 @@
 # EasyCLA: Author and Co-author Caching + Large-PR Support
 
 - **Two-level caching** for author and co-author identity & identity plus per-project signature decisions.
+- **Caching** for git co-authors parsed from commit messages.
 - **GraphQL-based commit ingestion** that comfortably handles PRs with **250+ commits (and beyond)**.
 
 ---
@@ -13,11 +14,14 @@
 ---
 
 ## Caching 
+- **Co-author cache keys** are based on normalized email and name from the commit trailers (`Co-authored-by:`).
 - **General cache key**: `(author_id, lower(login), lower(email)) → (user | None)`
 - **Per-project cache key**: `(project_id, author_id, lower(login), lower(email)) → (user | None, authorized, affiliated)`
-- **TTL policy**: positives **~24h**; negative/uncertain states use **Quick TTL = 5m**.
+- **TTL policy**: positives **~12h** (**~3h** for per-project with signature status); negative/uncertain states use **Negative TTL = 3m**.
 - **Flow**: per-project cache → general cache → cold DB path. Results are stored back with the appropriate TTL.
+- **When signature is signed**: per-project and general caches are updated to reflect the new status (general cache is updated because given user could have no DynamoDB entry yet before signing the CLA).
 - Thread-safe with periodic expired entries cleanup (once per hour).
+- There are `/v2/clear-cache` and `/v4/clear-cache` endpoints to clear caches (testing & ops).
 
 ---
 
@@ -37,7 +41,7 @@
 
 ---
 
-## Quick constants
-- `QUICK_CACHE_TTL = 300` seconds (negative/uncertain states).
-- Default positive cache TTL ≈ **24 hours**.
+## Constants
+- `NEGATIVE_CACHE_TTL = 180` seconds (negative/uncertain states).
+- Default positive cache TTL ≈ **12 hours** (**3 hours** for per-project with signature status).
 - GraphQL: `pageSize=100`, parallel workers tuned for throughput.

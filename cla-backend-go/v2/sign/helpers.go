@@ -20,7 +20,7 @@ import (
 //nolint:gocyclo
 func (s service) updateChangeRequest(ctx context.Context, installationID, repositoryID, pullRequestID int64, projectID string) error {
 	f := logrus.Fields{
-		"functionName":  "v1.signatures.service.updateChangeRequest",
+		"functionName":  "v2.sign.helpers.updateChangeRequest",
 		"repositoryID":  repositoryID,
 		"pullRequestID": pullRequestID,
 		"projectID":     projectID,
@@ -104,7 +104,7 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 // true, true, nil if user has an ECLA (authorized, with company affiliation, no error)
 func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, *bool, error) {
 	f := logrus.Fields{
-		"functionName": "v1.signatures.service.hasUserSigned",
+		"functionName": "v2.sign.helpers.hasUserSigned",
 		"projectID":    projectID,
 		"user":         user,
 	}
