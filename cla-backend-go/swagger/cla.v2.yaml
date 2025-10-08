@@ -4046,40 +4046,6 @@ paths:
       tags:
         - sign
 
-  /clear-cache:
-    post:
-      summary: Clear cache
-      description: Clears the service cache
-      operationId: clearCaches
-      parameters:
-      - $ref: '#/parameters/authorization'
-      - $ref: '#/parameters/x-request-id'
-      - $ref: '#/parameters/x-acl'
-      - $ref: '#/parameters/x-username'
-      - $ref: '#/parameters/x-email'
-      responses:
-        '200':
-          description: Success
-          headers:
-            x-request-id:
-              type: string
-              description: The unique request ID value - assigned/set by the API Gateway
-                based on the session
-          schema:
-            $ref: '#/definitions/clear-cache-output'
-        '400':
-          $ref: '#/responses/invalid-request'
-        '401':
-          $ref: '#/responses/unauthorized'
-        '403':
-          $ref: '#/responses/forbidden'
-        '404':
-          $ref: '#/responses/not-found'
-        '500':
-          $ref: '#/responses/internal-server-error'
-      tags:
-      - sign
-
   /github/activity:
     post:
       summary: GitHub Activity Callback Handler
@@ -5998,12 +5964,6 @@ definitions:
         example: 'https://corporate.dev.lfcla.com/#/company/eb4d7d71-693f-4047-bf8d-10d0e7764969'
         description: on signing the document, page will get redirected to this url. This is valid only when send_as_email is false
         format: uri
-
-  clear-cache-output:
-    type: object
-    properties:
-      status:
-        type: string
 
   corporate-signature-output:
     type: object

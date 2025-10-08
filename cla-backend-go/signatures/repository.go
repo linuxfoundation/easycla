@@ -2582,49 +2582,7 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 		log.WithFields(f).WithError(putErr).Warn("cannot create new signature record")
 		return putErr
 	}
-	// Log the event
-	eventDataCreated := events.EmployeeSignatureCreatedEventData{
-		ProjectName:      claGroupModel.ProjectName,
-		ProjectID:        claGroupModel.ProjectID,
-		CompanyName:      companyModel.CompanyName,
-		CompanyID:        companyModel.CompanyID,
-		EmployeeUserID:   employeeUserModel.UserID,
-		EmployeeUserName: employeeUserName,
-	}
-	log.WithFields(f).Debugf("logging event: %+v", eventDataCreated)
-	eventArgs := &events.LogEventArgs{
-		EventType:  events.EmployeeSignatureCreated,
-		ProjectID:  claGroupModel.ProjectID,
-		UserID:     employeeUserModel.UserID,
-		LfUsername: employeeUserModel.LfUsername,
-		EventData:  &eventDataCreated,
-		CLAGroupID: claGroupModel.ProjectID,
-	}
-	log.WithFields(f).Debugf("logging event: %+v", eventArgs)
-	repo.eventsService.LogEvent(eventArgs)
-	eventDataSigned := events.EmployeeSignatureSignedEventData{
-		ProjectName:      claGroupModel.ProjectName,
-		ProjectID:        claGroupModel.ProjectID,
-		CompanyName:      companyModel.CompanyName,
-		CompanyID:        companyModel.CompanyID,
-		EmployeeUserID:   employeeUserModel.UserID,
-		EmployeeUserName: employeeUserName,
-	}
-	log.WithFields(f).Debugf("logging event: %+v", eventDataSigned)
-	eventArgs = &events.LogEventArgs{
-		EventType:  events.EmployeeSignatureSigned,
-		ProjectID:  claGroupModel.ProjectID,
-		UserID:     employeeUserModel.UserID,
-		LfUsername: employeeUserModel.LfUsername,
-		EventData:  &eventDataSigned,
-		CLAGroupID: claGroupModel.ProjectID,
-	}
-	log.WithFields(f).Debugf("logging event: %+v", eventArgs)
-	repo.eventsService.LogEvent(eventArgs)
-	err = github.UpdateCacheAfterSignature(ctx, employeeUserModel, claGroupModel.ProjectID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to update cache for user: %s, project ID: %s", employeeUserName, claGroupModel.ProjectID)
-	}
+
 	return nil
 }
 

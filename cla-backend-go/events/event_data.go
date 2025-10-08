@@ -457,24 +457,6 @@ type CorporateSignatureSignedEventData struct {
 	SignatoryName string
 }
 
-type EmployeeSignatureCreatedEventData struct {
-	ProjectName      string
-	ProjectID        string
-	CompanyName      string
-	CompanyID        string
-	EmployeeUserID   string
-	EmployeeUserName string
-}
-
-type EmployeeSignatureSignedEventData struct {
-	ProjectName      string
-	ProjectID        string
-	CompanyName      string
-	CompanyID        string
-	EmployeeUserID   string
-	EmployeeUserName string
-}
-
 // BypassCLAEventData event data model
 type BypassCLAEventData struct {
 	Repo   string
@@ -504,16 +486,6 @@ func (ed *CorporateSignatureSignedEventData) GetEventDetailsString(args *LogEven
 func (ed *CorporateSignatureSignedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The signature was signed for the project %s and company %s by %s", args.ProjectName, ed.CompanyName, ed.SignatoryName)
 	data = fmt.Sprintf("%s.", data)
-	return data, true
-}
-
-func (ed *EmployeeSignatureCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The ECLA signature was created for the project %s and company %s by %s.", ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
-	return data, true
-}
-
-func (ed *EmployeeSignatureSignedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The ECLA signature was signed for the project %s and company %s by %s.", ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
 	return data, true
 }
 
@@ -2813,16 +2785,4 @@ func (ed *IndividualSignatureSignedEventData) GetEventDetailsString(args *LogEve
 	data := fmt.Sprintf("The user %s signed an individual CLA for project %s",
 		args.LfUsername, ed.ProjectName)
 	return data, false
-}
-
-func (ed *EmployeeSignatureCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s created an employee (ECLA) signature for project %s, company %s, employee %s.",
-		args.LfUsername, ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
-	return data, true
-}
-
-func (ed *EmployeeSignatureSignedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
-	data := fmt.Sprintf("The user %s signed an employee (ECLA) signature for project %s, company %s, employee %s.",
-		args.LfUsername, ed.ProjectName, ed.CompanyName, ed.EmployeeUserName)
-	return data, true
 }

@@ -65,13 +65,11 @@ else
   export DTTO="$(to_epoch_ms "${DTTO}")"
 fi
 
-DTF=$(date -u -d @$(echo "${DTFROM}/1000" | bc) "+%F %T.%6N")
-DTT=$(date -u -d @$(echo "${DTTO}/1000" | bc) "+%F %T.%6N")
-echo "Date range: ${DTF} .. ${DTT} (from ${DTFROM} to ${DTTO})"
-
 if [ ! -z "${DEBUG}" ]
 then
   echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern \"${2}\""
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${2}\""
+else
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${2}\"" | jq -r '.events'
 fi
-aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${2}\"" | jq -r '.events | sort_by(.timestamp)'
 

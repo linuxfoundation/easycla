@@ -79,30 +79,6 @@ func CCLADocusignMiddleware(next http.Handler) http.Handler {
 // Configure API call
 func Configure(api *operations.EasyclaAPI, service Service, userService users.Service) {
 	// Retrieve a list of available templates
-	api.SignClearCachesHandler = sign.ClearCachesHandlerFunc(
-		func(params sign.ClearCachesParams, user *auth.User) middleware.Responder {
-			reqID := utils.GetRequestID(params.XREQUESTID)
-			ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, user) // nolint
-			utils.SetAuthUserProperties(user, params.XUSERNAME, params.XEMAIL)
-			f := logrus.Fields{
-				"functionName":   "v2.sign.handlers.ClearCachesHandler",
-				utils.XREQUESTID: reqID,
-				"authUserName":   utils.StringValue(params.XUSERNAME),
-				"authUserEmail":  utils.StringValue(params.XEMAIL),
-			}
-			log.WithFields(f).Info("clearing caches")
-			resp, err := service.ClearCaches(ctx)
-			if err != nil {
-				log.WithFields(f).WithError(err).Warn("failed to clear caches")
-				if strings.Contains(err.Error(), "internal server error") {
-					return sign.NewClearCachesInternalServerError().WithPayload(errorResponse(reqID, err))
-				}
-				return sign.NewClearCachesBadRequest().WithPayload(errorResponse(reqID, err))
-			}
-			log.WithFields(f).Info("caches cleared successfully")
-			return sign.NewClearCachesOK().WithPayload(resp)
-		})
-
 	api.SignRequestCorporateSignatureHandler = sign.RequestCorporateSignatureHandlerFunc(
 		func(params sign.RequestCorporateSignatureParams, user *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
