@@ -643,11 +643,13 @@ func GetPullRequestCommitAuthors(ctx context.Context, usersService users.Service
 		if commit.Commit != nil && commit.Commit.Author != nil {
 			name = utils.StringValue(commit.Commit.Author.Name)
 			email = utils.StringValue(commit.Commit.Author.Email)
-			if strings.TrimSpace(name) != "" && (commit.Author.Name == nil || (commit.Author.Name != nil && strings.TrimSpace(*commit.Author.Name) == "")) {
-				commit.Author.Name = &name
-			}
-			if strings.TrimSpace(email) != "" && (commit.Author.Email == nil || (commit.Author.Email != nil && strings.TrimSpace(*commit.Author.Email) == "")) {
-				commit.Author.Email = &email
+			if commit.Author != nil {
+				if strings.TrimSpace(name) != "" && (commit.Author.Name == nil || (commit.Author.Name != nil && strings.TrimSpace(*commit.Author.Name) == "")) {
+					commit.Author.Name = &name
+				}
+				if strings.TrimSpace(email) != "" && (commit.Author.Email == nil || (commit.Author.Email != nil && strings.TrimSpace(*commit.Author.Email) == "")) {
+					commit.Author.Email = &email
+				}
 			}
 		}
 		log.WithFields(f).Debugf("commitAuthor: %s, name: %s, email: %s", commitAuthor, name, email)
