@@ -61,18 +61,96 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 		withCoAuthors = github.IsCoAuthorsEnabledForRepo(ghOrg.EnableCoAuthors, gitHubRepoName)
 	}
 	log.WithFields(f).Debugf("fetching commit authors for PR: %d using repository owner: %s, repo: %s", pullRequestID, gitHubOrgName, gitHubRepoName)
-	authors, anyMissing, authorsErr := github.GetPullRequestCommitAuthors(ctx, s.userService, installationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, withCoAuthors)
+	authors, latestSHA, anyMissing, authorsErr := github.GetPullRequestCommitAuthors(ctx, s.userService, installationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, withCoAuthors)
 	if authorsErr != nil {
 		log.WithFields(f).WithError(authorsErr).Warnf("unable to get commit authors for %s/%s for PR: %d", gitHubOrgName, gitHubRepoName, pullRequestID)
 		return authorsErr
 	}
 	log.WithFields(f).Debugf("found %d commit authors for %s/%s for PR: %d", len(authors), gitHubOrgName, gitHubRepoName, pullRequestID)
 
+	signed := make([]*github.UserCommitSummary, 0)
+	unsigned := make([]*github.UserCommitSummary, 0)
+
 	// triage signed and unsigned users
 	log.WithFields(f).Debugf("triaging %d commit authors for PR: %d using repository %s/%s",
 		len(authors), pullRequestID, gitHubOrgName, gitHubRepoName)
+	for _, userSummary := range authors {
 
-	signed, unsigned := github.GetCommitAuthorsSignedStatuses(ctx, s.userService, s.hasUserSigned, projectID, authors)
+		if !userSummary.IsValid() {
+			log.WithFields(f).Debugf("invalid user summary: %+v", *userSummary)
+			unsigned = append(unsigned, userSummary)
+			continue
+		}
+
+		commitAuthorID := userSummary.GetCommitAuthorID()
+		commitAuthorUsername := userSummary.GetCommitAuthorUsername()
+		commitAuthorEmail := userSummary.GetCommitAuthorEmail()
+
+		log.WithFields(f).Debugf("checking user - sha: %s, user ID: %s, username: %s, email: %s",
+			userSummary.SHA, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
+
+		var user *models.User
+		var userErr error
+
+		if commitAuthorID != "" {
+			log.WithFields(f).Debugf("looking up user by ID: %s", commitAuthorID)
+			user, userErr = s.userService.GetUserByGitHubID(commitAuthorID)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to get user by github id: %s", commitAuthorID)
+			}
+			if user != nil {
+				log.WithFields(f).Debugf("found user by ID: %s", commitAuthorID)
+			}
+		}
+		if user == nil && commitAuthorUsername != "" {
+			log.WithFields(f).Debugf("looking up user by username: %s", commitAuthorUsername)
+			user, userErr = s.userService.GetUserByGitHubUsername(commitAuthorUsername)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to get user by github username: %s", commitAuthorUsername)
+			}
+			if user != nil {
+				log.WithFields(f).Debugf("found user by username: %s", commitAuthorUsername)
+			}
+		}
+		if user == nil && commitAuthorEmail != "" {
+			log.WithFields(f).Debugf("looking up user by email: %s", commitAuthorEmail)
+			user, userErr = s.userService.GetUserByEmail(commitAuthorEmail)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to get user by user email: %s", commitAuthorEmail)
+			}
+			if user != nil {
+				log.WithFields(f).Debugf("found user by email: %s", commitAuthorEmail)
+			}
+		}
+
+		if user == nil {
+			log.WithFields(f).Debugf("unable to find user for commit author - sha: %s, user ID: %s, username: %s, email: %s",
+				userSummary.SHA, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
+			unsigned = append(unsigned, userSummary)
+			continue
+		}
+
+		log.WithFields(f).Debugf("checking to see if user has signed an ICLA or ECLA for project: %s", projectID)
+		userSigned, companyAffiliation, signedErr := s.hasUserSigned(ctx, user, projectID)
+		if signedErr != nil {
+			log.WithFields(f).WithError(signedErr).Warnf("has user signed error - user: %+v, project: %s", user, projectID)
+			unsigned = append(unsigned, userSummary)
+			continue
+		}
+
+		if companyAffiliation != nil {
+			userSummary.Affiliated = *companyAffiliation
+		}
+
+		if userSigned != nil {
+			userSummary.Authorized = *userSigned
+			if userSummary.Authorized {
+				signed = append(signed, userSummary)
+			} else {
+				unsigned = append(unsigned, userSummary)
+			}
+		}
+	}
 
 	log.WithFields(f).Debugf("commit authors status => signed: %+v and missing: %+v", signed, unsigned)
 	if ghOrg != nil {
@@ -84,11 +162,9 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 		}
 		log.WithFields(f).Debugf("commit authors status after allowlisting bots => signed: %+v, missing: %+v, allowlisted: %+v", signed, unsigned, allowlisted)
 	}
-	signed = github.DedupAndSortCommitSummaries(signed)
-	unsigned = github.DedupAndSortCommitSummaries(unsigned)
 
 	// update pull request
-	updateErr := github.UpdatePullRequest(ctx, installationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, githubRepository.ID, signed, unsigned, anyMissing, s.ClaV1ApiURL, s.claLandingPage, s.claLogoURL)
+	updateErr := github.UpdatePullRequest(ctx, installationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, githubRepository.ID, *latestSHA, signed, unsigned, anyMissing, s.ClaV1ApiURL, s.claLandingPage, s.claLogoURL)
 	if updateErr != nil {
 		log.WithFields(f).Debugf("unable to update PR: %d", pullRequestID)
 		return updateErr

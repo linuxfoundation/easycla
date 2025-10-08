@@ -6,7 +6,7 @@ import {
   getTokenKey,
   getAPIBaseURL,
   getXACLHeader,
-} from '../../support/commands';
+} from '../support/commands';
 describe('To Validate & get Company Activity Callback via API call', function () {
   // Define a variable for the environment
   const environment = Cypress.env('CYPRESS_ENV');
@@ -14,9 +14,9 @@ describe('To Validate & get Company Activity Callback via API call', function ()
   // Import the appropriate configuration based on the environment
   let appConfig;
   if (environment === 'dev') {
-    appConfig = require('../../appConfig/config.dev.ts').appConfig;
+    appConfig = require('../appConfig/config.dev.ts').appConfig;
   } else if (environment === 'production') {
-    appConfig = require('../../appConfig/config.production.ts').appConfig;
+    appConfig = require('../appConfig/config.production.ts').appConfig;
   }
 
   //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/company

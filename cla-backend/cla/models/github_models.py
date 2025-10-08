@@ -13,7 +13,7 @@ import binascii
 import threading
 import time
 import uuid
-from typing import List, Optional, Union, Tuple, Iterable
+from typing import List, Optional, Union, Tuple
 
 import cla
 import falcon
@@ -31,8 +31,6 @@ from github.GithubException import (BadCredentialsException, GithubException,
                                     RateLimitExceededException,
                                     UnknownObjectException)
 from requests_oauthlib import OAuth2Session
-from dataclasses import dataclass
-from itertools import islice
 
 # some emails we want to exclude when we register the users
 EXCLUDE_GITHUB_EMAILS = ["noreply.github.com"]
@@ -41,7 +39,6 @@ NOREPLY_USER_PATTERN = re.compile(r"^([a-zA-Z0-9-]+)@users\.noreply\.github\.com
 # GitHub usernames must be 3-39 characters long, can only contain alphanumeric characters or hyphens,
 # cannot begin or end with a hyphen, and cannot contain consecutive hyphens.
 GITHUB_USERNAME_REGEX = re.compile(r'^(?!-)(?!.*--)[A-Za-z0-9-]{3,39}(?<!-)$')
-QUICK_CACHE_TTL = 300  # 5 minutes for quick cache
 
 class TTLCache:
     def __init__(self, ttl_seconds=86400):
@@ -64,10 +61,6 @@ class TTLCache:
         with self.lock:
             self.data[key] = (value, time.time() + self.ttl)
 
-    def set_with_ttl(self, key, value, tl):
-        with self.lock:
-            self.data[key] = (value, time.time() + tl)
-
     def cleanup(self):
         with self.lock:
             now = time.time()
@@ -84,42 +77,6 @@ def start_cache_cleanup():
     threading.Thread(target=run, daemon=True).start()
 
 start_cache_cleanup()
-
-@dataclass
-class CommitLite:
-    sha: str
-    author_id: Optional[int]
-    author_login: Optional[str]
-    author_name: Optional[str]
-    author_email: Optional[str]
-    message: Optional[str]
-
-
-def str_strip_lower(s): return (s or "").strip().lower()
-
-def dedup_and_sort(items):
-    seen = set()
-    uniq = []
-    for s in items:
-        if s is None:
-            continue
-        key = (
-            getattr(s, "author_id", None),
-            str_strip_lower(getattr(s, "author_login", None)),
-            str_strip_lower(getattr(s, "author_email", None)),
-            getattr(s, "commit_sha", None),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        uniq.append(s)
-    uniq.sort(key=lambda s: (
-        str_strip_lower(getattr(s, "author_login", None)),
-        str_strip_lower(getattr(s, "author_name", None)),
-        str_strip_lower(getattr(s, "author_email", None)),
-        getattr(s, "commit_sha", "") or "",
-    ))
-    return uniq
 
 class GitHub(repository_service_interface.RepositoryService):
     """
@@ -841,8 +798,8 @@ class GitHub(repository_service_interface.RepositoryService):
         try:
             # Get Commit authors
             with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
-            commit_authors, any_missing = get_pull_request_commit_authors(self.client, organization_name, pull_request, installation_id, with_co_authors)
-            cla.log.debug(f"{fn} - commit author summaries: {commit_authors}")
+            commit_authors, any_missing = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
+            cla.log.debug(f"{fn} - commit authors: {commit_authors}")
         except Exception as e:
             cla.log.warning(
                 f"{fn} - unable to load commit authors for PR {pull_request_id} from GitHub repository "
@@ -867,8 +824,6 @@ class GitHub(repository_service_interface.RepositoryService):
         if allowlisted is not None and len(allowlisted) > 0:
             cla.log.debug(f"{fn} - adding {len(allowlisted)} allowlisted actors to signed list")
             signed.extend(allowlisted)
-        signed = dedup_and_sort(signed)
-        missing = dedup_and_sort(missing)
 
         # update Merge group status
         self.update_merge_group_status(
@@ -987,10 +942,10 @@ class GitHub(repository_service_interface.RepositoryService):
 
         # Get all unique users/authors involved in this PR - returns a List[UserCommitSummary] objects
         with_co_authors = self.is_co_authors_enabled_for_repo(github_org.get_enable_co_authors(), repository.get_repository_name())
-        commit_authors, any_missing = get_pull_request_commit_authors(self.client, organization_name, pull_request, installation_id, with_co_authors)
+        commit_authors, any_missing = get_pull_request_commit_authors(pull_request, installation_id, with_co_authors)
 
         cla.log.debug(
-            f"{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit author summaries "
+            f"{fn} - PR: {pull_request.number}, found {len(commit_authors)} unique commit authors "
             f"for pull request: {pull_request.number}"
         )
 
@@ -1022,26 +977,20 @@ class GitHub(repository_service_interface.RepositoryService):
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
             for user_commit_summary in commit_authors:
-                # cla.log.debug(f"{fn} - PR: {pull_request.number} for user: {user_commit_summary}")
+                cla.log.debug(f"{fn} - PR: {pull_request.number} for user: {user_commit_summary}")
                 futures.append(executor.submit(handle_commit_from_user, project, user_commit_summary, signed, missing))
 
             # Wait for all threads to be finished before moving on
             executor.shutdown(wait=True)
 
         for future in concurrent.futures.as_completed(futures):
-            # cla.log.debug(f"{fn} - ThreadClosed for handle_commit_from_user")
-            try:
-                future.result()
-            except Exception as e:
-                cla.log.error(f"{fn} - Exception in commit author thread for PR: {pull_request.number}, error: {e}")
+            cla.log.debug(f"{fn} - ThreadClosed for handle_commit_from_user")
 
         # Skip allowlisted bots per org/repo GitHub login/email regexps
         missing, allowlisted = self.skip_allowlisted_bots(github_org, repository.get_repository_name(), missing)
         if allowlisted is not None and len(allowlisted) > 0:
             cla.log.debug(f"{fn} - adding {len(allowlisted)} allowlisted actors to signed list")
             signed.extend(allowlisted)
-        signed = dedup_and_sort(signed)
-        missing = dedup_and_sort(missing)
         # At this point, the signed and missing lists are now filled and updated with the commit user info
 
         cla.log.debug(
@@ -1640,129 +1589,8 @@ def handle_commit_from_user(
     fn = "cla.models.github_models.handle_commit_from_user"
     # handle edge case of non existant users
     if not user_commit_summary.is_valid_user():
-        cla.log.debug(f"{fn} - summary for an unknown user, adding to missing: {user_commit_summary}")
         missing.append(user_commit_summary)
         return
-
-    # LG: cache_authors - start
-    project_cache_key = (
-        project.get_project_id(),
-        user_commit_summary.author_id,
-        (user_commit_summary.author_login or '').lower(),
-        (user_commit_summary.author_email or '').strip().lower(),
-    )
-    # Per-project cache - also caches per-project signatures status and affiliation
-    # (project_id, id, login, email) -> (user || None, check_aff, authorized, affiliated)
-    # check_aff flag is needed because below code only checked for affiliation in else branch (when user was found by author_id)
-    value, hit = github_user_cache.get(project_cache_key)
-    cla.log.debug(f"{fn} - per-project cache: {project_cache_key} -> ({value}, {hit})")
-    if hit:
-        user, check_aff, authorized, affiliated = value
-        if user is None:
-            missing.append(user_commit_summary)
-            cla.log.debug(f"{fn} - per-project cache: negative case: aff mode: {check_aff}")
-            return
-        if check_aff:
-            cla.log.debug(f"{fn} - per-project cache: aff mode, user: {user}")
-            if authorized:
-                user_commit_summary.authorized = True
-                signed.append(user_commit_summary)
-                cla.log.debug(f"{fn} - per-project cache: aff mode: authorized & signed")
-                return
-            if not affiliated:
-                missing.append(user_commit_summary)
-                cla.log.debug(f"{fn} - per-project cache: aff mode: no company_id, missing")
-                return
-            user_commit_summary.affiliated = True
-            # LG: this should return user_commit_summary as signed IMHO (see flow for general cache, it also adds to missing as the original code does the same)
-            # General caching checks for project signature but also adds to missing no matter if signature is found or not, same with "cold" code path (no cache hit)
-            cla.log.debug(f"{fn} - per-project cache: aff mode: affiliated, but adding to missing")
-            missing.append(user_commit_summary)
-        else:
-            cla.log.debug(f"{fn} - per-project cache: non-aff mode, user: {user}")
-            if authorized:
-                user_commit_summary.authorized = True
-                signed.append(user_commit_summary)
-                cla.log.debug(f"{fn} - per-project cache: non-aff mode: authorized & signed")
-                return
-            cla.log.debug(f"{fn} - per-project cache: non-aff mode: no authorized, missing")
-            missing.append(user_commit_summary)
-        cla.log.debug(f"{fn} - per-project cache: done, returning")
-        return
-    # General cache (without project) - can only cache author details, but not per-project signature details
-    # (id, login, email) -> (user || None, check_aff)
-    cache_key = (
-        user_commit_summary.author_id,
-        (user_commit_summary.author_login or '').lower(),
-        (user_commit_summary.author_email or '').strip().lower(),
-    )
-    value, hit = github_user_cache.get(cache_key)
-    cla.log.debug(f"{fn} - cache: {cache_key} -> ({value}, {hit})")
-    if hit:
-        user, check_aff = value
-        if user is None:
-            missing.append(user_commit_summary)
-            cla.log.debug(f"{fn} - cache: negative case: aff mode: {check_aff}")
-            github_user_cache.set_with_ttl(project_cache_key, (None, False, False, False), QUICK_CACHE_TTL)
-            return
-        if check_aff:
-            cla.log.debug(f"{fn} - cache: aff mode, user: {user}")
-            if cla.utils.user_signed_project_signature(user, project):
-                user_commit_summary.authorized = True
-                signed.append(user_commit_summary)
-                cla.log.debug(f"{fn} - cache: aff mode: authorized & signed")
-                github_user_cache.set(project_cache_key, (user, True, True, False))
-                return
-            if user.get_user_company_id() is None:
-                missing.append(user_commit_summary)
-                cla.log.debug(f"{fn} - cache: aff mode: no company_id, missing")
-                github_user_cache.set_with_ttl(project_cache_key, (user, True, False, False), QUICK_CACHE_TTL)
-                return
-            user_commit_summary.affiliated = True
-            cla.log.debug(f"{fn} - cache: aff mode: affiliated")
-            signatures = cla.utils.get_signature_instance().get_signatures_by_project(
-                project_id=project.get_project_id(),
-                signature_signed=True,
-                signature_approved=True,
-                signature_type="ccla",
-                signature_reference_type="company",
-                signature_reference_id=user.get_user_company_id(),
-                signature_user_ccla_company_id=None,
-            )
-            cla.log.debug(f"{fn} - cache: aff mode: #signatures: {len(signatures)}")
-            approved = False
-            for signature in signatures:
-                if cla.utils.is_approved(
-                    signature,
-                    email=user_commit_summary.author_email,
-                    github_id=user_commit_summary.author_id,
-                    github_username=user_commit_summary.author_login,
-                ):
-                    user_commit_summary.authorized = True
-                    approved = True
-                    cla.log.debug(f"{fn} - cache: aff mode: authorized signature")
-                    break
-            if approved:
-                # LG: this should return user_commit_summary as signed IMHO, but I'm keeping this logic for compatibility
-                cla.log.debug(f"{fn} - cache: aff mode: authorized found, but adding to missing")
-            else:
-                cla.log.debug(f"{fn} - cache: aff mode: no authorized found, adding to missing")
-            missing.append(user_commit_summary)
-            github_user_cache.set_with_ttl(project_cache_key, (user, True, False, True), QUICK_CACHE_TTL)
-        else:
-            cla.log.debug(f"{fn} - cache: non-aff mode, user: {user}")
-            if cla.utils.user_signed_project_signature(user, project):
-                user_commit_summary.authorized = True
-                signed.append(user_commit_summary)
-                cla.log.debug(f"{fn} - cache: non-aff mode: authorized & signed")
-                github_user_cache.set(project_cache_key, (user, False, True, False))
-                return
-            cla.log.debug(f"{fn} - cache: non-aff mode: no authorized, missing")
-            missing.append(user_commit_summary)
-            github_user_cache.set_with_ttl(project_cache_key, (user, False, False, False), QUICK_CACHE_TTL)
-        cla.log.debug(f"{fn} - cache: done, returning")
-        return
-    # LG: cache_authors - end
 
     # attempt to lookup the user in our database by GH id -
     # may return multiple users that match this author_id
@@ -1801,10 +1629,6 @@ def handle_commit_from_user(
                 if cla.utils.user_signed_project_signature(user, project):
                     user_commit_summary.authorized = True
                     signed.append(user_commit_summary)
-                    # set check_aff flag to false as in this case we didn't check affiliated flag
-                    cla.log.debug(f"{fn} - store cache non-aff mode: authorized: {project_cache_key}: {users}")
-                    github_user_cache.set(project_cache_key, (user, False, True, False))
-                    github_user_cache.set(cache_key, (user, False))
                     return
 
             # Didn't find a signed signature for this project - add to our missing bucket list
@@ -1848,10 +1672,6 @@ def handle_commit_from_user(
             # the approved list for any company/signature
             # author_info consists of: [author_id, author_login, author_username, author_email]
             missing.append(user_commit_summary)
-        # set check_aff flag to false as in this case we didn't check affiliated flag, this can also store None (negative cache)
-        cla.log.debug(f"{fn} - store cache non-aff mode: missing: {project_cache_key}: {users}")
-        github_user_cache.set_with_ttl(project_cache_key, (None, False, False, False), QUICK_CACHE_TTL)
-        github_user_cache.set_with_ttl(cache_key, (None, False), QUICK_CACHE_TTL)
     else:
         cla.log.debug(
             f"{fn} - Found {len(users)} GitHub user(s) matching "
@@ -1871,10 +1691,6 @@ def handle_commit_from_user(
         if cla.utils.user_signed_project_signature(user, project):
             user_commit_summary.authorized = True
             signed.append(user_commit_summary)
-            # set check_aff flag to true in this case, as this code branch checks for affiliation, also store only 1st user as this branches considers only 1st user
-            cla.log.debug(f"{fn} - store cache aff mode: authorized: {project_cache_key}: {user}")
-            github_user_cache.set(project_cache_key, (user, True, True, False))
-            github_user_cache.set(cache_key, (user, True))
             return
 
         # If the user does not have a company ID assigned, then they have not been associated with a company as
@@ -1882,10 +1698,6 @@ def handle_commit_from_user(
         if user.get_user_company_id() is None:
             # User is not affiliated with a company
             missing.append(user_commit_summary)
-            # set check_aff flag to true in this case, as this code branch checks for affiliation, also store only 1st user as this branches considers only 1st user
-            cla.log.debug(f"{fn} - store cache aff mode: no company_id: {project_cache_key}: {user}")
-            github_user_cache.set_with_ttl(project_cache_key, (user, True, False, False), QUICK_CACHE_TTL)
-            github_user_cache.set_with_ttl(cache_key, (user, True), QUICK_CACHE_TTL)
             return
 
         # Mark the user as having a company affiliation
@@ -1924,14 +1736,9 @@ def handle_commit_from_user(
                     "is on one of the approval lists, but not affiliated with a company"
                 )
                 user_commit_summary.authorized = True
-                # LG: user_commit_summary should be added to signed in this case IMHO, but not changing it now, if changed then caching must be updated as well (it currently keeps the same logic for compatibility)
                 break
 
         missing.append(user_commit_summary)
-        # set check_aff flag to true in this case, as this code branch checks for affiliation, also store only 1st user as this branches considers only 1st user
-        cla.log.debug(f"{fn} - store cache aff mode: missing: {project_cache_key}: {user}")
-        github_user_cache.set_with_ttl(project_cache_key, (user, True, False, True), QUICK_CACHE_TTL)
-        github_user_cache.set_with_ttl(cache_key, (user, True), QUICK_CACHE_TTL)
 
 
 def get_merge_group_commit_authors(merge_group_sha, installation_id=None) -> List[UserCommitSummary]:
@@ -1981,20 +1788,7 @@ def expand_with_co_authors(commit, pr, installation_id, commit_authors) -> bool:
     co_authors = cla.utils.get_co_authors_from_commit(commit)
     missing = False
     for co_author in co_authors:
-        summary, found = get_co_author_commits(co_author, commit.sha, pr, installation_id)
-        commit_authors.append(summary)
-        if not missing and not found:
-            missing = True
-    return missing
-
-def expand_with_co_authors_from_message(commit_sha: str, message: Optional[str], pr: int, installation_id, commit_authors) -> bool:
-    """
-    Append UserCommitSummary objects for co-authors parsed from message.
-    """
-    co_authors = cla.utils.get_co_authors_from_message(message)
-    missing = False
-    for co_author in co_authors:
-        summary, found = get_co_author_commits(co_author, commit_sha, pr, installation_id)
+        summary, found = get_co_author_commits(co_author, commit, pr, installation_id)
         commit_authors.append(summary)
         if not missing and not found:
             missing = True
@@ -2061,168 +1855,8 @@ def get_author_summary(commit, pr, installation_id, with_co_authors) -> Tuple[Li
         missing = expand_with_co_authors(commit, pr, installation_id, commit_authors)
     return (commit_authors, missing)
 
-def pygithub_graphql(g, query: str, variables: dict | None = None):
-    """
-    Minimal GraphQL client using PyGithub's internal requester.
-    Works on older PyGithub versions lacking Github.graphql().
-    """
-    try:
-        # LG: note that this uses internal PyGithub API - may break in future versions:
-        # g._Github__requester.requestJsonAndCheck
-        headers, data = g._Github__requester.requestJsonAndCheck(
-            "POST",
-            "/graphql",
-            input={"query": query, "variables": variables or {}},
-        )
-        if isinstance(data, dict) and data.get("errors"):
-            msg = data["errors"][0].get("message", "GraphQL error")
-            cla.log.error(f"GraphQL errors: {msg} (all={data['errors']!r})")
-            return None
-        return data.get("data")
-    except Exception as exc:
-        cla.log.error(f"GraphQL query: {query} failed: {exc}")
-        return None
 
-def iter_pr_commits_full(g, owner: str, repo_name: str, number: int, page_size: int = 100):
-    page_size = max(1, min(100, page_size))
-    query = """
-    query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:String) {
-      repository(owner:$owner, name:$name) {
-        pullRequest(number:$number) {
-          commits(first:$pageSize, after:$cursor) {
-            pageInfo { hasNextPage endCursor }
-            nodes {
-              commit {
-                oid
-                message
-                author {
-                  name       # commit metadata author name
-                  email      # commit metadata author email
-                  user {
-                    databaseId   # numeric id (REST-compatible)
-                    login
-                    name         # profile name (preferred)
-                    email        # profile email (often null without extra scopes)
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }"""
-    cursor = None
-    while True:
-        res = pygithub_graphql(
-            g,
-            query,
-            {"owner": owner, "name": repo_name, "number": number,
-             "pageSize": page_size, "cursor": cursor},
-        )
-        if res is None:
-            cla.log.error(f"Failed to fetch commits for {owner}/{repo_name} PR #{number}")
-            return
-        commits = res["repository"]["pullRequest"]["commits"]
-        for n in commits["nodes"]:
-            c = n["commit"]
-            a = c.get("author") or {}
-            u = a.get("user") or {}
-
-            # id     := commit.author.id
-            # login  := commit.author.login
-            # name   := commit.author.name or commit.commit.author.name
-            # email  := commit.author.email or commit.commit.author.email
-            author_id    = u.get("databaseId")
-            author_login = u.get("login")
-
-            user_name    = (u.get("name") or "").strip() if isinstance(u.get("name"), str) else None
-            commit_name  = (a.get("name") or "").strip() if isinstance(a.get("name"), str) else None
-            author_name  = user_name or commit_name or None
-
-            user_email   = (u.get("email") or "").strip() if isinstance(u.get("email"), str) else None
-            commit_email = (a.get("email") or "").strip() if isinstance(a.get("email"), str) else None
-            author_email = user_email or commit_email or None
-
-            yield CommitLite(
-                sha=c["oid"],
-                author_id=author_id,
-                author_login=author_login,
-                author_name=author_name,
-                author_email=author_email,
-                message=c.get("message"),
-            )
-
-        if not commits["pageInfo"]["hasNextPage"]:
-            break
-        cursor = commits["pageInfo"]["endCursor"]
-
-def get_author_summary_gql(commit: CommitLite, pr: int, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
-    fn = "cla.models.github_models.get_author_summary_gql"
-    commit_authors: List[UserCommitSummary] = []
-
-    # Prefer linked user fields when present; fallback to raw author fields.
-    id_val    = commit.author_id
-    login_val = commit.author_login
-    name_val  = commit.author_name
-    email_val = commit.author_email
-
-    # Nothing to "try/except": GraphQL gives plain values; just normalize empties.
-    def norm(s):
-        return s if isinstance(s, str) and s.strip() else None
-
-    name_val  = norm(name_val)
-    email_val = norm(email_val)
-
-    cla.log.debug(f"{fn}: (id: {id_val}, login: {login_val}, name: {name_val}, email: {email_val})")
-
-    commit_author_summary = UserCommitSummary(
-        commit.sha,
-        id_val,
-        login_val,
-        name_val,
-        email_val,
-        False,
-        False,  # default not authorized - will be evaluated and updated later
-    )
-    cla.log.debug(f"{fn} - PR: {pr}, {commit_author_summary}")
-    commit_authors.append(commit_author_summary)
-
-    missing = False
-    if with_co_authors and commit.message:
-        # Use the message string instead of the PyGithub commit object
-        missing = expand_with_co_authors_from_message(commit.sha, commit.message, pr, installation_id, commit_authors)
-
-    return (commit_authors, missing)
-
-def get_pr_commit_count_gql(g, owner: str, repo: str, number: int) -> int | None:
-    # Single, cheap GraphQL count for logging (no pagination)
-    query = """
-    query($owner:String!, $name:String!, $number:Int!) {
-      repository(owner:$owner, name:$name) {
-        pullRequest(number:$number) {
-          commits { totalCount }
-        }
-      }
-    }"""
-    try:
-        data = pygithub_graphql(g, query, {"owner": owner, "name": repo, "number": number})
-        if data is None:
-            cla.log.debug(f"get_pr_commit_count_gql: no data returned")
-            return None
-        return data["repository"]["pullRequest"]["commits"]["totalCount"]
-    except Exception as e:
-        cla.log.debug(f"get_pr_commit_count_gql: failed to fetch count: {e}")
-        return None
-
-def iter_chunks(it: Iterable, n: int):
-    it = iter(it)
-    while True:
-        chunk = list(islice(it, n))
-        if not chunk:
-            return
-        yield chunk
-
-def get_pull_request_commit_authors(client, org, pull_request, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
+def get_pull_request_commit_authors(pull_request, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
     """
     Helper function to extract all committer information for a GitHub PR.
 
@@ -2240,39 +1874,34 @@ def get_pull_request_commit_authors(client, org, pull_request, installation_id, 
     """
     fn = "cla.models.github_models.get_pull_request_commit_authors"
     cla.log.debug(f"{fn} - Querying pull request commits for author information...")
-
-    pr_number = pull_request.number
-    repo_name = pull_request.base.repo.name
-    count = get_pr_commit_count_gql(client, org, repo_name, pr_number)
-    if count is not None:
-        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits: {count}")
-    else:
-        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits: (unknown)")
+    no_commits = pull_request.get_commits().totalCount
+    cla.log.debug(f"{fn} - PR: {pull_request.number}, number of commits: {no_commits}")
 
     commit_authors = []
     any_missing = False
-    max_workers = 16
-    submit_chunk = 256
 
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for chunk in iter_chunks(iter_pr_commits_full(client, org, repo_name, pr_number), submit_chunk):
-                futures = [executor.submit(get_author_summary_gql, c, pr_number, installation_id, with_co_authors)
-                           for c in chunk]
-                for fut in concurrent.futures.as_completed(futures):
-                    authors, missing = fut.result()
-                    any_missing = any_missing or missing
-                    commit_authors.extend(authors)
-    except Exception as exc:
-        cla.log.warning(f"{fn} - PR: {pr_number}, get_author_summary_gql raised: {exc}")
-        raise
+    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
+        future_to_commit = {
+            executor.submit(get_author_summary, commit, pull_request.number, installation_id, with_co_authors): commit
+            for commit in pull_request.get_commits()
+        }
+        for future in concurrent.futures.as_completed(future_to_commit):
+            future_to_commit[future]
+            try:
+                authors, missing = future.result()
+                if not any_missing and missing:
+                    any_missing = True
+                commit_authors.extend(authors)
+            except Exception as exc:
+                cla.log.warning(f"{fn} - PR: {pull_request.number}, get_author_summary generated an exception: {exc}")
+                raise exc
 
     return (commit_authors, any_missing)
 
 def is_valid_github_username(username: str) -> bool:
     return bool(GITHUB_USERNAME_REGEX.match(username))
 
-def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[UserCommitSummary, bool]:
+def get_co_author_commits(co_author, commit, pr, installation_id) -> Tuple[UserCommitSummary, bool]:
     fn = "cla.models.github_models.get_co_author_commits"
     # check if co-author is a github user
     co_author_summary = None
@@ -2292,7 +1921,7 @@ def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[U
             cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: {cached_user}")
             # Build UserCommitSummary using cached_user
             summary = UserCommitSummary(
-                commit_sha,
+                commit.sha,
                 getattr(cached_user, 'id', None),
                 getattr(cached_user, 'login', None),
                 name,
@@ -2304,7 +1933,7 @@ def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[U
         else:
             cla.log.debug(f"{fn} - GitHub user found in cache for name/email: {name}/{email}: (information that this user is missing)")
             summary = UserCommitSummary(
-                commit_sha,
+                commit.sha,
                 None,
                 None,
                 name,
@@ -2421,7 +2050,7 @@ def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[U
             pass
         cla.log.debug(f"{fn} - co-author github user details found: {co_author}, user: {user}, login: {login}, id: {github_id}, name: {final_name}, email: {final_email}")
         co_author_summary = UserCommitSummary(
-            commit_sha,
+            commit.sha,
             github_id,
             login,
             final_name,
@@ -2433,7 +2062,7 @@ def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[U
         found = github_id is not None
     else:
         co_author_summary = UserCommitSummary(
-            commit_sha, None, None, name, email, False, False  # default not authorized - will be evaluated and updated later
+            commit.sha, None, None, name, email, False, False  # default not authorized - will be evaluated and updated later
         )
         cla.log.debug(f"{fn} - co-author github user details not found: {co_author}")
 
@@ -2467,12 +2096,6 @@ def has_check_previously_passed_or_failed(pull_request: PullRequest):
             return True, comment
     return False, None
 
-def normalize_comment(s: str) -> str:
-    s = (s or "").replace("\r\n", "\n").replace("\r", "\n")
-    lines = [ln.rstrip(" \t") for ln in s.split("\n")]
-    while lines and lines[-1] == "":
-        lines.pop()
-    return "\n".join(lines)
 
 def update_pull_request(
     installation_id,
@@ -2507,11 +2130,7 @@ def update_pull_request(
     fn = "cla.models.github_models.update_pull_request"
     notification = cla.conf["GITHUB_PR_NOTIFICATION"]
     both = notification == "status+comment" or notification == "comment+status"
-    last_commit_sha = getattr(getattr(pull_request, "head", None), "sha", None)
-    if not last_commit_sha:
-        cla.log.error(f"{fn} - PR {pull_request.number}: missing head.sha; cannot create statuses")
-        return
-    commit_obj = pull_request.base.repo.get_commit(last_commit_sha)
+    last_commit = pull_request.get_commits().reversed[0]
 
     # Here we update the PR status by adding/updating the PR body - this is the way the EasyCLA app
     # knows if it is pass/fail.
@@ -2531,14 +2150,14 @@ def update_pull_request(
                 )
 
             # check if unsigned user is allowlisted
-            if user_commit_summary.commit_sha != last_commit_sha:
+            if user_commit_summary.commit_sha != last_commit.sha:
                 continue
 
             text += user_commit_summary.get_display_text(tag_user=True)
 
         payload = {
             "name": "CLA check",
-            "head_sha": last_commit_sha,
+            "head_sha": last_commit.sha,
             "status": "completed",
             "conclusion": "action_required",
             "details_url": help_url,
@@ -2560,21 +2179,16 @@ def update_pull_request(
         if not missing:
             # After Issue #167 was in place, they decided via Issue #289 that we
             # DO want to update the comment, but only after we've previously failed
-            if previously_pass_or_failed and normalize_comment(comment.body) != normalize_comment(body):
-                cla.log.debug(f"{fn} - Found previously passed or failed checks and comment body changed - updating CLA comment in PR.")
-                cla.log.debug(f"{fn} - Old comment: {comment.body}")
-                cla.log.debug(f"{fn} - New comment: {body}")
+            if previously_pass_or_failed:
+                cla.log.debug(f"{fn} - Found previously passed or failed checks - updating CLA comment in PR.")
                 comment.edit(body)
             cla.log.debug(f"{fn} - EasyCLA App checks pass for PR: {pull_request.number} with authors: {signed}")
         else:
             # Per Issue #167, only add a comment if check fails
             # update_cla_comment(pull_request, body)
             if previously_pass_or_failed:
-                if normalize_comment(comment.body) != normalize_comment(body):
-                    cla.log.debug(f"{fn} - Found previously failed checks and comment body changed - updating CLA comment in PR.")
-                    cla.log.debug(f"{fn} - Old comment: {comment.body}")
-                    cla.log.debug(f"{fn} - New comment: {body}")
-                    comment.edit(body)
+                cla.log.debug(f"{fn} - Found previously failed checks - updating CLA comment in PR.")
+                comment.edit(body)
             else:
                 pull_request.create_issue_comment(body)
 
@@ -2602,7 +2216,7 @@ def update_pull_request(
                 f"{fn} - Creating new CLA '{state}' status - {len(signed)} passed, {missing} failed, "
                 f"signing url: {sign_url}"
             )
-            create_commit_status(commit_obj, state, sign_url, body, context)
+            create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
         elif signed is not None and len(signed) > 0:
             state = "success"
             # For status, we change the context from author_name to 'communitybridge/cla' or the
@@ -2615,7 +2229,7 @@ def update_pull_request(
                 f"{fn} - Creating new CLA '{state}' status - {len(signed)} passed, {missing} failed, "
                 f"signing url: {sign_url}"
             )
-            create_commit_status(commit_obj, state, sign_url, body, context)
+            create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
         else:
             # error condition - should have at least one committer, and they would be in one of the above
             # lists: missing or signed
@@ -2635,7 +2249,7 @@ def update_pull_request(
                 f"should have at least one committer in one of these lists: "
                 f"{len(signed)} passed, {missing}"
             )
-            create_commit_status(commit_obj, state, sign_url, body, context)
+            create_commit_status(pull_request, last_commit.sha, state, sign_url, body, context)
 
 
 def create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, sign_url, body, context):
@@ -2662,12 +2276,14 @@ def create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, si
         cla.log.warning(f"Unable to create commit status for  " f"and merge commit {merge_commit_sha}: {e}")
 
 
-def create_commit_status(commit_obj, state, sign_url, body, context):
+def create_commit_status(pull_request, commit_hash, state, sign_url, body, context):
     """
-    Helper function to create a commit status message given the commit object.
+    Helper function to create a pull request commit status message given the PR and commit hash.
 
-    :param commit_obj: The commit to post a status on.
-    :type commit_obj: Commit
+    :param pull_request: The GitHub Pull Request object.
+    :type pull_request: github.PullRequest
+    :param commit_hash: The commit hash to post a status on.
+    :type commit_hash: string
     :param state: The state of the status.
     :type state: string
     :param sign_url: The link the user will be taken to when clicking on the status message.
@@ -2676,20 +2292,33 @@ def create_commit_status(commit_obj, state, sign_url, body, context):
     :type body: string
     """
     try:
-        sha = getattr(commit_obj, "sha", "(unknown)")
+        commit_obj = None
+        for commit in pull_request.get_commits():
+            if commit.sha == commit_hash:
+                commit_obj = commit
+                break
+        if commit_obj is None:
+            cla.log.error(
+                f"Could not post status {state} on " f"PR: {pull_request.number}, " f"Commit: {commit_hash} not found"
+            )
+            return
+        # context is a string label to differentiate one signer status from another signer status.
+        # committer name is used as context label
+        cla.log.info(f"Updating status with state '{state}' on PR {pull_request.number} for commit {commit_hash}...")
+        # returns github.CommitStatus.CommitStatus
         resp = commit_obj.create_status(state, sign_url, body, context)
         cla.log.info(
-            f"Successfully posted status '{state}': Commit {sha} "
+            f"Successfully posted status '{state}' on PR {pull_request.number}: Commit {commit_hash} "
             f"with SignUrl : {sign_url} with response: {resp}"
         )
     except GithubException as exc:
-        sha = getattr(commit_obj, "sha", "(unknown)")
         cla.log.error(
-            f"Could not post status '{state}' on "
-            f"Commit: {sha}, "
+            f"Could not post status '{state}' on PR: {pull_request.number}, "
+            f"Commit: {commit_hash}, "
             f"Response Code: {exc.status}, "
             f"Message: {exc.data}"
         )
+
 
 # def update_cla_comment(pull_request, body):
 #     """
