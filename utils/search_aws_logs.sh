@@ -50,6 +50,10 @@ else
   export DTTO="$(date -d "${DTTO}" +%s)000"
 fi
 
+DTF=$(date -u -d @$(echo "${DTFROM}/1000" | bc) "+%F %T.%6N")
+DTT=$(date -u -d @$(echo "${DTTO}/1000" | bc) "+%F %T.%6N")
+echo "Date range: ${DTF} .. ${DTT} (from ${DTFROM} to ${DTTO})"
+
 mapfile -t log_groups_array < <(aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs describe-log-groups --log-group-name-prefix "/aws/lambda/cla-" --query "logGroups[].logGroupName" | jq -r '.[]')
 
 IFS=',' read -ra INCL_LOGS_ARRAY <<< "${INCL_LOGS}"
