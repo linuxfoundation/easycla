@@ -1582,6 +1582,9 @@ func hasCheckPreviouslyFailed(ctx context.Context, client *github.Client, owner,
 		if strings.Contains(*comment.Body, "is missing the User") {
 			return true, comment, nil
 		}
+		if strings.Contains(*comment.Body, "is not linked to the GitHub account") {
+			return true, comment, nil
+		}
 	}
 	return false, nil, nil
 }
