@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-resty/resty/v2"
@@ -38,6 +39,8 @@ type OauthSuccessResponse struct {
 var passingUsers = map[string]bool{
 	"deniskurov@gmail.com": true,
 }
+
+var passingUsersMutex sync.RWMutex // Protects passingUsers map
 
 func main() {
 	r := gin.Default()
@@ -265,7 +268,11 @@ func setCommitStatus(projectID interface{}, commitSha string, userEmail string, 
 	setState := gitlab.Failed
 
 	if forceState == "" {
-		if passingUsers[userEmail] {
+		passingUsersMutex.RLock()
+		isPassingUser := passingUsers[userEmail]
+		passingUsersMutex.RUnlock()
+
+		if isPassingUser {
 			setState = gitlab.Success
 		}
 	} else {
