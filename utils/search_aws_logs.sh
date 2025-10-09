@@ -5,6 +5,7 @@
 
 # REGION=us-east-1|us-east-2 STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' OUT=logs.json ./utils/search_aws_logs.sh 'error'
 # REGION=us-east-1|us-east-2 STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' OUT=logs.json ./utils/search_aws_logs.sh 'Runtime exited with'
+# REGION=us-east-1|us-east-2 STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' OUT=logs.json ./utils/search_aws_logs.sh '---' # all
 # DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && ./utils/count_apis.sh api-logs-dev.json
 # DEBUG=1 STAGE=prod REGION=us-east-1 NO_ECHO=1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-prod.json ./utils/search_aws_logs.sh 'LG:api-request-path' && ./utils/count_apis.sh api-logs-prod.json
 # REVERSE=1 - reverse logs order - newest on top.
@@ -37,18 +38,38 @@ then
   search="Runtime exited with"
 fi
 
+if [ "${search}" = "---" ]
+then
+  search=""
+fi
+
+to_epoch_ms () {
+  local v="$1"
+  if [[ "$v" =~ ^[0-9]{13}$ ]]
+  then
+    echo "$v"; return
+  fi
+  if [[ "$v" =~ ^[0-9]{10}$ ]]
+  then
+    echo "${v}000"; return
+  fi
+  v="${v/T/ }"
+  v="${v/Z/ UTC}"
+  echo "$(date -d "$v" +%s)000"
+}
+
 if [ -z "${DTFROM}" ]
 then
-  export DTFROM="$(date -d '3 days ago' +%s)000"
+  export DTFROM="$(to_epoch_ms '3 days ago')"
 else
-  export DTFROM="$(date -d "${DTFROM}" +%s)000"
+  export DTFROM="$(to_epoch_ms "${DTFROM}")"
 fi
 
 if [ -z "${DTTO}" ]
 then
-  export DTTO="$(date +%s)000"
+  export DTTO="$(to_epoch_ms 'now')"
 else
-  export DTTO="$(date -d "${DTTO}" +%s)000"
+  export DTTO="$(to_epoch_ms "${DTTO}")"
 fi
 
 DTF=$(date -u -d @$(echo "${DTFROM}/1000" | bc) "+%F %T.%6N")
@@ -93,19 +114,35 @@ do
     fi
   done
 
-  if [ ! -z "${DEBUG}" ]
+  if [ -z "${search}" ]
   then
-    echo "lookup log group '${log_group}': aws --region "${REGION}" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"$log_group\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern \"${search}\"" >&2
+    if [ ! -z "${DEBUG}" ]
+    then
+      echo "lookup log group '${log_group}': aws --region "${REGION}" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"$log_group\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\"" >&2
+    fi
+    logs=$(aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events \
+    --log-group-name "$log_group" \
+    --start-time "${DTFROM}" \
+    --end-time "${DTTO}" | jq --arg logGroupName "$log_group" '
+    .events[]? |
+    .logGroupName = $logGroupName |
+    .dt = ( (.timestamp / 1000) | strftime("%Y-%m-%d %H:%M:%S") ) + "." + ( (.timestamp % 1000 | tostring) | if length == 1 then "00" + . elif length == 2 then "0" + . else . end )
+    ')
+  else
+    if [ ! -z "${DEBUG}" ]
+    then
+      echo "lookup log group '${log_group}': aws --region "${REGION}" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"$log_group\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern \"${search}\"" >&2
+    fi
+    logs=$(aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events \
+    --log-group-name "$log_group" \
+    --start-time "${DTFROM}" \
+    --end-time "${DTTO}" \
+    --filter-pattern "\"${search}\"" | jq --arg logGroupName "$log_group" '
+    .events[]? |
+    .logGroupName = $logGroupName |
+    .dt = ( (.timestamp / 1000) | strftime("%Y-%m-%d %H:%M:%S") ) + "." + ( (.timestamp % 1000 | tostring) | if length == 1 then "00" + . elif length == 2 then "0" + . else . end )
+    ')
   fi
-  logs=$(aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events \
-  --log-group-name "$log_group" \
-  --start-time "${DTFROM}" \
-  --end-time "${DTTO}" \
-  --filter-pattern "\"${search}\"" | jq --arg logGroupName "$log_group" '
-  .events[]? |
-  .logGroupName = $logGroupName |
-  .dt = ( (.timestamp / 1000) | strftime("%Y-%m-%d %H:%M:%S") ) + "." + ( (.timestamp % 1000 | tostring) | if length == 1 then "00" + . elif length == 2 then "0" + . else . end )
-  ')
   if [ ! -z "$logs" ]
   then
     results+=("${logs}")
