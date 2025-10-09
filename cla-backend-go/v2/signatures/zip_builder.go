@@ -153,6 +153,9 @@ func (z *Zipper) buildPDFZip(claType string, claGroupID string) error {
 	}()
 	zipUpdated = writeFileToZip(writer, downloaderOutputChan)
 	if listErr := <-listErrCh; listErr != nil {
+		if cerr := writer.Close(); cerr != nil {
+			log.Warnf("zip writer close failed: %v", cerr)
+		}
 		return listErr
 	}
 	if cerr := writer.Close(); cerr != nil {
