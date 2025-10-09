@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: MIT
 
 # REGION=us-east-1|us-east-2 STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' OUT=logs.json ./utils/search_aws_logs.sh 'error'
+# REGION=us-east-1|us-east-2 STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' OUT=logs.json ./utils/search_aws_logs.sh 'Runtime exited with'
 # DEBUG=1 STAGE=dev REGION=us-east-1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-dev.json ./utils/search_aws_logs.sh 'LG:api-request-path' && ./utils/count_apis.sh api-logs-dev.json
 # DEBUG=1 STAGE=prod REGION=us-east-1 NO_ECHO=1 DTFROM='10 days ago' DTTO='1 second ago' OUT=api-logs-prod.json ./utils/search_aws_logs.sh 'LG:api-request-path' && ./utils/count_apis.sh api-logs-prod.json
 # REVERSE=1 - reverse logs order - newest on top.
@@ -32,8 +33,8 @@ fi
 search="${1}"
 if [ -z "${1}" ]
 then
-  echo "$0: you should specify the search term, defaulting to 'error'"
-  search="error"
+  echo "$0: you should specify the search term, defaulting to 'Runtime exited with'"
+  search="Runtime exited with"
 fi
 
 if [ -z "${DTFROM}" ]
