@@ -1,5 +1,7 @@
 #!/bin/bash
 # STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'error'
+# STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'Runtime exited with'
+# STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' '---' # all
 # REGION=us-east-2 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-go-api-v4-lambda' 'LG:api-request-path'
 # REGION=us-east-1 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-prod-api-v3-lambda' 'LG:api-request-path'
 # REGION=us-east-1 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-prod-apiv2' 'LG:api-request-path'
@@ -31,8 +33,14 @@ fi
 
 if [ -z "${2}" ]
 then
-  echo "$0: you must specify the search term, for example 'error'"
+  echo "$0: you must specify the search term, for example 'Runtime exited with'"
   exit 2
+fi
+
+search="${2}"
+if [ "${search}" = "---" ]
+then
+  search=""
 fi
 
 to_epoch_ms () {
@@ -57,7 +65,6 @@ else
   export DTFROM="$(to_epoch_ms "${DTFROM}")"
 fi
 
-# DTTO
 if [ -z "${DTTO}" ]
 then
   export DTTO="$(to_epoch_ms 'now')"
@@ -69,9 +76,18 @@ DTF=$(date -u -d @$(echo "${DTFROM}/1000" | bc) "+%F %T.%6N")
 DTT=$(date -u -d @$(echo "${DTTO}/1000" | bc) "+%F %T.%6N")
 echo "Date range: ${DTF} .. ${DTT} (from ${DTFROM} to ${DTTO})"
 
-if [ ! -z "${DEBUG}" ]
+if [ -z "${search}" ]
 then
-  echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern \"${2}\""
+  if [ ! -z "${DEBUG}" ]
+  then
+    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\""
+  fi
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" | jq -r '.events | sort_by(.timestamp)'
+else
+  if [ ! -z "${DEBUG}" ]
+  then
+    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern \"${search}\""
+  fi
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${search}\"" | jq -r '.events | sort_by(.timestamp)'
 fi
-aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${2}\"" | jq -r '.events | sort_by(.timestamp)'
 
