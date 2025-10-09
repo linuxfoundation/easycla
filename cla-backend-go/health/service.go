@@ -78,6 +78,7 @@ func (s Service) HealthCheck(ctx context.Context) (*models.Health, error) {
 // getDynamoTableStatus queries the dynamodb tables and reports if it is healthy
 func getDynamoTableStatus() []*models.HealthStatus {
 	var allStatus []*models.HealthStatus
+	var mu sync.Mutex
 
 	tableNames := []string{
 		"cla-" + ini.GetStage() + "-ccla-whitelist-requests",
@@ -114,7 +115,9 @@ func getDynamoTableStatus() []*models.HealthStatus {
 				Name:     "EasyCLA - Dynamodb - " + tableName,
 				Duration: dynamoDuration.String()}
 
+			mu.Lock()
 			allStatus = append(allStatus, &dy)
+			mu.Unlock()
 		}(tableName)
 	}
 
