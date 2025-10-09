@@ -541,17 +541,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.githubUsernameApprovalList;
-      let found = false;
-      for (let i = 0; i < list.length; i++) {
-        if (list[i] === gitUsernameApprovalList) {
-          expect(list[i]).to.eql(gitUsernameApprovalList);
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        expect.fail('GitHub Username not found in approval list');
-      }
+      expect(list).to.include(gitUsernameApprovalList);
     });
   });
 
@@ -571,10 +561,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.githubUsernameApprovalList;
-      if (list != null) {
-        for (let i = 0; i < list.length; i++) {
-          expect(list[i]).to.not.equal(gitUsernameApprovalList);
-        }
+      if (list != null && list.length > 0) {
+        expect(list).to.not.include(gitUsernameApprovalList);
       }
     });
   });
@@ -595,17 +583,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.gitlabUsernameApprovalList;
-      let found = false;
-      for (let i = 0; i < list.length; i++) {
-        if (list[i] === gitUsernameApprovalList) {
-          expect(list[i]).to.eql(gitUsernameApprovalList);
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        expect.fail('GitLab Username not found in approval list');
-      }
+      expect(list).to.include(gitUsernameApprovalList);
     });
   });
 
@@ -625,10 +603,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.gitlabUsernameApprovalList;
-      if (list != null) {
-        for (let i = 0; i < list.length; i++) {
-          expect(list[i]).to.not.equal(gitUsernameApprovalList);
-        }
+      if (list != null && list.length > 0) {
+        expect(list).to.not.include(gitUsernameApprovalList);
       }
     });
   });
