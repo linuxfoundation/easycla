@@ -145,14 +145,13 @@ func (r Repository) GetTemplateName(ctx context.Context, templateID string) (str
 
 	// For each template...
 	templateMapMutex.RLock()
+	defer templateMapMutex.RUnlock()
 	for _, template := range templateMap {
 		// If we have a match
 		if template.ID == templateID {
-			templateMapMutex.RUnlock()
 			return template.Name, nil
 		}
 	}
-	templateMapMutex.RUnlock()
 
 	log.WithFields(f).Warnf("unable to locate template with ID: %s", templateID)
 	return "", nil
