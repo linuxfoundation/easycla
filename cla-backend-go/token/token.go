@@ -6,6 +6,7 @@ package token
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -25,6 +26,7 @@ var (
 	oauthTokenURL string
 	token         string
 	expiry        time.Time
+	tokenMutex    sync.RWMutex // Protects token and expiry variables
 )
 
 type tokenGen struct {
@@ -55,9 +57,11 @@ func Init(paramClientID, paramClientSecret, paramAuth0URL, paramAudience string)
 	audience = paramAudience
 	oauthTokenURL = paramAuth0URL
 
+	tokenMutex.Lock()
 	if expiry.Year() == 1 {
 		expiry = time.Now()
 	}
+	tokenMutex.Unlock()
 
 	go retrieveToken() //nolint
 }
@@ -95,15 +99,18 @@ func retrieveToken() error {
 		return err
 	}
 
-	//token = tr.TokenType + " " + tr.AccessToken
-	token = tr.AccessToken
 	if tr.AccessToken == "" || tr.TokenType == "" {
 		err = errors.New("error fetching authentication token - response value is empty")
 		log.WithFields(f).WithError(err).Warn("empty response from auth server")
 		return err
 	}
 
+	tokenMutex.Lock()
+	//token = tr.TokenType + " " + tr.AccessToken
+	token = tr.AccessToken
 	expiry = time.Now()
+	tokenMutex.Unlock()
+
 	tokenExpiry := time.Now().Add(time.Second * time.Duration(tr.ExpiresIn))
 	log.WithFields(f).Debugf("retrieved token: %s... expires: %s", token[0:8], tokenExpiry.UTC().String())
 
@@ -116,15 +123,24 @@ func GetToken() (string, error) {
 		"functionName": "token.GetToken",
 	}
 
+	tokenMutex.RLock()
+	currentToken := token
+	currentExpiry := expiry
+	tokenMutex.RUnlock()
+
 	// set 2.75 hrs duration for new token
-	if (time.Now().Unix()-expiry.Unix()) > 9900 || token == "" {
+	if (time.Now().Unix()-currentExpiry.Unix()) > 9900 || currentToken == "" {
 		log.WithFields(f).Debug("token is either empty or expired, retrieving new token")
 		err := retrieveToken()
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("unable to retrieve a new token")
 			return "", err
 		}
+
+		tokenMutex.RLock()
+		currentToken = token
+		tokenMutex.RUnlock()
 	}
 
-	return token, nil
+	return currentToken, nil
 }
