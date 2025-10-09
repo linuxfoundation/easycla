@@ -112,7 +112,10 @@ func retrieveToken() error {
 	tokenMutex.Unlock()
 
 	tokenExpiry := time.Now().Add(time.Second * time.Duration(tr.ExpiresIn))
-	log.WithFields(f).Debugf("retrieved token: %s... expires: %s", token[0:8], tokenExpiry.UTC().String())
+	tokenMutex.RLock()
+	tokenForLog := token
+	tokenMutex.RUnlock()
+	log.WithFields(f).Debugf("retrieved token: %s... expires: %s", tokenForLog[0:8], tokenExpiry.UTC().String())
 
 	return nil
 }
