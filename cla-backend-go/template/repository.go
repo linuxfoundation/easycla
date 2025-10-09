@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -33,6 +34,7 @@ var (
 	ApacheStyleTemplateID = "fb4cc144-a76c-4c17-8a52-c648f158fded"
 	// ASWFStyleTemplateID is template id for ASWF
 	ASWFStyleTemplateID = "18b8ad08-d7d4-4d75-ad25-30bbfffd59cf"
+	templateMapMutex    sync.RWMutex // Protects templateMap
 )
 
 // RepositoryInterface interface functions
@@ -117,9 +119,12 @@ func (r Repository) GetTemplates(ctx context.Context) ([]models.Template, error)
 
 	log.WithFields(f).Debug("Loading templates...")
 	var templates []models.Template
+
+	templateMapMutex.RLock()
 	for _, template := range templateMap {
 		templates = append(templates, template)
 	}
+	templateMapMutex.RUnlock()
 
 	// Sort the template list based on the name
 	log.WithFields(f).Debug("Sorting templates...")
@@ -139,6 +144,8 @@ func (r Repository) GetTemplateName(ctx context.Context, templateID string) (str
 	}
 
 	// For each template...
+	templateMapMutex.RLock()
+	defer templateMapMutex.RUnlock()
 	for _, template := range templateMap {
 		// If we have a match
 		if template.ID == templateID {
@@ -152,7 +159,10 @@ func (r Repository) GetTemplateName(ctx context.Context, templateID string) (str
 
 // GetTemplate returns the template based on the template ID
 func (r Repository) GetTemplate(templateID string) (models.Template, error) {
+	templateMapMutex.RLock()
 	template, ok := templateMap[templateID]
+	templateMapMutex.RUnlock()
+
 	if !ok {
 		return models.Template{}, ErrTemplateNotFound
 	}
@@ -162,7 +172,9 @@ func (r Repository) GetTemplate(templateID string) (models.Template, error) {
 
 // CLAGroupTemplateExists return true if the specified template ID exists, false otherwise
 func (r Repository) CLAGroupTemplateExists(ctx context.Context, templateID string) bool {
+	templateMapMutex.RLock()
 	_, ok := templateMap[templateID]
+	templateMapMutex.RUnlock()
 	return ok
 }
 
