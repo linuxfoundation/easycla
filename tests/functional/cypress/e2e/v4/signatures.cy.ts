@@ -704,7 +704,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       return cy.logJson('response', response).then(() => {
         validate_200_Status(response);
-        cy.task('log', 'domain ' + gitOrgApprovalList + ' should be added to approval list');
+        cy.task('log', 'domain ' + domainApprovalList + ' should be added to approval list');
         let list = response.body.domainApprovalList;
         let found = false;
         for (let i = 0; i < list.length; i++) {
@@ -737,7 +737,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       return cy.logJson('response', response).then(() => {
         validate_200_Status(response);
-        cy.task('log', 'domain ' + gitOrgApprovalList + ' should be removed from approval list');
+        cy.task('log', 'domain ' + domainApprovalList + ' should be removed from approval list');
         let list = response.body.domainApprovalList;
         if (list != null) {
           for (let i = 0; i < list.length; i++) {
