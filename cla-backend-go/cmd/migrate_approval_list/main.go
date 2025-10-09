@@ -50,6 +50,7 @@ var ghOrgRepo github_organizations.Repository
 var gerritService gerrits.Service
 var eventsByType []*v1Models.Event
 var toUpdateApprovalItems []approvals.ApprovalItem
+var toUpdateApprovalItemsMutex sync.Mutex // Protects toUpdateApprovalItems slice
 
 type combinedRepo struct {
 	users.UserRepository
@@ -252,7 +253,9 @@ func updateApprovalsTable(signature *signatures.ItemSignature) error {
 				Active:              true,
 			}
 
+			toUpdateApprovalItemsMutex.Lock()
 			toUpdateApprovalItems = append(toUpdateApprovalItems, approvalItem)
+			toUpdateApprovalItemsMutex.Unlock()
 		}
 	}
 
