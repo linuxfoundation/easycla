@@ -5,6 +5,7 @@ package signatures
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -155,6 +156,7 @@ func (z *Zipper) buildPDFZip(claType string, claGroupID string) error {
 	if listErr := <-listErrCh; listErr != nil {
 		if cerr := writer.Close(); cerr != nil {
 			log.Warnf("zip writer close failed: %v", cerr)
+			return errors.Join(listErr, cerr)
 		}
 		return listErr
 	}
