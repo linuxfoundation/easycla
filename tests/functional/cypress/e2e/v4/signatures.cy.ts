@@ -32,10 +32,10 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
 
   //Aprroval list veriable
   const emailApprovalList = appConfig.emailApprovalList;
-  const gitOrgApprovalList = appConfig.gitOrgApprovalList;
+  const gitOrgApprovalList = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.com`;
   const gitUsernameApprovalList = appConfig.gitUsernameApprovalList;
   const gitLabOrgApprovalList = appConfig.gitLabOrgApprovalList;
-  const domainApprovalList = appConfig.domainApprovalList;
+  const domainApprovalList = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.com`;
 
   let signatureIclaID = '';
   let signatureCclaID = '';
@@ -492,6 +492,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       return cy.logJson('response', response).then(() => {
         validate_200_Status(response);
+        cy.task('log', 'domain ' + gitOrgApprovalList + ' should be added to approval list');
         let list = response.body.githubOrgApprovalList;
         expect(list).to.include(gitOrgApprovalList);
       });
@@ -512,13 +513,16 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         RemoveGithubOrgApprovalList: [gitOrgApprovalList],
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body.githubOrgApprovalList;
-      if (list != null) {
-        for (let i = 0; i < list.length; i++) {
-          expect(list[i]).to.not.equal(gitOrgApprovalList);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        cy.task('log', 'domain ' + gitOrgApprovalList + ' should be removed from approval list');
+        let list = response.body.githubOrgApprovalList;
+        if (list != null) {
+          for (let i = 0; i < list.length; i++) {
+            expect(list[i]).to.not.equal(gitOrgApprovalList);
+          }
         }
-      }
+      });
     });
   });
 
@@ -698,19 +702,22 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         AddDomainApprovalList: [domainApprovalList],
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body.domainApprovalList;
-      let found = false;
-      for (let i = 0; i < list.length; i++) {
-        if (list[i] === domainApprovalList) {
-          expect(list[i]).to.eql(domainApprovalList);
-          found = true;
-          break;
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        cy.task('log', 'domain ' + gitOrgApprovalList + ' should be added from approval list');
+        let list = response.body.domainApprovalList;
+        let found = false;
+        for (let i = 0; i < list.length; i++) {
+          if (list[i] === domainApprovalList) {
+            expect(list[i]).to.eql(domainApprovalList);
+            found = true;
+            break;
+          }
         }
-      }
-      if (!found) {
-        expect.fail('Domain not found in approval list');
-      }
+        if (!found) {
+          expect.fail('Domain not found in approval list');
+        }
+      });
     });
   });
 
@@ -728,13 +735,16 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         RemoveDomainApprovalList: [domainApprovalList],
       },
     }).then((response) => {
-      validate_200_Status(response);
-      let list = response.body.domainApprovalList;
-      if (list != null) {
-        for (let i = 0; i < list.length; i++) {
-          expect(list[i]).to.not.equal(domainApprovalList);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        cy.task('log', 'domain ' + gitOrgApprovalList + ' should be removed from approval list');
+        let list = response.body.domainApprovalList;
+        if (list != null) {
+          for (let i = 0; i < list.length; i++) {
+            expect(list[i]).to.not.equal(domainApprovalList);
+          }
         }
-      }
+      });
     });
   });
 
