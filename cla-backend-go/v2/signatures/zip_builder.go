@@ -6,6 +6,7 @@ package signatures
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -29,7 +30,7 @@ import (
 
 // constants
 const (
-	ParallelDownloader = 100
+	ParallelDownloader = 10
 )
 
 // Zipper implements ZipBuilder interface
@@ -111,8 +112,9 @@ func (z *Zipper) buildPDFZip(claType string, claGroupID string) error {
 	}
 	var zipUpdated bool
 	log.WithFields(f).Debug("getting s3 files")
-	downloaderInputChan := make(chan *DownloadFileInput)
-	downloaderOutputChan := make(chan *FileContent)
+	downloaderInputChan := make(chan *DownloadFileInput, 16)
+	downloaderOutputChan := make(chan *FileContent, 16)
+	listErrCh := make(chan error, 1)
 	var wg sync.WaitGroup
 	wg.Add(ParallelDownloader)
 	for i := 1; i <= ParallelDownloader; i++ {
@@ -123,7 +125,7 @@ func (z *Zipper) buildPDFZip(claType string, claGroupID string) error {
 		close(downloaderOutputChan)
 	}()
 	go func() {
-		err = z.s3.ListObjectsPages(&s3.ListObjectsInput{
+		localErr := z.s3.ListObjectsPages(&s3.ListObjectsInput{
 			Bucket: aws.String(z.bucketName),
 			Prefix: aws.String(s3ZipPrefix(claType, claGroupID)),
 		}, func(output *s3.ListObjectsOutput, b bool) bool {
@@ -147,12 +149,15 @@ func (z *Zipper) buildPDFZip(claType string, claGroupID string) error {
 			return true
 		})
 		close(downloaderInputChan)
+		listErrCh <- localErr
 	}()
 	zipUpdated = writeFileToZip(writer, downloaderOutputChan)
-	if err != nil {
-		return err
+	if listErr := <-listErrCh; listErr != nil {
+		return listErr
 	}
-	writer.Close()
+	if cerr := writer.Close(); cerr != nil {
+		return cerr
+	}
 	if zipUpdated {
 		remoteZipFileKey := s3ZipFilepath(claType, claGroupID)
 		log.Debugf("Uploading zip file %s", remoteZipFileKey)
@@ -264,13 +269,16 @@ func getZipWriter(buff *bytes.Buffer) (*zip.Writer, error) {
 func (z *Zipper) getZipFileFromS3(claType string, claGroupID string) (*bytes.Buffer, error) {
 	var buff aws.WriteAtBuffer
 	remoteFileKey := s3ZipFilepath(claType, claGroupID)
-	_, err := z.s3.GetObject(&s3.GetObjectInput{
+	_, err := z.s3.HeadObject(&s3.HeadObjectInput{
 		Bucket: aws.String(z.bucketName),
 		Key:    aws.String(remoteFileKey),
 	})
 	if err != nil {
-		aerr, ok := err.(awserr.Error)
-		if ok && aerr.Code() == s3.ErrCodeNoSuchKey {
+		if rf, ok := err.(awserr.RequestFailure); ok && rf.StatusCode() == http.StatusNotFound {
+			log.Debugf("zip file %s does not exist on s3", remoteFileKey)
+			return bytes.NewBuffer(buff.Bytes()), nil
+		}
+		if aerr, ok := err.(awserr.Error); ok && (aerr.Code() == s3.ErrCodeNoSuchKey || aerr.Code() == "NotFound") {
 			log.Debugf("zip file %s does not exist on s3", remoteFileKey)
 			return bytes.NewBuffer(buff.Bytes()), nil
 		}
