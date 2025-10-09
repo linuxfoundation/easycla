@@ -34,6 +34,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   const emailApprovalList = appConfig.emailApprovalList;
   const gitOrgApprovalList = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.com`;
   const gitUsernameApprovalList = appConfig.gitUsernameApprovalList;
+  const gitLabUsernameApprovalList = appConfig.gitUsernameApprovalList2;
   const gitLabOrgApprovalList = appConfig.gitLabOrgApprovalList;
   const domainApprovalList = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.com`;
 
@@ -466,10 +467,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.emailApprovalList;
-      if (list != null) {
-        for (let i = 0; i < list.length; i++) {
-          expect(list[i]).to.not.equal(emailApprovalList);
-        }
+      if (list != null && list.length > 0) {
+        expect(list).to.not.include(emailApprovalList);
       }
     });
   });
@@ -578,12 +577,12 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         bearer: bearerToken,
       },
       body: {
-        AddGitlabUsernameApprovalList: [gitUsernameApprovalList],
+        AddGitlabUsernameApprovalList: [gitLabUsernameApprovalList],
       },
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.gitlabUsernameApprovalList;
-      expect(list).to.include(gitUsernameApprovalList);
+      expect(list).to.include(gitLabUsernameApprovalList);
     });
   });
 
@@ -598,13 +597,13 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         bearer: bearerToken,
       },
       body: {
-        RemoveGitlabUsernameApprovalList: [gitUsernameApprovalList],
+        RemoveGitlabUsernameApprovalList: [gitLabUsernameApprovalList],
       },
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.gitlabUsernameApprovalList;
       if (list != null && list.length > 0) {
-        expect(list).to.not.include(gitUsernameApprovalList);
+        expect(list).to.not.include(gitLabUsernameApprovalList);
       }
     });
   });
@@ -625,17 +624,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.gitlabOrgApprovalList;
-      let found = false;
-      for (let i = 0; i < list.length; i++) {
-        if (list[i] === gitLabOrgApprovalList) {
-          expect(list[i]).to.eql(gitLabOrgApprovalList);
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        expect.fail('GitLab Org not found in approval list');
-      }
+      expect(list).to.include(gitLabOrgApprovalList);
     });
   });
 
@@ -655,10 +644,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.gitlabOrgApprovalList;
-      if (list != null) {
-        for (let i = 0; i < list.length; i++) {
-          expect(list[i]).to.not.equal(gitLabOrgApprovalList);
-        }
+      if (list != null && list.length > 0) {
+        expect(list).to.not.include(gitLabOrgApprovalList);
       }
     });
   });
@@ -704,7 +691,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         validate_200_Status(response);
         cy.task('log', 'domain ' + domainApprovalList + ' should be removed from approval list');
         let list = response.body.domainApprovalList;
-        expect(list).to.not.include(domainApprovalList);
+        if (list != null && list.length > 0) {
+          expect(list).to.not.include(domainApprovalList);
+        }
       });
     });
   });
