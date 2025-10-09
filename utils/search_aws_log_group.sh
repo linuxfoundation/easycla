@@ -1,5 +1,6 @@
 #!/bin/bash
 # STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'error'
+# STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'Runtime exited with'
 # REGION=us-east-2 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-go-api-v4-lambda' 'LG:api-request-path'
 # REGION=us-east-1 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-prod-api-v3-lambda' 'LG:api-request-path'
 # REGION=us-east-1 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-prod-apiv2' 'LG:api-request-path'
@@ -31,7 +32,7 @@ fi
 
 if [ -z "${2}" ]
 then
-  echo "$0: you must specify the search term, for example 'error'"
+  echo "$0: you must specify the search term, for example 'Runtime exited with'"
   exit 2
 fi
 
