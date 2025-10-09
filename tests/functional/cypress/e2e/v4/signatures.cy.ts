@@ -517,10 +517,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         validate_200_Status(response);
         cy.task('log', 'domain ' + gitOrgApprovalList + ' should be removed from approval list');
         let list = response.body.githubOrgApprovalList;
-        if (list != null) {
-          for (let i = 0; i < list.length; i++) {
-            expect(list[i]).to.not.equal(gitOrgApprovalList);
-          }
+        cy.task('log', 'Response list: ' + JSON.stringify(list));
+        if (list != null && list.length > 0) {
+          expect(list).to.not.include(gitOrgApprovalList);
         }
       });
     });
@@ -706,17 +705,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         validate_200_Status(response);
         cy.task('log', 'domain ' + domainApprovalList + ' should be added to approval list');
         let list = response.body.domainApprovalList;
-        let found = false;
-        for (let i = 0; i < list.length; i++) {
-          if (list[i] === domainApprovalList) {
-            expect(list[i]).to.eql(domainApprovalList);
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          expect.fail('Domain not found in approval list');
-        }
+        expect(list).to.include(domainApprovalList);
       });
     });
   });
@@ -739,11 +728,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         validate_200_Status(response);
         cy.task('log', 'domain ' + domainApprovalList + ' should be removed from approval list');
         let list = response.body.domainApprovalList;
-        if (list != null) {
-          for (let i = 0; i < list.length; i++) {
-            expect(list[i]).to.not.equal(domainApprovalList);
-          }
-        }
+        expect(list).to.not.include(domainApprovalList);
       });
     });
   });
