@@ -2164,7 +2164,7 @@ def pygithub_graphql(g, query: str, variables: dict | None = None):
         if isinstance(data, dict) and data.get("errors"):
             errs = data["errors"]
             paths = [e.get("path") for e in errs]
-            msgs  = [e.get("message") for e in errs]
+            msgs = [e.get("message") for e in errs]
             cla.log.error(f"GraphQL errors: {msgs} (paths={paths}, all={errs!r})")
             return None
         return data.get("data")
