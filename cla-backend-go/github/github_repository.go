@@ -78,13 +78,33 @@ type gqlRequest struct {
 }
 
 type gqlError struct {
-	Message string `json:"message"`
-	Type    string `json:"type,omitempty"` // sometimes "RATE_LIMITED"
+	Message    string         `json:"message"`
+	Type       string         `json:"type,omitempty"` // sometimes "RATE_LIMITED"
+	Path       []interface{}  `json:"path,omitempty"`
+	Extensions map[string]any `json:"extensions,omitempty"`
 }
 
 type gqlResponse struct {
 	Data   json.RawMessage `json:"data"`
 	Errors []gqlError      `json:"errors,omitempty"`
+}
+
+type GraphQLError struct {
+	Errs []gqlError
+}
+
+func (e *GraphQLError) Error() string {
+	if len(e.Errs) == 0 {
+		return "graphql: unknown error"
+	}
+	msg := "graphql: "
+	for i, ge := range e.Errs {
+		msg += fmt.Sprintf("#%d: %s (type=%s path=%v)", i+1, ge.Message, ge.Type, ge.Path)
+		if i < len(e.Errs)-1 {
+			msg += "; "
+		}
+	}
+	return msg
 }
 
 // doGraphQL posts to /graphql using v3 client and unmarshals the "data" field into v.
@@ -95,14 +115,16 @@ func doGraphQL(ctx context.Context, c *github.Client, query string, variables ma
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	var gr gqlResponse
 	resp, err := c.Do(ctx, req, &gr)
 	if err != nil {
 		return resp, err
 	}
 	if len(gr.Errors) > 0 {
-		first := gr.Errors[0]
-		return resp, fmt.Errorf("graphql error: %s", first.Message)
+		return resp, &GraphQLError{Errs: gr.Errors}
 	}
 	if v != nil && len(gr.Data) > 0 {
 		if err := json.Unmarshal(gr.Data, v); err != nil {

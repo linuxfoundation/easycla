@@ -2148,14 +2148,24 @@ def pygithub_graphql(g, query: str, variables: dict | None = None):
     try:
         # LG: note that this uses internal PyGithub API - may break in future versions:
         # g._Github__requester.requestJsonAndCheck
-        headers, data = g._Github__requester.requestJsonAndCheck(
+        if hasattr(g, "graphql"):
+            return g.graphql(query, variables or {})
+
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+        }
+        _, data = g._Github__requester.requestJsonAndCheck(
             "POST",
             "/graphql",
             input={"query": query, "variables": variables or {}},
+            headers=headers,
         )
         if isinstance(data, dict) and data.get("errors"):
-            msg = data["errors"][0].get("message", "GraphQL error")
-            cla.log.error(f"GraphQL errors: {msg} (all={data['errors']!r})")
+            errs = data["errors"]
+            paths = [e.get("path") for e in errs]
+            msgs  = [e.get("message") for e in errs]
+            cla.log.error(f"GraphQL errors: {msgs} (paths={paths}, all={errs!r})")
             return None
         return data.get("data")
     except Exception as exc:
@@ -2288,7 +2298,16 @@ def get_pr_commit_count_gql(g, owner: str, repo: str, number: int) -> int | None
         if data is None:
             cla.log.debug(f"get_pr_commit_count_gql: no data returned")
             return None
-        return data["repository"]["pullRequest"]["commits"]["totalCount"]
+        repo_obj = data.get("repository")
+        if not repo_obj:
+            cla.log.debug("get_pr_commit_count_gql: repository null (no access?)")
+            return None
+        pr = repo_obj.get("pullRequest")
+        if not pr:
+            cla.log.debug("get_pr_commit_count_gql: pullRequest null (bad number or no access?)")
+            return None
+        commits = pr.get("commits") or {}
+        return commits.get("totalCount")
     except Exception as e:
         cla.log.debug(f"get_pr_commit_count_gql: failed to fetch count: {e}")
         return None
