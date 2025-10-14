@@ -313,7 +313,8 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, input D
 	// Parse the provided user's name
 	userFirstName, userLastName := utils.GetFirstAndLastName(input.userWithNoLFIDName)
 
-	return acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
+	// Send invitation for the primary CLA role (e.g., cla-manager-designee)
+	inviteErr := acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
 		InviteUserFirstName: userFirstName,
 		InviteUserLastName:  userLastName,
 		InviteUserEmail:     input.userWithNoLFIDEmail,
@@ -326,6 +327,48 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, input D
 		EmailContent:        body,
 		Automate:            false,
 	})
+	if inviteErr != nil {
+		log.WithFields(f).WithError(inviteErr).Warnf("failed to send primary role invitation")
+		return inviteErr
+	}
+
+	// Also send invitation for the "contact" role which is required to access Corporate Console
+	// This is sent at organization scope (not project|organization)
+	contactSubject := fmt.Sprintf("EasyCLA: Invitation to access Corporate Console for %s", input.companyName)
+	contactBody, contactBodyErr := emails.RenderV2ToCLAManagerDesigneeTemplate(s.emailTemplateService, input.projectSFIDs,
+		emails.V2ToCLAManagerDesigneeTemplateParams{
+			CommonEmailParams: emails.CommonEmailParams{
+				RecipientName: input.userWithNoLFIDName,
+				CompanyName:   input.companyName,
+			},
+			Contributor: input.contributorModel,
+		}, emails.V2DesigneeToUserWithNoLFIDTemplate, emails.V2DesigneeToUserWithNoLFIDTemplateName)
+
+	if contactBodyErr != nil {
+		log.WithFields(f).WithError(contactBodyErr).Warnf("failed to render contact role invitation email template")
+		// Don't return error, as the primary invitation was successful
+	} else {
+		log.WithFields(f).Debug("sending contact role invite request...")
+		contactInviteErr := acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
+			InviteUserFirstName: userFirstName,
+			InviteUserLastName:  userLastName,
+			InviteUserEmail:     input.userWithNoLFIDEmail,
+			RoleName:            utils.ContactRole,
+			Scope:               "organization", // Contact role is at organization scope only
+			ProjectSFID:         "",             // Not applicable for organization scope
+			OrganizationSFID:    input.organizationID,
+			InviteType:          "userinvite",
+			Subject:             contactSubject,
+			EmailContent:        contactBody,
+			Automate:            false,
+		})
+		if contactInviteErr != nil {
+			log.WithFields(f).WithError(contactInviteErr).Warnf("failed to send contact role invitation, but primary invitation succeeded")
+			// Don't return error, as the primary invitation was successful
+		}
+	}
+
+	return nil
 }
 
 // sendEmailToUserWithNoLFID helper function to send email to a given user with no LFID
@@ -364,8 +407,9 @@ func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, input EmailToUs
 	userFirstName, userLastName := utils.GetFirstAndLastName(input.userWithNoLFIDName)
 
 	log.WithFields(f).Debug("sending user invite request...")
-	//return acsClient.SendUserInvite(ctx, &userWithNoLFIDEmail, role, utils.ProjectOrgScope, projectID, organizationID, "userinvite", &subject, &body, automate)
-	return acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
+
+	// Send invitation for the primary CLA role (e.g., cla-manager-designee)
+	inviteErr := acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
 		InviteUserFirstName: userFirstName,
 		InviteUserLastName:  userLastName,
 		InviteUserEmail:     input.userWithNoLFIDEmail,
@@ -378,4 +422,45 @@ func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, input EmailToUs
 		EmailContent:        body,
 		Automate:            false,
 	})
+	if inviteErr != nil {
+		log.WithFields(f).WithError(inviteErr).Warnf("failed to send primary role invitation")
+		return inviteErr
+	}
+
+	// Also send invitation for the "contact" role which is required to access Corporate Console
+	// This is sent at organization scope (not project|organization)
+	contactSubject := fmt.Sprintf("EasyCLA: Invitation to access Corporate Console for %s", input.companyName)
+	contactBody, contactBodyErr := emails.RenderV2CLAManagerToUserWithNoLFIDTemplate(s.emailTemplateService, input.projectID, emails.V2CLAManagerToUserWithNoLFIDTemplateParams{
+		CommonEmailParams: emails.CommonEmailParams{
+			RecipientName: input.userWithNoLFIDName,
+			CompanyName:   input.companyName,
+		},
+		RequesterUserName: input.requesterUsername,
+		RequesterEmail:    input.requesterEmail,
+	})
+	if contactBodyErr != nil {
+		log.WithFields(f).WithError(contactBodyErr).Warnf("failed to render contact role invitation email template")
+		// Don't return error, as the primary invitation was successful
+	} else {
+		log.WithFields(f).Debug("sending contact role invite request...")
+		contactInviteErr := acsClient.SendUserInvite(ctx, &v2AcsService.SendUserInviteInput{
+			InviteUserFirstName: userFirstName,
+			InviteUserLastName:  userLastName,
+			InviteUserEmail:     input.userWithNoLFIDEmail,
+			RoleName:            utils.ContactRole,
+			Scope:               "organization", // Contact role is at organization scope only
+			ProjectSFID:         "",             // Not applicable for organization scope
+			OrganizationSFID:    input.organizationID,
+			InviteType:          "userinvite",
+			Subject:             contactSubject,
+			EmailContent:        contactBody,
+			Automate:            false,
+		})
+		if contactInviteErr != nil {
+			log.WithFields(f).WithError(contactInviteErr).Warnf("failed to send contact role invitation, but primary invitation succeeded")
+			// Don't return error, as the primary invitation was successful
+		}
+	}
+
+	return nil
 }
