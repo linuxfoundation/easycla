@@ -707,8 +707,6 @@ class GitHub(repository_service_interface.RepositoryService):
 
         # Create the commit status on the merge commit
         if self.client is None:
-            # LG: this was creating broken/partially authenticated client
-            # self.client = self._get_github_client(installation_id)
             self.client = get_github_integration_client(installation_id)
 
         # Get repository
