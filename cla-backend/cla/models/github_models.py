@@ -707,7 +707,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
         # Create the commit status on the merge commit
         if self.client is None:
-            self.client = self._get_github_client(installation_id)
+            self.client = get_github_integration_client(installation_id)
 
         # Get repository
         cla.log.debug(f"{fn} - Getting repository by ID: {repository_id}")
