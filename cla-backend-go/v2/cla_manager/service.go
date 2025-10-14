@@ -414,6 +414,28 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 	log.WithFields(f).Debugf("created user role organization scope for user: %s, with role: %s with role ID: %s using project|org: %s|%s...",
 		userEmail, utils.CLADesigneeRole, roleID, projectSFID, v1CompanyModel.CompanyExternalID)
 
+	// Also assign the "contact" role which is required to access the Corporate Console
+	log.WithFields(f).Debugf("loading role ID for %s...", utils.ContactRole)
+	contactRoleID, contactErr := acServiceClient.GetRoleID(utils.ContactRole)
+	if contactErr != nil {
+		log.WithFields(f).Warnf("Problem getting role ID for contact role, error: %+v - continuing without contact role", contactErr)
+	} else {
+		log.WithFields(f).Debugf("creating contact role organization scope for user: %s, with role: %s with role ID: %s using org: %s...",
+			userEmail, utils.ContactRole, contactRoleID, v1CompanyModel.CompanyExternalID)
+		contactScopeErr := orgClient.CreateOrgUserRoleOrgScope(ctx, userEmail, v1CompanyModel.CompanyExternalID, contactRoleID)
+		if contactScopeErr != nil {
+			// Ignore conflict - role has already been assigned - otherwise, log error but don't fail
+			if _, ok := contactScopeErr.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
+				log.WithFields(f).Warnf("problem creating contact role org scope for email: %s, companySFID: %s, error: %+v - continuing without contact role", userEmail, v1CompanyModel.CompanyExternalID, contactScopeErr)
+			} else {
+				log.WithFields(f).Debugf("contact role already assigned for user: %s, companySFID: %s", userEmail, v1CompanyModel.CompanyExternalID)
+			}
+		} else {
+			log.WithFields(f).Debugf("successfully created contact role organization scope for user: %s, with role: %s with role ID: %s using org: %s",
+				userEmail, utils.ContactRole, contactRoleID, v1CompanyModel.CompanyExternalID)
+		}
+	}
+
 	// Log Event
 	s.eventService.LogEventWithContext(ctx,
 		&events.LogEventArgs{
