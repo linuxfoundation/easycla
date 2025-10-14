@@ -14,7 +14,7 @@ TOKEN="$1"
 ORG="$2"
 REPO="$3"
 PR="$4"
-echo "Testing GitHub PAT GraphQL with token: ${TOKEN:0:10} for $ORG/$REPO PR:$PR..."
+echo "Testing GitHub PAT GraphQL with token: ${TOKEN:0:4} for $ORG/$REPO PR:$PR..."
 
 echo -e "\n1. Testing Simple GraphQL Query:"
 echo "--------------------------------"
