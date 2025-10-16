@@ -2210,7 +2210,7 @@ def iter_pr_commits_full(g, owner: str, repo_name: str, number: int, page_size: 
         )
         if res is None:
             cla.log.error(f"Failed to fetch commits for {owner}/{repo_name} PR #{number}")
-            return
+            raise ValueError("failed to fetch commits using GraphQL")
         commits = res["repository"]["pullRequest"]["commits"]
         for n in commits["nodes"]:
             c = n["commit"]
@@ -2341,29 +2341,61 @@ def get_pull_request_commit_authors(client, org, pull_request, installation_id, 
 
     pr_number = pull_request.number
     repo_name = pull_request.base.repo.name
+    gql_ok = True
+    pr_commits = None
+
     count = get_pr_commit_count_gql(client, org, repo_name, pr_number)
     if count is not None:
-        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits: {count}")
+        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits (GraphQL): {count}")
     else:
-        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits: (unknown)")
+        cla.log.debug(f"{fn} - PR: {pr_number}, failed to get commits count using GraphQL, fallback to REST")
+        gql_ok = False
+        try:
+            pr_commits = pull_request.get_commits()
+            count = pr_commits.totalCount
+        except Exception as exc:
+            cla.log.warning(f"{fn} - PR: {pr_number}, get PR commits raised: {exc}")
+            raise
+        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits (REST API): {count}")
+        if count == 250:
+            cla.log.warning(f"{fn} - PR: {pr_number}, commit count is 250, which is the max for REST API, there can be more commits")
 
     commit_authors = []
     any_missing = False
     max_workers = 16
     submit_chunk = 256
 
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for chunk in iter_chunks(iter_pr_commits_full(client, org, repo_name, pr_number), submit_chunk):
-                futures = [executor.submit(get_author_summary_gql, c, pr_number, installation_id, with_co_authors)
-                           for c in chunk]
+    if gql_ok:
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for chunk in iter_chunks(iter_pr_commits_full(client, org, repo_name, pr_number), submit_chunk):
+                    futures = [executor.submit(get_author_summary_gql, c, pr_number, installation_id, with_co_authors) for c in chunk]
+                    for fut in concurrent.futures.as_completed(futures):
+                        authors, missing = fut.result()
+                        any_missing = any_missing or missing
+                        commit_authors.extend(authors)
+        except Exception as exc:
+            cla.log.warning(f"{fn} - PR: {pr_number}, GraphQL processing failed: {exc}, falling back to REST")
+            gql_ok = False
+            commit_authors = []
+            any_missing = False
+    if not gql_ok:
+        if pr_commits is None:
+            try:
+                pr_commits = pull_request.get_commits()
+            except Exception as exc:
+                cla.log.warning(f"{fn} - PR: {pr_number}, fallback get PR commits raised: {exc}")
+                raise
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(get_author_summary, c, pr_number, installation_id, with_co_authors) for c in pr_commits]
                 for fut in concurrent.futures.as_completed(futures):
                     authors, missing = fut.result()
                     any_missing = any_missing or missing
                     commit_authors.extend(authors)
-    except Exception as exc:
-        cla.log.warning(f"{fn} - PR: {pr_number}, get_author_summary_gql raised: {exc}")
-        raise
+        except Exception as exc:
+            cla.log.warning(f"{fn} - PR: {pr_number}, REST processing failed: {exc}")
+            raise
 
     return (commit_authors, any_missing)
 
