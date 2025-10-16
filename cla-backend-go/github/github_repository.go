@@ -1220,6 +1220,7 @@ func GetCommitAuthorsSignedStatuses(
 	return signed, unsigned
 }
 
+//nolint:gocyclo // complexity is acceptable for now
 func GetPullRequestCommitAuthorsREST(ctx context.Context, usersService users.Service, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, bool, error) {
 	f := logrus.Fields{
 		"functionName":  "github.github_repository.GetPullRequestCommitAuthorsREST",
@@ -1235,62 +1236,69 @@ func GetPullRequestCommitAuthorsREST(ctx context.Context, usersService users.Ser
 		return nil, false, err
 	}
 
-	commits, resp, comErr := client.PullRequests.ListCommits(ctx, owner, repo, pullRequestID, &github.ListOptions{})
-	if comErr != nil {
-		log.WithFields(f).WithError(comErr).Warnf("problem listing commits for repo: %s/%s pull request: %d", owner, repo, pullRequestID)
-		return nil, false, comErr
-	}
-	if resp.StatusCode != http.StatusOK {
-		msg := fmt.Sprintf("unexpected status code: %d - expected: %d", resp.StatusCode, http.StatusOK)
-		log.WithFields(f).Warn(msg)
-		return nil, false, errors.New(msg)
-	}
-
-	log.WithFields(f).Debugf("found %d commits for pull request: %d", len(commits), pullRequestID)
 	anyMissing := false
-	for _, commit := range commits {
-		log.WithFields(f).Debugf("loaded commit: %+v", commit)
-		commitAuthor := ""
-		if commit != nil && commit.Commit != nil && commit.Commit.Author != nil && commit.Commit.Author.Login != nil {
-			log.WithFields(f).Debugf("commit.Commit.Author.Login: %s", utils.StringValue(commit.Commit.Author.Login))
-			commitAuthor = utils.StringValue(commit.Commit.Author.Login)
-		} else if commit != nil && commit.Author != nil && commit.Author.Login != nil {
-			log.WithFields(f).Debugf("commit.Author.Login: %s", utils.StringValue(commit.Author.Login))
-			commitAuthor = utils.StringValue(commit.Author.Login)
+	opts := &github.ListOptions{PerPage: 100}
+	for {
+		commits, resp, comErr := client.PullRequests.ListCommits(ctx, owner, repo, pullRequestID, opts)
+		if comErr != nil {
+			log.WithFields(f).WithError(comErr).Warnf("problem listing commits for repo: %s/%s pull request: %d", owner, repo, pullRequestID)
+			return nil, false, comErr
 		}
-		name, email := "", ""
-		if commit != nil && commit.Commit != nil && commit.Commit.Author != nil {
-			name = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Name))
-			email = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Email))
-			if (name != "" || email != "") && commit.Author == nil {
-				commit.Author = &github.User{}
+		if resp.StatusCode != http.StatusOK {
+			msg := fmt.Sprintf("unexpected status code: %d - expected: %d", resp.StatusCode, http.StatusOK)
+			log.WithFields(f).Warn(msg)
+			return nil, false, errors.New(msg)
+		}
+
+		log.WithFields(f).Debugf("found %d commits for pull request: %d", len(commits), pullRequestID)
+		for _, commit := range commits {
+			log.WithFields(f).Debugf("loaded commit: %+v", commit)
+			commitAuthor := ""
+			if commit != nil && commit.Commit != nil && commit.Commit.Author != nil && commit.Commit.Author.Login != nil {
+				log.WithFields(f).Debugf("commit.Commit.Author.Login: %s", utils.StringValue(commit.Commit.Author.Login))
+				commitAuthor = utils.StringValue(commit.Commit.Author.Login)
+			} else if commit != nil && commit.Author != nil && commit.Author.Login != nil {
+				log.WithFields(f).Debugf("commit.Author.Login: %s", utils.StringValue(commit.Author.Login))
+				commitAuthor = utils.StringValue(commit.Author.Login)
 			}
-			if name != "" && commit.Author != nil {
-				if commit.Author.Name == nil || strings.TrimSpace(utils.StringValue(commit.Author.Name)) == "" {
-					n := name
-					commit.Author.Name = &n
+			name, email := "", ""
+			if commit != nil && commit.Commit != nil && commit.Commit.Author != nil {
+				name = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Name))
+				email = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Email))
+				if (name != "" || email != "") && commit.Author == nil {
+					commit.Author = &github.User{}
+				}
+				if name != "" && commit.Author != nil {
+					if commit.Author.Name == nil || strings.TrimSpace(utils.StringValue(commit.Author.Name)) == "" {
+						n := name
+						commit.Author.Name = &n
+					}
+				}
+				if email != "" && commit.Author != nil {
+					if commit.Author.Email == nil || strings.TrimSpace(utils.StringValue(commit.Author.Email)) == "" {
+						e := email
+						commit.Author.Email = &e
+					}
 				}
 			}
-			if email != "" && commit.Author != nil {
-				if commit.Author.Email == nil || strings.TrimSpace(utils.StringValue(commit.Author.Email)) == "" {
-					e := email
-					commit.Author.Email = &e
+			log.WithFields(f).Debugf("commitAuthor: %s, name: %s, email: %s", commitAuthor, name, email)
+			userCommitSummary = append(userCommitSummary, &UserCommitSummary{
+				SHA:          utils.StringValue(commit.SHA),
+				CommitAuthor: commit.Author,
+				Affiliated:   false,
+				Authorized:   false,
+			})
+			if withCoAuthors {
+				missing := ExpandWithCoAuthors(ctx, client, usersService, commit, pullRequestID, installationID, &userCommitSummary, &mu)
+				if !anyMissing && missing {
+					anyMissing = true
 				}
 			}
 		}
-		log.WithFields(f).Debugf("commitAuthor: %s, name: %s, email: %s", commitAuthor, name, email)
-		userCommitSummary = append(userCommitSummary, &UserCommitSummary{
-			SHA:          utils.StringValue(commit.SHA),
-			CommitAuthor: commit.Author,
-			Affiliated:   false,
-			Authorized:   false,
-		})
-		if withCoAuthors {
-			missing := ExpandWithCoAuthors(ctx, client, usersService, commit, pullRequestID, installationID, &userCommitSummary, &mu)
-			if !anyMissing && missing {
-				anyMissing = true
-			}
+		if resp.NextPage == 0 {
+			break
 		}
+		opts.Page = resp.NextPage
 	}
 
 	return userCommitSummary, anyMissing, nil

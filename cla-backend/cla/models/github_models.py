@@ -2211,7 +2211,6 @@ def iter_pr_commits_full(g, owner: str, repo_name: str, number: int, page_size: 
         if res is None:
             cla.log.error(f"Failed to fetch commits for {owner}/{repo_name} PR #{number}")
             raise ValueError("failed to fetch commits using GraphQL")
-            return
         commits = res["repository"]["pullRequest"]["commits"]
         for n in commits["nodes"]:
             c = n["commit"]
