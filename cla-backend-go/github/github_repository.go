@@ -1523,7 +1523,31 @@ func EditIssueCommentIfChanged(ctx context.Context, client *github.Client, owner
 func GetPRHeadSHA(ctx context.Context, gh *github.Client, owner, repo string, prNumber int) (string, error) {
 	pr, _, err := gh.PullRequests.Get(ctx, owner, repo, prNumber)
 	if err != nil {
-		return "", err
+		f := logrus.Fields{
+			"functionName":  "github.github_repository.GetPRHeadSHA",
+			"owner":         owner,
+			"repo":          repo,
+			"pullRequestID": prNumber,
+		}
+		log.WithFields(f).WithError(err).Warnf("cannot get PR head SHA using PullRequests.Get: %+v, trying PullRequests.ListCommits", err)
+		opts := &github.ListOptions{PerPage: 1}
+		commits, resp, comErr := gh.PullRequests.ListCommits(ctx, owner, repo, prNumber, opts)
+		if comErr != nil {
+			log.WithFields(f).WithError(comErr).Warnf("problem listing commits for repo: %s/%s pull request: %d", owner, repo, prNumber)
+			return "", comErr
+		}
+		if resp != nil && resp.LastPage > 1 {
+			opts.Page = resp.LastPage
+			commits, _, comErr = gh.PullRequests.ListCommits(ctx, owner, repo, prNumber, opts)
+			if comErr != nil {
+				log.WithFields(f).WithError(comErr).Warnf("problem listing commits for repo: %s/%s pull request: %d (last page)", owner, repo, prNumber)
+				return "", comErr
+			}
+		}
+		if len(commits) == 0 || commits[0].SHA == nil {
+			return "", fmt.Errorf("missing head SHA for %s/%s PR #%d (via ListCommits)", owner, repo, prNumber)
+		}
+		return *commits[0].SHA, nil
 	}
 	sha := ""
 	if pr.Head != nil && pr.Head.SHA != nil {
