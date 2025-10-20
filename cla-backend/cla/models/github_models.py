@@ -2644,8 +2644,10 @@ def update_pull_request(
     cla.log.debug(f"{fn} - Updating PR {pull_request.number} with notification={notification}, both={both}")
     try:
         last_commit_sha = getattr(getattr(pull_request, "head", None), "sha", None)
-        # commit_obj = pull_request.base.repo.get_commit(last_commit_sha)
-        commit_obj = pull_request.head.repo.get_commit(last_commit_sha)
+        repo = getattr(getattr(pull_request, "head", None), "repo", None)
+        if repo is None:
+            repo = getattr(getattr(pull_request, "base", None), "repo", None)
+        commit_obj = repo.get_commit(last_commit_sha)
     except (GithubException, AttributeError, TypeError) as exc:
         cla.log.error(f"{fn} - PR {pull_request.number}: exception getting head.sha: {exc}")
         try:
