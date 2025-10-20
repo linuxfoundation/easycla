@@ -2641,11 +2641,24 @@ def update_pull_request(
     fn = "cla.models.github_models.update_pull_request"
     notification = cla.conf["GITHUB_PR_NOTIFICATION"]
     both = notification == "status+comment" or notification == "comment+status"
-    last_commit_sha = getattr(getattr(pull_request, "head", None), "sha", None)
+    cla.log.debug(f"{fn} - Updating PR {pull_request.number} with notification={notification}, both={both}")
+    try:
+        last_commit_sha = getattr(getattr(pull_request, "head", None), "sha", None)
+        repo = getattr(getattr(pull_request, "head", None), "repo", None)
+        if repo is None:
+            repo = getattr(getattr(pull_request, "base", None), "repo", None)
+        commit_obj = repo.get_commit(last_commit_sha)
+    except (GithubException, AttributeError, TypeError) as exc:
+        cla.log.error(f"{fn} - PR {pull_request.number}: exception getting head.sha: {exc}")
+        try:
+            commit_obj = pull_request.get_commits().reversed[0]
+            last_commit_sha = commit_obj.sha
+        except Exception as exc2:
+            cla.log.error(f"{fn} - PR {pull_request.number}: exception getting last commit from PR commits: {exc2}")
+            last_commit_sha = None
     if not last_commit_sha:
         cla.log.error(f"{fn} - PR {pull_request.number}: missing head.sha; cannot create statuses")
         return
-    commit_obj = pull_request.base.repo.get_commit(last_commit_sha)
 
     # Here we update the PR status by adding/updating the PR body - this is the way the EasyCLA app
     # knows if it is pass/fail.
@@ -2814,7 +2827,7 @@ def create_commit_status(commit_obj, state, sign_url, body, context):
         resp = commit_obj.create_status(state, sign_url, body, context)
         cla.log.info(
             f"Successfully posted status '{state}': Commit {sha} "
-            f"with SignUrl : {sign_url} with response: {resp}"
+            f"with SignUrl: {sign_url} with response: {resp}"
         )
     except GithubException as exc:
         sha = getattr(commit_obj, "sha", "(unknown)")
