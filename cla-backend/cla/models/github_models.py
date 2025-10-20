@@ -2648,8 +2648,12 @@ def update_pull_request(
         commit_obj = pull_request.head.repo.get_commit(last_commit_sha)
     except (GithubException, AttributeError, TypeError) as exc:
         cla.log.error(f"{fn} - PR {pull_request.number}: exception getting head.sha: {exc}")
-        commit_obj = pull_request.get_commits().reversed[0]
-        last_commit_sha = commit_obj.sha
+        try:
+            commit_obj = pull_request.get_commits().reversed[0]
+            last_commit_sha = commit_obj.sha
+        except Exception as exc2:
+            cla.log.error(f"{fn} - PR {pull_request.number}: exception getting last commit from PR commits: {exc2}")
+            last_commit_sha = None
     if not last_commit_sha:
         cla.log.error(f"{fn} - PR {pull_request.number}: missing head.sha; cannot create statuses")
         return

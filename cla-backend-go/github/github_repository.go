@@ -1529,7 +1529,7 @@ func GetPRHeadSHA(ctx context.Context, gh *github.Client, owner, repo string, pr
 			"repo":          repo,
 			"pullRequestID": prNumber,
 		}
-		log.WithFields(f).WithError(err).Warnf("cannot get PR head SHA using PullRequests.Get: %+v, trying PullRequests.ListCommits", err)
+		log.WithFields(f).WithError(err).Warn("cannot get PR head SHA using PullRequests.Get, trying PullRequests.ListCommits")
 		opts := &github.ListOptions{PerPage: 1}
 		commits, resp, comErr := gh.PullRequests.ListCommits(ctx, owner, repo, prNumber, opts)
 		if comErr != nil {
