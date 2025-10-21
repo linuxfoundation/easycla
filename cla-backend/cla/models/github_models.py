@@ -2749,7 +2749,7 @@ def update_pull_request(
                 f"{fn} - Creating new CLA '{state}' status - {len(signed)} passed, {missing} failed, "
                 f"signing url: {sign_url}"
             )
-            create_commit_status(commit_obj, state, sign_url, body, context)
+            create_commit_status(commit_obj, pull_request, last_commit_sha, state, sign_url, body, context)
         elif signed is not None and len(signed) > 0:
             state = "success"
             # For status, we change the context from author_name to 'communitybridge/cla' or the
@@ -2762,7 +2762,7 @@ def update_pull_request(
                 f"{fn} - Creating new CLA '{state}' status - {len(signed)} passed, {missing} failed, "
                 f"signing url: {sign_url}"
             )
-            create_commit_status(commit_obj, state, sign_url, body, context)
+            create_commit_status(commit_obj, pull_request, last_commit_sha, state, sign_url, body, context)
         else:
             # error condition - should have at least one committer, and they would be in one of the above
             # lists: missing or signed
@@ -2782,7 +2782,7 @@ def update_pull_request(
                 f"should have at least one committer in one of these lists: "
                 f"{len(signed)} passed, {missing}"
             )
-            create_commit_status(commit_obj, state, sign_url, body, context)
+            create_commit_status(commit_obj, pull_request, last_commit_sha, state, sign_url, body, context)
 
 
 def create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, sign_url, body, context):
@@ -2808,8 +2808,50 @@ def create_commit_status_for_merge_group(commit_obj, merge_commit_sha, state, si
     except Exception as e:
         cla.log.warning(f"Unable to create commit status for  " f"and merge commit {merge_commit_sha}: {e}")
 
+def create_commit_status_pr_hash(pull_request, commit_hash, state, sign_url, body, context):
+    """
+    Helper function to create a pull request commit status message given the PR and commit hash.
 
-def create_commit_status(commit_obj, state, sign_url, body, context):
+    :param pull_request: The GitHub Pull Request object.
+    :type pull_request: github.PullRequest
+    :param commit_hash: The commit hash to post a status on.
+    :type commit_hash: string
+    :param state: The state of the status.
+    :type state: string
+    :param sign_url: The link the user will be taken to when clicking on the status message.
+    :type sign_url: string
+    :param body: The contents of the status message.
+    :type body: string
+    """
+    try:
+        commit_obj = None
+        for commit in pull_request.get_commits():
+            if commit.sha == commit_hash:
+                commit_obj = commit
+                break
+        if commit_obj is None:
+            cla.log.error(
+                f"Could not post status {state} on " f"PR: {pull_request.number}, " f"Commit: {commit_hash} not found"
+            )
+            return
+        # context is a string label to differentiate one signer status from another signer status.
+        # committer name is used as context label
+        cla.log.info(f"Updating status with state '{state}' on PR {pull_request.number} for commit {commit_hash}...")
+        # returns github.CommitStatus.CommitStatus
+        resp = commit_obj.create_status(state, sign_url, body, context)
+        cla.log.info(
+            f"Successfully posted status '{state}' on PR {pull_request.number}: Commit {commit_hash} "
+            f"with SignUrl : {sign_url} with response: {resp}"
+        )
+    except GithubException as exc:
+        cla.log.error(
+            f"Could not post status '{state}' on PR: {pull_request.number}, "
+            f"Commit: {commit_hash}, "
+            f"Response Code: {exc.status}, "
+            f"Message: {exc.data}"
+        )
+
+def create_commit_status(commit_obj, pull_request, last_commit_sha, state, sign_url, body, context):
     """
     Helper function to create a commit status message given the commit object.
 
@@ -2823,20 +2865,21 @@ def create_commit_status(commit_obj, state, sign_url, body, context):
     :type body: string
     """
     try:
-        sha = getattr(commit_obj, "sha", "(unknown)")
+        sha = getattr(commit_obj, "sha", last_commit_sha)
         resp = commit_obj.create_status(state, sign_url, body, context)
         cla.log.info(
-            f"Successfully posted status '{state}': Commit {sha} "
+            f"Successfully posted status '{state}': Commit {sha}, PR: {pull_request.number} "
             f"with SignUrl: {sign_url} with response: {resp}"
         )
     except GithubException as exc:
-        sha = getattr(commit_obj, "sha", "(unknown)")
-        cla.log.error(
+        sha = getattr(commit_obj, "sha", last_commit_sha)
+        cla.log.warning(
             f"Could not post status '{state}' on "
             f"Commit: {sha}, "
             f"Response Code: {exc.status}, "
             f"Message: {exc.data}"
         )
+        create_commit_status_pr_hash(pull_request, last_commit_sha, state, sign_url, body, context)
 
 # def update_cla_comment(pull_request, body):
 #     """
