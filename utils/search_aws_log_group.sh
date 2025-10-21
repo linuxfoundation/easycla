@@ -1,6 +1,7 @@
 #!/bin/bash
 # STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'error'
 # STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'Runtime exited with'
+# STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' 'Traceback'
 # STAGE=dev DEBUG=1 DTFROM='3 days ago' DTTO='2 days ago' ./utils/search_aws_log_group.sh 'cla-backend-dev-githubactivity' '---' # all
 # REGION=us-east-2 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-go-api-v4-lambda' 'LG:api-request-path'
 # REGION=us-east-1 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-prod-api-v3-lambda' 'LG:api-request-path'
