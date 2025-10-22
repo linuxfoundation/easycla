@@ -68,6 +68,7 @@ const (
 	svgVersion       = "?v=2"
 	NegativeCacheTTL = 3 * time.Minute // Used for negative caching of missing/not-signed users
 	ProjectCacheTTL  = 3 * time.Hour   // Used for per-project caching of signed users
+	MaxCommentLength = 0xff00          // 65520 characters - leave some buffer under 64KB limit
 )
 
 // GraphQL related types
@@ -87,6 +88,23 @@ type gqlError struct {
 type gqlResponse struct {
 	Data   json.RawMessage `json:"data"`
 	Errors []gqlError      `json:"errors,omitempty"`
+}
+
+type gqlUser struct {
+	DatabaseID int    `json:"databaseId"`
+	Login      string `json:"login"`
+	Name       string `json:"name"`
+	Email      string `json:"email"`
+}
+
+type histNode struct {
+	OID     string `json:"oid"`
+	Message string `json:"message"`
+	Author  struct {
+		Name  string  `json:"name"`
+		Email string  `json:"email"`
+		User  gqlUser `json:"user"`
+	} `json:"author"`
 }
 
 type GraphQLError struct {
@@ -109,59 +127,29 @@ func (e *GraphQLError) Error() string {
 
 // doGraphQL posts to /graphql using v3 client and unmarshals the "data" field into v.
 // No retries; if GraphQL returns "errors", returns an error.
-func doGraphQL(ctx context.Context, c *github.Client, query string, variables map[string]interface{}, v any) (*github.Response, error) {
+func doGraphQL(ctx context.Context, c *github.Client, query string, variables map[string]interface{}, v any) error {
 	reqBody := gqlRequest{Query: query, Variables: variables}
 	req, err := c.NewRequest("POST", "graphql", reqBody) // -> https://api.github.com/graphql
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	var gr gqlResponse
-	resp, err := c.Do(ctx, req, &gr)
+	_, err = c.Do(ctx, req, &gr)
 	if err != nil {
-		return resp, err
+		return err
 	}
 	if len(gr.Errors) > 0 {
-		return resp, &GraphQLError{Errs: gr.Errors}
+		return &GraphQLError{Errs: gr.Errors}
 	}
 	if v != nil && len(gr.Data) > 0 {
 		if err := json.Unmarshal(gr.Data, v); err != nil {
-			return resp, fmt.Errorf("unmarshal graphql data: %w", err)
+			return fmt.Errorf("unmarshal graphql data: %w", err)
 		}
 	}
-	return resp, nil
-}
-
-type prCommitsPage struct {
-	Repository struct {
-		PullRequest struct {
-			Commits struct {
-				TotalCount int `json:"totalCount"`
-				PageInfo   struct {
-					HasNextPage bool   `json:"hasNextPage"`
-					EndCursor   string `json:"endCursor"`
-				} `json:"pageInfo"`
-				Nodes []struct {
-					Commit struct {
-						OID     string `json:"oid"`
-						Message string `json:"message"`
-						Author  struct {
-							Name  string `json:"name"`  // commit metadata author
-							Email string `json:"email"` // commit metadata author
-							User  struct {
-								DatabaseID int    `json:"databaseId"`
-								Login      string `json:"login"`
-								Name       string `json:"name"`  // profile
-								Email      string `json:"email"` // profile (often empty)
-							} `json:"user"`
-						} `json:"author"`
-					} `json:"commit"`
-				} `json:"nodes"`
-			} `json:"commits"`
-		} `json:"pullRequest"`
-	} `json:"repository"`
+	return nil
 }
 
 type cacheEntry struct {
@@ -1222,8 +1210,9 @@ func GetCommitAuthorsSignedStatuses(
 
 //nolint:gocyclo // complexity is acceptable for now
 func GetPullRequestCommitAuthorsREST(ctx context.Context, usersService users.Service, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, bool, error) {
+	fn := "github.github_repository.GetPullRequestCommitAuthorsREST"
 	f := logrus.Fields{
-		"functionName":  "github.github_repository.GetPullRequestCommitAuthorsREST",
+		"functionName":  fn,
 		"pullRequestID": pullRequestID,
 		"withCoAuthors": withCoAuthors,
 	}
@@ -1301,9 +1290,46 @@ func GetPullRequestCommitAuthorsREST(ctx context.Context, usersService users.Ser
 		opts.Page = resp.NextPage
 	}
 
+	// Build distinct sets
+	distinctSHAs := make(map[string]struct{})
+	distinctIDs := make(map[int64]struct{})
+	distinctLogins := make(map[string]struct{})
+	distinctEmails := make(map[string]struct{})
+	distinctNames := make(map[string]struct{})
+
+	for _, s := range userCommitSummary {
+		if s == nil {
+			continue
+		}
+		if s.SHA != "" {
+			distinctSHAs[s.SHA] = struct{}{}
+		}
+		if s.CommitAuthor != nil {
+			if s.CommitAuthor.ID != nil {
+				distinctIDs[*s.CommitAuthor.ID] = struct{}{}
+			}
+			if s.CommitAuthor.Login != nil && *s.CommitAuthor.Login != "" {
+				distinctLogins[*s.CommitAuthor.Login] = struct{}{}
+			}
+			if s.CommitAuthor.Email != nil && *s.CommitAuthor.Email != "" {
+				distinctEmails[*s.CommitAuthor.Email] = struct{}{}
+			}
+			if s.CommitAuthor.Name != nil && *s.CommitAuthor.Name != "" {
+				distinctNames[*s.CommitAuthor.Name] = struct{}{}
+			}
+		}
+	}
+
+	log.WithFields(f).Debugf(
+		"%s - PR: %d, total commit authors summaries found: %d, any missing: %v, distinct SHAs: %d, distinct author IDs: %d, logins: %d, emails: %d, names: %d",
+		fn, pullRequestID, len(userCommitSummary), anyMissing,
+		len(distinctSHAs), len(distinctIDs), len(distinctLogins), len(distinctEmails), len(distinctNames),
+	)
+
 	return userCommitSummary, anyMissing, nil
 }
 
+//nolint:gocyclo // complexity is acceptable for now
 func GetPullRequestCommitAuthors(
 	ctx context.Context,
 	usersService users.Service,
@@ -1312,8 +1338,9 @@ func GetPullRequestCommitAuthors(
 	owner, repo string,
 	withCoAuthors bool,
 ) ([]*UserCommitSummary, bool, error) {
+	const fn = "github.github_repository.GetPullRequestCommitAuthors"
 	f := logrus.Fields{
-		"functionName":  "github.github_repository.GetPullRequestCommitAuthors",
+		"functionName":  fn,
 		"pullRequestID": pullRequestID,
 		"withCoAuthors": withCoAuthors,
 	}
@@ -1324,28 +1351,178 @@ func GetPullRequestCommitAuthors(
 		return nil, false, err
 	}
 
-	const pageSize = 100 // GraphQL max
-	const query = `
-query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:String) {
+	// 1) Get base/head OIDs via GraphQL
+	const qInfo = `
+query($owner:String!, $name:String!, $number:Int!) {
   repository(owner:$owner, name:$name) {
-    pullRequest(number:$number) {
-      commits(first:$pageSize, after:$cursor) {
-        totalCount
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          commit {
+    pullRequest(number:$number) { baseRefOid headRefOid }
+  }
+}`
+	var info struct {
+		Repository struct {
+			PullRequest struct {
+				BaseRefOid string `json:"baseRefOid"`
+				HeadRefOid string `json:"headRefOid"`
+			} `json:"pullRequest"`
+		} `json:"repository"`
+	}
+	err = doGraphQL(ctx, client, qInfo, map[string]interface{}{
+		"owner": owner, "name": repo, "number": pullRequestID,
+	}, &info)
+	if err != nil || info.Repository.PullRequest.HeadRefOid == "" {
+		log.WithFields(f).WithError(err).Error("failed to fetch base/head OIDs via GraphQL")
+		return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
+	}
+	baseOID := info.Repository.PullRequest.BaseRefOid
+	headOID := info.Repository.PullRequest.HeadRefOid
+
+	// 2) Get merge-base via REST Compare
+	//    NOTE: Compare takes base, head (same order as Python version)
+	cRepo := client // go-github client
+	gr := cRepo.Repositories
+	// pr := cRepo.PullRequests
+
+	// We need a REST *repo* client; NewGithubAppClient already returns go-github client
+	// Compare is under Repositories
+	comp, _, err := gr.CompareCommits(ctx, owner, repo, baseOID, headOID)
+	if err != nil || comp == nil || comp.MergeBaseCommit == nil || comp.MergeBaseCommit.SHA == nil {
+		log.WithFields(f).WithError(err).Error("failed to compute merge-base via REST compare")
+		return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
+	}
+	mergeBaseSHA := comp.MergeBaseCommit.GetSHA()
+
+	// 3a) Fetch HEAD commit via GraphQL (history won't include starting commit)
+	const qHead = `
+query($owner:String!, $name:String!, $oid:GitObjectID!) {
+  repository(owner:$owner, name:$name) {
+    object(oid:$oid) {
+      ... on Commit {
+        oid
+        message
+        author { name email user { databaseId login name email } }
+      }
+    }
+  }
+}`
+	var head struct {
+		Repository struct {
+			Object *struct {
+				OID     string `json:"oid"`
+				Message string `json:"message"`
+				Author  struct {
+					Name  string  `json:"name"`
+					Email string  `json:"email"`
+					User  gqlUser `json:"user"`
+				} `json:"author"`
+			} `json:"object"`
+		} `json:"repository"`
+	}
+	err = doGraphQL(ctx, client, qHead, map[string]interface{}{
+		"owner": owner, "name": repo, "oid": headOID,
+	}, &head)
+	if err != nil || head.Repository.Object == nil {
+		log.WithFields(f).WithError(err).Error("failed to fetch head commit via GraphQL")
+		return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
+	}
+
+	var (
+		userCommitSummary []*UserCommitSummary
+		anyMissing        atomic.Bool
+		mu                sync.Mutex
+		wg                sync.WaitGroup
+	)
+
+	// worker setup
+	maxConc := runtime.NumCPU()
+	if maxConc < 1 {
+		maxConc = 1
+	}
+	sem := make(chan struct{}, maxConc)
+
+	enqueue := func(sha, msg, authName, authEmail string, u gqlUser) {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			var id64 *int64
+			if u.DatabaseID != 0 {
+				tmp := int64(u.DatabaseID)
+				id64 = &tmp
+			}
+			var login, name, email *string
+			if u.Login != "" {
+				tmp := u.Login
+				login = &tmp
+			}
+			if u.Name != "" {
+				tmp := u.Name
+				name = &tmp
+			} else if authName != "" {
+				tmp := authName
+				name = &tmp
+			}
+			if u.Email != "" {
+				tmp := u.Email
+				email = &tmp
+			} else if authEmail != "" {
+				tmp := authEmail
+				email = &tmp
+			}
+
+			ghUser := &github.User{
+				ID:    id64,
+				Login: login,
+				Name:  name,
+				Email: email,
+			}
+			rc := &github.RepositoryCommit{
+				SHA: github.String(sha),
+				Commit: &github.Commit{
+					Message: github.String(msg),
+					Author: &github.CommitAuthor{
+						Name:  github.String(authName),
+						Email: github.String(authEmail),
+					},
+				},
+				Author: ghUser,
+			}
+
+			mu.Lock()
+			userCommitSummary = append(userCommitSummary, &UserCommitSummary{
+				SHA:          sha,
+				CommitAuthor: ghUser,
+				Affiliated:   false,
+				Authorized:   false,
+			})
+			mu.Unlock()
+
+			if withCoAuthors {
+				if ExpandWithCoAuthors(ctx, client, usersService, rc, pullRequestID, installationID, &userCommitSummary, &mu) {
+					anyMissing.Store(true)
+				}
+			}
+		}()
+	}
+
+	// Enqueue HEAD first (if not merge-base)
+	if head.Repository.Object.OID != mergeBaseSHA {
+		h := head.Repository.Object
+		enqueue(h.OID, h.Message, h.Author.Name, h.Author.Email, h.Author.User)
+	}
+
+	const qHist = `
+query($owner:String!, $name:String!, $head:GitObjectID!, $first:Int!, $after:String) {
+  repository(owner:$owner, name:$name) {
+    object(oid:$head) {
+      ... on Commit {
+        history(first:$first, after:$after) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
             oid
             message
-            author {
-              name
-              email
-              user {
-                databaseId
-                login
-                name
-                email
-              }
-            }
+            author { name email user { databaseId login name email } }
           }
         }
       }
@@ -1353,141 +1530,101 @@ query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:Strin
   }
 }`
 
-	var (
-		userCommitSummary []*UserCommitSummary
-		anyMissing        atomic.Bool
+	var after *string
+	pageSize := 100
+	safetyPages := 0
+	foundMergeBase := false
 
-		mu      sync.Mutex
-		wg      sync.WaitGroup
-		maxConc = runtime.NumCPU()
-	)
-	if maxConc < 1 {
-		maxConc = 1
-	}
-	sem := make(chan struct{}, maxConc)
-
-	var (
-		cursor      *string
-		totalLogged bool
-	)
-
-	for {
+	for !foundMergeBase {
+		var hist struct {
+			Repository struct {
+				Object *struct {
+					History struct {
+						PageInfo struct {
+							HasNextPage bool   `json:"hasNextPage"`
+							EndCursor   string `json:"endCursor"`
+						} `json:"pageInfo"`
+						Nodes []histNode `json:"nodes"`
+					} `json:"history"`
+				} `json:"object"`
+			} `json:"repository"`
+		}
 		vars := map[string]interface{}{
-			"owner":    owner,
-			"name":     repo,
-			"number":   pullRequestID,
-			"pageSize": pageSize,
-			"cursor":   nil,
+			"owner": owner, "name": repo, "head": headOID,
+			"first": pageSize, "after": nil,
 		}
-		if cursor != nil {
-			vars["cursor"] = *cursor
+		if after != nil {
+			vars["after"] = *after
 		}
 
-		var page prCommitsPage
-		if _, err := doGraphQL(ctx, client, query, vars, &page); err != nil {
-			log.WithFields(f).WithError(err).Warnf("problem listing commits via GraphQL for %s/%s PR #%d", owner, repo, pullRequestID)
+		if err := doGraphQL(ctx, client, qHist, vars, &hist); err != nil || hist.Repository.Object == nil {
+			log.WithFields(f).WithError(err).Error("failed to fetch commit history via GraphQL")
 			return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
 		}
 
-		c := page.Repository.PullRequest.Commits
-		if !totalLogged {
-			log.WithFields(f).Debugf("found %d commits (totalCount) for pull request: %d", c.TotalCount, pullRequestID)
-			totalLogged = true
-			userCommitSummary = make([]*UserCommitSummary, 0, c.TotalCount)
+		for _, n := range hist.Repository.Object.History.Nodes {
+			if n.OID == mergeBaseSHA {
+				foundMergeBase = true
+				break
+			}
+			enqueue(n.OID, n.Message, n.Author.Name, n.Author.Email, n.Author.User)
 		}
 
-		// Launch per-commit workers for this page
-		for _, node := range c.Nodes {
-			n := node // capture
-			wg.Add(1)
-			sem <- struct{}{} // acquire slot
-			go func() {
-				defer wg.Done()
-				defer func() { <-sem }() // release slot
-
-				sha := n.Commit.OID
-				msg := n.Commit.Message
-				a := n.Commit.Author
-				u := a.User
-
-				// Legacy precedence: user.* preferred, else commit author fields
-				var (
-					id64  *int64
-					login *string
-					name  *string
-					email *string
-				)
-				if u.DatabaseID != 0 {
-					tmp := int64(u.DatabaseID)
-					id64 = &tmp
-				}
-				if u.Login != "" {
-					tmp := u.Login
-					login = &tmp
-				}
-				if u.Name != "" {
-					tmp := u.Name
-					name = &tmp
-				} else if a.Name != "" {
-					tmp := a.Name
-					name = &tmp
-				}
-				if u.Email != "" {
-					tmp := u.Email
-					email = &tmp
-				} else if a.Email != "" {
-					tmp := a.Email
-					email = &tmp
-				}
-
-				// Minimal go-github objects to keep ExpandWithCoAuthors working
-				ghUser := &github.User{
-					ID:    id64,
-					Login: login,
-					Name:  name,
-					Email: email,
-				}
-				rc := &github.RepositoryCommit{
-					SHA: &sha,
-					Commit: &github.Commit{
-						Message: github.String(msg),
-						Author: &github.CommitAuthor{
-							Name:  github.String(a.Name),
-							Email: github.String(a.Email),
-						},
-					},
-					Author: ghUser,
-				}
-
-				// Append main author summary
-				mu.Lock()
-				userCommitSummary = append(userCommitSummary, &UserCommitSummary{
-					SHA:          sha,
-					CommitAuthor: ghUser,
-					Affiliated:   false,
-					Authorized:   false,
-				})
-				mu.Unlock()
-
-				if withCoAuthors {
-					if ExpandWithCoAuthors(ctx, client, usersService, rc, pullRequestID, installationID, &userCommitSummary, &mu) {
-						anyMissing.Store(true)
-					}
-				}
-			}()
-		}
-
-		if !c.PageInfo.HasNextPage {
+		if foundMergeBase {
 			break
 		}
-		cur := c.PageInfo.EndCursor
-		cursor = &cur
+		if !hist.Repository.Object.History.PageInfo.HasNextPage {
+			return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
+		}
+		cur := hist.Repository.Object.History.PageInfo.EndCursor
+		after = &cur
+
+		safetyPages++
+		if safetyPages > 2000 {
+			return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
+		}
 	}
 
-	// Wait for all workers to finish
+	// wait workers
 	wg.Wait()
 
-	log.WithFields(f).Debugf("total commit author summaries (including co-authors) for PR %d: %d, any missing: %v", pullRequestID, len(userCommitSummary), anyMissing.Load())
+	// ---- Stats log identical to Python version ----
+	// Build distinct sets
+	distinctSHAs := make(map[string]struct{})
+	distinctIDs := make(map[int64]struct{})
+	distinctLogins := make(map[string]struct{})
+	distinctEmails := make(map[string]struct{})
+	distinctNames := make(map[string]struct{})
+
+	for _, s := range userCommitSummary {
+		if s == nil {
+			continue
+		}
+		if s.SHA != "" {
+			distinctSHAs[s.SHA] = struct{}{}
+		}
+		if s.CommitAuthor != nil {
+			if s.CommitAuthor.ID != nil {
+				distinctIDs[*s.CommitAuthor.ID] = struct{}{}
+			}
+			if s.CommitAuthor.Login != nil && *s.CommitAuthor.Login != "" {
+				distinctLogins[*s.CommitAuthor.Login] = struct{}{}
+			}
+			if s.CommitAuthor.Email != nil && *s.CommitAuthor.Email != "" {
+				distinctEmails[*s.CommitAuthor.Email] = struct{}{}
+			}
+			if s.CommitAuthor.Name != nil && *s.CommitAuthor.Name != "" {
+				distinctNames[*s.CommitAuthor.Name] = struct{}{}
+			}
+		}
+	}
+
+	log.WithFields(f).Debugf(
+		"%s - PR: %d, total commit authors summaries found: %d, any missing: %v, distinct SHAs: %d, distinct author IDs: %d, logins: %d, emails: %d, names: %d",
+		fn, pullRequestID, len(userCommitSummary), anyMissing.Load(),
+		len(distinctSHAs), len(distinctIDs), len(distinctLogins), len(distinctEmails), len(distinctNames),
+	)
+
 	return userCommitSummary, anyMissing.Load(), nil
 }
 
@@ -1519,17 +1656,17 @@ func EditIssueCommentIfChanged(ctx context.Context, client *github.Client, owner
 	return true, nil
 }
 
-// Head SHA for a PR (authoritative "last commit")
-func GetPRHeadSHA(ctx context.Context, gh *github.Client, owner, repo string, prNumber int) (string, error) {
+// Commit SHA for a PR (authoritative "last commit")
+func GetPRCommitSHA(ctx context.Context, gh *github.Client, owner, repo string, prNumber int) (string, error) {
 	pr, _, err := gh.PullRequests.Get(ctx, owner, repo, prNumber)
 	if err != nil {
 		f := logrus.Fields{
-			"functionName":  "github.github_repository.GetPRHeadSHA",
+			"functionName":  "github.github_repository.GetPRCommitSHA",
 			"owner":         owner,
 			"repo":          repo,
 			"pullRequestID": prNumber,
 		}
-		log.WithFields(f).WithError(err).Warn("cannot get PR head SHA using PullRequests.Get, trying PullRequests.ListCommits")
+		log.WithFields(f).WithError(err).Warn("cannot get PR commit SHA using PullRequests.Get, trying PullRequests.ListCommits")
 		opts := &github.ListOptions{PerPage: 1}
 		commits, resp, comErr := gh.PullRequests.ListCommits(ctx, owner, repo, prNumber, opts)
 		if comErr != nil {
@@ -1545,16 +1682,16 @@ func GetPRHeadSHA(ctx context.Context, gh *github.Client, owner, repo string, pr
 			}
 		}
 		if len(commits) == 0 || commits[0].SHA == nil {
-			return "", fmt.Errorf("missing head SHA for %s/%s PR #%d (via ListCommits)", owner, repo, prNumber)
+			return "", fmt.Errorf("missing commit SHA for %s/%s PR #%d (via ListCommits)", owner, repo, prNumber)
 		}
 		return *commits[0].SHA, nil
 	}
 	sha := ""
-	if pr.Head != nil && pr.Head.SHA != nil {
+	if pr != nil && pr.Head != nil && pr.Head.SHA != nil {
 		sha = *pr.Head.SHA
 	}
 	if sha == "" {
-		return "", fmt.Errorf("missing head SHA for %s/%s PR #%d", owner, repo, prNumber)
+		return "", fmt.Errorf("missing commit SHA for %s/%s PR #%d", owner, repo, prNumber)
 	}
 	return sha, nil
 }
@@ -1677,16 +1814,18 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 
 	log.WithFields(f).Debugf("Creating status: %+v", status)
 
-	headSHA, err := GetPRHeadSHA(ctx, client, owner, repo, pullRequestID)
+	commitSHA, err := GetPRCommitSHA(ctx, client, owner, repo, pullRequestID)
+	log.WithFields(f).Debugf("Got commit SHA for %s/%s PR %d: %s", owner, repo, pullRequestID, commitSHA)
 	if err != nil {
 		return err
 	}
 
-	_, _, err = CreateStatus(ctx, client, owner, repo, headSHA, &status)
+	_, _, err = CreateStatus(ctx, client, owner, repo, commitSHA, &status)
 	if err != nil {
-		log.WithFields(f).WithError(err).Debugf("unable to create status on %s", headSHA)
+		log.WithFields(f).WithError(err).Debugf("unable to create status on %s", commitSHA)
 		return err
 	}
+	log.WithFields(f).Debugf("Created '%s' status commit SHA for %s/%s PR %d: %s", *status.State, owner, repo, pullRequestID, commitSHA)
 
 	return nil
 }
@@ -1840,12 +1979,92 @@ func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, 
 		}
 	}
 
-	log.WithFields(f).Debug("Building CLAComment body ")
+	log.WithFields(f).Debug("Building CLAComment body.")
 	signURL := getFullSignURL(repositoryType, strconv.Itoa(installationID), strconv.Itoa(int(*repositoryID)), strconv.Itoa(pullRequestID), apiBaseURL)
 	commentBody := getCommentBody(repositoryType, signURL, signed, missing, anyMissing)
 	allSigned := len(missing) == 0
 	badge := getCommentBadge(allSigned, signURL, missingID, false, CLALandingPage, CLALogoURL)
-	return fmt.Sprintf("%s<br >%s", badge, commentBody)
+	body := fmt.Sprintf("%s<br >%s", badge, commentBody)
+	if len(body) > MaxCommentLength {
+		body = TrimComment(body, 40, 20, 20, "…")
+		log.WithFields(f).Debugf("comment trimmed to (%d): %s", len(body), body)
+	}
+	return body
+}
+
+// TrimComment collapses any "(sha1, sha2, ...)" group where all tokens look like SHAs (7–40 hex).
+// If a group has > maxItems, it keeps the first `head`, then an ellipsis, then the last `tail`.
+func TrimComment(html string, maxItems, head, tail int, ellipsis string) string {
+	if head+tail > maxItems {
+		if maxItems > head {
+			tail = maxItems - head
+		} else {
+			tail = 0
+		}
+	}
+	// Match any parenthesized group without nested parens.
+	re := regexp.MustCompile(`\(([^()]*)\)`)
+	return re.ReplaceAllStringFunc(html, func(group string) string {
+		// Strip the surrounding parentheses.
+		inner := group[1 : len(group)-1]
+		parts := splitAndTrimByComma(inner)
+		if len(parts) == 0 {
+			return group
+		}
+		// Ensure every token looks like a SHA.
+		for _, p := range parts {
+			if !isSHA(p) {
+				return group
+			}
+		}
+		// Collapse if too many.
+		if len(parts) > maxItems {
+			var out []string
+			if head > 0 && head < len(parts) {
+				out = append(out, parts[:head]...)
+			}
+			out = append(out, ellipsis)
+			if tail > 0 && tail < len(parts) {
+				out = append(out, parts[len(parts)-tail:]...)
+			}
+			return "(" + strings.Join(out, ", ") + ")"
+		}
+		return group
+	})
+}
+
+func splitAndTrimByComma(s string) []string {
+	if s == "" {
+		return nil
+	}
+	raw := strings.Split(s, ",")
+	out := make([]string, 0, len(raw))
+	for _, r := range raw {
+		t := strings.TrimSpace(r)
+		if t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func isSHA(s string) bool {
+	// 7..40 hex chars
+	if n := len(s); n < 7 || n > 40 {
+		return false
+	}
+	for _, r := range s {
+		if !isHex(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isHex(r rune) bool {
+	return (r >= '0' && r <= '9') ||
+		(r >= 'a' && r <= 'f') ||
+		(r >= 'A' && r <= 'F')
 }
 
 // getCommentBody mirrors the Python get_comment_body behavior.
