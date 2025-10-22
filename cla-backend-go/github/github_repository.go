@@ -1574,7 +1574,7 @@ query($owner:String!, $name:String!, $head:GitObjectID!, $first:Int!, $after:Str
 			break
 		}
 		if !hist.Repository.Object.History.PageInfo.HasNextPage {
-			return nil, false, fmt.Errorf("merge-base commit not found in PR history")
+			return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
 		}
 		cur := hist.Repository.Object.History.PageInfo.EndCursor
 		after = &cur

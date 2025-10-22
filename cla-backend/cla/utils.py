@@ -1054,7 +1054,7 @@ def assemble_cla_comment(
         missing_user_id=no_user_id,
     )
     body = badge + "<br />" + comment
-    if len(body) > 0xFF00:
+    if len(body.encode('utf-8')) > 0xFF00:
         body = trim_comment(body, max_items=40, head=20, tail=20, ellipsis="…")
     return body
 
