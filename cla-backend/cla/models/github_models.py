@@ -2173,77 +2173,119 @@ def pygithub_graphql(g, query: str, variables: dict | None = None):
         return None
 
 def iter_pr_commits_full(g, owner: str, repo_name: str, number: int, page_size: int = 100):
+    """
+    Yield every commit in a PR (base..head) using GraphQL in ~ceil(N/100) requests.
+    Strategy:
+      1) Get head/base OIDs.
+      2) Fetch & yield HEAD (history doesn't include the starting commit).
+      3) Page through Commit.history(first=page_size, after=cursor) from HEAD until we hit the merge-base SHA.
+    """
     page_size = max(1, min(100, page_size))
-    query = """
-    query($owner:String!, $name:String!, $number:Int!, $pageSize:Int!, $cursor:String) {
+
+    # 1) base/head OIDs
+    q_info = """
+    query($owner:String!, $name:String!, $number:Int!) {
       repository(owner:$owner, name:$name) {
-        pullRequest(number:$number) {
-          commits(first:$pageSize, after:$cursor) {
-            pageInfo { hasNextPage endCursor }
-            nodes {
-              commit {
+        pullRequest(number:$number) { baseRefOid headRefOid }
+      }
+    }"""
+    info = pygithub_graphql(g, q_info, {"owner": owner, "name": repo_name, "number": number})
+    if info is None:
+        cla.log.error(f"Failed to fetch base and head OIDs for commits for {owner}/{repo_name} PR #{number}")
+        raise ValueError("failed to fetch base and head OIDs for commits using GraphQL")
+    pr = info["repository"]["pullRequest"]
+    base_oid, head_oid = pr["baseRefOid"], pr["headRefOid"]
+
+    # 2) merge-base via REST (fast and reliable)
+    repo = g.get_repo(f"{owner}/{repo_name}")
+    mb_sha = repo.compare(base_oid, head_oid).merge_base_commit.sha
+
+    # Fetch & yield HEAD commit, because history won't include the starting commit itself
+    q_head = """
+    query($owner:String!, $name:String!, $oid:GitObjectID!) {
+      repository(owner:$owner, name:$name) {
+        object(oid:$oid) {
+          ... on Commit {
+            oid
+            message
+            author { name email user { databaseId login name email } }
+          }
+        }
+      }
+    }"""
+    head = pygithub_graphql(g, q_head, {"owner": owner, "name": repo_name, "oid": head_oid})["repository"]["object"]
+    if head is None:
+        cla.log.error(f"Failed to fetch head commit for {owner}/{repo_name} PR #{number}")
+        raise ValueError("failed to fetch head commit using GraphQL")
+    if head["oid"] != mb_sha:
+        a = head.get("author") or {}; u = a.get("user") or {}
+        yield CommitLite(
+            sha=head["oid"],
+            author_id=u.get("databaseId"),
+            author_login=u.get("login"),
+            author_name=(u.get("name") or a.get("name") or None),
+            author_email=(u.get("email") or a.get("email") or None),
+            message=head.get("message"),
+        )
+
+    # 3) Page through the history from HEAD; stop when we encounter merge-base
+    q_hist = """
+    query($owner:String!, $name:String!, $head:GitObjectID!, $first:Int!, $after:String) {
+      repository(owner:$owner, name:$name) {
+        object(oid:$head) {
+          ... on Commit {
+            history(first:$first, after:$after) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
                 oid
                 message
-                author {
-                  name       # commit metadata author name
-                  email      # commit metadata author email
-                  user {
-                    databaseId   # numeric id (REST-compatible)
-                    login
-                    name         # profile name (preferred)
-                    email        # profile email (often null without extra scopes)
-                  }
-                }
+                author { name email user { databaseId login name email } }
               }
             }
           }
         }
       }
     }"""
-    cursor = None
+
+    after = None
+    safety_pages = 0
     while True:
-        res = pygithub_graphql(
-            g,
-            query,
-            {"owner": owner, "name": repo_name, "number": number,
-             "pageSize": page_size, "cursor": cursor},
+        d = pygithub_graphql(
+            g, q_hist,
+            {"owner": owner, "name": repo_name, "head": head_oid, "first": page_size, "after": after},
         )
-        if res is None:
-            cla.log.error(f"Failed to fetch commits for {owner}/{repo_name} PR #{number}")
-            raise ValueError("failed to fetch commits using GraphQL")
-        commits = res["repository"]["pullRequest"]["commits"]
-        for n in commits["nodes"]:
-            c = n["commit"]
-            a = c.get("author") or {}
-            u = a.get("user") or {}
+        if d is None:
+            cla.log.error(f"Failed to history commits for {owner}/{repo_name} PR #{number}")
+            raise ValueError("failed to fetch history commits using GraphQL")
+        hist = d["repository"]["object"]["history"]
+        nodes = hist["nodes"]
 
-            # id     := commit.author.id
-            # login  := commit.author.login
-            # name   := commit.author.name or commit.commit.author.name
-            # email  := commit.author.email or commit.commit.author.email
-            author_id    = u.get("databaseId")
-            author_login = u.get("login")
-
-            user_name    = (u.get("name") or "").strip() if isinstance(u.get("name"), str) else None
-            commit_name  = (a.get("name") or "").strip() if isinstance(a.get("name"), str) else None
-            author_name  = user_name or commit_name or None
-
-            user_email   = (u.get("email") or "").strip() if isinstance(u.get("email"), str) else None
-            commit_email = (a.get("email") or "").strip() if isinstance(a.get("email"), str) else None
-            author_email = user_email or commit_email or None
-
+        # stream until we hit merge-base
+        for n in nodes:
+            if n["oid"] == mb_sha:
+                # Finished history
+                return
+            a = n.get("author") or {}; u = a.get("user") or {}
             yield CommitLite(
-                sha=c["oid"],
-                author_id=author_id,
-                author_login=author_login,
-                author_name=author_name,
-                author_email=author_email,
-                message=c.get("message"),
+                sha=n["oid"],
+                author_id=u.get("databaseId"),
+                author_login=u.get("login"),
+                author_name=(u.get("name") or a.get("name") or None),
+                author_email=(u.get("email") or a.get("email") or None),
+                message=n.get("message"),
             )
 
-        if not commits["pageInfo"]["hasNextPage"]:
-            break
-        cursor = commits["pageInfo"]["endCursor"]
+        if not hist["pageInfo"]["hasNextPage"]:
+            # merge-base not found — extremely rare (rebases or unusual ancestry).
+            # Fall back to non-GQL old approach (limited to 250 commits but still better that error)
+            raise ValueError("merge-base commit not found in PR commit history")
+            # return
+
+        after = hist["pageInfo"]["endCursor"]
+        safety_pages += 1
+        if safety_pages > 2000:  # defensive hard stop
+            raise ValueError("Too many pages while scanning history; aborting.")
+
 
 def get_author_summary_gql(commit: CommitLite, pr: int, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
     fn = "cla.models.github_models.get_author_summary_gql"
@@ -2397,6 +2439,16 @@ def get_pull_request_commit_authors(client, org, pull_request, installation_id, 
             cla.log.warning(f"{fn} - PR: {pr_number}, REST processing failed: {exc}")
             raise
 
+    cla.log.debug(
+        f"{fn} - PR: {pr_number}, "
+        f"total commit authors summaries found: {len(commit_authors)}, "
+        f"any missing: {any_missing}, "
+        f"distinct SHAs: {len({a.commit_sha for a in commit_authors})}, "
+        f"distinct author IDs: {len({a.author_id for a in commit_authors if a.author_id})}, "
+        f"logins: {len({a.author_login for a in commit_authors if a.author_login})}, "
+        f"emails: {len({a.author_email for a in commit_authors if a.author_email})}, "
+        f"names: {len({a.author_name for a in commit_authors if a.author_name})}"
+    )
     return (commit_authors, any_missing)
 
 def is_valid_github_username(username: str) -> bool:
@@ -2644,12 +2696,10 @@ def update_pull_request(
     cla.log.debug(f"{fn} - Updating PR {pull_request.number} with notification={notification}, both={both}")
     try:
         last_commit_sha = getattr(getattr(pull_request, "head", None), "sha", None)
-        repo = getattr(getattr(pull_request, "head", None), "repo", None)
-        if repo is None:
-            repo = getattr(getattr(pull_request, "base", None), "repo", None)
+        repo = getattr(getattr(pull_request, "base", None), "repo", None)
         commit_obj = repo.get_commit(last_commit_sha)
     except (GithubException, AttributeError, TypeError) as exc:
-        cla.log.error(f"{fn} - PR {pull_request.number}: exception getting head.sha: {exc}")
+        cla.log.error(f"{fn} - PR {pull_request.number}: exception getting base.sha: {exc}")
         try:
             commit_obj = pull_request.get_commits().reversed[0]
             last_commit_sha = commit_obj.sha
