@@ -2279,7 +2279,6 @@ def iter_pr_commits_full(g, owner: str, repo_name: str, number: int, page_size: 
             # merge-base not found — extremely rare (rebases or unusual ancestry).
             # Fall back to non-GQL old approach (limited to 250 commits but still better that error)
             raise ValueError("merge-base commit not found in PR commit history")
-            # return
 
         after = hist["pageInfo"]["endCursor"]
         safety_pages += 1
@@ -2699,7 +2698,7 @@ def update_pull_request(
         repo = getattr(getattr(pull_request, "base", None), "repo", None)
         commit_obj = repo.get_commit(last_commit_sha)
     except (GithubException, AttributeError, TypeError) as exc:
-        cla.log.error(f"{fn} - PR {pull_request.number}: exception getting base.sha: {exc}")
+        cla.log.error(f"{fn} - PR {pull_request.number}: exception getting commit sha: {exc}")
         try:
             commit_obj = pull_request.get_commits().reversed[0]
             last_commit_sha = commit_obj.sha
