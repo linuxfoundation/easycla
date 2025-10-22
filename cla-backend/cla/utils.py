@@ -1053,8 +1053,35 @@ def assemble_cla_comment(
         project_version=project_version,
         missing_user_id=no_user_id,
     )
-    return badge + "<br />" + comment
+    body = badge + "<br />" + comment
+    if len(body.encode('utf-8')) > 0xFF00:
+        body = trim_comment(body, max_items=40, head=20, tail=20, ellipsis="…")
+    return body
 
+def trim_comment(html: str, max_items: int = 40, head: int = 20, tail: int = 20, ellipsis: str = "…") -> str:
+    """
+    In every (...) group, if the comma-separated tokens all look like SHAs and
+    there are more than `max_items`, keep first `head`, then `ellipsis`, then last `tail`.
+    """
+    # ensure head+tail <= max_items
+    tail = max(0, min(tail, max_items - head))
+
+    sha_token = re.compile(r'^[0-9a-fA-F]{7,40}$')
+
+    def repl(m: re.Match) -> str:
+        inner = m.group(1)
+        parts = [p.strip() for p in inner.split(',')]
+        if parts and all(sha_token.match(p) for p in parts) and len(parts) > max_items:
+            kept = parts[:head]
+            if tail > 0:
+                kept += [ellipsis] + parts[-tail:]
+            else:
+                kept += [ellipsis]
+            return '(' + ', '.join(kept) + ')'
+        return m.group(0)
+
+    # Replace ANY parenthesized group, but only modify if it's a SHA-only list
+    return re.sub(r'\(([^()]*)\)', repl, html, flags=re.S)
 
 def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary], missing: List[UserCommitSummary], any_missing: bool):
     """
