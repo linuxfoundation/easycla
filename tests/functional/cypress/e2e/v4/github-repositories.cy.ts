@@ -4,6 +4,7 @@ import {
   getTokenKey,
   getAPIBaseURL,
   getXACLHeader,
+  validate_expected_status,
 } from '../../support/commands';
 
 // LG:
@@ -15,7 +16,7 @@ afterEach(function () {
   cy.task('log', `<<< finished test: ${Cypress.currentTest?.title || '(unknown)'}`);
 });
 
-describe('To Validate github-organizations API call', function () {
+describe('To Validate github-repositories API call', function () {
   // Define a variable for the environment
   const environment = Cypress.env('CYPRESS_ENV');
 
@@ -190,6 +191,137 @@ describe('To Validate github-organizations API call', function () {
       validate_200_Status(response);
       //To validate schema of response
       validateApiResponse('github-repositories/getBranchProtection.json', response.body);
+    });
+  });
+
+  describe('Expected failures', function () {
+    it('Returns 401 for all GitHub Repositories APIs when called without token', function () {
+      // Use the same project SFID and repository ID as the working tests
+      const projectSfidOrg = appConfig.childProjectSFID;
+      const repositoryID = 'f577ae5d-5616-453f-a77e-9a76ff2910ec';
+
+      const defaultHeaders = getXACLHeader();
+      const claBaseEndpoint = getAPIBaseURL('v4');
+
+      const requests = [
+        {
+          title: 'GET /project/.../github/repositories without token',
+          method: 'GET',
+          url: `${claBaseEndpoint}project/${projectSfidOrg}/github/repositories`,
+        },
+        {
+          title: 'POST /project/.../github/repositories without token',
+          method: 'POST',
+          url: `${claBaseEndpoint}project/${projectSfidOrg}/github/repositories`,
+          body: {
+            cla_group_id: 'test-cla-group-id',
+            github_organization_name: 'test-org',
+            repository_github_id: '12345',
+            repository_github_ids: ['12345'],
+          },
+        },
+        {
+          title: 'DELETE /project/.../github/repositories/... without token',
+          method: 'DELETE',
+          url: `${claBaseEndpoint}project/${projectSfidOrg}/github/repositories/${repositoryID}`,
+        },
+        {
+          title: 'GET /project/.../github/repositories/.../branch-protection without token',
+          method: 'GET',
+          url: `${claBaseEndpoint}project/${projectSfidOrg}/github/repositories/${repositoryID}/branch-protection`,
+        },
+        {
+          title: 'POST /project/.../github/repositories/.../branch-protection without token',
+          method: 'POST',
+          url: `${claBaseEndpoint}project/${projectSfidOrg}/github/repositories/${repositoryID}/branch-protection`,
+          body: {
+            branch_name: 'main',
+            enforce_admin: true,
+            status_checks: [{ enabled: true, name: 'EasyCLA' }],
+          },
+        },
+      ];
+
+      requests.forEach((request) => {
+        cy.request({
+          method: request.method,
+          url: request.url,
+          body: request.body,
+          failOnStatusCode: false,
+        }).then((response) => {
+          validate_expected_status(response, 401, undefined, undefined, undefined);
+        });
+      });
+    });
+
+    it('Returns errors due to missing or malformed parameters for GitHub Repositories APIs', function () {
+      // Use the same project SFID and repository ID as the working tests
+      const projectSfidOrg = appConfig.childProjectSFID;
+      const repositoryID = 'f577ae5d-5616-453f-a77e-9a76ff2910ec';
+
+      const defaultHeaders = getXACLHeader();
+      const defaultAuth = { bearer: bearerToken };
+      const claBaseEndpoint = getAPIBaseURL('v4');
+
+      const cases: Array<{
+        title: string;
+        method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+        url: string;
+        body?: any;
+        mode?: 'auth' | 'noauth' | 'either';
+        // when running locally
+        expectedStatusLocal?: number;
+        expectedCodeLocal?: number;
+        expectedMessageLocal?: string;
+        expectedMessageContainsLocal?: boolean;
+        // when running against dev via ACS & API-gw
+        expectedStatusRemote?: number;
+        expectedCodeRemote?: number;
+        expectedMessageRemote?: string;
+        expectedMessageContainsRemote?: boolean;
+        // if the same
+        expectedStatus?: number;
+        expectedCode?: number;
+        expectedMessage?: string;
+        expectedMessageContains?: boolean;
+      }> = [
+        // (Sanity) valid-looking parameters should succeed (or at least get past validation)
+        {
+          title: 'GET /project/.../github/repositories with valid projectSFID',
+          method: 'GET',
+          url: `${claBaseEndpoint}project/${projectSfidOrg}/github/repositories`,
+          expectedStatus: 200,
+        },
+        {
+          title: 'GET /project/.../github/repositories/.../branch-protection with valid parameters',
+          method: 'GET',
+          url: `${claBaseEndpoint}project/${projectSfidOrg}/github/repositories/${repositoryID}/branch-protection`,
+          expectedStatus: 200,
+        },
+      ];
+
+      cases.forEach((testCase) => {
+        cy.request({
+          method: testCase.method,
+          url: testCase.url,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          body: testCase.body,
+          failOnStatusCode: false,
+        }).then((response) => {
+          cy.task(
+            'log',
+            `--> expected ${testCase.expectedStatus}, ${testCase.expectedCode}, '${testCase.expectedMessage}' (contains? ${testCase.expectedMessageContains})`,
+          );
+          validate_expected_status(
+            response,
+            testCase.expectedStatus,
+            testCase.expectedCode,
+            testCase.expectedMessage,
+            testCase.expectedMessageContains,
+          );
+        });
+      });
     });
   });
 });
