@@ -50,7 +50,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'GET',
       url: `${claEndpoint}gitlab/group/${organizationExternalId}/members`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -67,7 +67,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}project/${projectSFID}/gitlab/group/${gitLabGroupID}/config`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -90,7 +90,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'POST',
       url: `${claEndpoint}project/${projectSFID}/gitlab/organizations`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -120,7 +120,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}project/${projectSFID}/gitlab/organization?organization_full_path=${gitLabOrganizationFullPath}`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -373,7 +373,7 @@ describe('To Validate & get list of gitlab-organizations via API call', function
     cy.request({
       method: 'GET',
       url: `${claEndpoint}project/${projectSFID}/gitlab/organizations`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
