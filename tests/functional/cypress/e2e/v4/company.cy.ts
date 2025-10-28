@@ -934,7 +934,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
     });
   });
 
-  // LG:skip
+  // This endpoint has security: [] in swagger but returns 401 in dev environment
   it.skip('Associates a contributor with a company', function () {
     if (companyExternalID === '') {
       companyExternalID = appConfig.companyExternalID;
@@ -947,9 +947,6 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
-      auth: {
-        bearer: bearerToken,
-      },
       body: {
         userEmail: 'veerendrat@proximabiz.com',
       },

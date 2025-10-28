@@ -143,9 +143,9 @@ describe('To Validate & get projects Activity Callback via API call', function (
     });
   });
 
-  // This endpoint is not used by consumers and is not considered in ACS.
+  // This endpoint is not used by consumers and returns 403 in dev environment
   it.skip('Get SF Project Info by ID', function () {
-    let url = `${claEndpoint}-info/${projectSfid3}`;
+    let url = `${claEndpoint.replace('/v4/', '/v4/project')}-info/${projectSfid3}`;
     cy.task('log', 'Getting project info by ID with URL: ' + url);
     cy.request({
       method: 'GET',
