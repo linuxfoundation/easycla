@@ -1,6 +1,7 @@
 import {
   validateApiResponse,
   validate_200_Status,
+  validate_401_Status,
   getTokenKey,
   getAPIBaseURL,
   getXACLHeader,
@@ -798,6 +799,535 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         } else {
           validate_200_Status(response);
         }
+      });
+    });
+  });
+
+  describe('Expected failures', () => {
+    it('Returns 401 for all Project APIs when called without token', function () {
+      const local = Cypress.env('LOCAL') ? true : false;
+
+      // Dummy-but-plausible IDs so server can fail on auth first
+      const exampleV4 = 'd9428888-122b-4b20-8c4a-0c9a1a6f9b8e'; // valid UUIDv4 shape
+      const exampleSFID = '001000000000000AAA'; // plausible SFID shape
+      const exampleUserID = 'b1e86e26-d8c8-4fd8-9f8d-5c723d5dac9f';
+      const exampleSignatureID = 'a1b86c26-d8e8-4fd8-9f8d-5c723d5dac9f';
+
+      // NOTE: Endpoints below are ONLY those that require auth in Swagger.
+      // Endpoints with security: [] are intentionally excluded.
+
+      const requests = [
+        // GET /cla-group/{claGroupID}/icla/signatures
+        { method: 'GET', url: `${claEndpoint}cla-group/${exampleV4}/icla/signatures` },
+
+        // GET /cla-group/{claGroupID}/corporate-contributors
+        { method: 'GET', url: `${claEndpoint}cla-group/${exampleV4}/corporate-contributors` },
+
+        // GET /signatures/id/{signatureID}
+        { method: 'GET', url: `${claEndpoint}signatures/id/${exampleSignatureID}` },
+
+        // GET /signatures/{signatureID}/signed-document
+        { method: 'GET', url: `${claEndpoint}signatures/${exampleSignatureID}/signed-document` },
+
+        // GET /signatures/project/{claGroupID}
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleV4}` },
+
+        // GET /signatures/project/{claGroupID}/icla/pdfs
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleV4}/icla/pdfs` },
+
+        // GET /signatures/project/{claGroupID}/icla/csv
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleV4}/icla/csv` },
+
+        // GET /signatures/project/{claGroupID}/icla/{signatureID}/pdf
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleV4}/icla/${exampleSignatureID}/pdf` },
+
+        // GET /signatures/project/{claGroupID}/ccla/pdfs
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleV4}/ccla/pdfs` },
+
+        // GET /signatures/project/{claGroupID}/ccla/csv
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleV4}/ccla/csv` },
+
+        // GET /signatures/project/{claGroupID}/ccla/{signatureID}/pdf
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleV4}/ccla/${exampleSignatureID}/pdf` },
+
+        // GET /signatures/project/{claGroupID}/company/{companyID}/employee/csv
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleV4}/company/${exampleV4}/employee/csv` },
+
+        // GET /signatures/project/{projectSFID}/company/{companyID}
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleSFID}/company/${exampleV4}` },
+
+        // GET /signatures/company/{companyID}
+        { method: 'GET', url: `${claEndpoint}signatures/company/${exampleV4}` },
+
+        // GET /signatures/user/{userID}
+        { method: 'GET', url: `${claEndpoint}signatures/user/${exampleUserID}` },
+
+        // GET /signatures/project/{projectSFID}/company/{companyID}/employee
+        { method: 'GET', url: `${claEndpoint}signatures/project/${exampleSFID}/company/${exampleV4}/employee` },
+
+        // PUT /signatures/project/{projectSFID}/company/{companyID}/clagroup/{claGroupID}/approval-list
+        {
+          method: 'PUT',
+          url: `${claEndpoint}signatures/project/${exampleSFID}/company/${exampleV4}/clagroup/${exampleV4}/approval-list`,
+          body: { AddEmailApprovalList: ['test@example.com'] },
+        },
+
+        // PUT /signatures/company/{companyID}/clagroup/{claGroupID}/ecla-auto-create
+        {
+          method: 'PUT',
+          url: `${claEndpoint}signatures/company/${exampleV4}/clagroup/${exampleV4}/ecla-auto-create`,
+          body: { auto_create_ecla: true },
+        },
+
+        // PUT /cla-group/{claGroupID}/user/{userID}/icla (invalidate ICLA)
+        { method: 'PUT', url: `${claEndpoint}cla-group/${exampleV4}/user/${exampleUserID}/icla` },
+
+        // GET /signatures/{signatureID}/gh-org-whitelist
+        { method: 'GET', url: `${claEndpoint}signatures/${exampleSignatureID}/gh-org-whitelist` },
+
+        // POST /signatures/{signatureID}/gh-org-whitelist
+        {
+          method: 'POST',
+          url: `${claEndpoint}signatures/${exampleSignatureID}/gh-org-whitelist`,
+          body: { list: ['test-org'] },
+        },
+
+        // DELETE /signatures/{signatureID}/gh-org-whitelist
+        {
+          method: 'DELETE',
+          url: `${claEndpoint}signatures/${exampleSignatureID}/gh-org-whitelist`,
+          body: { list: ['test-org'] },
+        },
+      ];
+
+      cy.wrap(requests).each((req: any) => {
+        return cy
+          .request({
+            method: req.method as any,
+            url: req.url,
+            body: req.body,
+            failOnStatusCode: false, // expect 401
+            timeout: 180000,
+          })
+          .then((response) => {
+            return cy.logJson('401 response', response).then(() => {
+              validate_401_Status(response, local);
+            });
+          });
+      });
+    });
+
+    it('Returns errors due to missing or malformed parameters for Project APIs', function () {
+      // Helpers: realistic-looking placeholders & malformed inputs
+      const exampleV4 = 'd9428888-122b-4b20-8c4a-0c9a1a6f9b8e';
+      const badUUID = 'aa';
+      const badUUID2 = 'd9428888-122b-4b20-8c4a-0c9a1a6z9b8e';
+      const exampleSFID = '001000000000000AAA';
+      const badSFID = 'bad';
+      const badSFID2 = '001000000000-00AAA';
+      const exampleUserID = 'b1e86e26-d8c8-4fd8-9f8d-5c723d5dac9f';
+      const exampleSignatureID = 'a1b86c26-d8e8-4fd8-9f8d-5c723d5dac9f';
+
+      // Auth headers for endpoints that need them
+      const defaultHeaders = getXACLHeader();
+      const defaultAuth = { bearer: bearerToken };
+      const local = Cypress.env('LOCAL') ? true : false;
+
+      const cases: Array<{
+        title: string;
+        method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+        url: string;
+        body?: any;
+        headers?: any;
+        auth?: any;
+        expectedStatus?: number;
+        expectedCode?: number;
+        expectedMessage?: string;
+        expectedMessageContains?: boolean;
+        expectedStatusLocal?: number;
+        expectedCodeLocal?: number;
+        expectedMessageLocal?: string;
+        expectedMessageContainsLocal?: boolean;
+        expectedStatusRemote?: number;
+        expectedCodeRemote?: number;
+        expectedMessageRemote?: string;
+        expectedMessageContainsRemote?: boolean;
+      }> = [
+        // --- GET /cla-group/{claGroupID}/icla/signatures
+        {
+          title: 'GET /cla-group/{claGroupID}/icla/signatures with empty claGroupID',
+          method: 'GET',
+          url: `${claEndpoint}cla-group//icla/signatures`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatusLocal: 404,
+          expectedCodeLocal: 404,
+          expectedMessageLocal: 'path /v4/cla-group//icla/signatures was not found',
+          expectedStatusRemote: 403,
+          expectedCodeRemote: 403,
+          expectedMessageRemote: 'does not have access to resource or path /cla-service/v4/cla-group//icla/signatures',
+          expectedMessageContainsRemote: true,
+        },
+        {
+          title: 'GET /cla-group/{claGroupID}/icla/signatures with malformed claGroupID (too short)',
+          method: 'GET',
+          url: `${claEndpoint}cla-group/${badUUID}/icla/signatures`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage:
+            "claGroupID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+        },
+        {
+          title: 'GET /cla-group/{claGroupID}/icla/signatures with malformed claGroupID (bad format)',
+          method: 'GET',
+          url: `${claEndpoint}cla-group/${badUUID2}/icla/signatures`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage:
+            "claGroupID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+        },
+
+        // --- GET /cla-group/{claGroupID}/corporate-contributors
+        {
+          title: 'GET /cla-group/{claGroupID}/corporate-contributors with empty claGroupID',
+          method: 'GET',
+          url: `${claEndpoint}cla-group//corporate-contributors`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatusLocal: 405,
+          expectedCodeLocal: 405,
+          expectedMessageLocal: 'method GET is not allowed, but [DELETE,PUT] are',
+          expectedStatusRemote: 403,
+          expectedCodeRemote: 403,
+          expectedMessageRemote:
+            'does not have access to resource or path /cla-service/v4/cla-group//corporate-contributors',
+          expectedMessageContainsRemote: true,
+        },
+        {
+          title: 'GET /cla-group/{claGroupID}/corporate-contributors with malformed claGroupID (too short)',
+          method: 'GET',
+          url: `${claEndpoint}cla-group/${badUUID}/corporate-contributors`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage:
+            "claGroupID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+        },
+
+        // --- GET /signatures/id/{signatureID}
+        {
+          title: 'GET /signatures/id/{signatureID} with empty signatureID',
+          method: 'GET',
+          url: `${claEndpoint}signatures/id/`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatusLocal: 404,
+          expectedCodeLocal: 404,
+          expectedMessageLocal: 'path /v4/signatures/id/ was not found',
+          expectedMessageContainsLocal: true,
+          expectedStatusRemote: 403,
+          expectedCodeRemote: 403,
+          expectedMessageRemote: 'does not have access to resource or path /cla-service/v4/signatures/id/',
+          expectedMessageContainsRemote: true,
+        },
+        {
+          title: 'GET /signatures/id/{signatureID} with malformed signatureID (too short)',
+          method: 'GET',
+          url: `${claEndpoint}signatures/id/${badUUID}`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatus: 404,
+          expectedCode: 404,
+          expectedMessage: 'signature search by ID not found',
+          expectedMessageContains: true,
+        },
+
+        // --- GET /signatures/project/{claGroupID}
+        {
+          title: 'GET /signatures/project/{claGroupID} with empty claGroupID',
+          method: 'GET',
+          url: `${claEndpoint}signatures/project/`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatusLocal: 404,
+          expectedCodeLocal: 404,
+          expectedMessageLocal: 'path /v4/signatures/project/ was not found',
+          expectedStatusRemote: 403,
+          expectedCodeRemote: 403,
+          expectedMessageRemote: 'does not have access to resource or path /cla-service/v4/signatures/project/',
+          expectedMessageContainsRemote: true,
+        },
+        {
+          title: 'GET /signatures/project/{claGroupID} with malformed claGroupID (too short)',
+          method: 'GET',
+          url: `${claEndpoint}signatures/project/${badUUID}`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage:
+            "claGroupID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+        },
+
+        // --- GET /signatures/company/{companyID}
+        {
+          title: 'GET /signatures/company/{companyID} with empty companyID',
+          method: 'GET',
+          url: `${claEndpoint}signatures/company/`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatusLocal: 404,
+          expectedCodeLocal: 404,
+          expectedMessageLocal: 'path /v4/signatures/company/ was not found',
+          expectedStatusRemote: 403,
+          expectedCodeRemote: 403,
+          expectedMessageRemote: 'does not have access to resource or path /cla-service/v4/signatures/company/',
+          expectedMessageContainsRemote: true,
+        },
+        {
+          title: 'GET /signatures/company/{companyID} with malformed companyID (too short)',
+          method: 'GET',
+          url: `${claEndpoint}signatures/company/${badUUID}`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage:
+            "companyID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+        },
+
+        // --- GET /signatures/user/{userID}
+        {
+          title: 'GET /signatures/user/{userID} with empty userID',
+          method: 'GET',
+          url: `${claEndpoint}signatures/user/`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatusLocal: 404,
+          expectedCodeLocal: 404,
+          expectedMessageLocal: 'path /v4/signatures/user/ was not found',
+          expectedStatusRemote: 403,
+          expectedCodeRemote: 403,
+          expectedMessageRemote: 'does not have access to resource or path /cla-service/v4/signatures/user/',
+          expectedMessageContainsRemote: true,
+        },
+
+        // --- GET /signatures/project/{projectSFID}/company/{companyID}
+        {
+          title: 'GET /signatures/project/{projectSFID}/company/{companyID} with empty projectSFID',
+          method: 'GET',
+          url: `${claEndpoint}signatures/project//company/${exampleV4}`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatusLocal: 404,
+          expectedCodeLocal: 404,
+          expectedMessageLocal: 'path /v4/signatures/project//company/' + exampleV4 + ' was not found',
+          expectedStatusRemote: 403,
+          expectedCodeRemote: 403,
+          expectedMessageRemote:
+            'does not have access to resource or path /cla-service/v4/signatures/project//company/' + exampleV4,
+          expectedMessageContainsRemote: true,
+        },
+        {
+          title: 'GET /signatures/project/{projectSFID}/company/{companyID} with malformed projectSFID',
+          method: 'GET',
+          url: `${claEndpoint}signatures/project/${badSFID}/company/${exampleV4}`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage: "projectSFID in path should match '^([0-9A-Za-z]{15}|[0-9A-Za-z]{18})$'",
+        },
+        {
+          title: 'GET /signatures/project/{projectSFID}/company/{companyID} with malformed companyID',
+          method: 'GET',
+          url: `${claEndpoint}signatures/project/${exampleSFID}/company/${badUUID}`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage:
+            "companyID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+        },
+
+        // --- PUT /signatures/project/{projectSFID}/company/{companyID}/clagroup/{claGroupID}/approval-list
+        {
+          title:
+            'PUT /signatures/project/{projectSFID}/company/{companyID}/clagroup/{claGroupID}/approval-list with empty body',
+          method: 'PUT',
+          url: `${claEndpoint}signatures/project/${exampleSFID}/company/${exampleV4}/clagroup/${exampleV4}/approval-list`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          body: {},
+          expectedStatus: 400,
+          expectedCode: 400,
+          expectedMessage: 'company not found',
+          expectedMessageContains: true,
+        },
+        {
+          title:
+            'PUT /signatures/project/{projectSFID}/company/{companyID}/clagroup/{claGroupID}/approval-list with malformed projectSFID',
+          method: 'PUT',
+          url: `${claEndpoint}signatures/project/${badSFID}/company/${exampleV4}/clagroup/${exampleV4}/approval-list`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          body: { AddEmailApprovalList: ['test@example.com'] },
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage: "projectSFID in path should match '^([0-9A-Za-z]{15}|[0-9A-Za-z]{18})$'",
+        },
+
+        // --- PUT /signatures/company/{companyID}/clagroup/{claGroupID}/ecla-auto-create
+        {
+          title: 'PUT /signatures/company/{companyID}/clagroup/{claGroupID}/ecla-auto-create with empty body',
+          method: 'PUT',
+          url: `${claEndpoint}signatures/company/${exampleV4}/clagroup/${exampleV4}/ecla-auto-create`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          body: {},
+          expectedStatus: 400,
+          expectedCode: 400,
+          expectedMessage: 'unable to load company',
+          expectedMessageContains: true,
+        },
+        {
+          title: 'PUT /signatures/company/{companyID}/clagroup/{claGroupID}/ecla-auto-create with malformed companyID',
+          method: 'PUT',
+          url: `${claEndpoint}signatures/company/${badUUID}/clagroup/${exampleV4}/ecla-auto-create`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          body: { auto_create_ecla: true },
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage:
+            "companyID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+        },
+
+        // --- PUT /cla-group/{claGroupID}/user/{userID}/icla
+        {
+          title: 'PUT /cla-group/{claGroupID}/user/{userID}/icla with empty claGroupID',
+          method: 'PUT',
+          url: `${claEndpoint}cla-group//user/${exampleUserID}/icla`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatusLocal: 404,
+          expectedCodeLocal: 404,
+          expectedMessageLocal: 'path /v4/cla-group//user/' + exampleUserID + '/icla was not found',
+          expectedStatusRemote: 403,
+          expectedCodeRemote: 403,
+          expectedMessageRemote:
+            'does not have access to resource or path /cla-service/v4/cla-group//user/' + exampleUserID + '/icla',
+          expectedMessageContainsRemote: true,
+        },
+        {
+          title: 'PUT /cla-group/{claGroupID}/user/{userID}/icla with malformed claGroupID',
+          method: 'PUT',
+          url: `${claEndpoint}cla-group/${badUUID}/user/${exampleUserID}/icla`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage:
+            "claGroupID in path should match '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$'",
+        },
+
+        // --- GET /signatures/{signatureID}/gh-org-whitelist
+        {
+          title: 'GET /signatures/{signatureID}/gh-org-whitelist with empty signatureID',
+          method: 'GET',
+          url: `${claEndpoint}signatures//gh-org-whitelist`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          expectedStatusLocal: 404,
+          expectedCodeLocal: 404,
+          expectedMessageLocal: 'path /v4/signatures//gh-org-whitelist was not found',
+          expectedStatusRemote: 403,
+          expectedCodeRemote: 403,
+          expectedMessageRemote:
+            'does not have access to resource or path /cla-service/v4/signatures//gh-org-whitelist',
+          expectedMessageContainsRemote: true,
+        },
+
+        // --- POST /signatures/{signatureID}/gh-org-whitelist
+        {
+          title: 'POST /signatures/{signatureID}/gh-org-whitelist with empty body',
+          method: 'POST',
+          url: `${claEndpoint}signatures/${exampleSignatureID}/gh-org-whitelist`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          body: {},
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage: 'list in body is required',
+        },
+
+        // --- DELETE /signatures/{signatureID}/gh-org-whitelist
+        {
+          title: 'DELETE /signatures/{signatureID}/gh-org-whitelist with empty body',
+          method: 'DELETE',
+          url: `${claEndpoint}signatures/${exampleSignatureID}/gh-org-whitelist`,
+          headers: defaultHeaders,
+          auth: defaultAuth,
+          body: {},
+          expectedStatus: 422,
+          expectedCode: 605,
+          expectedMessage: 'list in body is required',
+        },
+      ];
+
+      cy.wrap(cases).each((testCase: any) => {
+        return cy
+          .request({
+            method: testCase.method,
+            url: testCase.url,
+            body: testCase.body,
+            headers: testCase.headers,
+            auth: testCase.auth,
+            failOnStatusCode: false,
+            timeout: 180000,
+          })
+          .then((response) => {
+            return cy.logJson(`${testCase.title} response`, response).then(() => {
+              // Determine expected status/code/message based on local vs remote
+              let expectedStatus, expectedCode, expectedMessage, expectedMessageContains;
+
+              if (local) {
+                expectedStatus = testCase.expectedStatusLocal ?? testCase.expectedStatus;
+                expectedCode = testCase.expectedCodeLocal ?? testCase.expectedCode;
+                expectedMessage = testCase.expectedMessageLocal ?? testCase.expectedMessage;
+                expectedMessageContains = testCase.expectedMessageContainsLocal ?? testCase.expectedMessageContains;
+              } else {
+                expectedStatus = testCase.expectedStatusRemote ?? testCase.expectedStatus;
+                expectedCode = testCase.expectedCodeRemote ?? testCase.expectedCode;
+                expectedMessage = testCase.expectedMessageRemote ?? testCase.expectedMessage;
+                expectedMessageContains = testCase.expectedMessageContainsRemote ?? testCase.expectedMessageContains;
+              }
+
+              // Validate status
+              if (expectedStatus) {
+                expect(response.status).to.eq(expectedStatus);
+              }
+
+              // Validate error code if present
+              if (expectedCode && response.body && response.body.Code) {
+                expect(response.body.Code).to.eq(expectedCode.toString());
+              }
+
+              // Validate error message if present
+              if (expectedMessage && response.body && response.body.Message) {
+                if (expectedMessageContains) {
+                  expect(response.body.Message).to.contain(expectedMessage);
+                } else {
+                  expect(response.body.Message).to.eq(expectedMessage);
+                }
+              }
+            });
+          });
       });
     });
   });
