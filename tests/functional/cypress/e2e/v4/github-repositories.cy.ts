@@ -42,6 +42,7 @@ describe('To Validate github-repositories API call', function () {
   let gitHubOrgName: string = '';
   let branch_name: string = '';
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
+  const timeout = 180000;
 
   let bearerToken: string = null;
   before(() => {
@@ -59,7 +60,7 @@ describe('To Validate github-repositories API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: { bearer: bearerToken },
@@ -91,7 +92,7 @@ describe('To Validate github-repositories API call', function () {
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}/${repository_id}`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -106,7 +107,7 @@ describe('To Validate github-repositories API call', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -144,7 +145,7 @@ describe('To Validate github-repositories API call', function () {
     cy.request({
       method: 'GET',
       url: url,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -172,7 +173,7 @@ describe('To Validate github-repositories API call', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}/${repository_id}/branch-protection`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {

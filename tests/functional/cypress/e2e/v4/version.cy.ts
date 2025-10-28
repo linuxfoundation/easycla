@@ -11,7 +11,7 @@ describe('To Validate & check cla version via API call', function () {
   //Reference api doc: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/version
   const claEndpoint = getAPIBaseURL('v4');
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
-  const timeout = 60000;
+  const timeout = 180000;
   const local = Cypress.env('LOCAL');
 
   let bearerToken: string = null;
@@ -28,7 +28,7 @@ describe('To Validate & check cla version via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}ops/version`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -45,7 +45,7 @@ describe('To Validate & check cla version via API call', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}ops/version`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       // No auth - version endpoint is public
