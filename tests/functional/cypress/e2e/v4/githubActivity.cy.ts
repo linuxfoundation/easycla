@@ -10,6 +10,7 @@ describe('To Validate & get GitHub Activity Callback via API call', function () 
   //Reference api doc:  https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/api-docs#tag/github-activity
   const claEndpoint = getAPIBaseURL('v4') + `github/activity`;
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
+  const timeout = 180000;
 
   let bearerToken: string = null;
   before(() => {
@@ -30,7 +31,7 @@ describe('To Validate & get GitHub Activity Callback via API call', function () 
     cy.request({
       method: 'POST',
       url: `${claEndpoint}`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       auth: {
         bearer: bearerToken,
