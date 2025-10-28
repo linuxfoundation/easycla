@@ -1008,7 +1008,6 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     });
 
     it('Returns errors due to missing or malformed parameters for Project APIs', function () {
-      // Helpers: realistic-looking placeholders & malformed inputs
       const exampleV4 = 'd9428888-122b-4b20-8c4a-0c9a1a6f9b8e';
       const badUUID = 'aa';
       const badUUID2 = 'd9428888-122b-4b20-8c4a-0c9a1a6z9b8e';
