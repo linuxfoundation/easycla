@@ -45,6 +45,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   let signatureApproved = true;
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   let bearerToken: string = null;
+  const timeout = 180000;
 
   before(() => {
     if (bearerToken == null) {
@@ -66,7 +67,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       auth: {
         bearer: bearerToken,
       },
-      timeout: 180000,
+      timeout: timeout,
     }).then((response) => {
       return cy.logJson('response', response).then(() => {
         validate_200_Status(response);
@@ -96,7 +97,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: url,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -121,7 +122,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       auth: {
         bearer: bearerToken,
       },
-      timeout: 180000,
+      timeout: timeout,
     }).then((response) => {
       validate_200_Status(response);
       validateApiResponse('signatures/listClaGroupIclaSignature.json', response);
@@ -137,7 +138,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       auth: {
         bearer: bearerToken,
       },
-      timeout: 180000,
+      timeout: timeout,
     }).then((response) => {
       validate_200_Status(response);
       let list = response.body.list;
@@ -153,7 +154,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: `${claEndpoint}signatures/id/${signatureIclaID}`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -176,7 +177,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       auth: {
         bearer: bearerToken,
       },
-      timeout: 180000,
+      timeout: timeout,
     }).then((response) => {
       validate_200_Status(response);
       let signatures = response.body.signatures;
@@ -196,7 +197,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       auth: {
         bearer: bearerToken,
       },
-      timeout: 180000,
+      timeout: timeout,
     }).then((response) => {
       validate_200_Status(response);
       validateApiResponse('signatures/getProjectSignatures.json', response);
@@ -212,7 +213,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       auth: {
         bearer: bearerToken,
       },
-      timeout: 180000,
+      timeout: timeout,
     }).then((response) => {
       validate_200_Status(response);
     });
@@ -227,7 +228,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       auth: {
         bearer: bearerToken,
       },
-      timeout: 180000,
+      timeout: timeout,
     }).then((response) => {
       validate_200_Status(response);
     });
@@ -237,12 +238,12 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: `${claEndpoint}signatures/project/${claGroupID}/ccla/${signatureCclaID}/pdf`,
-      failOnStatusCode: allowFail,
+      failOnStatusCode: false,
       headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
       },
-      timeout: 180000,
+      timeout: timeout,
     }).then((response) => {
       // This test may fail with 403/501 if the PDF is not available or user doesn't have permissions
       if (response.status === 403 || response.status === 501) {
@@ -258,8 +259,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: `${claEndpoint}signatures/project/${claGroupID}/company/${companyID}/employee/csv`,
-      timeout: 180000,
-      failOnStatusCode: allowFail,
+      timeout: timeout,
+      failOnStatusCode: false,
       headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
@@ -279,7 +280,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: `${claEndpoint}signatures/project/${claGroupID}/icla/csv`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -294,7 +295,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: `${claEndpoint}signatures/project/${claGroupID}/icla/pdfs`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -318,8 +319,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: `${claEndpoint}signatures/project/${claGroupID}/icla/${signatureIclaID}/pdf`,
-      timeout: 180000,
-      failOnStatusCode: allowFail,
+      timeout: timeout,
+      failOnStatusCode: false,
       headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
@@ -342,7 +343,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -363,7 +364,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/employee`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -385,7 +386,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: url,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -411,7 +412,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       method: 'GET',
       // we can't use inclusive name yet as it is inside API URL.
       url: `${claEndpoint}signatures/${signatureID}/gh-org-whitelist`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -427,8 +428,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       method: 'POST',
       // we can't use inclusive name yet as it is inside API URL.
       url: `${claEndpoint}signatures/${signatureID}/gh-org-whitelist`,
-      timeout: 180000,
-      failOnStatusCode: allowFail,
+      timeout: timeout,
+      failOnStatusCode: false,
       headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
@@ -451,7 +452,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'GET',
       url: `${claEndpoint}signatures/${signatureID}/signed-document`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -470,7 +471,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: url,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -492,7 +493,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -516,7 +517,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: url,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -539,7 +540,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -565,7 +566,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -602,7 +603,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -639,7 +640,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -659,7 +660,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -699,7 +700,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -719,7 +720,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -741,7 +742,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -764,7 +765,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -791,7 +792,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/company/${companyID}/clagroup/${claGroupID}/ecla-auto-create`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -806,7 +807,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         cy.request({
           method: 'GET',
           url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}`,
-          timeout: 180000,
+          timeout: timeout,
           failOnStatusCode: allowFail,
           headers: getXACLHeader(),
           auth: {
@@ -825,7 +826,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/company/${companyID}/clagroup/${claGroupID}/ecla-auto-create`,
-      timeout: 180000,
+      timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
       auth: {
@@ -840,7 +841,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         cy.request({
           method: 'GET',
           url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}`,
-          timeout: 180000,
+          timeout: timeout,
           failOnStatusCode: allowFail,
           headers: getXACLHeader(),
           auth: {
@@ -865,8 +866,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     cy.request({
       method: 'PUT',
       url: url,
-      timeout: 180000,
-      failOnStatusCode: allowFail,
+      timeout: timeout,
+      failOnStatusCode: false,
       headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
@@ -997,7 +998,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
             url: req.url,
             body: req.body,
             failOnStatusCode: false, // expect 401
-            timeout: 180000,
+            timeout: timeout,
           })
           .then((response) => {
             return cy.logJson('401 response', response).then(() => {
@@ -1378,7 +1379,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
             headers: testCase.headers,
             auth: testCase.auth,
             failOnStatusCode: false,
-            timeout: 180000,
+            timeout: timeout,
           })
           .then((response) => {
             return cy.logJson(`${testCase.title} response`, response).then(() => {

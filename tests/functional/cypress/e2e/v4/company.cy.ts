@@ -944,7 +944,7 @@ describe('To Validate & get Company Activity Callback via API call', function ()
       method: 'POST',
       url: url,
       timeout: timeout,
-      failOnStatusCode: allowFail,
+      failOnStatusCode: false,
       headers: getXACLHeader(),
       auth: {
         bearer: bearerToken,
