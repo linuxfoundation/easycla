@@ -402,11 +402,11 @@ describe('To Validate events are properly capture via API call', function () {
     });
   });
 
-  // LG:skip
+  // Requires Admin-level access which test user doesn't have
   it.skip('Get List of recent events - requires Admin-level access - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}/recent?pageSize=2`,
+      url: `${claEndpoint}events/recent?pageSize=2`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
