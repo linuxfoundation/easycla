@@ -204,6 +204,35 @@ export function shortenMiddle(str) {
   return `${first}...${last}`;
 }
 
+export function getTokenForV3() {
+  // V3 APIs require a token with specific claims: http://lfx.dev/claims/username and http://lfx.dev/claims/email
+  // The token generation is the same as V4, but V3 expects the AUTH0_USERNAME_CLAIM to be set to "http://lfx.dev/claims/username"
+  cy.task('log', '--> getting token by request for V3');
+  return cy
+    .request({
+      method: 'POST',
+      url: Cypress.env('AUTH0_TOKEN_API'),
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: {
+        grant_type: 'http://auth0.com/oauth/grant-type/password-realm',
+        realm: 'Username-Password-Authentication',
+        username: Cypress.env('AUTH0_USER_NAME'),
+        password: Cypress.env('AUTH0_PASSWORD'),
+        client_id: Cypress.env('AUTH0_CLIENT_ID'),
+        audience: 'https://api-gw.dev.platform.linuxfoundation.org/',
+        scope: 'access:api openid profile email',
+      },
+    })
+    .then((response) => {
+      expect(response.status).to.eq(200);
+      const token = response.body.access_token;
+      cy.task('log', `--> got token ${shortenMiddle(token)} from request for V3`);
+      return token;
+    });
+}
+
 export function getAPIBaseURL(version) {
   const local = Cypress.env('LOCAL');
   switch (version) {
@@ -212,6 +241,12 @@ export function getAPIBaseURL(version) {
         return 'http://localhost:5001/v4/';
       }
       return `${Cypress.env('APP_URL')}cla-service/v4/`;
+    case 'v3':
+      if (local) {
+        return 'http://localhost:5001/v3/';
+      }
+      // V3 is deployed on the legacy API endpoint, not the new cla-service endpoint
+      return 'https://api.lfcla.dev.platform.linuxfoundation.org/v3/';
     default:
       cy.task('log', `--> unknown API version ${version}`);
   }
@@ -228,6 +263,26 @@ export function getXACLHeader() {
     };
   }
   return {};
+}
+
+export function getXACLHeaders() {
+  // V3 APIs (which are actually V1 internally) use the same authentication as V4
+  // They need both X-ACL headers and bearer tokens
+  const xacl = Cypress.env('XACL');
+  if (xacl) {
+    return {
+      'X-ACL': xacl,
+      'X-USERNAME': 'lgryglicki',
+      'X-EMAIL': 'lukaszgryglicki@o2.pl',
+    };
+  }
+  return {};
+}
+
+export function getOAuth2Headers() {
+  // V3 APIs (which are actually V1 internally) use the same authentication as V4
+  // They need both X-ACL headers and bearer tokens - just alias to getXACLHeaders
+  return getXACLHeaders();
 }
 
 let bearerToken = '';
