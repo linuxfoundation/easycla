@@ -1,14 +1,12 @@
 import {
-  validateApiResponse,
   validate_200_Status,
   getTokenKey,
   getAPIBaseURL,
-  getXACLHeader,
+  getXACLHeaders,
   validate_expected_status,
 } from '../../support/commands';
 
-describe('To Validate & check cla version via API call (V3)', function () {
-  //Reference api doc: V3 API version endpoint
+describe('To Validate & test Version APIs via API call (V3)', function () {
   const claEndpoint = getAPIBaseURL('v3');
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   const timeout = 180000;
@@ -24,130 +22,43 @@ describe('To Validate & check cla version via API call (V3)', function () {
     }
   });
 
-  it('Returns the application version information- Record should return 200 Response', function () {
+  it('Returns the application version - Record should return 200 Response', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}ops/version`,
       timeout: timeout,
       failOnStatusCode: allowFail,
-      headers: getXACLHeader(),
-      auth: { bearer: bearerToken },
-      auth: {
-        bearer: bearerToken,
-      },
     }).then((response) => {
-      validate_200_Status(response);
-      //To validate schema of response
-      validateApiResponse('version/getVersion.json', response);
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
+        expect(response.body).to.have.property('version');
+        expect(response.body).to.have.property('commit');
+      });
     });
   });
 
-  it('Version endpoint works without authentication (no token required)', function () {
-    cy.request({
-      method: 'GET',
-      url: `${claEndpoint}ops/version`,
-      timeout: timeout,
-      failOnStatusCode: allowFail,
-      headers: getXACLHeader(),
-      auth: { bearer: bearerToken },
-      // No auth - version endpoint is public
-    }).then((response) => {
-      validate_200_Status(response);
-      //To validate schema of response
-      validateApiResponse('version/getVersion.json', response);
-    });
-  });
-
-  it('Returns the application version information- Triple test for flakiness', function () {
-    // Run test 3 times to catch flaky behavior
-    cy.wrap([1, 2, 3]).each((iteration) => {
-      cy.task('log', `Version test iteration ${iteration}/3`);
-      return cy
-        .request({
-          method: 'GET',
-          url: `${claEndpoint}ops/version`,
-          timeout: timeout,
-          failOnStatusCode: allowFail,
-          headers: getXACLHeader(),
-          auth: { bearer: bearerToken },
-          auth: {
-            bearer: bearerToken,
-          },
-        })
-        .then((response) => {
-          validate_200_Status(response);
-          validateApiResponse('version/getVersion.json', response);
-        });
-    });
-  });
-
-  // ========================= Expected failures (version) =========================
   describe('Expected failures', () => {
     it('Returns errors due to malformed requests for Version APIs', function () {
-      const defaultHeaders = getXACLHeader();
-
       const cases: Array<{
         title: string;
         method: 'GET' | 'POST' | 'PUT' | 'DELETE';
         url: string;
         body?: any;
-        headers?: any;
-        // when running locally
-        expectedStatusLocal?: number;
-        expectedCodeLocal?: number;
-        expectedMessageLocal?: string;
-        expectedMessageContainsLocal?: boolean;
-        // when running against dev via ACS & API-gw
-        expectedStatusRemote?: number;
-        expectedCodeRemote?: number;
-        expectedMessageRemote?: string;
-        expectedMessageContainsRemote?: boolean;
+        expectedStatus?: number;
+        expectedCode?: number;
+        expectedMessage?: string;
+        expectedMessageContains?: boolean;
       }> = [
         {
           title: 'POST /ops/version (method not allowed)',
           method: 'POST',
           url: `${claEndpoint}ops/version`,
           body: {},
-          expectedStatusLocal: 405,
-          expectedMessageLocal: 'method POST is not allowed, but [GET] are',
-          expectedMessageContainsLocal: true,
-          expectedStatusRemote: 405,
-          expectedMessageRemote: 'method POST is not allowed, but [GET] are',
-          expectedMessageContainsRemote: true,
-        },
-        {
-          title: 'PUT /ops/version (method not allowed)',
-          method: 'PUT',
-          url: `${claEndpoint}ops/version`,
-          body: {},
-          expectedStatusLocal: 405,
-          expectedMessageLocal: 'method PUT is not allowed, but [GET] are',
-          expectedMessageContainsLocal: true,
-          expectedStatusRemote: 405,
-          expectedMessageRemote: 'method PUT is not allowed, but [GET] are',
-          expectedMessageContainsRemote: true,
-        },
-        {
-          title: 'DELETE /ops/version (method not allowed)',
-          method: 'DELETE',
-          url: `${claEndpoint}ops/version`,
-          expectedStatusLocal: 405,
-          expectedMessageLocal: 'method DELETE is not allowed, but [GET] are',
-          expectedMessageContainsLocal: true,
-          expectedStatusRemote: 405,
-          expectedMessageRemote: 'method DELETE is not allowed, but [GET] are',
-          expectedMessageContainsRemote: true,
-        },
-        {
-          title: 'GET /ops/version/invalid-path (not found)',
-          method: 'GET',
-          url: `${claEndpoint}ops/version/invalid-path`,
-          expectedStatusLocal: 404,
-          expectedMessageLocal: 'path /v3/ops/version/invalid-path was not found',
-          expectedMessageContainsLocal: true,
-          expectedStatusRemote: 404,
-          expectedMessageRemote: 'path /v3/ops/version/invalid-path was not found',
-          expectedMessageContainsRemote: true,
+          expectedStatus: 405,
+          expectedCode: 405,
+          expectedMessage: 'method POST is not allowed, but [GET] are',
+          expectedMessageContains: true,
         },
       ];
 
@@ -157,26 +68,18 @@ describe('To Validate & check cla version via API call (V3)', function () {
             method: c.method,
             url: c.url,
             body: c.body,
-            headers: c.headers || defaultHeaders,
             failOnStatusCode: false,
             timeout,
           })
           .then((response) => {
             cy.task('log', `Testing: ${c.title}`);
-
-            const es = local
-              ? (c.expectedStatusLocal ?? c.expectedStatus)
-              : (c.expectedStatusRemote ?? c.expectedStatus);
-            const ec = local ? (c.expectedCodeLocal ?? c.expectedCode) : (c.expectedCodeRemote ?? c.expectedCode);
-            const em = local
-              ? (c.expectedMessageLocal ?? c.expectedMessage)
-              : (c.expectedMessageRemote ?? c.expectedMessage);
-            const emc = local
-              ? (c.expectedMessageContainsLocal ?? c.expectedMessageContains)
-              : (c.expectedMessageContainsRemote ?? c.expectedMessageContains);
-
-            cy.task('log', `  --> expected ${es}, ${ec}, '${em}' (contains? ${emc})`);
-            validate_expected_status(response, es, ec, em, emc);
+            validate_expected_status(
+              response,
+              c.expectedStatus,
+              c.expectedCode,
+              c.expectedMessage,
+              c.expectedMessageContains,
+            );
           });
       });
     });

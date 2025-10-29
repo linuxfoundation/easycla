@@ -257,8 +257,8 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 		}
 
 		userModel, err := service.GetUser(params.UserID)
-		if err != nil {
-			log.WithFields(f).Warnf("error retrieving user for user_id: %s, error: %+v", params.UserID, err)
+		if err != nil || userModel == nil {
+			log.WithFields(f).Warnf("error retrieving user for user_id: %s, error: %+v, userModel is nil: %v", params.UserID, err, userModel == nil)
 			return users.NewGetUserCompatBadRequest().WithPayload(errorResponse(err))
 		}
 
