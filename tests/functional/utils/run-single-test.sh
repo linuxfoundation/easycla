@@ -21,7 +21,8 @@ then
     echo "Running all tests"
   else
     echo "Usage: $0 <test-file-name-without-extension> [test-name-regexp]"
-    echo "Example (v4 APIs groups): $0 cla-group, cla-manager, company, docs, events, foundation, github-organizations, github-repositories, githubActivity, gitlab-organizations, gitlab-repositories, health, metrics, projects, signatures, version"
+    echo "Example (v4 APIs groups): V=4 $0 cla-group, cla-manager, company, docs, events, foundation, github-organizations, github-repositories, githubActivity, gitlab-organizations, gitlab-repositories, health, metrics, projects, signatures, version"
+    echo "Example (v3 APIs groups): V=3 $0 cla-manager, docs, gerrits, github-organizations, health, project, template, version, company, events, github, github-repositories, organization, signatures, users"
     exit 1
   fi
 fi
@@ -35,7 +36,16 @@ if [ -z "${ALL}" ]
 then
   CMD="xvfb-run -a npx cypress run --spec cypress/e2e/v${V}/${1}.cy.ts"
 else
-  CMD="xvfb-run -a npx cypress run"
+  CMD="xvfb-run -a npx cypress run --spec "
+  for file in cypress/e2e/v${V}/*.cy.ts
+  do
+    if [ "${CMD: -1}" = " " ]
+    then
+      CMD="${CMD}${file}"
+      continue
+    fi
+    CMD="${CMD},${file}"
+  done
 fi
 
 ENV_ARGS=""
