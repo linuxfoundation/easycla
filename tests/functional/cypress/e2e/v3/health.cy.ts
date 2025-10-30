@@ -1,4 +1,9 @@
-import { validate_200_Status, getAPIBaseURL, validate_expected_status } from '../../support/commands';
+import {
+  validate_200_Status,
+  validateApiResponse,
+  getAPIBaseURL,
+  validate_expected_status,
+} from '../../support/commands';
 
 describe('To Validate & test Health APIs via API call (V3)', function () {
   const claEndpoint = getAPIBaseURL('v3');
@@ -13,10 +18,13 @@ describe('To Validate & test Health APIs via API call (V3)', function () {
       timeout: timeout,
       failOnStatusCode: allowFail,
     }).then((response) => {
-      validate_200_Status(response);
-      expect(response.body).to.be.an('object');
-      expect(response.body).to.have.property('Status');
-      expect(response.body.Status).to.equal('healthy');
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
+        expect(response.body).to.have.property('Status');
+        expect(response.body.Status).to.equal('healthy');
+        validateApiResponse('health/getHealth.json', response);
+      });
     });
   });
 
@@ -54,14 +62,16 @@ describe('To Validate & test Health APIs via API call (V3)', function () {
             timeout,
           })
           .then((response) => {
-            cy.task('log', `Testing: ${c.title}`);
-            validate_expected_status(
-              response,
-              c.expectedStatus,
-              c.expectedCode,
-              c.expectedMessage,
-              c.expectedMessageContains,
-            );
+            return cy.logJson('response', response).then(() => {
+              cy.task('log', `Testing: ${c.title}`);
+              validate_expected_status(
+                response,
+                c.expectedStatus,
+                c.expectedCode,
+                c.expectedMessage,
+                c.expectedMessageContains,
+              );
+            });
           });
       });
     });

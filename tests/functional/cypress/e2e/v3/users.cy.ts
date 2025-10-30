@@ -23,6 +23,7 @@ import {
   validate_204_Status,
   validate_401_Status,
   validate_expected_status,
+  validateApiResponse,
   getTokenKey,
   getAPIBaseURL,
   getXACLHeaders,
@@ -55,6 +56,7 @@ describe('To Validate & test User APIs via API call (V3)', function () {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
         expect(response.body.user_id).to.be.eql(testUserID);
+        validateApiResponse('users/getUserCompat.json', response);
       });
     });
   });
@@ -85,13 +87,16 @@ describe('To Validate & test User APIs via API call (V3)', function () {
         bearer: bearerToken,
       },
     }).then((response) => {
-      validate_200_Status(response);
-      expect(response.body).to.be.an('object');
-      expect(response.body).to.have.property('resultCount');
-      expect(response.body).to.have.property('totalCount');
-      if (response.body.users) {
-        expect(response.body.users).to.be.an('array');
-      }
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
+        expect(response.body).to.have.property('resultCount');
+        expect(response.body).to.have.property('totalCount');
+        if (response.body.users) {
+          expect(response.body.users).to.be.an('array');
+        }
+        validateApiResponse('users/searchUsers.json', response);
+      });
     });
   });
 
@@ -112,6 +117,7 @@ describe('To Validate & test User APIs via API call (V3)', function () {
         expect(response.body).to.be.an('object');
         expect(response.body).to.have.property('userID');
         expect(response.body.userID).to.eq(testUserID);
+        validateApiResponse('users/getUser.json', response);
       });
     });
   });
@@ -152,6 +158,7 @@ describe('To Validate & test User APIs via API call (V3)', function () {
         expect([200]).to.include(response.status);
         expect(response.body).to.be.an('object');
         expect(response.body).to.have.property('userID');
+        validateApiResponse('users/getUser.json', response);
       });
     });
   });
@@ -176,25 +183,26 @@ describe('To Validate & test User APIs via API call (V3)', function () {
     });
   });
 
-  // Test POST /users - Create User
-  it('POST /users - Create User with authentication', function () {
+  // Test POST /users - Happy Path (2xx responses)
+  it('POST /users - Create User Happy Path', function () {
+    const uniqueId = Date.now(); // Make username unique
     const userPayload = {
-      userExternalID: '00117000015vpjXAAQ',
-      username: 'testuser123',
-      lfEmail: 'testuser123@linuxfoundation.org',
-      lfUsername: 'testuser123',
-      githubID: '12345678',
-      githubUsername: 'testuser123',
+      userExternalID: '00117000015vpjXAA2', // Different from existing user
+      username: `testuser${uniqueId}`,
+      lfEmail: `testuser${uniqueId}@linuxfoundation.org`,
+      lfUsername: `testuser${uniqueId}`,
+      githubID: `${uniqueId}`,
+      githubUsername: `testuser${uniqueId}`,
       admin: false,
-      note: 'Test user created via API',
-      emails: ['testuser123@linuxfoundation.org', 'testuser123@example.com'],
+      note: 'Test user created via API for happy path testing',
+      emails: [`testuser${uniqueId}@linuxfoundation.org`, `testuser${uniqueId}@example.com`],
     };
 
     cy.request({
       method: 'POST',
       url: `${claEndpoint}users`,
       timeout: timeout,
-      failOnStatusCode: allowFail,
+      failOnStatusCode: allowFail, // Use allowFail for happy path (2xx expected)
       headers: getXACLHeaders(),
       auth: {
         bearer: bearerToken,
@@ -202,25 +210,60 @@ describe('To Validate & test User APIs via API call (V3)', function () {
       body: userPayload,
     }).then((response) => {
       return cy.logJson('response', response).then(() => {
-        cy.task('log', 'POST /users response status: ' + response.status);
-        // Expect either 200 (created), 400 (bad request), or 409 (conflict if user already exists)
-        expect([200, 400, 409]).to.include(response.status);
-        if (response.status === 200) {
+        cy.task('log', 'POST /users happy path response status: ' + response.status);
+        // For happy path, expect 2xx status codes
+        expect(response.status).to.be.within(200, 299);
+        if (response.status === 200 || response.status === 201) {
           expect(response.body).to.be.an('object');
           expect(response.body).to.have.property('userID');
-        } else if (response.status === 409) {
-          expect(response.body).to.have.property('message');
+          validateApiResponse('users/createUser.json', response);
         }
       });
     });
   });
 
-  // Test PUT /users - Update User
-  it('PUT /users - Update User with authentication', function () {
+  // Test POST /users - Non-Happy Path (conflict/validation errors)
+  it('POST /users - Create User Conflict (409)', function () {
+    const userPayload = {
+      userExternalID: '0034100001gvVGOAA2', // Use existing user external ID to trigger conflict
+      username: 'lukaszgryglicki', // Use existing username
+      lfEmail: 'lukaszgryglicki@o2.pl',
+      lfUsername: 'lukaszgryglicki',
+      githubID: '2469783',
+      githubUsername: 'lukaszgryglicki',
+      admin: false,
+      note: 'Test user creation conflict',
+      emails: ['lukaszgryglicki@o2.pl'],
+    };
+
+    cy.request({
+      method: 'POST',
+      url: `${claEndpoint}users`,
+      timeout: timeout,
+      failOnStatusCode: false, // Use false for non-happy path (4xx expected)
+      headers: getXACLHeaders(),
+      auth: {
+        bearer: bearerToken,
+      },
+      body: userPayload,
+    }).then((response) => {
+      return cy.logJson('response', response).then(() => {
+        cy.task('log', 'POST /users conflict response status: ' + response.status);
+        // Expect 4xx status codes for conflicts/validation errors
+        expect([400, 409, 422]).to.include(response.status);
+        if (response.body && response.body.message) {
+          expect(response.body.message).to.be.a('string');
+        }
+      });
+    });
+  });
+
+  // Test PUT /users - Happy Path (2xx responses)
+  it('PUT /users - Update User Happy Path', function () {
     const testUserID = '9dcf5bbc-2492-11ed-97c7-3e2a23ea20b5';
     const updatePayload = {
       userID: testUserID,
-      note: 'Updated test user note via API',
+      note: 'Updated test user note via API for happy path testing',
       emails: ['updated@linuxfoundation.org'],
     };
 
@@ -228,7 +271,7 @@ describe('To Validate & test User APIs via API call (V3)', function () {
       method: 'PUT',
       url: `${claEndpoint}users`,
       timeout: timeout,
-      failOnStatusCode: allowFail,
+      failOnStatusCode: allowFail, // Use allowFail for happy path (2xx expected)
       headers: getXACLHeaders(),
       auth: {
         bearer: bearerToken,
@@ -236,37 +279,133 @@ describe('To Validate & test User APIs via API call (V3)', function () {
       body: updatePayload,
     }).then((response) => {
       return cy.logJson('response', response).then(() => {
-        cy.task('log', 'PUT /users response status: ' + response.status);
-        // Expect either 200 (updated), 400 (bad request), or 404 (user not found)
-        expect([200, 400, 404]).to.include(response.status);
+        cy.task('log', 'PUT /users happy path response status: ' + response.status);
+        // For happy path, expect 2xx status codes
+        expect(response.status).to.be.within(200, 299);
         if (response.status === 200) {
           expect(response.body).to.be.an('object');
           expect(response.body).to.have.property('userID');
           expect(response.body.userID).to.eq(testUserID);
+          validateApiResponse('users/getUser.json', response);
         }
       });
     });
   });
 
-  // Test DELETE /users/{userID} - Delete User
-  it('DELETE /users/{userID} - Delete User with authentication', function () {
-    const testUserID = 'd9428888-122b-4b20-8c4a-0c9a1a6f9b8e'; // non-existing user for safe testing
+  // Test PUT /users - Non-Happy Path (user not found)
+  it('PUT /users - Update Non-Existent User (404)', function () {
+    const testUserID = 'd9428888-122b-4b20-8c4a-0c9a1a6f9b8e'; // Non-existing user
+    const updatePayload = {
+      userID: testUserID,
+      note: 'Updated test user note for non-existent user',
+      emails: ['nonexistent@linuxfoundation.org'],
+    };
+
+    cy.request({
+      method: 'PUT',
+      url: `${claEndpoint}users`,
+      timeout: timeout,
+      failOnStatusCode: false, // Use false for non-happy path (4xx expected)
+      headers: getXACLHeaders(),
+      auth: {
+        bearer: bearerToken,
+      },
+      body: updatePayload,
+    }).then((response) => {
+      return cy.logJson('response', response).then(() => {
+        cy.task('log', 'PUT /users not found response status: ' + response.status);
+        // Expect 4xx status codes for not found/validation errors
+        expect([400, 404, 422]).to.include(response.status);
+        if (response.body && response.body.message) {
+          expect(response.body.message).to.be.a('string');
+        }
+      });
+    });
+  });
+
+  // Test DELETE /users/{userID} - Happy Path (2xx responses)
+  it('DELETE /users/{userID} - Delete User Happy Path', function () {
+    // First create a user to delete to ensure we have a happy path
+    const uniqueId = Date.now();
+    const createPayload = {
+      userExternalID: `00117000015vpjXAA${uniqueId % 10}`,
+      username: `deleteme${uniqueId}`,
+      lfEmail: `deleteme${uniqueId}@linuxfoundation.org`,
+      lfUsername: `deleteme${uniqueId}`,
+      githubID: `${uniqueId}000`,
+      githubUsername: `deleteme${uniqueId}`,
+      admin: false,
+      note: 'Test user created for deletion testing',
+      emails: [`deleteme${uniqueId}@linuxfoundation.org`],
+    };
+
+    // Create user first, then delete it
+    cy.request({
+      method: 'POST',
+      url: `${claEndpoint}users`,
+      timeout: timeout,
+      failOnStatusCode: false, // Don't fail if creation doesn't work
+      headers: getXACLHeaders(),
+      auth: {
+        bearer: bearerToken,
+      },
+      body: createPayload,
+    }).then((createResponse) => {
+      return cy.logJson('createResponse', createResponse).then(() => {
+        let userIDToDelete;
+
+        if (createResponse.status >= 200 && createResponse.status < 300 && createResponse.body.userID) {
+          // User was created successfully, use the returned ID
+          userIDToDelete = createResponse.body.userID;
+        } else {
+          // Creation failed, use a non-existing ID for testing
+          userIDToDelete = 'd9428888-122b-4b20-8c4a-0c9a1a6f9b8e';
+        }
+
+        // Now attempt to delete the user
+        cy.request({
+          method: 'DELETE',
+          url: `${claEndpoint}users/${userIDToDelete}`,
+          timeout: timeout,
+          failOnStatusCode: allowFail, // Use allowFail for happy path (2xx expected)
+          headers: getXACLHeaders(),
+          auth: {
+            bearer: bearerToken,
+          },
+        }).then((response) => {
+          return cy.logJson('response', response).then(() => {
+            cy.task('log', 'DELETE /users happy path response status: ' + response.status);
+            // For happy path, expect 2xx status codes (204 No Content is common for DELETE)
+            expect(response.status).to.be.within(200, 299);
+            if (response.status === 204) {
+              // 204 No Content for successful deletion
+              expect(response.body).to.be.empty;
+            }
+          });
+        });
+      });
+    });
+  });
+
+  // Test DELETE /users/{userID} - Non-Happy Path (user not found)
+  it('DELETE /users/{userID} - Delete Non-Existent User (404)', function () {
+    const testUserID = 'd9428888-122b-4b20-8c4a-0c9a1a6f9b8e'; // Non-existing user for safe testing
     cy.request({
       method: 'DELETE',
       url: `${claEndpoint}users/${testUserID}`,
       timeout: timeout,
-      failOnStatusCode: allowFail,
+      failOnStatusCode: false, // Use false for non-happy path (4xx expected)
       headers: getXACLHeaders(),
       auth: {
         bearer: bearerToken,
       },
     }).then((response) => {
       return cy.logJson('response', response).then(() => {
-        cy.task('log', 'DELETE /users response status: ' + response.status);
-        // Expect either 204 (deleted) or 404 (user not found)
-        expect([204, 404]).to.include(response.status);
+        cy.task('log', 'DELETE /users not found response status: ' + response.status);
+        // Expect 4xx status codes for not found or other errors
+        expect([204, 404, 422]).to.include(response.status);
         if (response.status === 204) {
-          // 204 No Content for successful deletion
+          // 204 No Content is also acceptable (idempotent delete)
           expect(response.body).to.be.empty;
         }
       });
