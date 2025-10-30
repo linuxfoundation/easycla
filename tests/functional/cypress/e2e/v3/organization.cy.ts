@@ -1,9 +1,7 @@
 import {
   validate_200_Status,
   validate_401_Status,
-  getTokenKey,
   getAPIBaseURL,
-  getXACLHeaders,
   validate_expected_status,
 } from '../../support/commands';
 
@@ -13,14 +11,6 @@ describe('To Validate & test Organization APIs via API call (V3)', function () {
   const timeout = 180000;
   const local = Cypress.env('LOCAL');
 
-  let bearerToken: string = null;
-  before(() => {
-    getTokenKey(bearerToken);
-    cy.window().then((win) => {
-      bearerToken = win.localStorage.getItem('bearerToken');
-    });
-  });
-
   it('Search Organization by company name - Record should return 200 Response', function () {
     const companyName = 'Linux Foundation';
     cy.request({
@@ -29,11 +19,12 @@ describe('To Validate & test Organization APIs via API call (V3)', function () {
       timeout: timeout,
       failOnStatusCode: allowFail,
     }).then((response) => {
-      validate_200_Status(response);
-      expect(response.body).to.be.an('object');
-      if (response.body.list) {
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
         expect(response.body.list).to.be.an('array');
-      }
+        expect(response.body.list.length).to.be.greaterThan(0);
+      });
     });
   });
 
@@ -43,13 +34,14 @@ describe('To Validate & test Organization APIs via API call (V3)', function () {
       method: 'GET',
       url: `${claEndpoint}organization/search?websiteName=${encodeURIComponent(websiteName)}`,
       timeout: timeout,
-      failOnStatusCode: allowFail,
+      failOnStatusCode: false, // Handle connection issues for local
     }).then((response) => {
-      validate_200_Status(response);
-      expect(response.body).to.be.an('object');
-      if (response.body.list) {
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
         expect(response.body.list).to.be.an('array');
-      }
+        expect(response.body.list.length).to.be.greaterThan(0);
+      });
     });
   });
 
@@ -62,11 +54,29 @@ describe('To Validate & test Organization APIs via API call (V3)', function () {
       timeout: timeout,
       failOnStatusCode: allowFail,
     }).then((response) => {
-      validate_200_Status(response);
-      expect(response.body).to.be.an('object');
-      if (response.body.list) {
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
         expect(response.body.list).to.be.an('array');
-      }
+        expect(response.body.list.length).to.be.greaterThan(0);
+      });
+    });
+  });
+
+  it('Search Organization by non-existing company name - Record should return 200 Response', function () {
+    const companyName = 'Non-existing XYZ';
+    cy.request({
+      method: 'GET',
+      url: `${claEndpoint}organization/search?companyName=${encodeURIComponent(companyName)}`,
+      timeout: timeout,
+      failOnStatusCode: allowFail,
+    }).then((response) => {
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
+        expect(response.body.list).to.be.an('array');
+        expect(response.body.list.length).to.eq(0);
+      });
     });
   });
 
@@ -86,7 +96,7 @@ describe('To Validate & test Organization APIs via API call (V3)', function () {
           method: 'GET',
           url: `${claEndpoint}organization/search`,
           expectedStatus: 400,
-          expectedMessage: 'companyName or websiteName',
+          expectedMessage: 'companyName or websiteName or filter at least one required',
           expectedMessageContains: true,
         },
         {
@@ -96,6 +106,7 @@ describe('To Validate & test Organization APIs via API call (V3)', function () {
           expectedStatus: 422,
           expectedMessage: 'websiteName in query should match',
           expectedMessageContains: true,
+          expectedCode: 605,
         },
       ];
 
