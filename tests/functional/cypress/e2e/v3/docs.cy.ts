@@ -13,8 +13,10 @@ describe('To Validate & test Documentation APIs via API call (V3)', function () 
       timeout: timeout,
       failOnStatusCode: allowFail,
     }).then((response) => {
-      validate_200_Status(response);
-      expect(response.body).to.not.be.null;
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.not.be.null;
+      });
     });
   });
 
@@ -25,11 +27,13 @@ describe('To Validate & test Documentation APIs via API call (V3)', function () 
       timeout: timeout,
       failOnStatusCode: allowFail,
     }).then((response) => {
-      validate_200_Status(response);
-      expect(response.body).to.be.an('object');
-      expect(response.body).to.have.property('swagger');
-      expect(response.body).to.have.property('info');
-      expect(response.body).to.have.property('paths');
+      return cy.logJson('response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
+        expect(response.body).to.have.property('swagger');
+        expect(response.body).to.have.property('info');
+        expect(response.body).to.have.property('paths');
+      });
     });
   });
 
@@ -77,14 +81,16 @@ describe('To Validate & test Documentation APIs via API call (V3)', function () 
             timeout,
           })
           .then((response) => {
-            cy.task('log', `Testing: ${c.title}`);
-            validate_expected_status(
-              response,
-              c.expectedStatus,
-              c.expectedCode,
-              c.expectedMessage,
-              c.expectedMessageContains,
-            );
+            return cy.logJson('response', response).then(() => {
+              cy.task('log', `Testing: ${c.title}`);
+              validate_expected_status(
+                response,
+                c.expectedStatus,
+                c.expectedCode,
+                c.expectedMessage,
+                c.expectedMessageContains,
+              );
+            });
           });
       });
     });

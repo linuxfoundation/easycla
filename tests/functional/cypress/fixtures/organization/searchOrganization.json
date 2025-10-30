@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "list": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "website": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "resultCount": {
+      "type": "integer"
+    },
+    "totalCount": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "list"
+  ]
+}

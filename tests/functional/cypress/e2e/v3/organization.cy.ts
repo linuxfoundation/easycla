@@ -1,6 +1,7 @@
 import {
   validate_200_Status,
   validate_401_Status,
+  validateApiResponse,
   getAPIBaseURL,
   validate_expected_status,
 } from '../../support/commands';
@@ -24,6 +25,7 @@ describe('To Validate & test Organization APIs via API call (V3)', function () {
         expect(response.body).to.be.an('object');
         expect(response.body.list).to.be.an('array');
         expect(response.body.list.length).to.be.greaterThan(0);
+        validateApiResponse('organization/searchOrganization.json', response);
       });
     });
   });
