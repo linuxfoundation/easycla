@@ -1,26 +1,10 @@
-import {
-  validate_200_Status,
-  getTokenKey,
-  getAPIBaseURL,
-  getXACLHeaders,
-  validate_expected_status,
-} from '../../support/commands';
+import { validate_200_Status, getAPIBaseURL, validate_expected_status } from '../../support/commands';
 
 describe('To Validate & test Documentation APIs via API call (V3)', function () {
   const claEndpoint = getAPIBaseURL('v3');
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   const timeout = 180000;
   const local = Cypress.env('LOCAL');
-
-  let bearerToken: string = null;
-  before(() => {
-    if (bearerToken == null) {
-      getTokenKey(bearerToken);
-      cy.window().then((win) => {
-        bearerToken = win.localStorage.getItem('bearerToken');
-      });
-    }
-  });
 
   it('Get API Documentation - Record should return 200 Response', function () {
     cy.request({

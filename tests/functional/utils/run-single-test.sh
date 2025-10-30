@@ -1,8 +1,8 @@
 #!/bin/bash
 # requires "npm i -D @cypress/grep"
 # ALLOW_FAIL=1 - means don't fail early on HTTP 4xx, 5xx errors
-# TOKEN=xxxx
-# XACL=xxxx
+# TOKEN=xxxx or -
+# XACL=xxxx or - 
 # DEBUG=1 - print the command to be executed
 # LOCAL=1 - run against local backend (http://localhost:8001)
 # V=1|2|3|4 - defaults to 4 (meaning V4 APIs)
@@ -62,11 +62,13 @@ if [ ! -z "${DEBUG}" ]; then
   ENV_ARGS="${ENV_ARGS:+$ENV_ARGS,}DEBUG=1"
 fi
 
-if [ ! -z "${TOKEN}" ]; then
+if ( [ ! -z "${TOKEN}" ] && [ ! "${TOKEN}" = "-" ] )
+then
   ENV_ARGS="${ENV_ARGS:+$ENV_ARGS,}TOKEN=${TOKEN}"
 fi
 
-if [ ! -z "${XACL}" ]; then
+if ( [ ! -z "${XACL}" ] && [ ! "${XACL}" = "-" ] )
+then
   ENV_ARGS="${ENV_ARGS:+$ENV_ARGS,}XACL=${XACL}"
 fi
 
