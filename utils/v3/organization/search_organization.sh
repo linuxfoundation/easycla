@@ -21,10 +21,8 @@ fi
 export companyName="$1"
 export websiteName="$2"
 
-if [ -z "$API_URL" ]
-then
-  export API_URL="http://localhost:5001"
-fi
+# Handle API URL
+. ./utils/shared/handle_api_url.sh
 
 # Build query parameters
 QUERY_PARAMS=""
@@ -44,10 +42,7 @@ if [ ! -z "$QUERY_PARAMS" ]; then
   API="${API}?${QUERY_PARAMS}"
 fi
 
-if [ ! -z "$DEBUG" ]
-then
-  echo "curl -s -XGET -H \"Content-Type: application/json\" \"${API}\""
-  curl -s -XGET -H "Content-Type: application/json" "${API}"
-else
-  curl -s -XGET -H "Content-Type: application/json" "${API}" | jq -r '.'
-fi
+# Set up curl execution
+CURL_CMD="curl -s -XGET -H \"Content-Type: application/json\""
+USE_JQ=true
+. ./utils/shared/handle_curl_execution.sh

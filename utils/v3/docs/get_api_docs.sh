@@ -4,17 +4,11 @@
 # API_URL=http://localhost:5001 ./get_api_docs.sh
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org ./get_api_docs.sh
 
-if [ -z "$API_URL" ]
-then
-  export API_URL="http://localhost:5001"
-fi
+# Handle API URL
+. ./utils/shared/handle_api_url.sh
 
+# Set up curl execution
 API="${API_URL}/v3/api-docs"
-
-if [ ! -z "$DEBUG" ]
-then
-  echo "curl -s -XGET -H \"Content-Type: application/json\" \"${API}\""
-  curl -s -XGET -H "Content-Type: application/json" "${API}"
-else
-  curl -s -XGET -H "Content-Type: application/json" "${API}"
-fi
+CURL_CMD="curl -s -XGET -H \"Content-Type: application/json\""
+USE_JQ=false
+. ./utils/shared/handle_curl_execution.sh

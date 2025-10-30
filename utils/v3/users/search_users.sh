@@ -5,32 +5,11 @@
 # API_URL=http://localhost:5001 TOKEN="$(cat ./token.secret)" ./search_users.sh
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org TOKEN="$(cat ./token.secret)" ./search_users.sh
 
-if [ -z "$TOKEN" ]
-then
-  TOKEN="$(cat ./token.secret)"
-fi
+# Handle authentication
+. ./utils/shared/handle_auth.sh
 
-if [ -z "$TOKEN" ]
-then
-  echo "$0: TOKEN not specified and unable to obtain one"
-  exit 1
-fi
-
-if [ -z "$XACL" ]
-then
-  XACL="$(cat ./x-acl.secret)"
-fi
-
-if [ -z "$XACL" ]
-then
-  echo "$0: XACL not specified and unable to obtain one"
-  exit 2
-fi
-
-if [ -z "$API_URL" ]
-then
-  export API_URL="http://localhost:5001"
-fi
+# Handle API URL
+. ./utils/shared/handle_api_url.sh
 
 # Build query parameters
 QUERY_PARAMS=""
@@ -57,10 +36,7 @@ if [ ! -z "$QUERY_PARAMS" ]; then
   API="${API}?${QUERY_PARAMS}"
 fi
 
-if [ ! -z "$DEBUG" ]
-then
-  echo "curl -s -XGET -H \"Content-Type: application/json\" \"${API}\" -H \"X-ACL: ${XACL}\" -H \"Authorization: Bearer ${TOKEN}\""
-  curl -s -XGET -H "Content-Type: application/json" -H "X-ACL: ${XACL}" -H "Authorization: Bearer ${TOKEN}" "${API}"
-else
-  curl -s -XGET -H "Content-Type: application/json" -H "X-ACL: ${XACL}" -H "Authorization: Bearer ${TOKEN}" "${API}" | jq -r '.'
-fi
+# Set up curl execution
+CURL_CMD="curl -s -XGET -H \"Content-Type: application/json\" -H \"X-ACL: ${XACL}\" -H \"Authorization: Bearer ${TOKEN}\""
+USE_JQ=true
+. ./utils/shared/handle_curl_execution.sh
