@@ -21,8 +21,10 @@ fi
 export companyName="$1"
 export websiteName="$2"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Handle API URL
-. ./utils/shared/handle_api_url.sh
+. ${SCRIPT_DIR}/../shared/handle_api_url.sh
 
 # Build query parameters
 QUERY_PARAMS=""

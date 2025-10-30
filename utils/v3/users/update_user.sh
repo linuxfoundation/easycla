@@ -16,11 +16,13 @@ export userID="$1"
 export note="${2:-Updated via API script}"
 export emails_param="${3:-}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Handle authentication
 . ./utils/shared/handle_auth.sh
 
 # Handle API URL
-. ./utils/shared/handle_api_url.sh
+. ${SCRIPT_DIR}/../shared/handle_api_url.sh
 
 # Build emails array
 if [ ! -z "$emails_param" ]; then
