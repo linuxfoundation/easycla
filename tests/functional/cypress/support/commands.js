@@ -301,7 +301,9 @@ export function getTokenKey() {
   cy.request({
     method: 'POST',
     url: Cypress.env('AUTH0_TOKEN_API'),
-
+    headers: {
+      'content-type': 'application/json',
+    },
     body: {
       grant_type: 'http://auth0.com/oauth/grant-type/password-realm',
       realm: 'Username-Password-Authentication',
