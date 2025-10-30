@@ -21,11 +21,13 @@ export githubUsername="$6"
 export admin="${7:-false}"
 export note="${8:-Created via API script}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Handle authentication
 . ./utils/shared/handle_auth.sh
 
 # Handle API URL
-. ./utils/shared/handle_api_url.sh
+. ${SCRIPT_DIR}/../shared/handle_api_url.sh
 
 # Build JSON payload
 PAYLOAD=$(cat <<EOF

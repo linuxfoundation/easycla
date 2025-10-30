@@ -4,8 +4,10 @@
 # API_URL=http://localhost:5001 ./get_health.sh
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org ./get_health.sh
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Handle API URL
-. ./utils/shared/handle_api_url.sh
+. ${SCRIPT_DIR}/../shared/handle_api_url.sh
 
 # Set up curl execution
 API="${API_URL}/v3/ops/health"

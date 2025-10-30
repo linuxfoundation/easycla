@@ -14,11 +14,13 @@ then
 fi
 export user_id="$1"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Handle authentication
 . ./utils/shared/handle_auth.sh
 
 # Handle API URL
-. ./utils/shared/handle_api_url.sh
+. ${SCRIPT_DIR}/../shared/handle_api_url.sh
 
 # Set up curl execution
 API="${API_URL}/v3/users/${user_id}"

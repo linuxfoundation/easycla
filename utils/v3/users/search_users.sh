@@ -5,11 +5,13 @@
 # API_URL=http://localhost:5001 TOKEN="$(cat ./token.secret)" ./search_users.sh
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org TOKEN="$(cat ./token.secret)" ./search_users.sh
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Handle authentication
 . ./utils/shared/handle_auth.sh
 
 # Handle API URL
-. ./utils/shared/handle_api_url.sh
+. ${SCRIPT_DIR}/../shared/handle_api_url.sh
 
 # Build query parameters
 QUERY_PARAMS=""
