@@ -4,17 +4,11 @@
 # API_URL=http://localhost:5001 ./get_health.sh
 # API_URL=https://api.lfcla.dev.platform.linuxfoundation.org ./get_health.sh
 
-if [ -z "$API_URL" ]
-then
-  export API_URL="http://localhost:5001"
-fi
+# Handle API URL
+. ./utils/shared/handle_api_url.sh
 
+# Set up curl execution
 API="${API_URL}/v3/ops/health"
-
-if [ ! -z "$DEBUG" ]
-then
-  echo "curl -s -XGET -H \"Content-Type: application/json\" \"${API}\""
-  curl -s -XGET -H "Content-Type: application/json" "${API}"
-else
-  curl -s -XGET -H "Content-Type: application/json" "${API}" | jq -r '.'
-fi
+CURL_CMD="curl -s -XGET -H \"Content-Type: application/json\""
+USE_JQ=true
+. ./utils/shared/handle_curl_execution.sh

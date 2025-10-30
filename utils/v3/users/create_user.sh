@@ -21,34 +21,11 @@ export githubUsername="$6"
 export admin="${7:-false}"
 export note="${8:-Created via API script}"
 
-if [ -z "$TOKEN" ]
-then
-  TOKEN="$(cat ./token.secret)"
-fi
+# Handle authentication
+. ./utils/shared/handle_auth.sh
 
-if [ -z "$TOKEN" ]
-then
-  echo "$0: TOKEN not specified and unable to obtain one"
-  exit 1
-fi
-
-if [ -z "$XACL" ]
-then
-  XACL="$(cat ./x-acl.secret)"
-fi
-
-if [ -z "$XACL" ]
-then
-  echo "$0: XACL not specified and unable to obtain one"
-  exit 2
-fi
-
-if [ -z "$API_URL" ]
-then
-  export API_URL="http://localhost:5001"
-fi
-
-API="${API_URL}/v3/users"
+# Handle API URL
+. ./utils/shared/handle_api_url.sh
 
 # Build JSON payload
 PAYLOAD=$(cat <<EOF
@@ -66,10 +43,8 @@ PAYLOAD=$(cat <<EOF
 EOF
 )
 
-if [ ! -z "$DEBUG" ]
-then
-  echo "curl -s -XPOST -H \"Content-Type: application/json\" \"${API}\" -H \"X-ACL: ${XACL}\" -H \"Authorization: Bearer ${TOKEN}\" -d '${PAYLOAD}'"
-  curl -s -XPOST -H "Content-Type: application/json" -H "X-ACL: ${XACL}" -H "Authorization: Bearer ${TOKEN}" -d "${PAYLOAD}" "${API}"
-else
-  curl -s -XPOST -H "Content-Type: application/json" -H "X-ACL: ${XACL}" -H "Authorization: Bearer ${TOKEN}" -d "${PAYLOAD}" "${API}" | jq -r '.'
-fi
+# Set up curl execution
+API="${API_URL}/v3/users"
+CURL_CMD="curl -s -XPOST -H \"Content-Type: application/json\" -H \"X-ACL: ${XACL}\" -H \"Authorization: Bearer ${TOKEN}\" -d '${PAYLOAD}'"
+USE_JQ=true
+. ./utils/shared/handle_curl_execution.sh

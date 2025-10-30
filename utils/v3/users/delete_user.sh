@@ -14,39 +14,14 @@ then
 fi
 export user_id="$1"
 
-if [ -z "$TOKEN" ]
-then
-  TOKEN="$(cat ./token.secret)"
-fi
+# Handle authentication
+. ./utils/shared/handle_auth.sh
 
-if [ -z "$TOKEN" ]
-then
-  echo "$0: TOKEN not specified and unable to obtain one"
-  exit 1
-fi
+# Handle API URL
+. ./utils/shared/handle_api_url.sh
 
-if [ -z "$XACL" ]
-then
-  XACL="$(cat ./x-acl.secret)"
-fi
-
-if [ -z "$XACL" ]
-then
-  echo "$0: XACL not specified and unable to obtain one"
-  exit 2
-fi
-
-if [ -z "$API_URL" ]
-then
-  export API_URL="http://localhost:5001"
-fi
-
+# Set up curl execution
 API="${API_URL}/v3/users/${user_id}"
-
-if [ ! -z "$DEBUG" ]
-then
-  echo "curl -s -XDELETE -H \"Content-Type: application/json\" \"${API}\" -H \"X-ACL: ${XACL}\" -H \"Authorization: Bearer ${TOKEN}\""
-  curl -s -XDELETE -H "Content-Type: application/json" -H "X-ACL: ${XACL}" -H "Authorization: Bearer ${TOKEN}" "${API}"
-else
-  curl -s -XDELETE -H "Content-Type: application/json" -H "X-ACL: ${XACL}" -H "Authorization: Bearer ${TOKEN}" "${API}" | jq -r '.'
-fi
+CURL_CMD="curl -s -XDELETE -H \"Content-Type: application/json\" -H \"X-ACL: ${XACL}\" -H \"Authorization: Bearer ${TOKEN}\""
+USE_JQ=true
+. ./utils/shared/handle_curl_execution.sh

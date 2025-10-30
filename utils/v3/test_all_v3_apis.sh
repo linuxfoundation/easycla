@@ -6,13 +6,10 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Set defaults for environment variables
-if [ -z "$API_URL" ]
-then
-  export API_URL="http://localhost:5001"
-fi
+# Handle API URL
+. ./utils/shared/handle_api_url.sh
 
-# For authenticated endpoints (users API)
+# For authenticated endpoints (users API) - handle optionally
 if [ -z "$TOKEN" ]
 then
   TOKEN="$(cat ./token.secret 2>/dev/null || echo '')"
