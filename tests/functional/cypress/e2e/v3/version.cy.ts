@@ -1,4 +1,9 @@
-import { validate_200_Status, getAPIBaseURL, validate_expected_status } from '../../support/commands';
+import {
+  validate_200_Status,
+  validateApiResponse,
+  getAPIBaseURL,
+  validate_expected_status,
+} from '../../support/commands';
 
 describe('To Validate & test Version APIs via API call (V3)', function () {
   const claEndpoint = getAPIBaseURL('v3');
@@ -18,6 +23,7 @@ describe('To Validate & test Version APIs via API call (V3)', function () {
         expect(response.body).to.be.an('object');
         expect(response.body).to.have.property('version');
         expect(response.body).to.have.property('commit');
+        validateApiResponse('version/getVersion.json', response);
       });
     });
   });
@@ -56,14 +62,16 @@ describe('To Validate & test Version APIs via API call (V3)', function () {
             timeout,
           })
           .then((response) => {
-            cy.task('log', `Testing: ${c.title}`);
-            validate_expected_status(
-              response,
-              c.expectedStatus,
-              c.expectedCode,
-              c.expectedMessage,
-              c.expectedMessageContains,
-            );
+            return cy.logJson('response', response).then(() => {
+              cy.task('log', `Testing: ${c.title}`);
+              validate_expected_status(
+                response,
+                c.expectedStatus,
+                c.expectedCode,
+                c.expectedMessage,
+                c.expectedMessageContains,
+              );
+            });
           });
       });
     });
