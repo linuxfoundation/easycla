@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Handle API URL
 . ${SCRIPT_DIR}/shared/handle_api_url.sh
 
-# For authenticated endpoints (metrics API) - handle optionally
+# For authenticated endpoints - handle optionally
 if [ -z "$TOKEN" ]
 then
   TOKEN="$(cat ./token.secret 2>/dev/null || echo '')"
@@ -68,6 +68,62 @@ echo "======================================="
 ${SCRIPT_DIR}/metrics/test_all_metrics_apis.sh
 echo ""
 
+# Test CLA Group APIs (authenticated)
+echo "======================================="
+echo "5. CLA GROUP APIs (Authenticated)"
+echo "======================================="
+${SCRIPT_DIR}/cla-group/test_all_cla_group_apis.sh
+echo ""
+
+# Test Company APIs (authenticated)
+echo "======================================="
+echo "6. COMPANY APIs (Authenticated)"
+echo "======================================="
+${SCRIPT_DIR}/company/test_all_company_apis.sh
+echo ""
+
+# Test Events APIs (authenticated)
+echo "======================================="
+echo "7. EVENTS APIs (Authenticated)"
+echo "======================================="
+${SCRIPT_DIR}/events/test_all_events_apis.sh
+echo ""
+
+# Test Foundation APIs (authenticated)
+echo "======================================="
+echo "8. FOUNDATION APIs (Authenticated)"
+echo "======================================="
+${SCRIPT_DIR}/foundation/test_all_foundation_apis.sh
+echo ""
+
+# Test Project APIs (authenticated)
+echo "======================================="
+echo "9. PROJECT APIs (Authenticated)"
+echo "======================================="
+${SCRIPT_DIR}/project/test_all_project_apis.sh
+echo ""
+
+# Test GitHub Organizations APIs (authenticated)
+echo "======================================="
+echo "10. GITHUB ORGANIZATIONS APIs (Authenticated)"
+echo "======================================="
+${SCRIPT_DIR}/github-organizations/test_all_github_organizations_apis.sh
+echo ""
+
+# Test GitHub Repositories APIs (authenticated)
+echo "======================================="
+echo "11. GITHUB REPOSITORIES APIs (Authenticated)"
+echo "======================================="
+${SCRIPT_DIR}/github-repositories/test_all_github_repositories_apis.sh
+echo ""
+
+# Test Signatures APIs (authenticated)
+echo "======================================="
+echo "12. SIGNATURES APIs (Authenticated)"
+echo "======================================="
+${SCRIPT_DIR}/signatures/test_all_signatures_apis.sh
+echo ""
+
 echo "======================================="
 echo "V4 API Testing Complete!"
 echo "======================================="
@@ -78,10 +134,26 @@ echo "✓ Health APIs (1 endpoint) - Public"
 echo "✓ Version APIs (1 endpoint) - Public"
 if [ ! -z "$TOKEN" ] && [ ! -z "$XACL" ]; then
   echo "✓ Metrics APIs (8+ endpoints) - Authenticated"
+  echo "✓ CLA Group APIs (3+ endpoints) - Authenticated"
+  echo "✓ Company APIs (4+ endpoints) - Authenticated"
+  echo "✓ Events APIs (3+ endpoints) - Authenticated"
+  echo "✓ Foundation APIs (2+ endpoints) - Authenticated"
+  echo "✓ Project APIs (3+ endpoints) - Authenticated"
+  echo "✓ GitHub Organizations APIs (1+ endpoints) - Authenticated"
+  echo "✓ GitHub Repositories APIs (1+ endpoints) - Authenticated"
+  echo "✓ Signatures APIs (1+ endpoints) - Authenticated"
   echo ""
-  echo "Total: 12+ endpoints tested"
+  echo "Total: 29+ endpoints tested across 12 API categories"
 else
   echo "⚠ Metrics APIs (8+ endpoints) - Skipped (no auth)"
+  echo "⚠ CLA Group APIs (3+ endpoints) - Skipped (no auth)"
+  echo "⚠ Company APIs (4+ endpoints) - Skipped (no auth)"
+  echo "⚠ Events APIs (3+ endpoints) - Skipped (no auth)"
+  echo "⚠ Foundation APIs (2+ endpoints) - Skipped (no auth)"
+  echo "⚠ Project APIs (3+ endpoints) - Skipped (no auth)"
+  echo "⚠ GitHub Organizations APIs (1+ endpoints) - Skipped (no auth)"
+  echo "⚠ GitHub Repositories APIs (1+ endpoints) - Skipped (no auth)"
+  echo "⚠ Signatures APIs (1+ endpoints) - Skipped (no auth)"
   echo ""
-  echo "Total: 4 endpoints tested (8+ skipped)"
+  echo "Total: 4 endpoints tested (25+ skipped due to no auth)"
 fi
