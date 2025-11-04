@@ -434,6 +434,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
         if (c.body) opts.body = c.body;
 
         cy.request(opts).then((response) => {
+          cy.task('log', `title: ${c.title}`);
           return cy.logJson('response', response).then(() => {
             const es = local
               ? (c.expectedStatusLocal ?? c.expectedStatus)

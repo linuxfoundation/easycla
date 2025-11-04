@@ -161,22 +161,27 @@ export function validate_expected_status(
 ) {
   if (expectedStatus !== undefined && expectedStatus !== null) {
     const status = response.status ?? response.Status;
-    expect(String(status)).to.eq(String(expectedStatus));
+    if (Array.isArray(expectedStatus)) {
+      expect(status).to.be.oneOf(expectedStatus);
+    } else {
+      expect(String(status)).to.eq(String(expectedStatus));
+    }
   }
 
   const statusText = response.statusText ?? response.StatusText;
+  const actualStatus = response.status ?? response.Status;
 
-  if (expectedStatus === 400) {
+  if (actualStatus === 400) {
     expect(statusText).to.eq('Bad Request');
-  } else if (expectedStatus === 401) {
+  } else if (actualStatus === 401) {
     expect(statusText).to.eq('Unauthorized');
-  } else if (expectedStatus === 403) {
+  } else if (actualStatus === 403) {
     expect(statusText).to.eq('Forbidden');
-  } else if (expectedStatus === 404) {
+  } else if (actualStatus === 404) {
     expect(statusText).to.eq('Not Found');
-  } else if (expectedStatus === 405) {
+  } else if (actualStatus === 405) {
     expect(statusText).to.eq('Method Not Allowed');
-  } else if (expectedStatus === 422) {
+  } else if (actualStatus === 422) {
     expect(statusText).to.eq('Unprocessable Entity');
   }
 
