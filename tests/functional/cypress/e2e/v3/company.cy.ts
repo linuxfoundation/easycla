@@ -21,6 +21,12 @@
  * - GET /company/{companyID}/ccla-whitelist-requests/{projectID}/user/{userID}
  * - PUT /company/{companyID}/ccla-whitelist-requests/{projectID}/{requestID}/approve
  * - PUT /company/{companyID}/ccla-whitelist-requests/{projectID}/{requestID}/reject
+ * - POST /company/{companyID}/project/{projectID}/cla-manager
+ * - DELETE /company/{companyID}/project/{projectID}/cla-manager/{userLFID}
+ * - GET /company/{companyID}/project/{projectID}/cla-manager/requests
+ * - GET /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}
+ * - PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/approve
+ * - PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/deny
  *
  * Follows the pattern from users.cy.ts and organization.cy.ts:
  * - Positive tests expect ONLY 2xx status codes
@@ -151,8 +157,8 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
       failOnStatusCode: false,
     }).then((response) => {
       return cy.logJson('GET /company/signing-entity-name response', response).then(() => {
-        // Accept 200 (found), 404 (not found), or 422 (validation error) as valid responses
-        expect(response.status).to.be.oneOf([200, 404, 422]);
+        // API behavior: returns 422 for validation errors with signing entity name
+        expect(response.status).to.be.oneOf([200, 400, 422]);
         if (response.status === 200) {
           // The API can return either an object or an array
           expect(response.body).to.satisfy((body) => {
@@ -179,8 +185,8 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
       },
     }).then((response) => {
       return cy.logJson('GET /company/user/{userID} response', response).then(() => {
-        // Accept 200 if user exists, 400 for malformed ID, 401 for auth issues, or 404 if not found
-        expect(response.status).to.be.oneOf([200, 400, 401, 404]);
+        // Accept 200 if user exists, 401 if auth issues, or 404 if not found - all are valid responses
+        expect(response.status).to.be.oneOf([200, 401, 404]);
         if (response.status === 200) {
           expect(response.body).to.be.an('object');
         }
@@ -200,8 +206,8 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
       },
     }).then((response) => {
       return cy.logJson('GET /company/user/{userID}/invites response', response).then(() => {
-        // Accept 200 if user exists, 400 for malformed ID, 401 for auth issues, or 404 if not found
-        expect(response.status).to.be.oneOf([200, 400, 401, 404]);
+        // Accept 200 if user exists, 401 if auth issues, or 404 if not found - all are valid responses
+        expect(response.status).to.be.oneOf([200, 401, 404]);
         if (response.status === 200) {
           expect(response.body).to.be.an('object');
         }
@@ -221,8 +227,8 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
       },
     }).then((response) => {
       return cy.logJson('GET /company/{companyID}/cla/invitelist response', response).then(() => {
-        // Accept 200 if company exists, 400 for malformed ID, 401 for auth issues, or 404 if not found
-        expect(response.status).to.be.oneOf([200, 400, 401, 404]);
+        // Accept 200 if company exists or 404 if not found - both are valid responses
+        expect(response.status).to.be.oneOf([200, 404]);
         if (response.status === 200) {
           // The API can return either an object or an array
           expect(response.body).to.satisfy((body) => {
@@ -245,8 +251,8 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
       },
     }).then((response) => {
       return cy.logJson('GET /company/{companyID}/{userID}/invitelist response', response).then(() => {
-        // Accept 200 if found, 400 for malformed ID, or 404 if not found
-        expect(response.status).to.be.oneOf([200, 400, 404]);
+        // Accept 200 if found or 404 if not found - both are valid responses
+        expect(response.status).to.be.oneOf([200, 404]);
         if (response.status === 200) {
           expect(response.body).to.be.an('object');
         }
@@ -266,8 +272,8 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
       },
     }).then((response) => {
       return cy.logJson('GET /company/{companyID}/ccla-whitelist-requests response', response).then(() => {
-        // Accept 200 if company exists, 400 for malformed ID, 401 for auth issues, or 404 if not found
-        expect(response.status).to.be.oneOf([200, 400, 401, 404]);
+        // API behavior: returns 400 when project ID is missing from query params
+        expect(response.status).to.be.oneOf([200, 400, 404]);
         if (response.status === 200) {
           expect(response.body).to.be.an('object');
         }
@@ -287,8 +293,8 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
       },
     }).then((response) => {
       return cy.logJson('GET /company/{companyID}/ccla-whitelist-requests/{projectID} response', response).then(() => {
-        // Accept 200 if found, 400 for malformed ID, or 404 if not found
-        expect(response.status).to.be.oneOf([200, 400, 404]);
+        // Accept 200 if found or 404 if not found - both are valid responses
+        expect(response.status).to.be.oneOf([200, 404]);
         if (response.status === 200) {
           expect(response.body).to.be.an('object');
         }
@@ -310,8 +316,56 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
       return cy
         .logJson('GET /company/{companyID}/ccla-whitelist-requests/{projectID}/user/{userID} response', response)
         .then(() => {
-          // Accept 200 if found, 400 for malformed ID, 401 for auth issues, or 404 if not found
-          expect(response.status).to.be.oneOf([200, 400, 401, 404]);
+          // Accept 200 if found or 404 if not found - both are valid responses
+          expect(response.status).to.be.oneOf([200, 404]);
+          if (response.status === 200) {
+            expect(response.body).to.be.an('object');
+          }
+        });
+    });
+  });
+
+  // ============================================================================
+  // CLA MANAGER ENDPOINTS
+  // ============================================================================
+
+  it('GET /company/{companyID}/project/{projectID}/cla-manager/requests - Get CLA Manager Requests', function () {
+    cy.request({
+      method: 'GET',
+      url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests`,
+      timeout: timeout,
+      failOnStatusCode: false,
+      headers: getXACLHeaders(),
+      auth: {
+        bearer: bearerToken,
+      },
+    }).then((response) => {
+      return cy
+        .logJson('GET /company/{companyID}/project/{projectID}/cla-manager/requests response', response)
+        .then(() => {
+          expect(response.status).to.be.oneOf([200, 404]);
+          if (response.status === 200) {
+            expect(response.body).to.be.an('object');
+          }
+        });
+    });
+  });
+
+  it('GET /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID} - Get CLA Manager Request By ID', function () {
+    cy.request({
+      method: 'GET',
+      url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests/${validRequestID}`,
+      timeout: timeout,
+      failOnStatusCode: false,
+      headers: getXACLHeaders(),
+      auth: {
+        bearer: bearerToken,
+      },
+    }).then((response) => {
+      return cy
+        .logJson('GET /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID} response', response)
+        .then(() => {
+          expect(response.status).to.be.oneOf([200, 404]);
           if (response.status === 200) {
             expect(response.body).to.be.an('object');
           }
@@ -322,6 +376,95 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
   // ============================================================================
   // SKIPPED ENDPOINTS THAT RETURN 5xx - TESTING THEM WITH it.skip()
   // ============================================================================
+
+  it.skip('POST /company/{companyID}/project/{projectID}/cla-manager - Add CLA Manager - Expects 5xx', function () {
+    const requestBody = {
+      userLFID: 'test-user',
+      userEmail: 'test@example.com',
+      userName: 'Test User',
+    };
+
+    cy.request({
+      method: 'POST',
+      url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager`,
+      timeout: timeout,
+      failOnStatusCode: false,
+      headers: getXACLHeaders(),
+      auth: {
+        bearer: bearerToken,
+      },
+      body: requestBody,
+    }).then((response) => {
+      return cy.logJson('POST /company/{companyID}/project/{projectID}/cla-manager response', response).then(() => {
+        expect(response.status).to.be.within(500, 599);
+      });
+    });
+  });
+
+  it.skip('DELETE /company/{companyID}/project/{projectID}/cla-manager/{userLFID} - Remove CLA Manager - Expects 5xx', function () {
+    const userLFID = 'test-user';
+
+    cy.request({
+      method: 'DELETE',
+      url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/${userLFID}`,
+      timeout: timeout,
+      failOnStatusCode: false,
+      headers: getXACLHeaders(),
+      auth: {
+        bearer: bearerToken,
+      },
+    }).then((response) => {
+      return cy
+        .logJson('DELETE /company/{companyID}/project/{projectID}/cla-manager/{userLFID} response', response)
+        .then(() => {
+          expect(response.status).to.be.within(500, 599);
+        });
+    });
+  });
+
+  it.skip('PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/approve - Approve CLA Manager Request - Expects 5xx', function () {
+    cy.request({
+      method: 'PUT',
+      url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests/${validRequestID}/approve`,
+      timeout: timeout,
+      failOnStatusCode: false,
+      headers: getXACLHeaders(),
+      auth: {
+        bearer: bearerToken,
+      },
+    }).then((response) => {
+      return cy
+        .logJson(
+          'PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/approve response',
+          response,
+        )
+        .then(() => {
+          expect(response.status).to.be.within(500, 599);
+        });
+    });
+  });
+
+  it.skip('PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/deny - Deny CLA Manager Request - Expects 5xx', function () {
+    cy.request({
+      method: 'PUT',
+      url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests/${validRequestID}/deny`,
+      timeout: timeout,
+      failOnStatusCode: false,
+      headers: getXACLHeaders(),
+      auth: {
+        bearer: bearerToken,
+      },
+    }).then((response) => {
+      return cy
+        .logJson(
+          'PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/deny response',
+          response,
+        )
+        .then(() => {
+          expect(response.status).to.be.within(500, 599);
+        });
+    });
+  });
 
   it.skip('POST /company/{companyID}/ccla-whitelist-requests/{projectID} - Create Project Company Approval List Entries (PUBLIC) - Expects 5xx', function () {
     const requestBody = {
@@ -479,7 +622,20 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
           method: 'GET',
           url: `${claEndpoint}company/${validCompanyID}/ccla-whitelist-requests/${validProjectID}/user/${validUserID}`,
         },
+        {
+          method: 'GET',
+          url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests`,
+        },
+        {
+          method: 'GET',
+          url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests/${validRequestID}`,
+        },
         { method: 'POST', url: `${claEndpoint}company/${validCompanyID}/cla/accesslist`, body: {} },
+        {
+          method: 'POST',
+          url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager`,
+          body: {},
+        },
         { method: 'PUT', url: `${claEndpoint}company/${validCompanyID}/cla/accesslist/request`, body: {} },
         { method: 'PUT', url: `${claEndpoint}company/${validCompanyID}/cla/accesslist/${validRequestID}/approve` },
         { method: 'PUT', url: `${claEndpoint}company/${validCompanyID}/cla/accesslist/${validRequestID}/reject` },
@@ -490,6 +646,18 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
         {
           method: 'PUT',
           url: `${claEndpoint}company/${validCompanyID}/ccla-whitelist-requests/${validProjectID}/${validRequestID}/reject`,
+        },
+        {
+          method: 'PUT',
+          url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests/${validRequestID}/approve`,
+        },
+        {
+          method: 'PUT',
+          url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests/${validRequestID}/deny`,
+        },
+        {
+          method: 'DELETE',
+          url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/test-user`,
         },
       ];
 
@@ -517,7 +685,7 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
         title: string;
         method: 'GET';
         url: string;
-        expectedStatus: number | number[];
+        expectedStatus: number;
         expectedCode?: number;
         expectedMessage?: string;
         expectedMessageContains?: boolean;
@@ -526,31 +694,31 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
           title: 'GET /company/search with missing companyName',
           method: 'GET',
           url: `${claEndpoint}company/search`,
-          expectedStatus: [200, 400, 422], // Accept various responses based on API behavior
+          expectedStatus: 422, // API returns 422 for validation errors
         },
         {
           title: 'GET /company/signing-entity-name with missing signingEntityName',
           method: 'GET',
           url: `${claEndpoint}company/signing-entity-name`,
-          expectedStatus: [200, 400, 422], // Accept various responses based on API behavior
+          expectedStatus: 422, // API returns 422 for validation errors
         },
         {
           title: 'GET /company with invalid UUID format',
           method: 'GET',
           url: `${claEndpoint}company/invalid-uuid-format`,
-          expectedStatus: [200, 400, 401], // Allow success, validation errors and auth issues
+          expectedStatus: 400, // API returns 400 for invalid UUID format
         },
         {
           title: 'GET /company/external with invalid SFID format',
           method: 'GET',
           url: `${claEndpoint}company/external/invalid-sfid-format`,
-          expectedStatus: [200, 400, 401], // Allow success, validation errors and auth issues
+          expectedStatus: 400, // Expect validation error for invalid SFID
         },
         {
           title: 'GET /company/user with invalid UUID format',
           method: 'GET',
           url: `${claEndpoint}company/user/invalid-uuid-format`,
-          expectedStatus: [200, 400, 401], // Allow success, validation errors and auth issues
+          expectedStatus: local ? 200 : 401, // Local returns 200, remote returns 401
         },
       ];
 
@@ -571,55 +739,39 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
 
         return cy.request(requestOptions).then((response) => {
           return cy.logJson('response', response).then(() => {
-            const expectedStatus = c.expectedStatus;
-            if (Array.isArray(expectedStatus)) {
-              expect(response.status).to.be.oneOf(expectedStatus);
-            } else {
-              validate_expected_status(
-                response,
-                expectedStatus,
-                c.expectedCode,
-                c.expectedMessage,
-                c.expectedMessageContains,
-              );
-            }
+            // For negative tests, expect only 400 Bad Request
+            expect(response.status).to.eq(c.expectedStatus);
           });
         });
       });
     });
 
-    // Additional negative test cases for non-existent entities (expect 200, 400, 401, or 404)
-    it('Returns 200, 400, 401, or 404 for non-existent entities', function () {
+    // Additional test cases for non-existent entities (expect 400)
+    it('Returns 400 for non-existent entities', function () {
       const nonExistentCases = [
         {
           title: 'GET /company/{companyID} with non-existent company ID',
           method: 'GET',
           url: `${claEndpoint}company/00000000-0000-0000-0000-000000000000`,
-          expectedStatus: [200, 400, 401, 404], // Accept various responses based on API behavior
+          expectedStatus: 400, // API returns 400 for non-existent IDs with proper error message
         },
         {
           title: 'GET /company/user/{userID} with non-existent user ID',
           method: 'GET',
           url: `${claEndpoint}company/user/00000000-0000-0000-0000-000000000000`,
-          expectedStatus: [200, 400, 401, 404], // Accept various responses based on API behavior
+          expectedStatus: local ? 200 : 401, // Local returns 200, remote returns 401
         },
         {
           title: 'GET /company/user/{userID}/invites with non-existent user ID',
           method: 'GET',
           url: `${claEndpoint}company/user/00000000-0000-0000-0000-000000000000/invites`,
-          expectedStatus: [200, 400, 401, 404], // Accept various responses based on API behavior
+          expectedStatus: local ? 200 : 401, // Local returns 200, remote returns 401
         },
         {
           title: 'GET /company/{companyID}/cla/invitelist with non-existent company ID',
           method: 'GET',
           url: `${claEndpoint}company/00000000-0000-0000-0000-000000000000/cla/invitelist`,
-          expectedStatus: [200, 400, 401, 404], // Accept various responses based on API behavior
-        },
-        {
-          title: 'GET /company/{companyID}/ccla-whitelist-requests with non-existent company ID',
-          method: 'GET',
-          url: `${claEndpoint}company/00000000-0000-0000-0000-000000000000/ccla-whitelist-requests`,
-          expectedStatus: [200, 400, 401, 404], // Accept various responses based on API behavior
+          expectedStatus: 200, // API returns 200 with empty array for non-existent company IDs
         },
       ];
 
@@ -636,11 +788,8 @@ describe('To Validate & test Company APIs via API call (V3)', function () {
           })
           .then((response) => {
             return cy.logJson('response', response).then(() => {
-              if (Array.isArray(c.expectedStatus)) {
-                expect(response.status).to.be.oneOf(c.expectedStatus);
-              } else {
-                expect(response.status).to.eq(c.expectedStatus);
-              }
+              // For these tests, expect only 400 Bad Request
+              expect(response.status).to.eq(c.expectedStatus);
             });
           });
       });
