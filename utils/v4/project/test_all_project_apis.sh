@@ -29,14 +29,39 @@ if [ ! -z "$TOKEN" ] && [ ! -z "$XACL" ]; then
   ${SCRIPT_DIR}/get_projects.sh
   echo ""
 
-  echo "2. Testing GET /project/enabled/{foundationSFID} (authenticated)"
+  echo "2. Testing PUT /project (authenticated)"
+  echo "   Command: ${SCRIPT_DIR}/update_project.sh <project-name> <description>"
+  echo "   [Skipping - requires valid parameters]"
+  echo ""
+
+  echo "3. Testing GET /project/{projectSfdcId} (authenticated)"
+  echo "   Command: ${SCRIPT_DIR}/get_project_by_id.sh <project-id>"
+  echo "   [Skipping - requires valid project ID]"
+  echo ""
+
+  echo "4. Testing DELETE /project/{projectSfdcId} (authenticated)"
+  echo "   Command: ${SCRIPT_DIR}/delete_project.sh <project-sfid>"
+  echo "   [Skipping - requires valid project SFID]"
+  echo ""
+
+  echo "5. Testing GET /project/enabled/{foundationSFID} (authenticated)"
   echo "   Command: ${SCRIPT_DIR}/get_cla_enabled_projects.sh <foundation-sfid>"
   echo "   [Skipping - requires valid foundation SFID]"
   echo ""
 
-  echo "3. Testing GET /project/external/{externalID} (authenticated)"
+  echo "6. Testing GET /project/external/{externalID} (authenticated)"
   echo "   Command: ${SCRIPT_DIR}/get_project_by_external_id.sh <external-id>"
   echo "   [Skipping - requires valid external ID]"
+  echo ""
+
+  echo "7. Testing GET /project/name/{projectName} (authenticated)"
+  echo "   Command: ${SCRIPT_DIR}/get_project_by_name.sh <project-name>"
+  echo "   [Skipping - requires valid project name]"
+  echo ""
+
+  echo "8. Testing GET /project-info/{projectSFID} (authenticated)"
+  echo "   Command: ${SCRIPT_DIR}/get_project_info.sh <project-sfid>"
+  echo "   [Skipping - requires valid project SFID]"
   echo ""
 else
   echo "TOKEN and/or XACL not provided - skipping authenticated endpoints"
