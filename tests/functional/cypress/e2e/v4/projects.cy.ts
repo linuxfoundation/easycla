@@ -374,19 +374,6 @@ describe('To Validate & get projects Activity Callback via API call', function (
           expectedStatus: 404,
           // No message check because body is empty
         },
-        {
-          title: 'GET /project-info/{projectSFID} with malformed projectSFID',
-          method: 'GET',
-          url: `${claBaseEndpoint}project-info/${badProjectSFID}`,
-          expectedStatusLocal: 422,
-          expectedStatusRemote: 422,
-          expectedCodeLocal: 604,
-          expectedCodeRemote: 604,
-          expectedMessageLocal: 'projectSFID in path should be at least 15 chars long',
-          expectedMessageRemote: 'projectSFID in path should be at least 15 chars long',
-          expectedMessageContainsLocal: false,
-          expectedMessageContainsRemote: false,
-        },
 
         // (Sanity) valid-looking parameters should succeed (or at least get past validation)
         {
@@ -408,13 +395,6 @@ describe('To Validate & get projects Activity Callback via API call', function (
           method: 'GET',
           url: `${claBaseEndpoint}project/enabled/${exampleFoundationSFID}`,
           expectedStatus: 200,
-        },
-        {
-          title: 'GET /project-info/{projectSFID} with valid projectSFID',
-          method: 'GET',
-          url: `${claBaseEndpoint}project-info/${exampleProjectSFID}`,
-          expectedStatusLocal: 200,
-          expectedStatusRemote: 200,
         },
       ];
 

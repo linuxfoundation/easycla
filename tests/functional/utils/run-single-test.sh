@@ -65,11 +65,15 @@ fi
 if ( [ ! -z "${TOKEN}" ] && [ ! "${TOKEN}" = "-" ] )
 then
   ENV_ARGS="${ENV_ARGS:+$ENV_ARGS,}TOKEN=${TOKEN}"
+else
+  unset TOKEN
 fi
 
 if ( [ ! -z "${XACL}" ] && [ ! "${XACL}" = "-" ] )
 then
   ENV_ARGS="${ENV_ARGS:+$ENV_ARGS,}XACL=${XACL}"
+else
+  unset XACL
 fi
 
 if [ ! -z "${ENV_ARGS}" ]; then
