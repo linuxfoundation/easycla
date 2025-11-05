@@ -260,7 +260,7 @@ export function getAPIBaseURL(version) {
 export function getXACLHeader() {
   const xacl = Cypress.env('XACL');
   if (xacl) {
-    // cy.task('log', `--> using X-ACL ${shortenMiddle(xacl)} from env`);
+    cy.task('log', `--> using X-ACL ${shortenMiddle(xacl)} from env`);
     return {
       'X-ACL': xacl,
       'X-USERNAME': 'lgryglicki',
@@ -292,6 +292,7 @@ export function getOAuth2Headers() {
 
 let bearerToken = '';
 export function getTokenKey() {
+  cy.task('log', `--> getting token`);
   const envToken = Cypress.env('TOKEN');
   if (envToken) {
     cy.task('log', `--> getting token from env`);

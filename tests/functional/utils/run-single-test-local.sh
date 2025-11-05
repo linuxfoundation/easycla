@@ -1,4 +1,5 @@
 #!/bin/bash
+# Typical: TOKEN='-' ALL=1 ./utils/run-single-test-local.sh
 if [ -z "${TOKEN}" ]                                                                                                                                                                          
 then                                                                                                                                                                                          
   export TOKEN="$(cat ./token.secret)"
