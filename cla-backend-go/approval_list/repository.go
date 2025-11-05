@@ -55,7 +55,7 @@ func NewRepository(awsSession *session.Session, stage string) IRepository {
 	return repository{
 		stage:          stage,
 		dynamoDBClient: dynamodb.New(awsSession),
-		tableName:      fmt.Sprintf("cla-%s-ccla-whitelist-requests", stage), // TODO: rename table
+		tableName:      fmt.Sprintf("cla-%s-ccla-whitelist-requests", stage), // Note: Table name uses legacy terminology. TODO: Rename DynamoDB table (requires infrastructure changes and data migration)
 	}
 }
 

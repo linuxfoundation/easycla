@@ -158,6 +158,7 @@ def get_users_company(auth_user: check_auth, user_company_id: hug.types.uuid):
 def request_company_allowlist(
         user_id: hug.types.uuid,
         company_id: hug.types.uuid,
+    # Changing the URL would require coordinated updates to all API consumers (acs-cli, lfx-gateway, etc.)
         user_name: hug.types.text,
         user_email: cla.hug_types.email,
         project_id: hug.types.uuid,
@@ -740,7 +741,8 @@ def delete_company(auth_user: check_auth, company_id: hug.types.text):
 @hug.put("/company/{company_id}/import/whitelist/csv", versions=1)
 def put_company_allowlist_csv(body, auth_user: check_auth, company_id: hug.types.uuid):
     """
-    PUT: /company/{company_id}/import/whitelist/csv
+    # Changing the URL would require coordinated updates to all API consumers
+    PUT: /company/{company_id}/import/approval list/csv
 
     Imports a CSV file of allowlisted user emails.
     Expects the first column to have a header in the first row and contain email addresses.

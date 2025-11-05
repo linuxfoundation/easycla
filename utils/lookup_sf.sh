@@ -21,7 +21,7 @@ if [ -z "$1" ]
 then
   echo "you need to specify table to query as a 1st parameter, for example 'signatures'"
   # we can't make this name inclusive yet.
-  echo "possible tables include: approvals, ccla_whitelist_requests, cla_manager_requests, companies, company_invites, events, gerrit_instances, github_orgs, gitlab_orgs, metrics, projects, projects_cla_groups, repositories, session_store, signatures, store, user_permissions, users"
+  echo "possible tables include: approvals, ccla_approval_list_requests (legacy name: ccla_whitelist_requests), cla_manager_requests, companies, company_invites, events, gerrit_instances, github_orgs, gitlab_orgs, metrics, projects, projects_cla_groups, repositories, session_store, signatures, store, user_permissions, users"
   exit 1
 fi
 if [ -z "$2" ]

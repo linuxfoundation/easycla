@@ -133,7 +133,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | github\_whitelist | The Github username approved list for the CCLA signature |
 | github\_org\_whitelist | The Github organization approved list for the CCLA signature |
 
-Note: 4 above columns names will be updated to change from `whitelist` to `allowlist`. 
+Note: The 4 columns above use legacy terminology in their names for backward compatibility. A future migration will rename these columns to use inclusive terminology (e.g., domain_allowlist, email_allowlist, github_allowlist, github_org_allowlist).
 
 ## User-Permissions
 
@@ -170,4 +170,3 @@ Note: 4 above columns names will be updated to change from `whitelist` to `allow
 | key | Primary Key UUID for the Store table \(Temporary Key-value storage for user information during the signing process\) |
 | expire \(TTL\) | Expiration date time for the key-value pair in epoch |
 | value | Temporary values stored for the key-value |
-

@@ -5393,7 +5393,7 @@ class CCLAAllowlistRequestModel(BaseModel):
         """ Meta class for cclaallowlistrequest """
 
         # we can't update this to be inclusive yet as it is a DynamoDB table name
-        table_name = "cla-{}-ccla-whitelist-requests".format(stage)
+        table_name = "cla-{}-ccla-approval-list-requests (legacy table name: ccla-{}-ccla-whitelist-requests)".format(stage)
         if stage == "local":
             host = "http://localhost:8000"
 

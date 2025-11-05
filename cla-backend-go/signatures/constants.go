@@ -4,16 +4,16 @@
 package signatures
 
 // SignatureEmailApprovalListColumn is the name of the signature column for the email approval list
-const SignatureEmailApprovalListColumn = "email_whitelist" // TODO: rename column to email_allowlist
+const SignatureEmailApprovalListColumn = "email_whitelist" // Note: Column name uses legacy terminology. TODO: Rename database column to email_allowlist (requires data migration)
 
 // SignatureDomainApprovalListColumn is the name of the signature column for the domain approval list
-const SignatureDomainApprovalListColumn = "domain_whitelist" // TODO: rename column to domain_allowlist
+const SignatureDomainApprovalListColumn = "domain_whitelist" // Note: Column name uses legacy terminology. TODO: Rename database column to domain_allowlist (requires data migration)
 
 // SignatureGitHubUsernameApprovalListColumn is the name of the signature column for the GitHub username approval list
-const SignatureGitHubUsernameApprovalListColumn = "github_whitelist" // TODO: rename column to github_username_allowlist
+const SignatureGitHubUsernameApprovalListColumn = "github_whitelist" // Note: Column name uses legacy terminology. TODO: Rename database column to github_username_allowlist (requires data migration)
 
 // SignatureGitHubOrgApprovalListColumn is the name of the signature column for the GitHub organization approval list
-const SignatureGitHubOrgApprovalListColumn = "github_org_whitelist" // TODO: rename column to github_org_allowlist
+const SignatureGitHubOrgApprovalListColumn = "github_org_whitelist" // Note: Column name uses legacy terminology. TODO: Rename database column to github_org_allowlist (requires data migration)
 
 // SignatureGitlabUsernameApprovalListColumn is the name of the signature column for gitlab username approval lists
 const SignatureGitlabUsernameApprovalListColumn = "gitlab_username_approval_list"

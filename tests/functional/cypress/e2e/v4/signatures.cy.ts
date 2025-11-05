@@ -440,7 +440,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }).then((response) => {
       // This may fail with 400 if the organization doesn't exist or other validation issues
       if (response.status === 400) {
-        cy.task('log', 'GitHub org whitelist returned 400 - organization may not exist or validation error');
+        cy.task('log', 'GitHub org approval list returned 400 - organization may not exist or validation error');
         expect(response.status).to.be.oneOf([200, 400]);
       } else {
         validate_200_Status(response);
