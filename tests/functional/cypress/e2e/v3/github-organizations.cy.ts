@@ -1,20 +1,6 @@
-/*
- * Comprehensive test suite for all GitHub Organizations APIs in V3 (tagged with 'github-organizations' in swagger)
- *
- * Covers all HTTP methods for GitHub Organizations endpoints:
- * - POST /project/{projectSFID}/github/organizations (authenticated)
- * - GET /project/{projectSFID}/github/organizations (authenticated)
- * - DELETE /project/{projectSFID}/github/organizations/{orgName} (authenticated)
- * - PUT /project/{projectSFID}/github/organizations/{orgName}/config (authenticated)
- *
- * Includes comprehensive negative testing:
- * - 401 Unauthorized tests for all endpoints
- * - 4xx validation error tests for malformed parameters
- * - Invalid UUID and parameter format tests
- *
- * Uses flexible status code assertions to handle various valid API responses
- * All responses are logged via cy.logJson() for debugging purposes
- */
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
 import {
   validate_200_Status,
   validate_204_Status,

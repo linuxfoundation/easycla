@@ -1,23 +1,6 @@
-/*
- * Comprehensive test suite for all Events APIs in V3 (tagged with 'events' in swagger)
- *
- * Covers all HTTP methods for events endpoints:
- * - GET /events (authenticated) - Search Events with various filters
- *
- * Includes comprehensive negative testing:
- * - 401 Unauthorized tests for all endpoints
- * - 4xx validation error tests for malformed parameters
- * - Invalid parameter format tests
- *
- * Tests various search parameters:
- * - eventType, userID, companyID, projectID, projectSFID
- * - before, after (date filtering)
- * - userName, companyName, searchTerm
- * - pageSize, nextKey, sortOrder
- *
- * Uses flexible status code assertions to handle various valid API responses
- * All responses are logged via cy.logJson() for debugging purposes
- */
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
 import {
   validate_200_Status,
   validate_204_Status,
