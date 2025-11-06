@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Add CLA Manager Response",
+  "description": "Schema for add CLA Manager API response - returns a signature object",
+  "properties": {
+    "signatureID": {
+      "type": "string",
+      "description": "The signature ID"
+    },
+    "signatureExternalID": {
+      "type": "string", 
+      "description": "The external signature ID"
+    },
+    "signatureType": {
+      "type": "string",
+      "enum": ["cla", "ccla", "ecla"],
+      "description": "The signature type"
+    },
+    "signatureReferenceID": {
+      "type": "string",
+      "description": "The signature reference ID"
+    },
+    "signatureReferenceType": {
+      "type": "string",
+      "description": "The signature reference type"
+    },
+    "companyID": {
+      "type": "string",
+      "description": "The company's ID"
+    },
+    "projectID": {
+      "type": "string",
+      "description": "The project's ID"
+    },
+    "userID": {
+      "type": "string",
+      "description": "The user's ID"
+    },
+    "signatureCreated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the signature was created"
+    },
+    "signatureModified": {
+      "type": "string",
+      "format": "date-time", 
+      "description": "When the signature was last modified"
+    },
+    "signatureSigned": {
+      "type": "boolean",
+      "description": "Whether the signature is signed"
+    },
+    "signatureApproved": {
+      "type": "boolean",
+      "description": "Whether the signature is approved"
+    },
+    "signatureSignURL": {
+      "type": "string",
+      "description": "URL to sign the signature"
+    },
+    "signatureReturnURL": {
+      "type": "string",
+      "description": "Return URL after signing"
+    },
+    "domainWhitelist": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Domain whitelist for the signature"
+    },
+    "emailWhitelist": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Email whitelist for the signature"
+    },
+    "githubWhitelist": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "GitHub whitelist for the signature"
+    },
+    "githubOrgWhitelist": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "GitHub organization whitelist for the signature"
+    }
+  },
+  "additionalProperties": true
+}
