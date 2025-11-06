@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "pageSize": {
+      "type": "integer"
+    },
+    "lastKeyScanned": {
+      "type": ["string", "null"]
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "projectID": {
+            "type": "string"
+          },
+          "projectExternalID": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "projectDescription": {
+            "type": ["string", "null"]
+          },
+          "foundationSFID": {
+            "type": "string"
+          },
+          "foundationLevelCLA": {
+            "type": "boolean"
+          },
+          "dateCreated": {
+            "type": "string"
+          },
+          "dateModified": {
+            "type": "string"
+          },
+          "projectCCLAEnabled": {
+            "type": "boolean"
+          },
+          "projectICLAEnabled": {
+            "type": "boolean"
+          },
+          "projectCCLARequiresICLA": {
+            "type": "boolean"
+          },
+          "projectLive": {
+            "type": "boolean"
+          },
+          "projectACL": {
+            "type": ["array", "null"],
+            "items": {
+              "type": "string"
+            }
+          },
+          "rootProjectRepositoriesCount": {
+            "type": "integer"
+          }
+        },
+        "required": ["projectID", "projectName", "foundationSFID", "dateCreated"]
+      }
+    }
+  },
+  "required": [
+    "pageSize"
+  ]
+}

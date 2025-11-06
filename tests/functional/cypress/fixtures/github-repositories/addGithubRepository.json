@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "repositoryID": {
+      "type": "string"
+    },
+    "repositoryExternalID": {
+      "type": "string"
+    },
+    "repositoryName": {
+      "type": "string"
+    },
+    "repositoryType": {
+      "type": "string"
+    },
+    "repositoryUrl": {
+      "type": "string"
+    },
+    "repositoryOrganizationName": {
+      "type": "string"
+    },
+    "repositoryProjectID": {
+      "type": "string"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "note": {
+      "type": "string"
+    },
+    "dateCreated": {
+      "type": "string"
+    },
+    "dateModified": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}
