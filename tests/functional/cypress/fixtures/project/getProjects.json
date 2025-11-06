@@ -23,18 +23,43 @@
             "type": "string"
           },
           "projectDescription": {
-            "type": "string"
+            "type": ["string", "null"]
           },
           "foundationSFID": {
             "type": "string"
+          },
+          "foundationLevelCLA": {
+            "type": "boolean"
           },
           "dateCreated": {
             "type": "string"
           },
           "dateModified": {
             "type": "string"
+          },
+          "projectCCLAEnabled": {
+            "type": "boolean"
+          },
+          "projectICLAEnabled": {
+            "type": "boolean"
+          },
+          "projectCCLARequiresICLA": {
+            "type": "boolean"
+          },
+          "projectLive": {
+            "type": "boolean"
+          },
+          "projectACL": {
+            "type": ["array", "null"],
+            "items": {
+              "type": "string"
+            }
+          },
+          "rootProjectRepositoriesCount": {
+            "type": "integer"
           }
-        }
+        },
+        "required": ["projectID", "projectName", "foundationSFID", "dateCreated"]
       }
     }
   },

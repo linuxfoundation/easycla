@@ -15,7 +15,10 @@
  * - 4xx validation error tests for malformed parameters
  * - Invalid UUID and parameter format tests
  *
- * Uses flexible status code assertions to handle various valid API responses
+ * Uses proper failOnStatusCode flags:
+ * - failOnStatusCode: allowFail for expected success cases
+ * - failOnStatusCode: false for expected failure cases (negative tests)
+ *
  * All responses are logged via cy.logJson() for debugging purposes
  */
 import {
@@ -105,8 +108,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
             `Found test project - ID: ${testProjectID}, SFID: ${testProjectSFID}, Name: ${testProjectName}`,
           );
         }
-        // Skip schema validation for now since we need to understand the exact response structure
-        // validateApiResponse('project/getProjects.json', response);
+        validateApiResponse('project/getProjects.json', response);
       });
     });
   });
@@ -133,6 +135,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
         if (response.body.hasOwnProperty('totalCount')) {
           expect(response.body).to.have.property('totalCount');
         }
+        validateApiResponse('project/getProjects.json', response);
       });
     });
   });
@@ -158,7 +161,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
         expect(response.body.projectID).to.exist;
-        // validateApiResponse('project/getProjectById.json', response);
+        validateApiResponse('project/getProjectById.json', response);
       });
     });
   });
@@ -189,7 +192,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
         } else if (response.body.hasOwnProperty('pageSize')) {
           expect(response.body).to.have.property('pageSize');
         }
-        // validateApiResponse('project/getProjectsByExternalID.json', response);
+        validateApiResponse('project/getProjectsByExternalID.json', response);
       });
     });
   });
@@ -215,7 +218,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
         expect(response.body.projectName).to.exist;
-        // validateApiResponse('project/getProjectByName.json', response);
+        validateApiResponse('project/getProjectByName.json', response);
       });
     });
   });
@@ -247,7 +250,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
           expect(response.body).to.be.an('object');
           createdProjectID = response.body.projectID;
           cy.task('log', `Created project ID: ${createdProjectID}`);
-          // validateApiResponse('project/createProject.json', response);
+          validateApiResponse('project/createProject.json', response);
         } else if (response.status === 409) {
           cy.task('log', 'Project creation returned 409 - likely duplicate name');
           expect(response.body.message || response.body.Message).to.include('already exists');
@@ -286,7 +289,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
         expect(response.status).to.be.oneOf([200, 400, 403, 404, 409]);
         if (response.status === 200) {
           expect(response.body).to.be.an('object');
-          // validateApiResponse('project/updateProject.json', response);
+          validateApiResponse('project/updateProject.json', response);
         } else {
           cy.task(
             'log',
@@ -330,50 +333,43 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
   // NEGATIVE TEST CASES - AUTHENTICATION FAILURES (EXPECT 401)
   // ============================================================================
 
-  describe('Expected authentication failures - 401 Unauthorized', () => {
-    it('Returns 401 for Project APIs without authentication token', function () {
+  describe('Expected failures', () => {
+    it('Returns 401 for Project APIs when called without token', function () {
       const unauthenticatedRequests = [
         {
           method: 'GET',
           url: `${claEndpoint}project`,
-          title: 'GET /project without auth',
         },
         {
           method: 'POST',
           url: `${claEndpoint}project`,
-          title: 'POST /project without auth',
           body: { projectName: 'test' },
         },
         {
           method: 'PUT',
           url: `${claEndpoint}project`,
-          title: 'PUT /project without auth',
           body: { projectID: 'test', projectName: 'test' },
         },
         {
           method: 'GET',
           url: `${claEndpoint}project/test-id`,
-          title: 'GET /project/{projectID} without auth',
         },
         {
           method: 'DELETE',
           url: `${claEndpoint}project/test-id`,
-          title: 'DELETE /project/{projectID} without auth',
         },
         {
           method: 'GET',
           url: `${claEndpoint}project/external/test-sfid`,
-          title: 'GET /project/external/{projectSFID} without auth',
         },
         {
           method: 'GET',
           url: `${claEndpoint}project/name/test-name`,
-          title: 'GET /project/name/{projectName} without auth',
         },
       ];
 
       cy.wrap(unauthenticatedRequests).each((req: any) => {
-        cy.task('log', `--> Testing ${req.title}`);
+        cy.task('log', `--> Testing ${req.method} ${req.url} without auth`);
         const requestOptions: any = {
           method: req.method,
           url: req.url,
@@ -387,48 +383,44 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
 
         return cy.request(requestOptions).then((response) => {
           return cy.logJson('response', response).then(() => {
+            // Never expect 5xx - that would be internal server error
+            expect(response.status).to.not.be.within(500, 599);
             validate_401_Status(response);
           });
         });
       });
     });
-  });
 
-  // ============================================================================
-  // NEGATIVE TEST CASES - VALIDATION FAILURES (EXPECT 4xx)
-  // ============================================================================
-
-  describe('Expected validation failures - 4xx Client Errors', () => {
     it('Returns 4xx for invalid Project ID parameters', () => {
       const invalidIdRequests = [
         {
           method: 'GET',
           url: `${claEndpoint}project/invalid-uuid-format`,
-          expectedStatuses: ['400', '404', '422'],
+          expectedStatuses: [400, 404, 422],
           title: 'GET /project/{projectID} with invalid UUID format',
         },
         {
           method: 'DELETE',
           url: `${claEndpoint}project/invalid-uuid-format`,
-          expectedStatuses: ['400', '404', '422'],
+          expectedStatuses: [400, 404, 422],
           title: 'DELETE /project/{projectID} with invalid UUID format',
         },
         {
           method: 'GET',
           url: `${claEndpoint}project/00000000-0000-0000-0000-000000000000`,
-          expectedStatuses: ['200', '404'],
+          expectedStatuses: [200, 404],
           title: 'GET /project/{projectID} with non-existent UUID',
         },
         {
           method: 'GET',
           url: `${claEndpoint}project/external/invalid-sfid-format!@#`,
-          expectedStatuses: ['200', '400', '404', '422'],
+          expectedStatuses: [200, 400, 404, 422],
           title: 'GET /project/external/{projectSFID} with invalid SFID format',
         },
         {
           method: 'GET',
           url: `${claEndpoint}project/name/`,
-          expectedStatuses: ['400', '404', '405'],
+          expectedStatuses: [400, 404, 405],
           title: 'GET /project/name/{projectName} with empty name',
         },
       ];
@@ -450,7 +442,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
             return cy.logJson('response', response).then(() => {
               // Never expect 5xx - that would be internal server error
               expect(response.status).to.not.be.within(500, 599);
-              expect(req.expectedStatuses).to.include(String(response.status));
+              expect(req.expectedStatuses).to.include(response.status);
             });
           });
       });
@@ -462,7 +454,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
           method: 'POST',
           url: `${claEndpoint}project`,
           body: {}, // Empty body should trigger validation error
-          expectedStatuses: ['400', '422'],
+          expectedStatuses: [400, 422],
           title: 'POST /project with empty body',
         },
         {
@@ -471,14 +463,14 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
           body: {
             projectName: '', // Empty name should trigger validation error
           },
-          expectedStatuses: ['400', '422'],
+          expectedStatuses: [400, 422],
           title: 'POST /project with empty project name',
         },
         {
           method: 'PUT',
           url: `${claEndpoint}project`,
           body: {}, // Empty body should trigger validation error
-          expectedStatuses: ['400', '422'],
+          expectedStatuses: [400, 422],
           title: 'PUT /project with empty body',
         },
         {
@@ -488,7 +480,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
             projectID: 'invalid-uuid',
             projectName: 'test',
           },
-          expectedStatuses: ['400', '404', '422'],
+          expectedStatuses: [400, 404, 422],
           title: 'PUT /project with invalid project ID format',
         },
         {
@@ -498,7 +490,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
             projectID: '00000000-0000-0000-0000-000000000000',
             projectName: 'test',
           },
-          expectedStatuses: ['200', '404'],
+          expectedStatuses: [200, 404],
           title: 'PUT /project with non-existent project ID',
         },
       ];
@@ -521,7 +513,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
             return cy.logJson('response', response).then(() => {
               // Never expect 5xx - that would be internal server error
               expect(response.status).to.not.be.within(500, 599);
-              expect(req.expectedStatuses).to.include(String(response.status));
+              expect(req.expectedStatuses).to.include(response.status);
             });
           });
       });
@@ -532,25 +524,25 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
         {
           method: 'GET',
           url: `${claEndpoint}project?pageSize=0`,
-          expectedStatuses: ['200', '400'],
+          expectedStatuses: [200, 400],
           title: 'GET /project with invalid pageSize (0)',
         },
         {
           method: 'GET',
           url: `${claEndpoint}project?pageSize=1000`,
-          expectedStatuses: ['200', '400'],
+          expectedStatuses: [200, 400],
           title: 'GET /project with too large pageSize',
         },
         {
           method: 'GET',
           url: `${claEndpoint}project?searchField=invalid_field`,
-          expectedStatuses: ['200', '400', '422'],
+          expectedStatuses: [200, 400, 422],
           title: 'GET /project with invalid searchField',
         },
         {
           method: 'GET',
           url: `${claEndpoint}project/external/test-sfid?pageSize=0`,
-          expectedStatuses: ['200', '400'],
+          expectedStatuses: [200, 400],
           title: 'GET /project/external/{projectSFID} with invalid pageSize',
         },
       ];
@@ -572,7 +564,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
             return cy.logJson('response', response).then(() => {
               // Never expect 5xx - that would be internal server error
               expect(response.status).to.not.be.within(500, 599);
-              expect(req.expectedStatuses).to.include(String(response.status));
+              expect(req.expectedStatuses).to.include(response.status);
             });
           });
       });
