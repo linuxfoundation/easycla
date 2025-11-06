@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "projectID": {
+      "type": "string"
+    },
+    "projectName": {
+      "type": "string"
+    },
+    "projectDescription": {
+      "type": "string"
+    },
+    "projectExternalID": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "projectID"
+  ]
+}
