@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "CLA Manager Request Response",
+  "description": "Schema for single CLA Manager request API response",
+  "properties": {
+    "requestID": {
+      "type": "string",
+      "description": "The request ID"
+    },
+    "companyID": {
+      "type": "string",
+      "description": "The company's ID"
+    },
+    "companyExternalID": {
+      "type": "string",
+      "description": "The company's external ID"
+    },
+    "companyName": {
+      "type": "string",
+      "description": "Name of the company"
+    },
+    "projectID": {
+      "type": "string",
+      "description": "The project's ID"
+    },
+    "projectExternalID": {
+      "type": "string",
+      "description": "The project's external ID"
+    },
+    "projectName": {
+      "type": "string",
+      "description": "Name of the project"
+    },
+    "userName": {
+      "type": "string",
+      "description": "The user's name"
+    },
+    "userEmail": {
+      "type": "string",
+      "description": "The user's email"
+    },
+    "userLFID": {
+      "type": "string",
+      "description": "The user's LF ID"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "approved", "denied"],
+      "description": "The request status"
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date/time the record was created"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date/time the record was last modified"
+    }
+  },
+  "additionalProperties": true
+}
