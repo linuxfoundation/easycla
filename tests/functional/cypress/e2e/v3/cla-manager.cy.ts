@@ -1,24 +1,6 @@
-/*
- * Comprehensive test suite for all CLA Manager APIs in V3 (tagged with 'cla-manager' in swagger)
- *
- * Covers all HTTP methods for CLA Manager endpoints:
- * - POST /company/{companyID}/project/{projectID}/cla-manager (authenticated)
- * - DELETE /company/{companyID}/project/{projectID}/cla-manager/{userLFID} (authenticated)
- * - GET /company/{companyID}/project/{projectID}/cla-manager/requests (authenticated)
- * - POST /company/{companyID}/project/{projectID}/cla-manager/requests (authenticated)
- * - GET /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID} (authenticated)
- * - DELETE /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID} (authenticated)
- * - PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/approve (authenticated)
- * - PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/deny (authenticated)
- *
- * Includes comprehensive negative testing:
- * - 401 Unauthorized tests for all endpoints
- * - 4xx validation error tests for malformed parameters
- * - Invalid UUID and parameter format tests
- *
- * Uses flexible status code assertions to handle various valid API responses
- * All responses are logged via cy.logJson() for debugging purposes
- */
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
 import {
   validate_200_Status,
   validate_204_Status,
@@ -129,11 +111,11 @@ describe('To Validate & test CLA Manager APIs via API call (V3)', function () {
   // POSITIVE TEST CASES - EXPECT ONLY 2xx STATUS CODES
   // ============================================================================
 
-  it.skip('GET /company/{companyID}/project/{projectID}/cla-manager/requests - Get CLA Manager Requests (consistent connection issues)', function () {
+  it.skip('GET /company/{companyID}/project/{projectID}/cla-manager/requests - Get CLA Manager Requests (connection issues)', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests`,
-      timeout: 60000, // Shorter timeout to detect connection issues faster
+      timeout: 30000, // Shorter timeout for problematic endpoints
       failOnStatusCode: false,
       headers: getXACLHeaders(),
       auth: {
@@ -143,11 +125,7 @@ describe('To Validate & test CLA Manager APIs via API call (V3)', function () {
       return cy.logJson('GET CLA manager requests response', response).then(() => {
         cy.task('log', `CLA manager requests status: ${response.status}`);
 
-        if (response.status >= 500) {
-          // If consistently returns 5xx, skip the test
-          cy.task('log', 'Skipping due to consistent 5xx server errors - API may not be implemented');
-          this.skip();
-        } else if (response.status >= 200 && response.status <= 299) {
+        if (response.status >= 200 && response.status <= 299) {
           validate_expected_status(response, 200);
           expect(response.body).to.be.an('object');
 
@@ -157,7 +135,7 @@ describe('To Validate & test CLA Manager APIs via API call (V3)', function () {
 
           validateApiResponse('cla-manager/getClaManagerRequests.json', response);
         } else {
-          // Expect 4xx errors for access denied, not found, etc
+          // Expect 4xx errors for access denied, not found, etc - Never 5xx
           expect(response.status).to.be.within(400, 499);
           validate_expected_status(response, response.status);
         }
@@ -241,13 +219,13 @@ describe('To Validate & test CLA Manager APIs via API call (V3)', function () {
     });
   });
 
-  it.skip('PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/approve - Approve Request (consistent connection issues)', function () {
+  it.skip('PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/approve - Approve Request (connection issues)', function () {
     const testRequestID = createdRequestID || 'd9428888-122b-4b20-8c4a-0c9a1a6f9b8e'; // Use created or dummy ID
 
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests/${testRequestID}/approve`,
-      timeout: 60000, // Shorter timeout to detect connection issues faster
+      timeout: 30000, // Shorter timeout for problematic endpoints
       failOnStatusCode: false,
       headers: getXACLHeaders(),
       auth: {
@@ -257,16 +235,12 @@ describe('To Validate & test CLA Manager APIs via API call (V3)', function () {
       return cy.logJson('PUT approve CLA manager request response', response).then(() => {
         cy.task('log', `Approve CLA manager request status: ${response.status}`);
 
-        if (response.status >= 500) {
-          // If consistently returns 5xx, skip the test
-          cy.task('log', 'Skipping due to consistent 5xx server errors - API may not be implemented');
-          this.skip();
-        } else if (response.status >= 200 && response.status <= 299) {
+        if (response.status >= 200 && response.status <= 299) {
           validate_expected_status(response, 200);
           expect(response.body).to.be.an('object');
           validateApiResponse('cla-manager/getClaManagerRequest.json', response);
         } else {
-          // Expect 4xx errors if request doesn't exist or permission issues
+          // Expect 4xx errors if request doesn't exist or permission issues - Never 5xx
           expect(response.status).to.be.within(400, 499);
           validate_expected_status(response, response.status);
         }
@@ -274,13 +248,13 @@ describe('To Validate & test CLA Manager APIs via API call (V3)', function () {
     });
   });
 
-  it.skip('PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/deny - Deny Request (consistent connection issues)', function () {
+  it.skip('PUT /company/{companyID}/project/{projectID}/cla-manager/requests/{requestID}/deny - Deny Request (connection issues)', function () {
     const testRequestID = createdRequestID || 'd9428888-122b-4b20-8c4a-0c9a1a6f9b8e'; // Use created or dummy ID
 
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}company/${validCompanyID}/project/${validProjectID}/cla-manager/requests/${testRequestID}/deny`,
-      timeout: 60000, // Shorter timeout to detect connection issues faster
+      timeout: 30000, // Shorter timeout for problematic endpoints
       failOnStatusCode: false,
       headers: getXACLHeaders(),
       auth: {
@@ -290,16 +264,12 @@ describe('To Validate & test CLA Manager APIs via API call (V3)', function () {
       return cy.logJson('PUT deny CLA manager request response', response).then(() => {
         cy.task('log', `Deny CLA manager request status: ${response.status}`);
 
-        if (response.status >= 500) {
-          // If consistently returns 5xx, skip the test
-          cy.task('log', 'Skipping due to consistent 5xx server errors - API may not be implemented');
-          this.skip();
-        } else if (response.status >= 200 && response.status <= 299) {
+        if (response.status >= 200 && response.status <= 299) {
           validate_expected_status(response, 200);
           expect(response.body).to.be.an('object');
           validateApiResponse('cla-manager/getClaManagerRequest.json', response);
         } else {
-          // Expect 4xx errors if request doesn't exist or permission issues
+          // Expect 4xx errors if request doesn't exist or permission issues - Never 5xx
           expect(response.status).to.be.within(400, 499);
           validate_expected_status(response, response.status);
         }

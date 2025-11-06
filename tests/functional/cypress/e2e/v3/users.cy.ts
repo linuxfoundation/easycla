@@ -1,23 +1,6 @@
-/*
- * Comprehensive test suite for all User APIs in V3 (tagged with 'users' in swagger)
- *
- * Covers all HTTP methods for user endpoints:
- * - GET /user-compat/{userID} (public endpoint)
- * - GET /users/search (authenticated)
- * - GET /users/{userID} (authenticated)
- * - GET /users/username/{userName} (authenticated)
- * - POST /users (authenticated)
- * - PUT /users (authenticated)
- * - DELETE /users/{userID} (authenticated)
- *
- * Includes comprehensive negative testing:
- * - 401 Unauthorized tests for all endpoints
- * - 4xx validation error tests for malformed parameters
- * - Invalid UUID and parameter format tests
- *
- * Uses flexible status code assertions to handle various valid API responses
- * All responses are logged via cy.logJson() for debugging purposes
- */
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
 import {
   validate_200_Status,
   validate_204_Status,
