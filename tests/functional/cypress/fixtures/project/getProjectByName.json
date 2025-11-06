@@ -12,10 +12,23 @@
       "type": "string"
     },
     "projectDescription": {
+      "type": ["string", "null"]
+    },
+    "foundationSFID": {
+      "type": "string"
+    },
+    "foundationLevelCLA": {
+      "type": "boolean"
+    },
+    "dateCreated": {
+      "type": "string"
+    },
+    "dateModified": {
       "type": "string"
     }
   },
   "required": [
+    "projectID",
     "projectName"
   ]
 }
