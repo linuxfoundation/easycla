@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "resultCount": {
+      "type": "integer"
+    },
+    "totalCount": {
+      "type": "integer"
+    },
+    "lastKeyScanned": {
+      "type": ["string", "null"]
+    },
+    "nextKey": {
+      "type": ["string", "null"]
+    },
+    "signatures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "signatureID": {
+            "type": "string"
+          },
+          "userID": {
+            "type": "string"
+          },
+          "projectID": {
+            "type": "string"
+          },
+          "signatureType": {
+            "type": "string"
+          },
+          "signed": {
+            "type": "boolean"
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "dateCreated": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": ["signatures"]
+}
