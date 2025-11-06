@@ -1,23 +1,3 @@
-/*
- * Comprehensive test suite for all Project APIs in V3 (tagged with 'project' in swagger)
- *
- * Covers all HTTP methods for project endpoints:
- * - GET /project (authenticated)
- * - POST /project (authenticated)
- * - PUT /project (authenticated)
- * - GET /project/{projectID} (authenticated)
- * - DELETE /project/{projectID} (authenticated)
- * - GET /project/external/{projectSFID} (authenticated)
- * - GET /project/name/{projectName} (authenticated)
- *
- * Follows proper test patterns:
- * - Each test expects single status code (no arrays of statuses)
- * - Positive tests expect 2xx only
- * - Negative tests expect specific 4xx only
- * - Tests that constantly return 5xx are marked with it.skip()
- * - Uses failOnStatusCode: allowFail for positive cases
- * - Uses failOnStatusCode: false for negative cases
- */
 import {
   validate_200_Status,
   validate_204_Status,
