@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "Name": {
+        "type": "string"
+      },
+      "ID": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "templateMajorVersion": {
+        "type": "integer"
+      },
+      "templateMinorVersion": {
+        "type": "integer"
+      },
+      "iclaHtmlBody": {
+        "type": "string"
+      },
+      "cclaHtmlBody": {
+        "type": "string"
+      },
+      "metaFields": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "templateVariable": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "iclaFields": {
+        "type": "array"
+      },
+      "cclaFields": {
+        "type": "array"
+      }
+    },
+    "required": ["Name", "ID"]
+  }
+}

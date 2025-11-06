@@ -363,7 +363,11 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 
 		result, err := service.SearchOrganizationByName(ctx, companyName, websiteName, utils.BoolValue(params.IncludeSigningEntityName), filter)
 		if err != nil {
-			log.Warnf("error occurred while search org %s. error = %s", *params.CompanyName, err.Error())
+			companyName := "<nil>"
+			if params.CompanyName != nil {
+				companyName = *params.CompanyName
+			}
+			log.Warnf("error occurred while search org %s. error = %s", companyName, err.Error())
 			return organization.NewSearchOrganizationInternalServerError().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 		return organization.NewSearchOrganizationOK().WithXRequestID(reqID).WithPayload(result)

@@ -312,6 +312,9 @@ provider:
     AUTH0_DOMAIN: ${file(./env.json):auth0-domain, ssm:/cla-auth0-domain-${sls:stage}}
     AUTH0_CLIENT_ID: ${file(./env.json):auth0-clientId, ssm:/cla-auth0-clientId-${sls:stage}}
     AUTH0_USERNAME_CLAIM: ${file(./env.json):auth0-username-claim, ssm:/cla-auth0-username-claim-${sls:stage}}
+    AUTH0_USERNAME_CLAIM_CLI: ${file(./env.json):auth0-username-cli-claim, ssm:/cla-auth0-username-claim-cli-${sls:stage}}
+    AUTH0_EMAIL_CLAIM_CLI: ${file(./env.json):auth0-email-cli-claim, ssm:/cla-auth0-email-claim-cli-${sls:stage}}
+    AUTH0_NAME_CLAIM_CLI: ${file(./env.json):auth0-name-cli-claim, ssm:/cla-auth0-name-claim-cli-${sls:stage}}
     AUTH0_ALGORITHM: ${file(./env.json):auth0-algorithm, ssm:/cla-auth0-algorithm-${sls:stage}}
     SF_INSTANCE_URL: ${file(./env.json):sf-instance-url, ssm:/cla-sf-instance-url-${sls:stage}}
     SF_CLIENT_ID: ${file(./env.json):sf-client-id, ssm:/cla-sf-consumer-key-${sls:stage}}

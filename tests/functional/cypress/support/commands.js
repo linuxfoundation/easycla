@@ -161,22 +161,27 @@ export function validate_expected_status(
 ) {
   if (expectedStatus !== undefined && expectedStatus !== null) {
     const status = response.status ?? response.Status;
-    expect(String(status)).to.eq(String(expectedStatus));
+    if (Array.isArray(expectedStatus)) {
+      expect(status).to.be.oneOf(expectedStatus);
+    } else {
+      expect(String(status)).to.eq(String(expectedStatus));
+    }
   }
 
   const statusText = response.statusText ?? response.StatusText;
+  const actualStatus = response.status ?? response.Status;
 
-  if (expectedStatus === 400) {
+  if (actualStatus === 400) {
     expect(statusText).to.eq('Bad Request');
-  } else if (expectedStatus === 401) {
+  } else if (actualStatus === 401) {
     expect(statusText).to.eq('Unauthorized');
-  } else if (expectedStatus === 403) {
+  } else if (actualStatus === 403) {
     expect(statusText).to.eq('Forbidden');
-  } else if (expectedStatus === 404) {
+  } else if (actualStatus === 404) {
     expect(statusText).to.eq('Not Found');
-  } else if (expectedStatus === 405) {
+  } else if (actualStatus === 405) {
     expect(statusText).to.eq('Method Not Allowed');
-  } else if (expectedStatus === 422) {
+  } else if (actualStatus === 422) {
     expect(statusText).to.eq('Unprocessable Entity');
   }
 
@@ -204,6 +209,35 @@ export function shortenMiddle(str) {
   return `${first}...${last}`;
 }
 
+export function getTokenForV3() {
+  // V3 APIs require a token with specific claims: http://lfx.dev/claims/username and http://lfx.dev/claims/email
+  // The token generation is the same as V4, but V3 expects the AUTH0_USERNAME_CLAIM to be set to "http://lfx.dev/claims/username"
+  cy.task('log', '--> getting token by request for V3');
+  return cy
+    .request({
+      method: 'POST',
+      url: Cypress.env('AUTH0_TOKEN_API'),
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: {
+        grant_type: 'http://auth0.com/oauth/grant-type/password-realm',
+        realm: 'Username-Password-Authentication',
+        username: Cypress.env('AUTH0_USER_NAME'),
+        password: Cypress.env('AUTH0_PASSWORD'),
+        client_id: Cypress.env('AUTH0_CLIENT_ID'),
+        audience: 'https://api-gw.dev.platform.linuxfoundation.org/',
+        scope: 'access:api openid profile email',
+      },
+    })
+    .then((response) => {
+      expect(response.status).to.eq(200);
+      const token = response.body.access_token;
+      cy.task('log', `--> got token ${shortenMiddle(token)} from request for V3`);
+      return token;
+    });
+}
+
 export function getAPIBaseURL(version) {
   const local = Cypress.env('LOCAL');
   switch (version) {
@@ -212,6 +246,12 @@ export function getAPIBaseURL(version) {
         return 'http://localhost:5001/v4/';
       }
       return `${Cypress.env('APP_URL')}cla-service/v4/`;
+    case 'v3':
+      if (local) {
+        return 'http://localhost:5001/v3/';
+      }
+      // V3 is deployed on the legacy API endpoint, not the new cla-service endpoint
+      return 'https://api.lfcla.dev.platform.linuxfoundation.org/v3/';
     default:
       cy.task('log', `--> unknown API version ${version}`);
   }
@@ -220,7 +260,7 @@ export function getAPIBaseURL(version) {
 export function getXACLHeader() {
   const xacl = Cypress.env('XACL');
   if (xacl) {
-    // cy.task('log', `--> using X-ACL ${shortenMiddle(xacl)} from env`);
+    cy.task('log', `--> using X-ACL ${shortenMiddle(xacl)} from env`);
     return {
       'X-ACL': xacl,
       'X-USERNAME': 'lgryglicki',
@@ -230,8 +270,29 @@ export function getXACLHeader() {
   return {};
 }
 
+export function getXACLHeaders() {
+  // V3 APIs (which are actually V1 internally) use the same authentication as V4
+  // They need both X-ACL headers and bearer tokens
+  const xacl = Cypress.env('XACL');
+  if (xacl) {
+    return {
+      'X-ACL': xacl,
+      'X-USERNAME': 'lgryglicki',
+      'X-EMAIL': 'lukaszgryglicki@o2.pl',
+    };
+  }
+  return {};
+}
+
+export function getOAuth2Headers() {
+  // V3 APIs (which are actually V1 internally) use the same authentication as V4
+  // They need both X-ACL headers and bearer tokens - just alias to getXACLHeaders
+  return getXACLHeaders();
+}
+
 let bearerToken = '';
 export function getTokenKey() {
+  cy.task('log', `--> getting token`);
   const envToken = Cypress.env('TOKEN');
   if (envToken) {
     cy.task('log', `--> getting token from env`);
@@ -246,7 +307,9 @@ export function getTokenKey() {
   cy.request({
     method: 'POST',
     url: Cypress.env('AUTH0_TOKEN_API'),
-
+    headers: {
+      'content-type': 'application/json',
+    },
     body: {
       grant_type: 'http://auth0.com/oauth/grant-type/password-realm',
       realm: 'Username-Password-Authentication',
