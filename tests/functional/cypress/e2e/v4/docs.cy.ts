@@ -1,3 +1,6 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
 import { getAPIBaseURL, validateApiResponse, validate_200_Status } from '../../support/commands';
 
 describe('To Validate & get api-docs via API call', function () {

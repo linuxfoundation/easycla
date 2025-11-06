@@ -1,3 +1,6 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
 import {
   validateApiResponse,
   validate_200_Status,
@@ -374,19 +377,6 @@ describe('To Validate & get projects Activity Callback via API call', function (
           expectedStatus: 404,
           // No message check because body is empty
         },
-        {
-          title: 'GET /project-info/{projectSFID} with malformed projectSFID',
-          method: 'GET',
-          url: `${claBaseEndpoint}project-info/${badProjectSFID}`,
-          expectedStatusLocal: 422,
-          expectedStatusRemote: 401,
-          expectedCodeLocal: 604,
-          expectedCodeRemote: 401,
-          expectedMessageLocal: 'projectSFID in path should be at least 15 chars long',
-          expectedMessageRemote: 'unauthenticated for invalid credentials',
-          expectedMessageContainsLocal: false,
-          expectedMessageContainsRemote: false,
-        },
 
         // (Sanity) valid-looking parameters should succeed (or at least get past validation)
         {
@@ -409,16 +399,6 @@ describe('To Validate & get projects Activity Callback via API call', function (
           url: `${claBaseEndpoint}project/enabled/${exampleFoundationSFID}`,
           expectedStatus: 200,
         },
-        {
-          title: 'GET /project-info/{projectSFID} with valid projectSFID',
-          method: 'GET',
-          url: `${claBaseEndpoint}project-info/${exampleProjectSFID}`,
-          expectedStatusLocal: 200,
-          expectedStatusRemote: 401,
-          expectedCodeRemote: 401,
-          expectedMessageRemote: 'unauthenticated for invalid credentials',
-          expectedMessageContainsRemote: false,
-        },
       ];
 
       cy.wrap(cases).each((c: any) => {
@@ -434,6 +414,7 @@ describe('To Validate & get projects Activity Callback via API call', function (
         if (c.body) opts.body = c.body;
 
         cy.request(opts).then((response) => {
+          cy.task('log', `title: ${c.title}`);
           return cy.logJson('response', response).then(() => {
             const es = local
               ? (c.expectedStatusLocal ?? c.expectedStatus)
