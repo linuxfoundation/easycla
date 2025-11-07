@@ -1,3 +1,6 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
 import { isNull } from 'cypress/types/lodash';
 import {
   validateApiResponse,

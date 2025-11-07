@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "signatureID": {
+      "type": "string"
+    },
+    "projectID": {
+      "type": "string"
+    },
+    "companyID": {
+      "type": "string"
+    },
+    "approvalList": {
+      "type": "object",
+      "properties": {
+        "emailApprovalList": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "domainApprovalList": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "githubUsernameApprovalList": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": ["signatureID"]
+}

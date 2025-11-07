@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "signatureID": {
+      "type": "string"
+    },
+    "signatureExternalID": {
+      "type": ["string", "null"]
+    },
+    "projectID": {
+      "type": "string"
+    },
+    "claGroupID": {
+      "type": "string"
+    },
+    "companyID": {
+      "type": ["string", "null"]
+    },
+    "userID": {
+      "type": ["string", "null"]
+    },
+    "signatureType": {
+      "type": "string"
+    },
+    "signatureReferenceID": {
+      "type": ["string", "null"]
+    },
+    "signed": {
+      "type": "boolean"
+    },
+    "approved": {
+      "type": "boolean"
+    },
+    "dateCreated": {
+      "type": "string"
+    },
+    "dateModified": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "signatureID",
+    "projectID",
+    "signatureType"
+  ]
+}
