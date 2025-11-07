@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "GitHub Organization Exists Response",
+  "description": "Schema for GitHub organization existence check response",
+  "properties": {
+    "exists": {
+      "type": "boolean",
+      "description": "Whether the GitHub organization exists"
+    },
+    "organization": {
+      "type": "object",
+      "description": "Organization details if exists",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "GitHub organization ID"
+        },
+        "login": {
+          "type": "string",
+          "description": "GitHub organization login name"
+        },
+        "name": {
+          "type": "string",
+          "description": "GitHub organization display name"
+        },
+        "description": {
+          "type": ["string", "null"],
+          "description": "GitHub organization description"
+        },
+        "url": {
+          "type": "string",
+          "description": "GitHub organization API URL"
+        },
+        "html_url": {
+          "type": "string",
+          "description": "GitHub organization web URL"
+        },
+        "avatar_url": {
+          "type": "string",
+          "description": "GitHub organization avatar URL"
+        },
+        "public_repos": {
+          "type": "integer",
+          "description": "Number of public repositories"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Organization creation timestamp"
+        },
+        "updated_at": {
+          "type": "string", 
+          "format": "date-time",
+          "description": "Organization last update timestamp"
+        }
+      }
+    },
+    "message": {
+      "type": "string",
+      "description": "Response message"
+    },
+    "error": {
+      "type": "string",
+      "description": "Error message if any"
+    }
+  },
+  "additionalProperties": true
+}

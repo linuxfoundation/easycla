@@ -1,3 +1,12 @@
 #!/bin/bash
-ALLOW_FAIL=1 DEBUG=1 ./utils/run-single-test.sh "$@"
-ALLOW_FAIL=1 LOCAL=1 DEBUG=1 TOKEN="$(cat ./token.secret)" XACL="$(cat ./x-acl.secret)" ./utils/run-single-test.sh "$@"
+if [ -z "${TOKEN}" ]
+then
+  export TOKEN="$(cat ./token.secret)"
+fi
+if [ -z "${XACL}" ]
+then
+  export XACL="$(cat ./x-acl.secret)"
+fi
+# export ALLOW_FAIL=1
+DEBUG=1 ./utils/run-single-test.sh "$@"
+LOCAL=1 DEBUG=1 ./utils/run-single-test.sh "$@"

@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "is_sanctioned": {
+      "type": "boolean"
+    },
+    "lf_email": {
+      "type": "string"
+    },
+    "lf_sub": {
+      "type": ["string", "null"]
+    },
+    "lf_username": {
+      "type": "string"
+    },
+    "note": {
+      "type": "string"
+    },
+    "user_company_id": {
+      "type": "string"
+    },
+    "user_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "user_external_id": {
+      "type": "string"
+    },
+    "user_github_id": {
+      "type": "string"
+    },
+    "user_github_username": {
+      "type": "string"
+    },
+    "user_gitlab_id": {
+      "type": ["string", "null"]
+    },
+    "user_gitlab_username": {
+      "type": ["string", "null"]
+    },
+    "user_id": {
+      "type": "string"
+    },
+    "user_ldap_id": {
+      "type": ["string", "null"]
+    },
+    "user_name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_id",
+    "user_external_id",
+    "lf_username",
+    "version"
+  ]
+}
