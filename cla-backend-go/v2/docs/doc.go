@@ -50,7 +50,7 @@ func (o *GetDocOK) WriteResponse(rw http.ResponseWriter, producer runtime.Produc
 			redoc.setAttribute('spec-url','/v4/swagger.json');
 		}
 		</script>
-		<script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"> </script>
+		<script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"> </script>
 	  </body>
 	</html>`
 
