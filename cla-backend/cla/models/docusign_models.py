@@ -17,7 +17,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
-from datetime import datetime
+from datetime import datetime, timezone
 
 import cla
 import pydocusign  # type: ignore
@@ -824,6 +824,7 @@ class DocuSign(signing_service_interface.SigningService):
     
     def _save_employee_signature(self,signature):
         cla.log.info(f'Saving signature record (boto3): {signature}')
+        current_time = datetime.now(timezone.utc).isoformat()
         item = {
             'signature_id' : {'S': signature.get_signature_id()},
             'signature_project_id': {'S': signature.get_signature_project_id()},
@@ -837,8 +838,8 @@ class DocuSign(signing_service_interface.SigningService):
             'signature_embargo_acked': {'BOOL': True},
             'signature_acl': {'SS': list(signature.get_signature_acl())},
             'signature_user_ccla_company_id': {'S': signature.get_signature_user_ccla_company_id()},
-            'date_modified': {'S': datetime.now().isoformat()},
-            'date_created': {'S': datetime.now().isoformat()}
+            'date_modified': {'S': current_time},
+            'date_created': {'S': current_time}
         }
 
         if signature.get_signature_return_url() is not None:
