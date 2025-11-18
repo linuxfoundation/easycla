@@ -32,6 +32,7 @@ OPTIONS:
     -d, --dry-run          Run in dry-run mode (no changes made)
     -b, --build-only       Only build the binary, don't run it
     -f, --force            Force rebuild even if binary exists
+    --allow-current-time   Allow using current time as fallback (default: false)
     -h, --help             Show this help message
 
 ENVIRONMENT:
@@ -40,6 +41,7 @@ ENVIRONMENT:
 EXAMPLES:
     $0 --stage staging --dry-run
     $0 --stage prod
+    $0 --stage prod --allow-current-time
     $0 --build-only
 
 EOF
@@ -96,11 +98,19 @@ run_backfill() {
     log_info "Running signature timestamp backfill..."
     log_info "Stage: ${STAGE}"
     log_info "Dry Run: ${DRY_RUN}"
+    log_info "Allow Current Time: ${ALLOW_CURRENT_TIME}"
     
     export STAGE="${STAGE}"
     if [[ "${DRY_RUN}" == "true" ]]; then
         export DRY_RUN=true
         log_warn "DRY RUN MODE - No changes will be made"
+    fi
+    
+    if [[ "${ALLOW_CURRENT_TIME}" == "true" ]]; then
+        export ALLOW_CURRENT_TIME=true
+        log_warn "ALLOW CURRENT TIME - Will use current timestamp as fallback"
+    else
+        log_info "Current time fallback DISABLED - Will skip signatures without signed_on/docusign dates"
     fi
     
     local table_name="cla-${STAGE}-signatures"
@@ -120,6 +130,7 @@ main() {
     local DRY_RUN="false"
     local BUILD_ONLY="false"
     local FORCE_BUILD="false"
+    local ALLOW_CURRENT_TIME="false"
     
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -137,6 +148,10 @@ main() {
                 ;;
             -f|--force)
                 FORCE_BUILD="true"
+                shift
+                ;;
+            --allow-current-time)
+                ALLOW_CURRENT_TIME="true"
                 shift
                 ;;
             -h|--help)
