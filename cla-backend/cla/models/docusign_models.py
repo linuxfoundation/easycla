@@ -17,7 +17,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
-from datetime import datetime
+from datetime import datetime, timezone
 
 import cla
 import pydocusign  # type: ignore
