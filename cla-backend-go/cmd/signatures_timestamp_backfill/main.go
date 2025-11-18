@@ -1,15 +1,20 @@
-// Copyright The Linux Foundation and each contributor to CommunityBridge.
+// Copyright The Linux Foundation.
 // SPDX-License-Identifier: MIT
 
 package main
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,124 +25,167 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
 )
 
-// SignatureRecord represents the minimal signature record for backfill operations
+// -----------------------------
+// Models & stats
+// -----------------------------
+
 type SignatureRecord struct {
 	SignatureID            string `dynamodbav:"signature_id"`
 	DateCreated            string `dynamodbav:"date_created"`
 	DateModified           string `dynamodbav:"date_modified"`
 	SignedOn               string `dynamodbav:"signed_on"`
 	UserDocusignDateSigned string `dynamodbav:"user_docusign_date_signed"`
+	UserDocusignRawXML     string `dynamodbav:"user_docusign_raw_xml"`
+	SignatureSignURL       string `dynamodbav:"signature_sign_url"`
 	SignatureApproved      bool   `dynamodbav:"signature_approved"`
 	SignatureSigned        bool   `dynamodbav:"signature_signed"`
 }
 
-// Stats for created/modified per source
-type FieldSourceStats struct {
-	Total            int
-	FromSignedOn     int
-	FromDocusignDate int
-	FromXmlSigned    int
-	FromXmlCompleted int
-	FromXmlCreated   int
-	FromNow          int
-	FromOtherField   int // created: from modified; modified: from created
-}
+type Counter map[string]int
+
+func (c Counter) Inc(label string) { c[label]++ }
 
 type UpdateStats struct {
-	Created  FieldSourceStats
-	Modified FieldSourceStats
+	Created  Counter
+	Modified Counter
 }
+
+func newStats() UpdateStats {
+	return UpdateStats{Created: Counter{}, Modified: Counter{}}
+}
+
+// -----------------------------
+// Main
+// -----------------------------
 
 func main() {
 	stage := strings.TrimSpace(os.Getenv("STAGE"))
 	if stage == "" {
 		stage = "dev"
 	}
-
 	dryRun := os.Getenv("DRY_RUN") == "true"
 	allowCurrentTime := os.Getenv("ALLOW_CURRENT_TIME") == "true"
 
-	fallbackPath := os.Getenv("FALLBACK_CLI_FILE")
-	if fallbackPath == "" {
-		fallbackPath = fmt.Sprintf("signatures_backfill_fallback_%s_%s.sh", stage, time.Now().UTC().Format("20060102T150405Z"))
+	// Snowflake integration command (reads SQL from stdin and prints CSV to stdout)
+	sfCmd := strings.TrimSpace(os.Getenv("SNOWFLAKE_CSV_CMD"))
+	if sfCmd == "" {
+		sfCmd = "sf_db_csv.sh"
 	}
-	var fallbackFile *os.File
-	var ferr error
-	// Only open fallback file when we might need to write failed updates (not in dry-run)
-	if !dryRun {
-		fallbackFile, ferr = os.Create(fallbackPath)
-		if ferr != nil {
-			log.Printf("WARN: could not create fallback CLI file %s: %v", fallbackPath, ferr)
-		} else {
-			fmt.Fprintf(fallbackFile, "#!/usr/bin/env bash\nset -euo pipefail\n# Auto-generated at %s UTC for stage=%s\n\n", time.Now().UTC().Format(time.RFC3339), stage)
-		}
-		defer func() {
-			if fallbackFile != nil {
-				_ = fallbackFile.Close()
-			}
-		}()
+	// Default Snowflake table (override with SNOWFLAKE_TABLE if needed)
+	sfTable := strings.TrimSpace(os.Getenv("SNOWFLAKE_TABLE"))
+	if sfTable == "" {
+		sfTable = fmt.Sprintf("FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST_1.CLA_%s_SIGNATURES", stageToSnowflake(stage))
+	}
+	// Batch size for IN clause
+	sfBatchSize := 500
+
+	// CLI fallback output file
+	fallbackCLIPath := os.Getenv("FALLBACK_CLI_FILE")
+	if fallbackCLIPath == "" {
+		fallbackCLIPath = fmt.Sprintf("backfill-fallback-commands-cla-%s-signatures-%s.sh", stage, time.Now().UTC().Format("20060102T150405Z"))
 	}
 
-	fmt.Printf("Starting signature timestamp backfill for stage: %s (dry-run: %t, allow-current-time: %t)\n", stage, dryRun, allowCurrentTime)
+	fmt.Printf("Signature backfill | stage=%s dry-run=%t allow-current-time(after SF)=%t\n", stage, dryRun, allowCurrentTime)
+	fmt.Printf("Snowflake: table=%s via %s (batch=%d)\n", sfTable, sfCmd, sfBatchSize)
 
 	awsSession, err := session.NewSession(&aws.Config{Region: aws.String("us-east-1")})
-	// To rely on AWS_PROFILE/AWS_REGION instead, use:
-	// awsSession, err := session.NewSessionWithOptions(session.Options{SharedConfigState: session.SharedConfigEnable})
 	if err != nil {
-		log.Fatalf("Failed to create AWS session: %v", err)
+		log.Fatalf("AWS session error: %v", err)
 	}
-
-	dynamoClient := dynamodb.New(awsSession)
-	tableName := fmt.Sprintf("cla-%s-signatures", stage)
 	region := aws.StringValue(awsSession.Config.Region)
+	ddb := dynamodb.New(awsSession)
+	tableName := fmt.Sprintf("cla-%s-signatures", stage)
 
-	ctx := context.Background()
-	updated, skipped, fallbackCount, stats, err := backfillSignatureTimestamps(ctx, dynamoClient, tableName, stage, dryRun, allowCurrentTime, fallbackFile, region)
+	// Prepare CLI fallback writer (open on first use)
+	var cliFile *os.File
+	var cliOpen bool
+	openCLI := func() {
+		if cliOpen {
+			return
+		}
+		f, e := os.Create(fallbackCLIPath)
+		if e != nil {
+			log.Printf("WARN: cannot create %s: %v", fallbackCLIPath, e)
+			return
+		}
+		cliFile = f
+		fmt.Fprintf(cliFile, "#!/usr/bin/env bash\nset -euo pipefail\n# generated %s UTC, stage=%s, table=%s\n\n", time.Now().UTC().Format(time.RFC3339), stage, tableName)
+		cliOpen = true
+	}
+	defer func() {
+		if cliFile != nil {
+			_ = cliFile.Close()
+		}
+	}()
+
+	// 1) First pass: scan DDB, use in-row sources only (NO Snowflake, NO now()).
+	stats := newStats()
+	updated, skipped, cliCount, pending, err := firstPassScanAndUpdate(context.Background(), ddb, tableName, stage, region, dryRun, &stats, func(cmd string) {
+		openCLI()
+		if cliFile != nil {
+			fmt.Fprintln(cliFile, cmd)
+		}
+	})
 	if err != nil {
-		log.Fatalf("Failed to backfill timestamps: %v", err)
+		log.Fatalf("First pass failed: %v", err)
 	}
 
-	fmt.Printf("\nCompleted backfill. Updated: %d signatures, Skipped: %d (no usable timestamps).\n", updated, skipped)
-	if fallbackCount > 0 && fallbackFile != nil {
-		fmt.Printf("Wrote %d fallback AWS CLI command(s) to: %s\n", fallbackCount, fallbackPath)
-	} else if fallbackCount > 0 {
-		fmt.Printf("Had %d update failure(s), but could not write fallback commands (no file opened).\n", fallbackCount)
+	// 2) Snowflake last-resort for any remaining pending (no candidate found)
+	sfFixed, sfCliCount, err := snowflakeFix(context.Background(), ddb, tableName, stage, region, dryRun, &stats, pending, sfCmd, sfTable, sfBatchSize, func(cmd string) {
+		openCLI()
+		if cliFile != nil {
+			fmt.Fprintln(cliFile, cmd)
+		}
+	})
+	if err != nil {
+		log.Printf("WARN: Snowflake step failed: %v", err)
 	}
+	cliCount += sfCliCount
+	updated += sfFixed
 
-	// Final statistics
-	fmt.Println("\nUpdate statistics:")
-	fmt.Printf("  created_on updated %d times\n", stats.Created.Total)
-	fmt.Printf("    - from signed_on:              %d\n", stats.Created.FromSignedOn)
-	fmt.Printf("    - from user_docusign_date:     %d\n", stats.Created.FromDocusignDate)
-	fmt.Printf("    - from DocuSign XML <Signed>:  %d\n", stats.Created.FromXmlSigned)
-	fmt.Printf("    - from DocuSign XML <Completed>:%d\n", stats.Created.FromXmlCompleted)
-	fmt.Printf("    - from DocuSign XML <Created>: %d\n", stats.Created.FromXmlCreated)
-	fmt.Printf("    - from now():                   %d\n", stats.Created.FromNow)
-	fmt.Printf("    - copied from modified:         %d\n", stats.Created.FromOtherField)
+	// 3) Final fill with now() ONLY IF ALLOW_CURRENT_TIME=true
+	nowFixed, nowCliCount, err := finalNowFix(context.Background(), ddb, tableName, stage, region, dryRun, &stats, pending, allowCurrentTime, func(cmd string) {
+		openCLI()
+		if cliFile != nil {
+			fmt.Fprintln(cliFile, cmd)
+		}
+	})
+	if err != nil {
+		log.Printf("WARN: now()-fill step failed: %v", err)
+	}
+	cliCount += nowCliCount
+	updated += nowFixed
+	skipped = len(pending) // anything still pending after SF + now
 
-	fmt.Printf("  modified_on updated %d times\n", stats.Modified.Total)
-	fmt.Printf("    - from signed_on:               %d\n", stats.Modified.FromSignedOn)
-	fmt.Printf("    - from user_docusign_date:      %d\n", stats.Modified.FromDocusignDate)
-	fmt.Printf("    - from DocuSign XML <Signed>:   %d\n", stats.Modified.FromXmlSigned)
-	fmt.Printf("    - from DocuSign XML <Completed>: %d\n", stats.Modified.FromXmlCompleted)
-	fmt.Printf("    - from DocuSign XML <Created>:  %d\n", stats.Modified.FromXmlCreated)
-	fmt.Printf("    - from now():                    %d\n", stats.Modified.FromNow)
-	fmt.Printf("    - copied from created:           %d\n", stats.Modified.FromOtherField)
+	fmt.Printf("\nCompleted. Updated: %d  |  Still pending (skipped): %d\n", updated, skipped)
+	if cliOpen {
+		fmt.Printf("Fallback AWS CLI written to: %s (lines: %d)\n", fallbackCLIPath, cliCount)
+	}
+	printStats(stats)
 }
 
-func backfillSignatureTimestamps(
-	ctx context.Context,
-	dynamoClient *dynamodb.DynamoDB,
-	tableName string,
-	stage string,
-	dryRun bool,
-	allowCurrentTime bool,
-	fallbackFile *os.File,
-	region string,
-) (int, int, int, UpdateStats, error) {
-	var stats UpdateStats
+// -----------------------------
+// First pass (DDB only, no SF, no now())
+// -----------------------------
 
-	// Filter: only approved & signed AND missing/empty/NULL date fields
+type pendingInfo struct {
+	Record      SignatureRecord
+	MissingC    bool
+	MissingM    bool
+	NoCandidate bool // true if we couldn't find any external timestamp candidate
+}
+
+func firstPassScanAndUpdate(
+	ctx context.Context,
+	ddb *dynamodb.DynamoDB,
+	tableName, stage, region string,
+	dryRun bool,
+	stats *UpdateStats,
+	emitCLI func(string),
+) (updated int, skipped int, cliCount int, pending map[string]*pendingInfo, err error) {
+	pending = map[string]*pendingInfo{}
+
+	// Only approved+signed and missing/empty/NULL date fields
 	missingCreated := expression.Or(
 		expression.AttributeNotExists(expression.Name("date_created")),
 		expression.Equal(expression.Name("date_created"), expression.Value("")),
@@ -149,37 +197,30 @@ func backfillSignatureTimestamps(
 		expression.AttributeType(expression.Name("date_modified"), "NULL"),
 	)
 	missingAny := expression.Or(missingCreated, missingModified)
-
 	approvedAndSigned := expression.And(
 		expression.Equal(expression.Name("signature_approved"), expression.Value(true)),
 		expression.Equal(expression.Name("signature_signed"), expression.Value(true)),
 	)
-
 	filter := expression.And(missingAny, approvedAndSigned)
 
-	projection := expression.NamesList(
+	proj := expression.NamesList(
 		expression.Name("signature_id"),
 		expression.Name("date_created"),
 		expression.Name("date_modified"),
 		expression.Name("signed_on"),
 		expression.Name("user_docusign_date_signed"),
+		expression.Name("user_docusign_raw_xml"),
+		expression.Name("signature_sign_url"),
 		expression.Name("signature_approved"),
 		expression.Name("signature_signed"),
 	)
 
-	expr, err := expression.NewBuilder().
-		WithFilter(filter).
-		WithProjection(projection).
-		Build()
-	if err != nil {
-		return 0, 0, 0, stats, fmt.Errorf("failed to build expression: %v", err)
+	expr, e := expression.NewBuilder().WithFilter(filter).WithProjection(proj).Build()
+	if e != nil {
+		return 0, 0, 0, nil, fmt.Errorf("build expression: %w", e)
 	}
 
-	// Race-safe condition
-	condExpr := "attribute_not_exists(#date_created) OR #date_created = :empty OR " +
-		"attribute_not_exists(#date_modified) OR #date_modified = :empty"
-
-	scanInput := &dynamodb.ScanInput{
+	scan := &dynamodb.ScanInput{
 		TableName:                 aws.String(tableName),
 		FilterExpression:          expr.Filter(),
 		ProjectionExpression:      expr.Projection(),
@@ -187,302 +228,782 @@ func backfillSignatureTimestamps(
 		ExpressionAttributeValues: expr.Values(),
 	}
 
-	var updated int
-	var skipped int
-	var fallbackCount int
-	var pageErr error
+	condExpr := "attribute_not_exists(#date_created) OR #date_created = :empty OR " +
+		"attribute_not_exists(#date_modified) OR #date_modified = :empty"
 
-	err = dynamoClient.ScanPages(scanInput, func(page *dynamodb.ScanOutput, lastPage bool) bool {
-		var signatures []SignatureRecord
-		if uerr := dynamodbattribute.UnmarshalListOfMaps(page.Items, &signatures); uerr != nil {
+	var pageErr error
+	err = ddb.ScanPagesWithContext(ctx, scan, func(page *dynamodb.ScanOutput, last bool) bool {
+		var rows []SignatureRecord
+		if uerr := dynamodbattribute.UnmarshalListOfMaps(page.Items, &rows); uerr != nil {
 			pageErr = fmt.Errorf("unmarshal page: %w", uerr)
 			return false
 		}
 
-		for _, sig := range signatures {
-			if !sig.SignatureApproved || !sig.SignatureSigned {
+		for _, sig := range rows {
+			mC := isMissing(sig.DateCreated)
+			mM := isMissing(sig.DateModified)
+			if !mC && !mM {
 				continue
 			}
 
-			// 1) Choose candidate + label: signed_on -> user_docusign_date_signed -> DocuSign XML -> now (if allowed)
-			bestTimestamp := ""
-			candidateLabel := ""
-			if sig.SignedOn != "" {
-				bestTimestamp = sig.SignedOn
-				candidateLabel = "signed_on"
-			} else if sig.UserDocusignDateSigned != "" {
-				bestTimestamp = sig.UserDocusignDateSigned
-				candidateLabel = "user_docusign_date"
-			} else {
-				if ts, lbl, ok := tryFetchFromDocusignXML(ctx, dynamoClient, tableName, sig.SignatureID); ok {
-					bestTimestamp = ts
-					candidateLabel = lbl // docusign_xml_signed/completed/created
-				} else if allowCurrentTime {
-					bestTimestamp = getCurrentTime()
-					candidateLabel = "now"
-				}
-			}
+			// Build candidates from in-row sources only
+			cands := gatherPrimaryCandidates(sig)
 
-			if bestTimestamp == "" {
-				fmt.Printf("Skipping signature %s: no usable timestamp (signed_on: %q, docusign_date: %q, allow_current_time: %t)\n",
-					sig.SignatureID, sig.SignedOn, sig.UserDocusignDateSigned, allowCurrentTime)
-				skipped++
-				continue
-			}
-
-			// Existing values
-			existingCreated := strings.TrimSpace(sig.DateCreated)
-			existingModified := strings.TrimSpace(sig.DateModified)
-
-			// 2) Decide fields to set, preserving monotonicity
-			newCreated := existingCreated
-			newModified := existingModified
-
-			setCreated := existingCreated == ""
-			setModified := existingModified == ""
-
-			var createdSrc, modifiedSrc string
-
-			if setCreated {
-				// Prefer candidate, then modified, then now (if allowed)
-				if candidateLabel != "" && candidateLabel != "now" {
-					newCreated = bestTimestamp
-					createdSrc = candidateLabel
-				} else if existingModified != "" {
-					newCreated = existingModified
-					createdSrc = "from_modified"
-				} else if candidateLabel == "now" {
-					newCreated = bestTimestamp
-					createdSrc = "now"
-				} else {
-					// Shouldn't happen due to earlier guard, but be safe
-					skipped++
-					continue
-				}
-			}
-
-			if setModified {
-				// Prefer copying from created when available to keep modified >= created
-				if newCreated != "" {
-					newModified = newCreated
-					modifiedSrc = "from_created"
-				} else if candidateLabel != "" {
-					newModified = bestTimestamp
-					modifiedSrc = candidateLabel
-				} else if allowCurrentTime {
-					newModified = getCurrentTime()
-					modifiedSrc = "now"
-				} else {
-					skipped++
-					continue
-				}
-			}
-
-			if !setCreated && !setModified {
-				continue
-			}
-
-			// 3) Build update expression
-			updateParts := make([]string, 0, 2)
-			exprAttrVals := make(map[string]*dynamodb.AttributeValue)
-
-			if setCreated {
-				updateParts = append(updateParts, "#date_created = :date_created")
-				exprAttrVals[":date_created"] = &dynamodb.AttributeValue{S: aws.String(newCreated)}
-			}
-			if setModified {
-				updateParts = append(updateParts, "#date_modified = :date_modified")
-				exprAttrVals[":date_modified"] = &dynamodb.AttributeValue{S: aws.String(newModified)}
-			}
-			updateExpr := "SET " + strings.Join(updateParts, ", ")
-
-			// 4) Stats
-			if setCreated {
-				stats.Created.Total++
-				switch createdSrc {
-				case "signed_on":
-					stats.Created.FromSignedOn++
-				case "user_docusign_date":
-					stats.Created.FromDocusignDate++
-				case "docusign_xml_signed":
-					stats.Created.FromXmlSigned++
-				case "docusign_xml_completed":
-					stats.Created.FromXmlCompleted++
-				case "docusign_xml_created":
-					stats.Created.FromXmlCreated++
-				case "now":
-					stats.Created.FromNow++
-				case "from_modified":
-					stats.Created.FromOtherField++
-				}
-			}
-			if setModified {
-				stats.Modified.Total++
-				switch modifiedSrc {
-				case "signed_on":
-					stats.Modified.FromSignedOn++
-				case "user_docusign_date":
-					stats.Modified.FromDocusignDate++
-				case "docusign_xml_signed":
-					stats.Modified.FromXmlSigned++
-				case "docusign_xml_completed":
-					stats.Modified.FromXmlCompleted++
-				case "docusign_xml_created":
-					stats.Modified.FromXmlCreated++
-				case "now":
-					stats.Modified.FromNow++
-				case "from_created":
-					stats.Modified.FromOtherField++
-				}
-			}
-
-			fmt.Printf("Updating signature %s (created:%t src=%s, modified:%t src=%s)\n",
-				sig.SignatureID, setCreated, createdSrc, setModified, modifiedSrc)
-
-			// 5) Perform update (or write fallback on failure)
-			if !dryRun {
-				exprAttrVals[":empty"] = &dynamodb.AttributeValue{S: aws.String("")}
-				updateInput := &dynamodb.UpdateItemInput{
-					TableName: aws.String(tableName),
-					Key: map[string]*dynamodb.AttributeValue{
-						"signature_id": {S: aws.String(sig.SignatureID)},
-					},
-					UpdateExpression: aws.String(updateExpr),
-					ExpressionAttributeNames: map[string]*string{
-						"#date_created":  aws.String("date_created"),
-						"#date_modified": aws.String("date_modified"),
-					},
-					ExpressionAttributeValues: exprAttrVals,
-					ConditionExpression:       aws.String(condExpr),
-				}
-
-				if _, updateErr := dynamoClient.UpdateItem(updateInput); updateErr != nil {
-					log.Printf("Failed to update signature %s: %v", sig.SignatureID, updateErr)
-					// Emit fallback CLI
-					if fallbackFile != nil {
-						if err := writeFallbackCLI(fallbackFile, region, stage, tableName, sig.SignatureID, updateExpr, setCreated, setModified, newCreated, newModified); err == nil {
-							fallbackCount++
-						} else {
-							log.Printf("WARN: could not write fallback CLI for %s: %v", sig.SignatureID, err)
-						}
+			// Decide created (prefer earliest candidate; else copy modified if present)
+			var newC, srcC string
+			if mC {
+				if len(cands) > 0 {
+					best := earliest(cands)
+					// Keep created ≤ modified if modified exists
+					if !isMissing(sig.DateModified) && after(best.ts, sig.DateModified) {
+						newC, srcC = normalize(best.ts), "signed_or_xml_or_signurl"
+						// clamp happens below after we compute newM
+					} else {
+						newC, srcC = normalize(best.ts), best.src
 					}
-					continue
+				} else if !isMissing(sig.DateModified) {
+					newC, srcC = normalize(sig.DateModified), "from_modified"
 				}
 			}
 
+			// Decide modified (prefer copy from created if we have any; else earliest candidate)
+			var newM, srcM string
+			if mM {
+				if !mC && !isMissing(sig.DateCreated) {
+					newM, srcM = normalize(sig.DateCreated), "from_created"
+				} else if mC && newC != "" {
+					newM, srcM = newC, "from_created"
+				} else if len(cands) > 0 {
+					best := earliest(cands)
+					newM, srcM = normalize(best.ts), best.src
+				}
+			}
+
+			// If nothing to set, put into pending for Snowflake/now() step
+			if (mC && newC == "") && (mM && newM == "") {
+				pending[sig.SignatureID] = &pendingInfo{
+					Record:      sig,
+					MissingC:    mC,
+					MissingM:    mM,
+					NoCandidate: true,
+				}
+				continue
+			}
+
+			// Monotonic clamp created ≤ modified
+			finalC := ifEmpty(sig.DateCreated, newC)
+			finalM := ifEmpty(sig.DateModified, newM)
+			tc := parseTime(finalC)
+			tm := parseTime(finalM)
+			if !tc.IsZero() && !tm.IsZero() && tm.Before(tc) {
+				finalM = finalC
+				srcM = "from_created"
+			}
+
+			// Build update
+			updateExpr := "SET "
+			vals := map[string]*dynamodb.AttributeValue{":empty": {S: aws.String("")}}
+			names := map[string]*string{
+				"#date_created":  aws.String("date_created"),
+				"#date_modified": aws.String("date_modified"),
+			}
+			first := true
+			if mC && finalC != "" {
+				if !first {
+					updateExpr += ", "
+				}
+				updateExpr += "#date_created = :date_created"
+				vals[":date_created"] = &dynamodb.AttributeValue{S: aws.String(finalC)}
+				first = false
+			}
+			if mM && finalM != "" {
+				if !first {
+					updateExpr += ", "
+				}
+				updateExpr += "#date_modified = :date_modified"
+				vals[":date_modified"] = &dynamodb.AttributeValue{S: aws.String(finalM)}
+			}
+
+			if (mC && finalC == "") && (mM && finalM == "") {
+				// nothing to do
+				pending[sig.SignatureID] = &pendingInfo{Record: sig, MissingC: mC, MissingM: mM, NoCandidate: true}
+				continue
+			}
+
+			// Stats
+			if mC && finalC != "" {
+				stats.Created.Inc(srcCOr(bestSrc(srcC, cands), srcC))
+				stats.Created.Inc("_total")
+			}
+			if mM && finalM != "" {
+				stats.Modified.Inc(srcM)
+				stats.Modified.Inc("_total")
+			}
+
+			// Emit CLI in dry-run; real-run only on failures
+			cmd := buildAwsCliUpdate(region, stage, tableName, sig.SignatureID, updateExpr, names, vals, condExpr)
+			if dryRun {
+				if emitCLI != nil {
+					emitCLI(cmd)
+					cliCount++
+				}
+				updated++
+				continue
+			}
+
+			_, uerr := ddb.UpdateItem(&dynamodb.UpdateItemInput{
+				TableName:                 aws.String(tableName),
+				Key:                       map[string]*dynamodb.AttributeValue{"signature_id": {S: aws.String(sig.SignatureID)}},
+				UpdateExpression:          aws.String(updateExpr),
+				ExpressionAttributeNames:  names,
+				ExpressionAttributeValues: vals,
+				ConditionExpression:       aws.String(condExpr),
+			})
+			if uerr != nil {
+				log.Printf("Update failed %s: %v", sig.SignatureID, uerr)
+				if emitCLI != nil {
+					emitCLI(cmd)
+					cliCount++
+				}
+				continue
+			}
 			updated++
 		}
-		return true // Continue to next page
+		return true
 	})
-
 	if err != nil {
-		return updated, skipped, fallbackCount, stats, fmt.Errorf("scan failed: %v", err)
+		return updated, skipped, cliCount, nil, fmt.Errorf("scan failed: %w", err)
 	}
 	if pageErr != nil {
-		return updated, skipped, fallbackCount, stats, pageErr
+		return updated, skipped, cliCount, nil, pageErr
+	}
+	return updated, skipped, cliCount, pending, nil
+}
+
+func srcCOr(a, b string) string {
+	a = strings.TrimSpace(a)
+	if a != "" {
+		return a
+	}
+	return strings.TrimSpace(b)
+}
+
+func bestSrc(src string, cands []pair) string {
+	if src != "" {
+		return src
+	}
+	if len(cands) == 0 {
+		return ""
+	}
+	return cands[0].src
+}
+
+// -----------------------------
+// Snowflake pass (for pending IDs with NoCandidate)
+// -----------------------------
+
+func snowflakeFix(
+	ctx context.Context,
+	ddb *dynamodb.DynamoDB,
+	tableName, stage, region string,
+	dryRun bool,
+	stats *UpdateStats,
+	pending map[string]*pendingInfo,
+	sfCmd, sfTable string,
+	batchSize int,
+	emitCLI func(string),
+) (fixed int, cliCount int, err error) {
+
+	ids := make([]string, 0, len(pending))
+	for id, p := range pending {
+		// Consider only those where we truly had no candidate in first pass
+		if p.NoCandidate && (p.MissingC || p.MissingM) {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return 0, 0, nil
 	}
 
-	return updated, skipped, fallbackCount, stats, nil
+	// Batch in chunks
+	for start := 0; start < len(ids); start += batchSize {
+		end := start + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[start:end]
+
+		// Compose SQL
+		inList := "'" + strings.Join(chunk, "','") + "'"
+		sql := fmt.Sprintf(`SELECT signature_id, _FIVETRAN_SYNCED FROM %s WHERE signature_id IN (%s)`, sfTable, inList)
+
+		// Run sf_db_csv.sh, feeding SQL via stdin
+		out, e := runSnowflakeCSV(sfCmd, sql)
+		if e != nil {
+			// Don't fail the whole run; log and continue
+			log.Printf("WARN: Snowflake batch failed: %v", e)
+			continue
+		}
+
+		// Parse CSV into map[id]ts
+		sfMap := parseSnowflakeCSV(out)
+
+		// Apply updates for all entries returned
+		for id, ts := range sfMap {
+			info, ok := pending[id]
+			if !ok || (!info.MissingC && !info.MissingM) {
+				continue
+			}
+			created := info.Record.DateCreated
+			modified := info.Record.DateModified
+			mC := info.MissingC
+			mM := info.MissingM
+
+			var newC, srcC string
+			var newM, srcM string
+
+			if mC {
+				newC, srcC = normalize(ts), "fivetran_synced"
+				// If modified exists and is before chosen created, clamp created to modified
+				if !isMissing(modified) && after(newC, modified) {
+					newC, srcC = normalize(modified), "from_modified"
+				}
+			}
+			if mM {
+				// Prefer from created to keep >=
+				if !isMissing(created) {
+					newM, srcM = normalize(created), "from_created"
+				} else if mC && newC != "" {
+					newM, srcM = newC, "from_created"
+				} else {
+					newM, srcM = normalize(ts), "fivetran_synced"
+				}
+			}
+
+			finalC := ifEmpty(created, newC)
+			finalM := ifEmpty(modified, newM)
+			tc := parseTime(finalC)
+			tm := parseTime(finalM)
+			if !tc.IsZero() && !tm.IsZero() && tm.Before(tc) {
+				finalM = finalC
+				srcM = "from_created"
+			}
+
+			// Build update
+			updateExpr := "SET "
+			vals := map[string]*dynamodb.AttributeValue{":empty": {S: aws.String("")}}
+			names := map[string]*string{
+				"#date_created":  aws.String("date_created"),
+				"#date_modified": aws.String("date_modified"),
+			}
+			first := true
+			if mC && finalC != "" {
+				if !first {
+					updateExpr += ", "
+				}
+				updateExpr += "#date_created = :date_created"
+				vals[":date_created"] = &dynamodb.AttributeValue{S: aws.String(finalC)}
+				first = false
+			}
+			if mM && finalM != "" {
+				if !first {
+					updateExpr += ", "
+				}
+				updateExpr += "#date_modified = :date_modified"
+				vals[":date_modified"] = &dynamodb.AttributeValue{S: aws.String(finalM)}
+			}
+			if (mC && finalC == "") && (mM && finalM == "") {
+				continue
+			}
+
+			// Stats
+			if mC && finalC != "" {
+				stats.Created.Inc(srcC)
+				stats.Created.Inc("_total")
+			}
+			if mM && finalM != "" {
+				stats.Modified.Inc(srcM)
+				stats.Modified.Inc("_total")
+			}
+
+			cmd := buildAwsCliUpdate(region, stage, tableName, id, updateExpr, names, vals,
+				"attribute_not_exists(#date_created) OR #date_created = :empty OR attribute_not_exists(#date_modified) OR #date_modified = :empty")
+
+			if dryRun {
+				if emitCLI != nil {
+					emitCLI(cmd)
+					cliCount++
+				}
+				fixed++
+				// mark as no longer pending
+				delete(pending, id)
+				continue
+			}
+
+			_, uerr := ddb.UpdateItem(&dynamodb.UpdateItemInput{
+				TableName:                 aws.String(tableName),
+				Key:                       map[string]*dynamodb.AttributeValue{"signature_id": {S: aws.String(id)}},
+				UpdateExpression:          aws.String(updateExpr),
+				ExpressionAttributeNames:  names,
+				ExpressionAttributeValues: vals,
+				ConditionExpression:       aws.String("attribute_not_exists(#date_created) OR #date_created = :empty OR attribute_not_exists(#date_modified) OR #date_modified = :empty"),
+			})
+			if uerr != nil {
+				log.Printf("Update failed (SF) %s: %v", id, uerr)
+				if emitCLI != nil {
+					emitCLI(cmd)
+					cliCount++
+				}
+				// keep pending
+				continue
+			}
+			fixed++
+			delete(pending, id)
+		}
+	}
+
+	return fixed, cliCount, nil
 }
 
-func getCurrentTime() string {
-	return time.Now().UTC().Format(time.RFC3339)
+// -----------------------------
+// Final now()-fill pass (only if allowed)
+// -----------------------------
+
+func finalNowFix(
+	ctx context.Context,
+	ddb *dynamodb.DynamoDB,
+	tableName, stage, region string,
+	dryRun bool,
+	stats *UpdateStats,
+	pending map[string]*pendingInfo,
+	allowNow bool,
+	emitCLI func(string),
+) (fixed int, cliCount int, err error) {
+	if !allowNow || len(pending) == 0 {
+		return 0, 0, nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	for id, info := range pending {
+		mC := info.MissingC
+		mM := info.MissingM
+		if !mC && !mM {
+			delete(pending, id)
+			continue
+		}
+
+		// For date_created, if modified exists and is earlier than now, prefer modified
+		newC := ""
+		if mC {
+			if !isMissing(info.Record.DateModified) {
+				newC = normalize(info.Record.DateModified)
+				stats.Created.Inc("from_modified")
+			} else {
+				newC = now
+				stats.Created.Inc("now")
+			}
+			stats.Created.Inc("_total")
+		}
+
+		// For date_modified, prefer created (existing or new)
+		newM := ""
+		if mM {
+			if !isMissing(info.Record.DateCreated) {
+				newM = normalize(info.Record.DateCreated)
+				stats.Modified.Inc("from_created")
+			} else if newC != "" {
+				newM = newC
+				stats.Modified.Inc("from_created")
+			} else {
+				newM = now
+				stats.Modified.Inc("now")
+			}
+			stats.Modified.Inc("_total")
+		}
+
+		// Monotonic clamp
+		finalC := ifEmpty(info.Record.DateCreated, newC)
+		finalM := ifEmpty(info.Record.DateModified, newM)
+		tc := parseTime(finalC)
+		tm := parseTime(finalM)
+		if !tc.IsZero() && !tm.IsZero() && tm.Before(tc) {
+			finalM = finalC
+		}
+
+		// Build update
+		updateExpr := "SET "
+		vals := map[string]*dynamodb.AttributeValue{":empty": {S: aws.String("")}}
+		names := map[string]*string{
+			"#date_created":  aws.String("date_created"),
+			"#date_modified": aws.String("date_modified"),
+		}
+		first := true
+		if mC && finalC != "" {
+			if !first {
+				updateExpr += ", "
+			}
+			updateExpr += "#date_created = :date_created"
+			vals[":date_created"] = &dynamodb.AttributeValue{S: aws.String(finalC)}
+			first = false
+		}
+		if mM && finalM != "" {
+			if !first {
+				updateExpr += ", "
+			}
+			updateExpr += "#date_modified = :date_modified"
+			vals[":date_modified"] = &dynamodb.AttributeValue{S: aws.String(finalM)}
+		}
+
+		cmd := buildAwsCliUpdate(region, stage, tableName, id, updateExpr, names, vals,
+			"attribute_not_exists(#date_created) OR #date_created = :empty OR attribute_not_exists(#date_modified) OR #date_modified = :empty")
+
+		if dryRun {
+			if emitCLI != nil {
+				emitCLI(cmd)
+				cliCount++
+			}
+			fixed++
+			delete(pending, id)
+			continue
+		}
+
+		_, uerr := ddb.UpdateItem(&dynamodb.UpdateItemInput{
+			TableName:                 aws.String(tableName),
+			Key:                       map[string]*dynamodb.AttributeValue{"signature_id": {S: aws.String(id)}},
+			UpdateExpression:          aws.String(updateExpr),
+			ExpressionAttributeNames:  names,
+			ExpressionAttributeValues: vals,
+			ConditionExpression:       aws.String("attribute_not_exists(#date_created) OR #date_created = :empty OR attribute_not_exists(#date_modified) OR #date_modified = :empty"),
+		})
+		if uerr != nil {
+			log.Printf("Update failed (now) %s: %v", id, uerr)
+			if emitCLI != nil {
+				emitCLI(cmd)
+				cliCount++
+			}
+			continue
+		}
+		fixed++
+		delete(pending, id)
+	}
+	return fixed, cliCount, nil
 }
 
-// --- DocuSign XML helpers ---
+// -----------------------------
+// Candidate gathering (in-row only)
+// -----------------------------
+
+type pair struct {
+	ts  string
+	src string
+}
+
+func gatherPrimaryCandidates(sig SignatureRecord) []pair {
+	var out []pair
+	push := func(val, src string) {
+		val = strings.TrimSpace(val)
+		if val != "" {
+			out = append(out, pair{normalize(val), src})
+		}
+	}
+	if sig.SignedOn != "" {
+		push(sig.SignedOn, "signed_on")
+	}
+	if sig.UserDocusignDateSigned != "" {
+		push(sig.UserDocusignDateSigned, "docusign_signed_on")
+	}
+	// DocuSign XML tags
+	for _, p := range extractDocuSignXML(sig.UserDocusignRawXML) {
+		push(p.ts, p.src)
+	}
+	// CreatedAt/IssuedAt from DocuSign sign URL
+	if ts, lbl := createdOrIssuedAtFromSignURL(sig.SignatureSignURL); ts != "" {
+		push(ts, lbl)
+	}
+	return out
+}
+
+func earliest(in []pair) pair {
+	var best pair
+	var bestT time.Time
+	first := true
+	for _, p := range in {
+		t := parseTime(p.ts)
+		if t.IsZero() {
+			continue
+		}
+		if first || t.Before(bestT) {
+			best = p
+			bestT = t
+			first = false
+		}
+	}
+	return best
+}
+
+// -----------------------------
+// Parsing helpers
+// -----------------------------
 
 var (
-	reSigned    = regexp.MustCompile(`(?i)<Signed>([^<]+)</Signed>`)
-	reCompleted = regexp.MustCompile(`(?i)<Completed>([^<]+)</Completed>`)
-	reCreated   = regexp.MustCompile(`(?i)<Created>([^<]+)</Created>`)
+	reSigned        = regexp.MustCompile(`(?i)<Signed>([^<]+)</Signed>`)
+	reCompleted     = regexp.MustCompile(`(?i)<Completed>([^<]+)</Completed>`)
+	reCreated       = regexp.MustCompile(`(?i)<Created>([^<]+)</Created>`)
+	reSent          = regexp.MustCompile(`(?i)<Sent>([^<]+)</Sent>`)
+	reDelivered     = regexp.MustCompile(`(?i)<Delivered>([^<]+)</Delivered>`)
+	reTimeGenerated = regexp.MustCompile(`(?i)<TimeGenerated>([^<]+)</TimeGenerated>`)
+	reACStatusDate  = regexp.MustCompile(`(?i)<ACStatusDate>([^<]+)</ACStatusDate>`)
 )
 
-// tryFetchFromDocusignXML fetches user_docusign_raw_xml for a single record and extracts
-// a timestamp using <Signed>, then <Completed>, then <Created>.
-// Returns (ts, label, true) if found; label is one of docusign_xml_signed/completed/created.
-func tryFetchFromDocusignXML(ctx context.Context, ddb *dynamodb.DynamoDB, table, sigID string) (string, string, bool) {
-	out, err := ddb.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String(table),
-		Key: map[string]*dynamodb.AttributeValue{
-			"signature_id": {S: aws.String(sigID)},
-		},
-		ProjectionExpression: aws.String("user_docusign_raw_xml"),
-	})
-	if err != nil || out.Item == nil {
-		return "", "", false
-	}
-	var holder struct {
-		Raw string `dynamodbav:"user_docusign_raw_xml"`
-	}
-	if uerr := dynamodbattribute.UnmarshalMap(out.Item, &holder); uerr != nil {
-		return "", "", false
-	}
-	raw := holder.Raw
+func extractDocuSignXML(raw string) []pair {
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", "", false
+		return nil
 	}
-	if m := reSigned.FindStringSubmatch(raw); len(m) == 2 {
-		return strings.TrimSpace(m[1]), "docusign_xml_signed", true
+	var out []pair
+	grab := func(re *regexp.Regexp, label string) {
+		if m := re.FindStringSubmatch(raw); len(m) == 2 && strings.TrimSpace(m[1]) != "" {
+			out = append(out, pair{strings.TrimSpace(m[1]), label})
+		}
 	}
-	if m := reCompleted.FindStringSubmatch(raw); len(m) == 2 {
-		return strings.TrimSpace(m[1]), "docusign_xml_completed", true
-	}
-	if m := reCreated.FindStringSubmatch(raw); len(m) == 2 {
-		return strings.TrimSpace(m[1]), "docusign_xml_created", true
-	}
-	return "", "", false
+	grab(reSigned, "xml_signed")
+	grab(reCompleted, "xml_completed")
+	grab(reCreated, "xml_created")
+	grab(reSent, "xml_sent")
+	grab(reDelivered, "xml_delivered")
+	grab(reTimeGenerated, "xml_timegenerated")
+	grab(reACStatusDate, "xml_acstatusdate")
+	return out
 }
 
-// --- Fallback CLI writer ---
-// Includes both --region and --profile lfproduct-{stage}, as requested.
-func writeFallbackCLI(
-	w *os.File,
-	region, stage, table, sigID, updateExpr string,
-	setCreated, setModified bool,
-	newCreated, newModified string,
-) error {
-	// Build AWS CLI JSON blobs
-	key := map[string]map[string]string{
-		"signature_id": {"S": sigID},
+func createdOrIssuedAtFromSignURL(raw string) (string, string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", ""
 	}
-	names := map[string]string{
-		"#date_created":  "date_created",
-		"#date_modified": "date_modified",
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", ""
 	}
-	vals := map[string]map[string]string{
-		":empty": {"S": ""},
+	slt := u.Query().Get("slt")
+	if slt == "" {
+		// sometimes the whole token is in path; try decode whole URL once
+		dec, _ := url.QueryUnescape(raw)
+		if ts := extractJSONField(dec, "CreatedAt"); ts != "" {
+			return normalize(ts), "signurl_createdat"
+		}
+		if ts := extractJSONField(dec, "IssuedAt"); ts != "" {
+			return normalize(ts), "signurl_issuedat"
+		}
+		return "", ""
 	}
-	if setCreated {
-		vals[":date_created"] = map[string]string{"S": newCreated}
+	parts := strings.Split(slt, ".")
+	for _, seg := range parts {
+		if ts := extractBase64JSON(seg, "CreatedAt"); ts != "" {
+			return normalize(ts), "signurl_createdat"
+		}
+		if ts := extractBase64JSON(seg, "IssuedAt"); ts != "" {
+			return normalize(ts), "signurl_issuedat"
+		}
 	}
-	if setModified {
-		vals[":date_modified"] = map[string]string{"S": newModified}
+	return "", ""
+}
+
+func extractBase64JSON(seg, key string) string {
+	decoders := []func(string) ([]byte, error){
+		base64.RawURLEncoding.DecodeString,
+		base64.URLEncoding.DecodeString,
+		base64.RawStdEncoding.DecodeString,
+		base64.StdEncoding.DecodeString,
+	}
+	for _, d := range decoders {
+		b, err := d(seg)
+		if err != nil || len(b) == 0 {
+			continue
+		}
+		if ts := extractJSONField(string(b), key); ts != "" {
+			return ts
+		}
+	}
+	return ""
+}
+
+func extractJSONField(s, field string) string {
+	p := `"` + field + `"\s*:\s*"(.*?)"`
+	re := regexp.MustCompile(p)
+	m := re.FindStringSubmatch(s)
+	if len(m) == 2 {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
+func isMissing(v string) bool { return strings.TrimSpace(v) == "" }
+
+func ifEmpty(existing, candidate string) string {
+	if isMissing(existing) {
+		return normalize(candidate)
+	}
+	return normalize(existing)
+}
+
+func normalize(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+	// RFC3339(/Nano)
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	// Snowflake/Fivetran: "2006-01-02 15:04:05.999 -0700" variants
+	layouts := []string{
+		"2006-01-02 15:04:05.999999999 -0700",
+		"2006-01-02 15:04:05.999 -0700",
+		"2006-01-02 15:04:05 -0700",
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02T15:04:05",
+	}
+	for _, L := range layouts {
+		if t, err := time.Parse(L, s); err == nil {
+			return t.UTC().Format(time.RFC3339)
+		}
+	}
+	return s
+}
+
+func after(a, b string) bool {
+	ta, ea := time.Parse(time.RFC3339, normalize(a))
+	tb, eb := time.Parse(time.RFC3339, normalize(b))
+	if ea != nil || eb != nil {
+		return false
+	}
+	return ta.After(tb)
+}
+
+func parseTime(s string) time.Time {
+	if strings.TrimSpace(s) == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t.UTC()
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC()
+	}
+	return time.Time{}
+}
+
+func stageToSnowflake(stage string) string {
+	up := strings.ToUpper(stage)
+	switch up {
+	case "PROD", "PRODUCTION":
+		return "PROD"
+	case "STAGE", "STAGING":
+		return "STAGING"
+	default:
+		return "DEV"
+	}
+}
+
+// -----------------------------
+// Snowflake execution & CSV parse
+// -----------------------------
+
+func runSnowflakeCSV(cmdPath, sql string) ([]byte, error) {
+	cmd := exec.Command(cmdPath) // expects SQL on stdin
+	cmd.Stdin = strings.NewReader(sql)
+	return cmd.Output()
+}
+
+func parseSnowflakeCSV(b []byte) map[string]string {
+	res := map[string]string{}
+	r := csv.NewReader(strings.NewReader(string(b)))
+	r.FieldsPerRecord = -1
+	rows, err := r.ReadAll()
+	if err != nil || len(rows) == 0 {
+		return res
+	}
+	// Find header indexes
+	h := rows[0]
+	idxID, idxTS := -1, -1
+	for i, col := range h {
+		l := strings.ToLower(strings.TrimSpace(col))
+		if l == "signature_id" {
+			idxID = i
+		}
+		if l == "_fivetran_synced" || strings.Contains(l, "synced") || strings.Contains(l, "time") || strings.Contains(l, "timestamp") {
+			if idxTS == -1 {
+				idxTS = i
+			}
+		}
+	}
+	if idxID == -1 || idxTS == -1 {
+		return res
+	}
+	for _, row := range rows[1:] {
+		if len(row) <= idxID || len(row) <= idxTS {
+			continue
+		}
+		id := strings.TrimSpace(row[idxID])
+		ts := strings.TrimSpace(row[idxTS])
+		if id == "" || ts == "" {
+			continue
+		}
+		res[id] = normalize(ts)
+	}
+	return res
+}
+
+// -----------------------------
+// AWS CLI builder & stats print
+// -----------------------------
+
+func buildAwsCliUpdate(region, stage, table, sigID, updateExpr string, names map[string]*string, values map[string]*dynamodb.AttributeValue, condExpr string) string {
+	key := map[string]map[string]string{"signature_id": {"S": sigID}}
+	namesFlat := map[string]string{}
+	for k, v := range names {
+		if v != nil {
+			namesFlat[k] = *v
+		}
+	}
+	valsFlat := map[string]map[string]string{":empty": {"S": ""}}
+	if av, ok := values[":date_created"]; ok != false && av != nil && av.S != nil {
+		valsFlat[":date_created"] = map[string]string{"S": *av.S}
+	}
+	if av, ok := values[":date_modified"]; ok != false && av != nil && av.S != nil {
+		valsFlat[":date_modified"] = map[string]string{"S": *av.S}
 	}
 
-	keyJSON, _ := json.Marshal(key)
-	namesJSON, _ := json.Marshal(names)
-	valsJSON, _ := json.Marshal(vals)
+	kb, _ := json.Marshal(key)
+	nb, _ := json.Marshal(namesFlat)
+	vb, _ := json.Marshal(valsFlat)
 
-	cmd := fmt.Sprintf(
-		`aws --profile %s dynamodb update-item --table-name %s --key '%s' --update-expression '%s' --expression-attribute-names '%s' --expression-attribute-values '%s' --condition-expression 'attribute_not_exists(#date_created) OR #date_created = :empty OR attribute_not_exists(#date_modified) OR #date_modified = :empty' --region %s`,
-		shellEscape(fmt.Sprintf("lfproduct-%s", stage)),
-		shellEscape(table),
-		keyJSON,
-		updateExpr,
-		namesJSON,
-		valsJSON,
-		shellEscape(region),
+	return fmt.Sprintf(
+		"aws --profile lfproduct-%s --region %s dynamodb update-item --table-name %s --key '%s' --update-expression '%s' --expression-attribute-names '%s' --expression-attribute-values '%s' --condition-expression '%s'",
+		stage, region, table, kb, updateExpr, nb, vb, condExpr,
 	)
-
-	_, err := fmt.Fprintln(w, cmd)
-	return err
 }
 
-// Basic shell escaping for plain tokens we control (profile/table/region).
-func shellEscape(s string) string {
-	// conservative: wrap in single quotes and escape existing single quotes
-	if s == "" {
-		return "''"
+func printStats(stats UpdateStats) {
+	fmt.Println("\nUpdate statistics:")
+	print := func(title string, c Counter) {
+		total := c["_total"]
+		fmt.Printf("  %s updated %d time(s)\n", title, total)
+		keys := make([]string, 0, len(c))
+		for k := range c {
+			if k == "_total" {
+				continue
+			}
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Printf("    - %-22s %d\n", k, c[k])
+		}
 	}
-	return "'" + strings.ReplaceAll(s, `'`, `'\''`) + "'"
+	print("date_created", stats.Created)
+	print("date_modified", stats.Modified)
 }
