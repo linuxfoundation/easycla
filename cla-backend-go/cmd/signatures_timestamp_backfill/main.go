@@ -19,10 +19,10 @@ import (
 
 // SignatureRecord represents the minimal signature record for backfill operations
 type SignatureRecord struct {
-	SignatureID          string `json:"signature_id"`
-	DateCreated          string `json:"date_created,omitempty"`
-	DateModified         string `json:"date_modified,omitempty"`
-	SignedOn             string `json:"signed_on,omitempty"`
+	SignatureID            string `json:"signature_id"`
+	DateCreated            string `json:"date_created,omitempty"`
+	DateModified           string `json:"date_modified,omitempty"`
+	SignedOn               string `json:"signed_on,omitempty"`
 	UserDocusignDateSigned string `json:"user_docusign_date_signed,omitempty"`
 }
 
@@ -33,7 +33,7 @@ func main() {
 	}
 
 	dryRun := os.Getenv("DRY_RUN") == "true"
-	
+
 	fmt.Printf("Starting signature timestamp backfill for stage: %s (dry-run: %t)\n", stage, dryRun)
 
 	awsSession, err := session.NewSession(&aws.Config{
@@ -47,7 +47,7 @@ func main() {
 	tableName := fmt.Sprintf("cla-%s-signatures", stage)
 
 	ctx := context.Background()
-	updated, err := backfillSignatureTimestamps(ctx, dynamoClient, tableName, dryRun)
+	updated, skipped, err := backfillSignatureTimestamps(ctx, dynamoClient, tableName, dryRun, allowCurrentTime)
 	if err != nil {
 		log.Fatalf("Failed to backfill timestamps: %v", err)
 	}
@@ -55,7 +55,7 @@ func main() {
 	fmt.Printf("Completed backfill. Updated %d signatures.\n", updated)
 }
 
-func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.DynamoDB, tableName string, dryRun bool) (int, error) {
+func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.DynamoDB, tableName string, dryRun bool, allowCurrentTime bool) (int, int, error) {
 	// Find signatures missing timestamps
 	filter := expression.Or(
 		expression.AttributeNotExists(expression.Name("date_created")),
@@ -66,7 +66,7 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 
 	projection := expression.NamesList(
 		expression.Name("signature_id"),
-		expression.Name("date_created"), 
+		expression.Name("date_created"),
 		expression.Name("date_modified"),
 		expression.Name("signed_on"),
 		expression.Name("user_docusign_date_signed"),
@@ -77,7 +77,7 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 		WithProjection(projection).
 		Build()
 	if err != nil {
-		return 0, fmt.Errorf("failed to build expression: %v", err)
+		return 0, 0, fmt.Errorf("failed to build expression: %v", err)
 	}
 
 	scanInput := &dynamodb.ScanInput{
@@ -104,7 +104,7 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 
 			// Determine the best timestamp to use for missing dates
 			bestTimestamp := getCurrentTime()
-			
+
 			// Use signed_on if available, otherwise user_docusign_date_signed
 			if sig.SignedOn != "" {
 				bestTimestamp = sig.SignedOn
@@ -131,20 +131,26 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 			}
 
 			if needsUpdate {
-				fmt.Printf("Updating signature %s (created: %s -> %s, modified: %s -> %s)\n", 
+				fmt.Printf("Updating signature %s (created: %s -> %s, modified: %s -> %s)\n",
 					sig.SignatureID,
-					sig.DateCreated, 
-					func() string { if sig.DateCreated == "" { return bestTimestamp } else { return sig.DateCreated } }(),
+					sig.DateCreated,
+					func() string {
+						if sig.DateCreated == "" {
+							return bestTimestamp
+						} else {
+							return sig.DateCreated
+						}
+					}(),
 					sig.DateModified,
 					bestTimestamp)
 
 				if !dryRun {
 					updateInput := &dynamodb.UpdateItemInput{
-						TableName:                 aws.String(tableName),
+						TableName: aws.String(tableName),
 						Key: map[string]*dynamodb.AttributeValue{
 							"signature_id": {S: aws.String(sig.SignatureID)},
 						},
-						UpdateExpression:          aws.String(updateExpr),
+						UpdateExpression: aws.String(updateExpr),
 						ExpressionAttributeNames: map[string]*string{
 							"#date_created":  aws.String("date_created"),
 							"#date_modified": aws.String("date_modified"),
@@ -165,10 +171,10 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 	})
 
 	if err != nil {
-		return updated, fmt.Errorf("scan failed: %v", err)
+		return updated, skipped, fmt.Errorf("scan failed: %v", err)
 	}
 
-	return updated, nil
+	return updated, skipped, nil
 }
 
 func getCurrentTime() string {
