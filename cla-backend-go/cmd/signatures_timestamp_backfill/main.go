@@ -26,6 +26,22 @@ import (
 )
 
 // -----------------------------
+// Globals
+// -----------------------------
+
+var debug bool
+
+func getEnvBool(name string) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
+	return v == "1" || v == "true" || v == "yes" || v == "y"
+}
+func dbg(format string, a ...any) {
+	if debug {
+		log.Printf("[DEBUG] "+format, a...)
+	}
+}
+
+// -----------------------------
 // Models & stats
 // -----------------------------
 
@@ -63,29 +79,28 @@ func main() {
 	if stage == "" {
 		stage = "dev"
 	}
-	dryRun := os.Getenv("DRY_RUN") == "true"
-	allowCurrentTime := os.Getenv("ALLOW_CURRENT_TIME") == "true"
+	dryRun := getEnvBool("DRY_RUN")
+	allowCurrentTime := getEnvBool("ALLOW_CURRENT_TIME")
+	debug = getEnvBool("DEBUG")
 
-	// Snowflake integration command (reads SQL from stdin and prints CSV to stdout)
+	// Snowflake helper & table
 	sfCmd := strings.TrimSpace(os.Getenv("SNOWFLAKE_CSV_CMD"))
 	if sfCmd == "" {
 		sfCmd = "sf_db_csv.sh"
 	}
-	// Default Snowflake table (override with SNOWFLAKE_TABLE if needed)
 	sfTable := strings.TrimSpace(os.Getenv("SNOWFLAKE_TABLE"))
 	if sfTable == "" {
-		sfTable = fmt.Sprintf("FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST_1.CLA_%s_SIGNATURES", stageToSnowflake(stage))
+		sfTable = stageToSnowflake(stage)
 	}
-	// Batch size for IN clause
 	sfBatchSize := 500
 
-	// CLI fallback output file
+	// CLI fallback file
 	fallbackCLIPath := os.Getenv("FALLBACK_CLI_FILE")
 	if fallbackCLIPath == "" {
 		fallbackCLIPath = fmt.Sprintf("backfill-fallback-commands-cla-%s-signatures-%s.sh", stage, time.Now().UTC().Format("20060102T150405Z"))
 	}
 
-	fmt.Printf("Signature backfill | stage=%s dry-run=%t allow-current-time(after SF)=%t\n", stage, dryRun, allowCurrentTime)
+	fmt.Printf("Signature backfill | stage=%s dry-run=%t allow-current-time(after SF)=%t DEBUG=%t\n", stage, dryRun, allowCurrentTime, debug)
 	fmt.Printf("Snowflake: table=%s via %s (batch=%d)\n", sfTable, sfCmd, sfBatchSize)
 
 	awsSession, err := session.NewSession(&aws.Config{Region: aws.String("us-east-1")})
@@ -118,7 +133,7 @@ func main() {
 		}
 	}()
 
-	// 1) First pass: scan DDB, use in-row sources only (NO Snowflake, NO now()).
+	// 1) First pass: DDB only, created=earliest, modified=latest; no Snowflake, no now()
 	stats := newStats()
 	updated, skipped, cliCount, pending, err := firstPassScanAndUpdate(context.Background(), ddb, tableName, stage, region, dryRun, &stats, func(cmd string) {
 		openCLI()
@@ -130,7 +145,7 @@ func main() {
 		log.Fatalf("First pass failed: %v", err)
 	}
 
-	// 2) Snowflake last-resort for any remaining pending (no candidate found)
+	// 2) Snowflake pass for “no candidate” rows (fills from _FIVETRAN_SYNCED)
 	sfFixed, sfCliCount, err := snowflakeFix(context.Background(), ddb, tableName, stage, region, dryRun, &stats, pending, sfCmd, sfTable, sfBatchSize, func(cmd string) {
 		openCLI()
 		if cliFile != nil {
@@ -143,7 +158,7 @@ func main() {
 	cliCount += sfCliCount
 	updated += sfFixed
 
-	// 3) Final fill with now() ONLY IF ALLOW_CURRENT_TIME=true
+	// 3) Final now() pass (only if allowed)
 	nowFixed, nowCliCount, err := finalNowFix(context.Background(), ddb, tableName, stage, region, dryRun, &stats, pending, allowCurrentTime, func(cmd string) {
 		openCLI()
 		if cliFile != nil {
@@ -155,7 +170,7 @@ func main() {
 	}
 	cliCount += nowCliCount
 	updated += nowFixed
-	skipped = len(pending) // anything still pending after SF + now
+	skipped = len(pending)
 
 	fmt.Printf("\nCompleted. Updated: %d  |  Still pending (skipped): %d\n", updated, skipped)
 	if cliOpen {
@@ -165,14 +180,14 @@ func main() {
 }
 
 // -----------------------------
-// First pass (DDB only, no SF, no now())
+// First pass (DDB only, created=earliest, modified=latest)
 // -----------------------------
 
 type pendingInfo struct {
 	Record      SignatureRecord
 	MissingC    bool
 	MissingM    bool
-	NoCandidate bool // true if we couldn't find any external timestamp candidate
+	NoCandidate bool
 }
 
 func firstPassScanAndUpdate(
@@ -185,7 +200,7 @@ func firstPassScanAndUpdate(
 ) (updated int, skipped int, cliCount int, pending map[string]*pendingInfo, err error) {
 	pending = map[string]*pendingInfo{}
 
-	// Only approved+signed and missing/empty/NULL date fields
+	// Only approved+signed with missing/empty/NULL dates
 	missingCreated := expression.Or(
 		expression.AttributeNotExists(expression.Name("date_created")),
 		expression.Equal(expression.Name("date_created"), expression.Value("")),
@@ -246,56 +261,77 @@ func firstPassScanAndUpdate(
 				continue
 			}
 
-			// Build candidates from in-row sources only
-			cands := gatherPrimaryCandidates(sig)
+			dbg("ID=%s missingCreated=%t missingModified=%t created=%q modified=%q", sig.SignatureID, mC, mM, sig.DateCreated, sig.DateModified)
 
-			// Decide created (prefer earliest candidate; else copy modified if present)
+			// Collect *physical* candidates (from DDB attrs, XML, sign URL) — NO Snowflake here
+			cands := collectPhysicalCandidates(sig)
+			if debug {
+				for i, c := range cands {
+					dbg("  candidate[%d]: src=%s ts=%s", i, c.src, c.ts)
+				}
+			}
+
+			// Choose for created: earliest from candidates
+			earliest := pickEarliest(cands)
+
+			// Choose for modified: latest from candidates
+			latest := pickLatest(cands)
+
+			if debug {
+				dbg("  earliest: src=%s ts=%s", earliest.src, earliest.ts)
+				dbg("  latest  : src=%s ts=%s", latest.src, latest.ts)
+			}
+
+			// Decide created
 			var newC, srcC string
 			if mC {
-				if len(cands) > 0 {
-					best := earliest(cands)
-					// Keep created ≤ modified if modified exists
-					if !isMissing(sig.DateModified) && after(best.ts, sig.DateModified) {
-						newC, srcC = normalize(best.ts), "signed_or_xml_or_signurl"
-						// clamp happens below after we compute newM
+				if !isMissing(earliest.ts) {
+					// If modified exists and earliest > modified, clamp to modified
+					if !isMissing(sig.DateModified) && after(earliest.ts, sig.DateModified) {
+						dbg("  clamp created: earliest(%s) > modified(%s) -> use modified", earliest.ts, sig.DateModified)
+						newC, srcC = normalize(sig.DateModified), "from_modified"
 					} else {
-						newC, srcC = normalize(best.ts), best.src
+						newC, srcC = normalize(earliest.ts), earliest.src
 					}
 				} else if !isMissing(sig.DateModified) {
+					// Still acceptable fallback for created
 					newC, srcC = normalize(sig.DateModified), "from_modified"
 				}
 			}
 
-			// Decide modified (prefer copy from created if we have any; else earliest candidate)
+			// Decide modified
 			var newM, srcM string
 			if mM {
-				if !mC && !isMissing(sig.DateCreated) {
-					newM, srcM = normalize(sig.DateCreated), "from_created"
-				} else if mC && newC != "" {
-					newM, srcM = newC, "from_created"
-				} else if len(cands) > 0 {
-					best := earliest(cands)
-					newM, srcM = normalize(best.ts), best.src
+				if !isMissing(latest.ts) {
+					// Ensure modified >= created if created exists
+					if !isMissing(sig.DateCreated) && after(sig.DateCreated, latest.ts) {
+						newM, srcM = normalize(sig.DateCreated), "from_created"
+					} else if mC && newC != "" && after(newC, latest.ts) {
+						// created will be set now; keep monotonic
+						newM, srcM = newC, "from_created"
+					} else {
+						newM, srcM = normalize(latest.ts), latest.src
+					}
+				} else {
+					// No physical candidate for modified in first pass -> leave for Snowflake
+					dbg("  no physical candidate for modified; defer to Snowflake/_FIVETRAN_SYNCED")
 				}
 			}
 
-			// If nothing to set, put into pending for Snowflake/now() step
+			// If nothing to set, send to pending (Snowflake/now pass)
 			if (mC && newC == "") && (mM && newM == "") {
-				pending[sig.SignatureID] = &pendingInfo{
-					Record:      sig,
-					MissingC:    mC,
-					MissingM:    mM,
-					NoCandidate: true,
-				}
+				dbg("  -> no in-row choice; marking pending for SF/now")
+				pending[sig.SignatureID] = &pendingInfo{Record: sig, MissingC: mC, MissingM: mM, NoCandidate: true}
 				continue
 			}
 
-			// Monotonic clamp created ≤ modified
+			// Monotonic clamp once more (created ≤ modified)
 			finalC := ifEmpty(sig.DateCreated, newC)
 			finalM := ifEmpty(sig.DateModified, newM)
 			tc := parseTime(finalC)
 			tm := parseTime(finalM)
 			if !tc.IsZero() && !tm.IsZero() && tm.Before(tc) {
+				dbg("  clamp modified: modified(%s) < created(%s) -> set modified=created", finalM, finalC)
 				finalM = finalC
 				srcM = "from_created"
 			}
@@ -324,15 +360,19 @@ func firstPassScanAndUpdate(
 				vals[":date_modified"] = &dynamodb.AttributeValue{S: aws.String(finalM)}
 			}
 
-			if (mC && finalC == "") && (mM && finalM == "") {
-				// nothing to do
-				pending[sig.SignatureID] = &pendingInfo{Record: sig, MissingC: mC, MissingM: mM, NoCandidate: true}
-				continue
+			if debug {
+				dbg("  updateExpr=%s", updateExpr)
+				if v, ok := vals[":date_created"]; ok && v.S != nil {
+					dbg("  :date_created=%s (src=%s)", *v.S, srcC)
+				}
+				if v, ok := vals[":date_modified"]; ok && v.S != nil {
+					dbg("  :date_modified=%s (src=%s)", *v.S, srcM)
+				}
 			}
 
 			// Stats
 			if mC && finalC != "" {
-				stats.Created.Inc(srcCOr(bestSrc(srcC, cands), srcC))
+				stats.Created.Inc(srcC)
 				stats.Created.Inc("_total")
 			}
 			if mM && finalM != "" {
@@ -340,8 +380,9 @@ func firstPassScanAndUpdate(
 				stats.Modified.Inc("_total")
 			}
 
-			// Emit CLI in dry-run; real-run only on failures
+			// Emit CLI (always in dry-run; on failure in real-run)
 			cmd := buildAwsCliUpdate(region, stage, tableName, sig.SignatureID, updateExpr, names, vals, condExpr)
+			dbg("  CLI: %s", cmd)
 			if dryRun {
 				if emitCLI != nil {
 					emitCLI(cmd)
@@ -371,6 +412,7 @@ func firstPassScanAndUpdate(
 		}
 		return true
 	})
+
 	if err != nil {
 		return updated, skipped, cliCount, nil, fmt.Errorf("scan failed: %w", err)
 	}
@@ -380,26 +422,8 @@ func firstPassScanAndUpdate(
 	return updated, skipped, cliCount, pending, nil
 }
 
-func srcCOr(a, b string) string {
-	a = strings.TrimSpace(a)
-	if a != "" {
-		return a
-	}
-	return strings.TrimSpace(b)
-}
-
-func bestSrc(src string, cands []pair) string {
-	if src != "" {
-		return src
-	}
-	if len(cands) == 0 {
-		return ""
-	}
-	return cands[0].src
-}
-
 // -----------------------------
-// Snowflake pass (for pending IDs with NoCandidate)
+// Snowflake pass
 // -----------------------------
 
 func snowflakeFix(
@@ -414,9 +438,8 @@ func snowflakeFix(
 	emitCLI func(string),
 ) (fixed int, cliCount int, err error) {
 
-	ids := make([]string, 0, len(pending))
+	var ids []string
 	for id, p := range pending {
-		// Consider only those where we truly had no candidate in first pass
 		if p.NoCandidate && (p.MissingC || p.MissingM) {
 			ids = append(ids, id)
 		}
@@ -425,7 +448,6 @@ func snowflakeFix(
 		return 0, 0, nil
 	}
 
-	// Batch in chunks
 	for start := 0; start < len(ids); start += batchSize {
 		end := start + batchSize
 		if end > len(ids) {
@@ -436,19 +458,17 @@ func snowflakeFix(
 		// Compose SQL
 		inList := "'" + strings.Join(chunk, "','") + "'"
 		sql := fmt.Sprintf(`SELECT signature_id, _FIVETRAN_SYNCED FROM %s WHERE signature_id IN (%s)`, sfTable, inList)
+		dbg("Snowflake batch %d..%d of %d, SQL: %s", start, end-1, len(ids), sql)
 
-		// Run sf_db_csv.sh, feeding SQL via stdin
 		out, e := runSnowflakeCSV(sfCmd, sql)
 		if e != nil {
-			// Don't fail the whole run; log and continue
 			log.Printf("WARN: Snowflake batch failed: %v", e)
 			continue
 		}
 
-		// Parse CSV into map[id]ts
 		sfMap := parseSnowflakeCSV(out)
+		dbg("Snowflake returned %d rows", len(sfMap))
 
-		// Apply updates for all entries returned
 		for id, ts := range sfMap {
 			info, ok := pending[id]
 			if !ok || (!info.MissingC && !info.MissingM) {
@@ -462,15 +482,17 @@ func snowflakeFix(
 			var newC, srcC string
 			var newM, srcM string
 
+			// CREATED: use _fivetran_synced (earliest/only candidate at this stage), clamp to modified if needed
 			if mC {
 				newC, srcC = normalize(ts), "fivetran_synced"
-				// If modified exists and is before chosen created, clamp created to modified
 				if !isMissing(modified) && after(newC, modified) {
+					dbg("  SF clamp created: fivetran(%s) > modified(%s) -> modified", newC, modified)
 					newC, srcC = normalize(modified), "from_modified"
 				}
 			}
+
+			// MODIFIED: use _fivetran_synced if no physical candidates existed (that's why we're here)
 			if mM {
-				// Prefer from created to keep >=
 				if !isMissing(created) {
 					newM, srcM = normalize(created), "from_created"
 				} else if mC && newC != "" {
@@ -485,11 +507,11 @@ func snowflakeFix(
 			tc := parseTime(finalC)
 			tm := parseTime(finalM)
 			if !tc.IsZero() && !tm.IsZero() && tm.Before(tc) {
+				dbg("  SF clamp modified: modified(%s) < created(%s) -> created", finalM, finalC)
 				finalM = finalC
 				srcM = "from_created"
 			}
 
-			// Build update
 			updateExpr := "SET "
 			vals := map[string]*dynamodb.AttributeValue{":empty": {S: aws.String("")}}
 			names := map[string]*string{
@@ -516,7 +538,6 @@ func snowflakeFix(
 				continue
 			}
 
-			// Stats
 			if mC && finalC != "" {
 				stats.Created.Inc(srcC)
 				stats.Created.Inc("_total")
@@ -528,6 +549,7 @@ func snowflakeFix(
 
 			cmd := buildAwsCliUpdate(region, stage, tableName, id, updateExpr, names, vals,
 				"attribute_not_exists(#date_created) OR #date_created = :empty OR attribute_not_exists(#date_modified) OR #date_modified = :empty")
+			dbg("  SF CLI: %s", cmd)
 
 			if dryRun {
 				if emitCLI != nil {
@@ -535,7 +557,6 @@ func snowflakeFix(
 					cliCount++
 				}
 				fixed++
-				// mark as no longer pending
 				delete(pending, id)
 				continue
 			}
@@ -554,14 +575,12 @@ func snowflakeFix(
 					emitCLI(cmd)
 					cliCount++
 				}
-				// keep pending
 				continue
 			}
 			fixed++
 			delete(pending, id)
 		}
 	}
-
 	return fixed, cliCount, nil
 }
 
@@ -592,36 +611,30 @@ func finalNowFix(
 			continue
 		}
 
-		// For date_created, if modified exists and is earlier than now, prefer modified
-		newC := ""
+		var newC, srcC string
 		if mC {
 			if !isMissing(info.Record.DateModified) {
-				newC = normalize(info.Record.DateModified)
-				stats.Created.Inc("from_modified")
+				newC, srcC = normalize(info.Record.DateModified), "from_modified"
 			} else {
-				newC = now
-				stats.Created.Inc("now")
+				newC, srcC = now, "now"
 			}
+			stats.Created.Inc(srcC)
 			stats.Created.Inc("_total")
 		}
 
-		// For date_modified, prefer created (existing or new)
-		newM := ""
+		var newM, srcM string
 		if mM {
 			if !isMissing(info.Record.DateCreated) {
-				newM = normalize(info.Record.DateCreated)
-				stats.Modified.Inc("from_created")
+				newM, srcM = normalize(info.Record.DateCreated), "from_created"
 			} else if newC != "" {
-				newM = newC
-				stats.Modified.Inc("from_created")
+				newM, srcM = newC, "from_created"
 			} else {
-				newM = now
-				stats.Modified.Inc("now")
+				newM, srcM = now, "now"
 			}
+			stats.Modified.Inc(srcM)
 			stats.Modified.Inc("_total")
 		}
 
-		// Monotonic clamp
 		finalC := ifEmpty(info.Record.DateCreated, newC)
 		finalM := ifEmpty(info.Record.DateModified, newM)
 		tc := parseTime(finalC)
@@ -630,7 +643,6 @@ func finalNowFix(
 			finalM = finalC
 		}
 
-		// Build update
 		updateExpr := "SET "
 		vals := map[string]*dynamodb.AttributeValue{":empty": {S: aws.String("")}}
 		names := map[string]*string{
@@ -656,6 +668,7 @@ func finalNowFix(
 
 		cmd := buildAwsCliUpdate(region, stage, tableName, id, updateExpr, names, vals,
 			"attribute_not_exists(#date_created) OR #date_created = :empty OR attribute_not_exists(#date_modified) OR #date_modified = :empty")
+		dbg("  NOW CLI: %s", cmd)
 
 		if dryRun {
 			if emitCLI != nil {
@@ -690,7 +703,7 @@ func finalNowFix(
 }
 
 // -----------------------------
-// Candidate gathering (in-row only)
+// Candidate collection & selection
 // -----------------------------
 
 type pair struct {
@@ -698,7 +711,11 @@ type pair struct {
 	src string
 }
 
-func gatherPrimaryCandidates(sig SignatureRecord) []pair {
+// Collect physical candidates in a fixed priority order (for stability if parsing fails):
+// signed_on, user_docusign_date_signed, xml_signed, xml_completed, xml_datesigned,
+// xml_created, xml_sent, xml_delivered, xml_timegenerated, xml_acstatusdate,
+// signurl_createdat, signurl_issuedat
+func collectPhysicalCandidates(sig SignatureRecord) []pair {
 	var out []pair
 	push := func(val, src string) {
 		val = strings.TrimSpace(val)
@@ -706,39 +723,78 @@ func gatherPrimaryCandidates(sig SignatureRecord) []pair {
 			out = append(out, pair{normalize(val), src})
 		}
 	}
+
+	// 1) signed_on
 	if sig.SignedOn != "" {
 		push(sig.SignedOn, "signed_on")
 	}
+
+	// 2) user_docusign_date_signed
 	if sig.UserDocusignDateSigned != "" {
-		push(sig.UserDocusignDateSigned, "docusign_signed_on")
+		push(sig.UserDocusignDateSigned, "user_docusign_date_signed")
 	}
-	// DocuSign XML tags
-	for _, p := range extractDocuSignXML(sig.UserDocusignRawXML) {
+
+	// 3) DocuSign XML (ordered)
+	for _, p := range extractDocuSignXMLOrdered(sig.UserDocusignRawXML) {
 		push(p.ts, p.src)
 	}
-	// CreatedAt/IssuedAt from DocuSign sign URL
+
+	// 4) signature_sign_url (CreatedAt, then IssuedAt)
 	if ts, lbl := createdOrIssuedAtFromSignURL(sig.SignatureSignURL); ts != "" {
 		push(ts, lbl)
 	}
+
 	return out
 }
 
-func earliest(in []pair) pair {
-	var best pair
-	var bestT time.Time
-	first := true
-	for _, p := range in {
-		t := parseTime(p.ts)
+func pickEarliest(cands []pair) pair {
+	var (
+		best pair
+		init bool
+	)
+	for _, c := range cands {
+		t := parseTime(c.ts)
 		if t.IsZero() {
 			continue
 		}
-		if first || t.Before(bestT) {
-			best = p
-			bestT = t
-			first = false
+		if !init || t.Before(parseTime(best.ts)) {
+			best = c
+			init = true
 		}
 	}
-	return best
+	if init {
+		return best
+	}
+	// No parseable times -> fall back to first by priority order
+	if len(cands) > 0 {
+		return cands[0]
+	}
+	return pair{}
+}
+
+func pickLatest(cands []pair) pair {
+	var (
+		best pair
+		init bool
+	)
+	for _, c := range cands {
+		t := parseTime(c.ts)
+		if t.IsZero() {
+			continue
+		}
+		if !init || t.After(parseTime(best.ts)) {
+			best = c
+			init = true
+		}
+	}
+	if init {
+		return best
+	}
+	// No parseable times -> fall back to first by priority order
+	if len(cands) > 0 {
+		return cands[0]
+	}
+	return pair{}
 }
 
 // -----------------------------
@@ -753,9 +809,14 @@ var (
 	reDelivered     = regexp.MustCompile(`(?i)<Delivered>([^<]+)</Delivered>`)
 	reTimeGenerated = regexp.MustCompile(`(?i)<TimeGenerated>([^<]+)</TimeGenerated>`)
 	reACStatusDate  = regexp.MustCompile(`(?i)<ACStatusDate>([^<]+)</ACStatusDate>`)
+
+	// DateSigned can appear as TabStatus->TabType DateSigned/TabValue
+	reDateSigned1 = regexp.MustCompile(`(?is)<TabStatus>.*?<TabType>\s*DateSigned\s*</TabType>.*?<TabValue>\s*([^<]+)\s*</TabValue>.*?</TabStatus>`)
+	// Or in XFDF fields
+	reDateSigned2 = regexp.MustCompile(`(?is)<field\s+name="DateSigned"\s*>\s*<value>\s*([^<]+)\s*</value>\s*</field>`)
 )
 
-func extractDocuSignXML(raw string) []pair {
+func extractDocuSignXMLOrdered(raw string) []pair {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil
@@ -766,14 +827,43 @@ func extractDocuSignXML(raw string) []pair {
 			out = append(out, pair{strings.TrimSpace(m[1]), label})
 		}
 	}
+	// Strict internal order (used only if all are parse-failed and we must pick one)
 	grab(reSigned, "xml_signed")
 	grab(reCompleted, "xml_completed")
+	if ds := extractDateSignedFromXML(raw); ds != "" {
+		out = append(out, pair{normalizeDateSigned(ds), "xml_datesigned"})
+	}
 	grab(reCreated, "xml_created")
 	grab(reSent, "xml_sent")
 	grab(reDelivered, "xml_delivered")
 	grab(reTimeGenerated, "xml_timegenerated")
 	grab(reACStatusDate, "xml_acstatusdate")
 	return out
+}
+
+func extractDateSignedFromXML(raw string) string {
+	if m := reDateSigned1.FindStringSubmatch(raw); len(m) == 2 {
+		return strings.TrimSpace(m[1])
+	}
+	if m := reDateSigned2.FindStringSubmatch(raw); len(m) == 2 {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
+// DateSigned samples like "11/17/2025 | 5:30 AM PST"
+func normalizeDateSigned(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if t, err := time.Parse("01/02/2006 | 3:04 PM MST", s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	if t, err := time.Parse("01/02/2006 | 3:04 PM", s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	return s
 }
 
 func createdOrIssuedAtFromSignURL(raw string) (string, string) {
@@ -787,7 +877,6 @@ func createdOrIssuedAtFromSignURL(raw string) (string, string) {
 	}
 	slt := u.Query().Get("slt")
 	if slt == "" {
-		// sometimes the whole token is in path; try decode whole URL once
 		dec, _ := url.QueryUnescape(raw)
 		if ts := extractJSONField(dec, "CreatedAt"); ts != "" {
 			return normalize(ts), "signurl_createdat"
@@ -858,7 +947,7 @@ func normalize(s string) string {
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
 		return t.UTC().Format(time.RFC3339)
 	}
-	// Snowflake/Fivetran: "2006-01-02 15:04:05.999 -0700" variants
+	// Snowflake/Fivetran formats
 	layouts := []string{
 		"2006-01-02 15:04:05.999999999 -0700",
 		"2006-01-02 15:04:05.999 -0700",
@@ -900,11 +989,9 @@ func stageToSnowflake(stage string) string {
 	up := strings.ToUpper(stage)
 	switch up {
 	case "PROD", "PRODUCTION":
-		return "PROD"
-	case "STAGE", "STAGING":
-		return "STAGING"
+		return "FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST_1.CLA_PROD_SIGNATURES"
 	default:
-		return "DEV"
+		return "FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST1_DEV.CLA_DEV_SIGNATURES"
 	}
 }
 
@@ -913,7 +1000,7 @@ func stageToSnowflake(stage string) string {
 // -----------------------------
 
 func runSnowflakeCSV(cmdPath, sql string) ([]byte, error) {
-	cmd := exec.Command(cmdPath) // expects SQL on stdin
+	cmd := exec.Command(cmdPath) // reads SQL on stdin, prints CSV on stdout
 	cmd.Stdin = strings.NewReader(sql)
 	return cmd.Output()
 }
@@ -970,10 +1057,10 @@ func buildAwsCliUpdate(region, stage, table, sigID, updateExpr string, names map
 		}
 	}
 	valsFlat := map[string]map[string]string{":empty": {"S": ""}}
-	if av, ok := values[":date_created"]; ok != false && av != nil && av.S != nil {
+	if av, ok := values[":date_created"]; ok && av != nil && av.S != nil {
 		valsFlat[":date_created"] = map[string]string{"S": *av.S}
 	}
-	if av, ok := values[":date_modified"]; ok != false && av != nil && av.S != nil {
+	if av, ok := values[":date_modified"]; ok && av != nil && av.S != nil {
 		valsFlat[":date_modified"] = map[string]string{"S": *av.S}
 	}
 
