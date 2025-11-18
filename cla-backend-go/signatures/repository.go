@@ -4594,6 +4594,7 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
 				SignatureEmbargoAcked:  true,
+				SignatureCreated:       sig.DateCreated,
 				SignatureModified:      sig.DateModified,
 				SignatureID:            sig.SignatureID,
 				SignedOn:               sigSignedTime,
