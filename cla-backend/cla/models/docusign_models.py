@@ -824,7 +824,6 @@ class DocuSign(signing_service_interface.SigningService):
     
     def _save_employee_signature(self,signature):
         cla.log.info(f'Saving signature record (boto3): {signature}')
-        # Use UTC timezone for consistency with the rest of the system
         current_time = datetime.now(timezone.utc).isoformat()
         item = {
             'signature_id' : {'S': signature.get_signature_id()},
