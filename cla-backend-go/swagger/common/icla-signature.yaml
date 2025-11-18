@@ -57,7 +57,11 @@ properties:
     description: the signature embargo acknowledged flag - true or false value
     example: true
     # x-omitempty: false
+  signatureCreated:
+    type: string
+    description: the signature created time
+    example: '2019-05-03T18:59:13.082304+0000'
   signatureModified:
     type: string
-    description: the signature modified created time
+    description: the signature modified time
     example: '2019-05-03T18:59:13.082304+0000'
