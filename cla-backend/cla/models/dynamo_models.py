@@ -764,8 +764,8 @@ class BaseModel(Model):
     Base pynamodb model used for all CLA models.
     """
 
-    date_created = DateTimeAttribute(default=datetime.datetime.utcnow)  # Fixed: removed () so it's evaluated at instance creation time
-    date_modified = DateTimeAttribute(default=datetime.datetime.utcnow)  # Fixed: removed () so it's evaluated at instance creation time
+    date_created = DateTimeAttribute(default=datetime.datetime.utcnow)
+    date_modified = DateTimeAttribute(default=datetime.datetime.utcnow)
     version = UnicodeAttribute(default="v1")  # Schema version.
 
     def __iter__(self):
@@ -4866,7 +4866,7 @@ class EventModel(BaseModel):
     event_user_name_lower = UnicodeAttribute(null=True)
 
     event_time = DateTimeAttribute(default=datetime.datetime.utcnow)
-    event_time_epoch = NumberAttribute(default=int(time.time()))
+    event_time_epoch = NumberAttribute(default=lambda: int(time.time()))
     event_date = UnicodeAttribute(null=True)
 
     event_data = UnicodeAttribute(null=True)

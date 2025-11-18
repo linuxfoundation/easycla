@@ -146,14 +146,14 @@ func NewRepository(awsSession *session.Session, stage string, companyRepo compan
 // ensureSignatureTimestamps ensures that signature has proper timestamps set
 func (repo repository) ensureSignatureTimestamps(signature *ItemSignature, isUpdate bool) {
 	_, currentTime := utils.CurrentTime()
-	
+
 	// For new signatures, set both created and modified
 	if !isUpdate {
 		if signature.DateCreated == "" {
 			signature.DateCreated = currentTime
 		}
 	}
-	
+
 	// Always set modified time for both creates and updates
 	signature.DateModified = currentTime
 }

@@ -19,11 +19,11 @@ import (
 
 // SignatureRecord represents the minimal signature record for backfill operations
 type SignatureRecord struct {
-	SignatureID            string `json:"signature_id"`
-	DateCreated            string `json:"date_created,omitempty"`
-	DateModified           string `json:"date_modified,omitempty"`
-	SignedOn               string `json:"signed_on,omitempty"`
-	UserDocusignDateSigned string `json:"user_docusign_date_signed,omitempty"`
+	SignatureID            string `dynamodbav:"signature_id"`
+	DateCreated            string `dynamodbav:"date_created"`
+	DateModified           string `dynamodbav:"date_modified"`
+	SignedOn               string `dynamodbav:"signed_on"`
+	UserDocusignDateSigned string `dynamodbav:"user_docusign_date_signed"`
 }
 
 func main() {
@@ -37,9 +37,8 @@ func main() {
 
 	fmt.Printf("Starting signature timestamp backfill for stage: %s (dry-run: %t, allow-current-time: %t)\n", stage, dryRun, allowCurrentTime)
 
-	awsSession, err := session.NewSession(&aws.Config{
-		Region: aws.String("us-east-1"),
-	})
+	awsSession, err := session.NewSession(&aws.Config{Region: aws.String("us-east-1")})
+	// awsSession, err := session.NewSessionWithOptions(session.Options{SharedConfigState: session.SharedConfigEnable})
 	if err != nil {
 		log.Fatalf("Failed to create AWS session: %v", err)
 	}
@@ -81,6 +80,9 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 		return 0, 0, fmt.Errorf("failed to build expression: %v", err)
 	}
 
+	condExpr := "attribute_not_exists(#date_created) OR #date_created = :empty OR " +
+		"attribute_not_exists(#date_modified) OR #date_modified = :empty"
+
 	scanInput := &dynamodb.ScanInput{
 		TableName:                 aws.String(tableName),
 		FilterExpression:          expr.Filter(),
@@ -91,11 +93,11 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 
 	var updated int
 	var skipped int
+	var pageErr error
 	err = dynamoClient.ScanPages(scanInput, func(page *dynamodb.ScanOutput, lastPage bool) bool {
 		var signatures []SignatureRecord
-		err := dynamodbattribute.UnmarshalListOfMaps(page.Items, &signatures)
-		if err != nil {
-			log.Printf("Failed to unmarshal signatures: %v", err)
+		if uerr := dynamodbattribute.UnmarshalListOfMaps(page.Items, &signatures); uerr != nil {
+			pageErr = fmt.Errorf("unmarshal page: %w", uerr)
 			return false
 		}
 
@@ -107,7 +109,7 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 			// Determine the best timestamp to use for missing dates
 			var bestTimestamp string
 			var hasUsableTimestamp bool
-			
+
 			// Priority 1: Use signed_on if available
 			if sig.SignedOn != "" {
 				bestTimestamp = sig.SignedOn
@@ -126,7 +128,7 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 			}
 
 			if !hasUsableTimestamp {
-				fmt.Printf("Skipping signature %s: no usable timestamp (signed_on: %q, docusign_date: %q, allow_current_time: %t)\n", 
+				fmt.Printf("Skipping signature %s: no usable timestamp (signed_on: %q, docusign_date: %q, allow_current_time: %t)\n",
 					sig.SignatureID, sig.SignedOn, sig.UserDocusignDateSigned, allowCurrentTime)
 				skipped++
 				continue
@@ -157,11 +159,12 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 				} else if sig.UserDocusignDateSigned != "" {
 					timestampSource = "docusign_date"
 				}
-				
-				fmt.Printf("Updating signature %s (source: %s, timestamp: %s)\n", 
+
+				fmt.Printf("Updating signature %s (source: %s, timestamp: %s)\n",
 					sig.SignatureID, timestampSource, bestTimestamp)
 
 				if !dryRun {
+					exprAttrVals[":empty"] = &dynamodb.AttributeValue{S: aws.String("")}
 					updateInput := &dynamodb.UpdateItemInput{
 						TableName: aws.String(tableName),
 						Key: map[string]*dynamodb.AttributeValue{
@@ -173,6 +176,7 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 							"#date_modified": aws.String("date_modified"),
 						},
 						ExpressionAttributeValues: exprAttrVals,
+						ConditionExpression:       aws.String(condExpr),
 					}
 
 					_, updateErr := dynamoClient.UpdateItem(updateInput)
@@ -189,6 +193,9 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 
 	if err != nil {
 		return updated, skipped, fmt.Errorf("scan failed: %v", err)
+	}
+	if pageErr != nil {
+		return updated, skipped, pageErr
 	}
 
 	return updated, skipped, nil
