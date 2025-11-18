@@ -143,12 +143,30 @@ func NewRepository(awsSession *session.Session, stage string, companyRepo compan
 	}
 }
 
+// ensureSignatureTimestamps ensures that signature has proper timestamps set
+func (repo repository) ensureSignatureTimestamps(signature *ItemSignature, isUpdate bool) {
+	_, currentTime := utils.CurrentTime()
+
+	// For new signatures, set both created and modified
+	if !isUpdate {
+		if signature.DateCreated == "" {
+			signature.DateCreated = currentTime
+		}
+	}
+
+	// Always set modified time for both creates and updates
+	signature.DateModified = currentTime
+}
+
 // CreateIndividualSignature creates a new individual signature
 func (repo repository) CreateSignature(ctx context.Context, signature *ItemSignature) error {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.CreateIndividualSignature",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
+
+	// Ensure timestamps are set before saving
+	repo.ensureSignatureTimestamps(signature, false)
 
 	av, err := dynamodbattribute.MarshalMap(signature)
 	if err != nil {
@@ -227,6 +245,10 @@ func (repo repository) SaveOrUpdateSignature(ctx context.Context, signature *Ite
 		"functionName":   "v1.signatures.repository.SaveOrUpdateSignature",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
+
+	// For SaveOrUpdate, we treat it as an update if DateCreated is already set, otherwise as a create
+	isUpdate := signature.DateCreated != ""
+	repo.ensureSignatureTimestamps(signature, isUpdate)
 
 	av, err := dynamodbattribute.MarshalMap(signature)
 
@@ -4594,6 +4616,7 @@ func (repo repository) getIntermediateICLAResponse(f logrus.Fields, dbSignatures
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
 				SignatureEmbargoAcked:  true,
+				SignatureCreated:       sig.DateCreated,
 				SignatureModified:      sig.DateModified,
 				SignatureID:            sig.SignatureID,
 				SignedOn:               sigSignedTime,
