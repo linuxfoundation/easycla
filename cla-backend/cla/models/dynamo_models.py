@@ -4865,7 +4865,7 @@ class EventModel(BaseModel):
     event_user_name = UnicodeAttribute(null=True)
     event_user_name_lower = UnicodeAttribute(null=True)
 
-    event_time = DateTimeAttribute(default=datetime.datetime.utcnow())
+    event_time = DateTimeAttribute(default=datetime.datetime.utcnow)
     event_time_epoch = NumberAttribute(default=int(time.time()))
     event_date = UnicodeAttribute(null=True)
 
