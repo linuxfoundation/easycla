@@ -33,8 +33,9 @@ func main() {
 	}
 
 	dryRun := os.Getenv("DRY_RUN") == "true"
+	allowCurrentTime := os.Getenv("ALLOW_CURRENT_TIME") == "true"
 
-	fmt.Printf("Starting signature timestamp backfill for stage: %s (dry-run: %t)\n", stage, dryRun)
+	fmt.Printf("Starting signature timestamp backfill for stage: %s (dry-run: %t, allow-current-time: %t)\n", stage, dryRun, allowCurrentTime)
 
 	awsSession, err := session.NewSession(&aws.Config{
 		Region: aws.String("us-east-1"),
@@ -52,7 +53,7 @@ func main() {
 		log.Fatalf("Failed to backfill timestamps: %v", err)
 	}
 
-	fmt.Printf("Completed backfill. Updated %d signatures.\n", updated)
+	fmt.Printf("Completed backfill. Updated: %d signatures, Skipped: %d signatures (no usable timestamps).\n", updated, skipped)
 }
 
 func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.DynamoDB, tableName string, dryRun bool, allowCurrentTime bool) (int, int, error) {
@@ -89,6 +90,7 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 	}
 
 	var updated int
+	var skipped int
 	err = dynamoClient.ScanPages(scanInput, func(page *dynamodb.ScanOutput, lastPage bool) bool {
 		var signatures []SignatureRecord
 		err := dynamodbattribute.UnmarshalListOfMaps(page.Items, &signatures)
