@@ -764,8 +764,8 @@ class BaseModel(Model):
     Base pynamodb model used for all CLA models.
     """
 
-    date_created = DateTimeAttribute(default=datetime.datetime.utcnow())
-    date_modified = DateTimeAttribute(default=datetime.datetime.utcnow())
+    date_created = DateTimeAttribute(default=datetime.datetime.utcnow)  # Fixed: removed () so it's evaluated at instance creation time
+    date_modified = DateTimeAttribute(default=datetime.datetime.utcnow)  # Fixed: removed () so it's evaluated at instance creation time
     version = UnicodeAttribute(default="v1")  # Schema version.
 
     def __iter__(self):
