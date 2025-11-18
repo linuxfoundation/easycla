@@ -105,13 +105,31 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 			exprAttrVals := make(map[string]*dynamodb.AttributeValue)
 
 			// Determine the best timestamp to use for missing dates
-			bestTimestamp := getCurrentTime()
-
-			// Use signed_on if available, otherwise user_docusign_date_signed
+			var bestTimestamp string
+			var hasUsableTimestamp bool
+			
+			// Priority 1: Use signed_on if available
 			if sig.SignedOn != "" {
 				bestTimestamp = sig.SignedOn
+				hasUsableTimestamp = true
 			} else if sig.UserDocusignDateSigned != "" {
+				// Priority 2: Use user_docusign_date_signed
 				bestTimestamp = sig.UserDocusignDateSigned
+				hasUsableTimestamp = true
+			} else if allowCurrentTime {
+				// Priority 3: Use current time only if explicitly allowed
+				bestTimestamp = getCurrentTime()
+				hasUsableTimestamp = true
+			} else {
+				// No usable timestamp found and current time not allowed
+				hasUsableTimestamp = false
+			}
+
+			if !hasUsableTimestamp {
+				fmt.Printf("Skipping signature %s: no usable timestamp (signed_on: %q, docusign_date: %q, allow_current_time: %t)\n", 
+					sig.SignatureID, sig.SignedOn, sig.UserDocusignDateSigned, allowCurrentTime)
+				skipped++
+				continue
 			}
 
 			if sig.DateCreated == "" {
@@ -133,18 +151,15 @@ func backfillSignatureTimestamps(ctx context.Context, dynamoClient *dynamodb.Dyn
 			}
 
 			if needsUpdate {
-				fmt.Printf("Updating signature %s (created: %s -> %s, modified: %s -> %s)\n",
-					sig.SignatureID,
-					sig.DateCreated,
-					func() string {
-						if sig.DateCreated == "" {
-							return bestTimestamp
-						} else {
-							return sig.DateCreated
-						}
-					}(),
-					sig.DateModified,
-					bestTimestamp)
+				timestampSource := "current time"
+				if sig.SignedOn != "" {
+					timestampSource = "signed_on"
+				} else if sig.UserDocusignDateSigned != "" {
+					timestampSource = "docusign_date"
+				}
+				
+				fmt.Printf("Updating signature %s (source: %s, timestamp: %s)\n", 
+					sig.SignatureID, timestampSource, bestTimestamp)
 
 				if !dryRun {
 					updateInput := &dynamodb.UpdateItemInput{
