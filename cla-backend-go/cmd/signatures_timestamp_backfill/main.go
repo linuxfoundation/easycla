@@ -37,6 +37,9 @@ const (
 	attrDateCreated  = "date_created"
 	attrDateModified = "date_modified"
 
+	// cutoff date for _FIVETRAN_SYNCED usage
+	fivetranCutoffDate = "2024-03-09T00:00:00Z"
+
 	// update expression helpers
 	setPrefix           = "SET "
 	commaSep            = ", "
@@ -546,8 +549,14 @@ func snowflakeFix(
 			var newC, srcC string
 			var newM, srcM string
 
+			// Check if _FIVETRAN_SYNCED is before cutoff date
+			skipFivetran := isFivetranBeforeCutoff(ts)
+			if skipFivetran {
+				dbg("  Skipping _FIVETRAN_SYNCED for %s: timestamp %s is on or before cutoff %s", id, ts, fivetranCutoffDate)
+			}
+
 			// CREATED: use _fivetran_synced; clamp to modified if needed
-			if mC {
+			if mC && !skipFivetran {
 				newC, srcC = normalize(ts), labelFivetranSynced
 				if !isMissing(modified) && after(newC, modified) {
 					dbg("  SF clamp created: fivetran(%s) > modified(%s) -> modified", newC, modified)
@@ -562,7 +571,7 @@ func snowflakeFix(
 					newM, srcM = normalize(created), labelFromCreated
 				case mC && newC != "":
 					newM, srcM = newC, labelFromCreated
-				default:
+				case !skipFivetran:
 					newM, srcM = normalize(ts), labelFivetranSynced
 				}
 			}
@@ -1065,6 +1074,19 @@ func after(a, b string) bool {
 		return false
 	}
 	return ta.After(tb)
+}
+
+func isFivetranBeforeCutoff(timestamp string) bool {
+	ts := normalize(timestamp)
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return true // if we can't parse, err on the side of caution
+	}
+	cutoff, err := time.Parse(time.RFC3339, fivetranCutoffDate)
+	if err != nil {
+		return true // if cutoff is malformed, err on the side of caution
+	}
+	return !t.After(cutoff) // true if timestamp is on or before cutoff
 }
 
 func parseTime(s string) time.Time {
