@@ -492,7 +492,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     });
   });
 
-  it('Remove Email form Approval List to the Project/Company', function () {
+  it('Remove Email from Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
@@ -539,7 +539,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     });
   });
 
-  it('Remove GithubOrg form Approval List to the Project/Company', function () {
+  it('Remove GithubOrg from Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
@@ -620,7 +620,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     });
   });
 
-  it('Remove Github Username form Approval List to the Project/Company', function () {
+  it('Remove Github Username from Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
@@ -677,7 +677,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     });
   });
 
-  it('Remove GitLab Username form Approval List to the Project/Company', function () {
+  it('Remove GitLab Username from Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
@@ -737,7 +737,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     });
   });
 
-  it('Remove GitLab Org form Approval List to the Project/Company', function () {
+  it('Remove GitLab Org from Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
@@ -782,7 +782,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     });
   });
 
-  it('Remove domain form Approval List to the Project/Company', function () {
+  it('Remove domain from Approval List to the Project/Company', function () {
     cy.request({
       method: 'PUT',
       url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}/clagroup/${claGroupID}/approval-list`,
