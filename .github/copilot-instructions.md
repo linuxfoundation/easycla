@@ -11,7 +11,7 @@ You are assisting in this repository. The following rules are **mandatory** and 
    - When you open a file, always consider the **entire file** contents, not just the visible or edited region.
    - Before refactoring or implementing features, scan all relevant files fully (including related modules) to understand existing patterns, types, and architecture.
    - Do not assume behavior from partial context if you can open and read the whole file instead.
-   - Read files from other gGitHub repositories as needed.
+   - Read files from other GitHub repositories as needed.
    - Read issues/pull requests from remote repositories as needed.
 
 2. **No artificial time/phasing limits**
