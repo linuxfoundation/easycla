@@ -312,6 +312,11 @@ export function getAPIBaseURL(version) {
         return 'http://localhost:5000/v2/';
       }
       return 'https://api.lfcla.dev.platform.linuxfoundation.org/v2/';
+    case 'v1':
+      if (local) {
+        return 'http://localhost:5000/v1/';
+      }
+      return 'https://api.lfcla.dev.platform.linuxfoundation.org/v1/';
     default:
       cy.task('log', `--> unknown API version ${version}`);
   }
