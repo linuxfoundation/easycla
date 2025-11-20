@@ -1398,7 +1398,7 @@ def post_individual_signed_gitlab(
 @hug.post("/signed/gerrit/individual/{user_id}", versions=2)
 def post_individual_signed_gerrit(request, user_id: hug.types.uuid):
     """
-    POST: /signed/gerritindividual/{user_id}
+    POST: /signed/gerrit/individual/{user_id}
 
     Callback URL from signing service upon ICLA signature for a Gerrit user.
     """
