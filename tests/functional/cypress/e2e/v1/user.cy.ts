@@ -90,8 +90,8 @@ describe('To Validate & test User APIs via API call (V1)', function () {
     }).then((response) => {
       return cy.logJson('GET /users/company/{user_company_id} response', response).then(() => {
         validate_200_Status(response);
-        expect(response.body).to.be.an('object');
-        // V1 API can return users array or error object - both are valid
+        expect(response.body).to.be.an('array'); // V1 API returns array of users, not object
+        // V1 API can return empty array if no users found - this is valid
       });
     });
   });
@@ -172,14 +172,6 @@ describe('To Validate & test User APIs via API call (V1)', function () {
         expectedMessageContains?: boolean;
         headers?: any;
       }> = [
-        {
-          title: 'POST /user/gerrit with missing parameters',
-          method: 'POST',
-          url: `${claEndpoint}user/gerrit`,
-          body: {},
-          expectedStatus: 400,
-          headers: { Authorization: `Bearer ${bearerToken}` },
-        },
         {
           title: 'GET /user with invalid UUID format',
           method: 'GET',

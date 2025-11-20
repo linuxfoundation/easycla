@@ -36,10 +36,30 @@ describe('To Validate & test Events APIs via API call (V1)', function () {
   // POSITIVE TEST CASES - EXPECT ONLY 2xx STATUS CODES
   // ============================================================================
 
+  it('GET /events - Get paginated/filtered events (Requires authentication)', function () {
+    // Use filtering to get a limited set of events to avoid large responses
+    cy.request({
+      method: 'GET',
+      url: `${claEndpoint}events?event_type=user_signed_cla`, // Filter by event type for smaller response
+      timeout: timeout,
+      failOnStatusCode: allowFail,
+      headers: {
+        Authorization: `Bearer ${bearerToken}`,
+      },
+    }).then((response) => {
+      return cy.logJson('GET /events with filter response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
+        expect(response.body).to.have.property('events');
+        expect(response.body.events).to.be.an('array');
+      });
+    });
+  });
+
   it.skip('GET /events - Get all events (Requires authentication)', function () {
-    // SKIPPED: This endpoint may cause database throughput issues in dev environment
+    // SKIPPED: This endpoint may return very large responses without filtering
     // Error: ProvisionedThroughputExceededException on table cla-dev-events
-    // Consider implementing pagination with limit parameter if API supports it
+    // Use the filtered version above instead for better performance
     cy.request({
       method: 'GET',
       url: `${claEndpoint}events?limit=10`, // Try with pagination to reduce load

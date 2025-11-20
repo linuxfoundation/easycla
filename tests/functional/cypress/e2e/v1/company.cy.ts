@@ -47,8 +47,8 @@ describe('To Validate & test Company APIs via API call (V1)', function () {
     }).then((response) => {
       return cy.logJson('GET /company response', response).then(() => {
         validate_200_Status(response);
-        expect(response.body).to.be.an('object');
-        // V1 API can return companies array or error object - both are valid
+        expect(response.body).to.be.an('array'); // V1 API returns array of companies
+        // V1 API can return empty array if no companies exist - this is valid
       });
     });
   });

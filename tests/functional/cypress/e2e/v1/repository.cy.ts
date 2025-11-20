@@ -9,7 +9,7 @@ import {
   getTokenForV2,
 } from '../../support/commands';
 
-describe('To Validate & test Project APIs via API call (V1)', function () {
+describe('To Validate & test Repository APIs via API call (V1)', function () {
   const claEndpoint = getAPIBaseURL('v1');
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   const timeout = 180000;
@@ -27,66 +27,26 @@ describe('To Validate & test Project APIs via API call (V1)', function () {
   });
 
   // Test data
-  const validProjectID = '550e8400-e29b-41d4-a716-446655440000';
-  const validProjectSFDCID = 'a096s00000003ZFmAAM';
-  const validExternalProjectID = 'test-project-external';
+  const validRepositoryID = '550e8400-e29b-41d4-a716-446655440000';
 
   // ============================================================================
   // POSITIVE TEST CASES - EXPECT ONLY 2xx STATUS CODES
   // ============================================================================
 
-  it.skip('GET /project - Get all projects (Requires authentication)', function () {
-    // SKIPPED: This endpoint returns ALL projects without pagination and can be very large (5MB+)
-    // This causes timeouts in test environment. Should be tested with pagination in production
+  it('GET /repository/{repository_id} - Get repository by ID (Requires authentication)', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}project`,
+      url: `${claEndpoint}repository/${validRepositoryID}`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: {
         Authorization: `Bearer ${bearerToken}`,
       },
     }).then((response) => {
-      return cy.logJson('GET /project response', response).then(() => {
-        validate_200_Status(response);
-        expect(response.body).to.be.an('array'); // V1 API returns array of projects
-        // V1 API can return large array of all projects
-      });
-    });
-  });
-
-  it('GET /project/{project_id} - Get project by ID (Requires authentication)', function () {
-    cy.request({
-      method: 'GET',
-      url: `${claEndpoint}project/${validProjectID}`,
-      timeout: timeout,
-      failOnStatusCode: allowFail,
-      headers: {
-        Authorization: `Bearer ${bearerToken}`,
-      },
-    }).then((response) => {
-      return cy.logJson('GET /project/{project_id} response', response).then(() => {
+      return cy.logJson('GET /repository/{repository_id} response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
-        // V1 API can return project data or error object - both are valid
-      });
-    });
-  });
-
-  it('GET /project/external/{project_external_id} - Get project by external ID (Requires authentication)', function () {
-    cy.request({
-      method: 'GET',
-      url: `${claEndpoint}project/external/${validExternalProjectID}`,
-      timeout: timeout,
-      failOnStatusCode: allowFail,
-      headers: {
-        Authorization: `Bearer ${bearerToken}`,
-      },
-    }).then((response) => {
-      return cy.logJson('GET /project/external/{project_external_id} response', response).then(() => {
-        validate_200_Status(response);
-        expect(response.body).to.be.an('object');
-        // V1 API can return project data or error object - both are valid
+        // V1 API can return repository data or error object - both are valid
       });
     });
   });
@@ -95,22 +55,12 @@ describe('To Validate & test Project APIs via API call (V1)', function () {
   // EXPECTED FAILURES - SEPARATE TESTS FOR 401 AND 4xx VALIDATION ERRORS
   // ============================================================================
   describe('Expected failures', () => {
-    it('Returns 401 for Project APIs that require authentication when called without token', () => {
+    it('Returns 401 for Repository APIs that require authentication when called without token', () => {
       const authenticatedEndpoints = [
         {
-          title: 'GET /project without token',
+          title: 'GET /repository/{repository_id} without token',
           method: 'GET',
-          url: `${claEndpoint}project`,
-        },
-        {
-          title: 'GET /project/{project_id} without token',
-          method: 'GET',
-          url: `${claEndpoint}project/${validProjectID}`,
-        },
-        {
-          title: 'GET /project/external/{project_external_id} without token',
-          method: 'GET',
-          url: `${claEndpoint}project/external/${validExternalProjectID}`,
+          url: `${claEndpoint}repository/${validRepositoryID}`,
         },
       ];
 
@@ -136,7 +86,7 @@ describe('To Validate & test Project APIs via API call (V1)', function () {
       });
     });
 
-    it('Returns 4xx for missing or malformed parameters for Project APIs', function () {
+    it('Returns 4xx for missing or malformed parameters for Repository APIs', function () {
       const cases: Array<{
         title: string;
         method: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -149,30 +99,17 @@ describe('To Validate & test Project APIs via API call (V1)', function () {
         headers?: any;
       }> = [
         {
-          title: 'GET /project with invalid project ID format',
+          title: 'GET /repository with invalid UUID format',
           method: 'GET',
-          url: `${claEndpoint}project/invalid-uuid`,
+          url: `${claEndpoint}repository/invalid-uuid`,
           expectedStatus: 400,
           headers: { Authorization: `Bearer ${bearerToken}` },
         },
         {
-          title: 'POST /project (method not allowed)',
-          method: 'POST',
-          url: `${claEndpoint}project`,
-          body: {},
-          expectedStatus: 405,
-        },
-        {
-          title: 'PUT /project (method not allowed)',
+          title: 'PUT /repository (method not allowed)',
           method: 'PUT',
-          url: `${claEndpoint}project`,
+          url: `${claEndpoint}repository/${validRepositoryID}`,
           body: {},
-          expectedStatus: 405,
-        },
-        {
-          title: 'DELETE /project (method not allowed)',
-          method: 'DELETE',
-          url: `${claEndpoint}project`,
           expectedStatus: 405,
         },
       ];
