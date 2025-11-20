@@ -23,6 +23,7 @@ then
     echo "Usage: $0 <test-file-name-without-extension> [test-name-regexp]"
     echo "Example (v4 APIs groups): V=4 $0 cla-group, cla-manager, company, docs, events, foundation, github-organizations, github-repositories, githubActivity, gitlab-organizations, gitlab-repositories, health, metrics, projects, signatures, version"
     echo "Example (v3 APIs groups): V=3 $0 cla-manager, docs, gerrits, github-organizations, health, project, template, version, company, events, github, github-repositories, organization, signatures, users"
+    echo "Example (v2 APIs groups): V=2 $0 company, events, gerrit, github, health, project, repository, signatures, user"
     exit 1
   fi
 fi
