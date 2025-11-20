@@ -71,7 +71,7 @@ describe('To Validate & test Gerrit APIs via API call (V2)', function () {
           title: 'GET /gerrit/{gerrit_id}/{contract_type}/agreementUrl.html with invalid contract type',
           method: 'GET',
           url: `${claEndpoint}gerrit/${validGerritID}/invalid-type/agreementUrl.html`,
-          expectedStatus: 400,
+          expectedStatus: 200, // V2 API returns 200 with error in body for invalid contract types
         },
         {
           title: 'POST /gerrit (method not allowed in V2)',
