@@ -1,6 +1,6 @@
 #!/bin/bash
 
-rm -rf /tmp/aws
+rm -rf /tmp/.aws
 cp -R ~/.aws /tmp/.aws
 
 dev_arn="$(cat ./product-contractors-role.dev.secret)"
