@@ -495,7 +495,12 @@ def get_or_create_user(auth_user):
     if users is None:
         user.set_user_id(str(uuid.uuid4()))
         user.set_user_name(auth_user.name)
-        user.set_lf_email(auth_user.email.lower())
+        # Handle case where email might be None
+        if auth_user.email:
+            user.set_lf_email(auth_user.email.lower())
+        else:
+            # Set a placeholder or use username as email if email is not available
+            user.set_lf_email(f"{auth_user.username}@placeholder.local")
         user.set_lf_username(auth_user.username)
         user.set_lf_sub(auth_user.sub)
 
