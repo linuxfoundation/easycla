@@ -354,7 +354,7 @@ class GitHub(repository_service_interface.RepositoryService):
             # Eventually handle user-from-session API callback
             try:
                 state_data = json.loads(base64.urlsafe_b64decode(state.encode()).decode())
-            except (ValueError, json.JSONDecodeError, binascii.Error):
+            except (ValueError, json.JSONDecodeError, binascii.Error) as err:
                 cla.log.warning(f"{fn} - failed to decode state: {state}, error: {err}")
                 raise falcon.HTTPBadRequest("Invalid OAuth2 state", state)
             state_token = state_data["csrf"]
