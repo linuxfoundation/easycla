@@ -59,3 +59,48 @@ def get_event(event_id=None, response=None):
         response.status = HTTP_404
         return {"errors": "Id is not passed"}
 
+
+def create_event(
+    response=None,
+    event_type=None,
+    event_company_id=None,
+    event_data=None,
+    event_project_id=None,
+    user_id=None,
+):
+    """
+    Creates a new event in the CLA system.
+
+    :param event_type: The type of the event
+    :param event_company_id: The company ID associated with the event
+    :param event_data: The event data
+    :param event_project_id: The project ID associated with the event
+    :param user_id: The user ID associated with the event
+    :param response: The HTTP response object
+    :return: Created event in dict format
+    """
+    try:
+        event = get_event_instance()
+        event_id = str(uuid.uuid4())
+        event.set_event_id(event_id)
+
+        if event_type:
+            event.set_event_type(event_type)
+        if event_data:
+            event.set_event_data(event_data)
+        if event_project_id:
+            event.set_event_project_id(event_project_id)
+        if event_company_id:
+            event.set_event_company_id(event_company_id)
+        if user_id:
+            event.set_event_user_id(user_id)
+
+        # Set the event date and PII flag
+        event.set_event_date_and_contains_pii(contains_pii=False)
+        event.save()
+
+        return event.to_dict()
+    except Exception as err:
+        response.status = HTTP_400
+        return {"errors": {"create_event": str(err)}}
+

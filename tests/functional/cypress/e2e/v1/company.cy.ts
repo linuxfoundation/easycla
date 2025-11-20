@@ -9,7 +9,7 @@ import {
   getTokenForV2,
 } from '../../support/commands';
 
-describe('To Validate & test Events APIs via API call (V1)', function () {
+describe('To Validate & test Company APIs via API call (V1)', function () {
   const claEndpoint = getAPIBaseURL('v1');
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   const timeout = 180000;
@@ -27,77 +27,64 @@ describe('To Validate & test Events APIs via API call (V1)', function () {
   });
 
   // Test data
-  const validEventID = '550e8400-e29b-41d4-a716-446655440000';
-  const validUserID = '550e8400-e29b-41d4-a716-446655440001';
-  const validProjectID = '550e8400-e29b-41d4-a716-446655440002';
-  const validCompanyID = '550e8400-e29b-41d4-a716-446655440003';
+  const validCompanyID = '550e8400-e29b-41d4-a716-446655440000';
+  const validProjectID = '550e8400-e29b-41d4-a716-446655440001';
+  const validManagerID = '550e8400-e29b-41d4-a716-446655440002';
 
   // ============================================================================
   // POSITIVE TEST CASES - EXPECT ONLY 2xx STATUS CODES
   // ============================================================================
 
-  it.skip('GET /events - Get all events (Requires authentication)', function () {
-    // SKIPPED: This endpoint may cause database throughput issues in dev environment
-    // Error: ProvisionedThroughputExceededException on table cla-dev-events
-    // Consider implementing pagination with limit parameter if API supports it
+  it('GET /company - Get all companies (Requires authentication)', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}events?limit=10`, // Try with pagination to reduce load
+      url: `${claEndpoint}company`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: {
         Authorization: `Bearer ${bearerToken}`,
       },
     }).then((response) => {
-      return cy.logJson('GET /events response', response).then(() => {
+      return cy.logJson('GET /company response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
-        // V1 API can return events array or error object - both are valid
+        // V1 API can return companies array or error object - both are valid
       });
     });
   });
 
-  it('POST /events - Create event (Requires authentication)', function () {
-    const eventData = {
-      event_type: 'user_signed_cla',
-      event_data: 'User signed individual CLA',
-      user_id: validUserID,
-      event_project_id: validProjectID,
-      event_company_id: validCompanyID,
-    };
-
+  it('GET /company/{company_id} - Get company by ID (Requires authentication)', function () {
     cy.request({
-      method: 'POST',
-      url: `${claEndpoint}events`,
+      method: 'GET',
+      url: `${claEndpoint}company/${validCompanyID}`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: {
         Authorization: `Bearer ${bearerToken}`,
       },
-      body: eventData,
     }).then((response) => {
-      return cy.logJson('POST /events response', response).then(() => {
+      return cy.logJson('GET /company/{company_id} response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
-        // V1 API returns event object on successful creation
+        // V1 API can return company data or error object - both are valid
       });
     });
   });
 
-  it('GET /events/{event_id} - Get specific event (Requires authentication)', function () {
+  it('GET /companies/{manager_id} - Get companies by manager (Requires authentication)', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}events/${validEventID}`,
+      url: `${claEndpoint}companies/${validManagerID}`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: {
         Authorization: `Bearer ${bearerToken}`,
       },
     }).then((response) => {
-      return cy.logJson('GET /events/{event_id} response', response).then(() => {
+      return cy.logJson('GET /companies/{manager_id} response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
-        // V1 API can return event data or error object - both are valid
+        // V1 API can return companies array or error object - both are valid
       });
     });
   });
@@ -106,26 +93,22 @@ describe('To Validate & test Events APIs via API call (V1)', function () {
   // EXPECTED FAILURES - SEPARATE TESTS FOR 401 AND 4xx VALIDATION ERRORS
   // ============================================================================
   describe('Expected failures', () => {
-    it('Returns 401 for Events APIs that require authentication when called without token', () => {
+    it('Returns 401 for Company APIs that require authentication when called without token', () => {
       const authenticatedEndpoints = [
         {
-          title: 'GET /events without token',
+          title: 'GET /company without token',
           method: 'GET',
-          url: `${claEndpoint}events`,
+          url: `${claEndpoint}company`,
         },
         {
-          title: 'POST /events without token',
-          method: 'POST',
-          url: `${claEndpoint}events`,
-          body: {
-            event_type: 'test',
-            event_data: 'test data',
-          },
+          title: 'GET /company/{company_id} without token',
+          method: 'GET',
+          url: `${claEndpoint}company/${validCompanyID}`,
         },
         {
-          title: 'GET /events/{event_id} without token',
+          title: 'GET /companies/{manager_id} without token',
           method: 'GET',
-          url: `${claEndpoint}events/${validEventID}`,
+          url: `${claEndpoint}companies/${validManagerID}`,
         },
       ];
 
@@ -151,7 +134,7 @@ describe('To Validate & test Events APIs via API call (V1)', function () {
       });
     });
 
-    it('Returns 4xx for missing or malformed parameters for Events APIs', function () {
+    it('Returns 4xx for missing or malformed parameters for Company APIs', function () {
       const cases: Array<{
         title: string;
         method: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -164,31 +147,30 @@ describe('To Validate & test Events APIs via API call (V1)', function () {
         headers?: any;
       }> = [
         {
-          title: 'POST /events with missing parameters',
-          method: 'POST',
-          url: `${claEndpoint}events`,
-          body: {},
-          expectedStatus: 400,
-          headers: { Authorization: `Bearer ${bearerToken}` },
-        },
-        {
-          title: 'GET /events with invalid event ID format',
+          title: 'GET /company with invalid company ID format',
           method: 'GET',
-          url: `${claEndpoint}events/invalid-id`,
+          url: `${claEndpoint}company/invalid-uuid`,
           expectedStatus: 400,
           headers: { Authorization: `Bearer ${bearerToken}` },
         },
         {
-          title: 'PUT /events (method not allowed)',
-          method: 'PUT',
-          url: `${claEndpoint}events`,
+          title: 'POST /company (method not allowed)',
+          method: 'POST',
+          url: `${claEndpoint}company`,
           body: {},
           expectedStatus: 405,
         },
         {
-          title: 'DELETE /events (method not allowed)',
+          title: 'PUT /company (method not allowed)',
+          method: 'PUT',
+          url: `${claEndpoint}company`,
+          body: {},
+          expectedStatus: 405,
+        },
+        {
+          title: 'DELETE /company (method not allowed)',
           method: 'DELETE',
-          url: `${claEndpoint}events`,
+          url: `${claEndpoint}company`,
           expectedStatus: 405,
         },
       ];

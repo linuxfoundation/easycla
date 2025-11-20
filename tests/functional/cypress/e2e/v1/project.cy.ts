@@ -9,7 +9,7 @@ import {
   getTokenForV2,
 } from '../../support/commands';
 
-describe('To Validate & test Events APIs via API call (V1)', function () {
+describe('To Validate & test Project APIs via API call (V1)', function () {
   const claEndpoint = getAPIBaseURL('v1');
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   const timeout = 180000;
@@ -27,77 +27,64 @@ describe('To Validate & test Events APIs via API call (V1)', function () {
   });
 
   // Test data
-  const validEventID = '550e8400-e29b-41d4-a716-446655440000';
-  const validUserID = '550e8400-e29b-41d4-a716-446655440001';
-  const validProjectID = '550e8400-e29b-41d4-a716-446655440002';
-  const validCompanyID = '550e8400-e29b-41d4-a716-446655440003';
+  const validProjectID = '550e8400-e29b-41d4-a716-446655440000';
+  const validProjectSFDCID = 'a096s00000003ZFmAAM';
+  const validExternalProjectID = 'test-project-external';
 
   // ============================================================================
   // POSITIVE TEST CASES - EXPECT ONLY 2xx STATUS CODES
   // ============================================================================
 
-  it.skip('GET /events - Get all events (Requires authentication)', function () {
-    // SKIPPED: This endpoint may cause database throughput issues in dev environment
-    // Error: ProvisionedThroughputExceededException on table cla-dev-events
-    // Consider implementing pagination with limit parameter if API supports it
+  it('GET /project - Get all projects (Requires authentication)', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}events?limit=10`, // Try with pagination to reduce load
+      url: `${claEndpoint}project`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: {
         Authorization: `Bearer ${bearerToken}`,
       },
     }).then((response) => {
-      return cy.logJson('GET /events response', response).then(() => {
+      return cy.logJson('GET /project response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
-        // V1 API can return events array or error object - both are valid
+        // V1 API can return projects array or error object - both are valid
       });
     });
   });
 
-  it('POST /events - Create event (Requires authentication)', function () {
-    const eventData = {
-      event_type: 'user_signed_cla',
-      event_data: 'User signed individual CLA',
-      user_id: validUserID,
-      event_project_id: validProjectID,
-      event_company_id: validCompanyID,
-    };
-
+  it('GET /project/{project_id} - Get project by ID (Requires authentication)', function () {
     cy.request({
-      method: 'POST',
-      url: `${claEndpoint}events`,
+      method: 'GET',
+      url: `${claEndpoint}project/${validProjectID}`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: {
         Authorization: `Bearer ${bearerToken}`,
       },
-      body: eventData,
     }).then((response) => {
-      return cy.logJson('POST /events response', response).then(() => {
+      return cy.logJson('GET /project/{project_id} response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
-        // V1 API returns event object on successful creation
+        // V1 API can return project data or error object - both are valid
       });
     });
   });
 
-  it('GET /events/{event_id} - Get specific event (Requires authentication)', function () {
+  it('GET /project/external/{project_external_id} - Get project by external ID (Requires authentication)', function () {
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}events/${validEventID}`,
+      url: `${claEndpoint}project/external/${validExternalProjectID}`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: {
         Authorization: `Bearer ${bearerToken}`,
       },
     }).then((response) => {
-      return cy.logJson('GET /events/{event_id} response', response).then(() => {
+      return cy.logJson('GET /project/external/{project_external_id} response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
-        // V1 API can return event data or error object - both are valid
+        // V1 API can return project data or error object - both are valid
       });
     });
   });
@@ -106,26 +93,22 @@ describe('To Validate & test Events APIs via API call (V1)', function () {
   // EXPECTED FAILURES - SEPARATE TESTS FOR 401 AND 4xx VALIDATION ERRORS
   // ============================================================================
   describe('Expected failures', () => {
-    it('Returns 401 for Events APIs that require authentication when called without token', () => {
+    it('Returns 401 for Project APIs that require authentication when called without token', () => {
       const authenticatedEndpoints = [
         {
-          title: 'GET /events without token',
+          title: 'GET /project without token',
           method: 'GET',
-          url: `${claEndpoint}events`,
+          url: `${claEndpoint}project`,
         },
         {
-          title: 'POST /events without token',
-          method: 'POST',
-          url: `${claEndpoint}events`,
-          body: {
-            event_type: 'test',
-            event_data: 'test data',
-          },
+          title: 'GET /project/{project_id} without token',
+          method: 'GET',
+          url: `${claEndpoint}project/${validProjectID}`,
         },
         {
-          title: 'GET /events/{event_id} without token',
+          title: 'GET /project/external/{project_external_id} without token',
           method: 'GET',
-          url: `${claEndpoint}events/${validEventID}`,
+          url: `${claEndpoint}project/external/${validExternalProjectID}`,
         },
       ];
 
@@ -151,7 +134,7 @@ describe('To Validate & test Events APIs via API call (V1)', function () {
       });
     });
 
-    it('Returns 4xx for missing or malformed parameters for Events APIs', function () {
+    it('Returns 4xx for missing or malformed parameters for Project APIs', function () {
       const cases: Array<{
         title: string;
         method: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -164,31 +147,30 @@ describe('To Validate & test Events APIs via API call (V1)', function () {
         headers?: any;
       }> = [
         {
-          title: 'POST /events with missing parameters',
-          method: 'POST',
-          url: `${claEndpoint}events`,
-          body: {},
-          expectedStatus: 400,
-          headers: { Authorization: `Bearer ${bearerToken}` },
-        },
-        {
-          title: 'GET /events with invalid event ID format',
+          title: 'GET /project with invalid project ID format',
           method: 'GET',
-          url: `${claEndpoint}events/invalid-id`,
+          url: `${claEndpoint}project/invalid-uuid`,
           expectedStatus: 400,
           headers: { Authorization: `Bearer ${bearerToken}` },
         },
         {
-          title: 'PUT /events (method not allowed)',
-          method: 'PUT',
-          url: `${claEndpoint}events`,
+          title: 'POST /project (method not allowed)',
+          method: 'POST',
+          url: `${claEndpoint}project`,
           body: {},
           expectedStatus: 405,
         },
         {
-          title: 'DELETE /events (method not allowed)',
+          title: 'PUT /project (method not allowed)',
+          method: 'PUT',
+          url: `${claEndpoint}project`,
+          body: {},
+          expectedStatus: 405,
+        },
+        {
+          title: 'DELETE /project (method not allowed)',
           method: 'DELETE',
-          url: `${claEndpoint}events`,
+          url: `${claEndpoint}project`,
           expectedStatus: 405,
         },
       ];
