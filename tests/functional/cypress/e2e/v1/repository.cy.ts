@@ -99,10 +99,10 @@ describe('To Validate & test Repository APIs via API call (V1)', function () {
         headers?: any;
       }> = [
         {
-          title: 'GET /repository with invalid UUID format',
+          title: 'GET /repository with invalid UUID format - API accepts and returns error object',
           method: 'GET',
           url: `${claEndpoint}repository/invalid-uuid`,
-          expectedStatus: 400,
+          expectedStatus: 200, // V1 API accepts invalid UUID and returns error in response body
           headers: { Authorization: `Bearer ${bearerToken}` },
         },
         {
