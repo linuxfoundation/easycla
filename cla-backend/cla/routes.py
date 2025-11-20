@@ -1356,7 +1356,7 @@ def check_and_prepare_employee_signature(
     "/signed/individual/{installation_id}/{github_repository_id}/{change_request_id}", versions=2,
 )
 def post_individual_signed(
-        content,
+        request,
         installation_id: hug.types.number,
         github_repository_id: hug.types.number,
         change_request_id: hug.types.number,
@@ -1378,7 +1378,7 @@ def post_individual_signed(
     "/signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}", versions=2,
 )
 def post_individual_signed_gitlab(
-        content,
+        request,
         user_id: hug.types.uuid,
         organization_id: hug.types.text,
         gitlab_repository_id: hug.types.number,
