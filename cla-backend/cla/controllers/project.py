@@ -338,7 +338,7 @@ def get_project_companies(project_id):
     company_ids = list(set([signature.get_signature_reference_id() for signature in signatures]))
     company = Company()
     all_companies = [comp.to_dict() for comp in company.all(company_ids)]
-    all_companies = sorted(all_companies, key=lambda i: i['company_name'].casefold())
+    all_companies = sorted(all_companies, key=lambda i: (i.get('company_name') or '').casefold())
 
     return all_companies
 

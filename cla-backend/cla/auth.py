@@ -11,9 +11,6 @@ from jose import jwt
 
 import cla
 
-# LG: for local environment override
-# os.environ["AUTH0_USERNAME_CLAIM"] = os.getenv("AUTH0_USERNAME_CLAIM_CLI", os.environ["AUTH0_USERNAME_CLAIM"])
-
 auth0_base_url = os.environ.get('AUTH0_DOMAIN', '')
 auth0_username_claim = os.environ.get('AUTH0_USERNAME_CLAIM', '')
 algorithms = [os.environ.get('AUTH0_ALGORITHM', '')]
@@ -123,9 +120,16 @@ def authenticate_user(headers):
 
         username = payload.get(auth0_username_claim)
         if username is None:
-            # LG: to have more info
-            # raise AuthError(f"username not found in {auth0_username_claim}")
-            raise AuthError('username claim not found')
+            alt_claim = os.environ.get('AUTH0_USERNAME_CLAIM_CLI', '')
+            if alt_claim != '':
+                cla.log.warning(f"username claim not found in {auth0_username_claim}, trying {alt_claim}")
+                username = payload.get(alt_claim)
+                if username is None:
+                    cla.log.error(f"username claim not found in alternate source {auth0_username_claim}")
+                    raise AuthError(f"username claim not found in {auth0_username_claim}")
+            else:
+                cla.log.error(f"username claim not found in {auth0_username_claim}")
+                raise AuthError('username claim not found')
 
         auth_user = AuthUser(payload)
 
