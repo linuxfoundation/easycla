@@ -1356,7 +1356,7 @@ def check_and_prepare_employee_signature(
     "/signed/individual/{installation_id}/{github_repository_id}/{change_request_id}", versions=2,
 )
 def post_individual_signed(
-        body,
+        request,
         installation_id: hug.types.number,
         github_repository_id: hug.types.number,
         change_request_id: hug.types.number,
@@ -1369,7 +1369,7 @@ def post_individual_signed(
 
     Callback URL from signing service upon ICLA signature.
     """
-    content = body.read()
+    content = request.bounded_stream.read()
     return cla.controllers.signing.post_individual_signed(
         content, installation_id, github_repository_id, change_request_id
     )
@@ -1378,7 +1378,7 @@ def post_individual_signed(
     "/signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}", versions=2,
 )
 def post_individual_signed_gitlab(
-        body,
+        request,
         user_id: hug.types.uuid,
         organization_id: hug.types.text,
         gitlab_repository_id: hug.types.number,
@@ -1389,25 +1389,25 @@ def post_individual_signed_gitlab(
 
     Callback URL from signing service upon ICLA signature for a Gitlab user.
     """
-    content = body.read()
+    content = request.bounded_stream.read()
     return cla.controllers.signing.post_individual_signed_gitlab(
         content, user_id, organization_id, gitlab_repository_id, merge_request_id
     )
 
 
 @hug.post("/signed/gerrit/individual/{user_id}", versions=2)
-def post_individual_signed_gerrit(body, user_id: hug.types.uuid):
+def post_individual_signed_gerrit(request, user_id: hug.types.uuid):
     """
-    POST: /signed/gerritindividual/{user_id}
+    POST: /signed/gerrit/individual/{user_id}
 
     Callback URL from signing service upon ICLA signature for a Gerrit user.
     """
-    content = body.read()
+    content = request.bounded_stream.read()
     return cla.controllers.signing.post_individual_signed_gerrit(content, user_id)
 
 
 @hug.post("/signed/corporate/{project_id}/{company_id}", versions=2)
-def post_corporate_signed(body, project_id: hug.types.uuid, company_id: hug.types.uuid):
+def post_corporate_signed(request, project_id: hug.types.uuid, company_id: hug.types.uuid):
     """
     POST: /signed/corporate/{project_id}/{company_id}
 
@@ -1416,7 +1416,7 @@ def post_corporate_signed(body, project_id: hug.types.uuid, company_id: hug.type
 
     Callback URL from signing service upon CCLA signature.
     """
-    content = body.read()
+    content = request.bounded_stream.read()
     return cla.controllers.signing.post_corporate_signed(content, str(project_id), str(company_id))
 
 
