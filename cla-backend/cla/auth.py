@@ -125,8 +125,8 @@ def authenticate_user(headers):
                 cla.log.warning(f"username claim not found in {auth0_username_claim}, trying {alt_claim}")
                 username = payload.get(alt_claim)
                 if username is None:
-                    cla.log.error(f"username claim not found in alternate source {auth0_username_claim}")
-                    raise AuthError(f"username claim not found in {auth0_username_claim}")
+                    cla.log.error(f"username claim not found in alternate source {alt_claim}")
+                    raise AuthError('username claim not found')
             else:
                 cla.log.error(f"username claim not found in {auth0_username_claim}")
                 raise AuthError('username claim not found')
