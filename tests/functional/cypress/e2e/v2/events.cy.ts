@@ -50,8 +50,8 @@ describe('To Validate & test Events APIs via API call (V2)', function () {
     }).then((response) => {
       return cy.logJson('POST /send-authority-email response', response).then(() => {
         validate_200_Status(response);
-        expect(response.body).to.be.an('object');
-        // V2 API can return email data or error object - both are valid
+        // V2 API returns null body for successful POST requests
+        expect(response.body).to.be.null;
       });
     });
   });
@@ -69,7 +69,8 @@ describe('To Validate & test Events APIs via API call (V2)', function () {
       return cy.logJson('POST /clear-cache response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
-        // V2 API can return cache data or error object - both are valid
+        // V2 API returns {status: 'OK'} for successful clear-cache requests
+        expect(response.body).to.have.property('status', 'OK');
       });
     });
   });
@@ -132,13 +133,13 @@ describe('To Validate & test Events APIs via API call (V2)', function () {
           title: 'DELETE /clear-cache (method not allowed)',
           method: 'DELETE',
           url: `${claEndpoint}clear-cache`,
-          expectedStatus: 401, // API returns 401 for unauthenticated requests before checking method
+          expectedStatus: 405, // API returns 405 for method not allowed before checking auth
         },
         {
           title: 'GET /clear-cache (method not allowed)',
           method: 'GET',
           url: `${claEndpoint}clear-cache`,
-          expectedStatus: 401, // API returns 401 for unauthenticated requests before checking method
+          expectedStatus: 405, // API returns 405 for method not allowed before checking auth
         },
       ];
 
