@@ -262,3 +262,7 @@ body.json
 
 cla-backend-go/signatures_timestamp_backfill
 cla-backend-go/backfill-fallback-commands-cla*.sh
+cla-backend/python-api.log
+cla-backend-go/golang-api.err
+cla-backend-go/golang-api.log
+cla-backend/python-api.err
