@@ -27,7 +27,7 @@ describe('To Validate & test Repository Provider APIs via API call (V2)', functi
   });
 
   it.skip('POST /repository-provider/{provider}/activity - Handle repository activity webhook (No authentication required)', function () {
-    // SKIPPED: This endpoint returns 500 errors due to server issues
+    // SKIPPED: This endpoint returns 500 errors due to GitHub integration client issues when processing realistic webhook data
     const activityData = {
       repository: {
         id: 67890,
@@ -59,6 +59,8 @@ describe('To Validate & test Repository Provider APIs via API call (V2)', functi
       return cy.logJson('POST /repository-provider/{provider}/activity response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
+        // V2 API returns message about activity processing
+        expect(response.body).to.have.property('message');
       });
     });
   });

@@ -1,7 +1,13 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { validate_200_Status, validate_expected_status, getAPIBaseURL, getTokenForV2 } from '../../support/commands';
+import {
+  validate_200_Status,
+  validate_401_Status,
+  validate_expected_status,
+  getAPIBaseURL,
+  getTokenForV2,
+} from '../../support/commands';
 
 describe('To Validate & test Events APIs via API call (V2)', function () {
   const claEndpoint = getAPIBaseURL('v2');
@@ -81,8 +87,22 @@ describe('To Validate & test Events APIs via API call (V2)', function () {
   describe('Expected failures', () => {
     it('Returns 401 for Events APIs that require authentication when called without token', () => {
       const authenticatedEndpoints = [
-        { method: 'POST', url: `${claEndpoint}send-authority-email`, body: {} },
-        { method: 'POST', url: `${claEndpoint}clear-cache` },
+        {
+          title: 'POST /send-authority-email without token',
+          method: 'POST',
+          url: `${claEndpoint}send-authority-email`,
+          body: {
+            company_name: validCompanyName,
+            project_name: validProjectName,
+            authority_name: validAuthorityName,
+            authority_email: validAuthorityEmail,
+          },
+        },
+        {
+          title: 'POST /clear-cache without token',
+          method: 'POST',
+          url: `${claEndpoint}clear-cache`,
+        },
       ];
 
       cy.wrap(authenticatedEndpoints).each((req: any) => {
@@ -96,8 +116,12 @@ describe('To Validate & test Events APIs via API call (V2)', function () {
           })
           .then((response) => {
             return cy.logJson('response', response).then(() => {
-              cy.task('log', `Testing unauthorized ${req.method} ${req.url}`);
+              cy.task('log', `Testing: ${req.title}`);
               expect(response.status).to.eq(401);
+              expect(response.statusText).to.eq('Unauthorized');
+              // V2 API returns simple string for 401 errors
+              expect(response.body).to.be.a('string');
+              expect(response.body).to.contain('authorization');
             });
           });
       });
