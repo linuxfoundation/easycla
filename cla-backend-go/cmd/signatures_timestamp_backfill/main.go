@@ -42,9 +42,6 @@ const (
 	// cutoff date for _FIVETRAN_SYNCED usage
 	fivetranCutoffDate = "2024-03-09T00:00:00Z"
 
-	// cutoff date for _FIVETRAN_SYNCED usage
-	fivetranCutoffDate = "2024-03-09T00:00:00Z"
-
 	// update expression helpers
 	setPrefix                 = "SET "
 	commaSep                  = ", "
