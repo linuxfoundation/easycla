@@ -449,7 +449,8 @@ func firstPassScanAndUpdate(
 			}
 
 			// Build CLI (always emitted in dry-run; emitted on failure in live-run)
-			cmd := buildAwsCliUpdate(region, stage, tableName, sig.SignatureID, updateExpr, names, vals, condAnyMissing)
+			condExpr := buildConditionExpression(names)
+			cmd := buildAwsCliUpdate(region, stage, tableName, sig.SignatureID, updateExpr, names, vals, condExpr)
 			dbg("  CLI: %s", cmd)
 
 			if dryRun {
@@ -467,7 +468,7 @@ func firstPassScanAndUpdate(
 				UpdateExpression:          aws.String(updateExpr),
 				ExpressionAttributeNames:  names,
 				ExpressionAttributeValues: vals,
-				ConditionExpression:       aws.String(condAnyMissing),
+				ConditionExpression:       aws.String(condExpr),
 			})
 			if uerr != nil {
 				log.Printf("Update failed %s: %v", sig.SignatureID, uerr)
@@ -657,7 +658,9 @@ func snowflakeFix(
 				}
 			}
 
-			cmd := buildAwsCliUpdate(region, stage, tableName, id, updateExpr, names, vals, condAnyMissing)
+			// Build condition expression with names that are actually defined
+			condExpr := buildConditionExpression(names)
+			cmd := buildAwsCliUpdate(region, stage, tableName, id, updateExpr, names, vals, condExpr)
 			dbg("  SF CLI: %s", cmd)
 
 			if dryRun {
@@ -670,13 +673,16 @@ func snowflakeFix(
 				continue
 			}
 
+			// Build condition expression with names that are actually defined
+			condExpr = buildConditionExpression(names)
+
 			_, uerr := ddb.UpdateItem(&dynamodb.UpdateItemInput{
 				TableName:                 aws.String(tableName),
 				Key:                       map[string]*dynamodb.AttributeValue{"signature_id": {S: aws.String(id)}},
 				UpdateExpression:          aws.String(updateExpr),
 				ExpressionAttributeNames:  names,
 				ExpressionAttributeValues: vals,
-				ConditionExpression:       aws.String(condAnyMissing),
+				ConditionExpression:       aws.String(condExpr),
 			})
 			if uerr != nil {
 				log.Printf("Update failed (SF) %s: %v", id, uerr)
@@ -1054,6 +1060,39 @@ func parseSnowflakeCSV(b []byte) map[string]string {
 		res[id] = normalize(ts)
 	}
 	return res
+}
+
+// buildConditionExpression builds a condition expression using only the attribute names
+// that are actually defined in the names map to avoid DynamoDB validation errors
+func buildConditionExpression(names map[string]*string) string {
+	var conditions []string
+
+	// Check for regular date_created field
+	if _, hasDateCreated := names["#date_created"]; hasDateCreated {
+		conditions = append(conditions, "attribute_not_exists(#date_created) OR #date_created = :empty")
+	}
+
+	// Check for regular date_modified field
+	if _, hasDateModified := names["#date_modified"]; hasDateModified {
+		conditions = append(conditions, "attribute_not_exists(#date_modified) OR #date_modified = :empty")
+	}
+
+	// Check for approx_date_created field
+	if _, hasApproxDateCreated := names["#approx_date_created"]; hasApproxDateCreated {
+		conditions = append(conditions, "attribute_not_exists(#approx_date_created) OR #approx_date_created = :empty")
+	}
+
+	// Check for approx_date_modified field
+	if _, hasApproxDateModified := names["#approx_date_modified"]; hasApproxDateModified {
+		conditions = append(conditions, "attribute_not_exists(#approx_date_modified) OR #approx_date_modified = :empty")
+	}
+
+	// If no specific conditions, use a basic condition that should always allow updates
+	if len(conditions) == 0 {
+		return "attribute_exists(signature_id)"
+	}
+
+	return strings.Join(conditions, " OR ")
 }
 
 // -----------------------------------------------------------------------------
