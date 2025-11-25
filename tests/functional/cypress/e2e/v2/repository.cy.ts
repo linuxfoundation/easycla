@@ -10,13 +10,8 @@ describe('To Validate & test Repository Provider APIs via API call (V2)', functi
 
   // Test data
   const validProvider = 'github';
-  const validInstallationID = '12345';
-  const validRepoID = '67890';
-  const validChangeRequestID = '11111';
   const validUserID = '550e8400-e29b-41d4-a716-446655440000';
   const validOrganizationID = 'test-org';
-  const validGitlabRepoID = '54321';
-  const validMergeRequestID = '22222';
 
   // ============================================================================
   // POSITIVE TEST CASES - EXPECT ONLY 2xx STATUS CODES

@@ -1,13 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import {
-  validate_200_Status,
-  validate_401_Status,
-  validate_expected_status,
-  getAPIBaseURL,
-  getTokenForV2,
-} from '../../support/commands';
+import { validate_200_Status, validate_expected_status, getAPIBaseURL, getTokenForV2 } from '../../support/commands';
 
 describe('To Validate & test Project APIs via API call (V1)', function () {
   const claEndpoint = getAPIBaseURL('v1');
@@ -28,7 +22,6 @@ describe('To Validate & test Project APIs via API call (V1)', function () {
 
   // Test data
   const validProjectID = '550e8400-e29b-41d4-a716-446655440000';
-  const validProjectSFDCID = 'a096s00000003ZFmAAM';
   const validExternalProjectID = 'test-project-external';
 
   // ============================================================================
