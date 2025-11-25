@@ -2261,7 +2261,7 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
         return False
 
     def get_users_by_company(self, company_id):
-        user_generator = self.model.scan(user_company_id__eq=str(company_id))
+        user_generator = self.model.scan(UserModel.user_company_id == str(company_id))
         users = []
         for user_model in user_generator:
             user = User()
