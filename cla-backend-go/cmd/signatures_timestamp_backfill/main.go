@@ -408,10 +408,7 @@ func firstPassScanAndUpdate(
 
 			updateExpr := setPrefix
 			vals := map[string]*dynamodb.AttributeValue{":empty": {S: aws.String("")}}
-			names := map[string]*string{
-				"#date_created":  aws.String(attrDateCreated),
-				"#date_modified": aws.String(attrDateModified),
-			}
+			names := map[string]*string{}
 			first := true
 			if setCreated {
 				if !first {
@@ -419,6 +416,7 @@ func firstPassScanAndUpdate(
 				}
 				updateExpr += exprSetDateCreated
 				vals[":date_created"] = &dynamodb.AttributeValue{S: aws.String(finalC)}
+				names["#date_created"] = aws.String(attrDateCreated)
 				first = false
 			}
 			if setModified {
@@ -427,6 +425,7 @@ func firstPassScanAndUpdate(
 				}
 				updateExpr += exprSetDateModified
 				vals[":date_modified"] = &dynamodb.AttributeValue{S: aws.String(finalM)}
+				names["#date_modified"] = aws.String(attrDateModified)
 			}
 
 			if debug {
@@ -604,12 +603,7 @@ func snowflakeFix(
 
 			updateExpr := setPrefix
 			vals := map[string]*dynamodb.AttributeValue{":empty": {S: aws.String("")}}
-			names := map[string]*string{
-				"#date_created":         aws.String(attrDateCreated),
-				"#date_modified":        aws.String(attrDateModified),
-				"#approx_date_created":  aws.String(attrApproxDateCreated),
-				"#approx_date_modified": aws.String(attrApproxDateModified),
-			}
+			names := map[string]*string{}
 			first := true
 			if setCreated {
 				if !first {
@@ -619,9 +613,11 @@ func snowflakeFix(
 				if srcC == labelFivetranSynced {
 					updateExpr += exprSetApproxDateCreated
 					vals[":approx_date_created"] = &dynamodb.AttributeValue{S: aws.String(finalC)}
+					names["#approx_date_created"] = aws.String(attrApproxDateCreated)
 				} else {
 					updateExpr += exprSetDateCreated
 					vals[":date_created"] = &dynamodb.AttributeValue{S: aws.String(finalC)}
+					names["#date_created"] = aws.String(attrDateCreated)
 				}
 				first = false
 			}
@@ -633,9 +629,11 @@ func snowflakeFix(
 				if srcM == labelFivetranSynced {
 					updateExpr += exprSetApproxDateModified
 					vals[":approx_date_modified"] = &dynamodb.AttributeValue{S: aws.String(finalM)}
+					names["#approx_date_modified"] = aws.String(attrApproxDateModified)
 				} else {
 					updateExpr += exprSetDateModified
 					vals[":date_modified"] = &dynamodb.AttributeValue{S: aws.String(finalM)}
+					names["#date_modified"] = aws.String(attrDateModified)
 				}
 			}
 
