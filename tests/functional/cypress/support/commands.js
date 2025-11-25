@@ -187,17 +187,44 @@ export function validate_expected_status(
 
   const body = parseJsonBody(response);
   const bodyCode = body.code ?? body.Code;
-  const bodyMessage = body.message ?? body.Message;
+  let bodyMessage = body.message ?? body.Message;
+
+  // Handle V2 API string responses (e.g., "missing authorization header")
+  if (!bodyMessage && typeof response.body === 'string') {
+    bodyMessage = response.body.replace(/"/g, ''); // Remove quotes from string response
+  }
+
+  // Handle V2 API 404 format: {"404": "The API call you tried to make was not defined..."}
+  if (!bodyMessage && body['404']) {
+    bodyMessage = body['404'];
+  }
+
+  // Handle V2 API error format: {"errors": {"405 Method Not Allowed": null}} or {"errors": {"field": "error message"}}
+  if (!bodyMessage && body.errors && typeof body.errors === 'object') {
+    const errorKeys = Object.keys(body.errors);
+    if (errorKeys.length > 0) {
+      const errorValue = body.errors[errorKeys[0]];
+      if (errorValue && typeof errorValue === 'string') {
+        // Format: {"errors": {"field": "error message"}}
+        bodyMessage = errorValue;
+      } else {
+        // Format: {"errors": {"405 Method Not Allowed": null}}
+        bodyMessage = errorKeys[0];
+      }
+    }
+  }
 
   if (expectedCode !== undefined && expectedCode !== null) {
     expect(String(bodyCode)).to.eq(String(expectedCode));
   }
 
   if (expectedMessage !== undefined && expectedMessage !== null) {
-    if (expectedMessageContains) {
-      expect(bodyMessage).to.contain(expectedMessage);
+    // Ensure bodyMessage is not undefined before testing
+    const messageToTest = bodyMessage || '';
+    if (expectedMessageContains === true) {
+      expect(messageToTest).to.contain(expectedMessage);
     } else {
-      expect(bodyMessage).to.eq(expectedMessage);
+      expect(messageToTest).to.eq(expectedMessage);
     }
   }
 }
@@ -207,6 +234,34 @@ export function shortenMiddle(str) {
   const first = str.slice(0, 3);
   const last = str.slice(-3);
   return `${first}...${last}`;
+}
+
+export function getTokenForV2() {
+  // V2 APIs use the same token generation as V3/V4
+  cy.task('log', '--> getting token by request for V2');
+  return cy
+    .request({
+      method: 'POST',
+      url: Cypress.env('AUTH0_TOKEN_API'),
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: {
+        grant_type: 'http://auth0.com/oauth/grant-type/password-realm',
+        realm: 'Username-Password-Authentication',
+        username: Cypress.env('AUTH0_USER_NAME'),
+        password: Cypress.env('AUTH0_PASSWORD'),
+        client_id: Cypress.env('AUTH0_CLIENT_ID'),
+        audience: 'https://api-gw.dev.platform.linuxfoundation.org/',
+        scope: 'access:api openid profile email',
+      },
+    })
+    .then((response) => {
+      expect(response.status).to.eq(200);
+      const token = response.body.access_token;
+      cy.task('log', `--> got token ${shortenMiddle(token)} from request for V2`);
+      return cy.wrap(token);
+    });
 }
 
 export function getTokenForV3() {
@@ -252,6 +307,16 @@ export function getAPIBaseURL(version) {
       }
       // V3 is deployed on the legacy API endpoint, not the new cla-service endpoint
       return 'https://api.lfcla.dev.platform.linuxfoundation.org/v3/';
+    case 'v2':
+      if (local) {
+        return 'http://localhost:5000/v2/';
+      }
+      return 'https://api.lfcla.dev.platform.linuxfoundation.org/v2/';
+    case 'v1':
+      if (local) {
+        return 'http://localhost:5000/v1/';
+      }
+      return 'https://api.lfcla.dev.platform.linuxfoundation.org/v1/';
     default:
       cy.task('log', `--> unknown API version ${version}`);
   }
@@ -294,7 +359,7 @@ let bearerToken = '';
 export function getTokenKey() {
   cy.task('log', `--> getting token`);
   const envToken = Cypress.env('TOKEN');
-  if (envToken) {
+  if (envToken && envToken !== '-') {
     cy.task('log', `--> getting token from env`);
     bearerToken = envToken;
     cy.window().then((win) => {
