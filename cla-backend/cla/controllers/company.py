@@ -30,7 +30,7 @@ def get_companies():
     cla.log.debug(f'{fn} - loading all companies...')
     all_companies = [company.to_dict() for company in Company().all()]
     cla.log.debug(f'{fn} - loaded all companies')
-    all_companies = sorted(all_companies, key=lambda i: i['company_name'].casefold())
+    all_companies = sorted(all_companies, key=lambda i: (i.get('company_name') or '').casefold())
 
     return all_companies
 
@@ -46,7 +46,7 @@ def get_companies_by_user(username: str):
     cla.log.debug(f'{fn} - loading companies by user: {username}...')
     all_companies = [company.to_dict() for company in Company().all() if username in company.get_company_acl()]
     cla.log.debug(f'{fn} - load companies by user: {username}')
-    all_companies = sorted(all_companies, key=lambda i: i['company_name'].casefold())
+    all_companies = sorted(all_companies, key=lambda i: (i.get('company_name') or '').casefold())
 
     return all_companies
 
