@@ -44,6 +44,7 @@ type MonthlyStats struct {
 	CCLA  int
 }
 
+// go run cmd/monthly_signature_report/monthly_signature_report.go
 func main() {
 	// Set up AWS session
 	sess, err := session.NewSessionWithOptions(session.Options{
@@ -99,9 +100,9 @@ func main() {
 	err = svc.ScanPages(params, func(page *dynamodb.ScanOutput, lastPage bool) bool {
 		for _, item := range page.Items {
 			var sig SignatureRecord
-			err := dynamodbattribute.UnmarshalMap(item, &sig)
-			if err != nil {
-				log.Printf("Error unmarshalling record: %v", err)
+			e := dynamodbattribute.UnmarshalMap(item, &sig)
+			if e != nil {
+				log.Printf("Error unmarshalling record: %v", e)
 				continue
 			}
 
