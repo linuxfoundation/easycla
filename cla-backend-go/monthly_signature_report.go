@@ -27,13 +27,13 @@ const (
 
 // SignatureRecord represents the DynamoDB signature record structure
 type SignatureRecord struct {
-	SignatureID              string `dynamodbav:"signature_id"`
-	DateCreated              string `dynamodbav:"date_created"`
-	ApproxDateCreated        string `dynamodbav:"approx_date_created"`
-	SignatureType            string `dynamodbav:"signature_type"`
-	SigtypeSignedApprovedID  string `dynamodbav:"sigtype_signed_approved_id"`
-	SignatureApproved        bool   `dynamodbav:"signature_approved"`
-	SignatureSigned          bool   `dynamodbav:"signature_signed"`
+	SignatureID             string `dynamodbav:"signature_id"`
+	DateCreated             string `dynamodbav:"date_created"`
+	ApproxDateCreated       string `dynamodbav:"approx_date_created"`
+	SignatureType           string `dynamodbav:"signature_type"`
+	SigtypeSignedApprovedID string `dynamodbav:"sigtype_signed_approved_id"`
+	SignatureApproved       bool   `dynamodbav:"signature_approved"`
+	SignatureSigned         bool   `dynamodbav:"signature_signed"`
 }
 
 // MonthlyStats holds the count of signatures per month
@@ -64,8 +64,24 @@ func main() {
 	monthlyStats := make(map[string]*MonthlyStats)
 
 	// Scan parameters
+	// Full attributes scan
+	// params := &dynamodb.ScanInput{TableName: aws.String(tableName)}
+	// Scan only needed parameters
 	params := &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
+		// Only fetch the fields we actually need
+		ProjectionExpression: aws.String(
+			"#sid, #dc, #adc, #st, #ssa, #sa, #ss",
+		),
+		ExpressionAttributeNames: map[string]*string{
+			"#sid": aws.String("signature_id"),
+			"#dc":  aws.String("date_created"),
+			"#adc": aws.String("approx_date_created"),
+			"#st":  aws.String("signature_type"),
+			"#ssa": aws.String("sigtype_signed_approved_id"),
+			"#sa":  aws.String("signature_approved"),
+			"#ss":  aws.String("signature_signed"),
+		},
 	}
 
 	// Get current time for validation
@@ -109,13 +125,14 @@ func main() {
 			}
 
 			// Parse creation date to extract month
-			month := extractMonth(creationDate, currentMonth)
+			month := extractMonth(creationDate)
 			if month == "" {
 				skippedInvalidDates++
 				continue
 			}
 
 			// Check if month is in the future
+			// Month and currentMonth are formatted as YYYY-MM, so string comparison is safe
 			if month > currentMonth {
 				skippedFutureDates++
 				continue
@@ -123,7 +140,7 @@ func main() {
 
 			// Determine signature type based on multiple factors
 			var isICLA, isECLA, isCCLA bool
-			
+
 			// Primary method: check sigtype_signed_approved_id
 			if sig.SigtypeSignedApprovedID != "" {
 				if strings.HasPrefix(sig.SigtypeSignedApprovedID, "icla#") {
@@ -142,7 +159,7 @@ func main() {
 			} else if sig.SignatureType != "" {
 				// Fallback method: check signature_type field
 				switch sig.SignatureType {
-				case "cla":
+				case "cla", "icla":
 					// For legacy CLA records without sigtype_signed_approved_id, treat as ICLA
 					isICLA = true
 					totalICLA++
@@ -208,13 +225,14 @@ func main() {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	// Set semicolon as separator
 	writer.Comma = ';'
 
 	// Write header
-	writer.Write([]string{"month", "ICLAs", "ECLAs", "CCLAs"})
+	if err := writer.Write([]string{"month", "ICLAs", "ECLAs", "CCLAs"}); err != nil {
+		log.Fatalf("Error writing CSV header: %v", err)
+	}
 
 	// Write data
 	for _, stats := range monthlyData {
@@ -224,7 +242,13 @@ func main() {
 			strconv.Itoa(stats.ECLA),
 			strconv.Itoa(stats.CCLA),
 		}
-		writer.Write(record)
+		if err := writer.Write(record); err != nil {
+			log.Fatalf("Error writing CSV record for month %s: %v", stats.Month, err)
+		}
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		log.Fatalf("Error flushing CSV writer: %v", err)
 	}
 
 	fmt.Printf("Report generated: %s\n", outputFile)
@@ -232,7 +256,7 @@ func main() {
 }
 
 // extractMonth extracts YYYY-MM from date_created field with proper validation
-func extractMonth(dateStr, currentMonth string) string {
+func extractMonth(dateStr string) string {
 	if dateStr == "" {
 		return ""
 	}
@@ -240,7 +264,7 @@ func extractMonth(dateStr, currentMonth string) string {
 	// Handle different date formats
 	// 2021-08-09T15:21:56.492368+0000
 	// 2024-07-30T12:11:34Z
-	
+
 	var t time.Time
 	var err error
 
@@ -265,6 +289,7 @@ func extractMonth(dateStr, currentMonth string) string {
 		}
 	}
 
+	thisYear := time.Now().Year()
 	if err != nil {
 		// Try to extract just the date part
 		parts := strings.Split(dateStr, "T")
@@ -281,14 +306,14 @@ func extractMonth(dateStr, currentMonth string) string {
 						} else {
 							testFormat = "2006-01"
 						}
-						
+
 						if testTime, testErr := time.Parse(testFormat, testDateStr); testErr == nil {
 							// Validate year and month ranges
 							year := testTime.Year()
 							month := int(testTime.Month())
-							
-							if year >= 2000 && year <= time.Now().Year() && 
-							   month >= 1 && month <= 12 {
+
+							if year >= 2000 && year <= thisYear &&
+								month >= 1 && month <= 12 {
 								return testTime.Format("2006-01")
 							}
 						}
@@ -302,14 +327,14 @@ func extractMonth(dateStr, currentMonth string) string {
 	// Validate the parsed time
 	year := t.Year()
 	month := int(t.Month())
-	
+
 	// Check for reasonable year and month ranges
-	if year < 2000 || year > time.Now().Year() || month < 1 || month > 12 {
+	if year < 2000 || year > thisYear || month < 1 || month > 12 {
 		return ""
 	}
 
 	result := t.Format("2006-01")
-	
+
 	// Additional validation: don't return invalid months like 2025-26
 	if testTime, testErr := time.Parse("2006-01", result); testErr == nil {
 		// Ensure the month is valid
@@ -317,6 +342,6 @@ func extractMonth(dateStr, currentMonth string) string {
 			return result
 		}
 	}
-	
+
 	return ""
 }
