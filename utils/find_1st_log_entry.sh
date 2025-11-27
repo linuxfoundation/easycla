@@ -5,9 +5,22 @@ if [ -z "${STAGE}" ]
 then
   export STAGE=dev
 fi
-aws --region us-east-1 --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/cla-backend-${STAGE}-api-v3-lambda" --start-time 0 --limit 1 --filter-pattern "\"LG:api-request-path\"" | jq -r '.events.[0].timestamp' | awk '{print strftime("%Y-%m-%d %H:%M:%S", $1/1000)}'
-aws --region us-east-1 --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/cla-backend-${STAGE}-apiv1" --start-time 0 --limit 1 --filter-pattern "\"LG:api-request-path\"" | jq -r '.events.[0].timestamp' | awk '{print strftime("%Y-%m-%d %H:%M:%S", $1/1000)}'
-aws --region us-east-1 --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/cla-backend-${STAGE}-apiv2" --start-time 0 --limit 1 --filter-pattern "\"LG:api-request-path\"" | jq -r '.events.[0].timestamp' | awk '{print strftime("%Y-%m-%d %H:%M:%S", $1/1000)}'
-aws --region us-east-1 --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/cla-backend-${STAGE}-githubactivity" --start-time 0 --limit 1 --filter-pattern "\"LG:api-request-path\"" | jq -r '.events.[0].timestamp' | awk '{print strftime("%Y-%m-%d %H:%M:%S", $1/1000)}'
-aws --region us-east-1 --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/cla-backend-${STAGE}-githubinstall" --start-time 0 --limit 1 --filter-pattern "\"LG:api-request-path\"" | jq -r '.events.[0].timestamp' | awk '{print strftime("%Y-%m-%d %H:%M:%S", $1/1000)}'
-aws --region us-east-2 --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/cla-backend-go-api-v4-lambda" --start-time 0 --limit 1 --filter-pattern "\"LG:api-request-path\"" | jq -r '.events.[0].timestamp' | awk '{print strftime("%Y-%m-%d %H:%M:%S", $1/1000)}'
+# Array of log group configurations: "region log_group_name"
+log_groups=(
+  "us-east-1 /aws/lambda/cla-backend-${STAGE}-api-v3-lambda"
+  "us-east-1 /aws/lambda/cla-backend-${STAGE}-apiv1"
+  "us-east-1 /aws/lambda/cla-backend-${STAGE}-apiv2"
+  "us-east-1 /aws/lambda/cla-backend-${STAGE}-githubactivity"
+  "us-east-1 /aws/lambda/cla-backend-${STAGE}-githubinstall"
+  "us-east-2 /aws/lambda/cla-backend-go-api-v4-lambda"
+)
+
+for entry in "${log_groups[@]}"; do
+  region=$(echo "$entry" | awk '{print $1}')
+  log_group=$(echo "$entry" | cut -d' ' -f2-)
+  aws --region "$region" --profile "lfproduct-${STAGE}" logs filter-log-events \
+    --log-group-name "$log_group" \
+    --start-time 0 --limit 1 --filter-pattern "\"LG:api-request-path\"" \
+    | jq -r '.events.[0].timestamp' \
+    | awk '{print strftime("%Y-%m-%d %H:%M:%S", $1/1000)}'
+done
