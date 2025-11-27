@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
 if [ -z "${STAGE}" ]
 then
   export STAGE=dev
