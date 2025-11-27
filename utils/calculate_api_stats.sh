@@ -13,7 +13,8 @@ then
   exit 1
 fi
 export DTFROM="${1}"
-REGION=us-east-1 NO_ECHO=1 DTTO='1 second ago' OUT="api-logs-${STAGE}-1.json" ./utils/search_aws_logs.sh 'LG:api-request-path'
-REGION=us-east-2 NO_ECHO=1 DTTO='1 second ago' OUT="api-logs-${STAGE}-2.json" ./utils/search_aws_logs.sh 'LG:api-request-path'
+INCL_LOGS='githubactivity,githubinstall,apiv1,apiv2,api-v3-lambda' REGION=us-east-1 NO_ECHO=1 DTTO='1 second ago' OUT="api-logs-${STAGE}-1.json" ./utils/search_aws_logs.sh 'LG:api-request-path'
+INCL_LOGS='api-v4-lambda' REGION=us-east-2 NO_ECHO=1 DTTO='1 second ago' OUT="api-logs-${STAGE}-2.json" ./utils/search_aws_logs.sh 'LG:api-request-path'
 jq -s 'add' "api-logs-${STAGE}-1.json" "api-logs-${STAGE}-2.json" > "api-logs-${STAGE}.json" && rm -f "api-logs-${STAGE}-1.json" "api-logs-${STAGE}-2.json"
 ./utils/count_apis.sh "api-logs-${STAGE}.json" > "api-logs-${STAGE}.log" && cat "api-logs-${STAGE}.log"
+cat "api-logs-${STAGE}.json" | grep '"logGroupName": "' | sort | uniq
