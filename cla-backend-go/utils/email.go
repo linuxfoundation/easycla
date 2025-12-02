@@ -101,10 +101,8 @@ func SendEmail(subject string, body string, recipients []string) error {
 
 // GetCorporateURL returns the corporate URL based on the specified flag
 func GetCorporateURL(isV2Project bool) string {
-	if isV2Project {
-		return config.GetConfig().CorporateConsoleV2URL
-	}
-	return config.GetConfig().CorporateConsoleV1URL
+	// V1 corporate console has been shut down - always return V2 URL
+	return config.GetConfig().CorporateConsoleV2URL
 }
 
 // GetEmailHelpContent returns the standard email help paragraph details.
