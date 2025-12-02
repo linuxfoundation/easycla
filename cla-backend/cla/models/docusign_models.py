@@ -2481,7 +2481,7 @@ def document_signed_email_content(icla: bool, project: Project, signature: Signa
                     f'signatures/{project.get_project_id()}/'
                     f'{signature.get_signature_reference_id()}/ccla/pdf')
 
-    corporate_url = get_corporate_url(project.get_version())
+    corporate_url = get_corporate_url()
 
     recipient_name = user.get_user_name() or user.get_lf_username() or None
     # some defensive code
