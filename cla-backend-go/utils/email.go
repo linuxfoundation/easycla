@@ -99,8 +99,8 @@ func SendEmail(subject string, body string, recipients []string) error {
 	return emailSender.SendEmail(subject, body, recipients)
 }
 
-// GetCorporateURL returns the corporate URL based on the specified flag
-func GetCorporateURL(isV2Project bool) string {
+// GetCorporateURL returns the corporate V2 URL (V1 has been shut down)
+func GetCorporateURL() string {
 	// V1 corporate console has been shut down - always return V2 URL
 	return config.GetConfig().CorporateConsoleV2URL
 }

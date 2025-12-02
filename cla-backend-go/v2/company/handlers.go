@@ -636,17 +636,8 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
-			corporateLink := ""
-			// Get appropriate corporate link - V1 is no longer supported, redirect to V2
-			if params.Body.Version == "v1" {
-				// V1 corporate console has been shut down - redirect to V2
-				corporateLink = LFXPortalURL
-			} else if params.Body.Version == "v2" {
-				corporateLink = LFXPortalURL
-			} else {
-				// Default to V2 if version is not specified
-				corporateLink = LFXPortalURL
-			}
+			// V1 corporate console has been shut down - always use V2 console
+			corporateLink := LFXPortalURL
 
 			err := service.RequestCompanyAdmin(ctx, params.UserID, params.Body.ClaManagerEmail.String(), params.Body.ClaManagerName, params.Body.ContributorName, params.Body.ContributorEmail.String(), params.Body.ProjectName, params.Body.CompanyName, corporateLink)
 			if err != nil {
