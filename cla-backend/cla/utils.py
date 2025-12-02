@@ -1927,10 +1927,11 @@ def get_email_sign_off_content() -> str:
 def get_corporate_url(project_version: str) -> str:
     """
     helper method that returns appropriate corporate link based on EasyCLA version
-    :param project_version: cla_group version(v1|v2)
-    :return: default is v1 corporate console
+    :param project_version: cla_group version(v1|v2) - deprecated, always returns V2
+    :return: V2 corporate console (V1 has been shut down)
     """
-    return CORPORATE_V2_BASE if project_version == "v2" else CORPORATE_BASE
+    # V1 corporate console has been shut down - always return V2
+    return CORPORATE_V2_BASE
 
 
 def append_email_help_sign_off_content(body: str, project_version: str) -> str:

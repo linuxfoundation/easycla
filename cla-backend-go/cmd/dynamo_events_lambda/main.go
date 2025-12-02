@@ -138,7 +138,7 @@ func init() {
 	v2RepositoryService := v2Repositories.NewService(repositoriesRepo, v2Repository, projectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
 	gitlabOrgService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoryService, projectClaGroupRepo, storeRepo, usersService, signaturesRepo, companyRepo)
 
-	companyService := company.NewService(companyRepo, configFile.CorporateConsoleV1URL, userRepo, usersService)
+	companyService := company.NewService(companyRepo, configFile.CorporateConsoleV2URL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(companyService, signaturesRepo, projectRepo, usersRepo, companyRepo, projectClaGroupRepo, eventsService)
 	organization_service.InitClient(configFile.APIGatewayURL, eventsService)
 	acs_service.InitClient(configFile.APIGatewayURL, configFile.AcsAPIKey)

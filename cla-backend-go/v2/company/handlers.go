@@ -27,7 +27,7 @@ import (
 )
 
 // Configure sets up the middleware handlers
-func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo projects_cla_groups.Repository, LFXPortalURL, v1CorporateConsole string) { // nolint
+func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo projects_cla_groups.Repository, LFXPortalURL string) { // nolint
 
 	api.CompanyGetCompanyByInternalIDHandler = company.GetCompanyByInternalIDHandlerFunc(
 		func(params company.GetCompanyByInternalIDParams, authUser *auth.User) middleware.Responder {
@@ -637,10 +637,14 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 
 			corporateLink := ""
-			// Get appropirate corporate link (v1|v2)
+			// Get appropriate corporate link - V1 is no longer supported, redirect to V2
 			if params.Body.Version == "v1" {
-				corporateLink = v1CorporateConsole
+				// V1 corporate console has been shut down - redirect to V2
+				corporateLink = LFXPortalURL
 			} else if params.Body.Version == "v2" {
+				corporateLink = LFXPortalURL
+			} else {
+				// Default to V2 if version is not specified
 				corporateLink = LFXPortalURL
 			}
 
