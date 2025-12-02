@@ -471,7 +471,7 @@ company.You can choose to accept or deny the request.
 </p>
 %s
 %s`,
-		recipientName, companyName, companyName, requestedUserInfo, utils.GetCorporateURL(false),
+		recipientName, companyName, companyName, requestedUserInfo, utils.GetCorporateURL(),
 		utils.GetEmailHelpContent(false), utils.GetEmailSignOffContent())
 
 	err := utils.SendEmail(subject, body, recipients)
@@ -508,7 +508,7 @@ Manager status.
 </p>
 %s
 %s`,
-		recipientName, companyName, companyName, utils.GetCorporateURL(false),
+		recipientName, companyName, companyName, utils.GetCorporateURL(),
 		utils.GetEmailHelpContent(false), utils.GetEmailSignOffContent())
 
 	err := utils.SendEmail(subject, body, recipients)
