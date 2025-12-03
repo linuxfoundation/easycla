@@ -64,7 +64,6 @@ type Config struct {
 	AllowedOrigins               []string `json:"-"`
 
 	CorporateConsoleURL   string `json:"corporateConsoleURL"`
-	CorporateConsoleV1URL string `json:"corporateConsoleV1URL"`
 	CorporateConsoleV2URL string `json:"corporateConsoleV2URL"`
 
 	CLAContributorv2Base string `json:"cla-contributor-v2-base"`
