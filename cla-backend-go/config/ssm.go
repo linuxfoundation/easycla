@@ -76,7 +76,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		fmt.Sprintf("cla-gitlab-app-redirect-uri-%s", stage),
 		fmt.Sprintf("cla-gitlab-app-web-hook-uri-%s", stage),
 		fmt.Sprintf("cla-corporate-base-%s", stage),
-		fmt.Sprintf("cla-corporate-v1-base-%s", stage),
+
 		fmt.Sprintf("cla-corporate-v2-base-%s", stage),
 		fmt.Sprintf("cla-contributor-v2-base-%s", stage),
 		fmt.Sprintf("cla-doc-raptor-api-key-%s", stage),
@@ -187,8 +187,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 			config.CLALogoURL = resp.value
 		case fmt.Sprintf("cla-corporate-base-%s", stage):
 			config.CorporateConsoleURL = resp.value
-		case fmt.Sprintf("cla-corporate-v1-base-%s", stage):
-			config.CorporateConsoleV1URL = resp.value
+
 		case fmt.Sprintf("cla-corporate-v2-base-%s", stage):
 			config.CorporateConsoleV2URL = resp.value
 		case fmt.Sprintf("cla-doc-raptor-api-key-%s", stage):
