@@ -58,6 +58,7 @@ def create_database():
         GerritModel,
         EventModel,
         CCLAAllowlistRequestModel,
+        APILogModel,
 
     ]
     # Create all required tables.
@@ -83,6 +84,7 @@ def delete_database():
         GitHubOrgModel,
         GerritModel,
         CCLAAllowlistRequestModel,
+        APILogModel,
     ]
     # Delete all existing tables.
     for table in tables:
@@ -5382,6 +5384,131 @@ class Event(model_interfaces.Event):
 
         except Exception as err:
             return {"errors": {"event_id": str(err)}}
+
+
+class APILogBucketDTIndex(GlobalSecondaryIndex):
+    """
+    This class represents a global secondary index for querying API logs by bucket and time range.
+    """
+
+    class Meta:
+        """Meta class for API Log bucket-dt index."""
+
+        index_name = "bucket-dt-index"
+        write_capacity_units = int(cla.conf.get("DYNAMO_WRITE_UNITS", 10))
+        read_capacity_units = int(cla.conf.get("DYNAMO_READ_UNITS", 10))
+        # All attributes are projected - not sure if this is necessary.
+        projection = AllProjection()
+
+    # This attribute is the hash key for the index.
+    bucket = UnicodeAttribute(hash_key=True)
+    # This attribute is the range key for the index.
+    dt = NumberAttribute(range_key=True)
+
+
+class APILogModel(BaseModel):
+    """
+    Represents an API log entry in the database
+    """
+
+    class Meta:
+        """Meta class for APILog."""
+
+        table_name = "cla-{}-api-log".format(stage)
+        if stage == "local":
+            host = "http://localhost:8000"
+
+    url = UnicodeAttribute(hash_key=True)
+    dt = NumberAttribute(range_key=True)
+    bucket = UnicodeAttribute(null=False)
+
+    # GSI for querying by bucket and time range
+    bucket_dt_index = APILogBucketDTIndex()
+
+
+class APILog(model_interfaces.APILog):
+    """
+    ORM-agnostic wrapper for the DynamoDB APILog model.
+    """
+
+    def __init__(self, url=None, dt=None, bucket=None):
+        super().__init__()
+        self.model = APILogModel()
+        self.model.url = url
+        self.model.dt = dt
+        self.model.bucket = bucket
+
+    def __str__(self):
+        return f"url:{self.model.url}, dt:{self.model.dt}, bucket:{self.model.bucket}"
+
+    def to_dict(self):
+        return dict(self.model)
+
+    def save(self) -> None:
+        self.model.date_modified = datetime.datetime.utcnow()
+        self.model.save()
+
+    def load(self, url, dt):
+        try:
+            api_log = self.model.get(str(url), int(dt))
+        except APILogModel.DoesNotExist:
+            raise cla.models.DoesNotExist("API Log entry not found")
+        self.model = api_log
+
+    def delete(self):
+        self.model.delete()
+
+    def get_url(self):
+        return self.model.url
+
+    def get_dt(self):
+        return self.model.dt
+
+    def get_bucket(self):
+        return self.model.bucket
+
+    def set_url(self, url):
+        self.model.url = url
+
+    def set_dt(self, dt):
+        self.model.dt = dt
+
+    def set_bucket(self, bucket):
+        self.model.bucket = bucket
+
+    @classmethod
+    def log_api_request(cls, url: str):
+        """
+        Log an API request with the given URL.
+        Creates three entries: ALL bucket, daily bucket, and monthly bucket.
+        Never raises exceptions - logs errors instead.
+        """
+        try:
+            import time
+            from datetime import datetime
+            
+            # Current timestamp in milliseconds
+            current_time = int(time.time() * 1000)
+            dt_obj = datetime.utcnow()
+            
+            # Generate bucket names
+            daily_bucket = dt_obj.strftime('%Y-%m-%d')
+            monthly_bucket = dt_obj.strftime('%Y-%m')
+            
+            # Create three log entries
+            buckets = ['ALL', daily_bucket, monthly_bucket]
+            
+            for bucket in buckets:
+                try:
+                    api_log = cls(url=url, dt=current_time, bucket=bucket)
+                    api_log.save()
+                except Exception as e:
+                    # Never let individual bucket logging failures break the flow
+                    cla.log.warning(f"Failed to log API request for bucket {bucket}: {str(e)}")
+                    
+        except Exception as e:
+            # Never let API logging failure break the request flow
+            cla.log.warning(f"Error logging API request for {url}: {str(e)}")
 
 
 class CCLAAllowlistRequestModel(BaseModel):
