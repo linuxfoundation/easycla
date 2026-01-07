@@ -5445,7 +5445,7 @@ class APILog(model_interfaces.APILog):
         return dict(self.model)
 
     def save(self) -> None:
-        self.model.date_modified = datetime.datetime.utcnow()
+        # self.model.date_modified = datetime.datetime.utcnow()
         self.model.save()
 
     def load(self, url, dt):
@@ -5484,31 +5484,36 @@ class APILog(model_interfaces.APILog):
         Never raises exceptions - logs errors instead.
         """
         try:
-            import time
-            from datetime import datetime
+            # Base timestamp in milliseconds
+            base_dt = int(time.time() * 1000)
+            dt_obj = datetime.datetime.utcnow()
 
-            # Current timestamp in milliseconds
-            current_time = int(time.time() * 1000)
-            dt_obj = datetime.utcnow()
-
-            # Generate bucket names
+            # Buckets
             daily_bucket = dt_obj.strftime('%Y-%m-%d')
             monthly_bucket = dt_obj.strftime('%Y-%m')
 
-            # Create three log entries
-            buckets = ['ALL', daily_bucket, monthly_bucket]
+            # IMPORTANT: table key is (url, dt). To avoid overwrites we shift dt by -1/0/+1 ms.
+            entries = [
+                ("ALL", base_dt - 1),
+                (daily_bucket, base_dt),
+                (monthly_bucket, base_dt + 1),
+            ]
 
-            for bucket in buckets:
+            errors = []
+            for bucket, dt_value in entries:
                 try:
-                    api_log = cls(url=url, dt=current_time, bucket=bucket)
+                    api_log = cls(url=url, dt=dt_value, bucket=bucket)
                     api_log.save()
                 except Exception as e:
-                    # Never let individual bucket logging failures break the flow
-                    cla.log.warning(f"Failed to log API request for bucket {bucket}: {str(e)}")
+                    errors.append(f"bucket={bucket} err={e}")
+
+            if errors:
+                # Only AWS logs entry (LG-style), never fail request flow
+                cla.log.info(f"LG:api-log-dynamo-failed:{url} " + "; ".join(errors))
 
         except Exception as e:
             # Never let API logging failure break the request flow
-            cla.log.warning(f"Error logging API request for {url}: {str(e)}")
+            cla.log.info(f"LG:api-log-dynamo-failed:{url} err={e}")
 
 
 class CCLAAllowlistRequestModel(BaseModel):
