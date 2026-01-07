@@ -51,6 +51,15 @@ def process_data(request, response):
     endpoint because it's an expensive operation.
     """
     cla.log.info('LG:api-request-path:' + request.path)
+    
+    # Log API request to DynamoDB table
+    try:
+        from cla.models.dynamo_models import APILog
+        APILog.log_api_request(request.path)
+    except Exception as e:
+        # Never let API logging failure break the request flow
+        cla.log.warning(f'Failed to log API request to DynamoDB: {str(e)}')
+    
     if "/github/activity" in request.path:
         body = request.bounded_stream.read()
         request.bounded_stream.read = lambda: body

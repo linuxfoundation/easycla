@@ -78,6 +78,7 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 
+	"github.com/linuxfoundation/easycla/cla-backend-go/api_logs"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	v2Signatures "github.com/linuxfoundation/easycla/cla-backend-go/v2/signatures"
 
@@ -150,6 +151,22 @@ func apiPathLogger(next http.Handler) http.Handler {
 		log.Infof("LG:api-request-path:%s", r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// apiPathLoggerWithDB creates a middleware that logs API requests to DynamoDB
+func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Infof("LG:api-request-path:%s", r.URL.Path)
+
+			// Log to DynamoDB table
+			if err := apiLogsRepo.LogAPIRequest(r.Context(), r.URL.Path); err != nil {
+				log.WithError(err).Warnf("Failed to log API request to DynamoDB: %s", r.URL.Path)
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // server function called by environment specific server functions
@@ -281,6 +298,7 @@ func server(localMode bool) http.Handler {
 	approvalListRepo := approval_list.NewRepository(awsSession, stage)
 	v1CompanyRepo := v1Company.NewRepository(awsSession, stage)
 	eventsRepo := events.NewRepository(awsSession, stage)
+	apiLogsRepo := api_logs.NewRepository(stage, dynamodb.New(awsSession))
 	v1ProjectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
 	v1CLAGroupRepo := repository.NewRepository(awsSession, stage, gitV1Repository, gerritRepo, v1ProjectClaGroupRepo)
 	metricsRepo := metrics.NewRepository(awsSession, stage, configFile.APIGatewayURL, v1ProjectClaGroupRepo)
@@ -406,7 +424,7 @@ func server(localMode bool) http.Handler {
 	// The middleware configuration is for the handler executors. These do not apply to the swagger.json document.
 	// The middleware executes after routing but before authentication, binding and validation
 	middlewareSetupfunc := func(handler http.Handler) http.Handler {
-		return apiPathLogger(setRequestIDHandler(responseLoggingMiddleware(userCreaterMiddleware(handler))))
+		return apiPathLoggerWithDB(apiLogsRepo)(setRequestIDHandler(responseLoggingMiddleware(userCreaterMiddleware(handler))))
 	}
 
 	v2API.CsvProducer = openapi_runtime.ProducerFunc(func(w io.Writer, data interface{}) error {
