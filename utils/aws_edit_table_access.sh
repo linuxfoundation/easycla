@@ -9,6 +9,8 @@ if [ -z "$STAGE" ]; then
   exit 1
 fi
 
+# aws --profile lfproduct-dev iam get-role-policy --role-name cla-backend-go-dev-us-east-2-lambdaRole --policy-name cla-backend-go-dev-lambda --query PolicyDocument --output json
+
 aws --profile lfproduct-${STAGE} --region ${AWS_REGION} \
     iam get-role-policy \
   --role-name cla-backend-${STAGE}-${AWS_REGION}-lambdaRole \
@@ -16,10 +18,23 @@ aws --profile lfproduct-${STAGE} --region ${AWS_REGION} \
   --query PolicyDocument \
   --output json > /tmp/cla-backend-${STAGE}-${AWS_REGION}-lambda.json
 
-vim /tmp/cla-backend-${STAGE}-${AWS_REGION}-lambda.json
+aws --profile lfproduct-${STAGE} --region ${AWS_REGION} \
+    iam get-role-policy \
+  --role-name cla-backend-go-${STAGE}-us-east-2-lambdaRole \
+  --policy-name cla-backend-go-${STAGE}-lambda \
+  --query PolicyDocument \
+  --output json > /tmp/cla-backend-go-${STAGE}-us-east-2-lambda.json
+
+vim /tmp/cla-backend-${STAGE}-${AWS_REGION}-lambda.json /tmp/cla-backend-go-${STAGE}-us-east-2-lambda.json
 
 aws --profile lfproduct-${STAGE} --region ${AWS_REGION} \
     iam put-role-policy \
   --role-name cla-backend-${STAGE}-${AWS_REGION}-lambdaRole \
   --policy-name cla-backend-${STAGE}-lambda \
   --policy-document file:///tmp/cla-backend-${STAGE}-${AWS_REGION}-lambda.json
+
+aws --profile lfproduct-${STAGE} --region ${AWS_REGION} \
+    iam put-role-policy \
+  --role-name cla-backend-go-${STAGE}-us-east-2-lambdaRole \
+  --policy-name cla-backend-go-${STAGE}-lambda \
+  --policy-document file:///tmp/cla-backend-go-${STAGE}-us-east-2-lambda.json
