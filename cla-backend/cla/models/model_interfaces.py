@@ -2426,7 +2426,7 @@ class APILog(object):
     def get_url(self):
         """
         Returns the URL of the API call
-        
+
         :return: The URL string
         :rtype: string
         """
@@ -2435,7 +2435,7 @@ class APILog(object):
     def get_dt(self):
         """
         Returns the timestamp of the API call
-        
+
         :return: The timestamp
         :rtype: int
         """
@@ -2444,7 +2444,7 @@ class APILog(object):
     def get_bucket(self):
         """
         Returns the bucket of the API call (ALL, YYYY-MM-DD, or YYYY-MM)
-        
+
         :return: The bucket string
         :rtype: string
         """
@@ -2455,7 +2455,7 @@ class APILog(object):
         """
         Log an API request with the given URL.
         Creates three entries: ALL bucket, daily bucket, and monthly bucket.
-        
+
         :param url: The API endpoint URL
         :type url: string
         """
