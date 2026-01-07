@@ -5486,18 +5486,18 @@ class APILog(model_interfaces.APILog):
         try:
             import time
             from datetime import datetime
-            
+
             # Current timestamp in milliseconds
             current_time = int(time.time() * 1000)
             dt_obj = datetime.utcnow()
-            
+
             # Generate bucket names
             daily_bucket = dt_obj.strftime('%Y-%m-%d')
             monthly_bucket = dt_obj.strftime('%Y-%m')
-            
+
             # Create three log entries
             buckets = ['ALL', daily_bucket, monthly_bucket]
-            
+
             for bucket in buckets:
                 try:
                     api_log = cls(url=url, dt=current_time, bucket=bucket)
@@ -5505,7 +5505,7 @@ class APILog(model_interfaces.APILog):
                 except Exception as e:
                     # Never let individual bucket logging failures break the flow
                     cla.log.warning(f"Failed to log API request for bucket {bucket}: {str(e)}")
-                    
+
         except Exception as e:
             # Never let API logging failure break the request flow
             cla.log.warning(f"Error logging API request for {url}: {str(e)}")
