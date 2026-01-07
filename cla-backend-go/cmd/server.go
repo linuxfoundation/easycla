@@ -152,23 +152,24 @@ func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) htt
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Infof("LG:api-request-path:%s", r.URL.Path)
 
-			// Log to DynamoDB table
-			func() {
-				defer func() {
-					if rec := recover(); rec != nil {
-						log.Infof("LG:api-log-dynamo-failed:%s err=panic:%v", r.URL.Path, rec)
-					}
-				}()
-
+			// Log to DynamoDB table (fire-and-forget, never fail request)
+			if apiLogsRepo != nil {
+				path := r.URL.Path
 				go func() {
-					ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+					defer func() {
+						if rec := recover(); rec != nil {
+							log.Infof("LG:api-log-dynamo-failed:%s err=panic:%v", path, rec)
+						}
+					}()
+
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 					defer cancel()
-					if err := apiLogsRepo.LogAPIRequest(ctx, r.URL.Path); err != nil {
-						// Only AWS logs entry (LG-style), never fail the request
-						log.Infof("LG:api-log-dynamo-failed:%s err=%v", r.URL.Path, err)
+
+					if err := apiLogsRepo.LogAPIRequest(ctx, path); err != nil {
+						log.Infof("LG:api-log-dynamo-failed:%s err=%v", path, err)
 					}
 				}()
-			}()
+			}
 
 			next.ServeHTTP(w, r)
 		})
