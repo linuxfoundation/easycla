@@ -88,7 +88,7 @@ func (r *repository) LogAPIRequest(ctx context.Context, url string) error {
 
 	// Return error so middleware can emit a single LG:* line.
 	if len(errs) > 0 {
-		return fmt.Errorf(strings.Join(errs, "; "))
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
 }
