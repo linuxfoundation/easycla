@@ -6,12 +6,12 @@ package api_logs
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -40,10 +40,14 @@ func NewRepository(stage string, dynamoDBClient *dynamodb.DynamoDB) Repository {
 
 // LogAPIRequest logs an API request to the DynamoDB table
 // Creates three entries: ALL bucket, daily bucket (YYYY-MM-DD), and monthly bucket (YYYY-MM)
+// IMPORTANT: table key is (url, dt). To avoid overwrites, dt is shifted by -1/0/+1 ms per bucket.
 func (r *repository) LogAPIRequest(ctx context.Context, url string) error {
-	f := logrus.Fields{
-		"functionName": "api_logs.repository.LogAPIRequest",
-		"url":          url,
+	// 200% fail-safe: never panic on nil ctx/client
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if r == nil || r.dynamoDBClient == nil {
+		return fmt.Errorf("dynamodb client is nil")
 	}
 
 	now := time.Now().UTC()
@@ -53,20 +57,19 @@ func (r *repository) LogAPIRequest(ctx context.Context, url string) error {
 	dailyBucket := now.Format("2006-01-02") // YYYY-MM-DD
 	monthlyBucket := now.Format("2006-01")  // YYYY-MM
 
-	buckets := []string{"ALL", dailyBucket, monthlyBucket}
+	entries := []*APILog{
+		{URL: url, DT: timestamp - 1, Bucket: "ALL"},
+		{URL: url, DT: timestamp, Bucket: dailyBucket},
+		{URL: url, DT: timestamp + 1, Bucket: monthlyBucket},
+	}
 	tableName := fmt.Sprintf(APILogTableName, r.stage)
 
-	for _, bucket := range buckets {
-		logEntry := &APILog{
-			URL:    url,
-			DT:     timestamp,
-			Bucket: bucket,
-		}
-
+	var errs []string
+	for _, logEntry := range entries {
 		// Convert to DynamoDB attribute value
 		av, err := dynamodbattribute.MarshalMap(logEntry)
 		if err != nil {
-			logrus.WithFields(f).WithError(err).Warnf("failed to marshal API log entry for bucket: %s", bucket)
+			errs = append(errs, fmt.Sprintf("bucket=%s marshal=%v", logEntry.Bucket, err))
 			continue
 		}
 
@@ -78,12 +81,14 @@ func (r *repository) LogAPIRequest(ctx context.Context, url string) error {
 
 		_, err = r.dynamoDBClient.PutItemWithContext(ctx, input)
 		if err != nil {
-			logrus.WithFields(f).WithError(err).Warnf("failed to save API log entry to DynamoDB for bucket: %s", bucket)
+			errs = append(errs, fmt.Sprintf("bucket=%s put=%v", logEntry.Bucket, err))
 			continue
 		}
-
-		logrus.WithFields(f).Debugf("successfully logged API request for bucket: %s", bucket)
 	}
 
+	// Return error so middleware can emit a single LG:* line.
+	if len(errs) > 0 {
+		return fmt.Errorf(strings.Join(errs, "; "))
+	}
 	return nil
 }

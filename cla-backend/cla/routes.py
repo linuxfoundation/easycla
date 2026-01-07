@@ -38,13 +38,34 @@ from cla.utils import (
     get_log_middleware
 )
 
+_APILOG_CLS = None
+_APILOG_IMPORT_ERROR = None
+
+def _get_apilog_cls():
+    """
+    Lazy, cached import to avoid per-request imports while staying safe
+    against circular-import/startup ordering issues.
+    """
+    global _APILOG_CLS, _APILOG_IMPORT_ERROR
+    if _APILOG_CLS is not None:
+        return _APILOG_CLS
+    if _APILOG_IMPORT_ERROR is not None:
+        return None
+    try:
+        from cla.models.dynamo_models import APILog as _APILog
+        _APILOG_CLS = _APILog
+        return _APILOG_CLS
+    except Exception as e:
+        _APILOG_IMPORT_ERROR = e
+        cla.log.info(f"LG:api-log-import-failed err={e}")
+        return None
 
 #
 # Middleware
 #
 
 @hug.request_middleware()
-def process_data(request, response):
+def process_data_api_logs(request, response):
     """
     This middleware is needed here to copy the stream so we can re-read it
     later on in the other handlers, currently only active on /github/activity
@@ -53,12 +74,12 @@ def process_data(request, response):
     cla.log.info('LG:api-request-path:' + request.path)
 
     # Log API request to DynamoDB table
-    try:
-        from cla.models.dynamo_models import APILog
-        APILog.log_api_request(request.path)
-    except Exception as e:
-        # Never let API logging failure break the request flow
-        cla.log.warning(f'Failed to log API request to DynamoDB: {str(e)}')
+    apilog_cls = _get_apilog_cls()
+    if apilog_cls is not None:
+        try:
+            apilog_cls.log_api_request(request.path)
+        except Exception as e:
+            cla.log.info(f"LG:api-log-dynamo-failed:{request.path} err={e}")
 
     if "/github/activity" in request.path:
         body = request.bounded_stream.read()

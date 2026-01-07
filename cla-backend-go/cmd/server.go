@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
 	"github.com/linuxfoundation/easycla/cla-backend-go/project/service"
@@ -160,9 +161,20 @@ func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) htt
 			log.Infof("LG:api-request-path:%s", r.URL.Path)
 
 			// Log to DynamoDB table
-			if err := apiLogsRepo.LogAPIRequest(r.Context(), r.URL.Path); err != nil {
-				log.WithError(err).Warnf("Failed to log API request to DynamoDB: %s", r.URL.Path)
-			}
+			func() {
+				defer func() {
+					if rec := recover(); rec != nil {
+						log.Infof("LG:api-log-dynamo-failed:%s err=panic:%v", r.URL.Path, rec)
+					}
+				}()
+
+				ctx, cancel := context.WithTimeout(r.Context(), 300*time.Millisecond)
+				defer cancel()
+				if err := apiLogsRepo.LogAPIRequest(ctx, r.URL.Path); err != nil {
+					// Only AWS logs entry (LG-style), never fail the request
+					log.Infof("LG:api-log-dynamo-failed:%s err=%v", r.URL.Path, err)
+				}
+			}()
 
 			next.ServeHTTP(w, r)
 		})
