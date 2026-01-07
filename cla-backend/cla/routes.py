@@ -67,9 +67,12 @@ def _get_apilog_cls():
 @hug.request_middleware()
 def process_data_api_logs(request, response):
     """
-    This middleware is needed here to copy the stream so we can re-read it
-    later on in the other handlers, currently only active on /github/activity
-    endpoint because it's an expensive operation.
+    Request middleware that logs API requests and, for the GitHub activity
+    endpoint, copies the request body stream so it can be re-read by other
+    handlers. The stream-copy behavior is currently only applied to the
+    /github/activity endpoint because it is an expensive operation, while
+    API request metadata is logged to the DynamoDB-backed APILog model
+    for all requests.
     """
     cla.log.info('LG:api-request-path:' + request.path)
 

@@ -168,12 +168,14 @@ func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) htt
 					}
 				}()
 
-				ctx, cancel := context.WithTimeout(r.Context(), 300*time.Millisecond)
-				defer cancel()
-				if err := apiLogsRepo.LogAPIRequest(ctx, r.URL.Path); err != nil {
-					// Only AWS logs entry (LG-style), never fail the request
-					log.Infof("LG:api-log-dynamo-failed:%s err=%v", r.URL.Path, err)
-				}
+				go func() {
+					ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+					defer cancel()
+					if err := apiLogsRepo.LogAPIRequest(ctx, r.URL.Path); err != nil {
+						// Only AWS logs entry (LG-style), never fail the request
+						log.Infof("LG:api-log-dynamo-failed:%s err=%v", r.URL.Path, err)
+					}
+				}()
 			}()
 
 			next.ServeHTTP(w, r)
