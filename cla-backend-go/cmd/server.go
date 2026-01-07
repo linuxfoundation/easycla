@@ -146,14 +146,6 @@ type combinedRepo struct {
 	projects_cla_groups.Repository
 }
 
-// in cmd/server.go (top-level imports already use logrus)
-func apiPathLogger(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Infof("LG:api-request-path:%s", r.URL.Path)
-		next.ServeHTTP(w, r)
-	})
-}
-
 // apiPathLoggerWithDB creates a middleware that logs API requests to DynamoDB
 func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
