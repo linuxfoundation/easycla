@@ -2383,3 +2383,80 @@ class CCLAAllowlistRequest(object):
         :rtype: [cla.models.model_interfaces.ProjectCLAGroup]
         """
         raise NotImplementedError()
+
+
+class APILog(object):
+    """
+    Interface to the APILog Model for logging API requests
+    """
+
+    def to_dict(self):
+        """
+        Converts models to dictionaries for JSON serialization.
+
+        :return: A dict representation of the model.
+        :rtype: dict
+        """
+        raise NotImplementedError()
+
+    def save(self):
+        """
+        Simple abstraction around the supported ORMs to save a model
+        """
+        raise NotImplementedError()
+
+    def delete(self):
+        """
+        Simple abstraction around the supported ORMs to delete a model
+        """
+        raise NotImplementedError()
+
+    def load(self, url, dt):
+        """
+        Simple abstraction around the supported ORMs to load a model
+        Populates the current object.
+
+        :param url: The URL of the API call
+        :type url: string
+        :param dt: The timestamp of the API call
+        :type dt: int
+        """
+        raise NotImplementedError()
+
+    def get_url(self):
+        """
+        Returns the URL of the API call
+
+        :return: The URL string
+        :rtype: string
+        """
+        raise NotImplementedError()
+
+    def get_dt(self):
+        """
+        Returns the timestamp of the API call
+
+        :return: The timestamp
+        :rtype: int
+        """
+        raise NotImplementedError()
+
+    def get_bucket(self):
+        """
+        Returns the bucket of the API call (ALL, YYYY-MM-DD, or YYYY-MM)
+
+        :return: The bucket string
+        :rtype: string
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    def log_api_request(cls, url):
+        """
+        Log an API request with the given URL.
+        Creates three entries: ALL bucket, daily bucket, and monthly bucket.
+
+        :param url: The API endpoint URL
+        :type url: string
+        """
+        raise NotImplementedError()
