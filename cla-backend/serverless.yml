@@ -207,6 +207,7 @@ provider:
             - dynamodb:DescribeStream
             - dynamodb:ListStreams
           Resource:
+            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-api-log"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-ccla-whitelist-requests"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-cla-manager-requests"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-companies"
@@ -229,6 +230,7 @@ provider:
           Action:
             - dynamodb:Query
           Resource:
+            - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-api-log/index/bucket-dt-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-ccla-whitelist-requests/index/company-id-project-id-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-ccla-whitelist-requests/index/ccla-approval-list-request-project-id-index"
             - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/cla-${sls:stage}-users/index/github-id-index"

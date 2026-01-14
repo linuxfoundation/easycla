@@ -38,6 +38,28 @@ from cla.utils import (
     get_log_middleware
 )
 
+_APILOG_CLS = None
+_APILOG_IMPORT_ERROR = None
+
+def _get_apilog_cls():
+    """
+    Lazy, cached import to avoid per-request imports while staying safe
+    against circular-import/startup ordering issues.
+    """
+    global _APILOG_CLS, _APILOG_IMPORT_ERROR
+    if _APILOG_CLS is not None:
+        return _APILOG_CLS
+    if _APILOG_IMPORT_ERROR is not None:
+        return None
+    try:
+        from cla.models.dynamo_models import APILog as _APILog
+        _APILOG_CLS = _APILog
+        return _APILOG_CLS
+    except Exception as e:
+        _APILOG_IMPORT_ERROR = e
+        cla.log.info(f"LG:api-log-import-failed err={e}")
+        return None
+
 # Check if authenticated user (via bearer token) is the same as user_id - if not raise exception permission denied
 # LG: comment this out to tunr off this chekc added after LFID is required everywhere in EasyCLA
 def check_user_id_is_current(auth_user, user_id):
@@ -46,19 +68,30 @@ def check_user_id_is_current(auth_user, user_id):
         cla.log.debug(f'request_individual_signature - auth user UUID {auth_user_id} is not the same as requested signature UUID {str(user_id)}')
         raise cla.auth.AuthError('permission denied')
 
-
 #
 # Middleware
 #
 
 @hug.request_middleware()
-def process_data(request, response):
+def process_data_api_logs(request, response):
     """
-    This middleware is needed here to copy the stream so we can re-read it
-    later on in the other handlers, currently only active on /github/activity
-    endpoint because it's an expensive operation.
+    Request middleware that logs API requests and, for the GitHub activity
+    endpoint, copies the request body stream so it can be re-read by other
+    handlers. The stream-copy behavior is currently only applied to the
+    /github/activity endpoint because it is an expensive operation, while
+    API request metadata is logged to the DynamoDB-backed APILog model
+    for all requests.
     """
     cla.log.info('LG:api-request-path:' + request.path)
+
+    # Log API request to DynamoDB table
+    apilog_cls = _get_apilog_cls()
+    if apilog_cls is not None:
+        try:
+            apilog_cls.log_api_request(request.path)
+        except Exception as e:
+            cla.log.info(f"LG:api-log-dynamo-failed:{request.path} err={e}")
+
     if "/github/activity" in request.path:
         body = request.bounded_stream.read()
         request.bounded_stream.read = lambda: body
