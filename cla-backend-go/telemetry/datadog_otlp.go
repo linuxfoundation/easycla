@@ -46,7 +46,7 @@ func InitDatadogOTel(cfg DatadogOTelConfig) error {
 		// Tags (prefer explicit DD_* env vars; fallback to stage/config).
 		ddEnv := strings.TrimSpace(os.Getenv("DD_ENV"))
 		if ddEnv == "" {
-			ddEnv = stageToDDEnd(cfg.Stage)
+			ddEnv = stageToDDEnv(cfg.Stage)
 		}
 
 		ddService := strings.TrimSpace(os.Getenv("DD_SERVICE"))
@@ -200,11 +200,14 @@ func newOTLPHTTPExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
 	return otlptracehttp.New(ctx, opts...)
 }
 
-func stageToDDEnd(stage string) string {
+func stageToDDEnv(stage string) string {
 	const prod = "prod"
+	const staging = "staging"
 	switch strings.ToLower(strings.TrimSpace(stage)) {
 	case prod:
 		return prod
+	case staging:
+		return staging
 	default:
 		return "dev"
 	}
