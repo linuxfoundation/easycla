@@ -32,6 +32,7 @@ custom:
   datadog:
     dd_env:
       dev: dev
+      staging: staging
       prod: prod
     site: ${file(./env.json):dd-site-${sls:stage}, ssm:/cla-dd-site-${sls:stage}}
     apiKeySecretArn: ${file(./env.json):dd-api-key-secret-arn-${sls:stage}, ssm:/cla-dd-api-key-secret-arn-${sls:stage}}
