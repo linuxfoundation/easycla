@@ -40,6 +40,7 @@ custom:
       prod: prod
     site: ${file(./env.json):dd-site-${opt:stage}, ssm:/cla-dd-site-${opt:stage}}
     apiKeySecretArn: ${file(./env.json):dd-api-key-secret-arn-${opt:stage}, ssm:/cla-dd-api-key-secret-arn-${opt:stage}}
+    extensionLayerArn: ${file(./env.json):dd-extension-layer-arn-${opt:stage}, ssm:/cla-dd-extension-layer-arn-${opt:stage}}
   # Config for serverless-prune-plugin - remove all but the 10 most recent
   # versions to avoid the "Code storage limit exceeded" error
   prune:
@@ -71,6 +72,11 @@ provider:
         - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
         - "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"
       statements:
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - ${self:custom.datadog.apiKeySecretArn}
         - Effect: Allow
           Action:
             - cloudwatch:*
@@ -286,9 +292,8 @@ provider:
     OTEL_DATADOG_API_LOGGING: ${file(./env.json):otel-datadog-api-logging-${opt:stage}, ssm:/cla-otel-datadog-api-logging-${opt:stage}}
 
     # Datadog Lambda Extension (OTLP/HTTP) - Go backend uses pure OTel SDK -> DD Extension.
-    DD_ENV: ${self:custom.datadog.dd_env.${self:provider.stage}}
+    DD_ENV: ${self:custom.datadog.dd_env.${opt:stage}, self:custom.datadog.dd_env.dev}
     DD_SERVICE: easycla-backend
-    DD_VERSION: ${env:DD_VERSION, ''}
     # DD_SITE: ${self:custom.datadog.site}
     # DD_API_KEY_SECRET_ARN: ${self:custom.datadog.apiKeySecretArn}
     DD_SITE: ${file(./env.json):dd-site-${opt:stage}, ssm:/cla-dd-site-${opt:stage}}
@@ -344,3 +349,5 @@ functions:
       patterns:
         - '!**'
         - 'bin/backend-aws-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}

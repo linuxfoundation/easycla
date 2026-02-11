@@ -35,6 +35,7 @@ custom:
       prod: prod
     site: ${file(./env.json):dd-site-${sls:stage}, ssm:/cla-dd-site-${sls:stage}}
     apiKeySecretArn: ${file(./env.json):dd-api-key-secret-arn-${sls:stage}, ssm:/cla-dd-api-key-secret-arn-${sls:stage}}
+    extensionLayerArn: ${file(./env.json):dd-extension-layer-arn-${sls:stage}, ssm:/cla-dd-extension-layer-arn-${sls:stage}}
   wsgi:
     app: cla.routes.__hug_wsgi__
     pythonBin: python
@@ -144,6 +145,11 @@ provider:
         - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
         - "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"
       statements:
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - ${self:custom.datadog.apiKeySecretArn}
         - Effect: Allow
           Action:
             - cloudwatch:*
@@ -372,9 +378,8 @@ provider:
     OTEL_DATADOG_API_LOGGING: ${file(./env.json):otel-datadog-api-logging-${sls:stage}, ssm:/cla-otel-datadog-api-logging-${sls:stage}}
 
     # Datadog/OTel placeholders (Python OTel is stubbed for now)
-    DD_ENV: ${self:custom.datadog.dd_env.${sls:stage}}
+    DD_ENV: ${self:custom.datadog.dd_env.${sls:stage}, self:custom.datadog.dd_env.dev}
     DD_SERVICE: easycla-backend
-    DD_VERSION: ${env:DD_VERSION, ''}
     # DD_SITE: ${self:custom.datadog.site}
     # DD_API_KEY_SECRET_ARN: ${self:custom.datadog.apiKeySecretArn}
     DD_SITE: ${file(./env.json):dd-site-${sls:stage}, ssm:/cla-dd-site-${sls:stage}}
@@ -418,6 +423,9 @@ plugins:
   - serverless-domain-manager
 
 functions:
+  api:
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
   authorizer:
     handler: auth/bin/authorizer
     description: "EasyCLA API authorizer"

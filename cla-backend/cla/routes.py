@@ -124,7 +124,7 @@ def process_data_api_logs(request, response):
     cla.log.info('LG:api-request-path:' + request.path)
 
     # DynamoDB API logging (conditional)
-    if _enabled_by_env_or_stage("DDB_API_LOGGING"):
+    if _enabled_by_env_or_stage("DDB_API_LOGGING", default_by_stage=(True, False)):
         apilog_cls = _get_apilog_cls()
         if apilog_cls is not None:
             try:
@@ -133,7 +133,7 @@ def process_data_api_logs(request, response):
                 cla.log.info(f"LG:api-log-dynamo-failed:{request.path} err={e}")
 
     # OTel/Datadog API logging (stub only for Python for now)
-    if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING"):
+    if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
         _log_api_request_otel_datadog_stub_async(request.path)
 
     if "/github/activity" in request.path:
