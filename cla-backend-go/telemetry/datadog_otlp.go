@@ -176,9 +176,10 @@ func firstNonEmpty(values ...string) string {
 }
 
 func stageToDDEnd(stage string) string {
+	const prod = "prod"
 	switch strings.ToLower(strings.TrimSpace(stage)) {
-	case "prod":
-		return "prod"
+	case prod:
+		return prod
 	default:
 		return "dev"
 	}

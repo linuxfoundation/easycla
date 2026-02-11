@@ -217,6 +217,8 @@ func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) htt
 }
 
 // server function called by environment specific server functions
+//
+//nolint:gocyclo
 func server(localMode bool) http.Handler {
 	f := logrus.Fields{
 		"functionName": "cmd.server",
@@ -261,12 +263,12 @@ func server(localMode bool) http.Handler {
 		if strings.TrimSpace(version) == "" {
 			version = "unknown"
 		}
-		if err := telemetry.InitDatadogOTel(telemetry.DatadogOTelConfig{
+		if er := telemetry.InitDatadogOTel(telemetry.DatadogOTelConfig{
 			Stage:   stage,
 			Service: "easycla-backend",
 			Version: version,
-		}); err != nil {
-			log.Infof("LG:otel-datadog-disabled err=%v", err)
+		}); er != nil {
+			log.Infof("LG:otel-datadog-disabled err=%v", er)
 			otelDatadogEnabled = false
 		}
 	}
