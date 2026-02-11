@@ -423,9 +423,6 @@ plugins:
   - serverless-domain-manager
 
 functions:
-  api:
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
   authorizer:
     handler: auth/bin/authorizer
     description: "EasyCLA API authorizer"
@@ -434,6 +431,8 @@ functions:
       individually: true
       patterns:
         - 'auth/bin/**'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   api-v3-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-api-v3-lambda
@@ -449,6 +448,8 @@ functions:
       individually: true
       patterns:
         - 'bin/backend-aws-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-projects-events-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-dynamo-projects-lambda
@@ -459,6 +460,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-signatures-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -469,6 +472,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-events-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -479,6 +484,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-repositories-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -489,6 +496,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-projects-cla-groups-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -499,6 +508,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-github-orgs-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -509,6 +520,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   save-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-save-metrics-lambda
@@ -525,6 +538,8 @@ functions:
       individually: true
       patterns:
         - 'bin/metrics-aws-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   report-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-report-metrics-lambda
@@ -541,6 +556,8 @@ functions:
       individually: true
       patterns:
         - 'bin/metrics-report-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   zip-builder-scheduler-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-zip-builder-scheduler-lambda
@@ -557,6 +574,8 @@ functions:
       individually: true
       patterns:
         - 'bin/zipbuilder-scheduler-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   zip-builder-lambda:
     handler: 'bin/zipbuilder-lambda'
@@ -569,6 +588,8 @@ functions:
       individually: true
       patterns:
         - 'bin/zipbuilder-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   gitlab-repository-check-lambda:
     handler: 'bin/gitlab-repository-check-lambda'
@@ -586,6 +607,8 @@ functions:
       individually: true
       patterns:
         - 'bin/gitlab-repository-check-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   # User Subscribe event for dynamodb cla-stage-users table.
   easycla-user-event-handler-lambda:
@@ -601,6 +624,8 @@ functions:
     events:
       - sns:
           arn: ${self:custom.userEventsSNSTopicARN}
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   apiv1:
     handler: wsgi_handler.handler
@@ -610,6 +635,8 @@ functions:
           method: ANY
           path: v1/{proxy+}
           cors: true
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   apiv2:
     handler: wsgi_handler.handler
@@ -619,6 +646,8 @@ functions:
           method: ANY
           path: v2/{proxy+}
           cors: true
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   salesforceprojects:
     handler: cla.salesforce.get_projects
@@ -628,6 +657,8 @@ functions:
           method: ANY
           path: v1/salesforce/projects
           cors: true
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   salesforceprojectbyID:
     handler: cla.salesforce.get_project
@@ -637,6 +668,8 @@ functions:
           method: ANY
           path: v1/salesforce/project
           cors: true
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   # GitHub callback handler
   githubinstall:
@@ -646,6 +679,8 @@ functions:
       - http:
           method: ANY
           path: v2/github/installation
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   # GitHub callback handler
   githubactivity:
@@ -655,6 +690,8 @@ functions:
       - http:
           method: POST
           path: v2/github/activity
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
 
 resources:
