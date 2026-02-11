@@ -8,6 +8,7 @@ The entry point for the CLA service. Lays out all routes and controller function
 import hug
 import os
 import threading
+import re
 import requests
 from falcon import HTTP_401, HTTP_400, HTTP_OK, HTTP_500, Response
 from hug.middleware import LogMiddleware
@@ -43,6 +44,56 @@ from cla.utils import (
 _APILOG_CLS = None
 _APILOG_IMPORT_ERROR = None
 _FEATURE_FLAG_CACHE = {}
+
+# Path template normalization (mirrors utils/count_apis.sh, but preserves version segments: /v1, /v2, ...).
+_RE_MULTI_SLASH = re.compile(r"/{2,}")
+_RE_ASSET_EXT = re.compile(r"\.(png|svg|css|js|json|xml|htm|html)$")
+_RE_SWAGGER_ASSET = re.compile(r"^/v([0-9]+)/swagger\.\{asset\}$")
+_RE_UUID = re.compile(r"(?i)[0-9a-f-]{36}")
+_RE_DIGITS = re.compile(r"^[0-9]+$")
+_RE_SFID = re.compile(r"^(00|a0)[A-Za-z0-9]{13,16}$")
+_RE_LFXID = re.compile(r"^lf[A-Za-z0-9]{16,22}$")
+
+def _sanitize_api_path(path: str) -> str:
+    p = (path or "").strip()
+    if p == "":
+        return "/"
+    if not p.startswith("/"):
+        p = "/" + p
+
+    p = _RE_MULTI_SLASH.sub("/", p)
+    if p != "/" and p.endswith("/"):
+        p = p.rstrip("/")
+        if p == "":
+            p = "/"
+
+    p = _RE_ASSET_EXT.sub(".{asset}", p)
+
+    m = _RE_SWAGGER_ASSET.match(p)
+    if m:
+        p = f"/v{m.group(1)}/swagger"
+
+    p = _RE_UUID.sub("{uuid}", p)
+
+    parts = p.split("/")
+    for i, seg in enumerate(parts):
+        if seg == "":
+            continue
+        if _RE_DIGITS.match(seg):
+            parts[i] = "{id}"
+        elif _RE_SFID.match(seg):
+            parts[i] = "{sfid}"
+        elif _RE_LFXID.match(seg):
+            parts[i] = "{lfxid}"
+        elif seg == "null":
+            parts[i] = "{null}"
+
+    out = "/".join(parts)
+    if out == "":
+        return "/"
+    if not out.startswith("/"):
+        out = "/" + out
+    return out
 
 def _parse_boolish(value):
     if value is None:

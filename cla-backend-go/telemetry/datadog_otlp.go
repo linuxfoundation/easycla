@@ -103,41 +103,76 @@ func InitDatadogOTel(cfg DatadogOTelConfig) error {
 }
 
 // WrapHTTPHandler instruments inbound HTTP requests using otelhttp and produces spans.
-// Span name is "<METHOD> <PATH>" for easier usage monitoring by endpoint.
 func WrapHTTPHandler(next http.Handler) http.Handler {
-	// Precompile patterns once (WrapHTTPHandler is expected to be called once at init/cold-start).
+	// Precompile once at cold start (WrapHTTPHandler is called once during init).
 	reMultiSlash := regexp.MustCompile(`/{2,}`)
-	reSwagger := regexp.MustCompile(`^/v[0-9]+/swagger(?:\.[A-Za-z0-9]+)?$`)
-	reAPIDocs := regexp.MustCompile(`^/v[0-9]+/api-docs$`)
+	reAssetExt := regexp.MustCompile(`\.(png|svg|css|js|json|xml|htm|html)$`)
+	reSwaggerAsset := regexp.MustCompile(`^/v([0-9]+)/swagger\.\{asset\}$`)
+	reUUID := regexp.MustCompile(`(?i)[0-9a-f-]{36}`)
+	reDigits := regexp.MustCompile(`^[0-9]+$`)
+	reSFID := regexp.MustCompile(`^(00|a0)[A-Za-z0-9]{13,16}$`)
+	reLFXID := regexp.MustCompile(`^lf[A-Za-z0-9]{16,22}$`)
 
-	// Dynamic segment patterns (reduce cardinality).
-	reUUID := regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	reNumeric := regexp.MustCompile(`^[0-9]+$`)
-	reSFID := regexp.MustCompile(`(?i)^(?:00|a0)[A-Za-z0-9]{13,16}$`)
-	reLFXID := regexp.MustCompile(`(?i)^lf[A-Za-z0-9]{16,22}$`)
-	reHexLong := regexp.MustCompile(`(?i)^[0-9a-f]{16,}$`)
-
-	looksLikeOpaqueID := func(seg string) bool {
-		// Safety valve for long opaque IDs that aren't strictly UUID/hex/numeric.
-		// Keep conservative to avoid masking normal route segments.
-		if len(seg) < 24 {
-			return false
+	sanitizePath := func(p string) string {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return "/"
 		}
-		hasLetter := false
-		hasDigit := false
-		for _, ch := range seg {
-			switch {
-			case 'a' <= ch && ch <= 'z', 'A' <= ch && ch <= 'Z':
-				hasLetter = true
-			case '0' <= ch && ch <= '9':
-				hasDigit = true
-			case ch == '-' || ch == '_':
-				// ok
-			default:
-				return false
+		if !strings.HasPrefix(p, "/") {
+			p = "/" + p
+		}
+
+		// Collapse multiple slashes and trim a trailing slash (keep "/" as "/").
+		p = reMultiSlash.ReplaceAllString(p, "/")
+		if len(p) > 1 && strings.HasSuffix(p, "/") {
+			p = strings.TrimRight(p, "/")
+			if p == "" {
+				p = "/"
 			}
 		}
-		return hasLetter && hasDigit
+
+		// Static assets -> .{asset}
+		p = reAssetExt.ReplaceAllString(p, ".{asset}")
+
+		// Swagger JSON/YAML/etc files -> /vN/swagger (preserve version number).
+		if m := reSwaggerAsset.FindStringSubmatch(p); m != nil {
+			p = "/v" + m[1] + "/swagger"
+		}
+
+		// UUID-ish values (any 36-char hex/hyphen substring) -> {uuid}
+		p = reUUID.ReplaceAllString(p, "{uuid}")
+
+		// Segment-based normalization (mirrors the shell script ordering post-uuid):
+		// - numeric segments -> {id}
+		// - Salesforce IDs -> {sfid}
+		// - LFX IDs -> {lfxid}
+		// - "/null" -> {null}
+		parts := strings.Split(p, "/")
+		for i := range parts {
+			seg := parts[i]
+			if seg == "" {
+				continue
+			}
+			switch {
+			case reDigits.MatchString(seg):
+				parts[i] = "{id}"
+			case reSFID.MatchString(seg):
+				parts[i] = "{sfid}"
+			case reLFXID.MatchString(seg):
+				parts[i] = "{lfxid}"
+			case seg == "null":
+				parts[i] = "{null}"
+			}
+		}
+
+		out := strings.Join(parts, "/")
+		if out == "" {
+			return "/"
+		}
+		if !strings.HasPrefix(out, "/") {
+			out = "/" + out
+		}
+		return out
 	}
 
 	return otelhttp.NewHandler(
@@ -146,53 +181,7 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
 			// LG: use this to have per distinct API URL datapoints
 			// return fmt.Sprintf("%s %s", r.Method, r.URL.Path)
-			// LG: use this to have per API endpoint datapoints (mask dynamic segments)
-			/**/
-			p := strings.TrimSpace(r.URL.Path)
-			if p == "" {
-				p = "/"
-			}
-
-			// Normalize slashes + trailing slash.
-			p = reMultiSlash.ReplaceAllString(p, "/")
-			if len(p) > 1 && strings.HasSuffix(p, "/") {
-				p = strings.TrimRight(p, "/")
-				if p == "" {
-					p = "/"
-				}
-			}
-
-			// Stable groupings for docs-like endpoints across versions.
-			switch {
-			case reSwagger.MatchString(p):
-				p = "/v*/swagger"
-			case reAPIDocs.MatchString(p):
-				p = "/v*/api-docs"
-			default:
-				parts := strings.Split(p, "/")
-				for i := 1; i < len(parts); i++ { // skip leading ""
-					seg := parts[i]
-					if seg == "" {
-						continue
-					}
-					if strings.EqualFold(seg, "null") ||
-						reNumeric.MatchString(seg) ||
-						reUUID.MatchString(seg) ||
-						reSFID.MatchString(seg) ||
-						reLFXID.MatchString(seg) ||
-						reHexLong.MatchString(seg) ||
-						looksLikeOpaqueID(seg) {
-						parts[i] = "*"
-					}
-				}
-				p = strings.Join(parts, "/")
-				if p == "" {
-					p = "/"
-				}
-			}
-
-			return fmt.Sprintf("%s %s", r.Method, p)
-			/**/
+			return fmt.Sprintf("%s %s", r.Method, sanitizePath(r.URL.Path))
 		}),
 	)
 }
