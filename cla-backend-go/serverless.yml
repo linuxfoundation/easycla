@@ -32,6 +32,14 @@ custom:
   dynamodb:
     # Region where dynamodb is installed
     region: us-east-1
+
+  # Datadog tagging conventions + placeholders (CloudOps ticket LFIT-7051 will provide real values)
+  datadog:
+    dd_env:
+      dev: dev
+      prod: prod
+    site: ${file(./env.json):dd-site-${opt:stage}, ssm:/cla-dd-site-${opt:stage}}
+    apiKeySecretArn: ${file(./env.json):dd-api-key-secret-arn-${opt:stage}, ssm:/cla-dd-api-key-secret-arn-${opt:stage}}
   # Config for serverless-prune-plugin - remove all but the 10 most recent
   # versions to avoid the "Code storage limit exceeded" error
   prune:
@@ -273,6 +281,20 @@ provider:
     SETUPTOOLS_USE_DISTUTILS: stdlib
     # Turn on USER_AUTH_TRACING to see additional debug of user scopes for the authenticated users - output is verbose
     USER_AUTH_TRACING: true
+
+    DDB_API_LOGGING: ${file(./env.json):ddb-api-logging-${opt:stage}, ssm:/cla-ddb-api-logging-${opt:stage}}
+    OTEL_DATADOG_API_LOGGING: ${file(./env.json):otel-datadog-api-logging-${opt:stage}, ssm:/cla-otel-datadog-api-logging-${opt:stage}}
+
+    # Datadog Lambda Extension (OTLP/HTTP) - Go backend uses pure OTel SDK -> DD Extension.
+    DD_ENV: ${self:custom.datadog.dd_env.${self:provider.stage}}
+    DD_SERVICE: easycla-backend
+    DD_VERSION: ${env:DD_VERSION, ''}
+    # DD_SITE: ${self:custom.datadog.site}
+    # DD_API_KEY_SECRET_ARN: ${self:custom.datadog.apiKeySecretArn}
+    DD_SITE: ${file(./env.json):dd-site-${opt:stage}, ssm:/cla-dd-site-${opt:stage}}
+    DD_API_KEY_SECRET_ARN: ${file(./env.json):dd-api-key-secret-arn-${opt:stage}, ssm:/cla-dd-api-key-secret-arn-${opt:stage}}
+    DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT: localhost:4318
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:4318/v1/traces
 
   stackTags:
     Name: ${self:service}

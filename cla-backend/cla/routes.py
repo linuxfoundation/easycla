@@ -6,6 +6,8 @@ The entry point for the CLA service. Lays out all routes and controller function
 """
 
 import hug
+import os
+import threading
 import requests
 from falcon import HTTP_401, HTTP_400, HTTP_OK, HTTP_500, Response
 from hug.middleware import LogMiddleware
@@ -40,6 +42,51 @@ from cla.utils import (
 
 _APILOG_CLS = None
 _APILOG_IMPORT_ERROR = None
+_FEATURE_FLAG_CACHE = {}
+
+def _parse_boolish(value):
+    if value is None:
+        return None
+    v = str(value).strip().lower()
+    if v in ("1", "true", "yes", "y", "on"):
+        return True
+    if v in ("0", "false", "no", "n", "off"):
+        return False
+    return None
+
+def _enabled_by_env_or_stage(env_var: str, default_by_stage: tuple[bool, bool]) -> bool:
+    # cache (env vars don't change during a lambda container lifetime)
+    if env_var in _FEATURE_FLAG_CACHE:
+        return _FEATURE_FLAG_CACHE[env_var]
+
+    raw = os.getenv(env_var)
+    if raw is not None and raw.strip() != "":
+        parsed = _parse_boolish(raw)
+        if parsed is not None:
+            _FEATURE_FLAG_CACHE[env_var] = parsed
+            return parsed
+        try:
+            cla.log.info(f"LG:api-log-flag-invalid:{env_var} value={raw} (falling back to STAGE default)")
+        except Exception:
+            pass
+
+    stage = (os.getenv("STAGE", "dev") or "dev").strip().lower()
+    is_prod = stage == "prod"
+    enabled = default_by_stage[1] if is_prod else default_by_stage[0]
+    _FEATURE_FLAG_CACHE[env_var] = enabled
+    return enabled
+
+def _log_api_request_otel_datadog_stub_async(path: str) -> None:
+    def _run():
+        try:
+            # TODO: LG: implement OTel/Datadog here (Python backend decision pending)
+            return
+        except Exception as e:
+            cla.log.info(f"LG:api-log-otel-datadog-failed:{path} err={e}")
+    try:
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception as e:
+        cla.log.info(f"LG:api-log-otel-datadog-failed:{path} err={e}")
 
 def _get_apilog_cls():
     """
@@ -76,13 +123,18 @@ def process_data_api_logs(request, response):
     """
     cla.log.info('LG:api-request-path:' + request.path)
 
-    # Log API request to DynamoDB table
-    apilog_cls = _get_apilog_cls()
-    if apilog_cls is not None:
-        try:
-            apilog_cls.log_api_request(request.path)
-        except Exception as e:
-            cla.log.info(f"LG:api-log-dynamo-failed:{request.path} err={e}")
+    # DynamoDB API logging (conditional)
+    if _enabled_by_env_or_stage("DDB_API_LOGGING"):
+        apilog_cls = _get_apilog_cls()
+        if apilog_cls is not None:
+            try:
+                apilog_cls.log_api_request(request.path)
+            except Exception as e:
+                cla.log.info(f"LG:api-log-dynamo-failed:{request.path} err={e}")
+
+    # OTel/Datadog API logging (stub only for Python for now)
+    if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING"):
+        _log_api_request_otel_datadog_stub_async(request.path)
 
     if "/github/activity" in request.path:
         body = request.bounded_stream.read()
