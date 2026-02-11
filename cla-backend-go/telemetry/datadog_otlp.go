@@ -116,16 +116,35 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 func newOTLPHTTPExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
 	// Standard overrides; default to Datadog Lambda Extension OTLP/HTTP.
 	//
-	// Expected default:
-	//   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces
-	endpoint := firstNonEmpty(
-		strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")),
-		strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
-		"http://localhost:4318/v1/traces",
+	// OTLP/HTTP env var rules:
+	// - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is per-signal. If set, preserve its path verbatim
+	//   (default to "/" if no path).
+	// - OTEL_EXPORTER_OTLP_ENDPOINT is a base endpoint. If set (and per-signal is not),
+	//   append "/v1/traces" (handling trailing slashes).
+	tracesEndpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"))
+	baseEndpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+
+	var (
+		endpoint           string
+		usedTracesEndpoint bool
+		usedBaseEndpoint   bool
 	)
 
+	if tracesEndpoint != "" {
+		endpoint = tracesEndpoint
+		usedTracesEndpoint = true
+	} else if baseEndpoint != "" {
+		endpoint = baseEndpoint
+		usedBaseEndpoint = true
+	} else {
+		// Datadog Lambda Extension default (OTLP/HTTP).
+		endpoint = "http://localhost:4318/v1/traces"
+		// Default is already the full traces endpoint => treat like per-signal.
+		usedTracesEndpoint = true
+	}
+
 	var host string
-	path := "/v1/traces"
+	parsedPath := ""
 	insecure := true
 
 	// Accept full URL or host:port[/path]
@@ -135,19 +154,34 @@ func newOTLPHTTPExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
 			return nil, err
 		}
 		host = u.Host
-		if u.Path != "" {
-			path = u.Path
-		}
+		parsedPath = u.Path
 		insecure = (u.Scheme == "http")
 	} else {
 		host = endpoint
 		if strings.Contains(endpoint, "/") {
 			parts := strings.SplitN(endpoint, "/", 2)
 			host = parts[0]
-			if parts[1] != "" {
-				path = "/" + parts[1]
-			}
+			// Preserve remainder as path (empty remainder => "/")
+			parsedPath = "/" + parts[1]
 		}
+	}
+
+	// Normalize empty/missing paths to "/" (URL semantics)
+	if strings.TrimSpace(parsedPath) == "" {
+		parsedPath = "/"
+	} else if !strings.HasPrefix(parsedPath, "/") {
+		// Defensive (shouldn't happen with url.Parse)
+		parsedPath = "/" + parsedPath
+	}
+
+	path := parsedPath
+	if usedBaseEndpoint {
+		// Base endpoint: append OTLP/HTTP traces path, handling trailing slashes.
+		base := strings.TrimRight(parsedPath, "/")
+		path = base + "/v1/traces"
+	} else if usedTracesEndpoint {
+		// Per-signal endpoint: preserve path verbatim (already normalized above)
+		path = parsedPath
 	}
 
 	if strings.TrimSpace(host) == "" {
@@ -164,15 +198,6 @@ func newOTLPHTTPExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
 	}
 
 	return otlptracehttp.New(ctx, opts...)
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }
 
 func stageToDDEnd(stage string) string {
