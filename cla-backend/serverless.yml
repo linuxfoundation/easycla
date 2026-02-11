@@ -29,6 +29,12 @@ package:
 
 custom:
   allowed_origins: ${file(./env.json):cla-allowed-origins-${sls:stage}, ssm:/cla-allowed-origins-${sls:stage}}
+  datadog:
+    dd_env:
+      dev: dev
+      prod: prod
+    site: ${file(./env.json):dd-site-${sls:stage}, ssm:/cla-dd-site-${sls:stage}}
+    apiKeySecretArn: ${file(./env.json):dd-api-key-secret-arn-${sls:stage}, ssm:/cla-dd-api-key-secret-arn-${sls:stage}}
   wsgi:
     app: cla.routes.__hug_wsgi__
     pythonBin: python
@@ -360,6 +366,21 @@ provider:
     # https://github.com/pypa/setuptools/issues/2350 and
     # https://github.com/pypa/setuptools/issues/2232
     SETUPTOOLS_USE_DISTUTILS: stdlib
+
+    # API usage logging toggles:
+    DDB_API_LOGGING: ${file(./env.json):ddb-api-logging-${sls:stage}, ssm:/cla-ddb-api-logging-${sls:stage}}
+    OTEL_DATADOG_API_LOGGING: ${file(./env.json):otel-datadog-api-logging-${sls:stage}, ssm:/cla-otel-datadog-api-logging-${sls:stage}}
+
+    # Datadog/OTel placeholders (Python OTel is stubbed for now)
+    DD_ENV: ${self:custom.datadog.dd_env.${sls:stage}}
+    DD_SERVICE: easycla-backend
+    DD_VERSION: ${env:DD_VERSION, ''}
+    # DD_SITE: ${self:custom.datadog.site}
+    # DD_API_KEY_SECRET_ARN: ${self:custom.datadog.apiKeySecretArn}
+    DD_SITE: ${file(./env.json):dd-site-${sls:stage}, ssm:/cla-dd-site-${sls:stage}}
+    DD_API_KEY_SECRET_ARN: ${file(./env.json):dd-api-key-secret-arn-${sls:stage}, ssm:/cla-dd-api-key-secret-arn-${sls:stage}}
+    DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT: localhost:4318
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:4318/v1/traces
 
   stackTags:
     Name: ${self:service}
