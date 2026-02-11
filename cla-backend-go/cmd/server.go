@@ -254,7 +254,7 @@ func server(localMode bool) http.Handler {
 	// Initialize OTel SDK -> Datadog Lambda Extension (OTLP) once at cold start.
 	// If init fails, disable OTel logging but never fail startup.
 	if otelDatadogEnabled {
-		version := Commit
+		version := strings.TrimSpace(Commit)
 		if strings.TrimSpace(version) == "" {
 			version = Version
 		}

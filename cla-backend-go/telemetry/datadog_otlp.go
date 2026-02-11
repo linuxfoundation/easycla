@@ -72,7 +72,7 @@ func InitDatadogOTel(cfg DatadogOTelConfig) error {
 			resource.WithAttributes(
 				attribute.String("service.name", ddService),
 				attribute.String("service.version", ddVersion),
-				attribute.String("deployment.environment", ddEnv),
+				attribute.String("deployment.environment.name", ddEnv),
 			),
 		)
 		if err != nil {
