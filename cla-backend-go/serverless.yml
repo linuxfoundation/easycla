@@ -301,8 +301,6 @@ provider:
     DD_API_KEY_SECRET_ARN: ${file(./env.json):dd-api-key-secret-arn-${opt:stage}, ssm:/cla-dd-api-key-secret-arn-${opt:stage}}
     DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT: localhost:4318
     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:4318/v1/traces
-    OTEL_DATADOG_API_LOGGING: ${file(./env.json):otel-datadog-api-logging-${opt:stage}, ssm:/cla-otel-datadog-api-logging-${opt:stage}}
-    DDB_API_LOGGING: ${file(./env.json):dynamodb-api-logging-${opt:stage}, ssm:/cla-dynamodb-api-logging-${opt:stage}}
 
   stackTags:
     Name: ${self:service}
