@@ -114,10 +114,10 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 	reAssetExt := regexp.MustCompile(`\.(png|svg|css|js|json|xml|htm|html)$`)
 	reSwaggerAsset := regexp.MustCompile(`^(/v[0-9]+)/swagger\.\{asset\}$`)
 	reUUID := regexp.MustCompile(`[0-9a-fA-F-]{36}`)
-	reNumericID := regexp.MustCompile(`/[0-9]+(?=/|$)`)
-	reSFID := regexp.MustCompile(`/(?:00|a0)[A-Za-z0-9]{13,16}(?=/|$)`)
-	reLFXID := regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(?=/|$)`)
-	reNull := regexp.MustCompile(`/null(?=/|$)`)
+	reNumericID := regexp.MustCompile(`/[0-9]+(/|$)`)
+	reSFID := regexp.MustCompile(`/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)`)
+	reLFXID := regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(/|$)`)
+	reNull := regexp.MustCompile(`/null(/|$)`)
 
 	sanitize := func(path string) string {
 		p := strings.TrimSpace(path)
@@ -143,10 +143,10 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 
 		// Dynamic segment masking (use template placeholders, not "*")
 		p = reUUID.ReplaceAllString(p, "{uuid}")
-		p = reNumericID.ReplaceAllString(p, "/{id}")
-		p = reSFID.ReplaceAllString(p, "/{sfid}")
-		p = reLFXID.ReplaceAllString(p, "/{lfxid}")
-		p = reNull.ReplaceAllString(p, "/{null}")
+		p = reNumericID.ReplaceAllString(p, "/{id}$1")
+		p = reSFID.ReplaceAllString(p, "/{sfid}$1")
+		p = reLFXID.ReplaceAllString(p, "/{lfxid}$1")
+		p = reNull.ReplaceAllString(p, "/{null}$1")
 
 		if p == "" {
 			return "/"
