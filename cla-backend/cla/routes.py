@@ -484,7 +484,7 @@ def check_auth(request=None, **kwargs):
 
 
 @hug.exception(cla.auth.AuthError)
-def handle_auth_error(exception, response=None, **kwargs):
+def handle_auth_error(exception, request=None, response=None, **kwargs):
     """Handles authentication errors"""
     response.status = HTTP_401
 
