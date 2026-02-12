@@ -7,7 +7,6 @@ The entry point for the CLA service. Lays out all routes and controller function
 
 import hug
 import os
-import threading
 import re
 from urllib.parse import urlparse
 import requests
@@ -48,7 +47,6 @@ _FEATURE_FLAG_CACHE = {}
 
 
 # --- OTel/Datadog (OTLP/HTTP -> Datadog Lambda Extension) state ---
-_OTEL_INIT_LOCK = threading.Lock()
 _OTEL_TRACER = None
 _OTEL_TRACER_PROVIDER = None
 _OTEL_INIT_ERROR = None
@@ -162,88 +160,197 @@ def _init_otel_datadog() -> None:
 
     if _OTEL_TRACER is not None or _OTEL_INIT_ERROR is not None:
         return
-
-    with _OTEL_INIT_LOCK:
-        if _OTEL_TRACER is not None or _OTEL_INIT_ERROR is not None:
-            return
-
-        try:
-            # Lazy import so we never fail module import / Lambda cold start if deps are missing.
-            from opentelemetry.sdk.resources import Resource
-            from opentelemetry.sdk.trace import TracerProvider
-            from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-        except Exception as e:
-            _OTEL_INIT_ERROR = e
-            try:
-                cla.log.info(f"LG:otel-datadog-init-failed err={e}")
-            except Exception:
-                pass
-            return
-
-        try:
-            stage = (os.getenv("STAGE", "dev") or "dev").strip()
-            dd_env = (os.getenv("DD_ENV") or "").strip() or _stage_to_dd_env(stage)
-            dd_service = (os.getenv("DD_SERVICE") or "").strip() or "easycla-backend"
-            dd_version = (os.getenv("DD_VERSION") or "").strip() or (os.getenv("VERSION") or "").strip() or "unknown"
-
-            endpoint = _build_otlp_traces_endpoint()
-
-            exporter = OTLPSpanExporter(
-                endpoint=endpoint,
-                timeout=2,  # seconds; match Go's 2s exporter timeout intent
-            )
-
-            resource = Resource.create({
-                # Vendor-neutral resource attrs (Datadog maps these automatically).
-                "service.name": dd_service,
-                "service.version": dd_version,
-                "deployment.environment.name": dd_env,
-            })
-
-            provider = TracerProvider(resource=resource)
-            # SimpleSpanProcessor exports synchronously on span end; we run this in a background thread.
-            provider.add_span_processor(SimpleSpanProcessor(exporter))
-
-            _OTEL_TRACER_PROVIDER = provider
-            _OTEL_TRACER = provider.get_tracer("easycla-http")
-        except Exception as e:
-            _OTEL_INIT_ERROR = e
-            try:
-                cla.log.info(f"LG:otel-datadog-init-failed err={e}")
-            except Exception:
-                pass
-
-def _log_api_request_otel_datadog_async(method: str, path: str) -> None:
-    sanitized_path = _sanitize_api_path(path)
-    m = (method or "").strip().upper() or "GET"
-    span_name = f"{m} {sanitized_path}"
-
-    def _run():
-        try:
-            _init_otel_datadog()
-            if _OTEL_TRACER is None:
-                return
-
-            from opentelemetry.trace import SpanKind
-
-            # Minimal server-style span; keep attributes low-cardinality as well.
-            with _OTEL_TRACER.start_as_current_span(span_name, kind=SpanKind.SERVER) as span:
-                span.set_attribute("http.method", m)
-                span.set_attribute("http.route", sanitized_path)
-        except Exception as e:
-            try:
-                cla.log.info(f"LG:api-log-otel-datadog-failed:{sanitized_path} err={e}")
-            except Exception:
-                pass
-
     try:
-        threading.Thread(target=_run, daemon=True).start()
+        # Lazy import so we never fail module import / Lambda cold start if deps are missing.
+        from opentelemetry import trace as otel_trace
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     except Exception as e:
+        _OTEL_INIT_ERROR = e
         try:
-            cla.log.info(f"LG:api-log-otel-datadog-failed:{sanitized_path} err={e}")
+            cla.log.info(f"LG:otel-datadog-init-failed err={e}")
         except Exception:
             pass
+        return
+
+    try:
+        stage = (os.getenv("STAGE", "dev") or "dev").strip()
+        dd_env = (os.getenv("DD_ENV") or "").strip() or _stage_to_dd_env(stage)
+        dd_service = (os.getenv("DD_SERVICE") or "").strip() or "easycla-backend"
+        dd_version = (os.getenv("DD_VERSION") or "").strip() or (os.getenv("VERSION") or "").strip() or "unknown"
+
+        endpoint = _build_otlp_traces_endpoint()
+
+        exporter = OTLPSpanExporter(
+            endpoint=endpoint,
+            timeout=2,  # seconds; keep aligned with Go exporter timeout intent
+        )
+
+        resource = Resource.create({
+            # Vendor-neutral resource attrs (Datadog maps these automatically).
+            "service.name": dd_service,
+            "service.version": dd_version,
+            "deployment.environment.name": dd_env,
+        })
+
+        provider = TracerProvider(resource=resource)
+        # In Lambda, synchronous export is the safest default (no custom threads, no buffering loss on freeze).
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+
+        otel_trace.set_tracer_provider(provider)
+
+        _OTEL_TRACER_PROVIDER = provider
+        _OTEL_TRACER = otel_trace.get_tracer("easycla-http")
+    except Exception as e:
+        _OTEL_INIT_ERROR = e
+        try:
+            cla.log.info(f"LG:otel-datadog-init-failed err={e}")
+        except Exception:
+            pass
+
+def _parse_http_status_code(status) -> int | None:
+    """
+    Falcon typically stores response.status like "200 OK".
+    Return int status code or None.
+    """
+    if status is None:
+        return None
+    try:
+        s = str(status).strip()
+        if s == "":
+            return None
+        # "200 OK" -> 200
+        return int(s.split()[0])
+    except Exception:
+        return None
+
+def _otel_start_request_span(request) -> None:
+    """
+    Start a SERVER span for the inbound request and store it in request.context.
+    Never raises.
+    """
+    try:
+        req_ctx = getattr(request, "context", None)
+        if req_ctx is None:
+            return
+        # Defensive: don't double-start
+        if req_ctx.get("_otel_span") is not None:
+            return
+    except Exception:
+        return
+
+    try:
+        _init_otel_datadog()
+        if _OTEL_TRACER is None:
+            return
+
+        from opentelemetry import context as otel_context
+        from opentelemetry.propagate import extract
+        from opentelemetry.trace import SpanKind, Status, StatusCode, set_span_in_context
+    except Exception as e:
+        try:
+            cla.log.info(f"LG:api-log-otel-datadog-init-missing err={e}")
+        except Exception:
+            pass
+        return
+
+    method = (getattr(request, "method", "GET") or "GET").strip().upper()
+    raw_path = getattr(request, "path", "/")
+    route = _sanitize_api_path(raw_path)
+    span_name = f"{method} {route}"
+
+    try:
+        # Extract W3C parent context from inbound headers (low cost).
+        headers = getattr(request, "headers", None) or {}
+        carrier = {}
+        for k in ("traceparent", "tracestate", "baggage"):
+            try:
+                v = headers.get(k)
+            except Exception:
+                v = None
+            if v:
+                carrier[k] = v
+
+        parent_ctx = extract(carrier)
+
+        span = _OTEL_TRACER.start_span(span_name, context=parent_ctx, kind=SpanKind.SERVER)
+        # Low-cardinality attrs
+        span.set_attribute("http.method", method)
+        span.set_attribute("http.route", route)
+
+        # Make span current for the remainder of the request (so any future child spans attach correctly).
+        ctx_with_span = set_span_in_context(span, parent_ctx)
+        token = otel_context.attach(ctx_with_span)
+
+        # Persist for response middleware.
+        request.context["_otel_span"] = span
+        request.context["_otel_ctx_token"] = token
+        request.context["_otel_route"] = route
+    except Exception as e:
+        try:
+            cla.log.info(f"LG:api-log-otel-datadog-failed:{route} err={e}")
+        except Exception:
+            pass
+
+def _otel_end_request_span(request, response) -> None:
+    """
+    End the SERVER span for the inbound request, set status code, and detach context.
+    Never raises.
+    """
+    span = None
+    token = None
+    route = None
+
+    try:
+        ctx = getattr(request, "context", None)
+        if ctx is None:
+            return
+        span = ctx.pop("_otel_span", None)
+        token = ctx.pop("_otel_ctx_token", None)
+        route = ctx.pop("_otel_route", None)
+    except Exception:
+        # If request.context isn't mutable/dict-like for some reason, just bail.
+        return
+
+    try:
+        if span is None:
+            return
+
+        from opentelemetry.trace import Status, StatusCode
+
+        status_code = _parse_http_status_code(getattr(response, "status", None))
+        if status_code is not None:
+            span.set_attribute("http.status_code", status_code)
+            # Mark 5xx as errors (4xx are usually client errors, not service faults)
+            if status_code >= 500:
+                span.set_status(Status(StatusCode.ERROR))
+
+        span.end()
+
+        # With SimpleSpanProcessor this is effectively a no-op, but keeps behavior safe
+        # if the processor changes in the future.
+        try:
+            if _OTEL_TRACER_PROVIDER is not None:
+                _OTEL_TRACER_PROVIDER.force_flush(timeout_millis=2000)
+        except Exception:
+            pass
+    except Exception as e:
+        try:
+            if route is None:
+                route = _sanitize_api_path(getattr(request, "path", "/"))
+            cla.log.info(f"LG:api-log-otel-datadog-failed:{route} err={e}")
+        except Exception:
+            pass
+    finally:
+        # Always detach if we attached.
+        if token is not None:
+            try:
+                from opentelemetry import context as otel_context
+                otel_context.detach(token)
+            except Exception:
+                pass
 
 def _parse_boolish(value):
     if value is None:
@@ -321,9 +428,9 @@ def process_data_api_logs(request, response):
             except Exception as e:
                 cla.log.info(f"LG:api-log-dynamo-failed:{request.path} err={e}")
 
-    # OTel/Datadog API logging (stub only for Python for now)
+    # OTel/Datadog API logging (OTLP/HTTP -> Datadog Lambda Extension)
     if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
-        _log_api_request_otel_datadog_async(getattr(request, "method", "GET"), request.path)
+        _otel_start_request_span(request)
 
     if "/github/activity" in request.path:
         body = request.bounded_stream.read()
@@ -338,6 +445,10 @@ def process_data(request, response, resource):
     response.set_header("Access-Control-Allow-Credentials", "true")
     response.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
     response.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+    # Close the OTel span after handlers run (captures final status code).
+    if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
+        _otel_end_request_span(request, response)
 
 
 @hug.directive()
