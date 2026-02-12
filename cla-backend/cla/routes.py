@@ -8,6 +8,7 @@ The entry point for the CLA service. Lays out all routes and controller function
 import hug
 import os
 import re
+import time
 from urllib.parse import urlparse
 import requests
 from falcon import HTTP_401, HTTP_400, HTTP_OK, HTTP_500, Response
@@ -50,6 +51,19 @@ _FEATURE_FLAG_CACHE = {}
 _OTEL_TRACER = None
 _OTEL_TRACER_PROVIDER = None
 _OTEL_INIT_ERROR = None
+_OTEL_DISABLED = False
+_OTEL_DISABLED_REASON = None
+
+def _disable_otel(reason):
+    global _OTEL_DISABLED, _OTEL_DISABLED_REASON
+    if _OTEL_DISABLED:
+        return
+    _OTEL_DISABLED = True
+    _OTEL_DISABLED_REASON = reason
+    try:
+        cla.log.info(f"LG:otel-datadog-disabled reason={reason}")
+    except Exception:
+        pass
 
 # --- Path sanitizer regexes (mirror ./utils/count_apis.sh, but keep /vN versions intact) ---
 _RE_MULTI_SLASH = re.compile(r"/{2,}")
@@ -158,6 +172,11 @@ def _init_otel_datadog() -> None:
     """
     global _OTEL_TRACER, _OTEL_TRACER_PROVIDER, _OTEL_INIT_ERROR
 
+    if _OTEL_DISABLED:
+        return
+
+
+
     if _OTEL_TRACER is not None or _OTEL_INIT_ERROR is not None:
         return
     try:
@@ -169,10 +188,7 @@ def _init_otel_datadog() -> None:
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     except Exception as e:
         _OTEL_INIT_ERROR = e
-        try:
-            cla.log.info(f"LG:otel-datadog-init-failed err={e}")
-        except Exception:
-            pass
+        _disable_otel(f"init-import-1 err={e}")
         return
 
     try:
@@ -183,10 +199,30 @@ def _init_otel_datadog() -> None:
 
         endpoint = _build_otlp_traces_endpoint()
 
-        exporter = OTLPSpanExporter(
-            endpoint=endpoint,
-            timeout=2,  # seconds; keep aligned with Go exporter timeout intent
-        )
+        exporter = OTLPSpanExporter(endpoint=endpoint, timeout=0.5)
+
+        # Wrap exporter so any export failure disables tracing for this container
+        from opentelemetry.sdk.trace.export import SpanExportResult
+        class _FailFastExporter:
+            def __init__(self, inner):
+                self._inner = inner
+            def export(self, spans):
+                if _OTEL_DISABLED:
+                    return SpanExportResult.FAILURE
+                try:
+                    res = self._inner.export(spans)
+                except Exception as ex:
+                    _disable_otel(f"export err={ex}")
+                    return SpanExportResult.FAILURE
+                if res != SpanExportResult.SUCCESS:
+                    _disable_otel(f"export result={res}")
+                return res
+            def shutdown(self):
+                try:
+                    return self._inner.shutdown()
+                except Exception:
+                    return
+
 
         resource = Resource.create({
             # Vendor-neutral resource attrs (Datadog maps these automatically).
@@ -196,8 +232,8 @@ def _init_otel_datadog() -> None:
         })
 
         provider = TracerProvider(resource=resource)
-        # In Lambda, synchronous export is the safest default (no custom threads, no buffering loss on freeze).
-        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        # In Lambda, synchronous export is safest; FailFastExporter prevents repeated latency on failure.
+        provider.add_span_processor(SimpleSpanProcessor(_FailFastExporter(exporter)))
 
         otel_trace.set_tracer_provider(provider)
 
@@ -205,12 +241,9 @@ def _init_otel_datadog() -> None:
         _OTEL_TRACER = otel_trace.get_tracer("easycla-http")
     except Exception as e:
         _OTEL_INIT_ERROR = e
-        try:
-            cla.log.info(f"LG:otel-datadog-init-failed err={e}")
-        except Exception:
-            pass
+        _disable_otel(f"init-import-2 err={e}")
 
-def _parse_http_status_code(status) -> int | None:
+def _parse_http_status_code(status):
     """
     Falcon typically stores response.status like "200 OK".
     Return int status code or None.
@@ -318,24 +351,15 @@ def _otel_end_request_span(request, response) -> None:
         if span is None:
             return
 
-        from opentelemetry.trace import Status, StatusCode
-
         status_code = _parse_http_status_code(getattr(response, "status", None))
         if status_code is not None:
             span.set_attribute("http.status_code", status_code)
             # Mark 5xx as errors (4xx are usually client errors, not service faults)
             if status_code >= 500:
+                from opentelemetry.trace import Status, StatusCode
                 span.set_status(Status(StatusCode.ERROR))
 
         span.end()
-
-        # With SimpleSpanProcessor this is effectively a no-op, but keeps behavior safe
-        # if the processor changes in the future.
-        try:
-            if _OTEL_TRACER_PROVIDER is not None:
-                _OTEL_TRACER_PROVIDER.force_flush(timeout_millis=2000)
-        except Exception:
-            pass
     except Exception as e:
         try:
             if route is None:
@@ -463,6 +487,10 @@ def check_auth(request=None, **kwargs):
 def handle_auth_error(exception, response=None, **kwargs):
     """Handles authentication errors"""
     response.status = HTTP_401
+
+    # Ensure OTel span closes even if response middleware isn't invoked for exceptions.
+    if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
+        _otel_end_request_span(request, response)
     return exception.response
 
 
