@@ -58,10 +58,10 @@ _RE_MULTI_SLASH = re.compile(r"/{2,}")
 _RE_ASSET_EXT = re.compile(r"\.(png|svg|css|js|json|xml|htm|html)$")
 _RE_SWAGGER_ASSET = re.compile(r"^(/v[0-9]+)/swagger\.\{asset\}$")
 _RE_UUID = re.compile(r"[0-9a-fA-F-]{36}")
-_RE_NUMERIC_ID = re.compile(r"/[0-9]+(?=/|$)")
-_RE_SFID = re.compile(r"/(?:00|a0)[A-Za-z0-9]{13,16}(?=/|$)")
-_RE_LFXID = re.compile(r"/lf[A-Za-z0-9]{16,22}(?=/|$)")
-_RE_NULL = re.compile(r"/null(?=/|$)")
+_RE_NUMERIC_ID = re.compile(r"/[0-9]+(/|$)")
+_RE_SFID = re.compile(r"/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)")
+_RE_LFXID = re.compile(r"/lf[A-Za-z0-9]{16,22}(/|$)")
+_RE_NULL = re.compile(r"/null(/|$)")
 
 def _sanitize_api_path(path: str) -> str:
     """
@@ -86,16 +86,20 @@ def _sanitize_api_path(path: str) -> str:
 
     # Dynamic IDs -> placeholders
     p = _RE_UUID.sub("{uuid}", p)
-    p = _RE_NUMERIC_ID.sub("/{id}", p)
-    p = _RE_SFID.sub("/{sfid}", p)
-    p = _RE_LFXID.sub("/{lfxid}", p)
-    p = _RE_NULL.sub("/{null}", p)
+    p = _RE_NUMERIC_ID.sub(r"/{id}\1", p)
+    p = _RE_SFID.sub(r"/{sfid}\1", p)
+    p = _RE_LFXID.sub(r"/{lfxid}\1", p)
+    p = _RE_NULL.sub(r"/{null}\1", p)
 
     return p or "/"
 
 def _stage_to_dd_env(stage: str) -> str:
     st = (stage or "dev").strip().lower()
-    return "prod" if st == "prod" else "dev"
+    if st == "prod":
+        return "prod"
+    if st == "staging":
+        return "staging"
+    return "dev"
 
 def _build_otlp_traces_endpoint() -> str:
     """
@@ -319,7 +323,7 @@ def process_data_api_logs(request, response):
 
     # OTel/Datadog API logging (stub only for Python for now)
     if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
-         _log_api_request_otel_datadog_async(getattr(request, "method", "GET"), request.path)
+        _log_api_request_otel_datadog_async(getattr(request, "method", "GET"), request.path)
 
     if "/github/activity" in request.path:
         body = request.bounded_stream.read()
