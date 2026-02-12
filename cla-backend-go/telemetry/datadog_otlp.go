@@ -104,17 +104,23 @@ func InitDatadogOTel(cfg DatadogOTelConfig) error {
 
 // WrapHTTPHandler instruments inbound HTTP requests using otelhttp and produces spans.
 func WrapHTTPHandler(next http.Handler) http.Handler {
-	// Precompile once at cold start (WrapHTTPHandler is called once during init).
+	// Regexes mirror ./utils/count_apis.sh so OTel span names group the same way as the offline API log rollups:
+	// - collapse multiple slashes
+	// - trim trailing slash
+	// - mask common asset extensions -> ".{asset}"
+	// - normalize Swagger assets "/vN/swagger.{asset}" -> "/vN/swagger" (keep version; do NOT map to /v*)
+	// - mask UUIDs, numeric IDs, Salesforce IDs, LFX IDs, and literal "null" segments
 	reMultiSlash := regexp.MustCompile(`/{2,}`)
 	reAssetExt := regexp.MustCompile(`\.(png|svg|css|js|json|xml|htm|html)$`)
-	reSwaggerAsset := regexp.MustCompile(`^/v([0-9]+)/swagger\.\{asset\}$`)
-	reUUID := regexp.MustCompile(`(?i)[0-9a-f-]{36}`)
-	reDigits := regexp.MustCompile(`^[0-9]+$`)
-	reSFID := regexp.MustCompile(`^(00|a0)[A-Za-z0-9]{13,16}$`)
-	reLFXID := regexp.MustCompile(`^lf[A-Za-z0-9]{16,22}$`)
+	reSwaggerAsset := regexp.MustCompile(`^(/v[0-9]+)/swagger\.\{asset\}$`)
+	reUUID := regexp.MustCompile(`[0-9a-fA-F-]{36}`)
+	reNumericID := regexp.MustCompile(`/[0-9]+(?=/|$)`)
+	reSFID := regexp.MustCompile(`/(?:00|a0)[A-Za-z0-9]{13,16}(?=/|$)`)
+	reLFXID := regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(?=/|$)`)
+	reNull := regexp.MustCompile(`/null(?=/|$)`)
 
-	sanitizePath := func(p string) string {
-		p = strings.TrimSpace(p)
+	sanitize := func(path string) string {
+		p := strings.TrimSpace(path)
 		if p == "" {
 			return "/"
 		}
@@ -122,57 +128,30 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 			p = "/" + p
 		}
 
-		// Collapse multiple slashes and trim a trailing slash (keep "/" as "/").
 		p = reMultiSlash.ReplaceAllString(p, "/")
 		if len(p) > 1 && strings.HasSuffix(p, "/") {
-			p = strings.TrimRight(p, "/")
-			if p == "" {
-				p = "/"
-			}
+			p = strings.TrimSuffix(p, "/")
 		}
 
-		// Static assets -> .{asset}
+		// Asset extensions (including swagger.json/xml/html) -> ".{asset}"
 		p = reAssetExt.ReplaceAllString(p, ".{asset}")
 
-		// Swagger JSON/YAML/etc files -> /vN/swagger (preserve version number).
+		// Keep the version (/v1, /v2, ...) but normalize swagger asset paths.
 		if m := reSwaggerAsset.FindStringSubmatch(p); m != nil {
-			p = "/v" + m[1] + "/swagger"
+			p = m[1] + "/swagger"
 		}
 
-		// UUID-ish values (any 36-char hex/hyphen substring) -> {uuid}
+		// Dynamic segment masking (use template placeholders, not "*")
 		p = reUUID.ReplaceAllString(p, "{uuid}")
+		p = reNumericID.ReplaceAllString(p, "/{id}")
+		p = reSFID.ReplaceAllString(p, "/{sfid}")
+		p = reLFXID.ReplaceAllString(p, "/{lfxid}")
+		p = reNull.ReplaceAllString(p, "/{null}")
 
-		// Segment-based normalization (mirrors the shell script ordering post-uuid):
-		// - numeric segments -> {id}
-		// - Salesforce IDs -> {sfid}
-		// - LFX IDs -> {lfxid}
-		// - "/null" -> {null}
-		parts := strings.Split(p, "/")
-		for i := range parts {
-			seg := parts[i]
-			if seg == "" {
-				continue
-			}
-			switch {
-			case reDigits.MatchString(seg):
-				parts[i] = "{id}"
-			case reSFID.MatchString(seg):
-				parts[i] = "{sfid}"
-			case reLFXID.MatchString(seg):
-				parts[i] = "{lfxid}"
-			case seg == "null":
-				parts[i] = "{null}"
-			}
-		}
-
-		out := strings.Join(parts, "/")
-		if out == "" {
+		if p == "" {
 			return "/"
 		}
-		if !strings.HasPrefix(out, "/") {
-			out = "/" + out
-		}
-		return out
+		return p
 	}
 
 	return otelhttp.NewHandler(
@@ -181,7 +160,7 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
 			// LG: use this to have per distinct API URL datapoints
 			// return fmt.Sprintf("%s %s", r.Method, r.URL.Path)
-			return fmt.Sprintf("%s %s", r.Method, sanitizePath(r.URL.Path))
+			return fmt.Sprintf("%s %s", r.Method, sanitize(r.URL.Path))
 		}),
 	)
 }
