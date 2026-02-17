@@ -32,3 +32,13 @@ export GH_ORG_VALIDATION=false
 export DISABLE_LOCAL_PERMISSION_CHECKS=true
 export COMPANY_USER_VALIDATION=false
 export CLA_SIGNATURE_FILES_BUCKET=cla-signature-files-dev
+
+# Logging
+export DDB_API_LOGGING=true
+export OTEL_DATADOG_API_LOGGING=true
+export DD_ENV=dev
+export DD_SERVICE='easycla-backend'
+export DD_SITE='' # XXX: missing
+export DD_API_KEY_SECRET_ARN="$(cat ./DD_API_KEY_SECRET_ARN.secret)"
+export DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT='localhost:4318' # XXX: what should I use?
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT='http://localhost:4318/v1/traces' # XXX: what should I use?
