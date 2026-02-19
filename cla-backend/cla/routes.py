@@ -14,6 +14,8 @@ import requests
 from falcon import HTTP_401, HTTP_400, HTTP_OK, HTTP_500, Response
 from hug.middleware import LogMiddleware
 
+import pdb
+
 import cla
 import cla.auth
 import cla.controllers.company
@@ -61,6 +63,7 @@ def _disable_otel(reason):
     _OTEL_DISABLED = True
     _OTEL_DISABLED_REASON = reason
     try:
+        pdb.set_trace()
         cla.log.info(f"LG:otel-datadog-disabled reason={reason}")
     except Exception:
         pass
@@ -103,6 +106,7 @@ def _sanitize_api_path(path: str) -> str:
     p = _RE_LFXID.sub(r"/{lfxid}\1", p)
     p = _RE_NULL.sub(r"/{null}\1", p)
 
+    pdb.set_trace()
     return p or "/"
 
 def _stage_to_dd_env(stage: str) -> str:
@@ -163,6 +167,7 @@ def _build_otlp_traces_endpoint() -> str:
     if not host or host.strip() == "":
         raise ValueError(f"invalid OTLP endpoint: {raw!r}")
 
+    pdb.set_trace()
     return f"{scheme}://{host}{path}"
 
 def _init_otel_datadog() -> None:
@@ -175,17 +180,17 @@ def _init_otel_datadog() -> None:
     if _OTEL_DISABLED:
         return
 
-
-
     if _OTEL_TRACER is not None or _OTEL_INIT_ERROR is not None:
         return
     try:
         # Lazy import so we never fail module import / Lambda cold start if deps are missing.
+        pdb.set_trace()
         from opentelemetry import trace as otel_trace
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import SimpleSpanProcessor
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        pdb.set_trace()
     except Exception as e:
         _OTEL_INIT_ERROR = e
         _disable_otel(f"init-import-1 err={e}")
@@ -203,6 +208,7 @@ def _init_otel_datadog() -> None:
 
         # Wrap exporter so any export failure disables tracing for this container
         from opentelemetry.sdk.trace.export import SpanExportResult
+        pdb.set_trace()
         class _FailFastExporter:
             def __init__(self, inner):
                 self._inner = inner
@@ -223,7 +229,6 @@ def _init_otel_datadog() -> None:
                 except Exception:
                     return
 
-
         resource = Resource.create({
             # Vendor-neutral resource attrs (Datadog maps these automatically).
             "service.name": dd_service,
@@ -239,7 +244,9 @@ def _init_otel_datadog() -> None:
 
         _OTEL_TRACER_PROVIDER = provider
         _OTEL_TRACER = otel_trace.get_tracer("easycla-http")
+        pdb.set_trace()
     except Exception as e:
+        pdb.set_trace()
         _OTEL_INIT_ERROR = e
         _disable_otel(f"init-import-2 err={e}")
 
@@ -248,6 +255,7 @@ def _parse_http_status_code(status):
     Falcon typically stores response.status like "200 OK".
     Return int status code or None.
     """
+    pdb.set_trace()
     if status is None:
         return None
     try:
@@ -255,6 +263,7 @@ def _parse_http_status_code(status):
         if s == "":
             return None
         # "200 OK" -> 200
+        pdb.set_trace()
         return int(s.split()[0])
     except Exception:
         return None
@@ -266,12 +275,14 @@ def _otel_start_request_span(request) -> None:
     """
     try:
         req_ctx = getattr(request, "context", None)
+        pdb.set_trace()
         if req_ctx is None:
             return
         # Defensive: don't double-start
         if req_ctx.get("_otel_span") is not None:
             return
     except Exception:
+        pdb.set_trace()
         return
 
     try:
@@ -282,7 +293,9 @@ def _otel_start_request_span(request) -> None:
         from opentelemetry import context as otel_context
         from opentelemetry.propagate import extract
         from opentelemetry.trace import SpanKind, Status, StatusCode, set_span_in_context
+        pdb.set_trace()
     except Exception as e:
+        pdb.set_trace()
         try:
             cla.log.info(f"LG:api-log-otel-datadog-init-missing err={e}")
         except Exception:
@@ -307,6 +320,7 @@ def _otel_start_request_span(request) -> None:
                 carrier[k] = v
 
         parent_ctx = extract(carrier)
+        pdb.set_trace()
 
         span = _OTEL_TRACER.start_span(span_name, context=parent_ctx, kind=SpanKind.SERVER)
         # Low-cardinality attrs
@@ -321,7 +335,9 @@ def _otel_start_request_span(request) -> None:
         request.context["_otel_span"] = span
         request.context["_otel_ctx_token"] = token
         request.context["_otel_route"] = route
+        pdb.set_trace()
     except Exception as e:
+        pdb.set_trace()
         try:
             cla.log.info(f"LG:api-log-otel-datadog-failed:{route} err={e}")
         except Exception:
@@ -335,6 +351,7 @@ def _otel_end_request_span(request, response) -> None:
     span = None
     token = None
     route = None
+    pdb.set_trace()
 
     try:
         ctx = getattr(request, "context", None)
@@ -343,8 +360,10 @@ def _otel_end_request_span(request, response) -> None:
         span = ctx.pop("_otel_span", None)
         token = ctx.pop("_otel_ctx_token", None)
         route = ctx.pop("_otel_route", None)
+        pdb.set_trace()
     except Exception:
         # If request.context isn't mutable/dict-like for some reason, just bail.
+        pdb.set_trace()
         return
 
     try:
@@ -360,7 +379,9 @@ def _otel_end_request_span(request, response) -> None:
                 span.set_status(Status(StatusCode.ERROR))
 
         span.end()
+        pdb.set_trace()
     except Exception as e:
+        pdb.set_trace()
         try:
             if route is None:
                 route = _sanitize_api_path(getattr(request, "path", "/"))
@@ -369,6 +390,7 @@ def _otel_end_request_span(request, response) -> None:
             pass
     finally:
         # Always detach if we attached.
+        pdb.set_trace()
         if token is not None:
             try:
                 from opentelemetry import context as otel_context
@@ -377,6 +399,7 @@ def _otel_end_request_span(request, response) -> None:
                 pass
 
 def _parse_boolish(value):
+    pdb.set_trace()
     if value is None:
         return None
     v = str(value).strip().lower()
@@ -389,11 +412,13 @@ def _parse_boolish(value):
 def _enabled_by_env_or_stage(env_var: str, default_by_stage: tuple[bool, bool]) -> bool:
     # cache (env vars don't change during a lambda container lifetime)
     if env_var in _FEATURE_FLAG_CACHE:
+        pdb.set_trace()
         return _FEATURE_FLAG_CACHE[env_var]
 
     raw = os.getenv(env_var)
     if raw is not None and raw.strip() != "":
         parsed = _parse_boolish(raw)
+        pdb.set_trace()
         if parsed is not None:
             _FEATURE_FLAG_CACHE[env_var] = parsed
             return parsed
@@ -406,6 +431,7 @@ def _enabled_by_env_or_stage(env_var: str, default_by_stage: tuple[bool, bool]) 
     is_prod = stage == "prod"
     enabled = default_by_stage[1] if is_prod else default_by_stage[0]
     _FEATURE_FLAG_CACHE[env_var] = enabled
+    pdb.set_trace()
     return enabled
 
 def _get_apilog_cls():
@@ -446,15 +472,20 @@ def process_data_api_logs(request, response):
     # DynamoDB API logging (conditional)
     if _enabled_by_env_or_stage("DDB_API_LOGGING", default_by_stage=(True, False)):
         apilog_cls = _get_apilog_cls()
+        pdb.set_trace()
         if apilog_cls is not None:
             try:
                 apilog_cls.log_api_request(request.path)
+                pdb.set_trace()
             except Exception as e:
+                pdb.set_trace()
                 cla.log.info(f"LG:api-log-dynamo-failed:{request.path} err={e}")
 
     # OTel/Datadog API logging (OTLP/HTTP -> Datadog Lambda Extension)
     if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
+        pdb.set_trace()
         _otel_start_request_span(request)
+        pdb.set_trace()
 
     if "/github/activity" in request.path:
         body = request.bounded_stream.read()
@@ -490,6 +521,7 @@ def handle_auth_error(exception, request=None, response=None, **kwargs):
 
     # Ensure OTel span closes even if response middleware isn't invoked for exceptions.
     if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
+        pdb.set_trace()
         _otel_end_request_span(request, response)
     return exception.response
 
