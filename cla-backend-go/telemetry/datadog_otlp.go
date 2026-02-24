@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // DatadogOTelConfig configures OTel SDK for exporting traces to the Datadog Lambda Extension.
@@ -33,9 +34,30 @@ type DatadogOTelConfig struct {
 }
 
 var (
-	ddInitOnce sync.Once
-	ddInitErr  error
+	ddInitOnce          sync.Once
+	ddInitErr           error
+	ddExportSuccessOnce sync.Once
 )
+
+// ddLoggingExporter logs once when spans are successfully exported (i.e. accepted by OTLP endpoint).
+// This is intentionally low-volume to avoid flooding logs in prod.
+type ddLoggingExporter struct {
+	inner sdktrace.SpanExporter
+}
+
+func (e ddLoggingExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
+	err := e.inner.ExportSpans(ctx, spans)
+	if err == nil {
+		ddExportSuccessOnce.Do(func() {
+			log.Infof("LG:otel-datadog-export-success spans=%d", len(spans))
+		})
+	}
+	return err
+}
+
+func (e ddLoggingExporter) Shutdown(ctx context.Context) error {
+	return e.inner.Shutdown(ctx)
+}
 
 // InitDatadogOTel initializes the global OTel SDK (tracer provider + OTLP exporter).
 // Safe to call multiple times (sync.Once). Never panics.
@@ -55,9 +77,14 @@ func InitDatadogOTel(cfg DatadogOTelConfig) error {
 			ddService = cfg.Service
 		}
 
-		ddVersion := strings.TrimSpace(os.Getenv("DD_VERSION"))
+		// Force "service.version" (Datadog version) to be the build commit when available.
+		// Env var DD_VERSION may exist, but commit should take precedence for consistency across Go+Python.
+		ddVersion := strings.TrimSpace(cfg.Version)
 		if ddVersion == "" {
-			ddVersion = cfg.Version
+			ddVersion = strings.TrimSpace(os.Getenv("DD_VERSION"))
+		}
+		if ddVersion == "" {
+			ddVersion = "1.0"
 		}
 
 		exporter, err := newOTLPHTTPExporter(ctx)
@@ -65,6 +92,7 @@ func InitDatadogOTel(cfg DatadogOTelConfig) error {
 			ddInitErr = err
 			return
 		}
+		exporter = ddLoggingExporter{inner: exporter}
 
 		// Vendor-neutral resource attributes (Datadog maps these automatically).
 		res, err := resource.New(ctx,
@@ -154,13 +182,50 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 		return p
 	}
 
+	// We want:
+	// - grouping by templated route => span name "METHOD /vN/thing/{uuid}" and attribute http.route="/vN/thing/{uuid}"
+	// - raw/original path visible per span => url.path="/vN/thing/<uuid>" and http.target="/vN/thing/<uuid>?..."
+	//
+	// otelhttp doesn't know framework routes, so we set http.route ourselves after the span is started.
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawPath := "/"
+		rawTarget := "/"
+
+		if r != nil && r.URL != nil {
+			// Prefer URL.Path if present
+			if strings.TrimSpace(r.URL.Path) != "" {
+				rawPath = r.URL.Path
+			}
+
+			// Default target to path; RequestURI includes query string when present.
+			rawTarget = rawPath
+			if strings.TrimSpace(r.URL.RequestURI()) != "" {
+				rawTarget = r.URL.RequestURI()
+			}
+		}
+
+		route := sanitize(rawPath)
+		log.Debugf("Sanitized path: %q -> %q", rawPath, route)
+
+		span := trace.SpanFromContext(r.Context())
+		span.SetAttributes(
+			attribute.String("http.route", route),
+			attribute.String("url.path", rawPath),
+			attribute.String("http.target", rawTarget),
+		)
+
+		next.ServeHTTP(w, r)
+	})
+
 	return otelhttp.NewHandler(
-		next,
+		inner,
 		"easycla-http",
 		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-			// LG: use this to have per distinct API URL datapoints
-			// return fmt.Sprintf("%s %s", r.Method, r.URL.Path)
-			return fmt.Sprintf("%s %s", r.Method, sanitize(r.URL.Path))
+			path := "/"
+			if r != nil && r.URL != nil && strings.TrimSpace(r.URL.Path) != "" {
+				path = r.URL.Path
+			}
+			return fmt.Sprintf("%s %s", r.Method, sanitize(path))
 		}),
 	)
 }

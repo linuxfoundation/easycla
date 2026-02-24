@@ -188,6 +188,11 @@ func enabledByEnvOrStage(envVar, stage string, defaultByStage [2]bool) bool {
 
 // apiPathLoggerWithDB creates a middleware that logs API requests to DynamoDB
 func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) http.Handler {
+	// No-op when API logging is disabled. This prevents nil deref panics if the middleware
+	// remains in the handler chain but repo creation is skipped.
+	if apiLogsRepo == nil {
+		return func(next http.Handler) http.Handler { return next }
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Infof("LG:api-request-path:%s", r.URL.Path)

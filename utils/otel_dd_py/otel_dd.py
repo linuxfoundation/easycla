@@ -114,7 +114,7 @@ def main(argv: list[str]) -> int:
 
     dd_env = (os.getenv("DD_ENV") or "").strip() or stage_to_dd_env(os.getenv("STAGE", "dev"))
     dd_service = (os.getenv("DD_SERVICE") or "").strip() or "easycla-backend"
-    dd_version = (os.getenv("DD_VERSION") or "").strip() or (os.getenv("VERSION") or "").strip() or "unknown"
+    dd_version = (os.getenv("DD_VERSION") or "").strip() or (os.getenv("VERSION") or "").strip() or "1.0"
 
     endpoint = build_otlp_traces_endpoint()
 
