@@ -80,6 +80,8 @@ _RE_LFXID_VALID = re.compile(r"/lf[A-Za-z0-9]{16,22}(/|$)")
 _RE_LFXID_LIKE = re.compile(r"/lf[^/]{1,32}(/|$)")
 _RE_NULL = re.compile(r"/null(/|$)")
 _RE_GIT_SHA = re.compile(r"^[0-9a-fA-F]{7,40}$")
+_RE_INVALID_UUID_SEG = re.compile(r"/(?:invalid-uuid(?:-format)?|not-a-uuid)(/|$)")
+_RE_INVALID_SFID_SEG = re.compile(r"/invalid-sfid(?:-format)?(/|$)")
 
 def _sanitize_api_path(path: str) -> str:
     """
@@ -112,6 +114,9 @@ def _sanitize_api_path(path: str) -> str:
     p = _RE_LFXID_VALID.sub(r"/{lfxid}\1", p)
     p = _RE_LFXID_LIKE.sub(r"/{invalid-lfxid}\1", p)
     p = _RE_NULL.sub(r"/{null}\1", p)
+    # Known "invalid" test tokens (Cypress) -> placeholders
+    p = _RE_INVALID_UUID_SEG.sub(r"/{invalid-uuid}\1", p)
+    p = _RE_INVALID_SFID_SEG.sub(r"/{invalid-sfid}\1", p)
 
     cla.log.debug(f"Sanitized path: {path!r} -> {p!r}")
     return p or "/"

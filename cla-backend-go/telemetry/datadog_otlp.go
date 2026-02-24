@@ -151,6 +151,8 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 	reLFXIDValid := regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(/|$)`)
 	reLFXIDLike := regexp.MustCompile(`/lf[^/]{1,32}(/|$)`)
 	reNull := regexp.MustCompile(`/null(/|$)`)
+	reInvalidUUIDSeg := regexp.MustCompile(`/(?:invalid-uuid(?:-format)?|not-a-uuid)(/|$)`)
+	reInvalidSFIDSeg := regexp.MustCompile(`/invalid-sfid(?:-format)?(/|$)`)
 
 	boolishTrue := func(v string) bool {
 		switch strings.ToLower(strings.TrimSpace(v)) {
@@ -196,6 +198,9 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 		p = reLFXIDValid.ReplaceAllString(p, "/{lfxid}$1")
 		p = reLFXIDLike.ReplaceAllString(p, "/{invalid-lfxid}$1")
 		p = reNull.ReplaceAllString(p, "/{null}$1")
+		// Known "invalid" test tokens (Cypress) -> placeholders
+		p = reInvalidUUIDSeg.ReplaceAllString(p, "/{invalid-uuid}$1")
+		p = reInvalidSFIDSeg.ReplaceAllString(p, "/{invalid-sfid}$1")
 
 		if p == "" {
 			return "/"
@@ -255,6 +260,7 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 				)
 			} else {
 				span.SetAttributes(attribute.Bool("easycla.e2e", true))
+				log.Debugf("Sanitized path: %q -> %q e2e=1", rawPath, route)
 			}
 		}
 
