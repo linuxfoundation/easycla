@@ -547,6 +547,7 @@ def process_data_api_logs(request, response):
     API request metadata is logged to the DynamoDB-backed APILog model
     for all requests.
     """
+    cla.log.info('LG:api-request-path:' + request.path + suffix)
     # Mark E2E calls in the log line so jq-based rollups can filter them out easily.
     e2e, e2e_run_id = _extract_e2e_marker(getattr(request, "headers", None) or {})
     suffix = ""
@@ -554,7 +555,7 @@ def process_data_api_logs(request, response):
         suffix = " e2e=1"
         if e2e_run_id:
             suffix += f" e2e_run_id={e2e_run_id}"
-    cla.log.info('LG:api-request-path:' + request.path + suffix)
+            cla.log.info('LG:e2e-request-path:' + request.path + suffix)
 
     # DynamoDB API logging (conditional)
     if _enabled_by_env_or_stage("DDB_API_LOGGING", default_by_stage=(True, False)):

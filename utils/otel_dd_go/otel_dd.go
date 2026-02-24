@@ -17,14 +17,20 @@ import (
 )
 
 var (
-	reMultiSlash   = regexp.MustCompile(`/{2,}`)
-	reAssetExt     = regexp.MustCompile(`\.(png|svg|css|js|json|xml|htm|html)$`)
-	reSwaggerAsset = regexp.MustCompile(`^(/v[0-9]+)/swagger\.\{asset\}$`)
-	reUUID         = regexp.MustCompile(`[0-9a-fA-F-]{36}`)
-	reNumericID    = regexp.MustCompile(`/[0-9]+(/|$)`)
-	reSFID         = regexp.MustCompile(`/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)`)
-	reLFXID        = regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(/|$)`)
-	reNull         = regexp.MustCompile(`/null(/|$)`)
+	reMultiSlash     = regexp.MustCompile(`/{2,}`)
+	reAssetExt       = regexp.MustCompile(`\.(png|svg|css|js|json|xml|htm|html)$`)
+	reSwaggerAsset   = regexp.MustCompile(`^(/v[0-9]+)/swagger\.\{asset\}$`)
+	reUUIDValid      = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+	reUUIDLike       = regexp.MustCompile(`/[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{12}(/|$)`)
+	reUUIDHexDash36  = regexp.MustCompile(`/[0-9a-fA-F-]{36}(/|$)`)
+	reNumericID      = regexp.MustCompile(`/[0-9]+(/|$)`)
+	reSFIDValid      = regexp.MustCompile(`/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)`)
+	reSFIDLike       = regexp.MustCompile(`/(?:00|a0)[^/]{1,32}(/|$)`)
+	reLFXIDValid     = regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(/|$)`)
+	reLFXIDLike      = regexp.MustCompile(`/lf[^/]{1,32}(/|$)`)
+	reNull           = regexp.MustCompile(`/null(/|$)`)
+	reInvalidUUIDSeg = regexp.MustCompile(`/(?:invalid-uuid(?:-format)?|not-a-uuid)(/|$)`)
+	reInvalidSFIDSeg = regexp.MustCompile(`/invalid-sfid(?:-format)?(/|$)`)
 )
 
 func sanitizeAPIPath(path string) string {
@@ -46,11 +52,17 @@ func sanitizeAPIPath(path string) string {
 		p = m[1] + "/swagger"
 	}
 
-	p = reUUID.ReplaceAllString(p, "{uuid}")
+	p = reUUIDValid.ReplaceAllString(p, "{uuid}")
+	p = reUUIDLike.ReplaceAllString(p, "/{invalid-uuid}$1")
+	p = reUUIDHexDash36.ReplaceAllString(p, "/{invalid-uuid}$1")
 	p = reNumericID.ReplaceAllString(p, "/{id}$1")
-	p = reSFID.ReplaceAllString(p, "/{sfid}$1")
-	p = reLFXID.ReplaceAllString(p, "/{lfxid}$1")
+	p = reSFIDValid.ReplaceAllString(p, "/{sfid}$1")
+	p = reSFIDLike.ReplaceAllString(p, "/{invalid-sfid}$1")
+	p = reLFXIDValid.ReplaceAllString(p, "/{lfxid}$1")
+	p = reLFXIDLike.ReplaceAllString(p, "/{invalid-lfxid}$1")
 	p = reNull.ReplaceAllString(p, "/{null}$1")
+	p = reInvalidUUIDSeg.ReplaceAllString(p, "/{invalid-uuid}$1")
+	p = reInvalidSFIDSeg.ReplaceAllString(p, "/{invalid-sfid}$1")
 
 	if p == "" {
 		return "/"
