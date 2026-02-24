@@ -179,7 +179,7 @@ func enabledByEnvOrStage(envVar, stage string, defaultByStage [2]bool) bool {
 		log.Warnf("LG:api-log-flag-invalid:%s value=%q (falling back to STAGE default)", envVar, raw)
 	}
 	st := strings.TrimSpace(strings.ToLower(stage))
-	if st == "prod" {
+	if st == "prod" || st == "production" {
 		return defaultByStage[1]
 	}
 	// dev and all non-prod stages default to enabled
