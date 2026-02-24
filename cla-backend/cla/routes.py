@@ -70,10 +70,14 @@ def _disable_otel(reason):
 _RE_MULTI_SLASH = re.compile(r"/{2,}")
 _RE_ASSET_EXT = re.compile(r"\.(png|svg|css|js|json|xml|htm|html)$")
 _RE_SWAGGER_ASSET = re.compile(r"^(/v[0-9]+)/swagger\.\{asset\}$")
-_RE_UUID = re.compile(r"[0-9a-fA-F-]{36}")
+_RE_UUID_VALID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_RE_UUID_LIKE = re.compile(r"/[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{12}(/|$)")
+_RE_UUID_HEXDASH_36 = re.compile(r"/[0-9a-fA-F-]{36}(/|$)")
 _RE_NUMERIC_ID = re.compile(r"/[0-9]+(/|$)")
-_RE_SFID = re.compile(r"/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)")
-_RE_LFXID = re.compile(r"/lf[A-Za-z0-9]{16,22}(/|$)")
+_RE_SFID_VALID = re.compile(r"/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)")
+_RE_SFID_LIKE = re.compile(r"/(?:00|a0)[^/]{1,32}(/|$)")
+_RE_LFXID_VALID = re.compile(r"/lf[A-Za-z0-9]{16,22}(/|$)")
+_RE_LFXID_LIKE = re.compile(r"/lf[^/]{1,32}(/|$)")
 _RE_NULL = re.compile(r"/null(/|$)")
 _RE_GIT_SHA = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
@@ -99,10 +103,14 @@ def _sanitize_api_path(path: str) -> str:
     p = _RE_SWAGGER_ASSET.sub(r"\1/swagger", p)
 
     # Dynamic IDs -> placeholders
-    p = _RE_UUID.sub("{uuid}", p)
+    p = _RE_UUID_VALID.sub("{uuid}", p)
+    p = _RE_UUID_LIKE.sub(r"/{invalid-uuid}\1", p)
+    p = _RE_UUID_HEXDASH_36.sub(r"/{invalid-uuid}\1", p)
     p = _RE_NUMERIC_ID.sub(r"/{id}\1", p)
-    p = _RE_SFID.sub(r"/{sfid}\1", p)
-    p = _RE_LFXID.sub(r"/{lfxid}\1", p)
+    p = _RE_SFID_VALID.sub(r"/{sfid}\1", p)
+    p = _RE_SFID_LIKE.sub(r"/{invalid-sfid}\1", p)
+    p = _RE_LFXID_VALID.sub(r"/{lfxid}\1", p)
+    p = _RE_LFXID_LIKE.sub(r"/{invalid-lfxid}\1", p)
     p = _RE_NULL.sub(r"/{null}\1", p)
 
     cla.log.debug(f"Sanitized path: {path!r} -> {p!r}")
@@ -309,6 +317,27 @@ def _parse_http_status_code(status):
     except Exception:
         return None
 
+
+_E2E_HEADER = "X-EasyCLA-E2E"
+_E2E_RUNID_HEADER = "X-EasyCLA-E2E-RunID"
+_E2E_LEGACY_HEADER = "X-E2E-TEST"
+
+def _extract_e2e_marker(headers) -> tuple[bool, str]:
+    """
+    CI/E2E request marker so we can tag/filter test noise in logs and traces.
+    Returns (is_e2e, run_id).
+    """
+    try:
+        if not headers:
+            return False, ""
+        raw = headers.get(_E2E_HEADER) or headers.get(_E2E_LEGACY_HEADER)
+        if _parse_boolish(raw) is True:
+            run_id = (headers.get(_E2E_RUNID_HEADER) or "").strip()
+            return True, run_id
+    except Exception:
+        pass
+    return False, ""
+
 def _otel_start_request_span(request) -> None:
     """
     Start a SERVER span for the inbound request and store it in request.context.
@@ -373,6 +402,13 @@ def _otel_start_request_span(request) -> None:
             raw_target = raw_path
         span.set_attribute("url.path", raw_path)
         span.set_attribute("http.target", raw_target)
+
+        # Optional E2E marker (lets us filter CI noise in Datadog).
+        e2e, e2e_run_id = _extract_e2e_marker(headers)
+        if e2e:
+            span.set_attribute("easycla.e2e", True)
+            if e2e_run_id:
+                span.set_attribute("easycla.e2e_run_id", e2e_run_id)
 
         # Make span current for the remainder of the request (so any future child spans attach correctly).
         ctx_with_span = set_span_in_context(span, parent_ctx)
@@ -506,7 +542,14 @@ def process_data_api_logs(request, response):
     API request metadata is logged to the DynamoDB-backed APILog model
     for all requests.
     """
-    cla.log.info('LG:api-request-path:' + request.path)
+    # Mark E2E calls in the log line so jq-based rollups can filter them out easily.
+    e2e, e2e_run_id = _extract_e2e_marker(getattr(request, "headers", None) or {})
+    suffix = ""
+    if e2e:
+        suffix = " e2e=1"
+        if e2e_run_id:
+            suffix += f" e2e_run_id={e2e_run_id}"
+    cla.log.info('LG:api-request-path:' + request.path + suffix)
 
     # DynamoDB API logging (conditional)
     if _enabled_by_env_or_stage("DDB_API_LOGGING", default_by_stage=(True, False)):
