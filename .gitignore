@@ -266,3 +266,4 @@ cla-backend/python-api.log
 cla-backend/python-api.err
 cla-backend-go/golang-api.err
 cla-backend-go/golang-api.log
+utils/otel_dd_go/otel_dd
