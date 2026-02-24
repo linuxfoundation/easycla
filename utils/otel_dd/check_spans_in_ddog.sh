@@ -1,3 +1,5 @@
+#!/bin/bash
+# jq -r '.data[].attributes.custom.http.route' | sort | uniq
 curl -sS -X POST "https://api.${DD_SITE}/api/v2/spans/events/search" \
   -H "Content-Type: application/json" \
   -H "DD-API-KEY: ${DD_API_KEY}" \
@@ -7,12 +9,12 @@ curl -sS -X POST "https://api.${DD_SITE}/api/v2/spans/events/search" \
       "type": "search_request",
       "attributes": {
         "filter": {
-          "from": "now-15m",
+          "from": "now-60m",
           "to": "now",
           "query": "service:easycla-backend env:dev"
         },
         "sort": "timestamp",
-        "page": { "limit": 10 }
+        "page": { "limit": 5000 }
       }
     }
   }' | jq -r
