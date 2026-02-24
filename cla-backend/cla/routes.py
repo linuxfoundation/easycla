@@ -138,7 +138,7 @@ def _normalize_git_sha(v: str) -> str:
         return s[:9]
     return s
 
-def _detect_git_commit() -> str | None:
+def _detect_git_commit():
     """
     Best-effort commit detection:
       1) common CI env vars
@@ -254,7 +254,7 @@ def _init_otel_datadog() -> None:
 
         endpoint = _build_otlp_traces_endpoint()
 
-        exporter = OTLPSpanExporter(endpoint=endpoint, timeout=0.5)
+        exporter = OTLPSpanExporter(endpoint=endpoint, timeout=2)
 
         # Wrap exporter so any export failure disables tracing for this container
         from opentelemetry.sdk.trace.export import SpanExportResult
@@ -327,7 +327,7 @@ _E2E_HEADER = "X-EasyCLA-E2E"
 _E2E_RUNID_HEADER = "X-EasyCLA-E2E-RunID"
 _E2E_LEGACY_HEADER = "X-E2E-TEST"
 
-def _extract_e2e_marker(headers) -> tuple[bool, str]:
+def _extract_e2e_marker(headers):
     """
     CI/E2E request marker so we can tag/filter test noise in logs and traces.
     Returns (is_e2e, run_id).
@@ -547,7 +547,7 @@ def process_data_api_logs(request, response):
     API request metadata is logged to the DynamoDB-backed APILog model
     for all requests.
     """
-    cla.log.info('LG:api-request-path:' + request.path + suffix)
+    cla.log.info('LG:api-request-path:' + request.path)
     # Mark E2E calls in the log line so jq-based rollups can filter them out easily.
     e2e, e2e_run_id = _extract_e2e_marker(getattr(request, "headers", None) or {})
     suffix = ""
@@ -555,7 +555,7 @@ def process_data_api_logs(request, response):
         suffix = " e2e=1"
         if e2e_run_id:
             suffix += f" e2e_run_id={e2e_run_id}"
-            cla.log.info('LG:e2e-request-path:' + request.path + suffix)
+        cla.log.info('LG:e2e-request-path:' + request.path + suffix)
 
     # DynamoDB API logging (conditional)
     if _enabled_by_env_or_stage("DDB_API_LOGGING", default_by_stage=(True, False)):
