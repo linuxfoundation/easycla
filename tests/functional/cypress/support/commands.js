@@ -11,7 +11,11 @@ const ajv = new Ajv();
 // Optional: pass a per-run ID via CYPRESS_E2E_RUN_ID (recommended in CI).
 // -----------------------------------------------------------------------------
 const E2E_MARKER_HEADERS = {
-  'X-E2E-Suite': 'cypress',
+  // Backend expects boolish marker:
+  //   X-EasyCLA-E2E: true/1/yes
+  'X-EasyCLA-E2E': '1',
+  // Also set legacy marker for compatibility (backend checks it too).
+  'X-E2E-TEST': '1',
 };
 
 const e2eRunId =
@@ -21,7 +25,9 @@ const e2eRunId =
   Cypress.env('BUILD_ID') ||
   Cypress.env('BUILD_NUMBER');
 if (e2eRunId) {
-  E2E_MARKER_HEADERS['X-E2E-Run-ID'] = String(e2eRunId);
+  // Backend expects this exact header name for run id:
+  //   X-EasyCLA-E2E-RunID
+  E2E_MARKER_HEADERS['X-EasyCLA-E2E-RunID'] = String(e2eRunId);
 }
 
 const HTTP_METHOD_RE = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/i;
