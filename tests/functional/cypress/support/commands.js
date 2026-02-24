@@ -1,6 +1,66 @@
 import Ajv from 'ajv';
 
 const ajv = new Ajv();
+
+// -----------------------------------------------------------------------------
+// E2E marker headers (Cypress)
+//
+// Adds low-cardinality headers to every cy.request() so backend logs/metrics can
+// distinguish CI E2E noise from real usage.
+//
+// Optional: pass a per-run ID via CYPRESS_E2E_RUN_ID (recommended in CI).
+// -----------------------------------------------------------------------------
+const E2E_MARKER_HEADERS = {
+  'X-E2E-Suite': 'cypress',
+};
+
+const e2eRunId =
+  Cypress.env('E2E_RUN_ID') ||
+  Cypress.env('GITHUB_RUN_ID') ||
+  Cypress.env('CI_PIPELINE_ID') ||
+  Cypress.env('BUILD_ID') ||
+  Cypress.env('BUILD_NUMBER');
+if (e2eRunId) {
+  E2E_MARKER_HEADERS['X-E2E-Run-ID'] = String(e2eRunId);
+}
+
+const HTTP_METHOD_RE = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/i;
+
+// Ensure the overwrite is only applied in Cypress runtime.
+if (typeof Cypress !== 'undefined' && Cypress.Commands && Cypress.Commands.overwrite) {
+  Cypress.Commands.overwrite('request', (originalFn, ...args) => {
+    let options = {};
+
+    // Support all cy.request() overloads while keeping behavior identical:
+    //   cy.request(url)
+    //   cy.request(url, body)
+    //   cy.request(method, url)
+    //   cy.request(method, url, body)
+    //   cy.request(options)
+    if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
+      options = { ...args[0] };
+    } else if (args.length === 1) {
+      options = { url: args[0] };
+    } else if (args.length === 2) {
+      const [a0, a1] = args;
+      if (typeof a0 === 'string' && typeof a1 === 'string' && HTTP_METHOD_RE.test(a0)) {
+        options = { method: a0, url: a1 };
+      } else {
+        options = { url: a0, body: a1 };
+      }
+    } else if (args.length >= 3) {
+      const [method, url, body] = args;
+      options = { method, url, body };
+    } else {
+      return originalFn(...args);
+    }
+
+    options.headers = { ...(options.headers || {}), ...E2E_MARKER_HEADERS };
+    return originalFn(options);
+  });
+}
+// E2E marker headers (Cypress) - end
+
 //To validate API response using schema
 export function validateApiResponse(schemaPath, response) {
   cy.fixture(schemaPath).then((schema) => {

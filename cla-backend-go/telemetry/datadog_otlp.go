@@ -141,11 +141,25 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 	reMultiSlash := regexp.MustCompile(`/{2,}`)
 	reAssetExt := regexp.MustCompile(`\.(png|svg|css|js|json|xml|htm|html)$`)
 	reSwaggerAsset := regexp.MustCompile(`^(/v[0-9]+)/swagger\.\{asset\}$`)
-	reUUID := regexp.MustCompile(`[0-9a-fA-F-]{36}`)
+	// UUIDs: classify valid vs invalid (E2E often probes invalid IDs)
+	reUUIDValid := regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+	reUUIDLike := regexp.MustCompile(`/[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{12}(/|$)`)
+	reUUIDHexDash36 := regexp.MustCompile(`/[0-9a-fA-F-]{36}(/|$)`)
 	reNumericID := regexp.MustCompile(`/[0-9]+(/|$)`)
-	reSFID := regexp.MustCompile(`/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)`)
-	reLFXID := regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(/|$)`)
+	reSFIDValid := regexp.MustCompile(`/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)`)
+	reSFIDLike := regexp.MustCompile(`/(?:00|a0)[^/]{1,32}(/|$)`)
+	reLFXIDValid := regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(/|$)`)
+	reLFXIDLike := regexp.MustCompile(`/lf[^/]{1,32}(/|$)`)
 	reNull := regexp.MustCompile(`/null(/|$)`)
+
+	boolishTrue := func(v string) bool {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "y", "on":
+			return true
+		default:
+			return false
+		}
+	}
 
 	sanitize := func(path string) string {
 		p := strings.TrimSpace(path)
@@ -170,10 +184,17 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 		}
 
 		// Dynamic segment masking (use template placeholders, not "*")
-		p = reUUID.ReplaceAllString(p, "{uuid}")
+		// UUIDs: valid vs invalid
+		p = reUUIDValid.ReplaceAllString(p, "{uuid}")
+		p = reUUIDLike.ReplaceAllString(p, "/{invalid-uuid}$1")
+		p = reUUIDHexDash36.ReplaceAllString(p, "/{invalid-uuid}$1")
 		p = reNumericID.ReplaceAllString(p, "/{id}$1")
-		p = reSFID.ReplaceAllString(p, "/{sfid}$1")
-		p = reLFXID.ReplaceAllString(p, "/{lfxid}$1")
+		// Salesforce IDs: valid vs invalid
+		p = reSFIDValid.ReplaceAllString(p, "/{sfid}$1")
+		p = reSFIDLike.ReplaceAllString(p, "/{invalid-sfid}$1")
+		// LFX IDs: valid vs invalid
+		p = reLFXIDValid.ReplaceAllString(p, "/{lfxid}$1")
+		p = reLFXIDLike.ReplaceAllString(p, "/{invalid-lfxid}$1")
 		p = reNull.ReplaceAllString(p, "/{null}$1")
 
 		if p == "" {
@@ -213,6 +234,29 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 			attribute.String("url.path", rawPath),
 			attribute.String("http.target", rawTarget),
 		)
+
+		// Optional E2E marker (lets us filter CI noise in Datadog).
+		e2eVal := ""
+		if r != nil {
+			e2eVal = r.Header.Get("X-EasyCLA-E2E")
+			if strings.TrimSpace(e2eVal) == "" {
+				e2eVal = r.Header.Get("X-E2E-TEST")
+			}
+		}
+		if boolishTrue(e2eVal) {
+			runID := ""
+			if r != nil {
+				runID = strings.TrimSpace(r.Header.Get("X-EasyCLA-E2E-RunID"))
+			}
+			if runID != "" {
+				span.SetAttributes(
+					attribute.Bool("easycla.e2e", true),
+					attribute.String("easycla.e2e_run_id", runID),
+				)
+			} else {
+				span.SetAttributes(attribute.Bool("easycla.e2e", true))
+			}
+		}
 
 		next.ServeHTTP(w, r)
 	})
