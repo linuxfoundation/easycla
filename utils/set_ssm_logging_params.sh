@@ -21,18 +21,18 @@ then
 fi
 if [ ! -z "$SET" ]
 then
-  ./utils/set_ssm_value.sh cla-dd-site-dev 'datadoghq.com' String
-  ./utils/set_ssm_value.sh cla-dd-version-dev "$(git rev-parse --short=9 HEAD 2>/dev/null || echo '1.0')" String
-  # ./utils/set_ssm_value.sh cla-dd-site-dev 'app.datadoghq.com' String
-  ./utils/set_ssm_value.sh cla-dd-api-key-secret-arn-dev "$(cat ./DD_API_KEY_SECRET_ARN-${REG_NUM}.secret)" String
-  ./utils/set_ssm_value.sh cla-dd-extension-layer-arn-dev "$(cat ./DD_EXTENSION_LAYER_ARN_DEV.secret)" String
-  ./utils/set_ssm_value.sh cla-ddb-api-logging-dev true String
-  ./utils/set_ssm_value.sh cla-otel-datadog-api-logging-dev true String
+  # ./utils/set_ssm_value.sh "cla-dd-site-${STAGE}" "app.datadoghq.com" String
+  ./utils/set_ssm_value.sh "cla-dd-site-${STAGE}" "datadoghq.com" String
+  ./utils/set_ssm_value.sh "cla-dd-version-${STAGE}" "$(git rev-parse --short=9 HEAD 2>/dev/null || echo '1.0')" String
+  ./utils/set_ssm_value.sh "cla-dd-api-key-secret-arn-${STAGE}" "$(cat ./DD_API_KEY_SECRET_ARN-${REG_NUM}.secret)" String
+  ./utils/set_ssm_value.sh "cla-dd-extension-layer-arn-${STAGE}" "$(cat ./DD_EXTENSION_LAYER_ARN_DEV.secret)" String
+  ./utils/set_ssm_value.sh "cla-ddb-api-logging-${STAGE}" true String
+  ./utils/set_ssm_value.sh "cla-otel-datadog-api-logging-${STAGE}" true String
 fi
 
-./utils/get_ssm_value.sh cla-dd-site-dev
-./utils/get_ssm_value.sh cla-dd-version-dev
-./utils/get_ssm_value.sh cla-dd-api-key-secret-arn-dev
-./utils/get_ssm_value.sh cla-dd-extension-layer-arn-dev
-./utils/get_ssm_value.sh cla-ddb-api-logging-dev
-./utils/get_ssm_value.sh cla-otel-datadog-api-logging-dev
+./utils/get_ssm_value.sh "cla-dd-site-${STAGE}"
+./utils/get_ssm_value.sh "cla-dd-version-${STAGE}"
+./utils/get_ssm_value.sh "cla-dd-api-key-secret-arn-${STAGE}"
+./utils/get_ssm_value.sh "cla-dd-extension-layer-arn-${STAGE}"
+./utils/get_ssm_value.sh "cla-ddb-api-logging-${STAGE}"
+./utils/get_ssm_value.sh "cla-otel-datadog-api-logging-${STAGE}"
