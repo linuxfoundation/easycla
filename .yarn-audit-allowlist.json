@@ -1,0 +1,9 @@
+{
+  "minSeverity": "high",
+  "allowlist": [
+    1111997
+  ],
+  "notes": {
+    "1111997": "aws-sdk v2 advisory flagged as 'No patch available' in our current baseline; accepted until migration."
+  }
+}
