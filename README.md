@@ -49,9 +49,9 @@ For EasyCLA version 2, all three consoles are hosted in separate repositories.
 
 For EasyCLA version 1, the consoles are:
 
-* [cla-frontend-project-console](cla-frontend-project-console) for the LinuxFoundation director/admin/user to manage project CLA
-* [cla-frontend-corporate-console](cla-frontend-corporate-console) for any concrete company CCLA manager to sign a CCLA and manage employee CLA approved list
-* [cla-frontend-contributor-console](cla-frontend-contributor-console) for any project contributor to sign ICLA or CCLA
+* [cla-frontend-project-console](cla-frontend-project-console) for the LinuxFoundation director/admin/user to manage project CLA.
+* [cla-frontend-corporate-console](cla-frontend-corporate-console) for any concrete company CCLA manager to sign a CCLA and manage employee CLA approved list.
+* [cla-frontend-contributor-console](cla-frontend-contributor-console) for any project contributor to sign ICLA or CCLA.
 
 These CLA frontend components of three independent SPA built with [Ionic](https://ionicframework.com/) framework.
 
