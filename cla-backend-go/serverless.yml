@@ -75,12 +75,8 @@ provider:
       statements:
         - Effect: Allow
           Action:
-            - secretsmanager:GetSecretValue
-          Resource:
-            - ${self:custom.datadog.apiKeySecretArn}
-        - Effect: Allow
-          Action:
-            - cloudwatch:*
+            # - cloudwatch:*
+            - cloudwatch:PutMetricData
           Resource: "*"
         - Effect: Allow
           Action:
@@ -352,3 +348,20 @@ functions:
         - 'bin/backend-aws-lambda'
     layers:
       - ${self:custom.datadog.extensionLayerArn}
+
+resources:
+  Resources:
+    DatadogApiKeySecretReadPolicy:
+      Type: AWS::IAM::Policy
+      Properties:
+        PolicyName: ${self:service}-${opt:stage, 'dev'}-datadog-api-key-secret-read
+        Roles:
+          - Ref: IamRoleLambdaExecution
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - ${self:custom.datadog.apiKeySecretArn}
