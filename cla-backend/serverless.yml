@@ -724,14 +724,14 @@ resources:
         RestApiId:
           Ref: 'ApiGatewayRestApi'
 
-    Cert:
-      Type: AWS::CertificateManager::Certificate
-      Condition: ShouldGenerateCertificate
-      Properties:
-        DomainName: ${self:custom.product.domain.name.${sls:stage}, self:custom.product.domain.name.other}
-        SubjectAlternativeNames:
-          - ${self:custom.product.domain.alt.${sls:stage}, self:custom.product.domain.alt.other}
-        ValidationMethod: DNS
+#     Cert:
+#       Type: AWS::CertificateManager::Certificate
+#       Condition: ShouldGenerateCertificate
+#       Properties:
+#         DomainName: ${self:custom.product.domain.name.${sls:stage}, self:custom.product.domain.name.other}
+#         SubjectAlternativeNames:
+#           - ${self:custom.product.domain.alt.${sls:stage}, self:custom.product.domain.alt.other}
+#         ValidationMethod: DNS
 
   Outputs:
     APIGatewayRootResourceID:
