@@ -9,6 +9,10 @@ on:
   pull_request:
     branches:
       - dev
+    paths:
+      - "cla-backend-go/package.json"
+      - "cla-backend-go/yarn.lock"
+      - ".github/workflows/yarn-scan-backend-go-pr.yml"
 
 jobs:
   yarn-scan-backend-go-pr:
