@@ -29,6 +29,14 @@ package:
 
 custom:
   allowed_origins: ${file(./env.json):cla-allowed-origins-${sls:stage}, ssm:/cla-allowed-origins-${sls:stage}}
+  datadog:
+    dd_env:
+      dev: dev
+      staging: staging
+      prod: prod
+    site: ${file(./env.json):dd-site-${sls:stage}, ssm:/cla-dd-site-${sls:stage}}
+    apiKeySecretArn: ${file(./env.json):dd-api-key-secret-arn-${sls:stage}, ssm:/cla-dd-api-key-secret-arn-${sls:stage}}
+    extensionLayerArn: ${file(./env.json):dd-extension-layer-arn-${sls:stage}, ssm:/cla-dd-extension-layer-arn-${sls:stage}}
   wsgi:
     app: cla.routes.__hug_wsgi__
     pythonBin: python
@@ -138,6 +146,11 @@ provider:
         - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
         - "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"
       statements:
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - ${self:custom.datadog.apiKeySecretArn}
         - Effect: Allow
           Action:
             - cloudwatch:*
@@ -361,6 +374,21 @@ provider:
     # https://github.com/pypa/setuptools/issues/2232
     SETUPTOOLS_USE_DISTUTILS: stdlib
 
+    # API usage logging toggles:
+    DDB_API_LOGGING: ${file(./env.json):ddb-api-logging-${sls:stage}, ssm:/cla-ddb-api-logging-${sls:stage}}
+    OTEL_DATADOG_API_LOGGING: ${file(./env.json):otel-datadog-api-logging-${sls:stage}, ssm:/cla-otel-datadog-api-logging-${sls:stage}}
+
+    # Datadog/OTel placeholders (Python OTel is stubbed for now)
+    DD_ENV: ${self:custom.datadog.dd_env.${sls:stage}, self:custom.datadog.dd_env.dev}
+    DD_SERVICE: easycla-backend
+    DD_VERSION: ${ssm:/cla-dd-version-${sls:stage}, env:DD_VERSION, '1.0'}
+    # DD_SITE: ${self:custom.datadog.site}
+    # DD_API_KEY_SECRET_ARN: ${self:custom.datadog.apiKeySecretArn}
+    DD_SITE: ${file(./env.json):dd-site-${sls:stage}, ssm:/cla-dd-site-${sls:stage}}
+    DD_API_KEY_SECRET_ARN: ${file(./env.json):dd-api-key-secret-arn-${sls:stage}, ssm:/cla-dd-api-key-secret-arn-${sls:stage}}
+    DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT: localhost:4318
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:4318/v1/traces
+
   stackTags:
     Name: ${self:service}
     stage: ${sls:stage}
@@ -405,6 +433,8 @@ functions:
       individually: true
       patterns:
         - 'auth/bin/**'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   api-v3-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-api-v3-lambda
@@ -420,6 +450,8 @@ functions:
       individually: true
       patterns:
         - 'bin/backend-aws-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-projects-events-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-dynamo-projects-lambda
@@ -430,6 +462,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-signatures-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -440,6 +474,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-events-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -450,6 +486,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-repositories-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -460,6 +498,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-projects-cla-groups-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -470,6 +510,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-github-orgs-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -480,6 +522,8 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   save-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-save-metrics-lambda
@@ -496,6 +540,8 @@ functions:
       individually: true
       patterns:
         - 'bin/metrics-aws-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   report-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-report-metrics-lambda
@@ -512,6 +558,8 @@ functions:
       individually: true
       patterns:
         - 'bin/metrics-report-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   zip-builder-scheduler-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-zip-builder-scheduler-lambda
@@ -528,6 +576,8 @@ functions:
       individually: true
       patterns:
         - 'bin/zipbuilder-scheduler-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   zip-builder-lambda:
     handler: 'bin/zipbuilder-lambda'
@@ -540,6 +590,8 @@ functions:
       individually: true
       patterns:
         - 'bin/zipbuilder-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   gitlab-repository-check-lambda:
     handler: 'bin/gitlab-repository-check-lambda'
@@ -557,6 +609,8 @@ functions:
       individually: true
       patterns:
         - 'bin/gitlab-repository-check-lambda'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   # User Subscribe event for dynamodb cla-stage-users table.
   easycla-user-event-handler-lambda:
@@ -572,6 +626,8 @@ functions:
     events:
       - sns:
           arn: ${self:custom.userEventsSNSTopicARN}
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   apiv1:
     handler: wsgi_handler.handler
@@ -581,6 +637,8 @@ functions:
           method: ANY
           path: v1/{proxy+}
           cors: true
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   apiv2:
     handler: wsgi_handler.handler
@@ -590,6 +648,8 @@ functions:
           method: ANY
           path: v2/{proxy+}
           cors: true
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   salesforceprojects:
     handler: cla.salesforce.get_projects
@@ -599,6 +659,8 @@ functions:
           method: ANY
           path: v1/salesforce/projects
           cors: true
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   salesforceprojectbyID:
     handler: cla.salesforce.get_project
@@ -608,6 +670,8 @@ functions:
           method: ANY
           path: v1/salesforce/project
           cors: true
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   # GitHub callback handler
   githubinstall:
@@ -617,6 +681,8 @@ functions:
       - http:
           method: ANY
           path: v2/github/installation
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
   # GitHub callback handler
   githubactivity:
@@ -626,6 +692,8 @@ functions:
       - http:
           method: POST
           path: v2/github/activity
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
 
 
 resources:

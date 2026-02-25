@@ -81,6 +81,7 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/api_logs"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/telemetry"
 	v2Signatures "github.com/linuxfoundation/easycla/cla-backend-go/v2/signatures"
 
 	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
@@ -146,8 +147,52 @@ type combinedRepo struct {
 	projects_cla_groups.Repository
 }
 
+const (
+	envDDBAPILogging         = "DDB_API_LOGGING"
+	envOtelDatadogAPILogging = "OTEL_DATADOG_API_LOGGING"
+)
+
+// parseBoolish parses common "boolean-ish" env var values.
+// Returns (value, ok). ok=false means "unknown/invalid".
+func parseBoolish(v string) (bool, bool) {
+	s := strings.TrimSpace(strings.ToLower(v))
+	switch s {
+	case "1", "true", "yes", "y", "on":
+		return true, true
+	case "0", "false", "no", "n", "off":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+// enabledByEnvOrStage implements:
+// - if env var set to true/1/yes -> enabled
+// - if env var set to false/0/no -> disabled
+// - if env var unset/empty -> defaultByStage[idx]
+// - idx 0 = dev/default stage, index 1 = prod stage
+func enabledByEnvOrStage(envVar, stage string, defaultByStage [2]bool) bool {
+	if raw, ok := os.LookupEnv(envVar); ok && strings.TrimSpace(raw) != "" {
+		if b, ok2 := parseBoolish(raw); ok2 {
+			return b
+		}
+		log.Warnf("LG:api-log-flag-invalid:%s value=%q (falling back to STAGE default)", envVar, raw)
+	}
+	st := strings.TrimSpace(strings.ToLower(stage))
+	if st == "prod" || st == "production" {
+		return defaultByStage[1]
+	}
+	// dev and all non-prod stages default to enabled
+	return defaultByStage[0]
+}
+
 // apiPathLoggerWithDB creates a middleware that logs API requests to DynamoDB
 func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) http.Handler {
+	// No-op when API logging is disabled. This prevents nil deref panics if the middleware
+	// remains in the handler chain but repo creation is skipped.
+	if apiLogsRepo == nil {
+		return func(next http.Handler) http.Handler { return next }
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Infof("LG:api-request-path:%s", r.URL.Path)
@@ -177,6 +222,8 @@ func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) htt
 }
 
 // server function called by environment specific server functions
+//
+//nolint:gocyclo
 func server(localMode bool) http.Handler {
 	f := logrus.Fields{
 		"functionName": "cmd.server",
@@ -208,6 +255,28 @@ func server(localMode bool) http.Handler {
 
 	stage := viper.GetString("STAGE")
 	dynamodbRegion := ini.GetProperty("DYNAMODB_AWS_REGION")
+	ddbAPILoggingEnabled := enabledByEnvOrStage(envDDBAPILogging, stage, [2]bool{true, false})
+	otelDatadogEnabled := enabledByEnvOrStage(envOtelDatadogAPILogging, stage, [2]bool{true, true})
+
+	// Initialize OTel SDK -> Datadog Lambda Extension (OTLP) once at cold start.
+	// If init fails, disable OTel logging but never fail startup.
+	if otelDatadogEnabled {
+		version := strings.TrimSpace(Commit)
+		if strings.TrimSpace(version) == "" {
+			version = Version
+		}
+		if strings.TrimSpace(version) == "" {
+			version = "unknown"
+		}
+		if er := telemetry.InitDatadogOTel(telemetry.DatadogOTelConfig{
+			Stage:   stage,
+			Service: "easycla-backend",
+			Version: version,
+		}); er != nil {
+			log.Infof("LG:otel-datadog-disabled err=%v", er)
+			otelDatadogEnabled = false
+		}
+	}
 
 	log.WithFields(f).Infof("Service %s starting...", ini.ServiceName)
 
@@ -221,6 +290,8 @@ func server(localMode bool) http.Handler {
 		log.Infof("Golang OS               : %s", runtime.GOOS)
 		log.Infof("Golang Arch             : %s", runtime.GOARCH)
 		log.Infof("DYANAMODB_AWS_REGION    : %s", dynamodbRegion)
+		log.Infof("DDB_API_LOGGING         : %t", ddbAPILoggingEnabled)
+		log.Infof("OTEL_DATADOG_API_LOGGING: %t", otelDatadogEnabled)
 		log.Infof("GH_ORG_VALIDATION       : %t", githubOrgValidation)
 		log.Infof("COMPANY_USER_VALIDATION : %t", companyUserValidation)
 		log.Infof("STAGE                   : %s", stage)
@@ -239,6 +310,8 @@ func server(localMode bool) http.Handler {
 		f["companyUserValidation"] = companyUserValidation
 		f["stage"] = stage
 		f["serviceHost"] = host
+		f["ddbAPILogging"] = ddbAPILoggingEnabled
+		f["otelDatadog"] = otelDatadogEnabled
 		log.WithFields(f).Info("config")
 	}
 
@@ -305,7 +378,14 @@ func server(localMode bool) http.Handler {
 	approvalListRepo := approval_list.NewRepository(awsSession, stage)
 	v1CompanyRepo := v1Company.NewRepository(awsSession, stage)
 	eventsRepo := events.NewRepository(awsSession, stage)
-	apiLogsRepo := api_logs.NewRepository(stage, dynamodb.New(awsSession))
+
+	var apiLogsRepo api_logs.Repository
+	if ddbAPILoggingEnabled {
+		apiLogsRepo = api_logs.NewRepository(stage, dynamodb.New(awsSession))
+	} else {
+		apiLogsRepo = nil
+	}
+
 	v1ProjectClaGroupRepo := projects_cla_groups.NewRepository(awsSession, stage)
 	v1CLAGroupRepo := repository.NewRepository(awsSession, stage, gitV1Repository, gerritRepo, v1ProjectClaGroupRepo)
 	metricsRepo := metrics.NewRepository(awsSession, stage, configFile.APIGatewayURL, v1ProjectClaGroupRepo)
@@ -497,6 +577,12 @@ func server(localMode bool) http.Handler {
 				v2API.Serve(middlewareSetupfunc), v2SwaggerSpec.BasePath()),
 			configFile.AllowedOrigins)
 	}
+
+	// OTel/Datadog (OTLP -> Datadog Lambda Extension) - enabled by flag
+	if otelDatadogEnabled {
+		apiHandler = telemetry.WrapHTTPHandler(apiHandler)
+	}
+
 	return apiHandler
 }
 

@@ -32,3 +32,21 @@ export GH_ORG_VALIDATION=false
 export DISABLE_LOCAL_PERMISSION_CHECKS=true
 export COMPANY_USER_VALIDATION=false
 export CLA_SIGNATURE_FILES_BUCKET=cla-signature-files-dev
+
+# Logging
+export DDB_API_LOGGING=true
+export OTEL_DATADOG_API_LOGGING=true
+export DD_ENV=dev
+export DD_SERVICE='easycla-backend'
+export DD_SITE='datadoghq.com'
+export DD_VERSION="${DD_VERSION:-$(git rev-parse --short=9 HEAD 2>/dev/null || echo '1.0')}"
+# export DD_SITE='app.datadoghq.com'
+export DD_API_KEY_SECRET_ARN="$(cat ./DD_API_KEY_SECRET_ARN.secret)"
+export DD_APP_KEY_SECRET_ARN="$(cat ./DD_APP_KEY_SECRET_ARN.secret)"
+# Get via aws --profile lfproduct-dev --region us-east-2 secretsmanager get-secret-value --secret-id "$DD_API_KEY_SECRET_ARN" --query SecretString --output text
+export DD_API_KEY="$(cat ./DD_API_KEY.secret)"
+# Get via aws --profile lfproduct-dev --region us-east-2 secretsmanager get-secret-value --secret-id "$DD_APP_KEY_SECRET_ARN" --query SecretString --output text
+export DD_APP_KEY="$(cat ./DD_APP_KEY.secret)"
+export DD_EXTENSION_LAYER_ARN_DEV="$(cat ./DD_EXTENSION_LAYER_ARN_DEV.secret)"
+export DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT='localhost:4318'
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT='http://localhost:4318/v1/traces'
