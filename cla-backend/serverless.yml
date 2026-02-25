@@ -433,8 +433,6 @@ functions:
       individually: true
       patterns:
         - 'auth/bin/**'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   api-v3-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-api-v3-lambda
@@ -462,8 +460,6 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-signatures-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -474,8 +470,6 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-events-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -486,8 +480,6 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-repositories-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -498,8 +490,6 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-projects-cla-groups-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -510,8 +500,6 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   dynamo-github-orgs-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -522,8 +510,6 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   save-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-save-metrics-lambda
@@ -540,8 +526,6 @@ functions:
       individually: true
       patterns:
         - 'bin/metrics-aws-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   report-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-report-metrics-lambda
@@ -558,8 +542,6 @@ functions:
       individually: true
       patterns:
         - 'bin/metrics-report-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   zip-builder-scheduler-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-zip-builder-scheduler-lambda
@@ -576,8 +558,6 @@ functions:
       individually: true
       patterns:
         - 'bin/zipbuilder-scheduler-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   zip-builder-lambda:
     handler: 'bin/zipbuilder-lambda'
@@ -590,8 +570,6 @@ functions:
       individually: true
       patterns:
         - 'bin/zipbuilder-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   gitlab-repository-check-lambda:
     handler: 'bin/gitlab-repository-check-lambda'
@@ -609,8 +587,6 @@ functions:
       individually: true
       patterns:
         - 'bin/gitlab-repository-check-lambda'
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   # User Subscribe event for dynamodb cla-stage-users table.
   easycla-user-event-handler-lambda:
@@ -626,8 +602,6 @@ functions:
     events:
       - sns:
           arn: ${self:custom.userEventsSNSTopicARN}
-    layers:
-      - ${self:custom.datadog.extensionLayerArn}
 
   apiv1:
     handler: wsgi_handler.handler
