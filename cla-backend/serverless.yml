@@ -358,6 +358,7 @@ functions:
       individually: true
       patterns:
         - 'auth/bin/**'
+        - 'bootstrap'
 
   api-v3-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-api-v3-lambda
@@ -373,6 +374,7 @@ functions:
       individually: true
       patterns:
         - 'bin/backend-aws-lambda'
+        - 'bootstrap'
     layers:
       - ${self:custom.datadog.extensionLayerArn}
 
@@ -385,6 +387,7 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+        - 'bootstrap'
 
   dynamo-signatures-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -395,6 +398,7 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+        - 'bootstrap'
 
   dynamo-events-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -405,6 +409,7 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+        - 'bootstrap'
 
   dynamo-repositories-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -415,6 +420,7 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+        - 'bootstrap'
 
   dynamo-projects-cla-groups-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -425,6 +431,7 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+        - 'bootstrap'
 
   dynamo-github-orgs-events-lambda:
     handler: 'bin/dynamo-events-lambda'
@@ -435,6 +442,7 @@ functions:
       individually: true
       patterns:
         - 'bin/dynamo-events-lambda'
+        - 'bootstrap'
 
   save-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-save-metrics-lambda
@@ -451,6 +459,7 @@ functions:
       individually: true
       patterns:
         - 'bin/metrics-aws-lambda'
+        - 'bootstrap'
 
   report-metrics-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-report-metrics-lambda
@@ -467,6 +476,7 @@ functions:
       individually: true
       patterns:
         - 'bin/metrics-report-lambda'
+        - 'bootstrap'
 
   zip-builder-scheduler-lambda:
     name: ${self:service}-${sls:stage, 'dev'}-zip-builder-scheduler-lambda
@@ -483,6 +493,7 @@ functions:
       individually: true
       patterns:
         - 'bin/zipbuilder-scheduler-lambda'
+        - 'bootstrap'
 
   zip-builder-lambda:
     handler: 'bin/zipbuilder-lambda'
@@ -495,6 +506,7 @@ functions:
       individually: true
       patterns:
         - 'bin/zipbuilder-lambda'
+        - 'bootstrap'
 
   gitlab-repository-check-lambda:
     handler: 'bin/gitlab-repository-check-lambda'
@@ -512,6 +524,7 @@ functions:
       individually: true
       patterns:
         - 'bin/gitlab-repository-check-lambda'
+        - 'bootstrap'
 
   # User Subscribe event for dynamodb cla-stage-users table.
   easycla-user-event-handler-lambda:
@@ -523,6 +536,7 @@ functions:
       individually: true
       patterns:
         - 'bin/user-subscribe-lambda'
+        - 'bootstrap'
     reservedConcurrency: 5
     events:
       - sns:
