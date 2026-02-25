@@ -34,7 +34,7 @@
     "delete_domain:prod": "SLS_DEBUG=* ./node_modules/serverless/bin/serverless.js delete_domain -s prod -r us-east-1 --verbose"
   },
   "dependencies": {
-    "aws-sdk": "^2.1329.0",
+    "aws-sdk": "^2.1693.0",
     "fast-xml-parser": "^5.3.6",
     "install": "^0.13.0",
     "node-fetch": "^2.6.7",
