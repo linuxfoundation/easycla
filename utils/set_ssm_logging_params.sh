@@ -9,14 +9,22 @@ then
 fi
 if [ -z "$REGION" ]
 then
-  export REGION=us-east-1
+  export REGION='us-east-1'
+fi
+if [ "$REGIN" = "us-east-1" ]
+then
+  export REG_NUM=1
+fi
+if [ "$REGIN" = "us-east-2" ]
+then
+  export REG_NUM=2
 fi
 if [ ! -z "$SET" ]
 then
   ./utils/set_ssm_value.sh cla-dd-site-dev 'datadoghq.com' String
   ./utils/set_ssm_value.sh cla-dd-version-dev "$(git rev-parse --short=9 HEAD 2>/dev/null || echo '1.0')" String
   # ./utils/set_ssm_value.sh cla-dd-site-dev 'app.datadoghq.com' String
-  ./utils/set_ssm_value.sh cla-dd-api-key-secret-arn-dev "$(cat ./DD_API_KEY_SECRET_ARN.secret)" String
+  ./utils/set_ssm_value.sh cla-dd-api-key-secret-arn-dev "$(cat ./DD_API_KEY_SECRET_ARN-${REG_NUM}.secret)" String
   ./utils/set_ssm_value.sh cla-dd-extension-layer-arn-dev "$(cat ./DD_EXTENSION_LAYER_ARN_DEV.secret)" String
   ./utils/set_ssm_value.sh cla-ddb-api-logging-dev true String
   ./utils/set_ssm_value.sh cla-otel-datadog-api-logging-dev true String
