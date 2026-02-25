@@ -54,7 +54,7 @@ custom:
 
 provider:
   name: aws
-  runtime: go1.x
+  runtime: provided.al2
   stage: ${opt:stage}
   # EasyCLA v2 is deployed in us-east-2 to support Platform API GW and ACS
   region: us-east-2
@@ -339,13 +339,14 @@ functions:
     # so, setting this allows us to always know the name of the lambda (hard-coded now, which ignores the stage identifier in the name)
     name: ${self:service}-api-v4-lambda # must match lfx-api-gw lambda name
     description: "EasyCLA v2 API"
-    runtime: go1.x
+    runtime: provided.al2
     handler: 'bin/backend-aws-lambda'
     package:
       individually: true
       patterns:
         - '!**'
         - 'bin/backend-aws-lambda'
+        - 'bootstrap'
     layers:
       - ${self:custom.datadog.extensionLayerArn}
 
