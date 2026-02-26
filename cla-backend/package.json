@@ -57,6 +57,7 @@
     "ansi-regex": "^5.0.1",
     "aws-sdk": "^2.1329.0",
     "axios": "^0.30.3",
+    "basic-ftp": "^5.2.0",
     "cookiejar": "^2.1.4",
     "file-type": "^16.5.4",
     "glob-parent": "^5.1.2",
