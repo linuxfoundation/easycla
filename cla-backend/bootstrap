@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+# AWS Lambda custom runtime entrypoint (provided.al2 / provided.al2023).
+# AWS executes /var/task/bootstrap. The configured Lambda "Handler" is exposed
+# via the $_HANDLER env var. We exec that handler binary (which is our Go
+# executable) so we don't need to rename every binary to 'bootstrap'.
+
+if [ -z "${_HANDLER:-}" ]; then
+  echo "bootstrap: _HANDLER is not set" >&2
+  exit 1
+fi
+
+HANDLER_PATH="/var/task/${_HANDLER}"
+if [ ! -x "${HANDLER_PATH}" ]; then
+  echo "bootstrap: handler '${HANDLER_PATH}' not found or not executable" >&2
+  ls -la /var/task >&2 || true
+  exit 1
+fi
+
+exec "${HANDLER_PATH}"

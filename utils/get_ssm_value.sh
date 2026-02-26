@@ -1,11 +1,11 @@
 #!/bin/bash
-set -euo pipefail
-export AWS_PAGER=""
 if [ -z "$1" ]
 then
   echo "Usage: $0 <ssm-parameter-name>"
   exit 1
 fi
+set -euo pipefail
+export AWS_PAGER=""
 if [ -z "$REGION" ]
 then
   REGION="us-east-2"
