@@ -47,6 +47,9 @@
     "simple-git": "^3.16.0",
     "ws": ">=7.5.10",
     "xmlhttprequest-ssl": "^1.6.2",
+    "form-data": "^4.0.4",
+    "tar": "^7.5.8",
+    "minimatch": "^10.2.1",
     "fast-xml-parser": "^5.3.6"
   }
 }

@@ -26,10 +26,6 @@ jobs:
           node-version: '20'
       - name: Setup
         run: yarn install
-#      - name: Yarn Audit
-#        working-directory: cla-backend-go
-#        run: |
-#          yarn audit
       - name: Yarn Audit
         working-directory: cla-backend-go
         run: |
