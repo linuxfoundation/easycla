@@ -46,7 +46,7 @@ termcolor==1.1.0
 urllib3==1.26.18
 vintage==0.4.1
 wcwidth==0.1.7
-Werkzeug==0.15.5
+Werkzeug==3.1.6
 zipp==3.15.0
 markupsafe==2.0.1
 # LG:
