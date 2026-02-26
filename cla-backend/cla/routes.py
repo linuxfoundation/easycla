@@ -8,7 +8,6 @@ The entry point for the CLA service. Lays out all routes and controller function
 import hug
 import os
 import re
-import time
 from urllib.parse import urlparse
 import requests
 from falcon import HTTP_401, HTTP_400, HTTP_OK, HTTP_500, Response
@@ -369,7 +368,7 @@ def _otel_start_request_span(request) -> None:
 
         from opentelemetry import context as otel_context
         from opentelemetry.propagate import extract
-        from opentelemetry.trace import SpanKind, Status, StatusCode, set_span_in_context
+        from opentelemetry.trace import SpanKind, set_span_in_context
     except Exception as e:
         try:
             cla.log.info(f"LG:api-log-otel-datadog-init-missing err={e}")
