@@ -33,5 +33,11 @@
     "cypress-mochawesome-reporter": "^3.5.1",
     "mochawesome-merge": "^4.3.0",
     "mochawesome-report-generator": "^6.2.0"
+  },
+  "resolutions": {
+    "form-data": "2.5.5"
+  },
+  "overrides": {
+    "form-data": "2.5.5"
   }
 }
