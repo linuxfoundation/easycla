@@ -11,11 +11,11 @@ if [ -z "$REGION" ]
 then
   export REGION='us-east-1'
 fi
-if [ "$REGIN" = "us-east-1" ]
+if [ "$REGION" = "us-east-1" ]
 then
   export REG_NUM=1
 fi
-if [ "$REGIN" = "us-east-2" ]
+if [ "$REGION" = "us-east-2" ]
 then
   export REG_NUM=2
 fi
