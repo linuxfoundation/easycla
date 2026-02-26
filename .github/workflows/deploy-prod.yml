@@ -18,6 +18,7 @@ permissions:
 env:
   AWS_REGION: us-east-1
   STAGE: prod
+  DD_VERSION: ${{ github.sha }}
 
 jobs:
   build-deploy-prod:

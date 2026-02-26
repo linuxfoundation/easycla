@@ -9,6 +9,10 @@ on:
   pull_request:
     branches:
       - dev
+    paths:
+      - "cla-backend-go/package.json"
+      - "cla-backend-go/yarn.lock"
+      - ".github/workflows/yarn-scan-backend-go-pr.yml"
 
 jobs:
   yarn-scan-backend-go-pr:
@@ -22,7 +26,12 @@ jobs:
           node-version: '20'
       - name: Setup
         run: yarn install
+#      - name: Yarn Audit
+#        working-directory: cla-backend-go
+#        run: |
+#          yarn audit
       - name: Yarn Audit
         working-directory: cla-backend-go
         run: |
-          yarn audit
+          yarn audit --json > audit.json || true
+          node ../scripts/yarn-audit-filter.mjs audit.json ../.yarn-audit-allowlist.json

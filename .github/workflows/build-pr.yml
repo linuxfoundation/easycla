@@ -16,6 +16,7 @@ permissions:
 env:
   AWS_REGION: us-east-1
   STAGE: dev
+  DD_VERSION: ${{ github.sha }}
 
 jobs:
   build-test-lint:
