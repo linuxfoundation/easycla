@@ -44,9 +44,17 @@
     "tmp": "0.2.4",
     "serialize-javascript": "7.0.3",
     "@cypress/request": "3.0.10",
-    "mochawesome-merge>minimatch": "3.1.5",
-    "rimraf>minimatch": "3.1.5",
-    "mochawesome-merge>minimatch>brace-expansion": "1.1.12",
-    "rimraf>minimatch>brace-expansion": "1.1.12"
+    "mochawesome-merge": {
+      "minimatch": {
+        ".": "3.1.5",
+        "brace-expansion": "1.1.12"
+      }
+    },
+    "rimraf": {
+      "minimatch": {
+        ".": "3.1.5",
+        "brace-expansion": "1.1.12"
+      }
+    }
   }
 }
