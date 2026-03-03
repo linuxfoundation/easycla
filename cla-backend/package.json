@@ -49,7 +49,7 @@
     "serverless-python-requirements": "^6.0.0",
     "serverless-wsgi": "^3.0.1",
     "shell-quote": "^1.7.3",
-    "simple-git": "^3.16.0",
+    "simple-git": "^3.32.3",
     "xml2js": "^0.6.0",
     "yarn-audit-fix": "^10.0.0"
   },
@@ -68,16 +68,20 @@
     "json-schema": "^0.4.0",
     "lodash.set": "^4.3.2",
     "node-fetch": "^2.6.7",
-    "minimatch": "^10.2.1",
+    "minimatch": "^10.2.3",
     "minimist": "^1.2.6",
     "normalize-url": "^4.5.1",
-    "qs": "^6.14.2",
+    "qs": "6.14.1",
     "set-value": "^4.0.1",
     "shell-quote": "^1.7.3",
     "simple-git": "^3.16.0",
     "ws": ">=7.5.10",
     "tar": "^7.5.8",
     "xmlhttprequest-ssl": "^1.6.2",
-    "fast-xml-parser": "^5.3.6"
+    "fast-xml-parser": "^5.3.6",
+    "ajv": "8.18.0",
+    "validator": "13.15.22",
+    "serialize-javascript": "7.0.3",
+    "tmp": "0.2.4"
   }
 }

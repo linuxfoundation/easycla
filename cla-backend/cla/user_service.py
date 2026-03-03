@@ -207,7 +207,7 @@ class UserServiceInstance:
         fn = 'cla.user_service.get_access_token'
         # Use previously cached value, if not expired
         if self.access_token and datetime.datetime.now() < self.access_token_expires:
-            cla.log.debug(f'{fn} - using cached access token: {self.access_token[0:10]}...')
+            cla.log.debug(f'{fn} - using cached access token')
             return self.access_token
 
         auth0_url = cla.config.AUTH0_PLATFORM_URL
