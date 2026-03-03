@@ -47,7 +47,7 @@ vintage==0.4.1
 wcwidth==0.1.7
 werkzeug==3.1.6
 zipp==3.19.1
-markupsafe==2.0.1
+markupsafe==2.1.1
 # LG:
 pynamodb==6.0.2
 wrapt==1.17.2
