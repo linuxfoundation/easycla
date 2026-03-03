@@ -6,6 +6,9 @@ The entry point for the CLA service. Lays out all routes and controller function
 """
 
 import hug
+import os
+import re
+from urllib.parse import urlparse
 import requests
 from falcon import HTTP_401, HTTP_400, HTTP_OK, HTTP_500, Response
 from hug.middleware import LogMiddleware
@@ -40,6 +43,475 @@ from cla.utils import (
 
 _APILOG_CLS = None
 _APILOG_IMPORT_ERROR = None
+_FEATURE_FLAG_CACHE = {}
+
+
+# --- OTel/Datadog (OTLP/HTTP -> Datadog Lambda Extension) state ---
+_OTEL_TRACER = None
+_OTEL_TRACER_PROVIDER = None
+_OTEL_INIT_ERROR = None
+_OTEL_DISABLED = False
+_OTEL_DISABLED_REASON = None
+_OTEL_EXPORT_SUCCESS_ONCE = False
+
+def _disable_otel(reason):
+    global _OTEL_DISABLED, _OTEL_DISABLED_REASON
+    if _OTEL_DISABLED:
+        return
+    _OTEL_DISABLED = True
+    _OTEL_DISABLED_REASON = reason
+    try:
+        cla.log.info(f"LG:otel-datadog-disabled reason={reason}")
+    except Exception:
+        pass
+
+# --- Path sanitizer regexes (mirror ./utils/count_apis.sh, but keep /vN versions intact) ---
+_RE_MULTI_SLASH = re.compile(r"/{2,}")
+_RE_ASSET_EXT = re.compile(r"\.(png|svg|css|js|json|xml|htm|html)$")
+_RE_SWAGGER_ASSET = re.compile(r"^(/v[0-9]+)/swagger\.\{asset\}$")
+_RE_UUID_VALID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_RE_UUID_LIKE = re.compile(r"/[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{12}(/|$)")
+_RE_UUID_HEXDASH_36 = re.compile(r"/[0-9a-fA-F-]{36}(/|$)")
+_RE_NUMERIC_ID = re.compile(r"/[0-9]+(/|$)")
+_RE_SFID_VALID = re.compile(r"/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)")
+_RE_SFID_LIKE = re.compile(r"/(?:00|a0)[^/]{1,32}(/|$)")
+_RE_LFXID_VALID = re.compile(r"/lf[A-Za-z0-9]{16,22}(/|$)")
+_RE_LFXID_LIKE = re.compile(r"/lf[^/]{1,32}(/|$)")
+_RE_NULL = re.compile(r"/null(/|$)")
+_RE_GIT_SHA = re.compile(r"^[0-9a-fA-F]{7,40}$")
+_RE_INVALID_UUID_SEG = re.compile(r"/(?:invalid-uuid(?:-format)?|not-a-uuid)(/|$)")
+_RE_INVALID_SFID_SEG = re.compile(r"/invalid-sfid(?:-format)?(/|$)")
+
+def _sanitize_api_path(path: str) -> str:
+    """
+    Low-cardinality path template matching ./utils/count_apis.sh behavior,
+    except we DO NOT collapse /v1,/v2,... into /v* (version is preserved).
+    """
+    p = (path or "").strip()
+    if p == "":
+        return "/"
+    if not p.startswith("/"):
+        p = "/" + p
+
+    p = _RE_MULTI_SLASH.sub("/", p)
+    if len(p) > 1 and p.endswith("/"):
+        p = p[:-1]
+
+    # Assets -> ".{asset}"
+    p = _RE_ASSET_EXT.sub(".{asset}", p)
+
+    # /vN/swagger.{asset} -> /vN/swagger (keep version)
+    p = _RE_SWAGGER_ASSET.sub(r"\1/swagger", p)
+
+    # Dynamic IDs -> placeholders
+    p = _RE_UUID_VALID.sub("{uuid}", p)
+    p = _RE_UUID_LIKE.sub(r"/{invalid-uuid}\1", p)
+    p = _RE_UUID_HEXDASH_36.sub(r"/{invalid-uuid}\1", p)
+    p = _RE_NUMERIC_ID.sub(r"/{id}\1", p)
+    p = _RE_SFID_VALID.sub(r"/{sfid}\1", p)
+    p = _RE_SFID_LIKE.sub(r"/{invalid-sfid}\1", p)
+    p = _RE_LFXID_VALID.sub(r"/{lfxid}\1", p)
+    p = _RE_LFXID_LIKE.sub(r"/{invalid-lfxid}\1", p)
+    p = _RE_NULL.sub(r"/{null}\1", p)
+    # Known "invalid" test tokens (Cypress) -> placeholders
+    p = _RE_INVALID_UUID_SEG.sub(r"/{invalid-uuid}\1", p)
+    p = _RE_INVALID_SFID_SEG.sub(r"/{invalid-sfid}\1", p)
+
+    cla.log.debug(f"Sanitized path: {path!r} -> {p!r}")
+    return p or "/"
+
+def _stage_to_dd_env(stage: str) -> str:
+    st = (stage or "dev").strip().lower()
+    if st == "prod":
+        return "prod"
+    if st == "staging":
+        return "staging"
+    return "dev"
+
+def _normalize_git_sha(v: str) -> str:
+    s = (v or "").strip()
+    if not s:
+        return ""
+    # keep consistent with Go which uses short commit (e.g. fd573003d)
+    if _RE_GIT_SHA.match(s) and len(s) > 9:
+        return s[:9]
+    return s
+
+def _detect_git_commit():
+    """
+    Best-effort commit detection:
+      1) common CI env vars
+      2) local git (dev)
+    Returns short sha (9 chars) when possible (to match Go's Commit).
+    """
+    for k in (
+        "GIT_COMMIT_SHA", "GIT_COMMIT", "COMMIT_SHA", "COMMIT",
+        "GITHUB_SHA", "CI_COMMIT_SHA", "CODEBUILD_RESOLVED_SOURCE_VERSION",
+    ):
+        v = os.getenv(k)
+        if v and v.strip():
+            n = _normalize_git_sha(v)
+            if n:
+                return n
+    try:
+        import subprocess
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short=9", "HEAD"],
+            stderr=subprocess.DEVNULL,
+        )
+        sha = _normalize_git_sha(out.decode("utf-8").strip())
+        return sha or None
+    except Exception:
+        return None
+
+def _build_otlp_traces_endpoint() -> str:
+    """
+    Match the Go exporter selection logic:
+      - prefer OTEL_EXPORTER_OTLP_TRACES_ENDPOINT if set (preserve its path verbatim; default "/" if missing)
+      - else use OTEL_EXPORTER_OTLP_ENDPOINT as base and append "/v1/traces" (handling trailing slashes)
+      - else default to "http://localhost:4318/v1/traces"
+
+    Accept full URL or host:port[/path].
+    Returns a full URL including scheme + path (suitable for OTLPSpanExporter(endpoint=...)).
+    """
+    traces_ep = (os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or "").strip()
+    base_ep = (os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+
+    used_base = False
+    if traces_ep:
+        raw = traces_ep
+    elif base_ep:
+        raw = base_ep
+        used_base = True
+    else:
+        raw = "http://localhost:4318/v1/traces"
+
+    scheme = "http"
+    host = ""
+    path = "/"
+
+    if raw.startswith("http://") or raw.startswith("https://"):
+        u = urlparse(raw)
+        scheme = (u.scheme or "http")
+        host = u.netloc
+        path = u.path or "/"
+    else:
+        # host:port[/path] (default scheme http)
+        if "/" in raw:
+            host, rest = raw.split("/", 1)
+            path = "/" + rest if rest else "/"
+        else:
+            host = raw
+            path = "/"
+
+    if not path.startswith("/"):
+        path = "/" + path
+
+    if used_base:
+        base_path = path.rstrip("/")
+        path = base_path + "/v1/traces"
+
+    if not host or host.strip() == "":
+        raise ValueError(f"invalid OTLP endpoint: {raw!r}")
+
+    return f"{scheme}://{host}{path}"
+
+def _init_otel_datadog() -> None:
+    """
+    Initialize a minimal OTel SDK pipeline for exporting spans to the Datadog Lambda Extension via OTLP/HTTP.
+    Never raises; on failure it caches the error and becomes a no-op.
+    """
+    global _OTEL_TRACER, _OTEL_TRACER_PROVIDER, _OTEL_INIT_ERROR
+
+    if _OTEL_DISABLED:
+        return
+
+    if _OTEL_TRACER is not None or _OTEL_INIT_ERROR is not None:
+        return
+    try:
+        # Lazy import so we never fail module import / Lambda cold start if deps are missing.
+        from opentelemetry import trace as otel_trace
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    except Exception as e:
+        _OTEL_INIT_ERROR = e
+        _disable_otel(f"init-import-1 err={e}")
+        return
+
+    try:
+        stage = (os.getenv("STAGE", "dev") or "dev").strip()
+        dd_env = (os.getenv("DD_ENV") or "").strip() or _stage_to_dd_env(stage)
+        dd_service = (os.getenv("DD_SERVICE") or "").strip() or "easycla-backend"
+        # Force "service.version" (Datadog version) to be the current commit when available.
+        # Prefer DD_VERSION (injected by serverless/SSM) to avoid spawning a subprocess in Lambda.
+        dd_version = (os.getenv("DD_VERSION") or "").strip()
+        if not dd_version:
+            dd_version = _detect_git_commit() or (os.getenv("VERSION") or "").strip() or "1.0"
+        dd_version = _normalize_git_sha(dd_version) or "1.0"
+
+        endpoint = _build_otlp_traces_endpoint()
+
+        exporter = OTLPSpanExporter(endpoint=endpoint, timeout=2)
+
+        # Wrap exporter so any export failure disables tracing for this container
+        from opentelemetry.sdk.trace.export import SpanExportResult
+        class _FailFastExporter:
+            def __init__(self, inner):
+                self._inner = inner
+            def export(self, spans):
+                if _OTEL_DISABLED:
+                    return SpanExportResult.FAILURE
+                try:
+                    res = self._inner.export(spans)
+                except Exception as ex:
+                    _disable_otel(f"export err={ex}")
+                    return SpanExportResult.FAILURE
+                if res != SpanExportResult.SUCCESS:
+                    _disable_otel(f"export result={res}")
+                else:
+                    global _OTEL_EXPORT_SUCCESS_ONCE
+                    if not _OTEL_EXPORT_SUCCESS_ONCE:
+                        _OTEL_EXPORT_SUCCESS_ONCE = True
+                        try:
+                            cla.log.info(f"LG:otel-datadog-export-success spans={len(spans)}")
+                        except Exception:
+                            pass
+                return res
+            def shutdown(self):
+                try:
+                    return self._inner.shutdown()
+                except Exception as ex:
+                    cla.log.info(f"LG:otel-datadog exception during shutdown err={ex}")
+                    return
+
+        resource = Resource.create({
+            # Vendor-neutral resource attrs (Datadog maps these automatically).
+            "service.name": dd_service,
+            "service.version": dd_version,
+            "deployment.environment.name": dd_env,
+        })
+
+        provider = TracerProvider(resource=resource)
+        # In Lambda, synchronous export is safest; FailFastExporter prevents repeated latency on failure.
+        provider.add_span_processor(SimpleSpanProcessor(_FailFastExporter(exporter)))
+
+        otel_trace.set_tracer_provider(provider)
+
+        _OTEL_TRACER_PROVIDER = provider
+        _OTEL_TRACER = otel_trace.get_tracer("easycla-http")
+    except Exception as e:
+        _OTEL_INIT_ERROR = e
+        _disable_otel(f"init-import-2 err={e}")
+
+def _parse_http_status_code(status):
+    """
+    Falcon typically stores response.status like "200 OK".
+    Return int status code or None.
+    """
+    if status is None:
+        return None
+    try:
+        s = str(status).strip()
+        if s == "":
+            return None
+        # "200 OK" -> 200
+        return int(s.split()[0])
+    except Exception:
+        return None
+
+
+_E2E_HEADER = "X-EasyCLA-E2E"
+_E2E_RUNID_HEADER = "X-EasyCLA-E2E-RunID"
+_E2E_LEGACY_HEADER = "X-E2E-TEST"
+
+def _extract_e2e_marker(headers):
+    """
+    CI/E2E request marker so we can tag/filter test noise in logs and traces.
+    Returns (is_e2e, run_id).
+    """
+    try:
+        if not headers:
+            return False, ""
+        raw = headers.get(_E2E_HEADER) or headers.get(_E2E_LEGACY_HEADER)
+        if _parse_boolish(raw) is True:
+            run_id = (headers.get(_E2E_RUNID_HEADER) or "").strip()
+            return True, run_id
+    except Exception:
+        pass
+    return False, ""
+
+def _otel_start_request_span(request) -> None:
+    """
+    Start a SERVER span for the inbound request and store it in request.context.
+    Never raises.
+    """
+    try:
+        req_ctx = getattr(request, "context", None)
+        if req_ctx is None:
+            return
+        # Defensive: don't double-start
+        if req_ctx.get("_otel_span") is not None:
+            return
+    except Exception as ex:
+        try:
+            cla.log.info(f"LG:api-log-otel-datadog-start-missing-context err={ex}")
+        except Exception:
+            pass
+        return
+
+    try:
+        _init_otel_datadog()
+        if _OTEL_TRACER is None:
+            return
+
+        from opentelemetry import context as otel_context
+        from opentelemetry.propagate import extract
+        from opentelemetry.trace import SpanKind, set_span_in_context
+    except Exception as e:
+        try:
+            cla.log.info(f"LG:api-log-otel-datadog-init-missing err={e}")
+        except Exception:
+            pass
+        return
+
+    method = (getattr(request, "method", "GET") or "GET").strip().upper()
+    raw_path = getattr(request, "path", "/")
+    route = _sanitize_api_path(raw_path)
+    span_name = f"{method} {route}"
+
+    try:
+        # Extract W3C parent context from inbound headers (low cost).
+        headers = getattr(request, "headers", None) or {}
+        carrier = {}
+        for k in ("traceparent", "tracestate", "baggage"):
+            try:
+                v = headers.get(k)
+            except Exception:
+                v = None
+            if v:
+                carrier[k] = v
+
+        parent_ctx = extract(carrier)
+
+        span = _OTEL_TRACER.start_span(span_name, context=parent_ctx, kind=SpanKind.SERVER)
+        # Low-cardinality attrs
+        span.set_attribute("http.method", method)
+        span.set_attribute("http.route", route)
+        # High-cardinality raw path/target (lets you inspect actual UUIDs per span)
+        try:
+            raw_target = getattr(request, "relative_uri", None) or raw_path
+        except Exception:
+            raw_target = raw_path
+        span.set_attribute("url.path", raw_path)
+        span.set_attribute("http.target", raw_target)
+
+        # Optional E2E marker (lets us filter CI noise in Datadog).
+        e2e, e2e_run_id = _extract_e2e_marker(headers)
+        if e2e:
+            span.set_attribute("easycla.e2e", True)
+            if e2e_run_id:
+                span.set_attribute("easycla.e2e_run_id", e2e_run_id)
+
+        # Make span current for the remainder of the request (so any future child spans attach correctly).
+        ctx_with_span = set_span_in_context(span, parent_ctx)
+        token = otel_context.attach(ctx_with_span)
+
+        # Persist for response middleware.
+        request.context["_otel_span"] = span
+        request.context["_otel_ctx_token"] = token
+        request.context["_otel_route"] = route
+    except Exception as e:
+        try:
+            cla.log.info(f"LG:api-log-otel-datadog-failed:{route} err={e}")
+        except Exception:
+            pass
+
+def _otel_end_request_span(request, response) -> None:
+    """
+    End the SERVER span for the inbound request, set status code, and detach context.
+    Never raises.
+    """
+    span = None
+    token = None
+    route = None
+
+    try:
+        ctx = getattr(request, "context", None)
+        if ctx is None:
+            return
+        span = ctx.pop("_otel_span", None)
+        token = ctx.pop("_otel_ctx_token", None)
+        route = ctx.pop("_otel_route", None)
+    except Exception as ex:
+        # If request.context isn't mutable/dict-like for some reason, just bail.
+        try:
+            cla.log.info(f"LG:api-log-otel-datadog-end-missing-context err={ex}")
+        except Exception:
+            pass
+        return
+
+    try:
+        if span is None:
+            return
+
+        status_code = _parse_http_status_code(getattr(response, "status", None))
+        if status_code is not None:
+            span.set_attribute("http.status_code", status_code)
+            # Mark 5xx as errors (4xx are usually client errors, not service faults)
+            if status_code >= 500:
+                from opentelemetry.trace import Status, StatusCode
+                span.set_status(Status(StatusCode.ERROR))
+
+        span.end()
+    except Exception as e:
+        try:
+            if route is None:
+                route = _sanitize_api_path(getattr(request, "path", "/"))
+            cla.log.info(f"LG:api-log-otel-datadog-failed:{route} err={e}")
+        except Exception:
+            pass
+    finally:
+        # Always detach if we attached.
+        if token is not None:
+            try:
+                from opentelemetry import context as otel_context
+                otel_context.detach(token)
+            except Exception:
+                pass
+
+def _parse_boolish(value):
+    if value is None:
+        return None
+    v = str(value).strip().lower()
+    if v in ("1", "true", "yes", "y", "on"):
+        return True
+    if v in ("0", "false", "no", "n", "off"):
+        return False
+    return None
+
+def _enabled_by_env_or_stage(env_var: str, default_by_stage: tuple[bool, bool]) -> bool:
+    # cache (env vars don't change during a lambda container lifetime)
+    if env_var in _FEATURE_FLAG_CACHE:
+        return _FEATURE_FLAG_CACHE[env_var]
+
+    raw = os.getenv(env_var)
+    if raw is not None and raw.strip() != "":
+        parsed = _parse_boolish(raw)
+        if parsed is not None:
+            _FEATURE_FLAG_CACHE[env_var] = parsed
+            return parsed
+        try:
+            cla.log.info(f"LG:api-log-flag-invalid:{env_var} value={raw} (falling back to STAGE default)")
+        except Exception:
+            pass
+
+    stage = (os.getenv("STAGE", "dev") or "dev").strip().lower()
+    is_prod = stage == "prod"
+    enabled = default_by_stage[1] if is_prod else default_by_stage[0]
+    _FEATURE_FLAG_CACHE[env_var] = enabled
+    return enabled
 
 def _get_apilog_cls():
     """
@@ -75,14 +547,27 @@ def process_data_api_logs(request, response):
     for all requests.
     """
     cla.log.info('LG:api-request-path:' + request.path)
+    # Mark E2E calls in the log line so jq-based rollups can filter them out easily.
+    e2e, e2e_run_id = _extract_e2e_marker(getattr(request, "headers", None) or {})
+    suffix = ""
+    if e2e:
+        suffix = " e2e=1"
+        if e2e_run_id:
+            suffix += f" e2e_run_id={e2e_run_id}"
+        cla.log.info('LG:e2e-request-path:' + request.path + suffix)
 
-    # Log API request to DynamoDB table
-    apilog_cls = _get_apilog_cls()
-    if apilog_cls is not None:
-        try:
-            apilog_cls.log_api_request(request.path)
-        except Exception as e:
-            cla.log.info(f"LG:api-log-dynamo-failed:{request.path} err={e}")
+    # DynamoDB API logging (conditional)
+    if _enabled_by_env_or_stage("DDB_API_LOGGING", default_by_stage=(True, False)):
+        apilog_cls = _get_apilog_cls()
+        if apilog_cls is not None:
+            try:
+                apilog_cls.log_api_request(request.path)
+            except Exception as e:
+                cla.log.info(f"LG:api-log-dynamo-failed:{request.path} err={e}")
+
+    # OTel/Datadog API logging (OTLP/HTTP -> Datadog Lambda Extension)
+    if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
+        _otel_start_request_span(request)
 
     if "/github/activity" in request.path:
         body = request.bounded_stream.read()
@@ -98,6 +583,10 @@ def process_data(request, response, resource):
     response.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
     response.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
+    # Close the OTel span after handlers run (captures final status code).
+    if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
+        _otel_end_request_span(request, response)
+
 
 @hug.directive()
 def check_auth(request=None, **kwargs):
@@ -108,11 +597,14 @@ def check_auth(request=None, **kwargs):
 
 
 @hug.exception(cla.auth.AuthError)
-def handle_auth_error(exception, response=None, **kwargs):
+def handle_auth_error(exception, request=None, response=None, **kwargs):
     """Handles authentication errors"""
     response.status = HTTP_401
-    return exception.response
 
+    # Ensure OTel span closes even if response middleware isn't invoked for exceptions.
+    if _enabled_by_env_or_stage("OTEL_DATADOG_API_LOGGING", default_by_stage=(True, True)):
+        _otel_end_request_span(request, response)
+    return exception.response
 
 #
 # Health check route.

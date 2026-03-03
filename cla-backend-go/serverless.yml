@@ -32,6 +32,16 @@ custom:
   dynamodb:
     # Region where dynamodb is installed
     region: us-east-1
+
+  # Datadog tagging conventions + placeholders (CloudOps ticket LFIT-7051 will provide real values)
+  datadog:
+    dd_env:
+      dev: dev
+      staging: staging
+      prod: prod
+    site: ${file(./env.json):dd-site-${opt:stage}, ssm:/cla-dd-site-${opt:stage}}
+    apiKeySecretArn: ${file(./env.json):dd-api-key-secret-arn-${opt:stage}, ssm:/cla-dd-api-key-secret-arn-${opt:stage}}
+    extensionLayerArn: ${file(./env.json):dd-extension-layer-arn-${opt:stage}, ssm:/cla-dd-extension-layer-arn-${opt:stage}}
   # Config for serverless-prune-plugin - remove all but the 10 most recent
   # versions to avoid the "Code storage limit exceeded" error
   prune:
@@ -44,7 +54,7 @@ custom:
 
 provider:
   name: aws
-  runtime: go1.x
+  runtime: provided.al2
   stage: ${opt:stage}
   # EasyCLA v2 is deployed in us-east-2 to support Platform API GW and ACS
   region: us-east-2
@@ -65,7 +75,8 @@ provider:
       statements:
         - Effect: Allow
           Action:
-            - cloudwatch:*
+            # - cloudwatch:*
+            - cloudwatch:PutMetricData
           Resource: "*"
         - Effect: Allow
           Action:
@@ -274,6 +285,19 @@ provider:
     # Turn on USER_AUTH_TRACING to see additional debug of user scopes for the authenticated users - output is verbose
     USER_AUTH_TRACING: true
 
+    DDB_API_LOGGING: ${file(./env.json):ddb-api-logging-${opt:stage}, ssm:/cla-ddb-api-logging-${opt:stage}}
+    OTEL_DATADOG_API_LOGGING: ${file(./env.json):otel-datadog-api-logging-${opt:stage}, ssm:/cla-otel-datadog-api-logging-${opt:stage}}
+
+    # Datadog Lambda Extension (OTLP/HTTP) - Go backend uses pure OTel SDK -> DD Extension.
+    DD_ENV: ${self:custom.datadog.dd_env.${opt:stage}, self:custom.datadog.dd_env.dev}
+    DD_SERVICE: easycla-backend
+    # DD_SITE: ${self:custom.datadog.site}
+    # DD_API_KEY_SECRET_ARN: ${self:custom.datadog.apiKeySecretArn}
+    DD_SITE: ${file(./env.json):dd-site-${opt:stage}, ssm:/cla-dd-site-${opt:stage}}
+    DD_API_KEY_SECRET_ARN: ${file(./env.json):dd-api-key-secret-arn-${opt:stage}, ssm:/cla-dd-api-key-secret-arn-${opt:stage}}
+    DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT: localhost:4318
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:4318/v1/traces
+
   stackTags:
     Name: ${self:service}
     stage: ${self:provider.stage}
@@ -315,10 +339,30 @@ functions:
     # so, setting this allows us to always know the name of the lambda (hard-coded now, which ignores the stage identifier in the name)
     name: ${self:service}-api-v4-lambda # must match lfx-api-gw lambda name
     description: "EasyCLA v2 API"
-    runtime: go1.x
+    runtime: provided.al2
     handler: 'bin/backend-aws-lambda'
     package:
       individually: true
       patterns:
         - '!**'
         - 'bin/backend-aws-lambda'
+        - 'bootstrap'
+    layers:
+      - ${self:custom.datadog.extensionLayerArn}
+
+resources:
+  Resources:
+    DatadogApiKeySecretReadPolicy:
+      Type: AWS::IAM::Policy
+      Properties:
+        PolicyName: ${self:service}-${opt:stage, 'dev'}-datadog-api-key-secret-read
+        Roles:
+          - Ref: IamRoleLambdaExecution
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - ${self:custom.datadog.apiKeySecretArn}
