@@ -1241,12 +1241,8 @@ def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_ur
         oauth = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scope)
         authorization_url, state = oauth.authorization_url(authorize_url)
         cla.log.debug(
-            f"{fn} - initialized a new oauth session "
-            f"using the github oauth client id: {client_id[0:5]}... "
-            f"with the redirect_uri: {redirect_uri} "
-            f"using scope of: {scope}. Obtained the "
-            f"state: {state} and the "
-            f"generated authorization_url: {authorize_url}"
+            f"{fn} - initialized oauth session using the github oauth client id: {client_id[0:5]}... "
+            f"with the redirect_uri: {redirect_uri} and scope: {scope}"
         )
         return authorization_url, state
     else:
@@ -1259,14 +1255,8 @@ def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_ur
 
         # Logging
         cla.log.debug(
-            f"{fn} - initialized a new oauth session "
-            f"using the github oauth client id: {client_id[0:5]}... "
-            f"with the redirect_uri: {redirect_uri}. "
-            f"using scope of: {scope}. "
-            f"CSRF token: {csrf_token}. "
-            f"custom value: {state}. "
-            f"encoded state: {encoded_state}."
-            f"Generated authorization_url: {authorization_url}"
+            f"{fn} - initialized oauth session using the github oauth client id: {client_id[0:5]}... "
+            f"with the redirect_uri: {redirect_uri} and scope: {scope}"
         )
         return authorization_url, csrf_token
 

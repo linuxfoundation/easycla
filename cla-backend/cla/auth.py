@@ -7,7 +7,11 @@ auth.py contains all necessary objects and functions to perform authentication a
 import os
 
 import requests
-from jose import jwt
+import json
+
+import jwt
+from jwt.algorithms import RSAAlgorithm
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError, PyJWTError
 
 import cla
 
@@ -81,7 +85,7 @@ def authenticate_user(headers):
 
     try:
         unverified_header = jwt.get_unverified_header(token)
-    except jwt.JWTError as e:
+    except PyJWTError as e:
         cla.log.error(e)
         raise AuthError('unable to decode claims')
 
@@ -99,19 +103,19 @@ def authenticate_user(headers):
     # print("JWKS kids:", [key["kid"] for key in jwks["keys"]])
     if rsa_key:
         try:
+            public_key = RSAAlgorithm.from_jwk(json.dumps(rsa_key))
             payload = jwt.decode(
                 token,
-                rsa_key,
+                public_key,
                 algorithms=algorithms,
                 options={
-                    'verify_at_hash': False,
                     'verify_aud': False
                 }
             )
-        except jwt.ExpiredSignatureError as e:
+        except ExpiredSignatureError as e:
             cla.log.error(e)
             raise AuthError('token is expired')
-        except jwt.JWTClaimsError as e:
+        except InvalidTokenError as e:
             cla.log.error(e)
             raise AuthError('incorrect claims')
         except Exception as e:
