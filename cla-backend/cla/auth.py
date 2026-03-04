@@ -104,10 +104,11 @@ def authenticate_user(headers):
     if rsa_key:
         try:
             public_key = RSAAlgorithm.from_jwk(json.dumps(rsa_key))
+            jwt_algorithms = algorithms if isinstance(algorithms, (list, tuple, set)) else [algorithms]
             payload = jwt.decode(
                 token,
                 public_key,
-                algorithms=algorithms,
+                algorithms=list(jwt_algorithms),
                 options={
                     'verify_aud': False
                 }

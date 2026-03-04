@@ -54,11 +54,15 @@ def _generate_rsa_jwks(kid: str = "test-kid"):
 
 
 class _MockResponse:  # pylint: disable=too-few-public-methods
-    def __init__(self, jwks):
+    def __init__(self, jwks, status_code: int = 200):
         self._jwks = jwks
+        self.status_code = status_code
 
     def json(self):
         return self._jwks
+
+    def raise_for_status(self):  # pragma: no cover
+        return None
 
 
 class TestPyJwtMigration(unittest.TestCase):
