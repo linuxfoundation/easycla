@@ -55,7 +55,9 @@ describe('To Validate & test Organization APIs via API call (V3)', function () {
     const websiteName = 'linuxfoundation.org';
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}organization/search?companyName=${encodeURIComponent(companyName)}&websiteName=${encodeURIComponent(websiteName)}`,
+      url: `${claEndpoint}organization/search?companyName=${encodeURIComponent(
+        companyName,
+      )}&websiteName=${encodeURIComponent(websiteName)}`,
       timeout: timeout,
       failOnStatusCode: allowFail,
     }).then((response) => {

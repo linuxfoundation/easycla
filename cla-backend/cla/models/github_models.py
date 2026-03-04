@@ -277,17 +277,32 @@ class GitHub(repository_service_interface.RepositoryService):
         fn = "cla.models.github_models._get_request_session"
         session = request.context.get("session")
         if session is None:
-            cla.log.warning(f"Session is empty for request: {request}")
-        cla.log.debug(f"{fn} - loaded session: {list(session.keys())}")
+            cla.log.warning(f"{fn} - Session is empty for request: {request}")
+            session = {}
+            request.context["session"] = session
 
         # Ensure session is a dict - getting issue where session is a string
         if isinstance(session, str):
             # convert string to a dict
-            cla.log.debug(f"{fn} - session is type: {type(session)} - converting to dict...")
-            session = json.loads(session)
-            # Reset the session now that we have converted it to a dict
+            cla.log.warning(f"{fn} - session context is a string; attempting to parse JSON")
+            try:
+                session = json.loads(session)
+            except (ValueError, json.JSONDecodeError) as e:
+                cla.log.warning(f"{fn} - unable to parse session string as JSON: {e}")
+                session = {}
+
             request.context["session"] = session
-            cla.log.debug(f"{fn} - session: {session} which is now type: {type(session)}...")
+
+        # Normalise dict-like sessions for consistent downstream behaviour/logging.
+        if not isinstance(session, dict):
+            try:
+                session = dict(session)
+            except Exception:
+                cla.log.warning(f"{fn} - session context has unsupported type {type(session)}; resetting to empty dict")
+                session = {}
+            request.context["session"] = session
+
+        cla.log.debug(f"{fn} - loaded session (keys={list(session.keys())})")
 
         return session
 
@@ -363,7 +378,7 @@ class GitHub(repository_service_interface.RepositoryService):
                 raise falcon.HTTPBadRequest("Invalid OAuth2 state", "Invalid OAuth2 state")
             if state_token != session_state:
                 cla.log.warning(f"{fn} - invalid GitHub OAuth2 state while handling callback")
-                raise falcon.HTTPBadRequest(f"Invalid OAuth2 state")
+                raise falcon.HTTPBadRequest(f"Invalid OAuth2 state", "Invalid OAuth2 state")
             cla.log.debug(f"handling user-from-session callback")
             token_url = cla.conf["GITHUB_OAUTH_TOKEN_URL"]
             client_id = os.environ["GH_OAUTH_CLIENT_ID"]
