@@ -14,6 +14,7 @@ import threading
 import time
 import uuid
 from typing import List, Optional, Union, Tuple, Iterable
+from collections.abc import MutableMapping
 
 import cla
 import falcon
@@ -293,8 +294,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
             request.context["session"] = session
 
-        # Normalise dict-like sessions for consistent downstream behaviour/logging.
-        if not isinstance(session, dict):
+        if not isinstance(session, MutableMapping):
             try:
                 session = dict(session)
             except Exception:
@@ -367,12 +367,18 @@ class GitHub(repository_service_interface.RepositoryService):
         if state != session_state:
             # Eventually handle user-from-session API callback
             try:
-                state_data = json.loads(base64.urlsafe_b64decode(state.encode()).decode())
+                padded_state = state + "=" * (-len(state) % 4)
+                state_data = json.loads(base64.urlsafe_b64decode(padded_state.encode()).decode())
             except (ValueError, json.JSONDecodeError, binascii.Error) as err:
                 cla.log.warning(f"{fn} - failed to decode state, error: {err}")
                 raise falcon.HTTPBadRequest("Invalid OAuth2 state", "Invalid OAuth2 state")
-            state_token = state_data["csrf"]
-            value = state_data["state"]
+
+            state_token = state_data.get("csrf")
+            value = state_data.get("state")
+            if not state_token or not value:
+                cla.log.warning(f"{fn} - invalid OAuth2 state payload while handling callback")
+                raise falcon.HTTPBadRequest("Invalid OAuth2 state", "Invalid OAuth2 state")
+
             if value != "user-from-session":
                 cla.log.warning(f"{fn} - invalid GitHub OAuth2 state while handling callback")
                 raise falcon.HTTPBadRequest("Invalid OAuth2 state", "Invalid OAuth2 state")
