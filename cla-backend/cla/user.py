@@ -46,6 +46,9 @@ def cla_user(default=None, request=None, **kwargs):
                 'verify_jti': False,
             },
         )
+    except PyJWTError as e:
+        cla.log.error('JWT Error parsing Bearer token: {}'.format(e))
+        return default
     except Exception as e:
         cla.log.error('Error parsing Bearer token: {}'.format(e))
         return default

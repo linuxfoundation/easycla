@@ -246,7 +246,7 @@ class GitHub(repository_service_interface.RepositoryService):
         # Not sure if we need a different token for each installation ID...
         cla.log.debug(f"{fn} - Loading session from request: {request}...")
         session = self._get_request_session(request)
-        cla.log.debug(f"{fn} - Adding github details to session: {session} which is type: {type(session)}...")
+        cla.log.debug(f"{fn} - Adding github details to session: {list(session.keys())} which is type: {type(session)}...")
         session["github_installation_id"] = installation_id
         session["github_repository_id"] = github_repository_id
         session["github_change_request_id"] = change_request_id
@@ -278,7 +278,7 @@ class GitHub(repository_service_interface.RepositoryService):
         session = request.context.get("session")
         if session is None:
             cla.log.warning(f"Session is empty for request: {request}")
-        cla.log.debug(f"{fn} - loaded session: {session}")
+        cla.log.debug(f"{fn} - loaded session: {list(session.keys())}")
 
         # Ensure session is a dict - getting issue where session is a string
         if isinstance(session, str):

@@ -75,15 +75,8 @@ class GitHubInstallation(object):
 
 
 class GithubCLAIntegration(GithubIntegration):
-    """
-    Custom GithubIntegration using python-jose instead of pyjwt for token creation.
-    """
 
     def create_jwt(self):
-        """
-        Overloaded to use python-jose instead of pyjwt.
-        Couldn't get it working with pyjwt.
-        """
         now = int(time.time())
         payload = {
             "iat": now,
