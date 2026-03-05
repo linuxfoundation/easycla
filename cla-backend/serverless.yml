@@ -43,7 +43,7 @@ custom:
     pythonRequirements: false
   pythonRequirements:
     dockerizePip: true
-    dockerImage: public.ecr.aws/sam/build-python3.11
+    dockerImage: public.ecr.aws/sam/build-python3.11:latest
     slim: false
     strip: false
     useDownloadCache: true
