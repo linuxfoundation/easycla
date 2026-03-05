@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 from hug.directives import _built_in_directive
-from jose import jwt
+import jwt
+from jwt.exceptions import PyJWTError
 
 import cla
 
@@ -32,7 +33,22 @@ def cla_user(default=None, request=None, **kwargs):
 
     bearer_token = bearer_token.replace('Bearer ', '')
     try:
-        token_params = jwt.get_unverified_claims(bearer_token)
+        token_params = jwt.decode(
+            bearer_token,
+            options={
+                'verify_signature': False,
+                'verify_exp': False,
+                'verify_nbf': False,
+                'verify_iat': False,
+                'verify_aud': False,
+                'verify_iss': False,
+                'verify_sub': False,
+                'verify_jti': False,
+            },
+        )
+    except PyJWTError as e:
+        cla.log.error('JWT Error parsing Bearer token: {}'.format(e))
+        return default
     except Exception as e:
         cla.log.error('Error parsing Bearer token: {}'.format(e))
         return default
