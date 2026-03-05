@@ -604,7 +604,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
         if (!isIncluded) {
           cy.task(
             'log',
-            `GitHub username '${gitUsernameApprovalList}' was not added to the list. Current list: ${JSON.stringify(list)}`,
+            `GitHub username '${gitUsernameApprovalList}' was not added to the list. Current list: ${JSON.stringify(
+              list,
+            )}`,
           );
           cy.task('log', 'This may be due to duplicate prevention, list limits, or approval requirements');
           // Accept this as a known behavior - the API may prevent adding duplicates or have other business rules
