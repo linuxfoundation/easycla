@@ -26,11 +26,17 @@ import csv
 import datetime as dt
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
+
+_ENV_RE = re.compile(r"(^|\s)env\s*:")
+
+def has_env_filter(query: str) -> bool:
+    return bool(_ENV_RE.search(query))
 
 def eprint(*args: Any) -> None:
     print(*args, file=sys.stderr)
@@ -193,11 +199,15 @@ def main() -> int:
 
     p.add_argument("--from", dest="time_from", default="now-60m", help='Time range start (Datadog format), default "now-60m"')
     p.add_argument("--to", dest="time_to", default="now", help='Time range end (Datadog format), default "now"')
-    p.add_argument("--query", default="service:easycla-backend env:dev", help='Datadog query string (default: "service:easycla-backend env:dev")')
     p.add_argument("--limit", type=int, default=5000, help="Page limit per request (default: 5000)")
     p.add_argument("--verbose", action="store_true", help="Log progress to stderr")
+    p.add_argument("--env", "--environment", "--stage", dest="env", default=os.getenv("DD_ENV") or os.getenv("ENV") or os.getenv("STAGE") or "dev", help='Datadog env tag value (default: DD_ENV/ENV/STAGE or "dev")')
+    p.add_argument("--query", default="service:easycla-backend", help='Datadog query string WITHOUT env (env is appended unless query already contains env:...) (default: "service:easycla-backend")')
 
     args = p.parse_args()
+    query = (args.query or "").strip()
+    if args.env and not has_env_filter(query):
+        query = f"{query} env:{args.env}".strip() if query else f"env:{args.env}"
 
     # Default skip-e2e unless explicitly --no-skip-e2e
     skip_e2e = True
@@ -217,7 +227,7 @@ def main() -> int:
         dd_site=dd_site,  # type: ignore[arg-type]
         dd_api_key=dd_api_key,  # type: ignore[arg-type]
         dd_app_key=dd_app_key,  # type: ignore[arg-type]
-        query=args.query,
+        query=query,
         time_from=args.time_from,
         time_to=args.time_to,
         limit=args.limit,
