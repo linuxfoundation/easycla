@@ -6,7 +6,7 @@ import time
 
 import requests
 from github import BadCredentialsException, UnknownObjectException, GithubException, GithubIntegration, Github
-from jose import jwt
+import jwt
 from requests.exceptions import RequestException
 
 import cla
@@ -30,9 +30,7 @@ class GitHubInstallation(object):
     def __init__(self, installation_id):
         self.installation_id = installation_id
 
-        cla.log.debug('Initializing github application - installation_id: {}, app id: {}, private key'
-                      ' (minus header): {}...'.
-                      format(self.installation_id, self.app_id, self.private_key[32:38]))
+        cla.log.debug('Initializing github application - installation_id: {}, app id: {}'.format(self.installation_id, self.app_id))
 
         try:
             integration = GithubCLAIntegration(self.app_id, self.private_key)
@@ -77,15 +75,8 @@ class GitHubInstallation(object):
 
 
 class GithubCLAIntegration(GithubIntegration):
-    """
-    Custom GithubIntegration using python-jose instead of pyjwt for token creation.
-    """
 
     def create_jwt(self):
-        """
-        Overloaded to use python-jose instead of pyjwt.
-        Couldn't get it working with pyjwt.
-        """
         now = int(time.time())
         payload = {
             "iat": now,
