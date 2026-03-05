@@ -1,3 +1,6 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
 """Unit tests validating the PyJWT migration does not break JWT/auth processing.
 
 These tests are intentionally offline:
