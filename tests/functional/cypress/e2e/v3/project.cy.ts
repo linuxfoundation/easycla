@@ -110,7 +110,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
     // Skip if no test project ID available
     if (!testProjectID) {
       cy.task('log', 'Skipping GET /project/{projectID} - no test project available');
-      return cy.skip();
+      this.skip();
     }
 
     cy.request({
@@ -136,7 +136,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
     // Skip if no test project SFID available
     if (!testProjectSFID) {
       cy.task('log', 'Skipping GET /project/external/{projectSFID} - no test project SFID available');
-      return cy.skip();
+      this.skip();
     }
 
     cy.request({
@@ -161,7 +161,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
     // Skip if no test project name available
     if (!testProjectName) {
       cy.task('log', 'Skipping GET /project/name/{projectName} - no test project name available');
-      return cy.skip();
+      this.skip();
     }
 
     cy.request({
@@ -231,7 +231,7 @@ describe('To Validate & test Project APIs via API call (V3)', function () {
     // Skip if no test project to update
     if (!testProjectID) {
       cy.task('log', 'Skipping PUT /project - no project available to update');
-      return cy.skip();
+      this.skip();
     }
 
     const updateData = {

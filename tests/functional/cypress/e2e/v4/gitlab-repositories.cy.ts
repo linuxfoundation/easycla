@@ -309,17 +309,17 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
           failOnStatusCode: false,
         }).then((response) => {
           const es = local
-            ? (testCase.expectedStatusLocal ?? testCase.expectedStatus)
-            : (testCase.expectedStatusRemote ?? testCase.expectedStatus);
+            ? testCase.expectedStatusLocal ?? testCase.expectedStatus
+            : testCase.expectedStatusRemote ?? testCase.expectedStatus;
           const ec = local
-            ? (testCase.expectedCodeLocal ?? testCase.expectedCode)
-            : (testCase.expectedCodeRemote ?? testCase.expectedCode);
+            ? testCase.expectedCodeLocal ?? testCase.expectedCode
+            : testCase.expectedCodeRemote ?? testCase.expectedCode;
           const em = local
-            ? (testCase.expectedMessageLocal ?? testCase.expectedMessage)
-            : (testCase.expectedMessageRemote ?? testCase.expectedMessage);
+            ? testCase.expectedMessageLocal ?? testCase.expectedMessage
+            : testCase.expectedMessageRemote ?? testCase.expectedMessage;
           const emc = local
-            ? (testCase.expectedMessageContainsLocal ?? testCase.expectedMessageContains)
-            : (testCase.expectedMessageContainsRemote ?? testCase.expectedMessageContains);
+            ? testCase.expectedMessageContainsLocal ?? testCase.expectedMessageContains
+            : testCase.expectedMessageContainsRemote ?? testCase.expectedMessageContains;
 
           cy.task('log', `  --> expected ${es}, ${ec}, '${em}' (contains? ${emc})`);
           validate_expected_status(response, es, ec, em, emc);

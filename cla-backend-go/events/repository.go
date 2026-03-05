@@ -477,7 +477,10 @@ func (repo *repository) SearchEvents(params *eventOps.SearchEventsParams, pageSi
 	case params.ProjectSFID != nil:
 		// search by projectSFID
 		indexName = EventProjectSFIDEventTypeIndex
-		condition = expression.Key("event_project_sfid").Equal(expression.Value(params.ProjectSFID)).And(expression.Key("event_type").Equal(expression.Value(params.EventType)))
+		condition = expression.Key("event_project_sfid").Equal(expression.Value(params.ProjectSFID))
+		if params.EventType != nil {
+			condition = condition.And(expression.Key("event_type").Equal(expression.Value(params.EventType)))
+		}
 		pk = "event_project_sfid"
 		sk = "event_type"
 	}
