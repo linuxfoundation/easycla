@@ -40,7 +40,13 @@ custom:
   wsgi:
     app: cla.routes.__hug_wsgi__
     pythonBin: python
-    pythonRequirements: false
+    pythonRequirements:
+      dockerizePip: true
+      dockerImage: public.ecr.aws/sam/build-python3.11
+      slim: true
+      strip: false
+      useDownloadCache: true
+      useStaticCache: true
   # Config for serverless-prune-plugin - remove all but the 10 most recent
   # versions to avoid the "Code storage limit exceeded" error
   prune:
