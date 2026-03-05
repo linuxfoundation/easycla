@@ -416,16 +416,14 @@ describe('To Validate & get projects Activity Callback via API call', function (
         cy.request(opts).then((response) => {
           cy.task('log', `title: ${c.title}`);
           return cy.logJson('response', response).then(() => {
-            const es = local
-              ? (c.expectedStatusLocal ?? c.expectedStatus)
-              : (c.expectedStatusRemote ?? c.expectedStatus);
-            const ec = local ? (c.expectedCodeLocal ?? c.expectedCode) : (c.expectedCodeRemote ?? c.expectedCode);
+            const es = local ? c.expectedStatusLocal ?? c.expectedStatus : c.expectedStatusRemote ?? c.expectedStatus;
+            const ec = local ? c.expectedCodeLocal ?? c.expectedCode : c.expectedCodeRemote ?? c.expectedCode;
             const em = local
-              ? (c.expectedMessageLocal ?? c.expectedMessage)
-              : (c.expectedMessageRemote ?? c.expectedMessage);
+              ? c.expectedMessageLocal ?? c.expectedMessage
+              : c.expectedMessageRemote ?? c.expectedMessage;
             const emc = local
-              ? (c.expectedMessageContainsLocal ?? c.expectedMessageContains)
-              : (c.expectedMessageContainsRemote ?? c.expectedMessageContains);
+              ? c.expectedMessageContainsLocal ?? c.expectedMessageContains
+              : c.expectedMessageContainsRemote ?? c.expectedMessageContains;
 
             cy.task('log', `  --> expected ${es}, ${ec}, '${em}' (contains? ${emc})`);
             validate_expected_status(response, es, ec, em, emc);

@@ -191,6 +191,7 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 		p = reUUIDLike.ReplaceAllString(p, "/{invalid-uuid}$1")
 		p = reUUIDHexDash36.ReplaceAllString(p, "/{invalid-uuid}$1")
 		p = reNumericID.ReplaceAllString(p, "/{id}$1")
+		p = reNumericID.ReplaceAllString(p, "/{id}$1")
 		// Salesforce IDs: valid vs invalid
 		p = reSFIDValid.ReplaceAllString(p, "/{sfid}$1")
 		p = reSFIDLike.ReplaceAllString(p, "/{invalid-sfid}$1")
