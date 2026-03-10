@@ -31,6 +31,7 @@
   },
   "resolutions": {
     "axios": "^0.30.3",
+    "tar": "^7.5.10",
     "ansi-regex": "^5.0.1",
     "aws-sdk": "^2.1329.0",
     "cookiejar": "^2.1.4",
@@ -48,7 +49,6 @@
     "ws": ">=7.5.10",
     "xmlhttprequest-ssl": "^1.6.2",
     "form-data": "^4.0.4",
-    "tar": "^7.5.8",
     "minimatch": "^10.2.1",
     "fast-xml-parser": "^5.3.6"
   }
