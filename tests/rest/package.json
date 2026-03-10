@@ -6,7 +6,7 @@
     "test": "newman run easycla-collection.json"
   },
   "dependencies": {
-    "newman": "^4.6.0"
+    "newman": "^6.2.2"
   },
   "resolutions": {
     "form-data": "^4.0.4",
