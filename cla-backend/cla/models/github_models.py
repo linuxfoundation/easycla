@@ -182,7 +182,12 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.error("Unknown error while getting GitHub repository ID for repository %s: %s", repo_name, str(err))
 
     def received_activity(self, data):
-        cla.log.debug("github_models.received_activity - Received GitHub activity: %s", data)
+        cla.log.debug(
+            "github_models.received_activity - received GitHub activity action=%s pull_request=%s merge_group=%s",
+            data.get("action"),
+            "pull_request" in data,
+            "merge_group" in data,
+        )
         if "pull_request" not in data and "merge_group" not in data:
             cla.log.debug("github_models.received_activity - Activity not related to pull request - ignoring")
             return {"message": "Not a pull request nor a merge group  - no action performed"}
@@ -206,7 +211,7 @@ class GitHub(repository_service_interface.RepositoryService):
 
     def user_from_session(self, request, get_redirect_url):
         fn = "github_models.user_from_session"
-        cla.log.debug(f"{fn} - loading session from request: {request}...")
+        cla.log.debug(f"{fn} - loading session from request")
         session = self._get_request_session(request)
         cla.log.debug(f"{fn} - session loaded (keys={list(session.keys())})")
 
@@ -217,7 +222,7 @@ class GitHub(repository_service_interface.RepositoryService):
             if user is None:
                 cla.log.debug(f"{fn} - cannot find user, returning HTTP 404 status")
             else:
-                cla.log.debug(f"{fn} - loaded user {user.to_dict()} returning HTTP 200 status")
+                cla.log.debug(f"{fn} - loaded user returning HTTP 200 status")
             return user
 
         authorization_url, csrf_token = self.get_authorization_url_and_state(None, None, None, ["user:email"], state='user-from-session')
@@ -245,7 +250,7 @@ class GitHub(repository_service_interface.RepositoryService):
         )
 
         # Not sure if we need a different token for each installation ID...
-        cla.log.debug(f"{fn} - Loading session from request: {request}...")
+        cla.log.debug(f"{fn} - Loading session from request")
         session = self._get_request_session(request)
         cla.log.debug(f"{fn} - Adding github details to session: {list(session.keys())} which is type: {type(session)}...")
         session["github_installation_id"] = installation_id
@@ -254,9 +259,9 @@ class GitHub(repository_service_interface.RepositoryService):
 
         cla.log.debug(f"{fn} - Determining return URL from the inbound request...")
         origin_url = self.get_return_url(github_repository_id, change_request_id, installation_id)
-        cla.log.debug(f"{fn} - Return URL from the inbound request is {origin_url}")
+        cla.log.debug(f"{fn} - return URL resolved from inbound request")
         session["github_origin_url"] = origin_url
-        cla.log.debug(f'{fn} - Stored origin url in session as session["github_origin_url"] = {origin_url}')
+        cla.log.debug(f'{fn} - stored origin url in session')
 
         if "github_oauth2_token" in session:
             cla.log.debug(f"{fn} - Using existing session GitHub OAuth2 token")
@@ -278,7 +283,7 @@ class GitHub(repository_service_interface.RepositoryService):
         fn = "cla.models.github_models._get_request_session"
         session = request.context.get("session")
         if session is None:
-            cla.log.warning(f"{fn} - Session is empty for request: {request}")
+            cla.log.warning(f"{fn} - session is empty for request")
             session = {}
             request.context["session"] = session
 
@@ -355,7 +360,7 @@ class GitHub(repository_service_interface.RepositoryService):
         further requests and initiate the signing workflow.
         """
         fn = "github_models.oauth2_redirect"
-        cla.log.debug(f"{fn} - handling GitHub OAuth2 redirect with request: {dir(request)}")
+        cla.log.debug(f"{fn} - handling GitHub OAuth2 redirect callback")
         session = self._get_request_session(request)  # request.context['session']
 
         if "github_oauth2_state" in session:
@@ -388,7 +393,7 @@ class GitHub(repository_service_interface.RepositoryService):
             cla.log.debug(f"handling user-from-session callback")
             token_url = cla.conf["GITHUB_OAUTH_TOKEN_URL"]
             client_id = os.environ["GH_OAUTH_CLIENT_ID"]
-            cla.log.debug(f"{fn} - using client ID {client_id[0:5]}...")
+            cla.log.debug(f"{fn} - using configured GitHub OAuth client")
             client_secret = os.environ["GH_OAUTH_SECRET"]
             try:
                 token = self._fetch_token(client_id, state, token_url, client_secret, code)
@@ -401,7 +406,7 @@ class GitHub(repository_service_interface.RepositoryService):
             if user is None:
                 cla.log.debug(f"{fn} - cannot find user, returning HTTP 404 status")
             else:
-                cla.log.debug(f"{fn} - loaded user {user.to_dict()} returning HTTP 200 status")
+                cla.log.debug(f"{fn} - loaded user returning HTTP 200 status")
             return user.to_dict()
 
         # Get session information for this request.
@@ -414,11 +419,11 @@ class GitHub(repository_service_interface.RepositoryService):
         token_url = cla.conf["GITHUB_OAUTH_TOKEN_URL"]
         client_id = os.environ["GH_OAUTH_CLIENT_ID"]
         client_secret = os.environ["GH_OAUTH_SECRET"]
-        cla.log.debug(f"{fn} - fetching oauth2 token with client ID: {client_id[0:5]}..., token_url: {token_url}")
+        cla.log.debug(f"{fn} - fetching oauth2 token from configured GitHub endpoint")
         token = self._fetch_token(client_id, state, token_url, client_secret, code)
         cla.log.debug(f"{fn} - oauth2 token received - storing token in session")
         session["github_oauth2_token"] = token
-        cla.log.debug(f"{fn} - redirecting the user back to the console: {origin_url}")
+        cla.log.debug(f"{fn} - redirecting the user back to the contributor console")
         return self.redirect_to_console(installation_id, github_repository_id, change_request_id, origin_url, request)
 
     def redirect_to_console(self, installation_id, repository_id, pull_request_id, origin_url, request):

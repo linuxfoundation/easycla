@@ -68,8 +68,7 @@ require (
 require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.53.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.2.0
-	github.com/golang-jwt/jwt v3.2.2+incompatible
-	github.com/golang-jwt/jwt/v4 v4.5.0
+	github.com/golang-jwt/jwt/v4 v4.5.2
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0
 	go.opentelemetry.io/otel v1.40.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.40.0
