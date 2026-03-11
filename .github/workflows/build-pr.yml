@@ -130,11 +130,11 @@ jobs:
         run: make lint
 
       # Security scanning for Go Legacy Backend
-      - name: Go Security Scan (Gosec)
-        run: |
-          go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
-          gosec -fmt sarif -out gosec-results.sarif ./...
+      - name: Go Security Scan (Gosec) 
         working-directory: cla-backend-legacy
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -fmt sarif -out gosec-results.sarif ./...
         continue-on-error: true
 
       - name: Upload Gosec SARIF to GitHub Security Tab

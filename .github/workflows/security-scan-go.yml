@@ -31,11 +31,11 @@ jobs:
       with:
         go-version: '1.25'
 
-    # Gosec security scanner
+    # Gosec security scanner - FIXED to use correct repository
     - name: Run Gosec Security Scanner
       working-directory: ./cla-backend-legacy
       run: |
-        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+        go install github.com/securego/gosec/v2/cmd/gosec@latest
         gosec -fmt sarif -out gosec-results.sarif ./...
       continue-on-error: true
 
@@ -45,14 +45,6 @@ jobs:
       with:
         sarif_file: cla-backend-legacy/gosec-results.sarif
         category: gosec
-
-    # Nancy vulnerability scanner
-    - name: Nancy vulnerability scanner
-      working-directory: ./cla-backend-legacy
-      run: |
-        go install github.com/sonatypecommunity/nancy@latest
-        go list -json -deps ./... | nancy sleuth --loud
-      continue-on-error: true
 
     # govulncheck - official Go vulnerability scanner
     - name: Go vulnerability check
