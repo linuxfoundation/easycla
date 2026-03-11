@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/logging"
 )
 
 type Service struct {
@@ -50,7 +52,7 @@ func (s *Service) ValidateOrganization(ctx context.Context, endpoint string) (ma
 		return nil, http.StatusBadRequest, fmt.Errorf("IP addresses not allowed")
 	}
 
-	// Only allow specific domains for safety
+	// Only allow specific domains for safety - prevent SSRF attacks
 	allowedDomains := []string{"github.com", "raw.githubusercontent.com", "api.github.com"}
 	allowed := false
 	for _, domain := range allowedDomains {
@@ -60,6 +62,7 @@ func (s *Service) ValidateOrganization(ctx context.Context, endpoint string) (ma
 		}
 	}
 	if !allowed {
+		logging.Warnf("ValidateOrganization: rejecting disallowed domain: %s", host)
 		return nil, http.StatusBadRequest, fmt.Errorf("domain not in allowlist")
 	}
 

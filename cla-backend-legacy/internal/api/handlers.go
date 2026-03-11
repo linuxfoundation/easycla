@@ -9154,7 +9154,7 @@ func (h *Handlers) GetAgreementHtmlV2(w http.ResponseWriter, r *http.Request) {
 		contractTypeTitle = strings.ToUpper(contractType[:1]) + strings.ToLower(contractType[1:])
 	}
 
-	html := fmt.Sprintf(`
+	htmlContent := fmt.Sprintf(`
         <html lang="en">
         <head>
         <title>The Linux Foundation – EasyCLA Gerrit %s Console Redirect</title>
@@ -9191,7 +9191,7 @@ func (h *Handlers) GetAgreementHtmlV2(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(html))
+	_, _ = w.Write([]byte(htmlContent))
 }
 
 // GET /v1/project/logo/{project_sfdc_id}

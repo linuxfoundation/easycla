@@ -43,7 +43,8 @@ make lambdas
 
 ### Available Make Targets
 
-- `make lambdas` - Build the Lambda binary for deployment
+- `make lambda` - Build the Lambda binary for deployment
+- `make lambdas` - Alias for `make lambda`  
 - `make local` - Build the local development binary  
 - `make run-local` - Run the server locally for development
 - `make lint` - Run Go formatting, vetting, and linting
