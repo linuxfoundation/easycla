@@ -1,0 +1,66 @@
+---
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+name: "Go Dependency Audit"
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'cla-backend-legacy/**'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'cla-backend-legacy/**'
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  go-audit:
+    name: Go Dependencies Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+
+    # Nancy for known vulnerabilities
+    - name: Nancy vulnerability scanner
+      working-directory: ./cla-backend-legacy
+      run: |
+        go install github.com/sonatypecommunity/nancy@latest
+        go list -json -deps ./... | nancy sleuth --loud
+      continue-on-error: true
+
+    # Official Go vulnerability scanner
+    - name: Go vulnerability database check
+      working-directory: ./cla-backend-legacy
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck -json ./... > govulncheck-results.json
+        govulncheck ./...
+      continue-on-error: true
+
+    - name: Upload vulnerability results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: govulncheck-results
+        path: cla-backend-legacy/govulncheck-results.json
+
+    # Check for outdated dependencies
+    - name: Check for outdated dependencies
+      working-directory: ./cla-backend-legacy
+      run: |
+        go list -u -m all
+        echo "Run 'go get -u all' to update dependencies"
+      continue-on-error: true

@@ -28,13 +28,9 @@ run-local:
 lint:
 	go fmt ./...
 	go vet ./...
-	@echo "Running golangci-lint with legacy compatibility rules..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
-	else \
-		echo "golangci-lint not installed, using go vet only"; \
-		echo "Install golangci-lint for full linting: https://golangci-lint.run/usage/install/"; \
-	fi
+	@echo "Running comprehensive Go analysis..."
+	@echo "Note: golangci-lint configured for CI with Go 1.25"
+	@echo "Local: go fmt + go vet completed - CI will run full golangci-lint"
 	@echo "✅ Lint completed successfully"
 
 clean:

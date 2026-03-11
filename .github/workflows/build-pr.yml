@@ -27,7 +27,7 @@ jobs:
       - name: Setup go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - name: Go Version
         run: go version
       - name: Setup Node
@@ -128,3 +128,31 @@ jobs:
       - name: Go Lint CLA Legacy Backend
         working-directory: cla-backend-legacy
         run: make lint
+
+      # Security scanning for Go Legacy Backend
+      - name: Go Security Scan (Gosec)
+        uses: securecodewarrior/github-action-gosec@master
+        with:
+          args: '-fmt sarif -out gosec-results.sarif ./...'
+        continue-on-error: true
+
+      - name: Upload Gosec SARIF to GitHub Security Tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: cla-backend-legacy/gosec-results.sarif
+          category: gosec-legacy-backend
+
+      - name: Go Vulnerability Check (govulncheck)
+        working-directory: cla-backend-legacy
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+        continue-on-error: true
+
+      - name: Static Analysis (staticcheck)
+        working-directory: cla-backend-legacy
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+        continue-on-error: true
