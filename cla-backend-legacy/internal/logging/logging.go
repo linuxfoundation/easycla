@@ -43,7 +43,8 @@ func Debugf(format string, args ...any) {
 		log.Print("DEBUG " + safeFormat)
 		if len(safeArgs) > 0 {
 			for i, arg := range safeArgs {
-				log.Printf("  arg[%d]: %v", i, arg) // codeql[go/log-injection] - Input is sanitized through sanitizeForLog function above
+				// codeql[go/log-injection] - Input is sanitized through sanitizeForLog function above
+				log.Printf("  arg[%d]: %v", i, arg)
 			}
 		}
 	}
@@ -63,7 +64,8 @@ func Infof(format string, args ...any) {
 	log.Print("INFO " + safeFormat)
 	if len(safeArgs) > 0 {
 		for i, arg := range safeArgs {
-			log.Printf("  arg[%d]: %v", i, arg) // codeql[go/log-injection] - Input is sanitized through sanitizeForLog function above
+			// codeql[go/log-injection] - Input is sanitized through sanitizeForLog function above
+			log.Printf("  arg[%d]: %v", i, arg)
 		}
 	}
 }
@@ -82,7 +84,8 @@ func Warnf(format string, args ...any) {
 	log.Print("WARN " + safeFormat)
 	if len(safeArgs) > 0 {
 		for i, arg := range safeArgs {
-			log.Printf("  arg[%d]: %v", i, arg) // codeql[go/log-injection] - Input is sanitized through sanitizeForLog function above
+			// codeql[go/log-injection] - Input is sanitized through sanitizeForLog function above
+			log.Printf("  arg[%d]: %v", i, arg)
 		}
 	}
 }
@@ -101,7 +104,8 @@ func Errorf(format string, args ...any) {
 	log.Print("ERROR " + safeFormat)
 	if len(safeArgs) > 0 {
 		for i, arg := range safeArgs {
-			log.Printf("  arg[%d]: %v", i, arg) // codeql[go/log-injection] - Input is sanitized through sanitizeForLog function above
+			// codeql[go/log-injection] - Input is sanitized through sanitizeForLog function above
+			log.Printf("  arg[%d]: %v", i, arg)
 		}
 	}
 }
