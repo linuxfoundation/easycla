@@ -279,6 +279,7 @@ api_usage.csv
 cla-backend-legacy/bin/
 cla-backend-legacy/legacy-api
 cla-backend-legacy/legacy-api-lambda
+cla-backend-legacy/bin/legacy-api-lambda
 *.exe
 *.exe~
 *.dll

@@ -8,9 +8,11 @@ GOFLAGS ?= -mod=mod
 LEGACY_BIN := $(BIN_DIR)/legacy-api-lambda
 LOCAL_BIN := $(BIN_DIR)/legacy-api-local
 
-.PHONY: lambdas local run-local clean lint
+.PHONY: lambda lambdas local run-local clean lint
 
-lambdas: $(LEGACY_BIN)
+lambda: $(LEGACY_BIN)
+
+lambdas: lambda
 
 local: $(LOCAL_BIN)
 
