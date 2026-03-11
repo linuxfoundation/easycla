@@ -1,0 +1,23 @@
+{
+  "name": "cla-backend-legacy",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "serverless": "^3.28.1",
+    "serverless-domain-manager": "^7.0.4",
+    "serverless-plugin-tracing": "^2.0.0",
+    "serverless-prune-plugin": "^2.0.2"
+  },
+  "scripts": {
+    "sls": "serverless",
+    "deploy:dev": "STAGE=dev serverless deploy -s dev -r us-east-1 --verbose",
+    "deploy:staging": "STAGE=staging serverless deploy -s staging -r us-east-1 --verbose",
+    "deploy:prod": "STAGE=prod serverless deploy -s prod -r us-east-1 --verbose",
+    "info:dev": "STAGE=dev serverless info -s dev -r us-east-1 --verbose",
+    "remove:dev": "STAGE=dev serverless remove -s dev -r us-east-1 --verbose",
+    "prune:dev": "STAGE=dev serverless prune -s dev -r us-east-1 --verbose"
+  }
+}
