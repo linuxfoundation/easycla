@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	stdmail "net/mail"
@@ -4023,13 +4024,13 @@ func (h *Handlers) PostCompanyV1(w http.ResponseWriter, r *http.Request) {
 		req.CompanyName = v
 	}
 	if v, ok := flexibleStringParam(r, body, "company_manager_user_name"); ok {
-		req.CompanyManagerUserName = &v
+		req.CompanyManagerUserName = &v // Parsed for API compatibility but not used in company creation
 	}
 	if v, ok := flexibleStringParam(r, body, "company_manager_user_email"); ok {
-		req.CompanyManagerUserEmail = &v
+		req.CompanyManagerUserEmail = &v // Parsed for API compatibility but not used in company creation
 	}
 	if v, ok := flexibleStringParam(r, body, "company_manager_id"); ok {
-		req.CompanyManagerID = &v
+		req.CompanyManagerID = &v // Parsed for API compatibility but not used in company creation
 	}
 	if b, ok, err := flexibleBoolParam(r, body, "is_sanctioned"); err != nil {
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"is_sanctioned": err.Error()}})
@@ -9194,7 +9195,7 @@ func (h *Handlers) GetAgreementHtmlV2(w http.ResponseWriter, r *http.Request) {
             </p>
         </body>
         </html>
-        `, contractTypeTitle, contractTypeTitle, consoleURL, contractTypeTitle)
+        `, html.EscapeString(contractTypeTitle), html.EscapeString(contractTypeTitle), html.EscapeString(consoleURL), html.EscapeString(contractTypeTitle))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
