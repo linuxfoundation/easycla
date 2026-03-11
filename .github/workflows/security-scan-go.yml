@@ -33,16 +33,17 @@ jobs:
 
     # Gosec security scanner
     - name: Run Gosec Security Scanner
-      uses: securecodewarrior/github-action-gosec@master
-      with:
-        args: '-fmt sarif -out gosec-results.sarif ./cla-backend-legacy/...'
+      working-directory: ./cla-backend-legacy
+      run: |
+        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+        gosec -fmt sarif -out gosec-results.sarif ./...
       continue-on-error: true
 
     - name: Upload Gosec results to GitHub Security Tab
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
-        sarif_file: gosec-results.sarif
+        sarif_file: cla-backend-legacy/gosec-results.sarif
         category: gosec
 
     # Nancy vulnerability scanner
