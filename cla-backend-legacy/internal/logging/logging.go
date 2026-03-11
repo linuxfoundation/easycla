@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"unicode"
 )
 
 func isDebug() bool {
@@ -14,20 +15,67 @@ func isDebug() bool {
 	return v == "debug" || v == "trace"
 }
 
+// sanitizeForLog removes control characters and newlines to prevent log injection
+func sanitizeForLog(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && r != '\t' {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 func Debugf(format string, args ...any) {
 	if isDebug() {
-		log.Printf("DEBUG "+format, args...)
+		// Sanitize format string and args for log injection prevention
+		safeFormat := sanitizeForLog(format)
+		var safeArgs []any
+		for _, arg := range args {
+			if s, ok := arg.(string); ok {
+				safeArgs = append(safeArgs, sanitizeForLog(s))
+			} else {
+				safeArgs = append(safeArgs, arg)
+			}
+		}
+		log.Printf("DEBUG "+safeFormat, safeArgs...)
 	}
 }
 
 func Infof(format string, args ...any) {
-	log.Printf("INFO "+format, args...)
+	safeFormat := sanitizeForLog(format)
+	var safeArgs []any
+	for _, arg := range args {
+		if s, ok := arg.(string); ok {
+			safeArgs = append(safeArgs, sanitizeForLog(s))
+		} else {
+			safeArgs = append(safeArgs, arg)
+		}
+	}
+	log.Printf("INFO "+safeFormat, safeArgs...)
 }
 
 func Warnf(format string, args ...any) {
-	log.Printf("WARN "+format, args...)
+	safeFormat := sanitizeForLog(format)
+	var safeArgs []any
+	for _, arg := range args {
+		if s, ok := arg.(string); ok {
+			safeArgs = append(safeArgs, sanitizeForLog(s))
+		} else {
+			safeArgs = append(safeArgs, arg)
+		}
+	}
+	log.Printf("WARN "+safeFormat, safeArgs...)
 }
 
 func Errorf(format string, args ...any) {
-	log.Printf("ERROR "+format, args...)
+	safeFormat := sanitizeForLog(format)
+	var safeArgs []any
+	for _, arg := range args {
+		if s, ok := arg.(string); ok {
+			safeArgs = append(safeArgs, sanitizeForLog(s))
+		} else {
+			safeArgs = append(safeArgs, arg)
+		}
+	}
+	log.Printf("ERROR "+safeFormat, safeArgs...)
 }

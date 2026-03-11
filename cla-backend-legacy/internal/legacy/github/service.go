@@ -7,8 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -31,18 +34,35 @@ func (s *Service) ValidateOrganization(ctx context.Context, endpoint string) (ma
 		return nil, http.StatusOK, nil
 	}
 
+	// Validate URL to prevent SSRF attacks
+	parsedURL, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("invalid URL format")
+	}
+	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+		return nil, http.StatusBadRequest, fmt.Errorf("unsupported URL scheme")
+	}
+	if net.ParseIP(parsedURL.Hostname()) != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("IP addresses not allowed")
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
-	resp, err := s.httpClient.Do(req)
+
+	// Set reasonable timeout and limit response size
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, http.StatusBadGateway, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-		b, err := io.ReadAll(resp.Body)
+		// Limit response body size to prevent memory exhaustion
+		limitReader := io.LimitReader(resp.Body, 1<<20) // 1MB limit
+		b, err := io.ReadAll(limitReader)
 		if err != nil {
 			return nil, http.StatusInternalServerError, err
 		}
