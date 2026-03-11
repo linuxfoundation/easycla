@@ -1742,8 +1742,14 @@ def lookup_gitlab_org_members(organization_id):
         r = requests.get(f"{cla.config.PLATFORM_GATEWAY_URL}/cla-service/v4/gitlab/group/{organization_id}/members")
         r.raise_for_status()
     except requests.exceptions.HTTPError as err:
-        cla.log.warning(f"Could not fetch gitlab org users: API error occurred")
-        return {f"error: Could not get user gitlab group id: {organization_id} members"}
+        status_code = err.response.status_code if hasattr(err, 'response') and err.response is not None else "unknown"
+        cla.log.warning(
+            f"Could not fetch gitlab org users for organization_id={organization_id}: "
+            f"status_code={status_code}"
+        )
+        # Return an empty list so callers that expect an iterable of member dicts
+        # can safely handle the error case without type errors.
+        return []
     return r.json()["list"]
 
 
@@ -2051,6 +2057,6 @@ def extract_pull_request_number(pull_request_message):
             return pull_request_number
         else:
             cla.log.warning(f"{fn} - error - unable to extract pull request number from message")
-    except Exception as e:
-        cla.log.warning(f"{fn} - error - unable to extract pull request number from message, error occurred")
+    except (ValueError, json.JSONDecodeError, AttributeError, KeyError) as e:
+        cla.log.warning(f"{fn} - error - unable to extract pull request number from message, parse error occurred")
     return pull_request_number
