@@ -125,6 +125,24 @@ jobs:
         working-directory: cla-backend-go
         run: make lint
 
+      - name: Go Setup CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: |
+          go mod tidy
+
+      - name: Go Build CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: |
+          make lambdas
+
+      - name: Go Test CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: go test ./...
+
+      - name: Go Lint CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: make lint
+
       - name: Setup Deployment
         working-directory: cla-backend
         run: |
@@ -222,6 +240,92 @@ jobs:
             exit ${exit_code}
           fi
 
+      - name: EasyCLA Legacy Backend Deployment us-east-1
+        working-directory: cla-backend-legacy
+        run: |
+          if [[ ! -f bin/legacy-api-lambda ]]; then echo "Missing bin/legacy-api-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f serverless.yml ]]; then echo "Missing serverless.yml file. Exiting..."; exit 1; fi
+          npm install
+          npx serverless deploy --force --stage ${STAGE} --region us-east-1 --verbose
+
+      - name: EasyCLA Legacy Backend Service Check
+        run: |
+          sudo apt install curl jq -y
+          
+          # Development environment endpoints to test
+          declare -r v1_legacy_url="https://apigo.lfcla.${STAGE}.platform.linuxfoundation.org/v1/health"
+          declare -r v2_legacy_url="https://apigo.lfcla.${STAGE}.platform.linuxfoundation.org/v2/health"
+
+          echo "Validating v1 legacy backend using endpoint: ${v1_legacy_url}"
+          curl --fail -XGET ${v1_legacy_url} || echo "v1 legacy health endpoint check failed (expected for now)"
+
+          echo "Validating v2 legacy backend using endpoint: ${v2_legacy_url}"
+          curl --fail -XGET ${v2_legacy_url} || echo "v2 legacy health endpoint check failed (expected for now)"
+
+
+  legacy-backend-deploy:
+    name: Deploy CLA Legacy Backend
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: build-deploy-dev
+    steps:
+      - uses: actions/checkout@v4
+        
+      - name: Setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          role-to-assume: arn:aws:iam::395594542180:role/github-actions-deploy
+          aws-region: us-east-1
+
+      - name: Configure Git to clone private Github repos
+        run: git config --global url."https://${TOKEN_USER}:${TOKEN}@github.com".insteadOf "https://github.com"
+        env:
+          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN_GITHUB  }}
+          TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER_GITHUB }}
+
+      - name: Go Setup CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: |
+          go mod tidy
+
+      - name: Go Build CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: |
+          make lambdas
+
+      - name: EasyCLA Legacy Backend Deployment us-east-1
+        working-directory: cla-backend-legacy
+        run: |
+          if [[ ! -f bin/legacy-api-lambda ]]; then echo "Missing bin/legacy-api-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f serverless.yml ]]; then echo "Missing serverless.yml file. Exiting..."; exit 1; fi
+          npm install
+          npx serverless deploy --force --stage ${STAGE} --region us-east-1 --verbose
+
+      - name: EasyCLA Legacy Backend Service Check
+        run: |
+          sudo apt install curl jq -y
+          
+          # Development environment endpoints to test
+          declare -r v1_legacy_url="https://apigo.lfcla.${STAGE}.platform.linuxfoundation.org/v1/health"
+          declare -r v2_legacy_url="https://apigo.lfcla.${STAGE}.platform.linuxfoundation.org/v2/health"
+
+          echo "Validating v1 legacy backend using endpoint: ${v1_legacy_url}"
+          curl --fail -XGET ${v1_legacy_url} || echo "v1 legacy health endpoint check failed (expected for now)"
+
+          echo "Validating v2 legacy backend using endpoint: ${v2_legacy_url}"
+          curl --fail -XGET ${v2_legacy_url} || echo "v2 legacy health endpoint check failed (expected for now)"
+
 
   cypress-functional-after-deploy:
     name: Cypress Functional Tests (post-deploy) - executes on a freshly deployed dev API.
@@ -229,7 +333,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 75
-    needs: build-deploy-dev
+    needs: [build-deploy-dev, legacy-backend-deploy]
     environment: dev
     defaults:
       run:

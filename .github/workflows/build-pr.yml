@@ -110,3 +110,21 @@ jobs:
       - name: Go Lint
         working-directory: cla-backend-go
         run: make lint
+
+      - name: Go Setup CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: |
+          go mod tidy
+
+      - name: Go Build CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: |
+          make lambdas
+
+      - name: Go Test CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: go test ./...
+
+      - name: Go Lint CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: make lint

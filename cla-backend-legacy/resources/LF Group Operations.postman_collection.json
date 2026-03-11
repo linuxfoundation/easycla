@@ -1,0 +1,102 @@
+{
+	"info": {
+		"_postman_id": "a6457b3d-ba39-40f2-9a0b-df6593acec75",
+		"name": "LF Group Operations",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "PUT add group to user",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"name": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"username\": \"heddn\"\n}"
+				},
+				"url": {
+					"raw": "https://lf-identity.ddev.local/rest/auth0/og/1581.json",
+					"protocol": "https",
+					"host": [
+						"lf-identity",
+						"ddev",
+						"local"
+					],
+					"path": [
+						"rest",
+						"auth0",
+						"og",
+						"1581.json"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Validate group exists",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"name": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "https://lf-identity.ddev.local/rest/auth0/og/1581.json",
+					"protocol": "https",
+					"host": [
+						"lf-identity",
+						"ddev",
+						"local"
+					],
+					"path": [
+						"rest",
+						"auth0",
+						"og",
+						"1581.json"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"id": "a7677e69-c012-4a75-89c0-450c4c0d1326",
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"id": "5c989898-dbdf-4e0d-8dd0-12953e358e06",
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	]
+}

@@ -234,6 +234,10 @@ Desktop.ini
 
 # Build files
 dist/*
+bin/*
+cla-backend-legacy/bin/*
+cla-backend-legacy/legacy-api
+cla-backend-legacy/legacy-api-local
 
 # Playground tmp files
 .playground
