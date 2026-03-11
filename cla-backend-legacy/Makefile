@@ -31,7 +31,7 @@ lint:
 	go fmt ./...
 	go vet ./...
 	@echo "Running comprehensive Go analysis..."
-	@echo "Note: golangci-lint configured for CI with Go 1.23"
+	@echo "Note: golangci-lint configured for CI with Go 1.25"
 	@echo "Local: go fmt + go vet completed - CI will run full golangci-lint"
 	@echo "✅ Lint completed successfully"
 

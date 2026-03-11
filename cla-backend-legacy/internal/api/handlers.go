@@ -4008,11 +4008,10 @@ func (h *Handlers) PostCompanyV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type request struct {
-		CompanyName             string  `json:"company_name"`
-		CompanyManagerUserName  *string `json:"company_manager_user_name"`
-		CompanyManagerUserEmail *string `json:"company_manager_user_email"`
-		CompanyManagerID        *string `json:"company_manager_id"`
-		IsSanctioned            *bool   `json:"is_sanctioned"`
+		CompanyName string `json:"company_name"`
+		// CompanyManagerUserName, CompanyManagerUserEmail, CompanyManagerID are parsed for
+		// API compatibility but not used in company creation (mirrors Python behavior)
+		IsSanctioned *bool `json:"is_sanctioned"`
 	}
 	var req request
 	body, err := parseFlexibleParams(r)
@@ -9202,6 +9201,12 @@ func (h *Handlers) GetAgreementHtmlV2(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) UploadLogoV1(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	projectSFID := chi.URLParam(r, "project_sfdc_id")
+
+	// Validate project SFID to prevent path traversal attacks
+	if projectSFID == "" || strings.Contains(projectSFID, "..") || strings.Contains(projectSFID, "/") {
+		respond.JSON(w, http.StatusBadRequest, map[string]any{"error": "invalid project_sfdc_id"})
+		return
+	}
 
 	authUser, authErrResp, err := h.authValidator.Authenticate(r.Header)
 	if err != nil {
