@@ -39,7 +39,13 @@ func Debugf(format string, args ...any) {
 				safeArgs = append(safeArgs, arg)
 			}
 		}
-		log.Printf("DEBUG "+safeFormat, safeArgs...)
+		// Use a safe logging approach to prevent injection
+		log.Print("DEBUG " + safeFormat)
+		if len(safeArgs) > 0 {
+			for i, arg := range safeArgs {
+				log.Printf("  arg[%d]: %v", i, arg)
+			}
+		}
 	}
 }
 
@@ -53,7 +59,13 @@ func Infof(format string, args ...any) {
 			safeArgs = append(safeArgs, arg)
 		}
 	}
-	log.Printf("INFO "+safeFormat, safeArgs...)
+	// Use a safe logging approach to prevent injection
+	log.Print("INFO " + safeFormat)
+	if len(safeArgs) > 0 {
+		for i, arg := range safeArgs {
+			log.Printf("  arg[%d]: %v", i, arg)
+		}
+	}
 }
 
 func Warnf(format string, args ...any) {
@@ -66,7 +78,13 @@ func Warnf(format string, args ...any) {
 			safeArgs = append(safeArgs, arg)
 		}
 	}
-	log.Printf("WARN "+safeFormat, safeArgs...)
+	// Use a safe logging approach to prevent injection
+	log.Print("WARN " + safeFormat)
+	if len(safeArgs) > 0 {
+		for i, arg := range safeArgs {
+			log.Printf("  arg[%d]: %v", i, arg)
+		}
+	}
 }
 
 func Errorf(format string, args ...any) {
@@ -79,5 +97,11 @@ func Errorf(format string, args ...any) {
 			safeArgs = append(safeArgs, arg)
 		}
 	}
-	log.Printf("ERROR "+safeFormat, safeArgs...)
+	// Use a safe logging approach to prevent injection
+	log.Print("ERROR " + safeFormat)
+	if len(safeArgs) > 0 {
+		for i, arg := range safeArgs {
+			log.Printf("  arg[%d]: %v", i, arg)
+		}
+	}
 }
