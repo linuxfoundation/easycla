@@ -1,3 +1,6 @@
+// Copyright The Linux Foundation and each contributor to CommunityBridge.
+// SPDX-License-Identifier: MIT
+
 package contracts
 
 // TabData matches the dicts returned by the legacy Python cla.resources.contract_templates.*.get_tabs().

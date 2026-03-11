@@ -1,3 +1,6 @@
+// Copyright The Linux Foundation and each contributor to CommunityBridge.
+// SPDX-License-Identifier: MIT
+
 package api
 
 import (
@@ -388,6 +391,10 @@ func (h *Handlers) githubRedirectToConsole(ctx context.Context, installationID, 
 
 func (h *Handlers) githubSignRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	if h.github == nil {
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": "github service not configured"})
+		return
+	}
 
 	provider := strings.TrimSpace(strings.ToLower(chi.URLParam(r, "provider")))
 	if provider != "github" && provider != "mock_github" {
@@ -453,6 +460,10 @@ func decodeUserFromSessionState(encoded string) (csrf string, value string, err 
 
 func (h *Handlers) githubOauth2Callback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	if h.github == nil {
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": "github service not configured"})
+		return
+	}
 
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
 	code := strings.TrimSpace(r.URL.Query().Get("code"))
