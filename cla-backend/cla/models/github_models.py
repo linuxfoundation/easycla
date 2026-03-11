@@ -101,8 +101,8 @@ def clear_caches():
         cla.log.info(f"{fn} - cleared github_user_cache")
         return {"status": "OK"}
     except Exception as e:
-        cla.log.error(f"{fn} - error clearing caches")
-        return {"status": f"Error clearing caches: {e}"}
+        cla.log.error(f"{fn} - error clearing caches", exc_info=True)
+        return {"status": "Error clearing caches"}
 
 @dataclass
 class CommitLite:
@@ -398,8 +398,8 @@ class GitHub(repository_service_interface.RepositoryService):
             try:
                 token = self._fetch_token(client_id, state, token_url, client_secret, code)
             except Exception as err:
-                cla.log.warning(f"{fn} - GitHub OAuth2 error. Likely bad or expired code, returning HTTP 404 state.")
-                raise falcon.HTTPBadRequest("OAuth2 code is invalid or expired")
+                cla.log.warning(f"{fn} - GitHub OAuth2 error. Likely bad or expired code, returning HTTP 400 status.")
+                raise falcon.HTTPBadRequest("OAuth2 code is invalid or expired", "OAuth2 code is invalid or expired")
             cla.log.debug(f"{fn} - oauth2 authentication received - storing in session")
             session["github_oauth2_token"] = token
             user = self.get_or_create_user(request)
@@ -1431,8 +1431,8 @@ class GitHub(repository_service_interface.RepositoryService):
             # Could not get GitHub user data - maybe user revoked CLA app permissions?
             session = self._get_request_session(request)
 
-            del session["github_oauth2_state"]
-            del session["github_oauth2_token"]
+            session.pop("github_oauth2_state", None)
+            session.pop("github_oauth2_token", None)
             cla.log.warning(f"{fn} - Deleted OAuth2 session data - retrying authentication exchange next time")
             raise falcon.HTTPError(
                 "400 Bad Request", "github_oauth2_token", "Token permissions have been rejected, please try again"
@@ -1590,6 +1590,7 @@ class GitHub(repository_service_interface.RepositoryService):
         token = session.get("github_oauth2_token")
         if token is None:
             cla.log.warning(f"{fn} - unable to load authentication token from the session - session is empty")
+            return {"error": "Could not get user emails"}
         oauth2 = OAuth2Session(client_id, token=token)
         request = oauth2.get("https://api.github.com/user/emails")
         resp = request.json()
