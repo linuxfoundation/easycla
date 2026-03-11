@@ -2029,7 +2029,16 @@ def extract_pull_request_number(pull_request_message):
     fn = "extract_pull_request_number"
     pull_request_number = None
     try:
-        first_line = pull_request_message.splitlines()[0]
+        if not pull_request_message or not pull_request_message.strip():
+            cla.log.debug(f"{fn} - empty or whitespace-only message")
+            return None
+        
+        lines = pull_request_message.splitlines()
+        if not lines or not lines[0].strip():
+            cla.log.debug(f"{fn} - no valid lines in message")
+            return None
+            
+        first_line = lines[0]
         cla.log.debug(f"{fn} - checking line '{first_line}")
         # Case 1: "Merge pull request #N"
         matches = re.match(r'^Merge pull request #(\d+)', first_line)
