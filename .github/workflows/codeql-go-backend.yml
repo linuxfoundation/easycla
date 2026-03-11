@@ -43,7 +43,7 @@ jobs:
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
-        config-file: cla-backend-legacy/.github/codeql/codeql-config.yml
+        config-file: ./.github/codeql/codeql-config.yml
 
     # Build Go backend
     - name: Build Go backend
