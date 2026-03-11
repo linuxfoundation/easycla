@@ -131,13 +131,14 @@ jobs:
 
       # Security scanning for Go Legacy Backend
       - name: Go Security Scan (Gosec)
-        uses: securecodewarrior/github-action-gosec@master
-        with:
-          args: '-fmt sarif -out gosec-results.sarif ./...'
+        run: |
+          go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+          gosec -fmt sarif -out gosec-results.sarif ./...
+        working-directory: cla-backend-legacy
         continue-on-error: true
 
       - name: Upload Gosec SARIF to GitHub Security Tab
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: cla-backend-legacy/gosec-results.sarif
