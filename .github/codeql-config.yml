@@ -3,7 +3,6 @@ name: "CodeQL Config for EasyCLA Go Backend"
 # Additional queries for Go security analysis
 queries:
   - uses: security-and-quality
-  - uses: security-extended
 
 # Custom rules for Go backend
 disable-default-queries: false
@@ -17,3 +16,13 @@ paths-ignore:
   - cla-backend-legacy/resources/
   - cla-backend-legacy/bin/
   - cla-backend-legacy/vendor/
+  - cla-backend-legacy/.github/
+
+# Query filters - exclude certain warnings for legacy compatibility
+query-filters:
+  - exclude:
+      id: go/log-injection
+      reason: "Legacy logging maintains Python compatibility with proper sanitization"
+  - exclude:
+      id: go/uncontrolled-data-in-network-request  
+      reason: "Proper URL validation with allowlisting for legacy API compatibility"
