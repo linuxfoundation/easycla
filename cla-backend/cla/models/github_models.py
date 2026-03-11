@@ -101,8 +101,8 @@ def clear_caches():
         cla.log.info(f"{fn} - cleared github_user_cache")
         return {"status": "OK"}
     except Exception as e:
-        cla.log.error(f"{fn} - error clearing caches: {e}")
-        return {"status": f"Error clearing caches: {e}"}
+        cla.log.error(f"{fn} - error clearing caches", exc_info=True)
+        return {"status": "Error clearing caches"}
 
 @dataclass
 class CommitLite:
@@ -213,11 +213,11 @@ class GitHub(repository_service_interface.RepositoryService):
         fn = "github_models.user_from_session"
         cla.log.debug(f"{fn} - loading session from request")
         session = self._get_request_session(request)
-        cla.log.debug(f"{fn} - session loaded (keys={list(session.keys())})")
+        cla.log.debug(f"{fn} - session loaded")
 
         # We can already have token in the session
         if "github_oauth2_token" in session:
-            cla.log.debug(f"{fn} - using existing session GitHub OAuth2 token")
+            cla.log.debug(f"{fn} - using existing session GitHub OAuth2 authentication")
             user = self.get_or_create_user(request)
             if user is None:
                 cla.log.debug(f"{fn} - cannot find user, returning HTTP 404 status")
@@ -226,7 +226,7 @@ class GitHub(repository_service_interface.RepositoryService):
             return user
 
         authorization_url, csrf_token = self.get_authorization_url_and_state(None, None, None, ["user:email"], state='user-from-session')
-        cla.log.debug(f"{fn} - obtained GitHub OAuth2 state from authorization - storing CSRF token in the session...")
+        cla.log.debug(f"{fn} - obtained GitHub OAuth2 state from authorization - storing state in the session")
         session["github_oauth2_state"] = csrf_token
         cla.log.debug(f"{fn} - redirecting user to GitHub OAuth2 authorization URL")
         # We must redirect to GitHub OAuth app for authentication, it will return you to /v2/github/installation which will handle returning user data
@@ -252,7 +252,7 @@ class GitHub(repository_service_interface.RepositoryService):
         # Not sure if we need a different token for each installation ID...
         cla.log.debug(f"{fn} - Loading session from request")
         session = self._get_request_session(request)
-        cla.log.debug(f"{fn} - Adding github details to session: {list(session.keys())} which is type: {type(session)}...")
+        cla.log.debug(f"{fn} - Adding github details to session")
         session["github_installation_id"] = installation_id
         session["github_repository_id"] = github_repository_id
         session["github_change_request_id"] = change_request_id
@@ -264,14 +264,14 @@ class GitHub(repository_service_interface.RepositoryService):
         cla.log.debug(f'{fn} - stored origin url in session')
 
         if "github_oauth2_token" in session:
-            cla.log.debug(f"{fn} - Using existing session GitHub OAuth2 token")
+            cla.log.debug(f"{fn} - Using existing session GitHub OAuth2 authentication")
             return self.redirect_to_console(installation_id, github_repository_id, change_request_id, origin_url, request)
         else:
             cla.log.debug(f"{fn} - No existing GitHub OAuth2 token - building authorization url and state")
             authorization_url, state = self.get_authorization_url_and_state(
                 installation_id, github_repository_id, int(change_request_id), ["user:email"]
             )
-            cla.log.debug(f"{fn} - Obtained GitHub OAuth2 state from authorization - storing state in the session...")
+            cla.log.debug(f"{fn} - Obtained GitHub OAuth2 state from authorization - storing state in the session")
             session["github_oauth2_state"] = state
             cla.log.debug(f"{fn} - redirecting user to GitHub OAuth2 authorization URL")
             raise falcon.HTTPFound(authorization_url)
@@ -307,7 +307,7 @@ class GitHub(repository_service_interface.RepositoryService):
                 session = {}
             request.context["session"] = session
 
-        cla.log.debug(f"{fn} - loaded session (keys={list(session.keys())})")
+        cla.log.debug(f"{fn} - loaded session")
 
         return session
 
@@ -375,7 +375,7 @@ class GitHub(repository_service_interface.RepositoryService):
                 padded_state = state + "=" * (-len(state) % 4)
                 state_data = json.loads(base64.urlsafe_b64decode(padded_state.encode()).decode())
             except (ValueError, json.JSONDecodeError, binascii.Error) as err:
-                cla.log.warning(f"{fn} - failed to decode state, error: {err}")
+                cla.log.warning(f"{fn} - failed to decode state, error occurred")
                 raise falcon.HTTPBadRequest("Invalid OAuth2 state", "Invalid OAuth2 state")
 
             state_token = state_data.get("csrf")
@@ -398,9 +398,9 @@ class GitHub(repository_service_interface.RepositoryService):
             try:
                 token = self._fetch_token(client_id, state, token_url, client_secret, code)
             except Exception as err:
-                cla.log.warning(f"{fn} - GitHub OAuth2 error: {err}. Likely bad or expired code, returning HTTP 404 state.")
-                raise falcon.HTTPBadRequest("OAuth2 code is invalid or expired")
-            cla.log.debug(f"{fn} - oauth2 token received - storing token in session")
+                cla.log.warning(f"{fn} - GitHub OAuth2 error. Likely bad or expired code, returning HTTP 400 status.")
+                raise falcon.HTTPBadRequest("OAuth2 code is invalid or expired", "OAuth2 code is invalid or expired")
+            cla.log.debug(f"{fn} - oauth2 authentication received - storing in session")
             session["github_oauth2_token"] = token
             user = self.get_or_create_user(request)
             if user is None:
@@ -421,7 +421,7 @@ class GitHub(repository_service_interface.RepositoryService):
         client_secret = os.environ["GH_OAUTH_SECRET"]
         cla.log.debug(f"{fn} - fetching oauth2 token from configured GitHub endpoint")
         token = self._fetch_token(client_id, state, token_url, client_secret, code)
-        cla.log.debug(f"{fn} - oauth2 token received - storing token in session")
+        cla.log.debug(f"{fn} - oauth2 authentication received - storing in session")
         session["github_oauth2_token"] = token
         cla.log.debug(f"{fn} - redirecting the user back to the contributor console")
         return self.redirect_to_console(installation_id, github_repository_id, change_request_id, origin_url, request)
@@ -1049,7 +1049,7 @@ class GitHub(repository_service_interface.RepositoryService):
                 pull_request_id=str(change_request_id),
             )
         except Exception as e:
-            cla.log.error(f"{fn} - problem saving PR metadata for PR: {pull_request.number}, error: {e}")
+            cla.log.error(f"{fn} - problem saving PR metadata for PR: {pull_request.number}")
 
         # Find users who have signed and who have not signed.
         signed = []
@@ -1073,7 +1073,7 @@ class GitHub(repository_service_interface.RepositoryService):
             try:
                 future.result()
             except Exception as e:
-                cla.log.error(f"{fn} - Exception in commit author thread for PR: {pull_request.number}, error: {e}")
+                cla.log.error(f"{fn} - Exception in commit author thread for PR: {pull_request.number}")
 
         # Skip allowlisted bots per org/repo GitHub login/email regexps
         missing, allowlisted = self.skip_allowlisted_bots(github_org, repository.get_repository_name(), missing)
@@ -1431,9 +1431,9 @@ class GitHub(repository_service_interface.RepositoryService):
             # Could not get GitHub user data - maybe user revoked CLA app permissions?
             session = self._get_request_session(request)
 
-            del session["github_oauth2_state"]
-            del session["github_oauth2_token"]
-            cla.log.warning(f"{fn} - Deleted OAuth2 session data - retrying token exchange next time")
+            session.pop("github_oauth2_state", None)
+            session.pop("github_oauth2_token", None)
+            cla.log.warning(f"{fn} - Deleted OAuth2 session data - retrying authentication exchange next time")
             raise falcon.HTTPError(
                 "400 Bad Request", "github_oauth2_token", "Token permissions have been rejected, please try again"
             )
@@ -1520,7 +1520,7 @@ class GitHub(repository_service_interface.RepositoryService):
         fn = "cla.models.github_models.get_user_data"
         token = session.get("github_oauth2_token")
         if token is None:
-            cla.log.error(f"{fn} - unable to load github_oauth2_token from session (keys={list(session.keys())})")
+            cla.log.error(f"{fn} - unable to load github_oauth2_token from session")
             return {"error": "could not get user data from session"}
 
         oauth2 = OAuth2Session(client_id, token=token)
@@ -1528,8 +1528,8 @@ class GitHub(repository_service_interface.RepositoryService):
         github_user = request.json()
         cla.log.debug(f"{fn} - GitHub user data: %s", github_user)
         if "message" in github_user:
-            cla.log.error(f'{fn} - Could not get user data with OAuth2 token: {github_user["message"]}')
-            return {"error": "Could not get user data: %s" % github_user["message"]}
+            cla.log.error(f'{fn} - Could not get user data with OAuth2 authentication')
+            return {"error": "Could not get user data"}
         return github_user
 
     def get_user_emails(self, session: dict, client_id: str) -> Union[List[str], dict]:  # pylint: disable=no-self-use
@@ -1589,13 +1589,14 @@ class GitHub(repository_service_interface.RepositoryService):
         # as expected
         token = session.get("github_oauth2_token")
         if token is None:
-            cla.log.warning(f"{fn} - unable to load github_oauth2_token from the session - session is empty")
+            cla.log.warning(f"{fn} - unable to load authentication token from the session - session is empty")
+            return {"error": "Could not get user emails"}
         oauth2 = OAuth2Session(client_id, token=token)
         request = oauth2.get("https://api.github.com/user/emails")
         resp = request.json()
         if "message" in resp:
-            cla.log.warning(f'{fn} - could not get user emails with OAuth2 token: {resp["message"]}')
-            return {"error": "Could not get user emails: %s" % resp["message"]}
+            cla.log.warning(f'{fn} - could not get user emails with OAuth2 authentication')
+            return {"error": "Could not get user emails"}
         return resp
 
     def process_reopened_pull_request(self, data):
@@ -2187,7 +2188,7 @@ def pygithub_graphql(g, query: str, variables: dict | None = None):
             errs = data["errors"]
             paths = [e.get("path") for e in errs]
             msgs = [e.get("message") for e in errs]
-            cla.log.error(f"GraphQL errors: {msgs} (paths={paths}, all={errs!r})")
+            cla.log.error(f"GraphQL errors occurred")
             return None
         return data.get("data")
     except Exception as exc:
@@ -2535,7 +2536,7 @@ def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[U
             cla.log.debug(f"{fn} - Detected noreply GitHub email with ID: {id_str}, login: {login_str}")
             user = github.get_github_user_by_id(github_id, installation_id)
         except Exception as ex:
-            cla.log.warning(f"{fn} - Error fetching user by ID {id_str}: {ex}")
+            cla.log.warning(f"{fn} - Error fetching user by ID {id_str}")
             user = None
 
     # 2. Check for "username@users.noreply.github.com"
@@ -2547,7 +2548,7 @@ def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[U
                 cla.log.debug(f"{fn} - Detected noreply GitHub email with login: {login_str}")
                 user = github.get_github_user_by_login(login_str, installation_id)
             except Exception as ex:
-                cla.log.warning(f"{fn} - Error fetching user by login {login_str}: {ex}")
+                cla.log.warning(f"{fn} - Error fetching user by login {login_str}")
                 user = None
 
     # 3. Try to find user by email via GitHub APIs
@@ -2584,7 +2585,7 @@ def get_co_author_commits(co_author, commit_sha, pr, installation_id) -> Tuple[U
                 try:
                     user = github.get_github_user_by_id(github_id, installation_id)
                 except Exception as ex:
-                    cla.log.warning(f"{fn} - Error fetching user by ID {github_id}: {ex}")
+                    cla.log.warning(f"{fn} - Error fetching user by ID {github_id}")
                     user = None
         except Exception as ex:
             # user not found
