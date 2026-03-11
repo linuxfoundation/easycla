@@ -1,61 +1,55 @@
----
-# Copyright The Linux Foundation and each contributor to CommunityBridge.
-# SPDX-License-Identifier: MIT
-
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
-
 version: 2
 updates:
-  - package-ecosystem: "npm" # See documentation for possible values
-    directory: "/cla-landing-page" # Location of package manifests
+  # Enable version updates for npm (existing)
+  - package-ecosystem: "npm"
+    directory: "/"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
-    ignore:
-      - dependency-name: "serverless"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
-      - dependency-name: "serverless-domain-manager"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
-  - package-ecosystem: "npm" # See documentation for possible values
-    directory: "/cla-backend" # Location of package manifests
+
+  # Enable version updates for npm in cla-frontend-project-console
+  - package-ecosystem: "npm"
+    directory: "/cla-frontend-project-console"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
-    ignore:
-      - dependency-name: "serverless"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
-      - dependency-name: "serverless-domain-manager"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
-  - package-ecosystem: "pip" # See documentation for possible values
-    directory: "/cla-backend" # Location of package manifests
+
+  # Enable version updates for npm in cla-frontend-corporate-console
+  - package-ecosystem: "npm"
+    directory: "/cla-frontend-corporate-console"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
-    ignore:
-      - dependency-name: "serverless"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
-      - dependency-name: "serverless-domain-manager"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
-  - package-ecosystem: "npm" # See documentation for possible values
-    directory: "/cla-backend-go" # Location of package manifests
+
+  # Enable version updates for npm in cla-frontend-contributor-console
+  - package-ecosystem: "npm"
+    directory: "/cla-frontend-contributor-console"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
-    ignore:
-      - dependency-name: "serverless"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
-      - dependency-name: "serverless-domain-manager"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
-  - package-ecosystem: "gomod" # See documentation for possible values
-    directory: "/cla-backend-go" # Location of package manifests
+
+  # Enable version updates for Python dependencies in cla-backend
+  - package-ecosystem: "pip"
+    directory: "/cla-backend"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
-    ignore:
-      - dependency-name: "serverless"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
-      - dependency-name: "serverless-domain-manager"
-        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+
+  # Enable version updates for Go dependencies in cla-backend-go
+  - package-ecosystem: "gomod"
+    directory: "/cla-backend-go"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+
+  # NEW: Enable version updates for Go dependencies in cla-backend-legacy
+  - package-ecosystem: "gomod"
+    directory: "/cla-backend-legacy"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "lukaszgryglicki"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
