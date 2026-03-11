@@ -1240,10 +1240,7 @@ def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_ur
     if state is None:
         oauth = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scope)
         authorization_url, state = oauth.authorization_url(authorize_url)
-        cla.log.debug(
-            f"{fn} - initialized oauth session using the github oauth client id: {client_id[0:5]}... "
-            f"with the redirect_uri: {redirect_uri} and scope: {scope}"
-        )
+        cla.log.debug(f"{fn} - initialized oauth session for GitHub authorization flow")
         return authorization_url, state
     else:
         csrf_token = secrets.token_urlsafe(16)
@@ -1254,10 +1251,7 @@ def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_ur
         authorization_url, _ = oauth.authorization_url(authorize_url, state=encoded_state)
 
         # Logging
-        cla.log.debug(
-            f"{fn} - initialized oauth session using the github oauth client id: {client_id[0:5]}... "
-            f"with the redirect_uri: {redirect_uri} and scope: {scope}"
-        )
+        cla.log.debug(f"{fn} - initialized oauth session for GitHub authorization flow with custom state")
         return authorization_url, csrf_token
 
 
