@@ -1,3 +1,6 @@
+// Copyright The Linux Foundation and each contributor to CommunityBridge.
+// SPDX-License-Identifier: MIT
+
 package config
 
 import (
@@ -103,7 +106,7 @@ func GetSSMParameter(ctx context.Context, name string) (string, error) {
 	for _, n := range tryNames {
 		out, e := client.GetParameter(ctx, &ssm.GetParameterInput{
 			Name:           aws.String(n),
-			WithDecryption: aws.Bool(false),
+			WithDecryption: aws.Bool(true),
 		})
 		if e != nil {
 			lastErr = e

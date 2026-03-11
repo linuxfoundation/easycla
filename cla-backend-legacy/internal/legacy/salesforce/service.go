@@ -1,3 +1,6 @@
+// Copyright The Linux Foundation and each contributor to CommunityBridge.
+// SPDX-License-Identifier: MIT
+
 package salesforce
 
 import (
@@ -330,6 +333,9 @@ func (s *Service) IsStandaloneProject(ctx context.Context, projectSFID string) (
 	}
 
 	parentName := s.getParentName(project)
+	if parentName == nil {
+		return false, nil
+	}
 	if *parentName == TheLinuxFoundation || *parentName == LFProjectsLLC {
 		if len(project.Projects) == 0 {
 			return true, nil
