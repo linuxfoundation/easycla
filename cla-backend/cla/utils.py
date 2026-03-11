@@ -2066,6 +2066,6 @@ def extract_pull_request_number(pull_request_message):
             return pull_request_number
         else:
             cla.log.warning(f"{fn} - error - unable to extract pull request number from message")
-    except (ValueError, json.JSONDecodeError, AttributeError, KeyError) as e:
+    except (ValueError, AttributeError, IndexError):
         cla.log.warning(f"{fn} - error - unable to extract pull request number from message, parse error occurred")
     return pull_request_number
