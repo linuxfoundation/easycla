@@ -73,7 +73,8 @@ func (s *Service) ValidateOrganization(ctx context.Context, endpoint string) (ma
 
 	// Set reasonable timeout and limit response size
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req) // codeql[go/log-injection] - This is not a log injection, it's an HTTP request
+	// codeql[go/log-injection] - This is not a log injection, it's an HTTP request
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, http.StatusBadGateway, err
 	}
