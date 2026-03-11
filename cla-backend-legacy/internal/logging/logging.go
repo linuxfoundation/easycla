@@ -16,10 +16,12 @@ func isDebug() bool {
 }
 
 // sanitizeForLog removes control characters and newlines to prevent log injection
+// This function acts as a security barrier against log injection attacks
 func sanitizeForLog(s string) string {
+	// Remove all control characters except tab to prevent log injection
 	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) && r != '\t' {
-			return -1
+			return -1 // Remove control characters
 		}
 		return r
 	}, s)

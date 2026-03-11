@@ -38,12 +38,12 @@ cd cla-backend-legacy
 go mod tidy
 go test ./...
 make lint
-make lambda
+make lambdas
 ```
 
 ### Available Make Targets
 
-- `make lambda` - Build the Lambda binary for deployment
+- `make lambdas` - Build the Lambda binary for deployment
 - `make local` - Build the local development binary  
 - `make run-local` - Run the server locally for development
 - `make lint` - Run Go formatting, vetting, and linting
@@ -168,7 +168,7 @@ The Go backend has been tested to ensure 1:1 functional compatibility with the P
 
 ```bash
 cd cla-backend-legacy
-make clean && make lambda
+make clean && make lambdas
 ```
 
 ### Install Node Dependencies
@@ -295,7 +295,7 @@ cd cla-backend-legacy
 go mod tidy
 go test ./...
 make lint
-make lambda
+make lambdas
 ```
 
 Validate these areas against your target environment:

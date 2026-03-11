@@ -42,8 +42,25 @@ func (s *Service) ValidateOrganization(ctx context.Context, endpoint string) (ma
 	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
 		return nil, http.StatusBadRequest, fmt.Errorf("unsupported URL scheme")
 	}
-	if net.ParseIP(parsedURL.Hostname()) != nil {
+
+	// Block IP addresses and private networks
+	host := parsedURL.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		// Block all IP addresses
 		return nil, http.StatusBadRequest, fmt.Errorf("IP addresses not allowed")
+	}
+
+	// Only allow specific domains for safety
+	allowedDomains := []string{"github.com", "raw.githubusercontent.com", "api.github.com"}
+	allowed := false
+	for _, domain := range allowedDomains {
+		if host == domain || strings.HasSuffix(host, "."+domain) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return nil, http.StatusBadRequest, fmt.Errorf("domain not in allowlist")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
