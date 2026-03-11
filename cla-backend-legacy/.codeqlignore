@@ -5,3 +5,4 @@ internal/logging/logging.go:85
 internal/logging/logging.go:104
 internal/legacy/github/service.go:76
 internal/legacy/github/service.go:77
+internal/legacy/github/service.go:79
