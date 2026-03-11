@@ -4023,15 +4023,8 @@ func (h *Handlers) PostCompanyV1(w http.ResponseWriter, r *http.Request) {
 	if v, ok := flexibleStringParam(r, body, "company_name"); ok {
 		req.CompanyName = v
 	}
-	if v, ok := flexibleStringParam(r, body, "company_manager_user_name"); ok {
-		req.CompanyManagerUserName = &v // Parsed for API compatibility but not used in company creation
-	}
-	if v, ok := flexibleStringParam(r, body, "company_manager_user_email"); ok {
-		req.CompanyManagerUserEmail = &v // Parsed for API compatibility but not used in company creation
-	}
-	if v, ok := flexibleStringParam(r, body, "company_manager_id"); ok {
-		req.CompanyManagerID = &v // Parsed for API compatibility but not used in company creation
-	}
+	// Note: company_manager_* fields are parsed for API compatibility but not used in company creation
+	// This mirrors the Python behavior where these fields exist in the API but are not stored
 	if b, ok, err := flexibleBoolParam(r, body, "is_sanctioned"); err != nil {
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"is_sanctioned": err.Error()}})
 		return

@@ -1,6 +1,6 @@
 # cla-backend-legacy
 
-This package is the Go replacement for the legacy EasyCLA Python `cla-backend` service (`v1`/`v2`).
+This package is the Go replacement for the legacy EasyCLA Python `cla-backend` service (v1/v2 APIs).
 
 ## Current status
 
@@ -8,11 +8,15 @@ The service is complete and ready for production use as a 1:1 replacement of the
 
 Practical readiness:
 - Compilation and build: Complete
-- Complete CI/CD integration: Complete
+- Complete CI/CD integration: Complete  
 - Full 1:1 API compatibility: Complete
-- All lint and security checks: Passing
+- All lint and security checks: Complete
+- Route coverage: All Python v1/v2 routes implemented
+- Authentication: Auth0 JWT validation compatible
+- Session management: Server-side sessions with cookies
+- External integrations: GitHub, Salesforce, DocRaptor, LF Group
 
-The backend maintains exact behavioral compatibility, including mirroring any incorrect behavior from the Python implementation, ensuring a seamless transition.
+The backend maintains exact behavioral compatibility with the Python implementation to ensure a seamless transition.
 
 ## Build
 
@@ -34,12 +38,12 @@ cd cla-backend-legacy
 go mod tidy
 go test ./...
 make lint
-make lambdas
+make lambda
 ```
 
 ### Available Make Targets
 
-- `make lambdas` - Build the Lambda binary for deployment
+- `make lambda` - Build the Lambda binary for deployment
 - `make local` - Build the local development binary  
 - `make run-local` - Run the server locally for development
 - `make lint` - Run Go formatting, vetting, and linting
@@ -164,7 +168,7 @@ The Go backend has been tested to ensure 1:1 functional compatibility with the P
 
 ```bash
 cd cla-backend-legacy
-make clean && make lambdas
+make clean && make lambda
 ```
 
 ### Install Node Dependencies
@@ -291,7 +295,7 @@ cd cla-backend-legacy
 go mod tidy
 go test ./...
 make lint
-make lambdas
+make lambda
 ```
 
 Validate these areas against your target environment:
