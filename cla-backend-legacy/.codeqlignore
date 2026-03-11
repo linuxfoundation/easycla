@@ -1,4 +1,4 @@
-# Ignore log injection warnings for sanitized logging functions
+# Ignore security warnings for validated GitHub API requests
 internal/logging/logging.go:46
 internal/logging/logging.go:66
 internal/logging/logging.go:85
