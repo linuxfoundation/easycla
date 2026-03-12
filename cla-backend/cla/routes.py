@@ -127,9 +127,10 @@ def _sanitize_api_path(path: str) -> str:
     p = _RE_UUID_VALID.sub("{uuid}", p)
     p = _RE_UUID_LIKE.sub(r"/{invalid-uuid}\1", p)
     p = _RE_UUID_HEXDASH_36.sub(r"/{invalid-uuid}\1", p)
-    p = _RE_NUMERIC_ID.sub(r"/{id}\1", p)
-    # Eventually remove this?
-    p = _RE_NUMERIC_ID.sub(r"/{id}\1", p)
+    prev = None
+    while p != prev:
+        prev = p
+        p = _RE_NUMERIC_ID.sub(r"/{id}\1", p)
     p = _RE_SFID_VALID.sub(r"/{sfid}\1", p)
     p = _RE_SFID_LIKE.sub(r"/{invalid-sfid}\1", p)
     p = _RE_LFXID_VALID.sub(r"/{lfxid}\1", p)
