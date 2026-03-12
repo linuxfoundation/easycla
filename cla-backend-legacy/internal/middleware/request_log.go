@@ -12,9 +12,12 @@ import (
 )
 
 const (
-	e2eHeader       = "X-EasyCLA-E2E"
-	e2eRunIDHeader  = "X-EasyCLA-E2E-RunID"
-	e2eLegacyHeader = "X-E2E-TEST"
+	e2eHeader            = "X-EasyCLA-E2E"
+	e2eRunIDHeader       = "X-EasyCLA-E2E-RunID"
+	e2eLegacyHeader      = "X-E2E-TEST"
+	backendHeader        = "X-EasyCLA-Backend"
+	backendVersionHeader = "X-EasyCLA-Backend-Version"
+	backendName          = "cla-backend-legacy"
 )
 
 func parseBoolish(raw string) (bool, bool) {
@@ -46,9 +49,12 @@ func extractE2EMarker(h http.Header) (bool, string) {
 	return false, ""
 }
 
-// RequestLog mirrors the legacy Python request middleware log lines:
+// RequestLog mirrors the legacy Python request middleware log lines and adds
+// an explicit backend marker for cutover verification:
 // - LG:api-request-path:<path>
 // - LG:e2e-request-path:<path> e2e=1 [e2e_run_id=...]
+// - LG:api-backend:cla-backend-legacy path=<path>
+// - LG:e2e-backend:cla-backend-legacy path=<path> e2e=1 [e2e_run_id=...]
 func RequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := "/"
@@ -56,7 +62,11 @@ func RequestLog(next http.Handler) http.Handler {
 			path = r.URL.Path
 		}
 
+		w.Header().Set(backendHeader, backendName)
+		w.Header().Set(backendVersionHeader, "go")
+
 		logging.Infof("LG:api-request-path:%s", path)
+		logging.Infof("LG:api-backend:%s path=%s", backendName, path)
 
 		if ok, runID := extractE2EMarker(r.Header); ok {
 			suffix := " e2e=1"
@@ -64,6 +74,7 @@ func RequestLog(next http.Handler) http.Handler {
 				suffix += fmt.Sprintf(" e2e_run_id=%s", runID)
 			}
 			logging.Infof("LG:e2e-request-path:%s%s", path, suffix)
+			logging.Infof("LG:e2e-backend:%s path=%s%s", backendName, path, suffix)
 		}
 
 		next.ServeHTTP(w, r)

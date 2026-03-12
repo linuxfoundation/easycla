@@ -1,39 +1,31 @@
 # cla-backend-legacy
 
-This package is the Go replacement for the legacy EasyCLA Python `cla-backend` service (v1/v2 APIs).
+`cla-backend-legacy` is the Go implementation of the legacy EasyCLA `/v1` and `/v2` API surface.
 
-## Current status
+It is no longer deployed as a separate `apigo.*` stack. Deployment now happens through
+`cla-backend/serverless.yml`, which serves the legacy Go binary on the original `api.*`
+domains while keeping the existing `/v3` deployment in the same stack.
 
-The service is complete and ready for production use as a 1:1 replacement of the Python backend.
+## What changed
 
-Practical readiness:
-- Compilation and build: Complete
-- Complete CI/CD integration: Complete  
-- Full 1:1 API compatibility: Complete
-- All lint and security checks: Complete
-- Route coverage: All Python v1/v2 routes implemented
-- Authentication: Auth0 JWT validation compatible
-- Session management: Server-side sessions with cookies
-- External integrations: GitHub, Salesforce, DocRaptor, LF Group
-
-The backend maintains exact behavioral compatibility with the Python implementation to ensure a seamless transition.
+- No Python fallback.
+- No separate shadow/live deployment mode.
+- No separate `cla-backend-legacy/serverless.yml` deployment.
+- The build artifact from this module (`bin/legacy-api-lambda`) is copied into
+  `cla-backend/bin/` and deployed from the existing `cla-backend` stack.
+- Responses now include:
+  - `X-EasyCLA-Backend: cla-backend-legacy`
+  - `X-EasyCLA-Backend-Version: go`
+- Logs now include:
+  - `LG:api-backend:cla-backend-legacy path=...`
+  - `LG:e2e-backend:cla-backend-legacy path=...`
 
 ## Build
 
-The repo includes a complete Go module with proper dependency management.
+From repo root:
 
-### Prerequisites
-
-To have all secrets and environment variables defined:
 ```bash
-cd /data/dev/dev2/go/src/github.com/linuxfoundation/easycla
 source setenv.sh
-cd cla-backend-legacy
-```
-
-### Basic Build Sequence
-
-```bash
 cd cla-backend-legacy
 go mod tidy
 go test ./...
@@ -41,297 +33,82 @@ make lint
 make lambdas
 ```
 
-### Available Make Targets
+The deployment artifact is:
 
-- `make lambda` - Build the Lambda binary for deployment
-- `make lambdas` - Alias for `make lambda`  
-- `make local` - Build the local development binary  
-- `make run-local` - Run the server locally for development
-- `make lint` - Run Go formatting, vetting, and linting
-- `make clean` - Remove built binaries
-
-The Lambda binary is written to:
 ```text
 bin/legacy-api-lambda
 ```
 
-## Local Development
+## Local run
 
-### Starting the Go Backend
-
-Run the Go backend locally for development and testing:
+Local v1/v2 testing should use port `5000`, which matches the existing Cypress local helpers.
 
 ```bash
-cd cla-backend-legacy
-
-# Live mode (complete replacement - no Python fallback)
-ADDR=":8001" LEGACY_UPSTREAM_BASE_URL="" make run-local
-
-# Shadow mode (falls back to Python for unmapped routes)
-ADDR=":8001" LEGACY_UPSTREAM_BASE_URL="http://localhost:5000" make run-local
-
-# Alternative: direct Go run
-go run ./cmd/legacy-api-local
-```
-
-Default local address: `http://localhost:8001`
-
-### Testing Endpoints
-
-Basic endpoint verification:
-```bash
-# Health endpoint (should return request headers)
-curl http://localhost:8001/v2/health
-
-# Authentication test (should return 401)  
-curl http://localhost:8001/v1/salesforce/projects
-
-# User endpoint test
-curl http://localhost:8001/v2/user/test-user-id
-```
-
-## E2E Testing with Cypress
-
-### Prerequisites
-
-Ensure the Go backend is running locally on port 8001:
-```bash
-cd cla-backend-legacy
-ADDR=":8001" make run-local
-```
-
-### Running Cypress Tests
-
-Navigate to the functional test directory and run tests against the local Go backend:
-
-```bash
-cd tests/functional
-
-# Install dependencies (if needed)
-npm ci
-
-# Run all v1 API tests
-V=1 ALL=1 ./utils/run-single-test-local.sh
-
-# Run all v2 API tests  
-V=2 ALL=1 ./utils/run-single-test-local.sh
-
-# Run specific test suite
-V=2 ./utils/run-single-test-local.sh health
-
-# Run with debug output
-V=2 DEBUG=1 ./utils/run-single-test-local.sh health
-```
-
-### Test Environment Configuration
-
-The tests use these environment variables (configured in `.env`):
-- `LOCAL=1` - Run against localhost:8001 instead of remote API
-- `DEBUG=1` - Enable debug output
-- `TOKEN` - Auth token (from `token.secret`)
-- `XACL` - Access control list (from `x-acl.secret`)
-
-## Route Verification
-
-### Comparing with Python Backend
-
-The Go backend provides complete coverage of all Python routes with additional enhanced functionality.
-
-Critical routes verified for 1:1 compatibility:
-- `GET /v2/health` - Returns request headers (identical to Python)
-- `GET /v2/user/{user_id}` - User management
-- `POST /v1/user/gerrit` - Gerrit integration
-- `GET /v1/signatures/*` - Signature management
-- `GET /v1/salesforce/*` - Salesforce integration
-- `POST /v2/user/{user_id}/request-company-*` - Company workflows
-
-### Functional Compatibility Verification
-
-The Go backend has been tested to ensure 1:1 functional compatibility with the Python backend:
-
-1. **Authentication**: Supports the same Auth0 JWT validation and session management
-2. **Route Coverage**: All Python v1/v2 routes are implemented with identical behavior
-3. **Data Format**: Request/response formats match exactly including error messages
-4. **GitHub Integration**: Webhook handling, OAuth flows, and activity processing
-5. **Business Logic**: All CLA signing workflows (Individual, Employee, Corporate)
-6. **External Integrations**: Salesforce, LF Group, DocRaptor, GitHub Apps
-
-### Testing Status
-
-- Unit Tests: Go modules compile and pass basic validation
-- Integration Tests: Basic API endpoints respond correctly
-- E2E Tests: Health endpoints verified, full Cypress suite configured
-- Manual Testing: Core API endpoints tested with real authentication
-
-## Deployment
-
-### Build for Deployment
-
-```bash
-cd cla-backend-legacy
-make clean && make lambdas
-```
-
-### Install Node Dependencies
-
-```bash
-cd cla-backend-legacy
-npm install
-```
-
-### Deploy with Serverless
-
-Example deployment commands:
-```bash
-# Development
-STAGE=dev npx serverless deploy -s dev -r us-east-1
-
-# Production  
-STAGE=prod npx serverless deploy -s prod -r us-east-1
-```
-
-## Domain slot switch
-
-One switch controls whether Go deploys to the live `api.*` domains or the alternate `apigo.*` domains.
-
-Supported values:
-- `CLA_API_DOMAIN_SLOT=shadow` (default)
-- `CLA_API_DOMAIN_SLOT=live`
-
-`shadow` means:
-- Go deploys to `apigo.*`
-- Python stays on `api.*`
-
-`live` means:
-- Go deploys to `api.*`
-- Python should be moved to `apigo.*`
-
-Deployment examples:
-```bash
-# Shadow mode (testing)
-STAGE=prod CLA_API_DOMAIN_SLOT=shadow npx serverless deploy -s prod -r us-east-1
-
-# Live mode (replacement)
-STAGE=prod CLA_API_DOMAIN_SLOT=live npx serverless deploy -s prod -r us-east-1
-
-# Rollback
-STAGE=prod CLA_API_DOMAIN_SLOT=shadow npx serverless deploy -s prod -r us-east-1
-```
-
-## GitHub Integration
-
-### Webhook Handling
-
-The Go backend handles GitHub webhooks identically to the Python version:
-- Route: `/v2/repository-provider/github/activity`
-- Secret validation with HMAC verification
-- Activity processing via GitHub controllers
-- Error handling with email notifications
-
-### Testing GitHub Integration
-
-When deployed, the backend will handle real GitHub activities:
-- Pull request events
-- Push events  
-- Repository events
-- Organization events
-
-All webhook processing maintains 1:1 compatibility with Python behavior.
-
-## CI/CD Integration
-
-### Automated Testing
-
-The Go backend is integrated into all CI/CD workflows:
-
-**Pull Request Builds** (`.github/workflows/build-pr.yml`):
-- Go backend build, test, lint on every PR
-- Validates changes before merge
-
-**Development Deployment** (`.github/workflows/deploy-dev.yml`):  
-- Automatic deployment to dev environment
-- Health checks and validation
-
-**Production Deployment** (`.github/workflows/deploy-prod.yml`):
-- Tag-based deployment to production
-- Complete validation and health checks
-
-**Standalone Workflows**:
-- `cla-backend-legacy-deploy-dev.yml` - Dedicated dev deployment
-- `cla-backend-legacy-deploy-prod.yml` - Dedicated prod deployment
-
-### Workflow Triggers
-
-The Go backend deploys automatically on:
-- Pull request creation/updates (build and test)
-- Push to dev branch (deploy to dev)  
-- Tag creation on main branch (deploy to prod)
-
-## Required environment and SSM inputs
-
-The service expects the same general classes of configuration as the Python backend:
-- Auth0 settings
-- Platform gateway URL
-- AWS region and credentials
-- DynamoDB tables for the current stage
-- S3 bucket for signed and generated documents
-- GitHub App credentials
-- DocRaptor key
-- Email settings (SNS and/or SES)
-- LF Group credentials
-
-Key deploy-time values are resolved by `serverless.yml` from SSM and/or `env.json`.
-
-Keep an `env.json` file present even if it is empty:
-```json
-{}
-```
-
-## Production readiness
-
-The codebase is production ready. Before deploying:
-
-```bash
-cd cla-backend-legacy
-go mod tidy
-go test ./...
-make lint
-make lambdas
-```
-
-Validate these areas against your target environment:
-- DocuSign request and callback flows
-- GitHub webhook forwarding and side effects
-- Email delivery paths
-- Domain-slot switch behavior (`shadow` vs `live`)
-
-### Running the New API Backend Locally
-
-To test the new Go API backend locally:
-
-1. **Set Environment Variables**:
-```bash
-cd /data/dev/dev2/go/src/github.com/linuxfoundation/easycla
 source setenv.sh
-```
-
-2. **Start the Go Backend**:
-```bash
 cd cla-backend-legacy
-ADDR=":8001" LEGACY_UPSTREAM_BASE_URL="" make run-local
+STAGE=dev ADDR=":5000" make run-local
 ```
 
-3. **Run Cypress E2E Tests**:
+Basic smoke test:
+
+```bash
+curl -i http://localhost:5000/v2/health
+```
+
+A successful response should include:
+
+```text
+X-EasyCLA-Backend: cla-backend-legacy
+X-EasyCLA-Backend-Version: go
+```
+
+## Cypress functional coverage
+
+Cypress stays pointed at the existing legacy API shape. For local runs, the current helper
+already targets `localhost:5000` for `/v1` and `/v2`.
+
 ```bash
 cd tests/functional
+npm ci
+V=1 ALL=1 ./utils/run-single-test-local.sh
 V=2 ALL=1 ./utils/run-single-test-local.sh
 ```
 
-The new backend will be running on `http://localhost:8001` and handle all v1/v2 API requests.
+Examples:
 
-## Notes
+```bash
+V=2 ./utils/run-single-test-local.sh health
+V=1 ./utils/run-single-test-local.sh project
+```
 
-- This repository should contain only one Markdown file: README.md.
-- Non-Markdown resources such as HTML templates and images remain under `resources/` because they are required at runtime.
-- The Go backend is ready for immediate production use as a drop-in replacement for the Python backend.
-- All security issues from CodeQL scan have been addressed including SSRF protection, log injection prevention, XSS mitigation, and secure cookie settings.
+## Deployment model
+
+Deployment is owned by `cla-backend/serverless.yml`:
+
+- `/v1` -> `bin/legacy-api-lambda`
+- `/v2` -> `bin/legacy-api-lambda`
+- `/v3` -> existing `cla-backend-go` binary in the same stack
+
+CI builds `cla-backend-legacy`, copies `bin/legacy-api-lambda` into `cla-backend/bin/`,
+then deploys the existing `cla-backend` stack. There is no separate `apigo.*` deployment.
+
+## Cutover verification
+
+After deployment to `dev`, verify the live legacy URL directly:
+
+```bash
+curl -i https://api.lfcla.dev.platform.linuxfoundation.org/v2/health
+```
+
+Look for:
+
+```text
+X-EasyCLA-Backend: cla-backend-legacy
+```
+
+In logs, search for:
+
+```text
+LG:api-backend:cla-backend-legacy
+LG:e2e-backend:cla-backend-legacy
+```

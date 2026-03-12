@@ -28,12 +28,6 @@ updates:
       interval: "monthly"
     open-pull-requests-limit: 3
 
-  # Enable version updates for Python dependencies in cla-backend
-  - package-ecosystem: "pip"
-    directory: "/cla-backend"
-    schedule:
-      interval: "monthly"
-    open-pull-requests-limit: 3
 
   # Enable version updates for Go dependencies in cla-backend-go
   - package-ecosystem: "gomod"
@@ -53,3 +47,4 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
+

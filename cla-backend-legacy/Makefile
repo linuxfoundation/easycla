@@ -1,7 +1,7 @@
-# Build the legacy (v1/v2) API lambda binary
+# Build the legacy (v1/v2) API lambda binary consumed by cla-backend/serverless.yml
 # Usage:
 #   make lambdas
-#   STAGE=dev AWS_REGION=us-east-1 yarn sls deploy -s ${STAGE} -r ${AWS_REGION}
+#   cp ./bin/legacy-api-lambda ../cla-backend/bin/
 
 BIN_DIR := bin
 GOFLAGS ?= -mod=mod
@@ -37,3 +37,4 @@ lint:
 
 clean:
 	rm -rf $(BIN_DIR)
+
