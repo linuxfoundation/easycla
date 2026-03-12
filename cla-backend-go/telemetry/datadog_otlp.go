@@ -195,9 +195,10 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 		p = reUUIDValid.ReplaceAllString(p, "{uuid}")
 		p = reUUIDLike.ReplaceAllString(p, "/{invalid-uuid}$1")
 		p = reUUIDHexDash36.ReplaceAllString(p, "/{invalid-uuid}$1")
-		p = reNumericID.ReplaceAllString(p, "/{id}$1")
-		// Possibly comment out?
-		p = reNumericID.ReplaceAllString(p, "/{id}$1")
+		for prev := ""; p != prev; {
+			prev = p
+			p = reNumericID.ReplaceAllString(p, "/{id}$1")
+		}
 		p = reSFIDValid.ReplaceAllString(p, "/{sfid}$1")
 		p = reSFIDLike.ReplaceAllString(p, "/{invalid-sfid}$1")
 		p = reLFXIDValid.ReplaceAllString(p, "/{lfxid}$1")
