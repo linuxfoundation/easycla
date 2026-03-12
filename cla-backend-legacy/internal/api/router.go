@@ -25,8 +25,7 @@ func NewRouter(h *Handlers) http.Handler {
 	//   - GET /v2/repository-provider/github/sign/...
 	r.Use(middleware.SessionMiddleware(h.kv))
 
-	// Default to proxying unknown / unmapped routes to the legacy Python backend.
-	// When the legacy proxy is disabled, return proper 404/405 (instead of 501).
+	// Return legacy-compatible 404/405 for unknown or method-mismatched routes.
 	r.NotFound(h.NotFound)
 	r.MethodNotAllowed(h.MethodNotAllowed)
 

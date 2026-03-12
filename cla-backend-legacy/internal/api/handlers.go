@@ -36,7 +36,6 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/legacy/lfgroup"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/legacy/salesforce"
 	userservicelegacy "github.com/linuxfoundation/easycla/cla-backend-legacy/internal/legacy/userservice"
-	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/legacyproxy"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/pdf"
@@ -44,14 +43,8 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/store"
 )
 
-// Handlers is a placeholder for legacy (v1/v2) endpoints.
-//
-// Migration strategy:
-//   - Default behavior is to proxy to the existing legacy Python API ("strangler" pattern)
-//     so the new Go service can be deployed under non-colliding domains and still behave 1:1.
-//   - As endpoints are ported to Go, replace the individual handler body and remove the proxy call.
+// Handlers implements the legacy (v1/v2) API surface in Go.
 type Handlers struct {
-	legacyProxy *legacyproxy.Proxy
 
 	// Ported building blocks (incrementally used by endpoints as they are rewritten from Python).
 	// AWS region used by the legacy service for AWS SDK clients.
@@ -80,12 +73,9 @@ type Handlers struct {
 }
 
 func NewHandlers() *Handlers {
-	p, _ := legacyproxy.NewFromEnv()
-
 	client := &http.Client{Timeout: 30 * time.Second}
 	h := &Handlers{
-		legacyProxy: p,
-		httpClient:  client,
+		httpClient: client,
 	}
 
 	// Ensure region is always initialized (handlers use h.region for AWS clients).
@@ -767,32 +757,19 @@ func pickLatestSignature(items []map[string]types.AttributeValue, companyID stri
 	return latest
 }
 
-// NotImplemented currently proxies to the legacy Python service when configured.
-// When the proxy is disabled (LEGACY_UPSTREAM_BASE_URL is unset), it returns HTTP 501.
+// NotImplemented returns HTTP 501 for intentionally unimplemented legacy handlers.
 func (h *Handlers) NotImplemented(w http.ResponseWriter, r *http.Request) {
-	if h.legacyProxy != nil {
-		h.legacyProxy.ServeHTTP(w, r)
-		return
-	}
 	respond.NotImplemented(w, r)
 }
 
-// NotFound proxies to the legacy Python service when configured; otherwise returns 404.
+// NotFound returns HTTP 404 for unknown legacy routes.
 func (h *Handlers) NotFound(w http.ResponseWriter, r *http.Request) {
-	if h.legacyProxy != nil {
-		h.legacyProxy.ServeHTTP(w, r)
-		return
-	}
 	respond.NotFound(w, r)
 }
 
-// MethodNotAllowed proxies to the legacy Python service when configured; otherwise returns 405.
+// MethodNotAllowed returns HTTP 405 for unsupported methods, preserving
+// legacy Hug 404 quirks for selected v2 paths.
 func (h *Handlers) MethodNotAllowed(w http.ResponseWriter, r *http.Request) {
-	if h.legacyProxy != nil {
-		h.legacyProxy.ServeHTTP(w, r)
-		return
-	}
-
 	// Python/Hug versioning parity: some endpoints exist in v2 only for GET, while
 	// the same path+method exists in v1. Hug can return 404 ("not defined") for
 	// these method+version combinations, not 405.

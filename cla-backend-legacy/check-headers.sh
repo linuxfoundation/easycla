@@ -8,7 +8,7 @@
 # Exits with a 1 if one or more source files are missing a license header
 
 # These are the file patterns we should exclude - these are typically transient files not checked into source control
-exclude_pattern='node_modules|.venv|organization-service.yaml|cla.compiled.yaml|project-service.yaml|acs-service.yaml|user-service.yaml|cla.v2.compiled.yaml|.vendor-new|.pytest_cache|.serverless'
+exclude_pattern='node_modules|.venv|organization-service.yaml|cla.compiled.yaml|project-service.yaml|acs-service.yaml|user-service.yaml|cla.*.compiled.yaml|.vendor-new|.pytest_cache'
 
 files=()
 echo "Scanning source code..."
@@ -21,6 +21,8 @@ echo "Searching python files..."
 files+=($(find . -name '*.py' -print | egrep -v ${exclude_pattern}))
 echo "Searching sh files..."
 files+=($(find . -name '*.sh' -print | egrep -v ${exclude_pattern}))
+echo "Searching make files..."
+files+=($(find . -name 'Makefile' -print | egrep -v ${exclude_pattern}))
 echo "Searching txt files..."
 files+=($(find . -name '*.txt' -print | egrep -v ${exclude_pattern}))
 echo "Searching yaml|yml files..."
