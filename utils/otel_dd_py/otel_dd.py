@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 _RE_MULTI_SLASH = re.compile(r"/{2,}")
 _RE_ASSET_EXT = re.compile(r"\.(png|svg|css|js|json|xml|htm|html)$")
 _RE_SWAGGER_ASSET = re.compile(r"^(/v[0-9]+)/swagger\.\{asset\}$")
+_RE_SWAGGER_JSON_RESOURCE = re.compile(r"^(/v[0-9]+/swagger\.json)/.+$")
+_RE_SWAGGER_TEMPLATED_RESOURCE = re.compile(r"^(/v[0-9]+/swagger\.\{asset\})/.+$")
 _RE_UUID_VALID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _RE_UUID_LIKE = re.compile(r"/[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{12}(/|$)")
 _RE_UUID_HEXDASH_36 = re.compile(r"/[0-9a-fA-F-]{36}(/|$)")
@@ -21,8 +23,15 @@ _RE_SFID_LIKE = re.compile(r"/(?:00|a0)[^/]{1,32}(/|$)")
 _RE_LFXID_VALID = re.compile(r"/lf[A-Za-z0-9]{16,22}(/|$)")
 _RE_LFXID_LIKE = re.compile(r"/lf[^/]{1,32}(/|$)")
 _RE_NULL = re.compile(r"/null(/|$)")
+_RE_UNDEFINED = re.compile(r"/undefined(/|$)")
 _RE_INVALID_UUID_SEG = re.compile(r"/(?:invalid-uuid(?:-format)?|not-a-uuid)(/|$)")
 _RE_INVALID_SFID_SEG = re.compile(r"/invalid-sfid(?:-format)?(/|$)")
+_RE_USERS_USERNAME = re.compile(r"^(/v[0-9]+/users/username)/[^/]+$")
+_RE_COMPANY_NAME = re.compile(r"^(/v[0-9]+/company/name)/[^/]+$")
+_RE_COMPANY_USER_CLA_MANAGER_DESIGNEE = re.compile(r"^(/v[0-9]+/company/[^/]+/user)/[^/]+(/claGroupID/[^/]+/is-cla-manager-designee)$")
+_RE_CLA_MANAGER_USER = re.compile(r"^(/v[0-9]+/company/[^/]+/project/[^/]+/cla-manager)/[^/]+$")
+_RE_REPOSITORY_PROVIDER_GITHUB_SIGN_NUMERIC = re.compile(r"^(/v[0-9]+/repository-provider/github/sign/[^/]+)/[0-9]+(/[^/]+)$")
+_RE_SIGNED_INDIVIDUAL_GITHUB_NUMERIC = re.compile(r"^(/v[0-9]+/signed/individual/[^/]+)/[0-9]+(/[^/]+)$")
 
 def sanitize_api_path(path: str) -> str:
     p = (path or "").strip()
@@ -35,6 +44,14 @@ def sanitize_api_path(path: str) -> str:
     if len(p) > 1 and p.endswith("/"):
         p = p[:-1]
 
+    p = _RE_SWAGGER_JSON_RESOURCE.sub(r"\1/{resource}", p)
+    p = _RE_SWAGGER_TEMPLATED_RESOURCE.sub(r"\1/{resource}", p)
+    p = _RE_USERS_USERNAME.sub(r"\1/{name}", p)
+    p = _RE_COMPANY_NAME.sub(r"\1/{name}", p)
+    p = _RE_COMPANY_USER_CLA_MANAGER_DESIGNEE.sub(r"\1/{name}\2", p)
+    p = _RE_CLA_MANAGER_USER.sub(r"\1/{name}", p)
+    p = _RE_REPOSITORY_PROVIDER_GITHUB_SIGN_NUMERIC.sub(r"\1/{n}\2", p)
+    p = _RE_SIGNED_INDIVIDUAL_GITHUB_NUMERIC.sub(r"\1/{n}\2", p)
     p = _RE_ASSET_EXT.sub(".{asset}", p)
     p = _RE_SWAGGER_ASSET.sub(r"\1/swagger", p)
 
@@ -47,6 +64,7 @@ def sanitize_api_path(path: str) -> str:
     p = _RE_LFXID_VALID.sub(r"/{lfxid}\1", p)
     p = _RE_LFXID_LIKE.sub(r"/{invalid-lfxid}\1", p)
     p = _RE_NULL.sub(r"/{null}\1", p)
+    p = _RE_UNDEFINED.sub(r"/{undefined}\1", p)
     p = _RE_INVALID_UUID_SEG.sub(r"/{invalid-uuid}\1", p)
     p = _RE_INVALID_SFID_SEG.sub(r"/{invalid-sfid}\1", p)
     return p or "/"

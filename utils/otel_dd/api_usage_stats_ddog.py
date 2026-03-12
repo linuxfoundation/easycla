@@ -10,6 +10,7 @@ Default behavior:
   - Skips spans marked as attributes.custom.easycla.e2e == "true"
   - Groups by templated route attributes.custom.http.route
   - Outputs: api,n_calls,first,last (sorted by n_calls desc)
+  - Additional client-side route sanitization is disabled by default; enable with --sanitize-routes
 
 Env vars required:
   DD_SITE       (e.g. datadoghq.com, datadoghq.eu, us3.datadoghq.com, ...)
@@ -38,6 +39,76 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 _ENV_RE = re.compile(r"(^|\s)env\s*:")
+
+# Keep this sanitizer aligned with the backend OTel/DataDog route templating.
+_RE_MULTI_SLASH = re.compile(r"/{2,}")
+_RE_ASSET_EXT = re.compile(r"\.(png|svg|css|js|json|xml|htm|html)$")
+_RE_SWAGGER_ASSET = re.compile(r"^(/v[0-9]+)/swagger\.\{asset\}$")
+_RE_SWAGGER_JSON_RESOURCE = re.compile(r"^(/v[0-9]+/swagger\.json)/.+$")
+_RE_SWAGGER_TEMPLATED_RESOURCE = re.compile(r"^(/v[0-9]+/swagger\.\{asset\})/.+$")
+_RE_UUID_VALID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_RE_UUID_LIKE = re.compile(r"/[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{12}(/|$)")
+_RE_UUID_HEXDASH_36 = re.compile(r"/[0-9a-fA-F-]{36}(/|$)")
+_RE_NUMERIC_ID = re.compile(r"/[0-9]+(/|$)")
+_RE_SFID_VALID = re.compile(r"/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)")
+_RE_SFID_LIKE = re.compile(r"/(?:00|a0)[^/]{1,32}(/|$)")
+_RE_LFXID_VALID = re.compile(r"/lf[A-Za-z0-9]{16,22}(/|$)")
+_RE_LFXID_LIKE = re.compile(r"/lf[^/]{1,32}(/|$)")
+_RE_NULL = re.compile(r"/null(/|$)")
+_RE_UNDEFINED = re.compile(r"/undefined(/|$)")
+_RE_INVALID_UUID_SEG = re.compile(r"/(?:invalid-uuid(?:-format)?|not-a-uuid)(/|$)")
+_RE_INVALID_SFID_SEG = re.compile(r"/invalid-sfid(?:-format)?(/|$)")
+_RE_USERS_USERNAME = re.compile(r"^(/v[0-9]+/users/username)/[^/]+$")
+_RE_COMPANY_NAME = re.compile(r"^(/v[0-9]+/company/name)/[^/]+$")
+_RE_COMPANY_USER_CLA_MANAGER_DESIGNEE = re.compile(
+    r"^(/v[0-9]+/company/[^/]+/user)/[^/]+(/claGroupID/[^/]+/is-cla-manager-designee)$"
+)
+_RE_CLA_MANAGER_USER = re.compile(r"^(/v[0-9]+/company/[^/]+/project/[^/]+/cla-manager)/[^/]+$")
+_RE_REPOSITORY_PROVIDER_GITHUB_SIGN_NUMERIC = re.compile(
+    r"^(/v[0-9]+/repository-provider/github/sign/[^/]+)/[0-9]+(/[^/]+)$"
+)
+_RE_SIGNED_INDIVIDUAL_GITHUB_NUMERIC = re.compile(
+    r"^(/v[0-9]+/signed/individual/[^/]+)/[0-9]+(/[^/]+)$"
+)
+
+def sanitize_api_path(path: str) -> str:
+    p = (path or "").strip()
+    if not p:
+        return "/"
+    if not p.startswith("/"):
+        p = "/" + p
+
+    p = _RE_MULTI_SLASH.sub("/", p)
+    if len(p) > 1 and p.endswith("/"):
+        p = p[:-1]
+
+    p = _RE_SWAGGER_JSON_RESOURCE.sub(r"\1/{resource}", p)
+    p = _RE_SWAGGER_TEMPLATED_RESOURCE.sub(r"\1/{resource}", p)
+    p = _RE_USERS_USERNAME.sub(r"\1/{name}", p)
+    p = _RE_COMPANY_NAME.sub(r"\1/{name}", p)
+    p = _RE_COMPANY_USER_CLA_MANAGER_DESIGNEE.sub(r"\1/{name}\2", p)
+    p = _RE_CLA_MANAGER_USER.sub(r"\1/{name}", p)
+    p = _RE_REPOSITORY_PROVIDER_GITHUB_SIGN_NUMERIC.sub(r"\1/{n}\2", p)
+    p = _RE_SIGNED_INDIVIDUAL_GITHUB_NUMERIC.sub(r"\1/{n}\2", p)
+
+    p = _RE_ASSET_EXT.sub(".{asset}", p)
+    p = _RE_SWAGGER_ASSET.sub(r"\1/swagger", p)
+
+    p = _RE_UUID_VALID.sub("{uuid}", p)
+    p = _RE_UUID_LIKE.sub(r"/{invalid-uuid}\1", p)
+    p = _RE_UUID_HEXDASH_36.sub(r"/{invalid-uuid}\1", p)
+    p = _RE_NUMERIC_ID.sub(r"/{id}\1", p)
+    p = _RE_SFID_VALID.sub(r"/{sfid}\1", p)
+    p = _RE_SFID_LIKE.sub(r"/{invalid-sfid}\1", p)
+    p = _RE_LFXID_VALID.sub(r"/{lfxid}\1", p)
+    p = _RE_LFXID_LIKE.sub(r"/{invalid-lfxid}\1", p)
+    p = _RE_NULL.sub(r"/{null}\1", p)
+    p = _RE_UNDEFINED.sub(r"/{undefined}\1", p)
+    p = _RE_INVALID_UUID_SEG.sub(r"/{invalid-uuid}\1", p)
+    p = _RE_INVALID_SFID_SEG.sub(r"/{invalid-sfid}\1", p)
+    return p or "/"
+
+
 
 def has_env_filter(query: str) -> bool:
     return bool(_ENV_RE.search(query))
@@ -69,7 +140,7 @@ def is_e2e_true(span: Dict[str, Any]) -> bool:
     return str(v).strip().lower() == "true"
 
 
-def extract_route(span: Dict[str, Any]) -> Optional[str]:
+def extract_route(span: Dict[str, Any], *, sanitize_routes: bool = False) -> Optional[str]:
     """
     Prefer templated HTTP route:
       attributes.custom.http.route  -> "/v1/repository/{uuid}"
@@ -83,7 +154,8 @@ def extract_route(span: Dict[str, Any]) -> Optional[str]:
     http = custom.get("http") or {}
     route = http.get("route")
     if isinstance(route, str) and route.strip():
-        return route.strip()
+        value = route.strip()
+        return sanitize_api_path(value) if sanitize_routes else value
 
     resource_name = attrs.get("resource_name")
     if isinstance(resource_name, str):
@@ -91,10 +163,11 @@ def extract_route(span: Dict[str, Any]) -> Optional[str]:
         # Often "METHOD /path"
         parts = rn.split(None, 1)
         if len(parts) == 2 and parts[1].startswith("/"):
-            return parts[1].strip()
+            value = parts[1].strip()
+            return sanitize_api_path(value) if sanitize_routes else value
         # Sometimes just "/path"
         if rn.startswith("/"):
-            return rn
+            return sanitize_api_path(rn) if sanitize_routes else rn
 
     return None
 
@@ -205,6 +278,7 @@ def main() -> int:
     p.add_argument("--to", dest="time_to", default="now", help='Time range end (Datadog format), default "now"')
     p.add_argument("--limit", type=int, default=5000, help="Page limit per request (default: 5000)")
     p.add_argument("--verbose", action="store_true", help="Log progress to stderr")
+    p.add_argument("--sanitize-routes", action="store_true", help="Post-process extracted routes with the local sanitizer before grouping/output (default: off)")
     p.add_argument("--env", "--environment", "--stage", dest="env", default=os.getenv("DD_ENV") or os.getenv("ENV") or os.getenv("STAGE") or "dev", help='Datadog env tag value (default: DD_ENV/ENV/STAGE or "dev")')
     p.add_argument("--query", default="service:easycla-backend", help='Datadog query string WITHOUT env (env is appended unless query already contains env:...) (default: "service:easycla-backend")')
 
@@ -251,7 +325,7 @@ def main() -> int:
             skipped_e2e += 1
             continue
 
-        route = extract_route(span)
+        route = extract_route(span, sanitize_routes=args.sanitize_routes)
         if not route:
             skipped_missing_route += 1
             continue

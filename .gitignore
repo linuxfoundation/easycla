@@ -3,6 +3,11 @@
 *.pem
 .mypy_cache
 
+# Go binaries
+cla-backend-legacy/bin/
+cla-backend-legacy/legacy-api
+cla-backend-legacy/bin/legacy-api-lambda
+
 # Logs
 logs
 *.log
@@ -234,6 +239,10 @@ Desktop.ini
 
 # Build files
 dist/*
+bin/*
+cla-backend-legacy/bin/*
+cla-backend-legacy/legacy-api
+cla-backend-legacy/legacy-api-local
 
 # Playground tmp files
 .playground
@@ -269,4 +278,17 @@ cla-backend-go/golang-api.log
 utils/otel_dd_go/otel_dd
 audit.json
 spans*.json
-api_usage.csv
+*api_usage.csv
+
+# Go binaries and build artifacts
+cla-backend-legacy/bin/
+cla-backend-legacy/legacy-api
+cla-backend-legacy/legacy-api-lambda
+cla-backend-legacy/bin/legacy-api-lambda
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
