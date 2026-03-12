@@ -701,13 +701,14 @@ def scan_mode_rows(
             skipped_e2e += 1
             continue
 
-        route = extract_route(span, sanitize_routes=sanitize_routes)
-        if not route:
+        raw_route = extract_route(span)
+        if not raw_route:
             skipped_missing_route += 1
             continue
 
-        if route_prefixes and not any(route.startswith(prefix) for prefix in route_prefixes):
+        if route_prefixes and not any(raw_route.startswith(prefix) for prefix in route_prefixes):
             continue
+        route = sanitize_api_path(raw_route) if sanitize_routes else raw_route
 
         ts = extract_event_time(span)
         if not ts:
@@ -777,7 +778,7 @@ def main() -> int:
         default="custom.http.route,http.route",
         help="Comma-separated attribute names to try for exact/prefix route filters (default: custom.http.route,http.route)",
     )
-    parser.add_argument("--route-limit", type=int, default=1000, help="Maximum number of routes/buckets to request from aggregate API (default: 1000)")
+    parser.add_argument("--route-limit", type=int, default=1000, help="Maximum number of routes/buckets to request from aggregate API (default: 1000), if too low raise or use --mode scan instead")
     parser.add_argument(
         "--route-prefix",
         action="append",
@@ -799,7 +800,7 @@ def main() -> int:
     parser.add_argument(
         "--no-query-skip-e2e",
         action="store_true",
-        help="Do not push e2e exclusion into the Datadog query; keep only client-side filtering in scan mode",
+        help="Do not push e2e exclusion into the Datadog query in scan mode; ignored in aggregate mode",
     )
     parser.add_argument("--e2e-attr", default="custom.easycla.e2e", help="Attribute name used for server-side e2e exclusion (default: custom.easycla.e2e)")
     parser.add_argument("--no-fallback-scan", action="store_true", help="Do not fall back to full scan mode when aggregate mode fails")
@@ -826,13 +827,14 @@ def main() -> int:
         args.language_query_attrs,
         ["language", "custom.telemetry.sdk.language"],
     )
+    no_query_skip_e2e = args.no_query_skip_e2e if args.mode == "scan" else False
 
     query = build_query(
         args.query,
         env=args.env,
         ensure_env_filter=True,
         skip_e2e=skip_e2e,
-        pushdown_e2e=not args.no_query_skip_e2e,
+        pushdown_e2e=not no_query_skip_e2e,
         e2e_attr=args.e2e_attr,
         route_prefixes=args.route_prefix,
         route_query_attrs=route_query_attrs,
