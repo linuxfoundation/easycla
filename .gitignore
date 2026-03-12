@@ -6,6 +6,7 @@
 # Go binaries
 cla-backend-legacy/bin/
 cla-backend-legacy/legacy-api
+cla-backend-legacy/legacy-api-local
 cla-backend-legacy/bin/legacy-api-lambda
 
 # Logs
@@ -240,9 +241,6 @@ Desktop.ini
 # Build files
 dist/*
 bin/*
-cla-backend-legacy/bin/*
-cla-backend-legacy/legacy-api
-cla-backend-legacy/legacy-api-local
 
 # Playground tmp files
 .playground
@@ -280,11 +278,6 @@ audit.json
 spans*.json
 *api_usage.csv
 
-# Go binaries and build artifacts
-cla-backend-legacy/bin/
-cla-backend-legacy/legacy-api
-cla-backend-legacy/legacy-api-lambda
-cla-backend-legacy/bin/legacy-api-lambda
 *.exe
 *.exe~
 *.dll
