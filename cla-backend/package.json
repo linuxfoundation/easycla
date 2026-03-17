@@ -76,7 +76,7 @@
     "shell-quote": "^1.7.3",
     "simple-git": "^3.32.3",
     "ws": ">=7.5.10",
-    "tar": "^7.5.8",
+    "tar": "^7.5.10",
     "xmlhttprequest-ssl": "^1.6.2",
     "fast-xml-parser": "^5.3.6",
     "ajv": "8.18.0",

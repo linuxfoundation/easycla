@@ -74,3 +74,4 @@ class TestUserCommitSummary(unittest.TestCase):
         self.assertTrue(':white_check_mark:' in body)
         self.assertTrue(':x:' in body)
         self.assertTrue('One or more co-authors of this pull request were not found' in body)
+        self.assertTrue('Alternatively, if the co-author should not be included, remove the `Co-authored-by:` line from the commit message.' in body)
