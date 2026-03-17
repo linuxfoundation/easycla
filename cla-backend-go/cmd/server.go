@@ -649,6 +649,32 @@ func wrapHandlers(v1 http.Handler, v1BasePath string, v2 http.Handler, v2BasePat
 	})
 }
 
+func syncExistingUserLFEmail(usersService users.Service, claUser *user.CLAUser, userModel *models.User) *models.User {
+	if claUser == nil || userModel == nil || claUser.LFEmail == "" || userModel.UserID == "" {
+		return userModel
+	}
+
+	if strings.EqualFold(string(userModel.LfEmail), claUser.LFEmail) {
+		return userModel
+	}
+
+	updatedUserModel, err := usersService.UpdateUser(userModel.UserID, map[string]interface{}{
+		"lf_email":      strings.ToLower(claUser.LFEmail),
+		"date_modified": time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil || updatedUserModel == nil {
+		log.WithError(err).WithFields(logrus.Fields{
+			"functionName": "cmd.syncExistingUserLFEmail",
+			"userID":       userModel.UserID,
+			"lfUsername":   claUser.LFUsername,
+			"lfEmail":      claUser.LFEmail,
+		}).Warn("unable to refresh authenticated user lf_email from auth token")
+		return userModel
+	}
+
+	return updatedUserModel
+}
+
 // setupCORSHandlerLocal allows all origins and sets up the handler
 func setupCORSHandlerLocal(handler http.Handler) http.Handler {
 	f := logrus.Fields{
@@ -788,8 +814,9 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 			return r
 		}
 	}
-	// If found - just return
+	// If found - refresh lf_email from the current auth token and return
 	if userModel != nil {
+		userModel = syncExistingUserLFEmail(usersService, claUser, userModel)
 		if !needToStoreUser {
 			return r
 		}
@@ -807,8 +834,9 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 			return r
 		}
 	}
-	// If found - just return
+	// If found - refresh lf_email from the current auth token and return
 	if userModel != nil {
+		userModel = syncExistingUserLFEmail(usersService, claUser, userModel)
 		if !needToStoreUser {
 			return r
 		}

@@ -1771,20 +1771,21 @@ class User(model_interfaces.User):  # pylint: disable=too-many-public-methods
     def get_lf_sub(self):
         return self.model.lf_sub
 
-    def get_user_email(self, preferred_email=None):
+    def get_user_email(self, preferred_email=None, allow_lf_email=True):
         """
         :param preferred_email: if the preferred email is in list of registered emails
         it'd be returned, otherwise whatever email is present will be returned randomly
+        :param allow_lf_email: when False, only emails from user_emails are considered
         :return:
         """
-        if preferred_email and self.model.lf_email is None and preferred_email == self.model.lf_email:
+        if preferred_email and allow_lf_email and self.model.lf_email is not None and preferred_email == self.model.lf_email:
             return preferred_email
 
         preferred_email = preferred_email or self._preferred_email
         if preferred_email and preferred_email in self.model.user_emails:
             return preferred_email
 
-        if self.model.lf_email is not None:
+        if allow_lf_email and self.model.lf_email is not None:
             return self.model.lf_email
         elif len(self.model.user_emails) > 0:
             # Ordering not guaranteed, better to use get_user_emails.

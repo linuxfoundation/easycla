@@ -512,5 +512,9 @@ def get_or_create_user(auth_user):
 
         return user
 
-    # Just return the first matching record
-    return users[0]
+    user = users[0]
+    if auth_user.email and user.get_lf_email() != auth_user.email.lower():
+        user.set_lf_email(auth_user.email.lower())
+        user.save()
+
+    return user

@@ -177,7 +177,9 @@ class DocuSign(signing_service_interface.SigningService):
                       format(project))
 
         cla.log.debug('Individual Signature - creating default individual values for user: {}'.format(user))
-        default_cla_values = create_default_individual_values(user)
+        allow_lf_email = return_url_type.lower() == "gerrit"
+        default_cla_values = create_default_individual_values(user, preferred_email=preferred_email,
+                                                              allow_lf_email=allow_lf_email)
         cla.log.debug('Individual Signature - created default individual values: {}'.format(default_cla_values))
 
         # Generate signature callback url
@@ -1346,14 +1348,17 @@ class DocuSign(signing_service_interface.SigningService):
                     cla.log.debug(f'{fn} - {sig_type} - '
                                   f'loading user by reference id: {signature.get_signature_reference_id()}')
                     user.load(signature.get_signature_reference_id())
+                    allow_lf_email = (signature.get_signature_return_url_type() or '').lower() == 'gerrit'
+                    resolved_user_email = user.get_user_email(preferred_email=preferred_email,
+                                                              allow_lf_email=allow_lf_email)
                     cla.log.debug(f'{fn} - {sig_type} - loaded user by '
                                   f'id: {user.get_user_id()}, '
                                   f'name: {user.get_user_name()}, '
-                                  f'email: {user.get_user_email()}')
+                                  f'email: {resolved_user_email}')
                     if not user.get_user_name() is None:
                         user_signature_name = user.get_user_name()
-                    if not user.get_user_email() is None:
-                        user_signature_email = user.get_user_email()
+                    if resolved_user_email is not None:
+                        user_signature_email = resolved_user_email
                 except DoesNotExist:
                     cla.log.warning(f'{fn} - {sig_type} - no user associated with this signature '
                                     f'id: {signature.get_signature_reference_id()} - can not sign ICLA')
@@ -2406,7 +2411,8 @@ def create_default_company_values(company: Company,
     return values
 
 
-def create_default_individual_values(user: User, preferred_email: str = None) -> Dict[str, Any]:
+def create_default_individual_values(user: User, preferred_email: str = None,
+                                     allow_lf_email: bool = True) -> Dict[str, Any]:
     values = {}
 
     if user is None:
@@ -2416,8 +2422,9 @@ def create_default_individual_values(user: User, preferred_email: str = None) ->
         values['full_name'] = user.get_user_name()
         values['public_name'] = user.get_user_name()
 
-    if user.get_user_email(preferred_email=preferred_email) is not None:
-        values['email'] = user.get_user_email()
+    resolved_email = user.get_user_email(preferred_email=preferred_email, allow_lf_email=allow_lf_email)
+    if resolved_email is not None:
+        values['email'] = resolved_email
 
     return values
 
