@@ -110,7 +110,14 @@ def create_company(auth_user: AuthUser,
     :rtype: dict
     """
     fn = 'controllers.company.create_company'
-    manager = cla.controllers.user.get_or_create_user(auth_user)
+    try:
+        manager = cla.controllers.user.get_or_create_user(auth_user)
+    except cla.controllers.user.AmbiguousUserMatchError as err:
+        if response is not None:
+            response.status = HTTP_409
+        return {"status_code": HTTP_409,
+                "data": {"errors": {"lf_username": str(err)}}
+                }
 
     for company in get_companies():
         if company.get("company_name") == company_name:

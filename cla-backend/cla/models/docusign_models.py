@@ -1359,10 +1359,11 @@ class DocuSign(signing_service_interface.SigningService):
                     allow_lf_email = (signature.get_signature_return_url_type() or '').lower() == 'gerrit'
                     resolved_user_email = user.get_user_email(preferred_email=preferred_email,
                                                               allow_lf_email=allow_lf_email)
+                    has_resolved_user_email = bool((resolved_user_email or '').strip())
                     cla.log.debug(f'{fn} - {sig_type} - loaded user by '
                                   f'id: {user.get_user_id()}, '
                                   f'name: {user.get_user_name()}, '
-                                  f'email: {resolved_user_email}')
+                                  f'has_email: {has_resolved_user_email}')
                     if not user.get_user_name() is None:
                         user_signature_name = user.get_user_name()
                     if resolved_user_email is not None:
@@ -1377,9 +1378,10 @@ class DocuSign(signing_service_interface.SigningService):
                                     f'error: {e}')
                     return
 
+                has_user_signature_email = bool((user_signature_email or '').strip())
                 cla.log.debug(
-                    f'{fn} - {sig_type} - user_signature name/email will be user from signature: '
-                    f'{user_signature_name} / {user_signature_email}...')
+                    f'{fn} - {sig_type} - user_signature name/has_email will be user from signature: '
+                    f'{user_signature_name} / {has_user_signature_email}...')
         else:
             cla.log.warning(f'{fn} - unsupported signature type: {sig_type}')
             return

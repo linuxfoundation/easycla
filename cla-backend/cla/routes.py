@@ -10,7 +10,7 @@ import os
 import re
 from urllib.parse import urlparse
 import requests
-from falcon import HTTP_401, HTTP_400, HTTP_OK, HTTP_500, Response
+from falcon import HTTP_401, HTTP_400, HTTP_409, HTTP_OK, HTTP_500, Response
 from hug.middleware import LogMiddleware
 
 import cla
@@ -671,14 +671,19 @@ def get_user(user_id: hug.types.uuid):
 
 
 @hug.post("/user/gerrit", versions=1)
-def post_or_get_user_gerrit(auth_user: check_auth):
+def post_or_get_user_gerrit(auth_user: check_auth, response=None):
     """
     GET: /user/gerrit
 
     For a Gerrit user, there is a case where a user with an lfid may be a user in the db.
     An endpoint to get a userId for gerrit, or create and retrieve the userId if not existent.
     """
-    return cla.controllers.user.get_or_create_user(auth_user).to_dict()
+    try:
+        return cla.controllers.user.get_or_create_user(auth_user).to_dict()
+    except cla.controllers.user.AmbiguousUserMatchError as err:
+        if response is not None:
+            response.status = HTTP_409
+        return {'errors': {'lf_username': str(err)}}
 
 
 @hug.get("/user/{user_id}/signatures", versions=1)
@@ -1163,13 +1168,18 @@ def delete_repository(auth_user: check_auth, repository_id: hug.types.text):
 # # Company Routes.
 # #
 @hug.get("/company", versions=1)
-def get_companies(auth_user: check_auth):
+def get_companies(auth_user: check_auth, response=None):
     """
     GET: /company
 
     Returns all CLA companies associated with user.
     """
-    cla.controllers.user.get_or_create_user(auth_user)  # Find or Create user -- For first login
+    try:
+        cla.controllers.user.get_or_create_user(auth_user)  # Find or Create user -- For first login
+    except cla.controllers.user.AmbiguousUserMatchError as err:
+        if response is not None:
+            response.status = HTTP_409
+        return {'errors': {'lf_username': str(err)}}
     return cla.controllers.company.get_companies_by_user(auth_user.username)
 
 
@@ -2426,7 +2436,12 @@ def user_from_token(auth_user: check_auth, request, response):
     Will return 200 and user data if token is valid
     Can return 404 on token errors
     """
-    return cla.controllers.user.get_or_create_user(auth_user).to_dict()
+    try:
+        return cla.controllers.user.get_or_create_user(auth_user).to_dict()
+    except cla.controllers.user.AmbiguousUserMatchError as err:
+        if response is not None:
+            response.status = HTTP_409
+        return {'errors': {'lf_username': str(err)}}
 
 @hug.post("/clear-cache", versions=2)
 def clear_cache(auth_user: check_auth):

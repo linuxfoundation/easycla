@@ -15,6 +15,11 @@ from cla.utils import get_user_instance, get_company_instance, get_email_service
     append_email_help_sign_off_content
 
 
+class AmbiguousUserMatchError(Exception):
+    """Raised when multiple EasyCLA user records match one LF identity."""
+
+
+
 def get_users():
     """
     Returns a list of users in the CLA system.
@@ -512,23 +517,24 @@ def get_or_create_user(auth_user):
 
         return user
 
-    user = users[0]
-    can_sync_lf_email = len(users) == 1
-    if len(users) > 1:
+    if len(users) == 1:
+        user = users[0]
+    else:
+        matched_users = []
         if auth_user.sub:
-            for candidate in users:
-                if candidate.get_lf_sub() == auth_user.sub:
-                    user = candidate
-                    can_sync_lf_email = True
-                    break
-        if not can_sync_lf_email and auth_user.email:
+            matched_users = [candidate for candidate in users if candidate.get_lf_sub() == auth_user.sub]
+        if not matched_users and auth_user.email:
             auth_email = auth_user.email.lower()
-            for candidate in users:
-                if candidate.get_lf_email() == auth_email:
-                    user = candidate
-                    can_sync_lf_email = True
-                    break
-    if can_sync_lf_email and auth_user.email and user.get_lf_email() != auth_user.email.lower():
+            matched_users = [candidate for candidate in users if candidate.get_lf_email() == auth_email]
+        if len(matched_users) != 1:
+            cla.log.warning(
+                f'Ambiguous EasyCLA user lookup for LF username: {auth_user.username} - '
+                f'matched {len(users)} records without a unique lf_sub/lf_email discriminator'
+            )
+            raise AmbiguousUserMatchError('multiple EasyCLA user records matched this LF identity')
+        user = matched_users[0]
+
+    if auth_user.email and user.get_lf_email() != auth_user.email.lower():
         user.set_lf_email(auth_user.email.lower())
         user.save()
 

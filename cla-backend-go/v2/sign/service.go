@@ -1338,9 +1338,9 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 	providerType := strings.ToLower(input.ReturnURLType)
 	if providerType == utils.GitHubType || providerType == utils.GitLabLower {
-		resolvedEmail, _ := defaultValues["email"].(string)
+		resolvedEmail, ok := defaultValues["email"].(string)
 		resolvedEmail = strings.TrimSpace(resolvedEmail)
-		if resolvedEmail == "" {
+		if !ok || resolvedEmail == "" {
 			err = fmt.Errorf("no %s user_emails found", providerType)
 			log.WithFields(f).WithError(err).Warn("unable to resolve provider-backed email for DocuSign signer")
 			return nil, err
