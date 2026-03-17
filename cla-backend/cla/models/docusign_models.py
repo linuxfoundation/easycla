@@ -177,12 +177,13 @@ class DocuSign(signing_service_interface.SigningService):
                       format(project))
 
         cla.log.debug('Individual Signature - creating default individual values for user: {}'.format(user))
-        allow_lf_email = return_url_type.lower() == "gerrit"
+        normalized_return = (return_url_type or '').lower()
+        allow_lf_email = normalized_return == "gerrit"
         default_cla_values = create_default_individual_values(user, preferred_email=preferred_email,
                                                               allow_lf_email=allow_lf_email)
         cla.log.debug('Individual Signature - created default individual values: {}'.format(default_cla_values))
 
-        provider_type = (return_url_type or '').lower()
+        provider_type = normalized_return
         resolved_email = default_cla_values.get('email')
         if provider_type in ('github', 'gitlab'):
             resolved_email = resolved_email.strip() if isinstance(resolved_email, str) else None
@@ -196,9 +197,9 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.debug('Individual Signature - get active signature metadata: {}'.format(signature_metadata))
 
         cla.log.debug('Individual Signature - get individual signature callback url')
-        if return_url_type.lower() == "github":
+        if provider_type == "github":
             callback_url = cla.utils.get_individual_signature_callback_url(user_id, signature_metadata)
-        elif return_url_type.lower() == "gitlab":
+        elif provider_type == "gitlab":
             callback_url = cla.utils.get_individual_signature_callback_url_gitlab(user_id, signature_metadata)
 
         cla.log.debug('Individual Signature - get individual signature callback url: {}'.format(callback_url))
@@ -271,12 +272,12 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_return_url=return_url,
                               signature_callback_url=callback_url)
         # Set signature ACL
-        if return_url_type.lower() == "github":
+        if provider_type == "github":
             acl = user.get_user_github_id()
-        elif return_url_type.lower() == "gitlab":
+        elif provider_type == "gitlab":
             acl = user.get_user_gitlab_id()
         cla.log.debug('Individual Signature - setting ACL using user {} id: {}'.format(return_url_type, acl))
-        signature.set_signature_acl('{}:{}'.format(return_url_type.lower(),acl))
+        signature.set_signature_acl('{}:{}'.format(provider_type, acl))
 
         # Populate sign url
         self.populate_sign_url(signature, callback_url, default_values=default_cla_values,
