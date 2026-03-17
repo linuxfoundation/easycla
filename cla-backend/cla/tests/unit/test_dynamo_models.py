@@ -92,3 +92,19 @@ def test_get_user_email(user):
     """ Test getting user email with valid email """
     user.model.user_emails = set(["wanyaland@gmail.com"])
     assert utils.get_public_email(user) == "wanyaland@gmail.com"
+
+
+def test_get_user_email_disallows_lf_email_when_requested(user):
+    user.model.user_emails = set(["github-primary@example.com"])
+    user.model.lf_email = "lf-login@example.com"
+
+    assert user.get_user_email(allow_lf_email=False) == "github-primary@example.com"
+    assert user.get_user_email(preferred_email="github-primary@example.com", allow_lf_email=False) == "github-primary@example.com"
+    assert user.get_user_email(preferred_email="lf-login@example.com", allow_lf_email=False) == "github-primary@example.com"
+
+
+def test_get_user_email_allows_matching_lf_email_when_enabled(user):
+    user.model.user_emails = set(["github-primary@example.com"])
+    user.model.lf_email = "lf-login@example.com"
+
+    assert user.get_user_email(preferred_email="lf-login@example.com", allow_lf_email=True) == "lf-login@example.com"

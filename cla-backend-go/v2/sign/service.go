@@ -1336,6 +1336,18 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	defaultValues := s.createDefaultIndividualValues(user, preferredEmail, false)
 	log.WithFields(f).Debugf("default values: %+v", defaultValues)
 
+	providerType := strings.ToLower(input.ReturnURLType)
+	if providerType == utils.GitHubType || providerType == utils.GitLabLower {
+		resolvedEmail, _ := defaultValues["email"].(string)
+		resolvedEmail = strings.TrimSpace(resolvedEmail)
+		if resolvedEmail == "" {
+			err = fmt.Errorf("no %s user_emails found", providerType)
+			log.WithFields(f).WithError(err).Warn("unable to resolve provider-backed email for DocuSign signer")
+			return nil, err
+		}
+		defaultValues["email"] = resolvedEmail
+	}
+
 	// 4. Generate signature callback url
 	log.WithFields(f).Debugf("generating signature callback url...")
 	activeSignatureMetadata, err := s.storeRepository.GetActiveSignatureMetaData(ctx, *input.UserID)

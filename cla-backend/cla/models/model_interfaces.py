@@ -351,11 +351,13 @@ class User(object):
     def get_lf_email(self):
         raise NotImplementedError()
 
-    def get_user_email(self):
+    def get_user_email(self, preferred_email=None, allow_lf_email=True):
         """
         Getter for the user's first email address.
 
-        :return: The user's first email.
+        :param preferred_email: a preferred email address to return when present on the user.
+        :param allow_lf_email: when False, only provider-synced user_emails are eligible.
+        :return: The user's first eligible email.
         :rtype: string
         """
         raise NotImplementedError()

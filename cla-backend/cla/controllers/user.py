@@ -513,7 +513,22 @@ def get_or_create_user(auth_user):
         return user
 
     user = users[0]
-    if auth_user.email and user.get_lf_email() != auth_user.email.lower():
+    can_sync_lf_email = len(users) == 1
+    if len(users) > 1:
+        if auth_user.sub:
+            for candidate in users:
+                if candidate.get_lf_sub() == auth_user.sub:
+                    user = candidate
+                    can_sync_lf_email = True
+                    break
+        if not can_sync_lf_email and auth_user.email:
+            auth_email = auth_user.email.lower()
+            for candidate in users:
+                if candidate.get_lf_email() == auth_email:
+                    user = candidate
+                    can_sync_lf_email = True
+                    break
+    if can_sync_lf_email and auth_user.email and user.get_lf_email() != auth_user.email.lower():
         user.set_lf_email(auth_user.email.lower())
         user.save()
 

@@ -182,6 +182,14 @@ class DocuSign(signing_service_interface.SigningService):
                                                               allow_lf_email=allow_lf_email)
         cla.log.debug('Individual Signature - created default individual values: {}'.format(default_cla_values))
 
+        provider_type = (return_url_type or '').lower()
+        resolved_email = default_cla_values.get('email')
+        if provider_type in ('github', 'gitlab'):
+            resolved_email = resolved_email.strip() if isinstance(resolved_email, str) else None
+            if not resolved_email:
+                return {'errors': {'user_id': f'no {provider_type} user_emails found'}}
+            default_cla_values['email'] = resolved_email
+
         # Generate signature callback url
         cla.log.debug('Individual Signature - get active signature metadata')
         signature_metadata = cla.utils.get_active_signature_metadata(user_id)

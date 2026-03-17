@@ -50,8 +50,9 @@ def request_individual_signature(project_id, user_id, return_url_type, return_ur
                 cla.log.warning('Individual Signature - user ID was NOT found for: {}'.format(user_id))
                 return {'errors': {'user_id': str(err)}}
             primary_user_email = user.get_user_email(allow_lf_email=False)
-            if primary_user_email is None:
+            if primary_user_email is None or not primary_user_email.strip():
                 return {'errors': {'user_id': 'no gitlab user_emails found'}}
+            primary_user_email = primary_user_email.strip()
         return signing_service.request_individual_signature(str(project_id), str(user_id), return_url, return_url_type,
                                                             preferred_email=primary_user_email)
 
