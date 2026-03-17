@@ -17,20 +17,29 @@ import (
 )
 
 var (
-	reMultiSlash     = regexp.MustCompile(`/{2,}`)
-	reAssetExt       = regexp.MustCompile(`\.(png|svg|css|js|json|xml|htm|html)$`)
-	reSwaggerAsset   = regexp.MustCompile(`^(/v[0-9]+)/swagger\.\{asset\}$`)
-	reUUIDValid      = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
-	reUUIDLike       = regexp.MustCompile(`/[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{12}(/|$)`)
-	reUUIDHexDash36  = regexp.MustCompile(`/[0-9a-fA-F-]{36}(/|$)`)
-	reNumericID      = regexp.MustCompile(`/[0-9]+(/|$)`)
-	reSFIDValid      = regexp.MustCompile(`/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)`)
-	reSFIDLike       = regexp.MustCompile(`/(?:00|a0)[^/]{1,32}(/|$)`)
-	reLFXIDValid     = regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(/|$)`)
-	reLFXIDLike      = regexp.MustCompile(`/lf[^/]{1,32}(/|$)`)
-	reNull           = regexp.MustCompile(`/null(/|$)`)
-	reInvalidUUIDSeg = regexp.MustCompile(`/(?:invalid-uuid(?:-format)?|not-a-uuid)(/|$)`)
-	reInvalidSFIDSeg = regexp.MustCompile(`/invalid-sfid(?:-format)?(/|$)`)
+	reMultiSlash                          = regexp.MustCompile(`/{2,}`)
+	reAssetExt                            = regexp.MustCompile(`\.(png|svg|css|js|json|xml|htm|html)$`)
+	reSwaggerAsset                        = regexp.MustCompile(`^(/v[0-9]+)/swagger\.\{asset\}$`)
+	reSwaggerJSONResource                 = regexp.MustCompile(`^(/v[0-9]+/swagger\.json)/.+$`)
+	reSwaggerTemplatedResource            = regexp.MustCompile(`^(/v[0-9]+/swagger\.\{asset\})/.+$`)
+	reUUIDValid                           = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+	reUUIDLike                            = regexp.MustCompile(`/[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{12}(/|$)`)
+	reUUIDHexDash36                       = regexp.MustCompile(`/[0-9a-fA-F-]{36}(/|$)`)
+	reNumericID                           = regexp.MustCompile(`/[0-9]+(/|$)`)
+	reSFIDValid                           = regexp.MustCompile(`/(?:00|a0)[A-Za-z0-9]{13,16}(/|$)`)
+	reSFIDLike                            = regexp.MustCompile(`/(?:00|a0)[^/]{1,32}(/|$)`)
+	reLFXIDValid                          = regexp.MustCompile(`/lf[A-Za-z0-9]{16,22}(/|$)`)
+	reLFXIDLike                           = regexp.MustCompile(`/lf[^/]{1,32}(/|$)`)
+	reNull                                = regexp.MustCompile(`/null(/|$)`)
+	reUndefined                           = regexp.MustCompile(`/undefined(/|$)`)
+	reInvalidUUIDSeg                      = regexp.MustCompile(`/(?:invalid-uuid(?:-format)?|not-a-uuid)(/|$)`)
+	reInvalidSFIDSeg                      = regexp.MustCompile(`/invalid-sfid(?:-format)?(/|$)`)
+	reUsersUsername                       = regexp.MustCompile(`^(/v[0-9]+/users/username)/[^/]+$`)
+	reCompanyName                         = regexp.MustCompile(`^(/v[0-9]+/company/name)/[^/]+$`)
+	reCompanyUserCLAManagerDesignee       = regexp.MustCompile(`^(/v[0-9]+/company/[^/]+/user)/[^/]+(/claGroupID/[^/]+/is-cla-manager-designee)$`)
+	reProjectCLAManagerUser               = regexp.MustCompile(`^(/v[0-9]+/company/[^/]+/project/[^/]+/cla-manager)/[^/]+$`)
+	reRepositoryProviderGithubSignNumeric = regexp.MustCompile(`^(/v[0-9]+/repository-provider/github/sign/[^/]+)/[0-9]+(/[^/]+)$`)
+	reSignedIndividualGithubNumeric       = regexp.MustCompile(`^(/v[0-9]+/signed/individual/[^/]+)/[0-9]+(/[^/]+)$`)
 )
 
 func sanitizeAPIPath(path string) string {
@@ -47,6 +56,15 @@ func sanitizeAPIPath(path string) string {
 		p = strings.TrimSuffix(p, "/")
 	}
 
+	p = reSwaggerJSONResource.ReplaceAllString(p, "$1/{resource}")
+	p = reSwaggerTemplatedResource.ReplaceAllString(p, "$1/{resource}")
+	p = reUsersUsername.ReplaceAllString(p, "$1/{name}")
+	p = reCompanyName.ReplaceAllString(p, "$1/{name}")
+	p = reCompanyUserCLAManagerDesignee.ReplaceAllString(p, "$1/{name}$2")
+	p = reProjectCLAManagerUser.ReplaceAllString(p, "$1/{name}")
+	p = reRepositoryProviderGithubSignNumeric.ReplaceAllString(p, "$1/{n}$2")
+	p = reSignedIndividualGithubNumeric.ReplaceAllString(p, "$1/{n}$2")
+
 	p = reAssetExt.ReplaceAllString(p, ".{asset}")
 	if m := reSwaggerAsset.FindStringSubmatch(p); m != nil {
 		p = m[1] + "/swagger"
@@ -55,12 +73,16 @@ func sanitizeAPIPath(path string) string {
 	p = reUUIDValid.ReplaceAllString(p, "{uuid}")
 	p = reUUIDLike.ReplaceAllString(p, "/{invalid-uuid}$1")
 	p = reUUIDHexDash36.ReplaceAllString(p, "/{invalid-uuid}$1")
-	p = reNumericID.ReplaceAllString(p, "/{id}$1")
+	for prev := ""; p != prev; {
+		prev = p
+		p = reNumericID.ReplaceAllString(p, "/{id}$1")
+	}
 	p = reSFIDValid.ReplaceAllString(p, "/{sfid}$1")
 	p = reSFIDLike.ReplaceAllString(p, "/{invalid-sfid}$1")
 	p = reLFXIDValid.ReplaceAllString(p, "/{lfxid}$1")
 	p = reLFXIDLike.ReplaceAllString(p, "/{invalid-lfxid}$1")
 	p = reNull.ReplaceAllString(p, "/{null}$1")
+	p = reUndefined.ReplaceAllString(p, "/{undefined}$1")
 	p = reInvalidUUIDSeg.ReplaceAllString(p, "/{invalid-uuid}$1")
 	p = reInvalidSFIDSeg.ReplaceAllString(p, "/{invalid-sfid}$1")
 
