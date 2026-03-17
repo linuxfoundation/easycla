@@ -53,6 +53,8 @@ Supported `Co-authored-by:` formats include:
 4) `Anything <other-email>` - it will locate your GitHub user by `other-email` part but only if that email was used before for any other CLA as a main commit author.
 5) `login <any-valid-email>` - it will locate your GitHub user by `login` part, note that `login` part must be at least 3 characters long.
 
+Alternatively, if the co-author should not be included, remove the `Co-authored-by:` line from the commit message.
+
 Please update your commit message(s) by doing `git commit --amend` and then `git push [--force]` and then request re-running CLA check via commenting on this pull request:
 
 ```
