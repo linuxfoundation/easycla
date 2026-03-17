@@ -4,9 +4,10 @@
 .mypy_cache
 
 # Go binaries
-cla-backend-legacy/bin/*
+cla-backend-legacy/bin/
 cla-backend-legacy/legacy-api
 cla-backend-legacy/legacy-api-local
+cla-backend-legacy/bin/legacy-api-lambda
 
 # Logs
 logs
