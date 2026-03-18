@@ -79,33 +79,40 @@ import os
 
 current = os.environ.get("CURRENT", "")
 action = os.environ["ACTION"]
-item = os.environ.get("ITEM", "").strip()
+item_raw = os.environ.get("ITEM", "")
 
-if current.startswith("[") and current.endswith("]"):
-    inner = current[1:-1]
-    items = [p.strip() for p in inner.split("||")] if inner else []
-else:
-    items = [current.strip()] if current.strip() else []
+def parse_flat_value(value: str):
+    value = (value or "").strip()
+    if not value:
+        return []
+    if value.startswith("["):
+        if not value.endswith("]"):
+            raise SystemExit("malformed array value: missing closing ]")
+        inner = value[1:-1]
+        parts = inner.split("||") if inner else []
+    else:
+        parts = [value]
+    return [p.strip() for p in parts if p.strip()]
 
-items = [p for p in items if p != ""]
+items = parse_flat_value(current)
+item_values = parse_flat_value(item_raw)
 changed = False
 
 if action == "add":
-    if item and item not in items:
-        items.append(item)
-        changed = True
+    for item in item_values:
+        if item not in items:
+            items.append(item)
+            changed = True
 elif action == "delete":
-    if item:
-        new_items = [p for p in items if p != item]
+    if item_values:
+        item_set = set(item_values)
+        new_items = [p for p in items if p not in item_set]
         changed = (new_items != items)
         items = new_items
 else:
     raise SystemExit(f"unsupported action: {action}")
 
-if not items:
-    new_value = ""
-else:
-    new_value = "[" + "||".join(items) + "]"
+new_value = "" if not items else "[" + "||".join(items) + "]"
 
 print("changed=true" if changed else "changed=false")
 print("delete_key=true" if changed and new_value == "" else "delete_key=false")
