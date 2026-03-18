@@ -20,15 +20,23 @@ jq -r '
   | .p
 ' "${1}" \
 | sed -E 's#/{2,}#/#g' \
+| sed -E 's#^(/v[0-9]+/swagger\.json)/.+$#\1/<resource>#g' \
+| sed -E 's#^(/v[0-9]+/users/username)/[^/]+$#\1/<name>#g' \
+| sed -E 's#^(/v[0-9]+/company/name)/[^/]+$#\1/<name>#g' \
+| sed -E 's#^(/v[0-9]+/company/[^/]+/user)/[^/]+(/claGroupID/[^/]+/is-cla-manager-designee)$#\1/<name>\2#g' \
+| sed -E 's#^(/v[0-9]+/company/[^/]+/project/[^/]+/cla-manager)/[^/]+$#\1/<name>#g' \
+| sed -E 's#^(/v[0-9]+/repository-provider/github/sign/[^/]+)/[0-9]+(/[^/]+)$#\1/<n>\2#g' \
+| sed -E 's#^(/v[0-9]+/signed/individual/[^/]+)/[0-9]+(/[^/]+)$#\1/<n>\2#g' \
 | sed -E 's#/$##' \
 | sed -E 's#\.(png|svg|css|js|json|xml|htm|html)$#.<asset>#g' \
-| sed -E 's#^/v[0-9]+/swagger\.<asset>$#/v*/swagger#g' \
-| sed -E 's#^/v[0-9]+/api-docs$#/v*/api-docs#g' \
+| sed -E 's#^(/v[0-9]+)/swagger\.<asset>$#\1/swagger#g' \
+| sed -E 's#^(/v[0-9]+)/api-docs$#\1/api-docs#g' \
 | sed -E 's/[0-9a-fA-F-]{36}/<uuid>/g' \
 | sed -E ':a;s#/([0-9]{1,})(/|$)#/<id>\2#g;ta' \
 | sed -E 's#/(00|a0)[A-Za-z0-9]{13,16}(/|$)#/<sfid>\2#g' \
 | sed -E 's#/lf[A-Za-z0-9]{16,22}(/|$)#/<lfxid>\1#g' \
 | sed -E 's#/null(/|$)#/<null>\1#g' \
+| sed -E 's#/undefined(/|$)#/<undefined>\1#g' \
 | sort | uniq -c | sort -nr \
 | awk -v N="$N" '$1 >= N'
 # | sed -E 's#^/v[0-9]+/(api/)?graphql(\.php)?$#/v*/graphql#g' \

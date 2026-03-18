@@ -53,6 +53,8 @@ Supported `Co-authored-by:` formats include:
 4) `Anything <other-email>` - it will locate your GitHub user by `other-email` part but only if that email was used before for any other CLA as a main commit author.
 5) `login <any-valid-email>` - it will locate your GitHub user by `login` part, note that `login` part must be at least 3 characters long.
 
+Alternatively, if the co-author should not be included, remove the `Co-authored-by:` line from the commit message.
+
 Please update your commit message(s) by doing `git commit --amend` and then `git push [--force]` and then request re-running CLA check via commenting on this pull request:
 
 ```
@@ -1240,10 +1242,7 @@ def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_ur
     if state is None:
         oauth = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scope)
         authorization_url, state = oauth.authorization_url(authorize_url)
-        cla.log.debug(
-            f"{fn} - initialized oauth session using the github oauth client id: {client_id[0:5]}... "
-            f"with the redirect_uri: {redirect_uri} and scope: {scope}"
-        )
+        cla.log.debug(f"{fn} - initialized oauth session for GitHub authorization flow")
         return authorization_url, state
     else:
         csrf_token = secrets.token_urlsafe(16)
@@ -1254,10 +1253,7 @@ def get_authorization_url_and_state(client_id, redirect_uri, scope, authorize_ur
         authorization_url, _ = oauth.authorization_url(authorize_url, state=encoded_state)
 
         # Logging
-        cla.log.debug(
-            f"{fn} - initialized oauth session using the github oauth client id: {client_id[0:5]}... "
-            f"with the redirect_uri: {redirect_uri} and scope: {scope}"
-        )
+        cla.log.debug(f"{fn} - initialized oauth session for GitHub authorization flow with custom state")
         return authorization_url, csrf_token
 
 
@@ -1283,13 +1279,7 @@ def fetch_token(client_id, state, token_url, client_secret, code, redirect_uri=N
         oauth2 = OAuth2Session(client_id, state=state, scope=["user:email"], redirect_uri=redirect_uri)
     else:
         oauth2 = OAuth2Session(client_id, state=state, scope=["user:email"])
-    #cla.log.debug(
-    #    f"{fn} - oauth2.fetch_token - "
-    #    f"token_url: {token_url}, "
-    #    f"client_id: {client_id}, "
-    #    f"client_secret: {client_secret}, "
-    #    f"code: {code}"
-    #)
+    cla.log.debug(f"{fn} - oauth2.fetch_token called")
     return oauth2.fetch_token(token_url, client_secret=client_secret, code=code)
 
 
@@ -1689,7 +1679,7 @@ def lookup_user_github_username(user_github_id: int) -> Optional[str]:
 
     github_user = r.json()
     if "message" in github_user:
-        cla.log.warning(f"Unable to lookup user from id: {user_github_id} " f'- message: {github_user["message"]}')
+        cla.log.warning(f"Unable to lookup user from id: {user_github_id} - API error occurred")
         return None
     else:
         if "login" in github_user:
@@ -1722,7 +1712,7 @@ def lookup_user_github_id(user_github_username: str) -> Optional[int]:
 
     github_user = r.json()
     if "message" in github_user:
-        cla.log.warning(f"Unable to lookup user from id: {user_github_username} " f'- message: {github_user["message"]}')
+        cla.log.warning(f"Unable to lookup user from id: {user_github_username} - API error occurred")
         return None
     else:
         if "id" in github_user:
@@ -1754,8 +1744,14 @@ def lookup_gitlab_org_members(organization_id):
         r = requests.get(f"{cla.config.PLATFORM_GATEWAY_URL}/cla-service/v4/gitlab/group/{organization_id}/members")
         r.raise_for_status()
     except requests.exceptions.HTTPError as err:
-        cla.log.warning(f"Could not fetch gitlab org users: {err}")
-        return {f"error: Could not get user gitlab group id: {organization_id} members: {err}"}
+        status_code = err.response.status_code if hasattr(err, 'response') and err.response is not None else "unknown"
+        cla.log.warning(
+            f"Could not fetch gitlab org users for organization_id={organization_id}: "
+            f"status_code={status_code}"
+        )
+        # Return an empty list so callers that expect an iterable of member dicts
+        # can safely handle the error case without type errors.
+        return []
     return r.json()["list"]
 
 
@@ -2035,7 +2031,16 @@ def extract_pull_request_number(pull_request_message):
     fn = "extract_pull_request_number"
     pull_request_number = None
     try:
-        first_line = pull_request_message.splitlines()[0]
+        if not pull_request_message or not pull_request_message.strip():
+            cla.log.debug(f"{fn} - empty or whitespace-only message")
+            return None
+
+        lines = pull_request_message.splitlines()
+        if not lines or not lines[0].strip():
+            cla.log.debug(f"{fn} - no valid lines in message")
+            return None
+
+        first_line = lines[0]
         cla.log.debug(f"{fn} - checking line '{first_line}")
         # Case 1: "Merge pull request #N"
         matches = re.match(r'^Merge pull request #(\d+)', first_line)
@@ -2062,7 +2067,7 @@ def extract_pull_request_number(pull_request_message):
             cla.log.debug(f"{fn} - extracted PR number {pull_request_number} from merge_queue data: {pull_request_message} by matching first '#N'")
             return pull_request_number
         else:
-            cla.log.warning(f"{fn} - error - unable to extract pull request number from message: {pull_request_message}")
-    except Exception as e:
-        cla.log.warning(f"{fn} - error - unable to extract pull request number from message: {pull_request_message}, error: {e}")
+            cla.log.warning(f"{fn} - error - unable to extract pull request number from message")
+    except (ValueError, AttributeError, IndexError):
+        cla.log.warning(f"{fn} - error - unable to extract pull request number from message, parse error occurred")
     return pull_request_number
