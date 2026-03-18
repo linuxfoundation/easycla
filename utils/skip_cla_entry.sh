@@ -5,9 +5,9 @@
 # MODE=mode ./utils/skip_cla_entry.sh sun-test-org '*' 'patterns'
 # put-item        Overwrites/adds the entire `skip_cla` entry.
 # add-key         Adds or updates a key/value inside the skip_cla map (preserves other keys)
-# add-key-item    Adds one pattern item into an existing skip_cla key array (idempotent)
 # delete-key      Removes a key from the skip_cla map
 # delete-item     Deletes the entire `skip_cla` entry.
+# add-key-item    Adds one pattern item into an existing skip_cla key array (idempotent)
 # delete-key-item Removes one pattern item from an existing skip_cla key array (idempotent)
 #
 # MODE=add-key ./utils/skip_cla_entry.sh sun-test-org 'repo1' 're:vee?rendra;*;*'
@@ -52,11 +52,22 @@ aws_attr_value_string_json() {
 get_skip_cla_key_value() {
   local org="$1"
   local repo="$2"
-  aws --profile "lfproduct-${STAGE}" --region "${REGION}" dynamodb get-item \
-    --table-name "cla-${STAGE}-github-orgs" \
-    --key "$(aws_key_json "$org")" \
-    --projection-expression 'skip_cla' \
-  | jq -r --arg repo "$repo" '.Item.skip_cla.M[$repo].S // empty'
+  local raw
+
+  if ! raw="$(
+    aws --profile "lfproduct-${STAGE}" --region "${REGION}" dynamodb get-item \
+      --table-name "cla-${STAGE}-github-orgs" \
+      --key "$(aws_key_json "$org")" \
+      --projection-expression 'skip_cla'
+  )"; then
+    echo "Error: failed to fetch skip_cla value from DynamoDB for organization='${org}', repo='${repo}'" >&2
+    return 1
+  fi
+
+  if ! jq -r --arg repo "$repo" '.Item.skip_cla.M[$repo].S // empty' <<<"$raw"; then
+    echo "Error: failed to parse skip_cla value from DynamoDB for organization='${org}', repo='${repo}'" >&2
+    return 1
+  fi
 }
 
 modify_skip_cla_array_value() {
@@ -68,7 +79,7 @@ import os
 
 current = os.environ.get("CURRENT", "")
 action = os.environ["ACTION"]
-item = os.environ["ITEM"]
+item = os.environ.get("ITEM", "").strip()
 
 if current.startswith("[") and current.endswith("]"):
     inner = current[1:-1]
@@ -80,13 +91,14 @@ items = [p for p in items if p != ""]
 changed = False
 
 if action == "add":
-    if item not in items:
+    if item and item not in items:
         items.append(item)
         changed = True
 elif action == "delete":
-    new_items = [p for p in items if p != item]
-    changed = (new_items != items)
-    items = new_items
+    if item:
+        new_items = [p for p in items if p != item]
+        changed = (new_items != items)
+        items = new_items
 else:
     raise SystemExit(f"unsupported action: {action}")
 
@@ -97,7 +109,7 @@ else:
 
 print("changed=true" if changed else "changed=false")
 print("delete_key=true" if changed and new_value == "" else "delete_key=false")
-print(new_value)
+print(f"new_value={new_value}")
 PY
 }
 
@@ -160,7 +172,9 @@ case "$MODE" in
     org_name="${1}"
     repo_key="${2}"
     item_value="${3}"
-    current_value="$(get_skip_cla_key_value "$org_name" "$repo_key")"
+    if ! current_value="$(get_skip_cla_key_value "$org_name" "$repo_key")"; then
+      exit 1
+    fi
 
     if [ "$MODE" = "add-key-item" ]; then
       action="add"
@@ -168,10 +182,23 @@ case "$MODE" in
       action="delete"
     fi
 
-    mapfile -t result_lines < <(modify_skip_cla_array_value "$current_value" "$action" "$item_value")
+    if ! helper_output="$(modify_skip_cla_array_value "$current_value" "$action" "$item_value")"; then
+      echo "Error: failed to modify skip_cla value for organization='${org_name}', repo='${repo_key}', mode='${MODE}'" >&2
+      exit 1
+    fi
+
+    mapfile -t result_lines <<<"$helper_output"
+    if [ "${#result_lines[@]}" -ne 3 ] || [[ "${result_lines[0]}" != changed=* ]] || [[ "${result_lines[1]}" != delete_key=* ]] || [[ "${result_lines[2]}" != new_value=* ]]; then
+      echo "Error: unexpected output from modify_skip_cla_array_value" >&2
+      if [ ! -z "$DEBUG" ]; then
+        echo "DEBUG: organization='${org_name}', repo='${repo_key}', mode='${MODE}', action='${action}', item='${item_value}'" >&2
+        echo "DEBUG: helper_output='${helper_output}'" >&2
+      fi
+      exit 1
+    fi
     changed="${result_lines[0]#changed=}"
     delete_key="${result_lines[1]#delete_key=}"
-    new_value="${result_lines[2]}"
+    new_value="${result_lines[2]#new_value=}"
 
     if [ "$changed" != "true" ]; then
       if [ ! -z "$DEBUG" ]; then
