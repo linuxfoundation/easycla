@@ -178,6 +178,11 @@ class DocuSign(signing_service_interface.SigningService):
 
         cla.log.debug('Individual Signature - creating default individual values for user: {}'.format(user))
         provider_type = (return_url_type or '').lower()
+        if provider_type not in ('github', 'gitlab'):
+            provider_label = provider_type or 'missing'
+            cla.log.warning('Individual Signature - unsupported provider_type "{}" for {}'.format(
+                provider_label, request_info))
+            return {'errors': {'return_url_type': 'unsupported provider_type: {}'.format(provider_label)}}
         default_cla_values = create_default_individual_values(user, preferred_email=preferred_email,
                                                               provider_type=provider_type)
         cla.log.debug('Individual Signature - created default individual values: {}'.format(default_cla_values))
@@ -274,7 +279,7 @@ class DocuSign(signing_service_interface.SigningService):
             acl = user.get_user_github_id()
         elif provider_type == "gitlab":
             acl = user.get_user_gitlab_id()
-        cla.log.debug('Individual Signature - setting ACL using user {} id: {}'.format(return_url_type, acl))
+        cla.log.debug('Individual Signature - setting ACL using provider {} id: {}'.format(provider_type, acl))
         signature.set_signature_acl('{}:{}'.format(provider_type,acl))
 
         # Populate sign url
