@@ -33,7 +33,7 @@ pydocusign==2.2
 PyGithub==1.55
 pyparsing==2.4.5
 PyJWT==2.11.0
-cryptography==46.0.5
+cryptography==46.0.6
 python-dateutil==2.8.1
 requests==2.31.0
 requests-oauthlib==1.2.0
