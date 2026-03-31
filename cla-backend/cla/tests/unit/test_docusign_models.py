@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from cla.models.docusign_models import (ClaSignatoryEmailParams,
                                         cla_signatory_email_content,
                                         create_default_company_values,
+                                        create_default_individual_values,
                                         document_signed_email_content,
                                         populate_signature_from_ccla_callback,
                                         populate_signature_from_icla_callback)
@@ -802,3 +803,25 @@ def test_cla_signatory_email_content():
     assert "<p>After you sign, john (as the initial CLA Manager for your company)" in email_body
     assert "and if you approve john as your initial CLA Manager" in email_body
     assert "contact the requester at john@example.com" in email_body
+
+
+def test_create_default_individual_values_github_ignores_lf_email():
+    user = User()
+    user.set_user_name('Example User')
+    user.set_user_emails(['git@example.com'])
+    user.set_lf_email('lf@example.com')
+
+    values = create_default_individual_values(user, preferred_email='lf@example.com', provider_type='github')
+
+    assert values['email'] == 'git@example.com'
+
+
+def test_create_default_individual_values_gerrit_allows_lf_email():
+    user = User()
+    user.set_user_name('Example User')
+    user.set_user_emails(['git@example.com'])
+    user.set_lf_email('lf@example.com')
+
+    values = create_default_individual_values(user, provider_type='gerrit')
+
+    assert values['email'] == 'lf@example.com'

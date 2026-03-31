@@ -177,8 +177,22 @@ class DocuSign(signing_service_interface.SigningService):
                       format(project))
 
         cla.log.debug('Individual Signature - creating default individual values for user: {}'.format(user))
-        default_cla_values = create_default_individual_values(user)
+        provider_type = (return_url_type or '').lower()
+        if provider_type not in ('github', 'gitlab'):
+            provider_label = provider_type or 'missing'
+            cla.log.warning('Individual Signature - unsupported provider_type "{}" for {}'.format(
+                provider_label, request_info))
+            return {'errors': {'return_url_type': 'unsupported provider_type: {}'.format(provider_label)}}
+        default_cla_values = create_default_individual_values(user, preferred_email=preferred_email,
+                                                              provider_type=provider_type)
         cla.log.debug('Individual Signature - created default individual values: {}'.format(default_cla_values))
+
+        resolved_email = default_cla_values.get('email')
+        if provider_type in ('github', 'gitlab'):
+            resolved_email = resolved_email.strip() if isinstance(resolved_email, str) else None
+            if not resolved_email:
+                return {'errors': {'user_id': f'no {provider_type} user_emails found'}}
+            default_cla_values['email'] = resolved_email
 
         # Generate signature callback url
         cla.log.debug('Individual Signature - get active signature metadata')
@@ -186,9 +200,9 @@ class DocuSign(signing_service_interface.SigningService):
         cla.log.debug('Individual Signature - get active signature metadata: {}'.format(signature_metadata))
 
         cla.log.debug('Individual Signature - get individual signature callback url')
-        if return_url_type.lower() == "github":
+        if provider_type == "github":
             callback_url = cla.utils.get_individual_signature_callback_url(user_id, signature_metadata)
-        elif return_url_type.lower() == "gitlab":
+        elif provider_type == "gitlab":
             callback_url = cla.utils.get_individual_signature_callback_url_gitlab(user_id, signature_metadata)
 
         cla.log.debug('Individual Signature - get individual signature callback url: {}'.format(callback_url))
@@ -261,12 +275,12 @@ class DocuSign(signing_service_interface.SigningService):
                               signature_return_url=return_url,
                               signature_callback_url=callback_url)
         # Set signature ACL
-        if return_url_type.lower() == "github":
+        if provider_type == "github":
             acl = user.get_user_github_id()
-        elif return_url_type.lower() == "gitlab":
+        elif provider_type == "gitlab":
             acl = user.get_user_gitlab_id()
-        cla.log.debug('Individual Signature - setting ACL using user {} id: {}'.format(return_url_type, acl))
-        signature.set_signature_acl('{}:{}'.format(return_url_type.lower(),acl))
+        cla.log.debug('Individual Signature - setting ACL using provider {} id: {}'.format(provider_type, acl))
+        signature.set_signature_acl('{}:{}'.format(provider_type,acl))
 
         # Populate sign url
         self.populate_sign_url(signature, callback_url, default_values=default_cla_values,
@@ -1346,14 +1360,16 @@ class DocuSign(signing_service_interface.SigningService):
                     cla.log.debug(f'{fn} - {sig_type} - '
                                   f'loading user by reference id: {signature.get_signature_reference_id()}')
                     user.load(signature.get_signature_reference_id())
+                    provider_type = (signature.get_signature_return_url_type() or '').lower()
+                    resolved_user_email = resolve_individual_user_email(user, provider_type, preferred_email)
                     cla.log.debug(f'{fn} - {sig_type} - loaded user by '
                                   f'id: {user.get_user_id()}, '
                                   f'name: {user.get_user_name()}, '
-                                  f'email: {user.get_user_email()}')
+                                  f'email: {resolved_user_email}')
                     if not user.get_user_name() is None:
                         user_signature_name = user.get_user_name()
-                    if not user.get_user_email() is None:
-                        user_signature_email = user.get_user_email()
+                    if resolved_user_email is not None:
+                        user_signature_email = resolved_user_email
                 except DoesNotExist:
                     cla.log.warning(f'{fn} - {sig_type} - no user associated with this signature '
                                     f'id: {signature.get_signature_reference_id()} - can not sign ICLA')
@@ -2406,7 +2422,32 @@ def create_default_company_values(company: Company,
     return values
 
 
-def create_default_individual_values(user: User, preferred_email: str = None) -> Dict[str, Any]:
+def resolve_individual_user_email(user: User, provider_type: str = None,
+                                  preferred_email: str = None) -> Optional[str]:
+    if user is None:
+        return None
+
+    provider_type = (provider_type or '').lower()
+    user_emails = user.get_user_emails() or set()
+
+    if preferred_email and preferred_email in user_emails:
+        return preferred_email
+
+    if provider_type not in ('github', 'gitlab'):
+        lf_email = user.get_lf_email()
+        if preferred_email and lf_email is not None and preferred_email == lf_email:
+            return preferred_email
+        if lf_email is not None:
+            return lf_email
+
+    if len(user_emails) > 0:
+        return next(iter(user_emails), None)
+
+    return None
+
+
+def create_default_individual_values(user: User, preferred_email: str = None,
+                                     provider_type: str = None) -> Dict[str, Any]:
     values = {}
 
     if user is None:
@@ -2416,8 +2457,9 @@ def create_default_individual_values(user: User, preferred_email: str = None) ->
         values['full_name'] = user.get_user_name()
         values['public_name'] = user.get_user_name()
 
-    if user.get_user_email(preferred_email=preferred_email) is not None:
-        values['email'] = user.get_user_email()
+    resolved_email = resolve_individual_user_email(user, provider_type, preferred_email)
+    if resolved_email is not None:
+        values['email'] = resolved_email
 
     return values
 
