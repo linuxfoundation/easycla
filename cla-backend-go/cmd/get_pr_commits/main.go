@@ -39,6 +39,27 @@ func newGithubOAuthClient(token string) *gh.Client {
 	return gh.NewClient(httpClient)
 }
 
+func githubTokenFilePath() string {
+	if path := strings.TrimSpace(os.Getenv("GITHUB_TOKEN_FILE")); path != "" {
+		return path
+	}
+	return "/etc/github/oauth"
+}
+
+func loadGithubToken() (string, error) {
+	tokenFile := githubTokenFilePath()
+	//nolint:gosec // G304: developer helper intentionally allows explicit local token-file override via GITHUB_TOKEN_FILE.
+	tokenBytes, err := os.ReadFile(tokenFile)
+	if err != nil {
+		return "", fmt.Errorf("unable to read %s: %w", tokenFile, err)
+	}
+	token := strings.TrimSpace(string(tokenBytes))
+	if token == "" {
+		return "", fmt.Errorf("%s is empty", tokenFile)
+	}
+	return token, nil
+}
+
 func main() {
 	if len(os.Args) != 4 {
 		die(fmt.Sprintf("usage: %s <org> <repo> <pr_number>", os.Args[0]))
@@ -51,14 +72,9 @@ func main() {
 	if err != nil {
 		die("invalid pr_number: " + os.Args[3])
 	}
-
-	tokenBytes, err := os.ReadFile("/etc/github/oauth")
+	token, err := loadGithubToken()
 	if err != nil {
-		die("unable to read /etc/github/oauth: " + err.Error())
-	}
-	token := strings.TrimSpace(string(tokenBytes))
-	if token == "" {
-		die("/etc/github/oauth is empty")
+		die(err.Error())
 	}
 
 	client := newGithubOAuthClient(token)
@@ -70,6 +86,7 @@ func main() {
 
 	fmt.Println("compare results:")
 	fmt.Printf("count: %d\n", len(commits))
+	ac := 0
 	for _, c := range commits {
 		if c == nil {
 			continue
@@ -83,5 +100,7 @@ func main() {
 			c.GetAuthor().GetEmail(),
 			firstLine(c.GetCommit().GetMessage()),
 		)
+		ac++
 	}
+	fmt.Printf("actual count: %d\n", ac)
 }
