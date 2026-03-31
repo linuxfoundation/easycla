@@ -102,7 +102,7 @@ iter_compare_commits = print_commitlite_list(
 rest_shas = [c.sha for c in rest_commits]
 compare_shas = [c.sha for c in iter_compare_commits]
 
-print("REST SHAs:                 ", rest_shas)
+print("REST SHAs:                  ", rest_shas)
 print("iter_pr_commits_compare SHAs:", compare_shas)
 print()
 
