@@ -5,7 +5,6 @@ package github
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -73,40 +72,11 @@ const (
 	MaxCommentLength = 0xff00          // 65520 characters - leave some buffer under 64KB limit
 )
 
-// GraphQL related types
-type gqlRequest struct {
-	Query         string                 `json:"query"`
-	OperationName string                 `json:"operationName,omitempty"`
-	Variables     map[string]interface{} `json:"variables,omitempty"`
-}
-
 type gqlError struct {
 	Message    string         `json:"message"`
 	Type       string         `json:"type,omitempty"` // sometimes "RATE_LIMITED"
 	Path       []interface{}  `json:"path,omitempty"`
 	Extensions map[string]any `json:"extensions,omitempty"`
-}
-
-type gqlResponse struct {
-	Data   json.RawMessage `json:"data"`
-	Errors []gqlError      `json:"errors,omitempty"`
-}
-
-type gqlUser struct {
-	DatabaseID int    `json:"databaseId"`
-	Login      string `json:"login"`
-	Name       string `json:"name"`
-	Email      string `json:"email"`
-}
-
-type histNode struct {
-	OID     string `json:"oid"`
-	Message string `json:"message"`
-	Author  struct {
-		Name  string  `json:"name"`
-		Email string  `json:"email"`
-		User  gqlUser `json:"user"`
-	} `json:"author"`
 }
 
 type GraphQLError struct {
@@ -161,6 +131,21 @@ func buildCompareAuthor(c *compareCommit) *github.User {
 	return &out
 }
 
+func compareRetrySleep(attempt int) {
+	switch attempt {
+	case 1:
+		return
+	case 2:
+		time.Sleep(1 * time.Second)
+	case 3:
+		time.Sleep(5 * time.Second)
+	case 4:
+		time.Sleep(15 * time.Second)
+	default:
+		time.Sleep(30 * time.Second)
+	}
+}
+
 func ListPullRequestCommitsCompare(
 	ctx context.Context,
 	client *github.Client,
@@ -184,21 +169,40 @@ func ListPullRequestCommitsCompare(
 
 	for {
 		path := fmt.Sprintf("repos/%s/%s/compare/%s...%s", owner, repo, baseSHA, headSHA)
-		req, err := client.NewRequest("GET", path, nil)
-		if err != nil {
-			return nil, err
-		}
+		var (
+			payload compareResponse
+			resp    *github.Response
+			reqErr  error
+		)
+		for attempt := 1; attempt <= 6; attempt++ {
+			req, err := client.NewRequest("GET", path, nil)
+			if err != nil {
+				return nil, err
+			}
 
-		q := req.URL.Query()
-		q.Set("page", strconv.Itoa(page))
-		q.Set("per_page", strconv.Itoa(perPage))
-		req.URL.RawQuery = q.Encode()
-		req.Header.Set("Accept", "application/vnd.github+json")
+			q := req.URL.Query()
+			q.Set("page", strconv.Itoa(page))
+			q.Set("per_page", strconv.Itoa(perPage))
+			req.URL.RawQuery = q.Encode()
+			req.Header.Set("Accept", "application/vnd.github+json")
 
-		var payload compareResponse
-		resp, err := client.Do(ctx, req, &payload)
-		if err != nil {
-			return nil, err
+			payload = compareResponse{}
+			resp, reqErr = client.Do(ctx, req, &payload)
+			if reqErr == nil {
+				break
+			}
+			if attempt >= 6 {
+				return nil, reqErr
+			}
+			log.WithFields(logrus.Fields{
+				"functionName":  "github.github_repository.ListPullRequestCommitsCompare",
+				"pullRequestID": pullRequestID,
+				"owner":         owner,
+				"repo":          repo,
+				"page":          page,
+				"attempt":       attempt,
+			}).WithError(reqErr).Warn("compare request failed, retrying")
+			compareRetrySleep(attempt)
 		}
 
 		if len(payload.Commits) == 0 {
@@ -250,33 +254,6 @@ func (e *GraphQLError) Error() string {
 		}
 	}
 	return msg
-}
-
-// doGraphQL posts to /graphql using v3 client and unmarshals the "data" field into v.
-// No retries; if GraphQL returns "errors", returns an error.
-func doGraphQL(ctx context.Context, c *github.Client, query string, variables map[string]interface{}, v any) error {
-	reqBody := gqlRequest{Query: query, Variables: variables}
-	req, err := c.NewRequest("POST", "graphql", reqBody) // -> https://api.github.com/graphql
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	var gr gqlResponse
-	_, err = c.Do(ctx, req, &gr)
-	if err != nil {
-		return err
-	}
-	if len(gr.Errors) > 0 {
-		return &GraphQLError{Errs: gr.Errors}
-	}
-	if v != nil && len(gr.Data) > 0 {
-		if err := json.Unmarshal(gr.Data, v); err != nil {
-			return fmt.Errorf("unmarshal graphql data: %w", err)
-		}
-	}
-	return nil
 }
 
 type cacheEntry struct {
@@ -1390,52 +1367,69 @@ func GetPullRequestCommitAuthorsCompare(
 	}
 
 	userCommitSummary := make([]*UserCommitSummary, 0, len(commits))
-	var mu sync.Mutex
-	anyMissing := false
+	var (
+		mu         sync.Mutex
+		wg         sync.WaitGroup
+		anyMissing atomic.Bool
+	)
+	maxConc := runtime.NumCPU()
+	if maxConc < 1 {
+		maxConc = 1
+	}
+	sem := make(chan struct{}, maxConc)
 
 	for _, commit := range commits {
 		if commit == nil {
 			continue
 		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(commit *github.RepositoryCommit) {
+			defer wg.Done()
+			defer func() { <-sem }()
 
-		if commit.Author == nil {
-			commit.Author = &github.User{}
-		}
+			if commit.Author == nil {
+				commit.Author = &github.User{}
+			}
 
-		name, email := "", ""
-		if commit.Commit != nil && commit.Commit.Author != nil {
-			name = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Name))
-			email = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Email))
+			name, email := "", ""
+			if commit.Commit != nil && commit.Commit.Author != nil {
+				name = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Name))
+				email = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Email))
 
-			if name != "" {
-				if commit.Author.Name == nil || strings.TrimSpace(utils.StringValue(commit.Author.Name)) == "" {
-					n := name
-					commit.Author.Name = &n
+				if name != "" {
+					if commit.Author.Name == nil || strings.TrimSpace(utils.StringValue(commit.Author.Name)) == "" {
+						n := name
+						commit.Author.Name = &n
+					}
+				}
+				if email != "" {
+					if commit.Author.Email == nil || strings.TrimSpace(utils.StringValue(commit.Author.Email)) == "" {
+						e := email
+						commit.Author.Email = &e
+					}
 				}
 			}
-			if email != "" {
-				if commit.Author.Email == nil || strings.TrimSpace(utils.StringValue(commit.Author.Email)) == "" {
-					e := email
-					commit.Author.Email = &e
+
+			mu.Lock()
+			userCommitSummary = append(userCommitSummary, &UserCommitSummary{
+				SHA:          utils.StringValue(commit.SHA),
+				CommitAuthor: commit.Author,
+				Affiliated:   false,
+				Authorized:   false,
+			})
+			mu.Unlock()
+
+			if withCoAuthors {
+				if ExpandWithCoAuthors(ctx, client, usersService, commit, pullRequestID, installationID, &userCommitSummary, &mu) {
+					anyMissing.Store(true)
 				}
 			}
-		}
-
-		userCommitSummary = append(userCommitSummary, &UserCommitSummary{
-			SHA:          utils.StringValue(commit.SHA),
-			CommitAuthor: commit.Author,
-			Affiliated:   false,
-			Authorized:   false,
-		})
-
-		if withCoAuthors {
-			if ExpandWithCoAuthors(ctx, client, usersService, commit, pullRequestID, installationID, &userCommitSummary, &mu) {
-				anyMissing = true
-			}
-		}
+		}(commit)
 	}
 
-	return userCommitSummary, anyMissing, nil
+	wg.Wait()
+	return userCommitSummary, anyMissing.Load(), nil
 }
 
 //nolint:gocyclo // complexity is acceptable for now
@@ -1557,305 +1551,6 @@ func GetPullRequestCommitAuthorsREST(ctx context.Context, usersService users.Ser
 	)
 
 	return userCommitSummary, anyMissing, nil
-}
-
-//nolint:gocyclo // complexity is acceptable for now
-func GetPullRequestCommitAuthorsOld(
-	ctx context.Context,
-	usersService users.Service,
-	installationID int64,
-	pullRequestID int,
-	owner, repo string,
-	withCoAuthors bool,
-) ([]*UserCommitSummary, bool, error) {
-	const fn = "github.github_repository.GetPullRequestCommitAuthorsOld"
-	f := logrus.Fields{
-		"functionName":  fn,
-		"pullRequestID": pullRequestID,
-		"withCoAuthors": withCoAuthors,
-	}
-
-	client, err := NewGithubAppClient(installationID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to create Github client")
-		return nil, false, err
-	}
-
-	// 1) Get base/head OIDs via GraphQL
-	const qInfo = `
-query($owner:String!, $name:String!, $number:Int!) {
-  repository(owner:$owner, name:$name) {
-    pullRequest(number:$number) { baseRefOid headRefOid }
-  }
-}`
-	var info struct {
-		Repository struct {
-			PullRequest struct {
-				BaseRefOid string `json:"baseRefOid"`
-				HeadRefOid string `json:"headRefOid"`
-			} `json:"pullRequest"`
-		} `json:"repository"`
-	}
-	err = doGraphQL(ctx, client, qInfo, map[string]interface{}{
-		"owner": owner, "name": repo, "number": pullRequestID,
-	}, &info)
-	if err != nil || info.Repository.PullRequest.HeadRefOid == "" {
-		log.WithFields(f).WithError(err).Error("failed to fetch base/head OIDs via GraphQL")
-		return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
-	}
-	baseOID := info.Repository.PullRequest.BaseRefOid
-	headOID := info.Repository.PullRequest.HeadRefOid
-
-	// 2) Get merge-base via REST Compare
-	//    NOTE: Compare takes base, head (same order as Python version)
-	cRepo := client // go-github client
-	gr := cRepo.Repositories
-	// pr := cRepo.PullRequests
-
-	// We need a REST *repo* client; NewGithubAppClient already returns go-github client
-	// Compare is under Repositories
-	comp, _, err := gr.CompareCommits(ctx, owner, repo, baseOID, headOID)
-	if err != nil || comp == nil || comp.MergeBaseCommit == nil || comp.MergeBaseCommit.SHA == nil {
-		log.WithFields(f).WithError(err).Error("failed to compute merge-base via REST compare")
-		return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
-	}
-	mergeBaseSHA := comp.MergeBaseCommit.GetSHA()
-
-	// 3a) Fetch HEAD commit via GraphQL (history won't include starting commit)
-	const qHead = `
-query($owner:String!, $name:String!, $oid:GitObjectID!) {
-  repository(owner:$owner, name:$name) {
-    object(oid:$oid) {
-      ... on Commit {
-        oid
-        message
-        author { name email user { databaseId login name email } }
-      }
-    }
-  }
-}`
-	var head struct {
-		Repository struct {
-			Object *struct {
-				OID     string `json:"oid"`
-				Message string `json:"message"`
-				Author  struct {
-					Name  string  `json:"name"`
-					Email string  `json:"email"`
-					User  gqlUser `json:"user"`
-				} `json:"author"`
-			} `json:"object"`
-		} `json:"repository"`
-	}
-	err = doGraphQL(ctx, client, qHead, map[string]interface{}{
-		"owner": owner, "name": repo, "oid": headOID,
-	}, &head)
-	if err != nil || head.Repository.Object == nil {
-		log.WithFields(f).WithError(err).Error("failed to fetch head commit via GraphQL")
-		return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
-	}
-
-	var (
-		userCommitSummary []*UserCommitSummary
-		anyMissing        atomic.Bool
-		mu                sync.Mutex
-		wg                sync.WaitGroup
-	)
-
-	// worker setup
-	maxConc := runtime.NumCPU()
-	if maxConc < 1 {
-		maxConc = 1
-	}
-	sem := make(chan struct{}, maxConc)
-
-	enqueue := func(sha, msg, authName, authEmail string, u gqlUser) {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func() {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			var id64 *int64
-			if u.DatabaseID != 0 {
-				tmp := int64(u.DatabaseID)
-				id64 = &tmp
-			}
-			var login, name, email *string
-			if u.Login != "" {
-				tmp := u.Login
-				login = &tmp
-			}
-			if u.Name != "" {
-				tmp := u.Name
-				name = &tmp
-			} else if authName != "" {
-				tmp := authName
-				name = &tmp
-			}
-			if u.Email != "" {
-				tmp := u.Email
-				email = &tmp
-			} else if authEmail != "" {
-				tmp := authEmail
-				email = &tmp
-			}
-
-			ghUser := &github.User{
-				ID:    id64,
-				Login: login,
-				Name:  name,
-				Email: email,
-			}
-			rc := &github.RepositoryCommit{
-				SHA: github.String(sha),
-				Commit: &github.Commit{
-					Message: github.String(msg),
-					Author: &github.CommitAuthor{
-						Name:  github.String(authName),
-						Email: github.String(authEmail),
-					},
-				},
-				Author: ghUser,
-			}
-
-			mu.Lock()
-			userCommitSummary = append(userCommitSummary, &UserCommitSummary{
-				SHA:          sha,
-				CommitAuthor: ghUser,
-				Affiliated:   false,
-				Authorized:   false,
-			})
-			mu.Unlock()
-
-			if withCoAuthors {
-				if ExpandWithCoAuthors(ctx, client, usersService, rc, pullRequestID, installationID, &userCommitSummary, &mu) {
-					anyMissing.Store(true)
-				}
-			}
-		}()
-	}
-
-	// Enqueue HEAD first (if not merge-base)
-	if head.Repository.Object.OID != mergeBaseSHA {
-		h := head.Repository.Object
-		enqueue(h.OID, h.Message, h.Author.Name, h.Author.Email, h.Author.User)
-	}
-
-	const qHist = `
-query($owner:String!, $name:String!, $head:GitObjectID!, $first:Int!, $after:String) {
-  repository(owner:$owner, name:$name) {
-    object(oid:$head) {
-      ... on Commit {
-        history(first:$first, after:$after) {
-          pageInfo { hasNextPage endCursor }
-          nodes {
-            oid
-            message
-            author { name email user { databaseId login name email } }
-          }
-        }
-      }
-    }
-  }
-}`
-
-	var after *string
-	pageSize := 100
-	safetyPages := 0
-	foundMergeBase := false
-
-	for !foundMergeBase {
-		var hist struct {
-			Repository struct {
-				Object *struct {
-					History struct {
-						PageInfo struct {
-							HasNextPage bool   `json:"hasNextPage"`
-							EndCursor   string `json:"endCursor"`
-						} `json:"pageInfo"`
-						Nodes []histNode `json:"nodes"`
-					} `json:"history"`
-				} `json:"object"`
-			} `json:"repository"`
-		}
-		vars := map[string]interface{}{
-			"owner": owner, "name": repo, "head": headOID,
-			"first": pageSize, "after": nil,
-		}
-		if after != nil {
-			vars["after"] = *after
-		}
-
-		if err := doGraphQL(ctx, client, qHist, vars, &hist); err != nil || hist.Repository.Object == nil {
-			log.WithFields(f).WithError(err).Error("failed to fetch commit history via GraphQL")
-			return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
-		}
-
-		for _, n := range hist.Repository.Object.History.Nodes {
-			if n.OID == mergeBaseSHA {
-				foundMergeBase = true
-				break
-			}
-			enqueue(n.OID, n.Message, n.Author.Name, n.Author.Email, n.Author.User)
-		}
-
-		if foundMergeBase {
-			break
-		}
-		if !hist.Repository.Object.History.PageInfo.HasNextPage {
-			return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
-		}
-		cur := hist.Repository.Object.History.PageInfo.EndCursor
-		after = &cur
-
-		safetyPages++
-		if safetyPages > 2000 {
-			return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
-		}
-	}
-
-	// wait workers
-	wg.Wait()
-
-	// ---- Stats log identical to Python version ----
-	// Build distinct sets
-	distinctSHAs := make(map[string]struct{})
-	distinctIDs := make(map[int64]struct{})
-	distinctLogins := make(map[string]struct{})
-	distinctEmails := make(map[string]struct{})
-	distinctNames := make(map[string]struct{})
-
-	for _, s := range userCommitSummary {
-		if s == nil {
-			continue
-		}
-		if s.SHA != "" {
-			distinctSHAs[s.SHA] = struct{}{}
-		}
-		if s.CommitAuthor != nil {
-			if s.CommitAuthor.ID != nil {
-				distinctIDs[*s.CommitAuthor.ID] = struct{}{}
-			}
-			if s.CommitAuthor.Login != nil && *s.CommitAuthor.Login != "" {
-				distinctLogins[*s.CommitAuthor.Login] = struct{}{}
-			}
-			if s.CommitAuthor.Email != nil && *s.CommitAuthor.Email != "" {
-				distinctEmails[*s.CommitAuthor.Email] = struct{}{}
-			}
-			if s.CommitAuthor.Name != nil && *s.CommitAuthor.Name != "" {
-				distinctNames[*s.CommitAuthor.Name] = struct{}{}
-			}
-		}
-	}
-
-	log.WithFields(f).Debugf(
-		"%s - PR: %d, total commit authors summaries found: %d, any missing: %v, distinct SHAs: %d, distinct author IDs: %d, logins: %d, emails: %d, names: %d",
-		fn, pullRequestID, len(userCommitSummary), anyMissing.Load(),
-		len(distinctSHAs), len(distinctIDs), len(distinctLogins), len(distinctEmails), len(distinctNames),
-	)
-
-	return userCommitSummary, anyMissing.Load(), nil
 }
 
 // EditIssueCommentIfChanged fetches the existing comment and edits only if

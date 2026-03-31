@@ -8,6 +8,7 @@
 # PR co-authors: python3 utils/get_pr_commits.py mlehotskylf-org2 easycla-dev 45
 # Other PRs from the above repo: 35, 29, 27, 26
 
+import os
 import sys
 sys.path.insert(0, "./cla-backend")
 
@@ -21,6 +22,17 @@ from cla.models.github_models import (
 def die(msg: str) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)
     raise SystemExit(1)
+
+def load_github_token() -> str:
+    token_file = os.environ.get("GITHUB_TOKEN_FILE", "/etc/github/oauth").strip() or "/etc/github/oauth"
+    try:
+        with open(token_file, "r", encoding="utf-8") as f:
+            token = f.read().strip()
+    except OSError as exc:
+        die(f"unable to read {token_file}: {exc}")
+    if not token:
+        die(f"{token_file} is empty")
+    return token
 
 def print_commitlite_list(title: str, commits):
     commits = list(commits)
@@ -53,11 +65,7 @@ try:
 except ValueError:
     die(f"invalid pr_number: {sys.argv[3]!r}")
 
-with open("/etc/github/oauth", "r", encoding="utf-8") as f:
-    token = f.read().strip()
-
-if not token:
-    die("/etc/github/oauth is empty")
+token = load_github_token()
 
 g = Github(token)
 
