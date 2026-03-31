@@ -2707,9 +2707,6 @@ def update_pull_request(
                 help_url = cla.utils.get_full_sign_url(
                     "github", str(installation_id), github_repository_id, pull_request.number, project_version
                 )
-            # check if unsigned user is allowlisted
-            # if user_commit_summary.commit_sha != last_commit_sha:
-            #     continue
 
             text += user_commit_summary.get_display_text(tag_user=True)
 
