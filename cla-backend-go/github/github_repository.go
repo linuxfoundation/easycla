@@ -33,6 +33,7 @@ var (
 	NoreplyIDPattern            = regexp.MustCompile(`^(\d+)\+([a-zA-Z0-9-]+)@users\.noreply\.github\.com$`)
 	NoreplyUserPattern          = regexp.MustCompile(`^([a-zA-Z0-9-]+)@users\.noreply\.github\.com$`)
 	GithubUsernameRegex         = regexp.MustCompile(`^[A-Za-z0-9-]{3,39}$`)
+	ListCommitsParallelLimit    = 4
 )
 
 // Note: we use | and ||| as placeholders for inline and fenced code, then swap to backticks at render time.
@@ -146,7 +147,7 @@ func compareRetrySleep(attempt int) {
 	}
 }
 
-func ListPullRequestCommitsCompare(
+func ListPullRequestCommitsCompareST(
 	ctx context.Context,
 	client *github.Client,
 	owner, repo string,
@@ -195,7 +196,7 @@ func ListPullRequestCommitsCompare(
 				return nil, reqErr
 			}
 			log.WithFields(logrus.Fields{
-				"functionName":  "github.github_repository.ListPullRequestCommitsCompare",
+				"functionName":  "github.github_repository.ListPullRequestCommitsCompareST",
 				"pullRequestID": pullRequestID,
 				"owner":         owner,
 				"repo":          repo,
@@ -239,6 +240,172 @@ func ListPullRequestCommitsCompare(
 		page = resp.NextPage
 	}
 
+	return allCommits, nil
+}
+
+func comparePayloadToRepositoryCommits(payload *compareResponse) []*github.RepositoryCommit {
+	if payload == nil || len(payload.Commits) == 0 {
+		return nil
+	}
+	out := make([]*github.RepositoryCommit, 0, len(payload.Commits))
+	for _, c := range payload.Commits {
+		if c == nil || strings.TrimSpace(c.SHA) == "" {
+			continue
+		}
+
+		rc := &github.RepositoryCommit{
+			SHA:    github.String(c.SHA),
+			Author: buildCompareAuthor(c),
+			Commit: &github.Commit{
+				Message: github.String(c.Commit.Message),
+				Author:  &github.CommitAuthor{},
+			},
+		}
+
+		if name := strings.TrimSpace(c.Commit.Author.Name); name != "" {
+			rc.Commit.Author.Name = github.String(name)
+		}
+		if email := strings.TrimSpace(c.Commit.Author.Email); email != "" {
+			rc.Commit.Author.Email = github.String(email)
+		}
+
+		out = append(out, rc)
+	}
+	return out
+}
+
+func fetchComparePage(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo, baseSHA, headSHA string,
+	page, perPage, pullRequestID int,
+) ([]*github.RepositoryCommit, *github.Response, error) {
+	path := fmt.Sprintf("repos/%s/%s/compare/%s...%s", owner, repo, baseSHA, headSHA)
+	var (
+		payload compareResponse
+		resp    *github.Response
+		reqErr  error
+	)
+	for attempt := 1; attempt <= 6; attempt++ {
+		req, err := client.NewRequest("GET", path, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		q := req.URL.Query()
+		q.Set("page", strconv.Itoa(page))
+		q.Set("per_page", strconv.Itoa(perPage))
+		req.URL.RawQuery = q.Encode()
+		req.Header.Set("Accept", "application/vnd.github+json")
+
+		payload = compareResponse{}
+		resp, reqErr = client.Do(ctx, req, &payload)
+		if reqErr == nil {
+			return comparePayloadToRepositoryCommits(&payload), resp, nil
+		}
+		if attempt >= 6 {
+			return nil, resp, reqErr
+		}
+		log.WithFields(logrus.Fields{
+			"functionName":  "github.github_repository.fetchComparePage",
+			"pullRequestID": pullRequestID,
+			"owner":         owner,
+			"repo":          repo,
+			"page":          page,
+			"attempt":       attempt,
+		}).WithError(reqErr).Warn("compare request failed, retrying")
+		compareRetrySleep(attempt)
+	}
+	return nil, nil, fmt.Errorf("unreachable compare retry path")
+}
+
+func ListPullRequestCommitsCompare(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo string,
+	pullRequestID int,
+) ([]*github.RepositoryCommit, error) {
+	pr, _, err := client.PullRequests.Get(ctx, owner, repo, pullRequestID)
+	if err != nil {
+		return nil, err
+	}
+
+	baseSHA := pr.GetBase().GetSHA()
+	headSHA := pr.GetHead().GetSHA()
+	if baseSHA == "" || headSHA == "" {
+		return nil, fmt.Errorf("missing base/head SHA for %s/%s PR #%d", owner, repo, pullRequestID)
+	}
+	perPage := 100
+	firstPageCommits, firstResp, err := fetchComparePage(ctx, client, owner, repo, baseSHA, headSHA, 1, perPage, pullRequestID)
+
+	if err != nil {
+		return nil, err
+	}
+	if firstResp == nil || firstResp.NextPage == 0 {
+		return firstPageCommits, nil
+	}
+
+	limit := ListCommitsParallelLimit
+	if limit < 1 {
+		limit = 1
+	}
+
+	// Fallback to sequential paging if we do not know the last page or parallelism is disabled.
+	if limit == 1 || firstResp.LastPage <= 1 {
+		allCommits := append([]*github.RepositoryCommit{}, firstPageCommits...)
+		nextPage := firstResp.NextPage
+		for nextPage != 0 {
+			pageCommits, pageResp, err := fetchComparePage(ctx, client, owner, repo, baseSHA, headSHA, nextPage, perPage, pullRequestID)
+			if err != nil {
+				return nil, err
+			}
+			allCommits = append(allCommits, pageCommits...)
+			if pageResp == nil || pageResp.NextPage == 0 {
+				break
+			}
+			nextPage = pageResp.NextPage
+		}
+		return allCommits, nil
+	}
+
+	lastPage := firstResp.LastPage
+	pageResults := make([][]*github.RepositoryCommit, lastPage+1)
+	pageResults[1] = firstPageCommits
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, limit)
+	errCh := make(chan error, 1)
+
+	for page := 2; page <= lastPage; page++ {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(page int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			pageCommits, _, err := fetchComparePage(ctx, client, owner, repo, baseSHA, headSHA, page, perPage, pullRequestID)
+			if err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				return
+			}
+			pageResults[page] = pageCommits
+		}(page)
+	}
+
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+
+	allCommits := make([]*github.RepositoryCommit, 0, len(firstPageCommits)+(lastPage-1)*perPage)
+	for page := 1; page <= lastPage; page++ {
+		allCommits = append(allCommits, pageResults[page]...)
+	}
 	return allCommits, nil
 }
 
@@ -1320,11 +1487,29 @@ func GetPullRequestCommitAuthors(
 	owner, repo string,
 	withCoAuthors bool,
 ) ([]*UserCommitSummary, bool, error) {
+	prCommitCount := 0
+	if client, clientErr := NewGithubAppClient(installationID); clientErr == nil {
+		if pr, _, prErr := client.PullRequests.Get(ctx, owner, repo, pullRequestID); prErr == nil && pr != nil {
+			prCommitCount = pr.GetCommits()
+		}
+	}
+
 	summaries, anyMissing, err := GetPullRequestCommitAuthorsCompare(
 		ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors,
 	)
 	if err == nil {
 		return summaries, anyMissing, nil
+	}
+
+	if prCommitCount > 250 {
+		log.WithFields(logrus.Fields{
+			"functionName":  "github.github_repository.GetPullRequestCommitAuthors",
+			"pullRequestID": pullRequestID,
+			"owner":         owner,
+			"repo":          repo,
+			"commits":       prCommitCount,
+		}).WithError(err).Warn("compare-based commit enumeration failed; refusing unsafe REST fallback for large PR")
+		return nil, false, err
 	}
 
 	log.WithFields(logrus.Fields{

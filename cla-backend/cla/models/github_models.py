@@ -2203,6 +2203,16 @@ def _pick_str(*values):
                 return value
     return None
 
+def _compare_retry_sleep(attempt: int) -> None:
+    if attempt == 2:
+        time.sleep(1)
+    elif attempt == 3:
+        time.sleep(5)
+    elif attempt == 4:
+        time.sleep(15)
+    elif attempt >= 5:
+        time.sleep(30)
+
 def iter_pr_commits_compare(g, owner: str, repo_name: str, number: int, page_size: int = 100):
     page_size = max(1, min(100, int(page_size)))
 
@@ -2218,12 +2228,28 @@ def iter_pr_commits_compare(g, owner: str, repo_name: str, number: int, page_siz
     page = 1
 
     while True:
-        _headers, data = requester.requestJsonAndCheck(
-            "GET",
-            f"/repos/{owner}/{repo_name}/compare/{base_sha}...{head_sha}",
-            parameters={"page": page, "per_page": page_size},
-            headers={"Accept": "application/vnd.github+json"},
-        )
+        data = None
+        for attempt in range(1, 7):
+            try:
+                _headers, data = requester.requestJsonAndCheck(
+                    "GET",
+                    f"/repos/{owner}/{repo_name}/compare/{base_sha}...{head_sha}",
+                    parameters={"page": page, "per_page": page_size},
+                    headers={"Accept": "application/vnd.github+json"},
+                )
+                break
+            except Exception as exc:
+                if attempt >= 6:
+                    cla.log.warning(
+                        f"iter_pr_commits_compare - compare page fetch failed for "
+                        f"{owner}/{repo_name} PR #{number}, page {page}, attempt {attempt}/6: {exc}"
+                    )
+                    raise
+                cla.log.warning(
+                    f"iter_pr_commits_compare - compare page fetch failed for "
+                    f"{owner}/{repo_name} PR #{number}, page {page}, attempt {attempt}/6: {exc} - retrying"
+                )
+                _compare_retry_sleep(attempt)
 
         commits = (data or {}).get("commits") or []
         if not commits:
@@ -2343,31 +2369,21 @@ def get_pull_request_commit_authors(client, org, pull_request, installation_id, 
 
     pr_number = pull_request.number
     repo_name = pull_request.base.repo.name
-    gql_ok = True
+    compare_ok = True
     pr_commits = None
 
     count = get_pr_commit_count_gql(client, org, repo_name, pr_number)
     if count is not None:
         cla.log.debug(f"{fn} - PR: {pr_number}, number of commits (GraphQL): {count}")
     else:
-        cla.log.debug(f"{fn} - PR: {pr_number}, failed to get commits count using GraphQL, fallback to REST")
-        gql_ok = False
-        try:
-            pr_commits = pull_request.get_commits()
-            count = pr_commits.totalCount
-        except Exception as exc:
-            cla.log.warning(f"{fn} - PR: {pr_number}, get PR commits raised: {exc}")
-            raise
-        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits (REST API): {count}")
-        if count == 250:
-            cla.log.warning(f"{fn} - PR: {pr_number}, commit count is 250, which is the max for REST API, there can be more commits")
+        cla.log.debug(f"{fn} - PR: {pr_number}, failed to get commits count using GraphQL, continuing with compare-based enumeration")
 
     commit_authors = []
     any_missing = False
     max_workers = 16
     submit_chunk = 256
 
-    if gql_ok:
+    if compare_ok:
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for chunk in iter_chunks(iter_pr_commits_compare(client, org, repo_name, pr_number), submit_chunk):
@@ -2377,17 +2393,22 @@ def get_pull_request_commit_authors(client, org, pull_request, installation_id, 
                         any_missing = any_missing or missing
                         commit_authors.extend(authors)
         except Exception as exc:
-            cla.log.warning(f"{fn} - PR: {pr_number}, GraphQL processing failed: {exc}, falling back to REST")
-            gql_ok = False
+            cla.log.warning(f"{fn} - PR: {pr_number}, compare processing failed: {exc}, evaluating REST fallback")
+            compare_ok = False
             commit_authors = []
             any_missing = False
-    if not gql_ok:
+    if not compare_ok:
         if pr_commits is None:
             try:
                 pr_commits = pull_request.get_commits()
             except Exception as exc:
                 cla.log.warning(f"{fn} - PR: {pr_number}, fallback get PR commits raised: {exc}")
                 raise
+        rest_count = getattr(pr_commits, "totalCount", None)
+        if (count is not None and count > 250) or (count is None and rest_count == 250):
+            raise ValueError(
+                f"{fn} - PR: {pr_number}, compare-based enumeration failed and REST fallback is unsafe for large PRs"
+            )
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [executor.submit(get_author_summary, c, pr_number, installation_id, with_co_authors) for c in pr_commits]
