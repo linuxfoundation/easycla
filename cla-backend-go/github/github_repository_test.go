@@ -68,9 +68,11 @@ func TestGetCommentBodyOmitsCoAuthorRemovalGuidanceWhenNoCoAuthorIsMissing(t *te
 	assert.NotContains(t, body, "Alternatively, if the co-author should not be included, remove the `Co-authored-by:` line from the commit message.")
 }
 
-func newTestGithubClient(server *httptest.Server) *gh.Client {
+func newTestGithubClient(t *testing.T, server *httptest.Server) *gh.Client {
+	t.Helper()
 	client := gh.NewClient(server.Client())
-	baseURL, _ := url.Parse(server.URL + "/")
+	baseURL, err := url.Parse(server.URL + "/")
+	assert.NoError(t, err)
 	client.BaseURL = baseURL
 	client.UploadURL = baseURL
 	return client
@@ -84,10 +86,11 @@ func TestFetchComparePageRetriesThenSucceeds(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		if attempts == 1 {
 			w.WriteHeader(http.StatusBadGateway)
-			_, _ = io.WriteString(w, `{"message":"bad gateway"}`)
+			_, err := io.WriteString(w, `{"message":"bad gateway"}`)
+			assert.NoError(t, err)
 			return
 		}
-		_, _ = io.WriteString(w, `{
+		_, err := io.WriteString(w, `{
 		  "commits": [{
 		    "sha": "abc123",
 		    "commit": {
@@ -105,10 +108,11 @@ func TestFetchComparePageRetriesThenSucceeds(t *testing.T) {
 		    }
 		  }]
 		}`)
+		assert.NoError(t, err)
 	}))
 	defer srv.Close()
 
-	client := newTestGithubClient(srv)
+	client := newTestGithubClient(t, srv)
 	commits, _, err := fetchComparePage(context.Background(), client, "o", "r", "base", "head", 1, 100, 7)
 	assert.NoError(t, err)
 	if assert.Len(t, commits, 1) {
@@ -132,11 +136,12 @@ func TestListPullRequestCommitsComparePreservesPageOrder(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/repos/o/r/pulls/7":
-			_, _ = io.WriteString(w, `{
+			_, err := io.WriteString(w, `{
 			  "number": 7,
 			  "base": { "sha": "base" },
 			  "head": { "sha": "head" }
 			}`)
+			assert.NoError(t, err)
 			return
 
 		case "/repos/o/r/compare/base...head":
@@ -149,34 +154,37 @@ func TestListPullRequestCommitsComparePreservesPageOrder(t *testing.T) {
 						serverURL, serverURL,
 					),
 				)
-				_, _ = io.WriteString(w, `{
+				_, err := io.WriteString(w, `{
 				  "commits": [{
 				    "sha": "sha1",
 				    "commit": { "message": "msg1", "author": { "name": "name1", "email": "e1@example.com" } },
 				    "author": { "id": 1, "login": "u1" }
 				  }]
 				}`)
+				assert.NoError(t, err)
 				return
 
 			case "2":
 				time.Sleep(50 * time.Millisecond)
-				_, _ = io.WriteString(w, `{
+				_, err := io.WriteString(w, `{
 				  "commits": [{
 				    "sha": "sha2",
 				    "commit": { "message": "msg2", "author": { "name": "name2", "email": "e2@example.com" } },
 				    "author": { "id": 2, "login": "u2" }
 				  }]
 				}`)
+				assert.NoError(t, err)
 				return
 
 			case "3":
-				_, _ = io.WriteString(w, `{
+				_, err := io.WriteString(w, `{
 				  "commits": [{
 				    "sha": "sha3",
 				    "commit": { "message": "msg3", "author": { "name": "name3", "email": "e3@example.com" } },
 				    "author": { "id": 3, "login": "u3" }
 				  }]
 				}`)
+				assert.NoError(t, err)
 				return
 			}
 		}
@@ -186,7 +194,7 @@ func TestListPullRequestCommitsComparePreservesPageOrder(t *testing.T) {
 	defer srv.Close()
 	serverURL = srv.URL
 
-	client := newTestGithubClient(srv)
+	client := newTestGithubClient(t, srv)
 	commits, err := ListPullRequestCommitsCompare(context.Background(), client, "o", "r", 7)
 	assert.NoError(t, err)
 	if assert.Len(t, commits, 3) {
