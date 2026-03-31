@@ -2405,7 +2405,7 @@ def get_pull_request_commit_authors(client, org, pull_request, installation_id, 
                 cla.log.warning(f"{fn} - PR: {pr_number}, fallback get PR commits raised: {exc}")
                 raise
         rest_count = getattr(pr_commits, "totalCount", None)
-        if (count is not None and count > 250) or (count is None and rest_count == 250):
+        if (count is not None and count > 250) or (count is None and (rest_count is None or rest_count == 250)):
             raise ValueError(
                 f"{fn} - PR: {pr_number}, compare-based enumeration failed and REST fallback is unsafe for large PRs"
             )
