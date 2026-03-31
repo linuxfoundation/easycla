@@ -113,6 +113,164 @@ type GraphQLError struct {
 	Errs []gqlError
 }
 
+type compareCommit struct {
+	SHA    string `json:"sha"`
+	Commit struct {
+		Message string `json:"message"`
+		Author  struct {
+			Name  string `json:"name"`
+			Email string `json:"email"`
+		} `json:"author"`
+	} `json:"commit"`
+	Author *github.User `json:"author"`
+}
+
+type compareResponse struct {
+	Commits []*compareCommit `json:"commits"`
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func buildCompareAuthor(c *compareCommit) *github.User {
+	var out *github.User
+	if c != nil && c.Author != nil {
+		clone := *c.Author
+		out = &clone
+	} else {
+		out = &github.User{}
+	}
+
+	if c == nil {
+		return out
+	}
+
+	name := firstNonEmpty(c.Commit.Author.Name, out.GetName(), out.GetLogin())
+	email := firstNonEmpty(out.GetEmail(), c.Commit.Author.Email)
+
+	if name != "" {
+		out.Name = github.Ptr(name)
+	}
+	if email != "" {
+		out.Email = github.Ptr(email)
+	}
+
+	return out
+}
+
+func GetPullRequestCommitAuthorsCompare(
+	ctx context.Context,
+	usersService users.Service,
+	installationID int64,
+	pullRequestID int,
+	owner, repo string,
+	withCoAuthors bool,
+) ([]*UserCommitSummary, bool, error) {
+	const fn = "github.github_repository.GetPullRequestCommitAuthorsCompare"
+	f := logrus.Fields{
+		"functionName":  fn,
+		"pullRequestID": pullRequestID,
+		"owner":         owner,
+		"repo":          repo,
+		"withCoAuthors": withCoAuthors,
+	}
+
+	client, err := NewGithubAppClient(installationID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to create Github client")
+		return nil, false, err
+	}
+
+	pr, _, err := client.PullRequests.Get(ctx, owner, repo, pullRequestID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Error("failed to fetch pull request")
+		return nil, false, err
+	}
+
+	baseSHA := pr.GetBase().GetSHA()
+	headSHA := pr.GetHead().GetSHA()
+	if baseSHA == "" || headSHA == "" {
+		return nil, false, fmt.Errorf("missing base/head SHA for %s/%s PR #%d", owner, repo, pullRequestID)
+	}
+
+	var (
+		userCommitSummary []*UserCommitSummary
+		anyMissing        bool
+		page              = 1
+		perPage           = 100
+	)
+
+	for {
+		path := fmt.Sprintf("repos/%s/%s/compare/%s...%s", owner, repo, baseSHA, headSHA)
+		req, err := client.NewRequest("GET", path, nil)
+		if err != nil {
+			return nil, false, err
+		}
+
+		q := req.URL.Query()
+		q.Set("page", strconv.Itoa(page))
+		q.Set("per_page", strconv.Itoa(perPage))
+		req.URL.RawQuery = q.Encode()
+
+		var payload compareResponse
+		resp, err := client.Do(ctx, req, &payload)
+		if err != nil {
+			log.WithFields(f).WithError(err).Error("compare request failed")
+			return nil, false, err
+		}
+
+		if len(payload.Commits) == 0 {
+			break
+		}
+
+		for _, c := range payload.Commits {
+			if c == nil || strings.TrimSpace(c.SHA) == "" {
+				continue
+			}
+
+			author := buildCompareAuthor(c)
+
+			rc := &github.RepositoryCommit{
+				SHA: github.Ptr(c.SHA),
+				Commit: &github.Commit{
+					Message: github.Ptr(c.Commit.Message),
+					Author: &github.CommitAuthor{
+						Name:  github.Ptr(c.Commit.Author.Name),
+						Email: github.Ptr(c.Commit.Author.Email),
+					},
+				},
+				Author: author,
+			}
+
+			summary := NewUserCommitSummary(rc)
+			if withCoAuthors {
+				summaries, missingCoAuthors, err := ExpandWithCoAuthors(ctx, usersService, installationID, rc, summary)
+				if err != nil {
+					return nil, false, err
+				}
+				userCommitSummary = append(userCommitSummary, summaries...)
+				anyMissing = anyMissing || missingCoAuthors
+			} else {
+				userCommitSummary = append(userCommitSummary, summary)
+			}
+		}
+
+		if len(payload.Commits) < perPage || resp == nil || resp.NextPage == 0 {
+			break
+		}
+		page = resp.NextPage
+	}
+
+	return userCommitSummary, anyMissing, nil
+}
+
 func (e *GraphQLError) Error() string {
 	if len(e.Errs) == 0 {
 		return "graphql: unknown error"
@@ -1210,6 +1368,31 @@ func GetCommitAuthorsSignedStatuses(
 	return signed, unsigned
 }
 
+func GetPullRequestCommitAuthors(
+	ctx context.Context,
+	usersService users.Service,
+	installationID int64,
+	pullRequestID int,
+	owner, repo string,
+	withCoAuthors bool,
+) ([]*UserCommitSummary, bool, error) {
+	summaries, anyMissing, err := GetPullRequestCommitAuthorsCompare(
+		ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors,
+	)
+	if err == nil {
+		return summaries, anyMissing, nil
+	}
+
+	log.WithFields(logrus.Fields{
+		"functionName":  "github.github_repository.GetPullRequestCommitAuthors",
+		"pullRequestID": pullRequestID,
+		"owner":         owner,
+		"repo":          repo,
+	}).WithError(err).Warn("compare-based commit enumeration failed, falling back to REST PR commits")
+
+	return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
+}
+
 //nolint:gocyclo // complexity is acceptable for now
 func GetPullRequestCommitAuthorsREST(ctx context.Context, usersService users.Service, installationID int64, pullRequestID int, owner, repo string, withCoAuthors bool) ([]*UserCommitSummary, bool, error) {
 	fn := "github.github_repository.GetPullRequestCommitAuthorsREST"
@@ -1332,7 +1515,7 @@ func GetPullRequestCommitAuthorsREST(ctx context.Context, usersService users.Ser
 }
 
 //nolint:gocyclo // complexity is acceptable for now
-func GetPullRequestCommitAuthors(
+func GetPullRequestCommitAuthorsOld(
 	ctx context.Context,
 	usersService users.Service,
 	installationID int64,
@@ -1340,7 +1523,7 @@ func GetPullRequestCommitAuthors(
 	owner, repo string,
 	withCoAuthors bool,
 ) ([]*UserCommitSummary, bool, error) {
-	const fn = "github.github_repository.GetPullRequestCommitAuthors"
+	const fn = "github.github_repository.GetPullRequestCommitAuthorsOld"
 	f := logrus.Fields{
 		"functionName":  fn,
 		"pullRequestID": pullRequestID,
