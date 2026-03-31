@@ -57,6 +57,30 @@ describe('To Validate github-repositories API call', function () {
     }
   });
 
+  // Shared DEV fixture repair:
+  // this repository is sometimes left disabled by earlier/parallel E2E runs.
+  // Re-enable it before the happy-path tests start, but do not assert on the
+  // POST body because the API returns { list: null } when the repo is already
+  // enabled and the add operation becomes a no-op.
+  before(() => {
+    cy.request({
+      method: 'POST',
+      url: `${claEndpoint}`,
+      timeout: timeout,
+      failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
+      auth: { bearer: bearerToken },
+      body: {
+        cla_group_id: '1baf67ab-d894-4edf-b6fc-c5f939db59f7',
+        github_organization_name: 'ApiAutomStandaloneOrg',
+        repository_github_id: '507892593',
+        repository_github_ids: ['507892593'],
+      },
+    }).then((response) => {
+      validate_200_Status(response);
+    });
+  });
+
   it('Get the GitHub repositories of the project which are CLA Enforced- Record should return 200 Response', function () {
     cy.task('log', `--> GET ${claEndpoint}`);
 
