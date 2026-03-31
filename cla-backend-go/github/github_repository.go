@@ -140,90 +140,65 @@ func firstNonEmpty(values ...string) string {
 }
 
 func buildCompareAuthor(c *compareCommit) *github.User {
-	var out *github.User
+	var out github.User
 	if c != nil && c.Author != nil {
-		clone := *c.Author
-		out = &clone
-	} else {
-		out = &github.User{}
+		out = *c.Author
 	}
-
 	if c == nil {
-		return out
+		return &out
 	}
 
 	name := firstNonEmpty(c.Commit.Author.Name, out.GetName(), out.GetLogin())
 	email := firstNonEmpty(out.GetEmail(), c.Commit.Author.Email)
 
 	if name != "" {
-		out.Name = github.Ptr(name)
+		out.Name = github.String(name)
 	}
 	if email != "" {
-		out.Email = github.Ptr(email)
+		out.Email = github.String(email)
 	}
 
-	return out
+	return &out
 }
 
-func GetPullRequestCommitAuthorsCompare(
+func ListPullRequestCommitsCompare(
 	ctx context.Context,
-	usersService users.Service,
-	installationID int64,
-	pullRequestID int,
+	client *github.Client,
 	owner, repo string,
-	withCoAuthors bool,
-) ([]*UserCommitSummary, bool, error) {
-	const fn = "github.github_repository.GetPullRequestCommitAuthorsCompare"
-	f := logrus.Fields{
-		"functionName":  fn,
-		"pullRequestID": pullRequestID,
-		"owner":         owner,
-		"repo":          repo,
-		"withCoAuthors": withCoAuthors,
-	}
-
-	client, err := NewGithubAppClient(installationID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to create Github client")
-		return nil, false, err
-	}
-
+	pullRequestID int,
+) ([]*github.RepositoryCommit, error) {
 	pr, _, err := client.PullRequests.Get(ctx, owner, repo, pullRequestID)
 	if err != nil {
-		log.WithFields(f).WithError(err).Error("failed to fetch pull request")
-		return nil, false, err
+		return nil, err
 	}
 
 	baseSHA := pr.GetBase().GetSHA()
 	headSHA := pr.GetHead().GetSHA()
 	if baseSHA == "" || headSHA == "" {
-		return nil, false, fmt.Errorf("missing base/head SHA for %s/%s PR #%d", owner, repo, pullRequestID)
+		return nil, fmt.Errorf("missing base/head SHA for %s/%s PR #%d", owner, repo, pullRequestID)
 	}
 
-	var (
-		userCommitSummary []*UserCommitSummary
-		anyMissing        bool
-		page              = 1
-		perPage           = 100
-	)
+	var allCommits []*github.RepositoryCommit
+	page := 1
+	perPage := 100
 
 	for {
 		path := fmt.Sprintf("repos/%s/%s/compare/%s...%s", owner, repo, baseSHA, headSHA)
 		req, err := client.NewRequest("GET", path, nil)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 
 		q := req.URL.Query()
 		q.Set("page", strconv.Itoa(page))
 		q.Set("per_page", strconv.Itoa(perPage))
 		req.URL.RawQuery = q.Encode()
+		req.Header.Set("Accept", "application/vnd.github+json")
 
 		var payload compareResponse
 		resp, err := client.Do(ctx, req, &payload)
 		if err != nil {
-			log.WithFields(f).WithError(err).Error("compare request failed")
-			return nil, false, err
+			return nil, err
 		}
 
 		if len(payload.Commits) == 0 {
@@ -235,40 +210,32 @@ func GetPullRequestCommitAuthorsCompare(
 				continue
 			}
 
-			author := buildCompareAuthor(c)
-
 			rc := &github.RepositoryCommit{
-				SHA: github.Ptr(c.SHA),
+				SHA:    github.String(c.SHA),
+				Author: buildCompareAuthor(c),
 				Commit: &github.Commit{
-					Message: github.Ptr(c.Commit.Message),
-					Author: &github.CommitAuthor{
-						Name:  github.Ptr(c.Commit.Author.Name),
-						Email: github.Ptr(c.Commit.Author.Email),
-					},
+					Message: github.String(c.Commit.Message),
+					Author:  &github.CommitAuthor{},
 				},
-				Author: author,
 			}
 
-			summary := NewUserCommitSummary(rc)
-			if withCoAuthors {
-				summaries, missingCoAuthors, err := ExpandWithCoAuthors(ctx, usersService, installationID, rc, summary)
-				if err != nil {
-					return nil, false, err
-				}
-				userCommitSummary = append(userCommitSummary, summaries...)
-				anyMissing = anyMissing || missingCoAuthors
-			} else {
-				userCommitSummary = append(userCommitSummary, summary)
+			if name := strings.TrimSpace(c.Commit.Author.Name); name != "" {
+				rc.Commit.Author.Name = github.String(name)
 			}
+			if email := strings.TrimSpace(c.Commit.Author.Email); email != "" {
+				rc.Commit.Author.Email = github.String(email)
+			}
+
+			allCommits = append(allCommits, rc)
 		}
 
-		if len(payload.Commits) < perPage || resp == nil || resp.NextPage == 0 {
+		if resp == nil || resp.NextPage == 0 || len(payload.Commits) < perPage {
 			break
 		}
 		page = resp.NextPage
 	}
 
-	return userCommitSummary, anyMissing, nil
+	return allCommits, nil
 }
 
 func (e *GraphQLError) Error() string {
@@ -1391,6 +1358,84 @@ func GetPullRequestCommitAuthors(
 	}).WithError(err).Warn("compare-based commit enumeration failed, falling back to REST PR commits")
 
 	return GetPullRequestCommitAuthorsREST(ctx, usersService, installationID, pullRequestID, owner, repo, withCoAuthors)
+}
+
+func GetPullRequestCommitAuthorsCompare(
+	ctx context.Context,
+	usersService users.Service,
+	installationID int64,
+	pullRequestID int,
+	owner, repo string,
+	withCoAuthors bool,
+) ([]*UserCommitSummary, bool, error) {
+	const fn = "github.github_repository.GetPullRequestCommitAuthorsCompare"
+	f := logrus.Fields{
+		"functionName":  fn,
+		"pullRequestID": pullRequestID,
+		"owner":         owner,
+		"repo":          repo,
+		"withCoAuthors": withCoAuthors,
+	}
+
+	client, err := NewGithubAppClient(installationID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to create Github client")
+		return nil, false, err
+	}
+
+	commits, err := ListPullRequestCommitsCompare(ctx, client, owner, repo, pullRequestID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("compare request failed")
+		return nil, false, err
+	}
+
+	userCommitSummary := make([]*UserCommitSummary, 0, len(commits))
+	var mu sync.Mutex
+	anyMissing := false
+
+	for _, commit := range commits {
+		if commit == nil {
+			continue
+		}
+
+		if commit.Author == nil {
+			commit.Author = &github.User{}
+		}
+
+		name, email := "", ""
+		if commit.Commit != nil && commit.Commit.Author != nil {
+			name = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Name))
+			email = strings.TrimSpace(utils.StringValue(commit.Commit.Author.Email))
+
+			if name != "" {
+				if commit.Author.Name == nil || strings.TrimSpace(utils.StringValue(commit.Author.Name)) == "" {
+					n := name
+					commit.Author.Name = &n
+				}
+			}
+			if email != "" {
+				if commit.Author.Email == nil || strings.TrimSpace(utils.StringValue(commit.Author.Email)) == "" {
+					e := email
+					commit.Author.Email = &e
+				}
+			}
+		}
+
+		userCommitSummary = append(userCommitSummary, &UserCommitSummary{
+			SHA:          utils.StringValue(commit.SHA),
+			CommitAuthor: commit.Author,
+			Affiliated:   false,
+			Authorized:   false,
+		})
+
+		if withCoAuthors {
+			if ExpandWithCoAuthors(ctx, client, usersService, commit, pullRequestID, installationID, &userCommitSummary, &mu) {
+				anyMissing = true
+			}
+		}
+	}
+
+	return userCommitSummary, anyMissing, nil
 }
 
 //nolint:gocyclo // complexity is acceptable for now
