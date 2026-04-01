@@ -574,7 +574,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
               `GitHub org removal: ${occurrenceCount} occurrences remain. This may be due to multiple entries or test environment state.`,
             );
             // Don't fail the test, just log the situation
-            expect(occurrenceCount).to.be.greaterThanOrEqual(0);
+            expect(occurrenceCount).to.be.gte(0);
           } else {
             expect(list).to.not.include(gitOrgApprovalList);
           }
@@ -651,7 +651,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
             `GitHub username removal: ${occurrenceCount} occurrences remain. This may be due to multiple entries or test environment state.`,
           );
           // Accept this as a known test environment behavior
-          expect(occurrenceCount).to.be.greaterThanOrEqual(0);
+          expect(occurrenceCount).to.be.gte(0);
         } else {
           expect(list).to.not.include(gitUsernameApprovalList);
         }
@@ -711,7 +711,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
             `GitLab username removal: ${occurrenceCount} occurrences remain. This may be due to multiple entries or test environment state.`,
           );
           // Don't fail the test, just log the situation
-          expect(occurrenceCount).to.be.greaterThanOrEqual(0);
+          expect(occurrenceCount).to.be.gte(0);
         } else {
           expect(list).to.not.include(gitLabUsernameApprovalList);
         }
