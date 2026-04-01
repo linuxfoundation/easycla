@@ -1333,7 +1333,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 	// creating individual default values
 	log.WithFields(f).Debugf("creating individual default values...")
-	defaultValues := s.createDefaultIndividualValues(user, preferredEmail)
+	defaultValues := s.createDefaultIndividualValues(user, preferredEmail, false)
 	log.WithFields(f).Debugf("default values: %+v", defaultValues)
 
 	// 4. Generate signature callback url
@@ -2057,11 +2057,12 @@ func (s *service) populateUserDetails(ctx context.Context, signatureReferenceTyp
 				return nil, errors.New(msg)
 			}
 
+			allowLFEmail := strings.EqualFold(latestSignature.SignatureReturnURLType, "gerrit")
 			if userModel.Username != "" {
 				userSignDetails.userSignatureName = userModel.Username
 			}
-			if getUserEmail(userModel, preferredEmail) != "" {
-				userSignDetails.userSignatureEmail = getUserEmail(userModel, preferredEmail)
+			if userEmail := getUserEmail(userModel, preferredEmail, allowLFEmail); userEmail != "" {
+				userSignDetails.userSignatureEmail = userEmail
 			}
 		}
 	} else {
@@ -2161,13 +2162,16 @@ func getTabsFromDocument(document *v1Models.ClaGroupDocument, documentID string,
 }
 
 // helper function to get user email
-func getUserEmail(user *v1Models.User, preferredEmail string) string {
+func getUserEmail(user *v1Models.User, preferredEmail string, allowLFEmail bool) string {
+	if user == nil {
+		return ""
+	}
 	if preferredEmail != "" {
-		if utils.StringInSlice(preferredEmail, user.Emails) || user.LfEmail == strfmt.Email(preferredEmail) {
+		if utils.StringInSlice(preferredEmail, user.Emails) || (allowLFEmail && user.LfEmail == strfmt.Email(preferredEmail)) {
 			return preferredEmail
 		}
 	}
-	if user.LfEmail != "" {
+	if allowLFEmail && user.LfEmail != "" {
 		return string(user.LfEmail)
 	}
 	if len(user.Emails) > 0 {
@@ -2219,7 +2223,7 @@ func getActiveSignatureReturnURL(userID string, metadata map[string]interface{})
 
 }
 
-func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEmail string) map[string]interface{} {
+func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEmail string, allowLFEmail bool) map[string]interface{} {
 	f := logrus.Fields{
 		"functionName": "sign.createDefaultIndiviualValues",
 	}
@@ -2234,10 +2238,8 @@ func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEm
 		}
 	}
 
-	if preferredEmail != "" {
-		if utils.StringInSlice(preferredEmail, user.Emails) || user.LfEmail == strfmt.Email(preferredEmail) {
-			defaultValues["email"] = preferredEmail
-		}
+	if userEmail := getUserEmail(user, preferredEmail, allowLFEmail); userEmail != "" {
+		defaultValues["email"] = userEmail
 	}
 
 	return defaultValues
@@ -2336,7 +2338,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 		preferredEmail = user.Emails[0]
 	}
 
-	defaultValues := s.createDefaultIndividualValues(user, preferredEmail)
+	defaultValues := s.createDefaultIndividualValues(user, preferredEmail, true)
 
 	log.WithFields(f).Debugf("defaultValues: %+v", defaultValues)
 
