@@ -12,6 +12,7 @@ on:
     paths:
       - "cla-backend-go/package.json"
       - "cla-backend-go/yarn.lock"
+      - ".yarn-audit-allowlist.json"
       - ".github/workflows/yarn-scan-backend-go-pr.yml"
 
 jobs:
