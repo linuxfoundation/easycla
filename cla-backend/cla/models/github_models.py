@@ -2641,6 +2641,20 @@ def normalize_comment(s: str) -> str:
         lines.pop()
     return "\n".join(lines)
 
+def check_run_render_key(user_commit_summary):
+    """
+    Dedupe key for rendering check-run text.
+    Prefer stable actor identity (id/login/email). If all are missing, fall back to name.
+    """
+    author_id = getattr(user_commit_summary, "author_id", None)
+    author_login = str_strip_lower(getattr(user_commit_summary, "author_login", None))
+    author_email = str_strip_lower(getattr(user_commit_summary, "author_email", None))
+    author_name = str_strip_lower(getattr(user_commit_summary, "author_name", None))
+
+    if author_id is not None or author_login or author_email:
+        return (author_id, author_login, author_email, "")
+    return (None, "", "", author_name)
+
 def update_pull_request(
     installation_id,
     github_repository_id,
@@ -2697,6 +2711,7 @@ def update_pull_request(
     if missing:
         text = ""
         help_url = ""
+        seen_render_keys = set()
 
         for user_commit_summary in missing:
             # Check for valid GitHub id
@@ -2708,6 +2723,10 @@ def update_pull_request(
                     "github", str(installation_id), github_repository_id, pull_request.number, project_version
                 )
 
+            render_key = check_run_render_key(user_commit_summary)
+            if render_key in seen_render_keys:
+                continue
+            seen_render_keys.add(render_key)
             text += user_commit_summary.get_display_text(tag_user=True)
 
         payload = {
