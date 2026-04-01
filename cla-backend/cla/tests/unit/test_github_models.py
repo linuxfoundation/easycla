@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 from cla.models.github_models import (UserCommitSummary, get_author_summary,
                                       get_co_author_commits, github_user_cache,
-                                      get_pull_request_commit_authors)
-
+                                      get_pull_request_commit_authors,
+                                      iter_pr_commits_compare)
 
 class TestGetPullRequestCommitAuthors(TestCase):
     def setUp(self):
@@ -95,6 +95,76 @@ class TestGetPullRequestCommitAuthors(TestCase):
         self.assertEqual(result.author_login, "co_author_login")
         self.assertEqual(result.author_email, "co_author_email.gmail.com")
         self.assertEqual(result.author_name, "co_author")
+
+    @patch("cla.models.github_models.time.sleep")
+    def test_iter_pr_commits_compare_retries_then_succeeds(self, mock_sleep):
+        g = MagicMock()
+        repo = MagicMock()
+        pr = MagicMock()
+        pr.base.sha = "base_sha"
+        pr.head.sha = "head_sha"
+        repo.get_pull.return_value = pr
+        g.get_repo.return_value = repo
+
+        requester = MagicMock()
+        g._Github__requester = requester
+        requester.requestJsonAndCheck.side_effect = [
+            Exception("boom-1"),
+            Exception("boom-2"),
+            (
+                {},
+                {
+                    "commits": [
+                        {
+                            "sha": "abc123",
+                            "author": {
+                                "id": 1,
+                                "login": "login1",
+                                "name": "Profile Name",
+                                "email": "profile@example.com",
+                            },
+                            "commit": {
+                                "message": "hello",
+                                "author": {
+                                    "name": "Commit Name",
+                                    "email": "commit@example.com",
+                                },
+                            },
+                        }
+                    ]
+                },
+            ),
+            ({}, {"commits": []}),
+        ]
+
+        commits = list(iter_pr_commits_compare(g, "o", "r", 7))
+
+        self.assertEqual(len(commits), 1)
+        self.assertEqual(commits[0].sha, "abc123")
+        self.assertEqual(commits[0].author_id, 1)
+        self.assertEqual(commits[0].author_login, "login1")
+        self.assertEqual(commits[0].author_name, "Commit Name")
+        self.assertEqual(commits[0].author_email, "profile@example.com")
+        mock_sleep.assert_called_once_with(1)
+
+    @patch("cla.models.github_models.iter_pr_commits_compare", side_effect=Exception("compare failed"))
+    @patch("cla.models.github_models.get_pr_commit_count_gql", return_value=None)
+    def test_get_pull_request_commit_authors_blocks_unsafe_rest_fallback_for_truncated_pr(
+        self,
+        _mock_count,
+        _mock_iter_compare,
+    ):
+        client = MagicMock()
+        pull_request = MagicMock()
+        pull_request.number = 123
+        pull_request.base.repo.name = "repo"
+
+        pr_commits = MagicMock()
+        pr_commits.totalCount = 250
+        pull_request.get_commits.return_value = pr_commits
+
+        with self.assertRaises(ValueError):
+            get_pull_request_commit_authors(client, "org", pull_request, 1, False)
 
 
 if __name__ == "__main__":
