@@ -49,7 +49,7 @@
     "serverless-python-requirements": "^6.0.0",
     "serverless-wsgi": "^3.0.1",
     "shell-quote": "^1.7.3",
-    "simple-git": "^3.32.3",
+    "simple-git": "^3.33.0",
     "xml2js": "^0.6.0",
     "yarn-audit-fix": "^10.0.0"
   },
@@ -74,7 +74,7 @@
     "qs": "6.14.2",
     "set-value": "^4.0.1",
     "shell-quote": "^1.7.3",
-    "simple-git": "^3.32.3",
+    "simple-git": "^3.33.0",
     "ws": ">=7.5.10",
     "tar": "^7.5.10",
     "xmlhttprequest-ssl": "^1.6.2",
