@@ -2649,9 +2649,11 @@ def check_run_render_key(user_commit_summary):
     author_id = getattr(user_commit_summary, "author_id", None)
     author_login = str_strip_lower(getattr(user_commit_summary, "author_login", None))
     author_email = str_strip_lower(getattr(user_commit_summary, "author_email", None))
+    author_name = str_strip_lower(getattr(user_commit_summary, "author_name", None))
+
     if author_id is not None or author_login or author_email:
-        return (author_id, author_login, author_email)
-    return (None, "", "", str_strip_lower(getattr(user_commit_summary, "author_name", None)))
+        return (author_id, author_login, author_email, "")
+    return (None, "", "", author_name)
 
 def update_pull_request(
     installation_id,
