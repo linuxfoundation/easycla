@@ -35,12 +35,13 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   const userID2 = appConfig.userIdclaManager2;
 
   //Aprroval list veriable
-  const emailApprovalList = appConfig.emailApprovalList;
-  const gitOrgApprovalList = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.com`;
+  const approvalListSeed = `test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  const emailApprovalList = `${approvalListSeed}@example.com`;
+  const gitOrgApprovalList = `${approvalListSeed}.com`;
   const gitUsernameApprovalList = appConfig.gitUsernameApprovalList;
   const gitLabUsernameApprovalList = appConfig.gitUsernameApprovalList2;
   const gitLabOrgApprovalList = appConfig.gitLabOrgApprovalList;
-  const domainApprovalList = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.com`;
+  const domainApprovalList = `${approvalListSeed}.com`;
 
   let signatureIclaID = '';
   let signatureCclaID = '';

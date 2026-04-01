@@ -1,9 +1,11 @@
 {
   "minSeverity": "high",
   "allowlist": [
-    1111997
+    1111997,
+    1115552
   ],
   "notes": {
-    "1111997": "aws-sdk v2 advisory flagged as 'No patch available' in our current baseline; accepted until migration."
+    "1111997": "aws-sdk v2 advisory flagged as 'No patch available' in our current baseline; accepted until migration.",
+    "1115552": "picomatch advisory introduced after the current lockfile baseline; temporarily allowlisted to restore CI while the transitive dependency upgrade is refreshed explicitly in backend yarn.lock files."
   }
 }
