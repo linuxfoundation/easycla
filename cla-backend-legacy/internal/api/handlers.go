@@ -1050,6 +1050,36 @@ func copyV4ResponseHeaders(dst http.ResponseWriter, src http.Header) {
 	}
 }
 
+func translateLegacyIndividualSignatureV4Error(providerType string, status int, body []byte) ([]byte, bool) {
+	providerType = strings.ToLower(strings.TrimSpace(providerType))
+	if status < 400 {
+		return body, false
+	}
+	if providerType != "github" && providerType != "gitlab" {
+		return body, false
+	}
+
+	var payload struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body, false
+	}
+	if !strings.Contains(strings.ToLower(strings.TrimSpace(payload.Message)), "no emails found") {
+		return body, false
+	}
+
+	translated, err := json.Marshal(map[string]any{
+		"errors": map[string]any{
+			"user_id": fmt.Sprintf("no %s user_emails found", providerType),
+		},
+	})
+	if err != nil {
+		return body, false
+	}
+	return translated, true
+}
+
 func headerCloneForV4(in http.Header) http.Header {
 	out := make(http.Header, len(in))
 	for k, vals := range in {
@@ -6470,6 +6500,9 @@ func (h *Handlers) RequestIndividualSignatureV2(w http.ResponseWriter, r *http.R
 	if err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"v4": err.Error()}})
 		return
+	}
+	if translated, ok := translateLegacyIndividualSignatureV4Error(returnURLType, status, respBody); ok {
+		respBody = translated
 	}
 	copyV4ResponseHeaders(w, hdr)
 	// Legacy Python Hug frequently returned HTTP 200 with an "errors" payload. Preserve
