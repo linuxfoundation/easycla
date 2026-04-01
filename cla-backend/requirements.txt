@@ -37,7 +37,7 @@ cryptography==46.0.5
 python-dateutil==2.8.1
 requests==2.31.0
 requests-oauthlib==1.2.0
-rsa==4.7
+rsa==4.9.1
 s3transfer==0.16.0
 sentinels==1.0.0
 six==1.13.0
