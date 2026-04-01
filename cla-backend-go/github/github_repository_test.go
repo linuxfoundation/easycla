@@ -4,7 +4,14 @@
 package github
 
 import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
 	gh "github.com/google/go-github/v37/github"
 	"github.com/stretchr/testify/assert"
@@ -59,4 +66,140 @@ func TestGetCommentBodyOmitsCoAuthorRemovalGuidanceWhenNoCoAuthorIsMissing(t *te
 
 	assert.NotContains(t, body, "One or more co-authors of this pull request were not found")
 	assert.NotContains(t, body, "Alternatively, if the co-author should not be included, remove the `Co-authored-by:` line from the commit message.")
+}
+
+func newTestGithubClient(t *testing.T, server *httptest.Server) *gh.Client {
+	t.Helper()
+	client := gh.NewClient(server.Client())
+	baseURL, err := url.Parse(server.URL + "/")
+	assert.NoError(t, err)
+	client.BaseURL = baseURL
+	client.UploadURL = baseURL
+	return client
+}
+
+func TestFetchComparePageRetriesThenSucceeds(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/repos/o/r/compare/base...head", r.URL.Path)
+		attempts++
+		w.Header().Set("Content-Type", "application/json")
+		if attempts == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			_, err := io.WriteString(w, `{"message":"bad gateway"}`)
+			assert.NoError(t, err)
+			return
+		}
+		_, err := io.WriteString(w, `{
+		  "commits": [{
+		    "sha": "abc123",
+		    "commit": {
+		      "message": "hello",
+		      "author": {
+		        "name": "Commit Name",
+		        "email": "commit@example.com"
+		      }
+		    },
+		    "author": {
+		      "id": 123,
+		      "login": "login",
+		      "name": "Profile Name",
+		      "email": "profile@example.com"
+		    }
+		  }]
+		}`)
+		assert.NoError(t, err)
+	}))
+	defer srv.Close()
+
+	client := newTestGithubClient(t, srv)
+	commits, _, err := fetchComparePage(context.Background(), client, "o", "r", "base", "head", 1, 100, 7)
+	assert.NoError(t, err)
+	if assert.Len(t, commits, 1) {
+		assert.Equal(t, "abc123", commits[0].GetSHA())
+		assert.Equal(t, "login", commits[0].GetAuthor().GetLogin())
+		assert.Equal(t, "Commit Name", commits[0].GetAuthor().GetName())
+		assert.Equal(t, "profile@example.com", commits[0].GetAuthor().GetEmail())
+		assert.Equal(t, "hello", commits[0].GetCommit().GetMessage())
+	}
+	assert.Equal(t, 2, attempts)
+}
+
+func TestListPullRequestCommitsComparePreservesPageOrder(t *testing.T) {
+	oldLimit := ListCommitsParallelLimit
+	ListCommitsParallelLimit = 4
+	defer func() { ListCommitsParallelLimit = oldLimit }()
+
+	var serverURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/repos/o/r/pulls/7":
+			_, err := io.WriteString(w, `{
+			  "number": 7,
+			  "base": { "sha": "base" },
+			  "head": { "sha": "head" }
+			}`)
+			assert.NoError(t, err)
+			return
+
+		case "/repos/o/r/compare/base...head":
+			switch r.URL.Query().Get("page") {
+			case "1":
+				w.Header().Set(
+					"Link",
+					fmt.Sprintf(
+						`<%s/repos/o/r/compare/base...head?page=2&per_page=100>; rel="next", <%s/repos/o/r/compare/base...head?page=3&per_page=100>; rel="last"`,
+						serverURL, serverURL,
+					),
+				)
+				_, err := io.WriteString(w, `{
+				  "commits": [{
+				    "sha": "sha1",
+				    "commit": { "message": "msg1", "author": { "name": "name1", "email": "e1@example.com" } },
+				    "author": { "id": 1, "login": "u1" }
+				  }]
+				}`)
+				assert.NoError(t, err)
+				return
+
+			case "2":
+				time.Sleep(50 * time.Millisecond)
+				_, err := io.WriteString(w, `{
+				  "commits": [{
+				    "sha": "sha2",
+				    "commit": { "message": "msg2", "author": { "name": "name2", "email": "e2@example.com" } },
+				    "author": { "id": 2, "login": "u2" }
+				  }]
+				}`)
+				assert.NoError(t, err)
+				return
+
+			case "3":
+				_, err := io.WriteString(w, `{
+				  "commits": [{
+				    "sha": "sha3",
+				    "commit": { "message": "msg3", "author": { "name": "name3", "email": "e3@example.com" } },
+				    "author": { "id": 3, "login": "u3" }
+				  }]
+				}`)
+				assert.NoError(t, err)
+				return
+			}
+		}
+
+		t.Fatalf("unexpected request: %s?%s", r.URL.Path, r.URL.RawQuery)
+	}))
+	defer srv.Close()
+	serverURL = srv.URL
+
+	client := newTestGithubClient(t, srv)
+	commits, err := ListPullRequestCommitsCompare(context.Background(), client, "o", "r", 7)
+	assert.NoError(t, err)
+	if assert.Len(t, commits, 3) {
+		assert.Equal(t, "sha1", commits[0].GetSHA())
+		assert.Equal(t, "sha2", commits[1].GetSHA())
+		assert.Equal(t, "sha3", commits[2].GetSHA())
+	}
 }
