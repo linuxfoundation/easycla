@@ -47,7 +47,7 @@ urllib3==2.6.3
 vintage==0.4.1
 wcwidth==0.1.7
 werkzeug==3.1.6
-zipp==3.19.1
+zipp==3.23.0
 markupsafe==2.1.5
 # LG:
 pynamodb==6.0.2
