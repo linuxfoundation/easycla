@@ -2195,119 +2195,83 @@ def pygithub_graphql(g, query: str, variables: dict | None = None):
         cla.log.error(f"GraphQL query: {query} failed: {exc}")
         return None
 
-def iter_pr_commits_full(g, owner: str, repo_name: str, number: int, page_size: int = 100):
-    """
-    Yield every commit in a PR (base..head) using GraphQL in ~ceil(N/100) requests.
-    Strategy:
-      1) Get head/base OIDs.
-      2) Fetch & yield HEAD (history doesn't include the starting commit).
-      3) Page through Commit.history(first=page_size, after=cursor) from HEAD until we hit the merge-base SHA.
-    """
-    page_size = max(1, min(100, page_size))
+def _pick_str(*values):
+    for value in values:
+        if isinstance(value, str):
+            value = value.strip()
+            if value:
+                return value
+    return None
 
-    # 1) base/head OIDs
-    q_info = """
-    query($owner:String!, $name:String!, $number:Int!) {
-      repository(owner:$owner, name:$name) {
-        pullRequest(number:$number) { baseRefOid headRefOid }
-      }
-    }"""
-    info = pygithub_graphql(g, q_info, {"owner": owner, "name": repo_name, "number": number})
-    if info is None:
-        cla.log.error(f"Failed to fetch base and head OIDs for commits for {owner}/{repo_name} PR #{number}")
-        raise ValueError("failed to fetch base and head OIDs for commits using GraphQL")
-    pr = info["repository"]["pullRequest"]
-    base_oid, head_oid = pr["baseRefOid"], pr["headRefOid"]
+def _compare_retry_sleep(attempt: int) -> None:
+    if attempt == 2:
+        time.sleep(1)
+    elif attempt == 3:
+        time.sleep(5)
+    elif attempt == 4:
+        time.sleep(15)
+    elif attempt >= 5:
+        time.sleep(30)
 
-    # 2) merge-base via REST (fast and reliable)
+def iter_pr_commits_compare(g, owner: str, repo_name: str, number: int, page_size: int = 100):
+    page_size = max(1, min(100, int(page_size)))
+
     repo = g.get_repo(f"{owner}/{repo_name}")
-    mb_sha = repo.compare(base_oid, head_oid).merge_base_commit.sha
+    pr = repo.get_pull(number)
 
-    # Fetch & yield HEAD commit, because history won't include the starting commit itself
-    q_head = """
-    query($owner:String!, $name:String!, $oid:GitObjectID!) {
-      repository(owner:$owner, name:$name) {
-        object(oid:$oid) {
-          ... on Commit {
-            oid
-            message
-            author { name email user { databaseId login name email } }
-          }
-        }
-      }
-    }"""
-    head = pygithub_graphql(g, q_head, {"owner": owner, "name": repo_name, "oid": head_oid})["repository"]["object"]
-    if head is None:
-        cla.log.error(f"Failed to fetch head commit for {owner}/{repo_name} PR #{number}")
-        raise ValueError("failed to fetch head commit using GraphQL")
-    if head["oid"] != mb_sha:
-        a = head.get("author") or {}; u = a.get("user") or {}
-        yield CommitLite(
-            sha=head["oid"],
-            author_id=u.get("databaseId"),
-            author_login=u.get("login"),
-            author_name=(u.get("name") or a.get("name") or None),
-            author_email=(u.get("email") or a.get("email") or None),
-            message=head.get("message"),
-        )
+    base_sha = getattr(getattr(pr, "base", None), "sha", None)
+    head_sha = getattr(getattr(pr, "head", None), "sha", None)
+    if not base_sha or not head_sha:
+        raise ValueError(f"missing base/head SHA for {owner}/{repo_name} PR #{number}")
 
-    # 3) Page through the history from HEAD; stop when we encounter merge-base
-    q_hist = """
-    query($owner:String!, $name:String!, $head:GitObjectID!, $first:Int!, $after:String) {
-      repository(owner:$owner, name:$name) {
-        object(oid:$head) {
-          ... on Commit {
-            history(first:$first, after:$after) {
-              pageInfo { hasNextPage endCursor }
-              nodes {
-                oid
-                message
-                author { name email user { databaseId login name email } }
-              }
-            }
-          }
-        }
-      }
-    }"""
+    requester = g._Github__requester
+    page = 1
 
-    after = None
-    safety_pages = 0
     while True:
-        d = pygithub_graphql(
-            g, q_hist,
-            {"owner": owner, "name": repo_name, "head": head_oid, "first": page_size, "after": after},
-        )
-        if d is None:
-            cla.log.error(f"Failed to history commits for {owner}/{repo_name} PR #{number}")
-            raise ValueError("failed to fetch history commits using GraphQL")
-        hist = d["repository"]["object"]["history"]
-        nodes = hist["nodes"]
+        data = None
+        for attempt in range(1, 7):
+            try:
+                _headers, data = requester.requestJsonAndCheck(
+                    "GET",
+                    f"/repos/{owner}/{repo_name}/compare/{base_sha}...{head_sha}",
+                    parameters={"page": page, "per_page": page_size},
+                    headers={"Accept": "application/vnd.github+json"},
+                )
+                break
+            except Exception as exc:
+                if attempt >= 6:
+                    cla.log.warning(
+                        f"iter_pr_commits_compare - compare page fetch failed for "
+                        f"{owner}/{repo_name} PR #{number}, page {page}, attempt {attempt}/6: {exc}"
+                    )
+                    raise
+                cla.log.warning(
+                    f"iter_pr_commits_compare - compare page fetch failed for "
+                    f"{owner}/{repo_name} PR #{number}, page {page}, attempt {attempt}/6: {exc} - retrying"
+                )
+                _compare_retry_sleep(attempt)
 
-        # stream until we hit merge-base
-        for n in nodes:
-            if n["oid"] == mb_sha:
-                # Finished history
-                return
-            a = n.get("author") or {}; u = a.get("user") or {}
+        commits = (data or {}).get("commits") or []
+        if not commits:
+            return
+
+        for c in commits:
+            author = c.get("author") or {}
+            commit_obj = c.get("commit") or {}
+            commit_author = commit_obj.get("author") or {}
+
             yield CommitLite(
-                sha=n["oid"],
-                author_id=u.get("databaseId"),
-                author_login=u.get("login"),
-                author_name=(u.get("name") or a.get("name") or None),
-                author_email=(u.get("email") or a.get("email") or None),
-                message=n.get("message"),
+                sha=c.get("sha"),
+                author_id=author.get("id"),
+                author_login=_pick_str(author.get("login")),
+                author_name=_pick_str(commit_author.get("name"), author.get("name"), author.get("login")),
+                author_email=_pick_str(author.get("email"), commit_author.get("email")),
+                message=commit_obj.get("message"),
             )
 
-        if not hist["pageInfo"]["hasNextPage"]:
-            # merge-base not found — extremely rare (rebases or unusual ancestry).
-            # Fall back to non-GQL old approach (limited to 250 commits but still better that error)
-            raise ValueError("merge-base commit not found in PR commit history")
-
-        after = hist["pageInfo"]["endCursor"]
-        safety_pages += 1
-        if safety_pages > 2000:  # defensive hard stop
-            raise ValueError("Too many pages while scanning history; aborting.")
-
+        if len(commits) < page_size:
+            return
+        page += 1
 
 def get_author_summary_gql(commit: CommitLite, pr: int, installation_id, with_co_authors) -> Tuple[List[UserCommitSummary], bool]:
     fn = "cla.models.github_models.get_author_summary_gql"
@@ -2405,51 +2369,46 @@ def get_pull_request_commit_authors(client, org, pull_request, installation_id, 
 
     pr_number = pull_request.number
     repo_name = pull_request.base.repo.name
-    gql_ok = True
+    compare_ok = True
     pr_commits = None
 
     count = get_pr_commit_count_gql(client, org, repo_name, pr_number)
     if count is not None:
         cla.log.debug(f"{fn} - PR: {pr_number}, number of commits (GraphQL): {count}")
     else:
-        cla.log.debug(f"{fn} - PR: {pr_number}, failed to get commits count using GraphQL, fallback to REST")
-        gql_ok = False
-        try:
-            pr_commits = pull_request.get_commits()
-            count = pr_commits.totalCount
-        except Exception as exc:
-            cla.log.warning(f"{fn} - PR: {pr_number}, get PR commits raised: {exc}")
-            raise
-        cla.log.debug(f"{fn} - PR: {pr_number}, number of commits (REST API): {count}")
-        if count == 250:
-            cla.log.warning(f"{fn} - PR: {pr_number}, commit count is 250, which is the max for REST API, there can be more commits")
+        cla.log.debug(f"{fn} - PR: {pr_number}, failed to get commits count using GraphQL, continuing with compare-based enumeration")
 
     commit_authors = []
     any_missing = False
     max_workers = 16
     submit_chunk = 256
 
-    if gql_ok:
+    if compare_ok:
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for chunk in iter_chunks(iter_pr_commits_full(client, org, repo_name, pr_number), submit_chunk):
+                for chunk in iter_chunks(iter_pr_commits_compare(client, org, repo_name, pr_number), submit_chunk):
                     futures = [executor.submit(get_author_summary_gql, c, pr_number, installation_id, with_co_authors) for c in chunk]
                     for fut in concurrent.futures.as_completed(futures):
                         authors, missing = fut.result()
                         any_missing = any_missing or missing
                         commit_authors.extend(authors)
         except Exception as exc:
-            cla.log.warning(f"{fn} - PR: {pr_number}, GraphQL processing failed: {exc}, falling back to REST")
-            gql_ok = False
+            cla.log.warning(f"{fn} - PR: {pr_number}, compare processing failed: {exc}, evaluating REST fallback")
+            compare_ok = False
             commit_authors = []
             any_missing = False
-    if not gql_ok:
+    if not compare_ok:
         if pr_commits is None:
             try:
                 pr_commits = pull_request.get_commits()
             except Exception as exc:
                 cla.log.warning(f"{fn} - PR: {pr_number}, fallback get PR commits raised: {exc}")
                 raise
+        rest_count = getattr(pr_commits, "totalCount", None)
+        if (count is not None and count > 250) or (count is None and (rest_count is None or rest_count == 250)):
+            raise ValueError(
+                f"{fn} - PR: {pr_number}, compare-based enumeration failed and REST fallback is unsafe for large PRs"
+            )
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [executor.submit(get_author_summary, c, pr_number, installation_id, with_co_authors) for c in pr_commits]
@@ -2749,10 +2708,6 @@ def update_pull_request(
                     "github", str(installation_id), github_repository_id, pull_request.number, project_version
                 )
 
-            # check if unsigned user is allowlisted
-            if user_commit_summary.commit_sha != last_commit_sha:
-                continue
-
             text += user_commit_summary.get_display_text(tag_user=True)
 
         payload = {
@@ -2763,7 +2718,7 @@ def update_pull_request(
             "details_url": help_url,
             "output": {
                 "title": "EasyCLA: Signed CLA not found",
-                "summary": "One or more committers are authorized under a signed CLA.",
+                "summary": "One or more committers are not authorized under a signed CLA.",
                 "text": text,
             },
         }
