@@ -38,6 +38,7 @@ import (
 	userservicelegacy "github.com/linuxfoundation/easycla/cla-backend-legacy/internal/legacy/userservice"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/middleware"
+	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/parity"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/pdf"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/respond"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/store"
@@ -429,6 +430,49 @@ func stringListFromAny(v any) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("invalid list type %T", v)
 	}
+}
+
+func wholeNumberString(v any) (string, error) {
+	if v == nil {
+		return "", nil
+	}
+	parseString := func(s string) (string, error) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return "", nil
+		}
+		if i, err := strconv.Atoi(s); err == nil {
+			return strconv.Itoa(i), nil
+		}
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			if f != float64(int64(f)) {
+				return "", fmt.Errorf("invalid integer: %v", s)
+			}
+			return strconv.FormatInt(int64(f), 10), nil
+		}
+		return "", fmt.Errorf("invalid integer: %v", s)
+	}
+
+	switch t := v.(type) {
+	case int:
+		return strconv.Itoa(t), nil
+	case int64:
+		return strconv.FormatInt(t, 10), nil
+	case float64:
+		if t != float64(int64(t)) {
+			return "", fmt.Errorf("invalid integer: %v", t)
+		}
+		return strconv.FormatInt(int64(t), 10), nil
+	case float32:
+		if t != float32(int64(t)) {
+			return "", fmt.Errorf("invalid integer: %v", t)
+		}
+		return strconv.FormatInt(int64(t), 10), nil
+	case string:
+		return parseString(t)
+	}
+
+	return parseString(fmt.Sprint(v))
 }
 
 func uniqueStringsPreserveOrder(in []string) []string {
@@ -1316,6 +1360,10 @@ func (h *Handlers) GetUserSignaturesV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := chi.URLParam(r, "user_id")
+	if _, err := uuid.Parse(userID); err != nil {
+		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"user_id": "invalid uuid"}})
+		return
+	}
 	_, found, err := h.users.GetByID(ctx, userID)
 	if err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"user_id": err.Error()}})
@@ -1823,36 +1871,66 @@ func (h *Handlers) RequestCompanyCclaV2(w http.ResponseWriter, r *http.Request) 
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"project_id": "Project not found"}})
 		return
 	}
+	projectName := getAttrString(project, "project_name")
+	companyName := getAttrString(company, "company_name")
 
-	// FIXME: Legacy Python bug: request_company_ccla calls send_email_to_cla_manager() with the wrong number
-	// of positional arguments when the company has at least one resolved CLA manager. That triggers a TypeError and
-	// returns HTTP 500. For 1:1 parity, we intentionally fail in that situation.
-	managersFound := 0
-	for _, username := range getAttrStringSlice(company, "company_acl") {
-		username = strings.TrimSpace(username)
-		if username == "" {
-			continue
-		}
-		users, qerr := h.users.QueryByLFUsername(ctx, username)
+	// EASYCLA_PARITY_FLAG: default preserves the legacy Python crash paths in request_company_ccla():
+	// Company.get_managers_by_company_acl() crashes on missing usernames, and send_email_to_cla_manager()
+	// crashes with the wrong positional arity when at least one manager resolves.
+	if !parity.FixRequestCompanyCclaV2 {
+		managers, crashMsg, qerr := h.companyManagersLikePython(ctx, company)
 		if qerr != nil {
 			respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"user": qerr.Error()}})
 			return
 		}
-		if len(users) > 0 {
-			managersFound++
+		if crashMsg != "" {
+			respond.JSON(w, http.StatusInternalServerError, map[string]any{
+				"errors": map[string]any{
+					"server": "legacy python parity: " + crashMsg,
+				},
+			})
+			return
+		}
+		if len(managers) > 0 {
+			respond.JSON(w, http.StatusInternalServerError, map[string]any{
+				"errors": map[string]any{
+					"server": "legacy python parity: send_email_to_cla_manager() takes 7 positional arguments but 8 were given",
+				},
+			})
+			return
+		}
+	} else {
+		contributorName := strings.TrimSpace(getAttrString(user, "user_name"))
+		if contributorName == "" {
+			contributorName = strings.TrimSpace(getAttrString(user, "lf_username"))
+		}
+		if contributorName == "" {
+			contributorName = userEmail
+		}
+		managers, qerr := h.companyManagersForSending(ctx, company)
+		if qerr != nil {
+			respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"user": qerr.Error()}})
+			return
+		}
+		for _, admin := range managers {
+			claManagerName := strings.TrimSpace(getAttrString(admin, "user_name"))
+			if claManagerName == "" {
+				claManagerName = strings.TrimSpace(getAttrString(admin, "lf_username"))
+			}
+			if claManagerName == "" {
+				claManagerName = getAttrString(admin, "user_id")
+			}
+			claManagerEmail := strings.TrimSpace(getUserEmailLikePython(admin))
+			if claManagerEmail == "" {
+				respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": fmt.Sprintf("CLA manager %s does not have an email address", claManagerName)}})
+				return
+			}
+			if err := sendEmailToCLAManager(ctx, project, contributorName, userEmail, claManagerName, claManagerEmail, companyName, true); err != nil {
+				respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
+				return
+			}
 		}
 	}
-	if managersFound > 0 {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{
-			"errors": map[string]any{
-				"server": "legacy python parity: send_email_to_cla_manager() takes 7 positional arguments but 8 were given",
-			},
-		})
-		return
-	}
-
-	projectName := getAttrString(project, "project_name")
-	companyName := getAttrString(company, "company_name")
 
 	// Legacy Python records a generic event message and explicitly marks it as not containing PII.
 	eventMsg := fmt.Sprintf("Sent email to sign ccla for %s", projectName)
@@ -2019,6 +2097,78 @@ else who is authorized to sign the CLA.</p> \
 	}
 	return svc.Send(ctx, subject, body, []string{claManagerEmail})
 }
+func (h *Handlers) companyManagersLikePython(ctx context.Context, company map[string]types.AttributeValue) ([]map[string]types.AttributeValue, string, error) {
+	if h == nil || h.users == nil {
+		return nil, "", fmt.Errorf("users store not configured")
+	}
+	if company == nil {
+		return nil, "'NoneType' object is not iterable", nil
+	}
+	aclAV, ok := company["company_acl"]
+	if !ok || aclAV == nil {
+		// Python: for username in None -> TypeError before any side effects.
+		return nil, "'NoneType' object is not iterable", nil
+	}
+
+	usernames := getAttrStringSlice(company, "company_acl")
+	if usernames == nil {
+		return nil, "'NoneType' object is not iterable", nil
+	}
+
+	managers := make([]map[string]types.AttributeValue, 0, len(usernames))
+	for _, username := range usernames {
+		username = strings.TrimSpace(username)
+		users, err := h.users.QueryByLFUsername(ctx, username)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(users) > 1 {
+			logging.Warnf("More than one user record returned for username: %s", username)
+		}
+		if users == nil {
+			// Python: len(None) raises TypeError before the caller starts emailing managers.
+			return nil, "object of type 'NoneType' has no len()", nil
+		}
+		if len(users) == 0 {
+			// Python: users[0] on an empty list raises IndexError.
+			return nil, "list index out of range", nil
+		}
+		managers = append(managers, users[0])
+	}
+	return managers, "", nil
+}
+
+func (h *Handlers) companyManagersForSending(ctx context.Context, company map[string]types.AttributeValue) ([]map[string]types.AttributeValue, error) {
+	if h == nil || h.users == nil {
+		return nil, fmt.Errorf("users store not configured")
+	}
+	if company == nil {
+		return nil, nil
+	}
+	usernames := getAttrStringSlice(company, "company_acl")
+	if len(usernames) == 0 {
+		return nil, nil
+	}
+	managers := make([]map[string]types.AttributeValue, 0, len(usernames))
+	for _, username := range usernames {
+		username = strings.TrimSpace(username)
+		if username == "" {
+			continue
+		}
+		users, err := h.users.QueryByLFUsername(ctx, username)
+		if err != nil {
+			return nil, err
+		}
+		if len(users) > 1 {
+			logging.Warnf("More than one user record returned for username: %s", username)
+		}
+		if len(users) == 0 {
+			continue
+		}
+		managers = append(managers, users[0])
+	}
+	return managers, nil
+}
 
 func (h *Handlers) loadActiveSignatureMetadata(ctx context.Context, userID string) (map[string]any, bool, error) {
 	if h.kv == nil {
@@ -2079,6 +2229,172 @@ func (h *Handlers) computeReturnURLFromActiveSignatureMetadata(ctx context.Conte
 		return "", nil
 	}
 	return fmt.Sprintf("https://github.com/%s/%s/pull/%s", org, name, prID), nil
+}
+
+func legacyPythonNilSubscriptError() error {
+	return errors.New("TypeError: 'NoneType' object is not subscriptable")
+}
+
+func legacyPythonKeyError(key string) error {
+	return fmt.Errorf("KeyError: '%s'", key)
+}
+
+func pythonIntFromAny(value any) (int64, error) {
+	switch v := value.(type) {
+	case nil:
+		return 0, errors.New("TypeError: int() argument must be a string, a bytes-like object or a real number, not 'NoneType'")
+	case int:
+		return int64(v), nil
+	case int8:
+		return int64(v), nil
+	case int16:
+		return int64(v), nil
+	case int32:
+		return int64(v), nil
+	case int64:
+		return v, nil
+	case uint:
+		return int64(v), nil
+	case uint8:
+		return int64(v), nil
+	case uint16:
+		return int64(v), nil
+	case uint32:
+		return int64(v), nil
+	case uint64:
+		return int64(v), nil
+	case float32:
+		return int64(v), nil
+	case float64:
+		return int64(v), nil
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i, nil
+		}
+		f, err := v.Float64()
+		if err != nil {
+			return 0, fmt.Errorf("ValueError: invalid literal for int() with base 10: %q", v.String())
+		}
+		return int64(f), nil
+	case string:
+		s := strings.TrimSpace(v)
+		i, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("ValueError: invalid literal for int() with base 10: %q", v)
+		}
+		return i, nil
+	default:
+		s := fmt.Sprintf("%v", value)
+		i, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("ValueError: invalid literal for int() with base 10: %q", s)
+		}
+		return i, nil
+	}
+}
+
+func (h *Handlers) githubInstallationIDFromRepository(ctx context.Context, githubRepositoryID string) (string, bool, error) {
+	if strings.TrimSpace(githubRepositoryID) == "" || h.repos == nil || h.githubOrgs == nil {
+		return "", false, nil
+	}
+	repo, found, err := h.repos.GetByExternalIDAndType(ctx, githubRepositoryID, "github")
+	if err != nil {
+		return "", false, err
+	}
+	if !found {
+		return "", false, nil
+	}
+	orgName := strings.TrimSpace(getAttrString(repo, "repository_organization_name"))
+	if orgName == "" {
+		return "", false, nil
+	}
+	org, found, err := h.githubOrgs.GetByName(ctx, orgName)
+	if err != nil {
+		return "", false, err
+	}
+	if !found {
+		return "", false, nil
+	}
+	installationID := strings.TrimSpace(getAttrString(org, "organization_installation_id"))
+	if installationID == "" {
+		return "", false, nil
+	}
+	return installationID, true, nil
+}
+
+func (h *Handlers) gitlabOrganizationIDFromRepository(ctx context.Context, gitlabRepositoryID string) (string, bool, error) {
+	if strings.TrimSpace(gitlabRepositoryID) == "" || h.repos == nil || h.gitlabOrgs == nil {
+		return "", false, nil
+	}
+	repo, found, err := h.repos.GetByExternalIDAndType(ctx, gitlabRepositoryID, "gitlab")
+	if err != nil {
+		return "", false, err
+	}
+	if !found {
+		return "", false, nil
+	}
+	orgNameLower := strings.ToLower(strings.TrimSpace(getAttrString(repo, "repository_organization_name")))
+	if orgNameLower == "" {
+		return "", false, nil
+	}
+	items, err := h.gitlabOrgs.ScanAll(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	for _, it := range items {
+		candidateLower := strings.ToLower(strings.TrimSpace(getAttrString(it, "organization_name_lower")))
+		if candidateLower == "" {
+			candidateLower = strings.ToLower(strings.TrimSpace(getAttrString(it, "organization_name")))
+		}
+		if candidateLower != orgNameLower {
+			continue
+		}
+		organizationID := strings.TrimSpace(getAttrString(it, "organization_id"))
+		if organizationID == "" {
+			return "", false, nil
+		}
+		return organizationID, true, nil
+	}
+	return "", false, nil
+}
+
+func (h *Handlers) triggerGitHubChangeRequestUpdateV4(ctx context.Context, installationID, githubRepositoryID, changeRequestID string) error {
+	payload, err := json.Marshal(map[string]any{
+		"installation_id":      installationID,
+		"github_repository_id": githubRepositoryID,
+		"change_request_id":    changeRequestID,
+	})
+	if err != nil {
+		return err
+	}
+	status, _, respBody, err := h.doRequestToV4(ctx, http.MethodPost, "/internal/github/trigger-change-request", headerCloneForV4(http.Header{}), payload)
+	if err != nil {
+		return err
+	}
+	if status >= 400 {
+		if len(respBody) == 0 {
+			return fmt.Errorf("v4 github trigger returned status %d", status)
+		}
+		return fmt.Errorf("v4 github trigger returned status %d: %s", status, string(respBody))
+	}
+	return nil
+}
+
+func (h *Handlers) triggerGitLabMergeRequestUpdateV4(ctx context.Context, organizationID *string, gitlabRepositoryID, mergeRequestID int64) error {
+	payload := map[string]any{
+		"gitlab_external_repository_id": gitlabRepositoryID,
+		"gitlab_mr_id":                  mergeRequestID,
+		"gitlab_organization_id":        nil,
+	}
+	if organizationID != nil {
+		payload["gitlab_organization_id"] = *organizationID
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, _, _, err = h.doRequestToV4(ctx, http.MethodPost, "/gitlab/trigger", headerCloneForV4(http.Header{}), body)
+	return err
 }
 
 // GET /v2/user/{user_id}/active-signature
@@ -2586,20 +2902,28 @@ func (h *Handlers) PutSignatureV1(w http.ResponseWriter, r *http.Request) {
 
 	updateStr := "Updated Signature fields: "
 	changed := false
-
-	// signature_document_major_version / signature_document_minor_version
-	if majRaw, ok := getParam("signature_document_major_version"); ok {
-		maj := strings.TrimSpace(fmt.Sprint(majRaw))
+	// EASYCLA_PARITY_FLAG: legacy Python PUT /v1/signature does not expose
+	// signature_document_major_version/signature_document_minor_version; default ignores them.
+	if majRaw, ok := getParam("signature_document_major_version"); ok && parity.EnablePutSignatureDocumentVersionUpdates {
+		maj, err := wholeNumberString(majRaw)
+		if err != nil {
+			respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"signature_document_major_version": err.Error()}})
+			return
+		}
 		if maj != "" {
-			sig["signature_document_major_version"] = &types.AttributeValueMemberS{Value: maj}
+			sig["signature_document_major_version"] = &types.AttributeValueMemberN{Value: maj}
 			updateStr += fmt.Sprintf("Signature document version changed to %s.%s. ", maj, getAttrString(sig, "signature_document_minor_version"))
 			changed = true
 		}
 	}
-	if minRaw, ok := getParam("signature_document_minor_version"); ok {
-		min := strings.TrimSpace(fmt.Sprint(minRaw))
+	if minRaw, ok := getParam("signature_document_minor_version"); ok && parity.EnablePutSignatureDocumentVersionUpdates {
+		min, err := wholeNumberString(minRaw)
+		if err != nil {
+			respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"signature_document_minor_version": err.Error()}})
+			return
+		}
 		if min != "" {
-			sig["signature_document_minor_version"] = &types.AttributeValueMemberS{Value: min}
+			sig["signature_document_minor_version"] = &types.AttributeValueMemberN{Value: min}
 			updateStr += fmt.Sprintf("Signature document version changed to %s.%s. ", getAttrString(sig, "signature_document_major_version"), min)
 			changed = true
 		}
@@ -2610,13 +2934,10 @@ func (h *Handlers) PutSignatureV1(w http.ResponseWriter, r *http.Request) {
 		updateStr += fmt.Sprintf("Signature reference ID changed to %s. ", v)
 		changed = true
 	}
-
-	if _, ok := getParam("signature_reference_type"); ok {
-		// Legacy Python bug: update_signature() calls a non-existent method when signature_reference_type is provided.
-		// That results in a 500. Keep parity.
-		// FIXME: once Python is removed, decide whether to implement the intended behavior.
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": "signature_reference_type update is broken in legacy Python (get_signature_user_ccla_employee_id missing)"}})
-		return
+	if v, ok := getString("signature_reference_type"); ok {
+		sig["signature_reference_type"] = &types.AttributeValueMemberS{Value: v}
+		updateStr += fmt.Sprintf("Signature reference type changed to %s. ", v)
+		changed = true
 	}
 
 	if v, ok := getString("signature_project_id"); ok {
@@ -2688,8 +3009,9 @@ func (h *Handlers) PutSignatureV1(w http.ResponseWriter, r *http.Request) {
 		updateStr += fmt.Sprintf("Signature sign URL changed to %s. ", v)
 		changed = true
 	}
-
-	if v, ok := getString("signature_user_ccla_company_id"); ok {
+	// EASYCLA_PARITY_FLAG: legacy Python PUT /v1/signature does not expose
+	// signature_user_ccla_company_id; default ignores it.
+	if v, ok := getString("signature_user_ccla_company_id"); ok && parity.EnablePutSignatureAdditionalFieldUpdates {
 		if v == "" {
 			delete(sig, "signature_user_ccla_company_id")
 		} else {
@@ -2698,7 +3020,8 @@ func (h *Handlers) PutSignatureV1(w http.ResponseWriter, r *http.Request) {
 		updateStr += fmt.Sprintf("Signature user CCLA company ID changed to %s. ", v)
 		changed = true
 	}
-
+	// EASYCLA_PARITY_FLAG: legacy Python PUT /v1/signature only exposes the legacy *_whitelist
+	// API parameter names; default ignores newer *_allowlist aliases.
 	// Allowlist fields: accept both legacy *_whitelist param names and newer *_allowlist.
 	// IMPORTANT: DynamoDB schema for the legacy Python service uses the *_whitelist attribute names.
 	// The UI models (console) also expect *_whitelist fields.
@@ -2715,7 +3038,7 @@ func (h *Handlers) PutSignatureV1(w http.ResponseWriter, r *http.Request) {
 		legacyKey := pair[0]
 		altKey := pair[1]
 		raw, ok := getParam(legacyKey)
-		if !ok {
+		if !ok && parity.EnablePutSignatureAllowlistAliasParams {
 			// try allowlist key
 			raw, ok = getParam(altKey)
 		}
@@ -2931,6 +3254,7 @@ func (h *Handlers) GetSignaturesUserProjectV1(w http.ResponseWriter, r *http.Req
 // Calls: cla.controllers.signature.get_user_project_signatures
 
 func (h *Handlers) GetSignaturesUserProjectTypeV1(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	userID := chi.URLParam(r, "user_id")
 	projectID := chi.URLParam(r, "project_id")
 	signatureType := chi.URLParam(r, "signature_type")
@@ -2946,19 +3270,60 @@ func (h *Handlers) GetSignaturesUserProjectTypeV1(w http.ResponseWriter, r *http
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"signature_type": "Invalid value passed. The accepted values are: (individual|employee)"}})
 		return
 	}
-	// FIXME: The legacy Python implementation (controllers.signature.get_user_project_signatures)
-	// calls signature.get_signature_user_ccla_employee_id(), but Signature has no such method.
-	// This appears to raise an AttributeError and return 500s. Keep parity for valid typed inputs.
 	_, authErrResp, err := h.authValidator.Authenticate(r.Header)
 	if err != nil {
 		respond.JSON(w, http.StatusUnauthorized, authErrResp)
 		return
 	}
-	respond.JSON(w, http.StatusInternalServerError, map[string]any{
-		"errors": map[string]any{
-			"server": "AttributeError: 'Signature' object has no attribute 'get_signature_user_ccla_employee_id'",
-		},
-	})
+
+	sigItems, err := h.signatures.QueryByProjectID(ctx, projectID)
+	if err != nil {
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
+		return
+	}
+
+	matching := make([]map[string]types.AttributeValue, 0, 8)
+	for _, it := range sigItems {
+		if getAttrString(it, "signature_reference_type") != "user" {
+			continue
+		}
+		if getAttrString(it, "signature_reference_id") != userID {
+			continue
+		}
+		matching = append(matching, it)
+	}
+
+	// EASYCLA_PARITY_FLAG: default preserves the legacy Python AttributeError in
+	// controllers.signature.get_user_project_signatures(); the crash only occurs when the
+	// project/user query returned at least one signature to iterate.
+	if !parity.FixGetSignaturesUserProjectTypeV1 {
+		if len(matching) == 0 {
+			respond.JSON(w, http.StatusOK, []map[string]any{})
+			return
+		}
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{
+			"errors": map[string]any{
+				"server": "AttributeError: 'Signature' object has no attribute 'get_signature_user_ccla_employee_id'",
+			},
+		})
+		return
+	}
+
+	out := make([]map[string]any, 0, len(matching))
+	for _, it := range matching {
+		sigCompanyID := strings.TrimSpace(getAttrString(it, "signature_user_ccla_company_id"))
+		if signatureType == "individual" && sigCompanyID != "" {
+			continue
+		}
+		if signatureType == "employee" && sigCompanyID == "" {
+			continue
+		}
+		m := store.ItemToInterfaceMap(it)
+		delete(m, "user_docusign_raw_xml")
+		out = append(out, m)
+	}
+
+	respond.JSON(w, http.StatusOK, out)
 }
 
 // GET /v1/signatures/company/{company_id}
@@ -3323,8 +3688,13 @@ func (h *Handlers) AddClaManagerV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		// Legacy Python bug: add_cla_manager() returns project_id on signature load failures.
-		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"project_id": "Signature not found"}})
+		// EASYCLA_PARITY_FLAG: default preserves the legacy Python project_id error key bug in add_cla_manager();
+		// set EASYCLA_FIX_ADD_CLA_MANAGER_V1_NOT_FOUND_ERROR_KEY=true to return signature_id instead.
+		errKey := "project_id"
+		if parity.FixAddClaManagerV1NotFoundErrorKey {
+			errKey = "signature_id"
+		}
+		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{errKey: "Signature not found"}})
 		return
 	}
 
@@ -4277,10 +4647,9 @@ func (h *Handlers) PutCompanyAllowlistCsvV1(w http.ResponseWriter, r *http.Reque
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"company_id": "invalid uuid"}})
 		return
 	}
-
-	// FIXME: Legacy Python implementation has update_company_allowlist_csv commented out in
-	// cla.controllers.company (route exists, controller function is missing). The Python runtime
-	// behavior is an AttributeError -> 500. Preserve parity here.
+	// EASYCLA_PARITY_FLAG: legacy Python has update_company_allowlist_csv commented out in
+	// cla.controllers.company (route exists, controller function is missing). The runtime behavior
+	// is an AttributeError -> 500, and there is not enough grounded source to add a safe fixed path here.
 	respond.JSON(w, http.StatusInternalServerError, map[string]any{
 		"errors": map[string]any{
 			"server": "legacy python parity: update_company_allowlist_csv is not implemented",
@@ -5449,14 +5818,35 @@ func (h *Handlers) GetProjectDocumentMatchingVersionV1(w http.ResponseWriter, r 
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"document": noDocMsg}})
 		return
 	}
-
-	// FIXME: Python legacy implementation ignores major/minor in get_project_document_raw() because
-	// Project.get_project_*_document() always returns the latest document. Keep parity here.
-	// (See: cla/models/dynamo_models.py Project.get_project_individual_document)
-	doc, _, _, okDoc := latestDocFromDocsAV(docsAV)
-	if !okDoc {
-		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"document": noDocMsg}})
-		return
+	// EASYCLA_PARITY_FLAG: default preserves the legacy Python bug where requested major/minor
+	// versions are ignored and the latest document is always served.
+	var doc map[string]types.AttributeValue
+	if !parity.FixGetProjectDocumentMatchingVersionV1 {
+		var okDoc bool
+		doc, _, _, okDoc = latestDocFromDocsAV(docsAV)
+		if !okDoc {
+			respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"document": noDocMsg}})
+			return
+		}
+	} else {
+		majorStr, err := wholeNumberString(chi.URLParam(r, "document_major_version"))
+		if err != nil || majorStr == "" {
+			respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"document_major_version": "invalid"}})
+			return
+		}
+		minorStr, err := wholeNumberString(chi.URLParam(r, "document_minor_version"))
+		if err != nil || minorStr == "" {
+			respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"document_minor_version": "invalid"}})
+			return
+		}
+		major, _ := strconv.Atoi(majorStr)
+		minor, _ := strconv.Atoi(minorStr)
+		var okDoc bool
+		doc, okDoc = docByVersionFromDocsAV(docsAV, major, minor)
+		if !okDoc {
+			respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"document": "Document version not found"}})
+			return
+		}
 	}
 
 	pdfBytes, err := h.fetchProjectDocumentPDF(ctx, doc)
@@ -5895,9 +6285,14 @@ func (h *Handlers) PostProjectDocumentTemplateV1(w http.ResponseWriter, r *http.
 		newMajor = major + 1
 		newMinor = 0
 	} else {
-		// NOTE: Legacy Python only sets minor_version here (major_version remains the default of 1).
-		// This becomes incorrect if the previous major_version was >1.
-		// FIXME: The legacy Python implementation likely has a versioning bug here.
+		// EASYCLA_PARITY_FLAG: default preserves the legacy Python template minor-version bug
+		// where the document major version can reset to the default 1 instead of the current major.
+		if parity.FixPostProjectDocumentTemplateV1Versioning {
+			if major == 0 {
+				major = 1
+			}
+			newMajor = major
+		}
 		newMinor = minor + 1
 	}
 
@@ -6011,7 +6406,7 @@ func (h *Handlers) PostProjectDocumentTemplateV1(w http.ResponseWriter, r *http.
 
 	// Best-effort audit event (matches other document writes).
 	projectName := getAttrString(projectItem, "project_name")
-	eventData := fmt.Sprintf("Created new document template for Project-%s ", projectName)
+	eventData := fmt.Sprintf("Project Document created for project %s created with template %s", projectName, req.TemplateName)
 	h.putAuditEventBestEffort(ctx, auditEventInput{
 		EventType:       "CreateProjectDocumentTemplate",
 		EventCLAGroupID: projectID,
@@ -6269,6 +6664,50 @@ func latestDocFromDocsAV(docsAV types.AttributeValue) (doc map[string]types.Attr
 		return nil, 0, -1, false
 	}
 	return lastDoc, lastMajor, lastMinor, true
+}
+
+func docByVersionFromDocsAV(docsAV types.AttributeValue, major int, minor int) (map[string]types.AttributeValue, bool) {
+	list, okList := docsAV.(*types.AttributeValueMemberL)
+	if !okList {
+		return nil, false
+	}
+
+	var matched map[string]types.AttributeValue
+	var matchedDate time.Time
+	hasDate := false
+
+	for _, el := range list.Value {
+		m, okM := el.(*types.AttributeValueMemberM)
+		if !okM {
+			continue
+		}
+		if docInt(m.Value, "document_major_version", 0) != major || docInt(m.Value, "document_minor_version", -1) != minor {
+			continue
+		}
+
+		curDate, curHasDate := parsePynamoDateTimeStringLocal(docString(m.Value, "document_creation_date"))
+		if matched == nil {
+			matched = m.Value
+			if curHasDate {
+				matchedDate = curDate
+				hasDate = true
+			}
+			continue
+		}
+
+		if hasDate && curHasDate {
+			if curDate.After(matchedDate) {
+				matchedDate = curDate
+				matched = m.Value
+			}
+		} else if !hasDate && curHasDate {
+			matchedDate = curDate
+			hasDate = true
+			matched = m.Value
+		}
+	}
+
+	return matched, matched != nil
 }
 
 func lastDocVersionFromDocsAV(docsAV types.AttributeValue) (major int, minor int) {
@@ -7892,12 +8331,92 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 			githublegacy.UpdateCacheAfterSignature(req.ProjectID, uid, githubID, githubUsername, emails, aff)
 		}
 
-		// Legacy Python also updates the repository provider when the project does not require
-		// a separate ICLA. That side effect is still not implemented locally.
-		if av, ok := project["project_ccla_requires_icla_signature"].(*types.AttributeValueMemberBOOL); ok && !av.Value && h.kv != nil {
-			// Best-effort cleanup parity: remove active signature metadata.
-			_ = h.kv.Delete(ctx, fmt.Sprintf("active_signature:%s", req.UserID))
-			_ = signatureMetadata
+		// EASYCLA_PARITY_FLAG: legacy Python also updates the repository provider when the project
+		// does not require a separate ICLA, and only removes active signature metadata after that side effect succeeds.
+		if av, ok := project["project_ccla_requires_icla_signature"].(*types.AttributeValueMemberBOOL); ok && !av.Value {
+			switch strings.ToLower(returnURLType) {
+			case "github":
+				if signatureMetadata == nil {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": legacyPythonNilSubscriptError().Error()}})
+					return
+				}
+				githubRepositoryMeta, ok := signatureMetadata["repository_id"]
+				if !ok {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": legacyPythonKeyError("repository_id").Error()}})
+					return
+				}
+				changeRequestMeta, ok := signatureMetadata["pull_request_id"]
+				if !ok {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": legacyPythonKeyError("pull_request_id").Error()}})
+					return
+				}
+				githubRepositoryID := strings.TrimSpace(fmt.Sprintf("%v", githubRepositoryMeta))
+				if githubRepositoryID == "<nil>" {
+					githubRepositoryID = ""
+				}
+				changeRequestID := strings.TrimSpace(fmt.Sprintf("%v", changeRequestMeta))
+				if changeRequestID == "<nil>" {
+					changeRequestID = ""
+				}
+				installationID, found, installErr := h.githubInstallationIDFromRepository(ctx, githubRepositoryID)
+				if installErr != nil {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": installErr.Error()}})
+					return
+				}
+				if !found {
+					respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"github_repository_id": "The given github repository ID does not exist. "}})
+					return
+				}
+				if err := h.triggerGitHubChangeRequestUpdateV4(ctx, installationID, githubRepositoryID, changeRequestID); err != nil {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
+					return
+				}
+			case "gitlab":
+				if signatureMetadata == nil {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": legacyPythonNilSubscriptError().Error()}})
+					return
+				}
+				repositoryMeta, ok := signatureMetadata["repository_id"]
+				if !ok {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": legacyPythonKeyError("repository_id").Error()}})
+					return
+				}
+				mergeMeta, ok := signatureMetadata["merge_request_id"]
+				if !ok {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": legacyPythonKeyError("merge_request_id").Error()}})
+					return
+				}
+				gitlabRepositoryID, convErr := pythonIntFromAny(repositoryMeta)
+				if convErr != nil {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": convErr.Error()}})
+					return
+				}
+				mergeRequestID, convErr := pythonIntFromAny(mergeMeta)
+				if convErr != nil {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": convErr.Error()}})
+					return
+				}
+				organizationID, found, orgErr := h.gitlabOrganizationIDFromRepository(ctx, strconv.FormatInt(gitlabRepositoryID, 10))
+				if orgErr != nil {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": orgErr.Error()}})
+					return
+				}
+				var organizationIDPtr *string
+				if found {
+					organizationIDPtr = &organizationID
+				}
+				if err := h.triggerGitLabMergeRequestUpdateV4(ctx, organizationIDPtr, gitlabRepositoryID, mergeRequestID); err != nil {
+					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
+					return
+				}
+				if !found {
+					respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"gitlab_repository_id": "The given github repository ID does not exist. "}})
+					return
+				}
+			}
+			if h.kv != nil {
+				_ = h.kv.Delete(ctx, fmt.Sprintf("active_signature:%s", req.UserID))
+			}
 		}
 	}
 
@@ -8412,7 +8931,7 @@ func (h *Handlers) Oauth2RedirectV2(w http.ResponseWriter, r *http.Request) {
 	//   - Requires auth (check_auth)
 	//   - Returns 500 for authorized calls
 	//
-	// FIXME: This behavior is intentionally incorrect to match legacy Python.
+	// EASYCLA_PARITY_FLAG: this behavior is intentionally incorrect to match legacy Python.
 	_, errResp, err := h.authValidator.Authenticate(r.Header)
 	if err != nil {
 		respond.JSON(w, http.StatusUnauthorized, errResp)
@@ -9795,9 +10314,9 @@ func (h *Handlers) ClearCacheV2(w http.ResponseWriter, r *http.Request) {
 // Calls: cla.controllers.event.create_event
 
 func (h *Handlers) CreateEventV1(w http.ResponseWriter, r *http.Request) {
-	// FIXME: In the provided legacy Python sources, cla.controllers.event does not define create_event,
-	// but cla.routes defines the endpoint to call it. If invoked, Python errors with AttributeError -> 500.
-	// Preserve 1:1 parity here.
+	// EASYCLA_PARITY_FLAG: in the provided legacy Python sources, cla.controllers.event does not define
+	// create_event, but cla.routes defines the endpoint to call it. If invoked, Python errors with
+	// AttributeError -> 500, so the default Go path preserves that behavior.
 	respond.JSON(w, http.StatusInternalServerError, map[string]any{
 		"errors": map[string]any{
 			"server": "legacy python parity: cla.controllers.event.create_event is missing",

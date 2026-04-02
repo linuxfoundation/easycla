@@ -490,6 +490,20 @@ func (mr *MockSignatureServiceMockRecorder) UpdateEnvelopeDetails(ctx, signature
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEnvelopeDetails", reflect.TypeOf((*MockSignatureService)(nil).UpdateEnvelopeDetails), ctx, signatureID, envelopeID, signURL)
 }
 
+// TriggerGitHubChangeRequestUpdate mocks base method.
+func (m *MockSignatureService) TriggerGitHubChangeRequestUpdate(ctx context.Context, installationID, githubRepositoryID, changeRequestID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TriggerGitHubChangeRequestUpdate", ctx, installationID, githubRepositoryID, changeRequestID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// TriggerGitHubChangeRequestUpdate indicates an expected call of TriggerGitHubChangeRequestUpdate.
+func (mr *MockSignatureServiceMockRecorder) TriggerGitHubChangeRequestUpdate(ctx, installationID, githubRepositoryID, changeRequestID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TriggerGitHubChangeRequestUpdate", reflect.TypeOf((*MockSignatureService)(nil).TriggerGitHubChangeRequestUpdate), ctx, installationID, githubRepositoryID, changeRequestID)
+}
+
 // UpdateSignature mocks base method.
 func (m *MockSignatureService) UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error {
 	m.ctrl.T.Helper()
