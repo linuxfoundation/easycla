@@ -2,10 +2,14 @@
   "minSeverity": "high",
   "allowlist": [
     1111997,
-    1115552
+    1115552,
+    1115805,
+    1115806
   ],
   "notes": {
     "1111997": "aws-sdk v2 advisory flagged as 'No patch available' in our current baseline; accepted until migration.",
-    "1115552": "picomatch advisory introduced after the current lockfile baseline; temporarily allowlisted to restore CI while the transitive dependency upgrade is refreshed explicitly in backend yarn.lock files."
+    "1115552": "picomatch advisory introduced after the current lockfile baseline; temporarily allowlisted to restore CI while the transitive dependency upgrade is refreshed explicitly in backend yarn.lock files.",
+    "1115805": "lodash-es _.template advisory (GHSA-r5fr-rjxr-66jc / CVE-2026-4800). Temporary CI allowlist to avoid widening this parity PR into a backend dependency refresh.",
+    "1115806": "lodash _.template advisory (GHSA-r5fr-rjxr-66jc / CVE-2026-4800). Temporary CI allowlist to avoid widening this parity PR into a backend dependency refresh."
   }
 }
