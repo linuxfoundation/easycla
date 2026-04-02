@@ -186,6 +186,64 @@ func enabledByEnvOrStage(envVar, stage string, defaultByStage [2]bool) bool {
 	return defaultByStage[0]
 }
 
+func wholeNumberStringFromJSON(v interface{}) (string, error) {
+	switch t := v.(type) {
+	case nil:
+		return "", errors.New("missing value")
+	case string:
+		s := strings.TrimSpace(t)
+		if s == "" {
+			return "", errors.New("missing value")
+		}
+		i, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return "", fmt.Errorf("invalid integer: %v", t)
+		}
+		return strconv.FormatInt(i, 10), nil
+	case json.Number:
+		if i, err := t.Int64(); err == nil {
+			return strconv.FormatInt(i, 10), nil
+		}
+		f, err := t.Float64()
+		if err != nil || f != float64(int64(f)) {
+			return "", fmt.Errorf("invalid integer: %v", t)
+		}
+		return strconv.FormatInt(int64(f), 10), nil
+	case float64:
+		if t != float64(int64(t)) {
+			return "", fmt.Errorf("invalid integer: %v", t)
+		}
+		return strconv.FormatInt(int64(t), 10), nil
+	case float32:
+		if t != float32(int64(t)) {
+			return "", fmt.Errorf("invalid integer: %v", t)
+		}
+		return strconv.FormatInt(int64(t), 10), nil
+	case int:
+		return strconv.Itoa(t), nil
+	case int8:
+		return strconv.FormatInt(int64(t), 10), nil
+	case int16:
+		return strconv.FormatInt(int64(t), 10), nil
+	case int32:
+		return strconv.FormatInt(int64(t), 10), nil
+	case int64:
+		return strconv.FormatInt(t, 10), nil
+	case uint:
+		return strconv.FormatUint(uint64(t), 10), nil
+	case uint8:
+		return strconv.FormatUint(uint64(t), 10), nil
+	case uint16:
+		return strconv.FormatUint(uint64(t), 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(t), 10), nil
+	case uint64:
+		return strconv.FormatUint(t, 10), nil
+	default:
+		return "", fmt.Errorf("invalid integer: %v", v)
+	}
+}
+
 // apiPathLoggerWithDB creates a middleware that logs API requests to DynamoDB
 func apiPathLoggerWithDB(apiLogsRepo api_logs.Repository) func(http.Handler) http.Handler {
 	// No-op when API logging is disabled. This prevents nil deref panics if the middleware
@@ -558,6 +616,64 @@ func server(localMode bool) http.Handler {
 		}
 		return err
 	})
+	internalGitHubTriggerPath := strings.TrimRight(v2SwaggerSpec.BasePath(), "/") + "/internal/github/trigger-change-request"
+	internalGitHubTriggerHandler := middlewareSetupfunc(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		decoder.UseNumber()
+		var payload map[string]interface{}
+		if err := decoder.Decode(&payload); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"message": err.Error()})
+			return
+		}
+
+		installationID, err := wholeNumberStringFromJSON(payload["installation_id"])
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"message": err.Error()})
+			return
+		}
+		githubRepositoryID, err := wholeNumberStringFromJSON(payload["github_repository_id"])
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"message": err.Error()})
+			return
+		}
+		changeRequestID, err := wholeNumberStringFromJSON(payload["change_request_id"])
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"message": err.Error()})
+			return
+		}
+
+		if err := v1SignaturesService.TriggerGitHubChangeRequestUpdate(r.Context(), installationID, githubRepositoryID, changeRequestID); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"message": err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	v2GeneratedHandler := v2API.Serve(middlewareSetupfunc)
+	v2Handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == internalGitHubTriggerPath {
+			internalGitHubTriggerHandler.ServeHTTP(w, r)
+			return
+		}
+		v2GeneratedHandler.ServeHTTP(w, r)
+	})
 
 	// For local mode - we allow anything, otherwise we use the value specified in the config (e.g. AWS SSM)
 	var apiHandler http.Handler
@@ -567,14 +683,14 @@ func server(localMode bool) http.Handler {
 				// v1 API => /v3, python side is /v1 and /v2
 				api.Serve(middlewareSetupfunc), swaggerSpec.BasePath(),
 				// v2 API => /v4
-				v2API.Serve(middlewareSetupfunc), v2SwaggerSpec.BasePath()))
+				v2Handler, v2SwaggerSpec.BasePath()))
 	} else {
 		apiHandler = setupCORSHandler(
 			wrapHandlers(
 				// v1 API => /v3, python side is /v1 and /v2
 				api.Serve(middlewareSetupfunc), swaggerSpec.BasePath(),
 				// v2 API => /v4
-				v2API.Serve(middlewareSetupfunc), v2SwaggerSpec.BasePath()),
+				v2Handler, v2SwaggerSpec.BasePath()),
 			configFile.AllowedOrigins)
 	}
 

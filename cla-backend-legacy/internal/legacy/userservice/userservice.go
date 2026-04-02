@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/parity"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/store"
 )
 
@@ -142,27 +143,28 @@ func (c *Client) HasRole(ctx context.Context, username, role, organizationID, cl
 		}
 		return hasProjectOrgScope(scopes, projectSFID0, organizationID, username), nil
 	}
+	// EASYCLA_PARITY_FLAG: default preserves the legacy Python "last mapping wins" bug in has_role();
+	// set EASYCLA_FIX_USER_SERVICE_HAS_ROLE_ALL_MAPPINGS=true to require scope across the full mapping set.
+	if !parity.FixUserServiceHasRoleAllMappings {
+		last := false
+		for _, raw := range pcgs {
+			m := store.ItemToInterfaceMap(raw)
+			ps, _ := m["project_sfid"].(string)
+			ps = strings.TrimSpace(ps)
+			last = hasProjectOrgScope(scopes, ps, organizationID, username)
+		}
+		return last, nil
+	}
 
-	// Project-level behavior:
-	//
-	// The legacy Python implementation intends to check all project mappings, but it
-	// accidentally overwrites the map key on each iteration:
-	//   has_role_project_org[username] = (...)
-	// which means only the *last* mapping effectively determines the result.
-	//
-	// For strict 1:1 parity (and to keep the return-url wait loop behavior stable),
-	// mirror that behavior here.
-	//
-	// FIXME: Once the Python backend is fully removed, consider changing this to
-	// require scopes for all projects in the mapping list.
-	last := false
 	for _, raw := range pcgs {
 		m := store.ItemToInterfaceMap(raw)
 		ps, _ := m["project_sfid"].(string)
 		ps = strings.TrimSpace(ps)
-		last = hasProjectOrgScope(scopes, ps, organizationID, username)
+		if !hasProjectOrgScope(scopes, ps, organizationID, username) {
+			return false, nil
+		}
 	}
-	return last, nil
+	return true, nil
 }
 
 func (c *Client) isSignedAtFoundation(ctx context.Context, foundationSFID string, pcgStore *store.ProjectCLAGroupsStore) (bool, error) {
