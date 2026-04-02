@@ -78,7 +78,6 @@ type SignatureService interface {
 	// handleGitHubStatusUpdate(ctx context.Context, employeeUserModel *models.User) error
 	ProcessEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, user *models.User) (*bool, error)
 	UserIsApproved(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, error)
-	TriggerGitHubChangeRequestUpdate(ctx context.Context, installationID, githubRepositoryID, changeRequestID string) error
 }
 
 type service struct {
@@ -992,64 +991,6 @@ func (s service) GetClaGroupCCLASignatures(ctx context.Context, claGroupID strin
 
 func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error) {
 	return s.repo.GetClaGroupCorporateContributors(ctx, claGroupID, companyID, pageSize, nextKey, searchTerm)
-}
-
-// TriggerGitHubChangeRequestUpdate updates a GitHub pull request status using legacy-Python semantics.
-// Missing repository/org state and installation mismatches are swallowed to preserve parity.
-func (s service) TriggerGitHubChangeRequestUpdate(ctx context.Context, installationID, githubRepositoryID, changeRequestID string) error {
-	f := logrus.Fields{
-		"functionName":       "v1.signatures.service.TriggerGitHubChangeRequestUpdate",
-		"installationID":     installationID,
-		"githubRepositoryID": githubRepositoryID,
-		"changeRequestID":    changeRequestID,
-	}
-
-	pullRequestID, err := strconv.ParseInt(strings.TrimSpace(changeRequestID), 10, 64)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to convert change request ID - preserving legacy no-op behavior")
-		return nil
-	}
-
-	installationIDInt, err := strconv.ParseInt(strings.TrimSpace(installationID), 10, 64)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to convert installation ID")
-		return err
-	}
-
-	claRepository, repoErr := s.repositoryService.GetRepositoryByExternalID(ctx, strings.TrimSpace(githubRepositoryID))
-	if repoErr != nil {
-		var repoNotFound *utils.GitHubRepositoryNotFound
-		if errors.As(repoErr, &repoNotFound) {
-			log.WithFields(f).Debug("repository not found - preserving legacy no-op behavior")
-			return nil
-		}
-		log.WithFields(f).WithError(repoErr).Warn("unable to fetch repository by external ID")
-		return repoErr
-	}
-	if claRepository == nil {
-		log.WithFields(f).Debug("repository lookup returned nil - preserving legacy no-op behavior")
-		return nil
-	}
-	if !claRepository.Enabled {
-		log.WithFields(f).Debug("repository disabled - preserving legacy no-op behavior")
-		return nil
-	}
-
-	githubOrg, githubOrgErr := s.githubOrgService.GetGitHubOrganizationByName(ctx, claRepository.RepositoryOrganizationName)
-	if githubOrgErr != nil {
-		log.WithFields(f).WithError(githubOrgErr).Warn("unable to lookup github organization by name")
-		return githubOrgErr
-	}
-	if githubOrg == nil {
-		log.WithFields(f).Debug("github organization not found - preserving legacy no-op behavior")
-		return nil
-	}
-	if githubOrg.OrganizationInstallationID != installationIDInt {
-		log.WithFields(f).Debug("installation mismatch - preserving legacy no-op behavior")
-		return nil
-	}
-
-	return s.updateChangeRequest(ctx, githubOrg, claRepository.RepositoryExternalID, pullRequestID, claRepository.RepositoryClaGroupID)
 }
 
 // updateChangeRequest is a helper function that updates PR - typically after the auto ecla update
