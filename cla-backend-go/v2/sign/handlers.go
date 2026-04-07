@@ -177,25 +177,33 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 
 			if strings.ToLower(params.Input.ReturnURLType) == Github || strings.ToLower(params.Input.ReturnURLType) == Gitlab {
 				log.WithFields(f).Debug("fetching user emails")
+				user, userErr := userService.GetUser(*params.Input.UserID)
+				if userErr != nil {
+					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, userErr))
+				}
+				if user == nil {
+					msg := fmt.Sprintf("user not found: %s", *params.Input.UserID)
+					log.WithFields(f).Warn(msg)
+					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
+				}
 
 				userServiceClient := user_service.GetClient()
-				if userServiceClient != nil {
-					platformUser, platformUserErr := userServiceClient.GetUser(*params.Input.UserID)
+				if userServiceClient != nil && user.LfUsername != "" {
+					platformUser, platformUserErr := userServiceClient.GetUserByUsername(user.LfUsername)
 					if platformUserErr != nil {
 						log.WithFields(f).WithError(platformUserErr).Warn("unable to fetch platform user for primary email lookup")
 					} else if platformUser != nil {
-						preferredEmail = userServiceClient.GetPrimaryEmail(platformUser)
+						for _, email := range platformUser.Emails {
+							if email != nil && email.IsPrimary != nil && *email.IsPrimary && email.EmailAddress != nil && *email.EmailAddress != "" {
+								preferredEmail = *email.EmailAddress
+								break
+							}
+						}
 					}
 				}
 
-				if preferredEmail == "" {
-					user, userErr := userService.GetUser(*params.Input.UserID)
-					if userErr != nil {
-						return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, userErr))
-					}
-					if len(user.Emails) > 0 {
-						preferredEmail = user.Emails[0]
-					}
+				if preferredEmail == "" && len(user.Emails) > 0 {
+					preferredEmail = user.Emails[0]
 				}
 
 				if preferredEmail == "" {
