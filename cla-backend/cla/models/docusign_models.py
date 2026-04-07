@@ -1182,21 +1182,20 @@ class DocuSign(signing_service_interface.SigningService):
         if platform_users:
             platform_user = platform_users[0]
 
-            if cla_manager_user.get_user_name() is None:
-                # Lookup user in the platform user service...
-                cla.log.warning(f'{fn} - Loaded CLA Manager by username: {auth_user.username}, but '
-                                'the user_name is missing from profile - required for DocuSign.')
-                user_name = platform_user.get('Name', None)
-                if user_name:
-                    if cla_manager_user.get_user_name() != user_name:
-                        cla.log.debug(f'{fn} - user_name: {user_name} update for cla_manager : {auth_user.username}...')
-                        cla_manager_user.set_user_name(user_name)
-                        cla_manager_user.save()
-                    else:
-                        cla.log.debug(f'{fn} - user_name values match - no need to update the local record')
+            user_name = platform_user.get('Name', None)
+            if user_name:
+                if cla_manager_user.get_user_name() != user_name:
+                    if cla_manager_user.get_user_name() is None:
+                        cla.log.warning(f'{fn} - Loaded CLA Manager by username: {auth_user.username}, but '
+                                        'the user_name is missing from profile - required for DocuSign.')
+                    cla.log.debug(f'{fn} - user_name: {user_name} update for cla_manager : {auth_user.username}...')
+                    cla_manager_user.set_user_name(user_name)
+                    cla_manager_user.save()
                 else:
-                    cla.log.warning(f'{fn} - Unable to locate the user\'s name from the platform user service model. '
-                                    'Unable to update the local user record.')
+                    cla.log.debug(f'{fn} - user_name values match - no need to update the local record')
+            else:
+                cla.log.warning(f'{fn} - Unable to locate the user\'s name from the platform user service model. '
+                                'Unable to update the local user record.')
 
             if cla_manager_user.get_user_email() is None:
                 cla.log.warning(f'{fn} - Loaded CLA Manager by username: {auth_user.username}, but '

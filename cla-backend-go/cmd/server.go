@@ -746,6 +746,27 @@ func responseLoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func refreshStoredUserName(usersService users.Service, userModel *models.User, claUser *user.CLAUser) *models.User {
+	if userModel == nil || claUser == nil || claUser.Name == "" || userModel.Username == claUser.Name {
+		return userModel
+	}
+
+	updatedUser, err := usersService.UpdateUser(userModel.UserID, map[string]interface{}{
+		"user_name":     claUser.Name,
+		"date_modified": time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"functionName": "cmd.refreshStoredUserName",
+			"userID":       userModel.UserID,
+			"lfUsername":   claUser.LFUsername,
+		}).WithError(err).Warn("unable to refresh stored user_name from current identity claims")
+		return userModel
+	}
+
+	return updatedUser
+}
+
 // create user form http authorization token
 // this function creates user if user does not exist and token is valid
 func createUserFromRequest(authorizer auth.Authorizer, usersService users.Service, eventsService events.Service, r *http.Request) *http.Request {
@@ -788,8 +809,9 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 			return r
 		}
 	}
-	// If found - just return
+	// If found - refresh the stored display name and return
 	if userModel != nil {
+		userModel = refreshStoredUserName(usersService, userModel, claUser)
 		if !needToStoreUser {
 			return r
 		}
@@ -807,8 +829,9 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 			return r
 		}
 	}
-	// If found - just return
+	// If found - refresh the stored display name and return
 	if userModel != nil {
+		userModel = refreshStoredUserName(usersService, userModel, claUser)
 		if !needToStoreUser {
 			return r
 		}
