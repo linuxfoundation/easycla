@@ -50,6 +50,66 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   let bearerToken: string = null;
   const timeout = 180000;
 
+  it('POST /request-individual-signature - Request GitHub individual signature (Go v4 path)', function () {
+    if (!appConfig.projectID || !appConfig.user_id) {
+      cy.task(
+        'log',
+        'Skipping GitHub request-individual-signature v4 test: appConfig.projectID or appConfig.user_id is not configured',
+      );
+      return;
+    }
+
+    const requestData = {
+      project_id: appConfig.projectID,
+      user_id: appConfig.user_id,
+      return_url_type: 'Github',
+      return_url: 'https://github.com/test/repo/pull/1',
+    };
+
+    cy.request({
+      method: 'POST',
+      url: `${claEndpoint}request-individual-signature`,
+      timeout: timeout,
+      failOnStatusCode: allowFail,
+      body: requestData,
+    }).then((response) => {
+      return cy.logJson('POST /request-individual-signature (GitHub, v4) response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
+      });
+    });
+  });
+
+  it('POST /request-individual-signature - Request GitLab individual signature (Go v4 path)', function () {
+    if (!appConfig.projectID || !appConfig.user_id) {
+      cy.task(
+        'log',
+        'Skipping GitLab request-individual-signature v4 test: appConfig.projectID or appConfig.user_id is not configured',
+      );
+      return;
+    }
+
+    const requestData = {
+      project_id: appConfig.projectID,
+      user_id: appConfig.user_id,
+      return_url_type: 'Gitlab',
+      return_url: 'https://gitlab.com/test/repo/-/merge_requests/1',
+    };
+
+    cy.request({
+      method: 'POST',
+      url: `${claEndpoint}request-individual-signature`,
+      timeout: timeout,
+      failOnStatusCode: allowFail,
+      body: requestData,
+    }).then((response) => {
+      return cy.logJson('POST /request-individual-signature (GitLab, v4) response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
+      });
+    });
+  });
+
   before(() => {
     if (bearerToken == null) {
       getTokenKey(bearerToken);

@@ -24,6 +24,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/sign"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	user_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 
 	"github.com/go-openapi/runtime"
 )
@@ -176,16 +177,33 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 
 			if strings.ToLower(params.Input.ReturnURLType) == Github || strings.ToLower(params.Input.ReturnURLType) == Gitlab {
 				log.WithFields(f).Debug("fetching user emails")
-				user, userErr := userService.GetUser(*params.Input.UserID)
-				if userErr != nil {
-					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, userErr))
+
+				userServiceClient := user_service.GetClient()
+				if userServiceClient != nil {
+					platformUser, platformUserErr := userServiceClient.GetUser(*params.Input.UserID)
+					if platformUserErr != nil {
+						log.WithFields(f).WithError(platformUserErr).Warn("unable to fetch platform user for primary email lookup")
+					} else if platformUser != nil {
+						preferredEmail = userServiceClient.GetPrimaryEmail(platformUser)
+					}
 				}
-				if len(user.Emails) == 0 {
+
+				if preferredEmail == "" {
+					user, userErr := userService.GetUser(*params.Input.UserID)
+					if userErr != nil {
+						return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, userErr))
+					}
+					if len(user.Emails) > 0 {
+						preferredEmail = user.Emails[0]
+					}
+				}
+
+				if preferredEmail == "" {
 					msg := "no emails found"
 					log.WithFields(f).Warn(msg)
 					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
 				}
-				preferredEmail = user.Emails[0]
+
 				log.WithFields(f).Debug("requesting individual signature for github/gitlab")
 				resp, err = service.RequestIndividualSignature(ctx, params.Input, preferredEmail)
 			} else if strings.ToLower(params.Input.ReturnURLType) == "gerrit" {
