@@ -41,25 +41,31 @@ def request_individual_signature(project_id, user_id, return_url_type, return_ur
             # fetching the primary for the account
             github = get_repository_service("github")
             primary_user_email = github.get_primary_user_email(request)
-        elif return_url_type.lower() == "gitlab":
-            primary_user_email = None
+    elif return_url_type.lower() == "gitlab":
+        primary_user_email = None
 
-            platform_user = UserService.get_user_by_sf_id(str(user_id))
-            if platform_user:
+        try:
+            cla.log.debug(f"Fetching user details for: {user_id}")
+            user = User()
+            user.load(user_id)
+        except DoesNotExist as err:
+            cla.log.warning('Individual Signature - user ID was NOT found for: {}'.format(user_id))
+            return {'errors': {'user_id': str(err)}}
+
+        lf_username = user.get_lf_username()
+        if lf_username:
+            platform_users = UserService.get_users_by_username(lf_username) or []
+            for platform_user in platform_users:
                 for email in platform_user.get('Emails', []):
                     if email.get('IsPrimary') and email.get('EmailAddress'):
                         primary_user_email = email.get('EmailAddress')
                         break
+                if primary_user_email:
+                    break
 
-            if primary_user_email is None:
-                try:
-                    cla.log.debug(f"Fetching user details for: {user_id}")
-                    user = User()
-                    user.load(user_id)
-                except DoesNotExist as err:
-                    cla.log.warning('Individual Signature - user ID was NOT found for: {}'.format(user_id))
-                    return {'errors': {'user_id': str(err)}}
-                primary_user_email = next(iter(user.get_user_emails() or []), None)
+        if primary_user_email is None:
+            primary_user_email = next(iter(user.get_user_emails() or []), None)
+
         return signing_service.request_individual_signature(str(project_id), str(user_id), return_url, return_url_type,
                                                             preferred_email=primary_user_email)
 
