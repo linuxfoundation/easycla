@@ -50,33 +50,34 @@ describe('To Validate & test Signature APIs via API call (V2)', function () {
     });
   });
 
-  it('POST /request-individual-signature - Request GitLab individual signature (No authentication required)', function () {
-    if (!appConfig.projectID || !appConfig.user_id) {
-      cy.task(
-        'log',
-        'Skipping GitLab request-individual-signature v2 test: appConfig.projectID or appConfig.user_id is not configured',
-      );
-      return;
-    }
+  describe('Configured request-individual-signature coverage', function () {
+    before(function () {
+      if (!appConfig.projectID || !appConfig.user_id) {
+        this.skip();
+        return;
+      }
+    });
 
-    const requestData = {
-      project_id: appConfig.projectID,
-      user_id: appConfig.user_id,
-      return_url_type: 'Gitlab',
-      return_url: 'https://gitlab.com/test/repo/-/merge_requests/1',
-    };
+    it('POST /request-individual-signature - Request GitLab individual signature (No authentication required)', function () {
+      const requestData = {
+        project_id: appConfig.projectID,
+        user_id: appConfig.user_id,
+        return_url_type: 'Gitlab',
+        return_url: 'https://gitlab.com/test/repo/-/merge_requests/1',
+      };
 
-    cy.request({
-      method: 'POST',
-      url: `${claEndpoint}request-individual-signature`,
-      timeout: timeout,
-      failOnStatusCode: allowFail,
-      body: requestData,
-    }).then((response) => {
-      return cy.logJson('POST /request-individual-signature (GitLab) response', response).then(() => {
-        validate_200_Status(response);
-        expect(response.body).to.be.an('object');
-        // V2 API can return signature data or error object - both are valid
+      cy.request({
+        method: 'POST',
+        url: `${claEndpoint}request-individual-signature`,
+        timeout: timeout,
+        failOnStatusCode: allowFail,
+        body: requestData,
+      }).then((response) => {
+        return cy.logJson('POST /request-individual-signature (GitLab) response', response).then(() => {
+          validate_200_Status(response);
+          expect(response.body).to.be.an('object');
+          // V2 API can return signature data or error object - both are valid
+        });
       });
     });
   });
