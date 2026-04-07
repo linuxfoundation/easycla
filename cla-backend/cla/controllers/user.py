@@ -512,5 +512,9 @@ def get_or_create_user(auth_user):
 
         return user
 
-    # Just return the first matching record
-    return users[0]
+    # Just return the first matching record, but refresh the display name when it changed upstream.
+    user = users[0]
+    if auth_user.name and user.get_user_name() != auth_user.name:
+        user.set_user_name(auth_user.name)
+        user.save()
+    return user
