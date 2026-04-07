@@ -78,6 +78,8 @@ func CCLADocusignMiddleware(next http.Handler) http.Handler {
 }
 
 // Configure API call
+//
+//nolint:gocyclo
 func Configure(api *operations.EasyclaAPI, service Service, userService users.Service) {
 	// Retrieve a list of available templates
 	api.SignClearCachesHandler = sign.ClearCachesHandlerFunc(
@@ -186,9 +188,8 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 					log.WithFields(f).Warn(msg)
 					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
 				}
-
 				userServiceClient := user_service.GetClient()
-				if userServiceClient != nil && user.LfUsername != "" {
+				if userServiceClient != nil && userServiceClient.IsConfigured() && user.LfUsername != "" {
 					platformUser, platformUserErr := userServiceClient.GetUserByUsername(user.LfUsername)
 					if platformUserErr != nil {
 						log.WithFields(f).WithError(platformUserErr).Warn("unable to fetch platform user for primary email lookup")

@@ -15,7 +15,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   const environment = Cypress.env('CYPRESS_ENV');
 
   // Import the appropriate configuration based on the environment
-  let appConfig;
+  let appConfig: any = {};
   if (environment === 'dev') {
     appConfig = require('../../appConfig/config.dev.ts').appConfig;
   } else if (environment === 'production') {
@@ -51,13 +51,6 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   const timeout = 180000;
 
   it('POST /request-individual-signature - Request GitHub individual signature (Go v4 path)', function () {
-    if (!appConfig.projectID || !appConfig.user_id) {
-      cy.task(
-        'log',
-        'Skipping GitHub request-individual-signature v4 test: appConfig.projectID or appConfig.user_id is not configured',
-      );
-      return;
-    }
 
     const requestData = {
       project_id: appConfig.projectID,
@@ -81,13 +74,6 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   });
 
   it('POST /request-individual-signature - Request GitLab individual signature (Go v4 path)', function () {
-    if (!appConfig.projectID || !appConfig.user_id) {
-      cy.task(
-        'log',
-        'Skipping GitLab request-individual-signature v4 test: appConfig.projectID or appConfig.user_id is not configured',
-      );
-      return;
-    }
 
     const requestData = {
       project_id: appConfig.projectID,
@@ -110,7 +96,12 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     });
   });
 
-  before(() => {
+  before(function () {
+    if (!appConfig.projectID || !appConfig.user_id) {
+      this.skip();
+      return;
+    }
+
     if (bearerToken == null) {
       getTokenKey(bearerToken);
       cy.window().then((win) => {
