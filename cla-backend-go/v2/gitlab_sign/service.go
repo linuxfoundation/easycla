@@ -181,6 +181,28 @@ func (s service) InitiateSignRequest(ctx context.Context, req *http.Request, git
 	return &consoleURL, nil
 }
 
+func (s service) refreshGitLabUserName(ctx context.Context, claUser *models.User, gitlabUser *gitlab.User) *models.User {
+	if claUser == nil || gitlabUser == nil || gitlabUser.Name == "" || claUser.Username == gitlabUser.Name {
+		return claUser
+	}
+
+	updatedUser, err := s.userService.UpdateUser(claUser.UserID, map[string]interface{}{
+		"user_name":     gitlabUser.Name,
+		"date_modified": time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"functionName":   "v2.gitlab_sign.service.refreshGitLabUserName",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"userID":         claUser.UserID,
+			"gitlabUserID":   gitlabUser.ID,
+		}).WithError(err).Warn("unable to refresh stored GitLab user_name")
+		return claUser
+	}
+
+	return updatedUser
+}
+
 func (s service) getOrCreateUser(ctx context.Context, gitlabClient *gitlab.Client, eventsService events.Service) (*models.User, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.gitlab_sign.service.getOrCreateUser",
@@ -197,23 +219,23 @@ func (s service) getOrCreateUser(ctx context.Context, gitlabClient *gitlab.Clien
 	claUser, err := s.userService.GetUserByGitlabID(gitlabUser.ID)
 	if err == nil && claUser != nil {
 		log.WithFields(f).Debugf("found user by GitLab ID: %d", gitlabUser.ID)
-		return claUser, nil
+		return s.refreshGitLabUserName(ctx, claUser, gitlabUser), nil
 	}
-	log.WithFields(f).Debugf("unable to lookup user by github ID: %d, error: %+v ", gitlabUser.ID, err)
+	log.WithFields(f).Debugf("unable to lookup user by GitLab ID: %d, error: %+v ", gitlabUser.ID, err)
 
 	log.WithFields(f).Debugf("looking up user by GitLab username: %s", gitlabUser.Username)
 	claUser, err = s.userService.GetUserByGitLabUsername(gitlabUser.Username)
 	if err == nil && claUser != nil {
 		log.WithFields(f).Debugf("found user by GitLab username: %s", gitlabUser.Username)
-		return claUser, nil
+		return s.refreshGitLabUserName(ctx, claUser, gitlabUser), nil
 	}
-	log.WithFields(f).Debugf("unable to lookup user by github username: %s, error: %+v ", gitlabUser.Username, err)
+	log.WithFields(f).Debugf("unable to lookup user by GitLab username: %s, error: %+v ", gitlabUser.Username, err)
 
 	log.WithFields(f).Debugf("looking up user by GitLab email: %s", gitlabUser.Email)
 	claUser, err = s.userService.GetUserByEmail(gitlabUser.Email)
 	if err == nil && claUser != nil {
 		log.WithFields(f).Debugf("found user by GitLab email: %s", gitlabUser.Email)
-		return claUser, nil
+		return s.refreshGitLabUserName(ctx, claUser, gitlabUser), nil
 	}
 
 	log.WithFields(f).Infof("unable to locate GitLab user - creating a new user record for GitLab user : %+v ", gitlabUser)
@@ -225,8 +247,8 @@ func (s service) getOrCreateUser(ctx context.Context, gitlabClient *gitlab.Clien
 		Username:       gitlabUser.Name,
 	}
 	claUser, userErr := s.userService.CreateUser(user, nil)
-	if err != nil {
-		log.WithFields(f).Debugf("unable to create claUser with details : %+v, error: %+v", user, userErr)
+	if userErr != nil {
+		log.WithFields(f).Debugf("unable to create claUser with details: %+v, error: %+v", user, userErr)
 		return nil, userErr
 	}
 
