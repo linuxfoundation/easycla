@@ -29,12 +29,15 @@ describe('To Validate & test User APIs via API call (V2)', function () {
   // POSITIVE TEST CASES - EXPECT ONLY 2xx STATUS CODES
   // ============================================================================
 
-  it('GET /user/{user_id} - Get user by ID (No authentication required)', function () {
+  it('GET /user/{user_id} - Get user by ID (Requires authentication)', function () {
     cy.request({
       method: 'GET',
       url: `${claEndpoint}user/${validUserID}`,
       timeout: timeout,
       failOnStatusCode: allowFail,
+      headers: {
+        Authorization: `Bearer ${bearerToken}`,
+      },
     }).then((response) => {
       return cy.logJson('GET /user/{user_id} response', response).then(() => {
         validate_200_Status(response);
@@ -101,6 +104,7 @@ describe('To Validate & test User APIs via API call (V2)', function () {
   describe('Expected failures', () => {
     it('Returns 401 for User APIs that require authentication when called without token', () => {
       const authenticatedEndpoints = [
+        { method: 'GET', url: `${claEndpoint}user/${validUserID}` },
         { method: 'GET', url: `${claEndpoint}user-from-token` },
         { method: 'POST', url: `${claEndpoint}clear-cache` },
       ];
@@ -133,12 +137,14 @@ describe('To Validate & test User APIs via API call (V2)', function () {
         expectedCode?: number;
         expectedMessage?: string;
         expectedMessageContains?: boolean;
+        headers?: any;
       }> = [
         {
           title: 'GET /user/{user_id} with invalid UUID format',
           method: 'GET',
           url: `${claEndpoint}user/invalid-uuid`,
           expectedStatus: 400,
+          headers: { Authorization: `Bearer ${bearerToken}` },
         },
         {
           title: 'POST /user/{user_id}/request-company-whitelist/{company_id} with missing parameters',
@@ -181,6 +187,7 @@ describe('To Validate & test User APIs via API call (V2)', function () {
             method: c.method,
             url: c.url,
             body: c.body,
+            headers: c.headers,
             failOnStatusCode: false,
             timeout,
           })
