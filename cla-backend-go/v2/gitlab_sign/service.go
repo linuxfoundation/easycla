@@ -221,7 +221,7 @@ func (s service) getOrCreateUser(ctx context.Context, gitlabClient *gitlab.Clien
 		log.WithFields(f).Debugf("found user by GitLab ID: %d", gitlabUser.ID)
 		return s.refreshGitLabUserName(ctx, claUser, gitlabUser), nil
 	}
-	log.WithFields(f).Debugf("unable to lookup user by github ID: %d, error: %+v ", gitlabUser.ID, err)
+	log.WithFields(f).Debugf("unable to lookup user by GitLab ID: %d, error: %+v ", gitlabUser.ID, err)
 
 	log.WithFields(f).Debugf("looking up user by GitLab username: %s", gitlabUser.Username)
 	claUser, err = s.userService.GetUserByGitLabUsername(gitlabUser.Username)
@@ -229,7 +229,7 @@ func (s service) getOrCreateUser(ctx context.Context, gitlabClient *gitlab.Clien
 		log.WithFields(f).Debugf("found user by GitLab username: %s", gitlabUser.Username)
 		return s.refreshGitLabUserName(ctx, claUser, gitlabUser), nil
 	}
-	log.WithFields(f).Debugf("unable to lookup user by github username: %s, error: %+v ", gitlabUser.Username, err)
+	log.WithFields(f).Debugf("unable to lookup user by GitLab username: %s, error: %+v ", gitlabUser.Username, err)
 
 	log.WithFields(f).Debugf("looking up user by GitLab email: %s", gitlabUser.Email)
 	claUser, err = s.userService.GetUserByEmail(gitlabUser.Email)
@@ -247,8 +247,8 @@ func (s service) getOrCreateUser(ctx context.Context, gitlabClient *gitlab.Clien
 		Username:       gitlabUser.Name,
 	}
 	claUser, userErr := s.userService.CreateUser(user, nil)
-	if err != nil {
-		log.WithFields(f).Debugf("unable to create claUser with details : %+v, error: %+v", user, userErr)
+	if userErr != nil {
+		log.WithFields(f).Debugf("unable to create claUser with details: %+v, error: %+v", user, userErr)
 		return nil, userErr
 	}
 
