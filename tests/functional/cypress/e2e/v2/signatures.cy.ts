@@ -5,13 +5,22 @@ import { validate_200_Status, validate_expected_status, getAPIBaseURL } from '..
 
 describe('To Validate & test Signature APIs via API call (V2)', function () {
   const claEndpoint = getAPIBaseURL('v2');
+  const environment = Cypress.env('CYPRESS_ENV');
+
+  let appConfig: any = {};
+  if (environment === 'dev') {
+    appConfig = require('../../appConfig/config.dev.ts').appConfig;
+  } else if (environment === 'production') {
+    appConfig = require('../../appConfig/config.production.ts').appConfig;
+  }
+
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   const timeout = 180000;
 
   // Test data
-  const validProjectID = '550e8400-e29b-41d4-a716-446655440000';
-  const validUserID = '550e8400-e29b-41d4-a716-446655440001';
-  const validCompanyID = '550e8400-e29b-41d4-a716-446655440002';
+  const validProjectID = appConfig.projectID || '550e8400-e29b-41d4-a716-446655440000';
+  const validUserID = appConfig.user_id || '550e8400-e29b-41d4-a716-446655440001';
+  const validCompanyID = appConfig.companyID || '550e8400-e29b-41d4-a716-446655440002';
   const validSignatureID = '550e8400-e29b-41d4-a716-446655440003';
 
   // ============================================================================
@@ -34,6 +43,29 @@ describe('To Validate & test Signature APIs via API call (V2)', function () {
       body: requestData,
     }).then((response) => {
       return cy.logJson('POST /request-individual-signature response', response).then(() => {
+        validate_200_Status(response);
+        expect(response.body).to.be.an('object');
+        // V2 API can return signature data or error object - both are valid
+      });
+    });
+  });
+
+  it('POST /request-individual-signature - Request GitLab individual signature (No authentication required)', function () {
+    const requestData = {
+      project_id: validProjectID,
+      user_id: validUserID,
+      return_url_type: 'Gitlab',
+      return_url: 'https://gitlab.com/test/repo/-/merge_requests/1',
+    };
+
+    cy.request({
+      method: 'POST',
+      url: `${claEndpoint}request-individual-signature`,
+      timeout: timeout,
+      failOnStatusCode: allowFail,
+      body: requestData,
+    }).then((response) => {
+      return cy.logJson('POST /request-individual-signature (GitLab) response', response).then(() => {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
         // V2 API can return signature data or error object - both are valid

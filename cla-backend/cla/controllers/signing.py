@@ -42,14 +42,24 @@ def request_individual_signature(project_id, user_id, return_url_type, return_ur
             github = get_repository_service("github")
             primary_user_email = github.get_primary_user_email(request)
         elif return_url_type.lower() == "gitlab":
-            try:
-                cla.log.debug(f"Fetching user details for: {user_id}")
-                user = User()
-                user.load(user_id)
-            except DoesNotExist as err:
-                cla.log.warning('Individual Signature - user ID was NOT found for: {}'.format(user_id))
-                return {'errors': {'user_id': str(err)}}
-            primary_user_email = user.get_user_email()
+            primary_user_email = None
+
+            platform_user = UserService.get_user_by_sf_id(str(user_id))
+            if platform_user:
+                for email in platform_user.get('Emails', []):
+                    if email.get('IsPrimary') and email.get('EmailAddress'):
+                        primary_user_email = email.get('EmailAddress')
+                        break
+
+            if primary_user_email is None:
+                try:
+                    cla.log.debug(f"Fetching user details for: {user_id}")
+                    user = User()
+                    user.load(user_id)
+                except DoesNotExist as err:
+                    cla.log.warning('Individual Signature - user ID was NOT found for: {}'.format(user_id))
+                    return {'errors': {'user_id': str(err)}}
+                primary_user_email = next(iter(user.get_user_emails() or []), None)
         return signing_service.request_individual_signature(str(project_id), str(user_id), return_url, return_url_type,
                                                             preferred_email=primary_user_email)
 
