@@ -18,9 +18,9 @@ describe('To Validate & test Signature APIs via API call (V2)', function () {
   const timeout = 180000;
 
   // Test data
-  const validProjectID = appConfig.projectID || '550e8400-e29b-41d4-a716-446655440000';
-  const validUserID = appConfig.user_id || '550e8400-e29b-41d4-a716-446655440001';
-  const validCompanyID = appConfig.companyID || '550e8400-e29b-41d4-a716-446655440002';
+  const validProjectID = '550e8400-e29b-41d4-a716-446655440000';
+  const validUserID = '550e8400-e29b-41d4-a716-446655440001';
+  const validCompanyID = '550e8400-e29b-41d4-a716-446655440002';
   const validSignatureID = '550e8400-e29b-41d4-a716-446655440003';
 
   // ============================================================================
@@ -51,9 +51,17 @@ describe('To Validate & test Signature APIs via API call (V2)', function () {
   });
 
   it('POST /request-individual-signature - Request GitLab individual signature (No authentication required)', function () {
+    if (!appConfig.projectID || !appConfig.user_id) {
+      cy.task(
+        'log',
+        'Skipping GitLab request-individual-signature v2 test: appConfig.projectID or appConfig.user_id is not configured',
+      );
+      return;
+    }
+
     const requestData = {
-      project_id: validProjectID,
-      user_id: validUserID,
+      project_id: appConfig.projectID,
+      user_id: appConfig.user_id,
       return_url_type: 'Gitlab',
       return_url: 'https://gitlab.com/test/repo/-/merge_requests/1',
     };
