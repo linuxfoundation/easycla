@@ -888,6 +888,28 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 	return &consoleURL, nil
 }
 
+func (s *Service) refreshGitLabUserName(ctx context.Context, claUser *models.User, gitlabUser *goGitLab.User) *models.User {
+	if claUser == nil || gitlabUser == nil || gitlabUser.Name == "" || claUser.Username == gitlabUser.Name {
+		return claUser
+	}
+
+	updatedUser, err := s.userService.UpdateUser(claUser.UserID, map[string]interface{}{
+		"user_name":     gitlabUser.Name,
+		"date_modified": time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"functionName":   "v2.gitlab_organizations.service.refreshGitLabUserName",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"userID":         claUser.UserID,
+			"gitlabUserID":   gitlabUser.ID,
+		}).WithError(err).Warn("unable to refresh stored GitLab user_name")
+		return claUser
+	}
+
+	return updatedUser
+}
+
 func (s *Service) getOrCreateUser(ctx context.Context, gitlabClient *goGitLab.Client, eventsService events.Service) (*models.User, error) {
 
 	f := logrus.Fields{
@@ -927,7 +949,7 @@ func (s *Service) getOrCreateUser(ctx context.Context, gitlabClient *goGitLab.Cl
 		})
 		return claUser, nil
 	}
-	return claUser, nil
+	return s.refreshGitLabUserName(ctx, claUser, gitlabUser), nil
 }
 
 func buildInstallationURL(gitlabOrgID string, authStateNonce string) *strfmt.URI {
