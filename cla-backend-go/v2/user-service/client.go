@@ -61,6 +61,11 @@ func GetClient() *Client {
 	return userServiceClient
 }
 
+// IsConfigured reports whether the user-service client has a usable API gateway URL.
+func (usc *Client) IsConfigured() bool {
+	return usc != nil && strings.TrimSpace(usc.apiGwURL) != ""
+}
+
 // GetUsersByUsernames search users by lf username
 func (usc *Client) GetUsersByUsernames(lfUsernames []string) ([]*models.User, error) {
 	f := logrus.Fields{
