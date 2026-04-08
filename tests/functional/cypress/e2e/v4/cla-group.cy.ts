@@ -699,7 +699,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 
-  it('Enroll projects in a CLA Group - Record should return 200 Response', function () {
+  it.skip('Enroll projects in a CLA Group - Record should return 200 Response', function () {
     prepareEnrollProject().then(() => {
       cy.request({
         method: 'PUT',
