@@ -2061,7 +2061,7 @@ func (s *service) populateUserDetails(ctx context.Context, signatureReferenceTyp
 			if userModel.Username != "" {
 				userSignDetails.userSignatureName = userModel.Username
 			}
-			if userEmail := getUserEmail(userModel, preferredEmail, allowLFEmail); userEmail != "" {
+			if userEmail := getUserEmail(userModel, preferredEmail, latestSignature.SignatureReturnURLType, allowLFEmail); userEmail != "" {
 				userSignDetails.userSignatureEmail = userEmail
 			}
 		}
@@ -2162,11 +2162,15 @@ func getTabsFromDocument(document *v1Models.ClaGroupDocument, documentID string,
 }
 
 // helper function to get user email
-func getUserEmail(user *v1Models.User, preferredEmail string, allowLFEmail bool) string {
+func getUserEmail(user *v1Models.User, preferredEmail string, providerType string, allowLFEmail bool) string {
 	if user == nil {
 		return ""
 	}
 	if preferredEmail != "" {
+		if strings.EqualFold(providerType, "github") || strings.EqualFold(providerType, "gitlab") {
+			return preferredEmail
+		}
+
 		if utils.StringInSlice(preferredEmail, user.Emails) || (allowLFEmail && user.LfEmail == strfmt.Email(preferredEmail)) {
 			return preferredEmail
 		}
@@ -2244,7 +2248,7 @@ func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEm
 		}
 	}
 
-	if userEmail := getUserEmail(user, preferredEmail, allowLFEmail); userEmail != "" {
+	if userEmail := getUserEmail(user, preferredEmail, "", allowLFEmail); userEmail != "" {
 		defaultValues["email"] = userEmail
 	}
 
