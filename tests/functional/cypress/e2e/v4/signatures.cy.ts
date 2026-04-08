@@ -15,7 +15,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   const environment = Cypress.env('CYPRESS_ENV');
 
   // Import the appropriate configuration based on the environment
-  let appConfig;
+  let appConfig: any = {};
   if (environment === 'dev') {
     appConfig = require('../../appConfig/config.dev.ts').appConfig;
   } else if (environment === 'production') {
