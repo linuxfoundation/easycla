@@ -2429,6 +2429,10 @@ def resolve_individual_user_email(user: User, provider_type: str = None,
     provider_type = (provider_type or '').lower()
     user_emails = user.get_user_emails() or set()
 
+    if provider_type in ('github', 'gitlab') and preferred_email:
+        return preferred_email
+
+
     if preferred_email and preferred_email in user_emails:
         return preferred_email
 
