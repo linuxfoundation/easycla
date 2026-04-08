@@ -805,15 +805,34 @@ def test_cla_signatory_email_content():
     assert "contact the requester at john@example.com" in email_body
 
 
-def test_create_default_individual_values_github_ignores_lf_email():
+def test_create_default_individual_values_github_uses_preferred_email_even_when_not_cached_locally():
     user = User()
     user.set_user_name('Example User')
     user.set_user_emails(['git@example.com'])
     user.set_lf_email('lf@example.com')
 
-    values = create_default_individual_values(user, preferred_email='lf@example.com', provider_type='github')
+    values = create_default_individual_values(
+        user,
+        preferred_email='primary@example.com',
+        provider_type='github',
+    )
 
-    assert values['email'] == 'git@example.com'
+    assert values['email'] == 'primary@example.com'
+
+
+def test_create_default_individual_values_gitlab_uses_preferred_email_even_when_not_cached_locally():
+    user = User()
+    user.set_user_name('Example User')
+    user.set_user_emails(['git@example.com'])
+    user.set_lf_email('lf@example.com')
+
+    values = create_default_individual_values(
+        user,
+        preferred_email='primary@example.com',
+        provider_type='gitlab',
+    )
+
+    assert values['email'] == 'primary@example.com'
 
 
 def test_create_default_individual_values_gerrit_allows_lf_email():
