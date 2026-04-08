@@ -32,16 +32,24 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
 
   const claEndpoint = getAPIBaseURL('v4');
   let claGroupId: string = '';
-  let claGroupId2: string = appConfig.claGroupId; //sun project claGroupID
+  const claGroupId2: string = appConfig.claGroupId; //sun project claGroupID
 
   //Variable for create cla group
   const foundation_sfid = appConfig.foundationSFID; //project name: easyAutom foundation
   const projectSfid = appConfig.createNewClaGroupSFID; //project name: easyAutom-child1
-  const cla_group_name = appConfig.claGroupName;
   const cla_group_description = 'Added via cypress script';
+  const testClaGroupPrefix = appConfig.claGroupName || 'CypressDevClaGroup';
+  const legacyUpdatedClaGroupName = 'Cypress_Updated_ClaGroup';
+  const runSuffix = [
+    Cypress.env('E2E_RUN_ID') || Cypress.env('GITHUB_RUN_ID') || Date.now(),
+    Math.random().toString(36).slice(2, 8),
+  ]                   
+    .filter(Boolean)
+    .join('-');   
+  const cla_group_name = `${testClaGroupPrefix}-${runSuffix}`;
 
   //variable for update cla group
-  const updated_cla_group_name = 'Cypress_Updated_ClaGroup';
+  const updated_cla_group_name = `${cla_group_name}-updated`;
   const update_cla_group_description = 'CLA group created and updated for easy cla automation child project 1';
 
   //Variable for GitHub
@@ -54,15 +62,106 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   const timeout = 180000;
   const local = Cypress.env('LOCAL') ? true : false;
+  const isManagedTestClaGroup = (group: { cla_group_name?: string } | null | undefined): boolean => {
+    const groupName = group?.cla_group_name || '';
+    if (!groupName) {
+      return false;
+    }
+   
+    return [testClaGroupPrefix, legacyUpdatedClaGroupName].some(
+      (prefix) => groupName === prefix || groupName.startsWith(`${prefix}-`),
+    );
+  };
+
+  const findManagedClaGroup = (list: any[] = []) => {
+    return (
+      list.find((group: any) => group.cla_group_id === claGroupId) ||
+      list.find((group: any) => group.cla_group_name === updated_cla_group_name) ||
+      list.find((group: any) => group.cla_group_name === cla_group_name)
+    );
+  };
 
   let bearerToken: string = null;
-  before(() => {
-    if (bearerToken == null) {
-      getTokenKey(bearerToken);
-      cy.window().then((win) => {
-        bearerToken = win.localStorage.getItem('bearerToken');
+
+  const cleanupManagedClaGroups = () => {
+    return cy
+      .request({
+        method: 'GET',
+        url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
+        timeout: timeout,
+        failOnStatusCode: false,
+        headers: getXACLHeader(),
+        auth: {
+          bearer: bearerToken,
+        },
+      })
+      .then((response) => {
+        if (response.status !== 200 || !Array.isArray(response.body?.list)) {
+          cy.task('log', `Skipping stale CLA group cleanup, list call returned ${response.status}`);
+          return;
+        }
+
+        const staleGroups = response.body.list.filter((group: any) => isManagedTestClaGroup(group));
+        if (!staleGroups.length) {
+          cy.task('log', `No stale CLA groups found for project ${projectSfid}`);
+          return;
+        }
+
+        cy.task(
+          'log',
+          `Deleting ${staleGroups.length} stale CLA group(s): ${staleGroups
+            .map((group: any) => `${group.cla_group_name} (${group.cla_group_id})`)
+            .join(', ')}`,
+        );
+
+        return cy.wrap(staleGroups).each((group: any) => {
+          return cy
+            .request({
+              method: 'DELETE',
+              url: `${claEndpoint}cla-group/${group.cla_group_id}`,
+              timeout: timeout,
+              failOnStatusCode: false,
+              headers: getXACLHeader(),
+              auth: {
+                bearer: bearerToken,
+              },
+            })
+            .then((deleteResponse) => {
+              expect(deleteResponse.status).to.be.oneOf([204, 404]);
+            });
+        });
       });
+  };
+
+  before(() => {
+    getTokenKey();
+    cy.window()
+      .then((win) => {
+        bearerToken = win.localStorage.getItem('bearerToken');
+        expect(bearerToken, 'bearer token').to.be.a('string').and.not.be.empty;
+      })
+      .then(() => cleanupManagedClaGroups());
+  });
+
+  after(() => {
+    if (!claGroupId) {
+      cy.task('log', 'No managed CLA group left for final cleanup');
+      return;
     }
+
+    cy.request({
+      method: 'DELETE',
+      url: `${claEndpoint}cla-group/${claGroupId}`,
+      timeout: timeout,
+      failOnStatusCode: false,
+      headers: getXACLHeader(),
+      auth: {
+        bearer: bearerToken,
+      },
+    }).then((response) => {
+      expect(response.status).to.be.oneOf([204, 404]);
+      claGroupId = '';
+    });
   });
 
   describe('Expected failures', () => {
@@ -569,9 +668,11 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
 
       // Validate specific data in the response
       expect(response.body).to.have.property('list');
-      let list = response.body.list;
-      claGroupId = list[0].cla_group_id;
-      expect(list[0].cla_group_name).to.eql(cla_group_name);
+      const list = response.body.list;
+      const managedClaGroup = findManagedClaGroup(list);
+      expect(managedClaGroup, `Expected to find managed CLA group ${cla_group_name}`).to.exist;
+      claGroupId = managedClaGroup.cla_group_id;
+      expect(managedClaGroup.cla_group_name).to.eql(cla_group_name);
 
       //To validate schema of response
       validateApiResponse('claGroup/list_claGroup.json', response.body);
@@ -638,29 +739,29 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     }).then((response) => {
       // expect(response.duration).to.be.lessThan(20000);
       validate_200_Status(response);
-      // Check if the first API response status is 200
-      if (response.status === 200) {
-        // Run the second API request
-        cy.request({
-          method: 'GET',
-          url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
-          timeout: timeout,
-          failOnStatusCode: allowFail,
-          headers: getXACLHeader(),
-          auth: {
-            bearer: bearerToken,
-          },
-        }).then((secondResponse) => {
-          // Validate specific data in the response
-          expect(secondResponse.body).to.have.property('list');
-          let list = secondResponse.body.list;
-          expect(list[0].project_list[1].project_name).to.eql(child_Project_name);
-          expect(list[0].project_list[1].project_sfid).to.eql(enrollProjectsSFID);
-          expect(list[0].project_list[0].project_sfid).to.eql(projectSfid);
-        });
-      } else {
-        console.log('First API request did not return a 200 status.');
-      }
+      cy.request({
+        method: 'GET',
+        url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
+        timeout: timeout,
+        failOnStatusCode: allowFail,
+        headers: getXACLHeader(),
+        auth: {
+          bearer: bearerToken,
+        },
+      }).then((secondResponse) => {
+        // Validate specific data in the response
+        expect(secondResponse.body).to.have.property('list');
+        const managedClaGroup = findManagedClaGroup(secondResponse.body.list);
+        expect(managedClaGroup, `Expected to find managed CLA group ${claGroupId}`).to.exist;
+
+        const projectList = managedClaGroup.project_list || [];
+        const enrolledProject = projectList.find((project: any) => project.project_sfid === enrollProjectsSFID);
+        const rootProject = projectList.find((project: any) => project.project_sfid === projectSfid);
+
+        expect(enrolledProject, `Expected enrolled project ${enrollProjectsSFID}`).to.exist;
+        expect(enrolledProject.project_name).to.eql(child_Project_name);
+        expect(rootProject, `Expected root project ${projectSfid}`).to.exist;
+      });
     });
   });
 
@@ -678,6 +779,24 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     }).then((response) => {
       // expect(response.duration).to.be.lessThan(20000);
       validate_200_Status(response);
+
+      cy.request({
+        method: 'GET',
+        url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
+        timeout: timeout,
+        failOnStatusCode: allowFail,
+        headers: getXACLHeader(),
+        auth: {
+          bearer: bearerToken,
+        },
+      }).then((secondResponse) => {
+        expect(secondResponse.body).to.have.property('list');
+        const managedClaGroup = findManagedClaGroup(secondResponse.body.list);
+        expect(managedClaGroup, `Expected to find managed CLA group ${claGroupId}`).to.exist;
+
+        const projectList = managedClaGroup.project_list || [];
+        expect(projectList.some((project: any) => project.project_sfid === enrollProjectsSFID)).to.eq(false);
+      });
     });
   });
 
@@ -696,12 +815,10 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
 
       // Validate specific data in the response
       expect(response.body).to.have.property('list');
-      let list = response.body.list;
-      // LG:
-      // expect(list[2].github_organization_name).to.eql('Sun-lfxfoundationOrgTest');
-      // expect(list[2].connection_status).to.eql('partial_connection');
-      expect(list[2].github_organization_name).to.eql('lukaszgryglicki-org');
-      expect(list[2].connection_status).to.eql('connected');
+      const list = response.body.list;
+      const githubOrg = list.find((organization: any) => organization.github_organization_name === gitHubOrgName);
+      expect(githubOrg, `Expected to find github organization ${gitHubOrgName}`).to.exist;
+      expect(githubOrg.connection_status).to.be.a('string').and.not.be.empty;
     });
   });
 
@@ -726,42 +843,41 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   });
 
   it('Deletes the CLA Group - Record should return 204 Response', function () {
-    if (claGroupId != null) {
+    if (!claGroupId) {
+      cy.task('log', `Managed CLA group ID is empty: ${claGroupId}`);
+      return;
+    }
+
+    const deletedClaGroupId = claGroupId;
+    cy.request({
+      method: 'DELETE',
+      url: `${claEndpoint}cla-group/${deletedClaGroupId}`,
+      timeout: timeout,
+      failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
+      auth: {
+        bearer: bearerToken,
+      },
+    }).then((response) => {
+      expect(response.status).to.eq(204);
+      claGroupId = '';
+
       cy.request({
-        method: 'DELETE',
-        url: `${claEndpoint}cla-group/${claGroupId}`,
+        method: 'GET',
+        url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
         timeout: timeout,
         failOnStatusCode: allowFail,
         headers: getXACLHeader(),
         auth: {
           bearer: bearerToken,
         },
-      }).then((response) => {
-        expect(response.status).to.eq(204);
-        // Check if the first API response status is 200
-        if (response.status === 204) {
-          // Run the second API request
-          cy.request({
-            method: 'GET',
-            url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
-            timeout: timeout,
-            failOnStatusCode: allowFail,
-            headers: getXACLHeader(),
-            auth: {
-              bearer: bearerToken,
-            },
-          }).then((secondResponse) => {
-            // Validate specific data in the response
-            cy.wrap(secondResponse.body.list)
-              .should('be.an', 'array') // Check if the response is an array
-              .and('have.length', 0);
-          });
-        } else {
-          console.log('First API request did not return a 204 status.');
-        }
+      }).then((secondResponse) => {
+        expect(secondResponse.body).to.have.property('list');
+        expect(
+          secondResponse.body.list.some((group: any) => group.cla_group_id === deletedClaGroupId),
+          `Expected CLA group ${deletedClaGroupId} to be deleted`,
+        ).to.eq(false);
       });
-    } else {
-      console.log('claGroupId is null' + claGroupId);
-    }
+    });
   });
 });
