@@ -927,18 +927,35 @@ func TestAllUserActiveSignatureAPI(t *testing.T) {
 	}
 }
 
-func runUserCompatAPIForUser(t *testing.T, userId string) {
-	apiURL := PY_API_URL + fmt.Sprintf(UserCompatAPIPath[0], userId)
-	Debugf("Py API call: %s\n", apiURL)
-	oldResp, err := http.Get(apiURL)
+func authGet(t *testing.T, apiURL string) *http.Response {
+	t.Helper()
+	if TOKEN == "" {
+		t.Fatalf("TOKEN environment variable is required for authenticated /v2/user tests")
+	}
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+TOKEN)
+	if XACL != "" {
+		req.Header.Set("X-ACL", XACL)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("Failed to call API: %v", err)
 	}
+	return resp
+}
+
+func runUserCompatAPIForUser(t *testing.T, userId string) {
+	apiURL := PY_API_URL + fmt.Sprintf(UserCompatAPIPath[0], userId)
+	Debugf("Py API call: %s\n", apiURL)
+	oldResp := authGet(t, apiURL)
 	assert.Equal(t, http.StatusOK, oldResp.StatusCode, "Expected 200 from PY API")
 	defer oldResp.Body.Close()
 	oldBody, _ := io.ReadAll(oldResp.Body)
 	var oldJSON interface{}
-	err = json.Unmarshal(oldBody, &oldJSON)
+	err := json.Unmarshal(oldBody, &oldJSON)
 	assert.NoError(t, err)
 	Debugf("Py raw response: %+v\n", string(oldBody))
 	Debugf("Py response: %+v\n", oldJSON)
@@ -985,15 +1002,12 @@ func runUserCompatAPIForUser(t *testing.T, userId string) {
 func runUserCompatAPIForUserExpectFail(t *testing.T, userId string) {
 	apiURL := PY_API_URL + fmt.Sprintf(UserCompatAPIPath[0], userId)
 	Debugf("Py API call: %s\n", apiURL)
-	oldResp, err := http.Get(apiURL)
-	if err != nil {
-		t.Fatalf("Failed to call API: %v", err)
-	}
+	oldResp := authGet(t, apiURL)
 	assert.Equal(t, http.StatusBadRequest, oldResp.StatusCode, "Expected 400 from Py API")
 	defer oldResp.Body.Close()
 	oldBody, _ := io.ReadAll(oldResp.Body)
 	var oldJSON interface{}
-	err = json.Unmarshal(oldBody, &oldJSON)
+	err := json.Unmarshal(oldBody, &oldJSON)
 	assert.NoError(t, err)
 	Debugf("Py raw response: %+v\n", string(oldBody))
 	Debugf("Py response: %+v\n", oldJSON)

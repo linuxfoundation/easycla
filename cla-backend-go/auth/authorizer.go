@@ -134,6 +134,10 @@ func (a Authorizer) SecurityAuth(token string, scopes []string) (*user.CLAUser, 
 		}
 		return nil, err
 	}
+
+	if name != "" {
+		lfuser.Name = name
+	}
 	//log.WithFields(f).Debugf("user loaded : %+v with scopes : %+v", lfuser, scopes)
 
 	for _, scope := range scopes {
