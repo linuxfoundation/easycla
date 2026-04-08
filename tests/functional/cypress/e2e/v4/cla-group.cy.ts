@@ -43,9 +43,9 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   const runSuffix = [
     Cypress.env('E2E_RUN_ID') || Cypress.env('GITHUB_RUN_ID') || Date.now(),
     Math.random().toString(36).slice(2, 8),
-  ]                   
+  ]
     .filter(Boolean)
-    .join('-');   
+    .join('-');
   const cla_group_name = `${testClaGroupPrefix}-${runSuffix}`;
 
   //variable for update cla group
@@ -62,12 +62,13 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   const timeout = 180000;
   const local = Cypress.env('LOCAL') ? true : false;
+
   const isManagedTestClaGroup = (group: { cla_group_name?: string } | null | undefined): boolean => {
     const groupName = group?.cla_group_name || '';
     if (!groupName) {
       return false;
     }
-   
+
     return [testClaGroupPrefix, legacyUpdatedClaGroupName].some(
       (prefix) => groupName === prefix || groupName.startsWith(`${prefix}-`),
     );
@@ -739,6 +740,7 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     }).then((response) => {
       // expect(response.duration).to.be.lessThan(20000);
       validate_200_Status(response);
+
       cy.request({
         method: 'GET',
         url: `${claEndpoint}foundation/${projectSfid}/cla-groups`,
@@ -881,3 +883,4 @@ describe("To Validate 'GET, CREATE, UPDATE and DELETE' CLA groups API call on ch
     });
   });
 });
+
