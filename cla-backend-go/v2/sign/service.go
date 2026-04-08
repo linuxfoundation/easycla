@@ -2170,6 +2170,12 @@ func getUserEmail(user *v1Models.User, preferredEmail string, allowLFEmail bool)
 		if utils.StringInSlice(preferredEmail, user.Emails) || (allowLFEmail && user.LfEmail == strfmt.Email(preferredEmail)) {
 			return preferredEmail
 		}
+		// For GitHub/GitLab individual-signature flows, preferredEmail comes
+		// from upstream identity data and may not exist in the locally cached
+		// EasyCLA emails yet. In those flows allowLFEmail is false.
+		if !allowLFEmail {
+			return preferredEmail
+		}
 	}
 	if allowLFEmail && user.LfEmail != "" {
 		return string(user.LfEmail)
