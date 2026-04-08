@@ -713,6 +713,31 @@ func (h *Handlers) putAuditEventBestEffort(ctx context.Context, in auditEventInp
 	_ = h.events.PutItem(ctx, item)
 }
 
+func (h *Handlers) refreshStoredUserName(ctx context.Context, item map[string]types.AttributeValue, authUser *auth.AuthUser) map[string]types.AttributeValue {
+	if h == nil || h.users == nil || item == nil || authUser == nil {
+		return item
+	}
+
+	userName := strings.TrimSpace(authUser.Name)
+	if userName == "" || getAttrString(item, "user_name") == userName {
+		return item
+	}
+
+	updated := make(map[string]types.AttributeValue, len(item)+1)
+	for k, v := range item {
+		updated[k] = v
+	}
+	updated["user_name"] = &types.AttributeValueMemberS{Value: userName}
+	updated["date_modified"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(time.Now().UTC())}
+
+	if err := h.users.PutItem(ctx, updated); err != nil {
+		logging.Warnf("refreshStoredUserName: unable to update user_id=%s lf_username=%s: %v", getAttrString(item, "user_id"), authUser.Username, err)
+		return item
+	}
+
+	return updated
+}
+
 func (h *Handlers) getOrCreateUser(ctx context.Context, authUser *auth.AuthUser) (map[string]types.AttributeValue, bool, error) {
 	if authUser == nil {
 		return nil, false, fmt.Errorf("missing auth user")
@@ -723,7 +748,7 @@ func (h *Handlers) getOrCreateUser(ctx context.Context, authUser *auth.AuthUser)
 		return nil, false, err
 	}
 	if len(items) > 0 {
-		return items[0], false, nil
+		return h.refreshStoredUserName(ctx, items[0], authUser), false, nil
 	}
 
 	now := time.Now().UTC()
@@ -1276,6 +1301,11 @@ func (h *Handlers) GetHealthV2(w http.ResponseWriter, r *http.Request) {
 // Calls: cla.controllers.user.get_user
 
 func (h *Handlers) GetUserV2(w http.ResponseWriter, r *http.Request) {
+	_, authErrResp, err := h.authValidator.Authenticate(r.Header)
+	if err != nil {
+		respond.JSON(w, http.StatusUnauthorized, authErrResp)
+		return
+	}
 	if h.users == nil {
 		respond.JSON(w, http.StatusInternalServerError, "users store not configured")
 		return

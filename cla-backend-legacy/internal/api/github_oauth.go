@@ -265,9 +265,12 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 
 	now := time.Now().UTC()
 	if userItem != nil {
-		// Update existing user: set github id, username, emails.
+		// Update existing user: set github id, username, display name and emails
 		if githubLogin != "" {
 			userItem["user_github_username"] = githubLogin
+		}
+		if githubName != "" {
+			userItem["user_name"] = githubName
 		}
 		userItem["user_emails"] = emails
 		userItem["user_github_id"] = githubID
