@@ -45,7 +45,7 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
     }
   });
 
-  it('Get the GitLab repositories of the project', function () {
+  const getGitLabRepositories = () =>
     cy.request({
       method: 'GET',
       url: `${claEndpoint}`,
@@ -55,7 +55,46 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
       auth: {
         bearer: bearerToken,
       },
-    }).then((response) => {
+    });
+
+  const findGitLabRepositoryByExternalId = (list: any[], targetRepositoryExternalId: string) =>
+    list.find((item: any) => `${item.repository_external_id}` === `${targetRepositoryExternalId}`);
+
+  const waitForGitLabRepositoryState = (
+    targetRepositoryExternalId: string,
+    expectedEnabled: boolean,
+    retries: number = 6,
+  ): Cypress.Chainable<any> => {
+    const attempt = (remaining: number): Cypress.Chainable<any> =>
+      getGitLabRepositories().then((response) => {
+        validate_200_Status(response);
+        const list = response.body.list || [];
+        const repository = findGitLabRepositoryByExternalId(list, targetRepositoryExternalId);
+
+        expect(repository, `GitLab repository ${targetRepositoryExternalId} should exist`).to.exist;
+
+        if (repository.enabled === expectedEnabled) {
+          return cy.wrap(repository);
+        }
+
+        if (remaining === 0) {
+          expect(repository.enabled).to.eql(expectedEnabled);
+          return cy.wrap(repository);
+        }
+
+        cy.task(
+          'log',
+          `GitLab repository ${targetRepositoryExternalId} currently has enabled=${repository.enabled}; waiting for enabled=${expectedEnabled}`,
+        );
+
+        return cy.wait(2000).then(() => attempt(remaining - 1));
+      });
+
+    return attempt(retries);
+  };
+
+  it('Get the GitLab repositories of the project', function () {
+    getGitLabRepositories().then((response) => {
       validate_200_Status(response);
       let list = response.body.list;
       for (let i = 0; i <= list.length - 1; i++) {
@@ -65,6 +104,8 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
           break;
         }
       }
+      expect(repoExternalId, `expected a GitLab repository under organization ${gitLabOrgName}`).to.not.eql('');
+      expect(claGroupId, `expected a CLA group for organization ${gitLabOrgName}`).to.not.eql('');
       //To validate schema of response
       validateApiResponse('gitlab-repositories/getProjectGitLabRepositories.json', response.body);
     });
@@ -86,15 +127,9 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
       },
     }).then((response) => {
       validate_200_Status(response);
-      let list = response.body.list;
-      for (let i = 0; i <= list.length - 1; i++) {
-        if (list[i].repository_organization_name === gitLabOrgName) {
-          expect(list[i].enabled).to.eql(false);
-          break;
-        }
-      }
       //To validate schema of response
       validateApiResponse('gitlab-repositories/enrollGitLabRepository.json', response.body);
+      return waitForGitLabRepositoryState(repoExternalId, false);
     });
   });
 
@@ -114,15 +149,9 @@ describe('To Validate & Get the GitLab repositories of the project via API call'
       },
     }).then((response) => {
       validate_200_Status(response);
-      let list = response.body.list;
-      for (let i = 0; i <= list.length - 1; i++) {
-        if (list[i].repository_organization_name === gitLabOrgName) {
-          expect(list[i].enabled).to.eql(true);
-          break;
-        }
-      }
       //To validate schema of response
       validateApiResponse('gitlab-repositories/enrollGitLabRepository.json', response.body);
+      return waitForGitLabRepositoryState(repoExternalId, true);
     });
   });
 
