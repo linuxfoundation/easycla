@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:                          
+  group: easycla-shared-dev-cypress-functional                               
+  cancel-in-progress: false
+
 jobs:
   cypress-functional:
     if: ${{ github.event.pull_request.head.repo.fork == false }}
@@ -65,6 +69,7 @@ jobs:
           APP_URL=https://api-gw.dev.platform.linuxfoundation.org/
           AUTH0_TOKEN_API=https://linuxfoundation-dev.auth0.com/oauth/token
           CYPRESS_ENV=dev
+          CYPRESS_E2E_RUN_ID=${{ github.run_id }}-${{ github.run_attempt }}
 
           AUTH0_USER_NAME=${{ secrets.AUTH0_USER_NAME }}
           AUTH0_PASSWORD=${{ secrets.AUTH0_PASSWORD }}
