@@ -60,6 +60,62 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
     }
   });
 
+  const getProjectCompanySignatures = () =>
+    cy.request({
+      method: 'GET',
+      url: `${claEndpoint}signatures/project/${projectSFID}/company/${companyID}`,
+      timeout: timeout,
+      failOnStatusCode: allowFail,
+      headers: getXACLHeader(),
+      auth: {
+        bearer: bearerToken,
+      },
+    });
+
+  const findProjectCompanySignature = (signatures: any[]) =>
+    signatures.find((item: any) => item.signatureID === signatureCclaID) || signatures[0];
+
+  const waitForDomainApprovalListState = (
+    domain: string,
+    shouldExist: boolean,
+    retries: number = 6,
+  ): Cypress.Chainable<any> => {
+    const attempt = (remaining: number): Cypress.Chainable<any> =>
+      getProjectCompanySignatures().then((response) => {
+        validate_200_Status(response);
+        const signatures = response.body.signatures || [];
+        const signature = findProjectCompanySignature(signatures);
+
+        expect(signature, `CCLA signature ${signatureCclaID} should exist`).to.exist;
+
+        const list = signature.domainApprovalList || [];
+        const isPresent = list.includes(domain);
+
+        if (isPresent === shouldExist) {
+          return cy.wrap(signature);
+        }
+
+        if (remaining === 0) {
+          if (shouldExist) {
+            expect(list).to.include(domain);
+          } else {
+            expect(list).to.not.include(domain);
+          }
+
+          return cy.wrap(signature);
+        }
+
+        cy.task(
+          'log',
+          `Domain ${domain} is currently ${isPresent ? 'present' : 'absent'} in the approval list; waiting for it to be ${shouldExist ? 'present' : 'absent'}`,
+        );
+
+        return cy.wait(2000).then(() => attempt(remaining - 1));
+      });
+
+    return attempt(retries);
+  };
+
   it('Returns a list of corporate contributor for the CLA Group', function () {
     let url = `${claEndpoint}cla-group/${claGroupID}/corporate-contributors?companyID=${companyID}&pageSize=100`;
     cy.task('log', 'Returns a list of corporate contributor for the CLA Group URL: ' + url);
@@ -779,8 +835,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       return cy.logJson('response', response).then(() => {
         validate_200_Status(response);
         cy.task('log', 'domain ' + domainApprovalList + ' should be added to approval list');
-        let list = response.body.domainApprovalList;
-        expect(list).to.include(domainApprovalList);
+        return waitForDomainApprovalListState(domainApprovalList, true);
       });
     });
   });
@@ -802,10 +857,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       return cy.logJson('response', response).then(() => {
         validate_200_Status(response);
         cy.task('log', 'domain ' + domainApprovalList + ' should be removed from approval list');
-        let list = response.body.domainApprovalList;
-        if (list != null && list.length > 0) {
-          expect(list).to.not.include(domainApprovalList);
-        }
+        return waitForDomainApprovalListState(domainApprovalList, false);
       });
     });
   });
