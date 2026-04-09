@@ -5,6 +5,15 @@ import { validate_200_Status, validate_expected_status, getAPIBaseURL } from '..
 
 describe('To Validate & test Signature APIs via API call (V2)', function () {
   const claEndpoint = getAPIBaseURL('v2');
+  const environment = Cypress.env('CYPRESS_ENV');
+
+  let appConfig: any = {};
+  if (environment === 'dev') {
+    appConfig = require('../../appConfig/config.dev.ts').appConfig;
+  } else if (environment === 'production') {
+    appConfig = require('../../appConfig/config.production.ts').appConfig;
+  }
+
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
   const timeout = 180000;
 
@@ -37,6 +46,38 @@ describe('To Validate & test Signature APIs via API call (V2)', function () {
         validate_200_Status(response);
         expect(response.body).to.be.an('object');
         // V2 API can return signature data or error object - both are valid
+      });
+    });
+  });
+
+  describe('Configured request-individual-signature coverage', function () {
+    before(function () {
+      if (!appConfig.projectID || !appConfig.user_id) {
+        this.skip();
+        return;
+      }
+    });
+
+    it('POST /request-individual-signature - Request GitLab individual signature (No authentication required)', function () {
+      const requestData = {
+        project_id: appConfig.projectID,
+        user_id: appConfig.user_id,
+        return_url_type: 'Gitlab',
+        return_url: 'https://gitlab.com/test/repo/-/merge_requests/1',
+      };
+
+      cy.request({
+        method: 'POST',
+        url: `${claEndpoint}request-individual-signature`,
+        timeout: timeout,
+        failOnStatusCode: allowFail,
+        body: requestData,
+      }).then((response) => {
+        return cy.logJson('POST /request-individual-signature (GitLab) response', response).then(() => {
+          validate_200_Status(response);
+          expect(response.body).to.be.an('object');
+          // V2 API can return signature data or error object - both are valid
+        });
       });
     });
   });

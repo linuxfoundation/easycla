@@ -24,6 +24,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/sign"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	user_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 
 	"github.com/go-openapi/runtime"
 )
@@ -77,6 +78,8 @@ func CCLADocusignMiddleware(next http.Handler) http.Handler {
 }
 
 // Configure API call
+//
+//nolint:gocyclo
 func Configure(api *operations.EasyclaAPI, service Service, userService users.Service) {
 	// Retrieve a list of available templates
 	api.SignClearCachesHandler = sign.ClearCachesHandlerFunc(
@@ -180,12 +183,36 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				if userErr != nil {
 					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, userErr))
 				}
-				if len(user.Emails) == 0 {
+				if user == nil {
+					msg := fmt.Sprintf("user not found: %s", *params.Input.UserID)
+					log.WithFields(f).Warn(msg)
+					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
+				}
+				userServiceClient := user_service.GetClient()
+				if userServiceClient != nil && userServiceClient.IsConfigured() && user.LfUsername != "" {
+					platformUser, platformUserErr := userServiceClient.GetUserByUsername(user.LfUsername)
+					if platformUserErr != nil {
+						log.WithFields(f).WithError(platformUserErr).Warn("unable to fetch platform user for primary email lookup")
+					} else if platformUser != nil {
+						for _, email := range platformUser.Emails {
+							if email != nil && email.IsPrimary != nil && *email.IsPrimary && email.EmailAddress != nil && *email.EmailAddress != "" {
+								preferredEmail = *email.EmailAddress
+								break
+							}
+						}
+					}
+				}
+
+				if preferredEmail == "" && len(user.Emails) > 0 {
+					preferredEmail = user.Emails[0]
+				}
+
+				if preferredEmail == "" {
 					msg := "no emails found"
 					log.WithFields(f).Warn(msg)
 					return sign.NewRequestIndividualSignatureBadRequest().WithPayload(errorResponse(reqId, errors.New(msg)))
 				}
-				preferredEmail = user.Emails[0]
+
 				log.WithFields(f).Debug("requesting individual signature for github/gitlab")
 				resp, err = service.RequestIndividualSignature(ctx, params.Input, preferredEmail)
 			} else if strings.ToLower(params.Input.ReturnURLType) == "gerrit" {

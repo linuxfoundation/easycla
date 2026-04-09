@@ -1462,6 +1462,10 @@ class GitHub(repository_service_interface.RepositoryService):
             # update/set the github username if available
             cla.utils.update_github_username(github_user, user)
 
+            github_name = github_user.get("name")
+            if github_name and user.get_user_name() != github_name:
+                user.set_user_name(github_name)
+
             user.set_user_emails(emails)
             user.save()
             return user
@@ -1485,6 +1489,10 @@ class GitHub(repository_service_interface.RepositoryService):
 
             # update/set the github username if available
             cla.utils.update_github_username(github_user, user)
+
+            github_name = github_user.get("name")
+            if github_name and user.get_user_name() != github_name:
+                user.set_user_name(github_name)
 
             user.set_user_emails(emails)
             user.save()
