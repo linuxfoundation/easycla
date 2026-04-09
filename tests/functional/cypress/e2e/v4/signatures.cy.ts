@@ -44,6 +44,7 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
 
   let signatureIclaID = '';
   let signatureCclaID = '';
+  let projectCompanySignatureID = '';
   let signatureID = '';
   let signatureApproved = true;
   let allowFail: boolean = !(Cypress.env('ALLOW_FAIL') === 1);
@@ -71,10 +72,21 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       },
     });
 
-  const findProjectCompanySignature = (signatures: any[]) =>
-    signatures.find((item: any) => item.signatureID === signatureCclaID) || signatures[0];
+  const findProjectCompanySignature = (signatures: any[], signatureID?: string) =>
+    signatures.find((item: any) => item.signatureID === signatureID) || signatures[0];
+
+  const extractApprovalValues = (list: any[] = []) =>
+    list
+      .map((item: any) => {
+        if (typeof item === 'string') {
+          return item;
+        }
+        return item?.approvalItem || item?.approval_item;
+      })
+      .filter(Boolean);
 
   const waitForDomainApprovalListState = (
+    signatureID: string,
     domain: string,
     shouldExist: boolean,
     retries: number = 6,
@@ -83,11 +95,11 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       getProjectCompanySignatures().then((response) => {
         validate_200_Status(response);
         const signatures = response.body.signatures || [];
-        const signature = findProjectCompanySignature(signatures);
+        const signature = findProjectCompanySignature(signatures, signatureID);
 
-        expect(signature, `CCLA signature ${signatureCclaID} should exist`).to.exist;
+        expect(signature, `CCLA signature ${signatureID} should exist`).to.exist;
 
-        const list = signature.domainApprovalList || [];
+        const list = extractApprovalValues(signature.domainApprovalList || []);
         const isPresent = list.includes(domain);
 
         if (isPresent === shouldExist) {
@@ -414,6 +426,9 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       for (let i = 0; i <= signatures.length - 1; i++) {
         expect(signatures[i].companyName).to.eql(companyName);
         expect(signatures[i].claType).to.eql('ccla');
+      }
+      if (!projectCompanySignatureID && signatures.length > 0) {
+        projectCompanySignatureID = signatures[0].signatureID;
       }
       validateApiResponse('signatures/getProjectCompanySignatures.json', response);
     });
@@ -834,7 +849,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       return cy.logJson('response', response).then(() => {
         validate_200_Status(response);
         cy.task('log', 'domain ' + domainApprovalList + ' should be added to approval list');
-        return waitForDomainApprovalListState(domainApprovalList, true);
+        projectCompanySignatureID = response.body.signatureID || projectCompanySignatureID;
+        return waitForDomainApprovalListState(projectCompanySignatureID, domainApprovalList, true);
       });
     });
   });
@@ -856,7 +872,8 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       return cy.logJson('response', response).then(() => {
         validate_200_Status(response);
         cy.task('log', 'domain ' + domainApprovalList + ' should be removed from approval list');
-        return waitForDomainApprovalListState(domainApprovalList, false);
+        projectCompanySignatureID = response.body.signatureID || projectCompanySignatureID;
+        return waitForDomainApprovalListState(projectCompanySignatureID, domainApprovalList, false);
       });
     });
   });
