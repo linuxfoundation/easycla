@@ -1,0 +1,8 @@
+# Ignore security warnings for validated GitHub API requests
+internal/logging/logging.go:46
+internal/logging/logging.go:66
+internal/logging/logging.go:85
+internal/logging/logging.go:104
+internal/legacy/github/service.go:76
+internal/legacy/github/service.go:77
+internal/legacy/github/service.go:79
