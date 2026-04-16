@@ -25,7 +25,6 @@ package:
     - '!node_modules/**'
     - '!package-lock.json'
     - '!yarn.lock'
-    - '.serverless-wsgi'
 
 custom:
   allowed_origins: ${file(./env.json):cla-allowed-origins-${sls:stage}, ssm:/cla-allowed-origins-${sls:stage}}
@@ -37,17 +36,6 @@ custom:
     site: ${file(./env.json):dd-site-${sls:stage}, ssm:/cla-dd-site-${sls:stage}}
     apiKeySecretArn: ${file(./env.json):dd-api-key-secret-arn-${sls:stage}, ssm:/cla-dd-api-key-secret-arn-${sls:stage}}
     extensionLayerArn: ${file(./env.json):dd-extension-layer-arn-${sls:stage}, ssm:/cla-dd-extension-layer-arn-${sls:stage}}
-  wsgi:
-    app: cla.routes.__hug_wsgi__
-    pythonBin: python
-    pythonRequirements: false
-  pythonRequirements:
-    dockerizePip: true
-    dockerImage: public.ecr.aws/sam/build-python3.11:latest
-    slim: false
-    strip: false
-    useDownloadCache: true
-    useStaticCache: true
   # Config for serverless-prune-plugin - remove all but the 10 most recent
   # versions to avoid the "Code storage limit exceeded" error
   prune:
@@ -116,7 +104,7 @@ custom:
 
 provider:
   name: aws
-  runtime: python3.11
+  runtime: provided.al2
   stage: ${env:STAGE}
   region: us-east-1
   timeout: 60 # optional, in seconds, default is 6
@@ -248,6 +236,7 @@ provider:
     HOME: /tmp
     REGION: us-east-1
     DYNAMODB_AWS_REGION: us-east-1
+    ALLOWED_ORIGINS: ${self:custom.allowed_origins}
     GH_APP_WEBHOOK_SECRET: ${file(./env.json):gh-app-webhook-secret, ssm:/cla-gh-app-webhook-secret-${sls:stage}}
     GH_APP_ID: ${file(./env.json):gh-app-id, ssm:/cla-gh-app-id-${sls:stage}}
     GH_OAUTH_CLIENT_ID: ${file(./env.json):gh-oauth-client-id, ssm:/cla-gh-oauth-client-id-${sls:stage}}
@@ -345,8 +334,6 @@ provider:
     Owner: "David Deal"
 
 plugins:
-  - serverless-python-requirements
-  - serverless-wsgi
   - serverless-plugin-tracing
   # Serverless Finch does s3 uploading. Called with 'sls client deploy'.
   # Also allows bucket removal with 'sls client remove'.
@@ -550,71 +537,112 @@ functions:
           arn: ${self:custom.userEventsSNSTopicARN}
 
   apiv1:
-    handler: wsgi_handler.handler
-    description: "EasyCLA Python API handler for the /v1 endpoints"
+    handler: 'bin/legacy-api-lambda'
+    runtime: provided.al2
+    description: "EasyCLA legacy Go API handler for the /v1 endpoints"
     events:
       - http:
           method: ANY
           path: v1/{proxy+}
           cors: true
+    package:
+      individually: true
+      patterns:
+        - '!**'
+        - 'bin/legacy-api-lambda'
+        - 'bootstrap'
     layers:
       - ${self:custom.datadog.extensionLayerArn}
 
   apiv2:
-    handler: wsgi_handler.handler
-    description: "EasyCLA Python API handler for the /v2 endpoints"
+    handler: 'bin/legacy-api-lambda'
+    runtime: provided.al2
+    description: "EasyCLA legacy Go API handler for the /v2 endpoints"
     events:
       - http:
           method: ANY
           path: v2/{proxy+}
           cors: true
+    package:
+      individually: true
+      patterns:
+        - '!**'
+        - 'bin/legacy-api-lambda'
+        - 'bootstrap'
     layers:
       - ${self:custom.datadog.extensionLayerArn}
 
   salesforceprojects:
-    handler: cla.salesforce.get_projects
-    description: "EasyCLA API Callback Handler for fetching all SalesForce projects"
+    handler: 'bin/legacy-api-lambda'
+    runtime: provided.al2
+    description: "EasyCLA legacy Go API handler for fetching all SalesForce projects"
     events:
       - http:
           method: ANY
           path: v1/salesforce/projects
           cors: true
+    package:
+      individually: true
+      patterns:
+        - '!**'
+        - 'bin/legacy-api-lambda'
+        - 'bootstrap'
     layers:
       - ${self:custom.datadog.extensionLayerArn}
 
   salesforceprojectbyID:
-    handler: cla.salesforce.get_project
-    description: "EasyCLA API Callback Handler for fetching SalesForce projects by ID"
+    handler: 'bin/legacy-api-lambda'
+    runtime: provided.al2
+    description: "EasyCLA legacy Go API handler for fetching SalesForce projects by ID"
     events:
       - http:
           method: ANY
           path: v1/salesforce/project
           cors: true
+    package:
+      individually: true
+      patterns:
+        - '!**'
+        - 'bin/legacy-api-lambda'
+        - 'bootstrap'
     layers:
       - ${self:custom.datadog.extensionLayerArn}
 
   # GitHub callback handler
   githubinstall:
-    handler: wsgi_handler.handler
-    description: "EasyCLA API Callback Handler for GitHub bot installations"
+    handler: 'bin/legacy-api-lambda'
+    runtime: provided.al2
+    description: "EasyCLA legacy Go API handler for GitHub bot installations"
     events:
       - http:
           method: ANY
           path: v2/github/installation
+    package:
+      individually: true
+      patterns:
+        - '!**'
+        - 'bin/legacy-api-lambda'
+        - 'bootstrap'
     layers:
       - ${self:custom.datadog.extensionLayerArn}
 
   # GitHub callback handler
   githubactivity:
-    handler: wsgi_handler.handler
-    description: "EasyCLA API Callback Handler for GitHub activity"
+    handler: 'bin/legacy-api-lambda'
+    runtime: provided.al2
+    description: "EasyCLA legacy Go API handler for GitHub activity"
     events:
       - http:
           method: POST
           path: v2/github/activity
+    package:
+      individually: true
+      patterns:
+        - '!**'
+        - 'bin/legacy-api-lambda'
+        - 'bootstrap'
     layers:
       - ${self:custom.datadog.extensionLayerArn}
-
 
 resources:
   Conditions:
@@ -764,3 +792,4 @@ resources:
           - RootResourceId
       Export:
         Name: APIGatewayRootResourceID
+
