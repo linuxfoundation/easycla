@@ -5705,29 +5705,40 @@ func (h *Handlers) GetProjectDocumentV2(w http.ResponseWriter, r *http.Request) 
 	projectID := chi.URLParam(r, "project_id")
 	documentType := chi.URLParam(r, "document_type")
 	if _, err := uuid.Parse(projectID); err != nil {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"project_id": "invalid uuid"}})
+		respond.JSON(w, http.StatusBadRequest, map[string]any{
+			"errors": map[string]any{"project_id": "invalid uuid"},
+		})
+		return
+	}
+
+	// Hug one_of(["individual", "corporate"]) rejects this before controller logic.
+	docsKey, noDocMsg, ok := projectDocsKey(documentType)
+	if !ok {
+		respond.JSON(w, http.StatusBadRequest, map[string]any{
+			"errors": map[string]any{"document_type": "invalid"},
+		})
 		return
 	}
 
 	projItem, found, err := h.projects.GetByID(ctx, projectID)
 	if err != nil {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"project_id": err.Error()}})
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{
+			"errors": map[string]any{"project_id": err.Error()},
+		})
 		return
 	}
 	if !found {
-		// Python controller returns an errors dict without changing HTTP status.
-		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"project_id": "Project not found"}})
+		respond.JSON(w, http.StatusOK, map[string]any{
+			"errors": map[string]any{"project_id": "Project not found"},
+		})
 		return
 	}
 
-	docsKey, noDocMsg, ok := projectDocsKey(documentType)
-	if !ok {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"document_type": "invalid"}})
-		return
-	}
 	docsAV, hasDocs := projItem[docsKey]
 	if !hasDocs {
-		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"document": noDocMsg}})
+		respond.JSON(w, http.StatusOK, map[string]any{
+			"errors": map[string]any{"document": noDocMsg},
+		})
 		return
 	}
 
