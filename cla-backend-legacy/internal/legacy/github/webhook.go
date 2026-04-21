@@ -48,3 +48,19 @@ func ValidateWebhookSignature(payload []byte, signatureHeader string) (bool, err
 	}
 	return hmac.Equal(expected, got), nil
 }
+
+// SignWebhookPayload signs a payload using the same SHA1 GitHub App webhook
+// secret format used by the legacy Python webhook handler.
+func SignWebhookPayload(payload []byte) (string, error) {
+	secret := strings.TrimSpace(os.Getenv("GITHUB_APP_WEBHOOK_SECRET"))
+	if secret == "" {
+		secret = strings.TrimSpace(os.Getenv("GH_APP_WEBHOOK_SECRET"))
+	}
+	if secret == "" {
+		return "", errors.New("GITHUB_APP_WEBHOOK_SECRET is empty")
+	}
+
+	mac := hmac.New(sha1.New, []byte(secret))
+	_, _ = mac.Write(payload)
+	return "sha1=" + hex.EncodeToString(mac.Sum(nil)), nil
+}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"runtime"
 	"sort"
@@ -1720,6 +1721,14 @@ func GetPRCommitSHA(ctx context.Context, gh *github.Client, owner, repo string, 
 }
 
 func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, repoID *int64, signed []*UserCommitSummary, missing []*UserCommitSummary, anyMissing bool, CLABaseAPIURL, CLALandingPage, CLALogoURL string) error {
+	return updatePullRequest(ctx, installationID, pullRequestID, owner, repo, repoID, signed, missing, anyMissing, CLABaseAPIURL, CLALandingPage, CLALogoURL, utils.V2, false)
+}
+
+func UpdatePullRequestLegacyCompat(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, repoID *int64, signed []*UserCommitSummary, missing []*UserCommitSummary, anyMissing bool, CLABaseAPIURL, CLALandingPage, CLALogoURL, projectVersion string) error {
+	return updatePullRequest(ctx, installationID, pullRequestID, owner, repo, repoID, signed, missing, anyMissing, CLABaseAPIURL, CLALandingPage, CLALogoURL, projectVersion, true)
+}
+
+func updatePullRequest(ctx context.Context, installationID int64, pullRequestID int, owner, repo string, repoID *int64, signed []*UserCommitSummary, missing []*UserCommitSummary, anyMissing bool, CLABaseAPIURL, CLALandingPage, CLALogoURL, projectVersion string, legacyCheckRun bool) error {
 	f := logrus.Fields{
 		"functionName":   "github.github_repository.UpdatePullRequest",
 		"installationID": installationID,
@@ -1749,7 +1758,23 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 		return failedErr
 	}
 
-	body := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, anyMissing, CLABaseAPIURL, CLALogoURL, CLALandingPage)
+	var commitSHA string
+	if legacyCheckRun {
+		commitSHA, err = GetPRCommitSHA(ctx, client, owner, repo, pullRequestID)
+		log.WithFields(f).Debugf("Got commit SHA for %s/%s PR %d: %s", owner, repo, pullRequestID, commitSHA)
+		if err != nil {
+			return err
+		}
+		if len(missing) > 0 {
+			checkRunErr := createLegacyActionRequiredCheckRun(ctx, client, owner, repo, commitSHA, installationID, repoID, pullRequestID, missing, CLABaseAPIURL, projectVersion)
+			if checkRunErr != nil {
+				// Legacy Python logs check-run creation failures and continues with comment/status updates.
+				log.WithFields(f).WithError(checkRunErr).Debugf("unable to create legacy CLA check run for PR: %d", pullRequestID)
+			}
+		}
+	}
+
+	body := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, anyMissing, CLABaseAPIURL, CLALogoURL, CLALandingPage, projectVersion)
 
 	if len(missing) == 0 {
 		// All contributors are passing
@@ -1780,7 +1805,7 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 			}
 		} else if previouslySucceeded {
 			// pass => fail transition; still avoid redundant edit
-			failedBody := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, anyMissing, CLABaseAPIURL, CLALogoURL, CLALandingPage)
+			failedBody := assembleCLAComment(ctx, int(installationID), pullRequestID, repoID, signed, missing, anyMissing, CLABaseAPIURL, CLALogoURL, CLALandingPage, projectVersion)
 			edited, err2 := EditIssueCommentIfChanged(ctx, client, owner, repo, pullRequestID, *previousSucceededComment.ID, failedBody)
 			if err2 != nil {
 				log.WithFields(f).WithError(err2).Debug("unable to edit previous success comment")
@@ -1805,6 +1830,12 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 
 	// Update/Create the status
 	ctxName := "EasyCLA"
+	if legacyCheckRun {
+		ctxName = strings.TrimSpace(os.Getenv("GH_STATUS_CTX_NAME"))
+		if ctxName == "" {
+			ctxName = "communitybridge/cla"
+		}
+	}
 	var statusBody string
 	var state string
 	var signURL string
@@ -1812,18 +1843,18 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 	if len(missing) > 0 {
 		state = failureState
 		ctxName, statusBody = assembleCLAStatus(ctxName, false)
-		signURL = getFullSignURL("github", strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL)
+		signURL = getFullSignURL(strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL, projectVersion)
 		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(missing), signURL)
 	} else if len(signed) > 0 {
 		state = successState
 		ctxName, statusBody = assembleCLAStatus(ctxName, true)
-		signURL = fmt.Sprintf("%s/#/?version=2", CLALandingPage)
+		signURL = appendProjectVersionToURL(fmt.Sprintf("%s/#/", CLALandingPage), projectVersion)
 		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(missing), signURL)
 
 	} else {
 		state = failureState
 		ctxName, statusBody = assembleCLAStatus(ctxName, false)
-		signURL = getFullSignURL("github", strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL)
+		signURL = getFullSignURL(strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL, projectVersion)
 		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(missing), signURL)
 		log.WithFields(f).Debugf("This is an error condition - should have at least one committer in one of these lists: signed : %+v passed, %+v", signed, missing)
 	}
@@ -1836,11 +1867,12 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 	}
 
 	log.WithFields(f).Debugf("Creating status: %+v", status)
-
-	commitSHA, err := GetPRCommitSHA(ctx, client, owner, repo, pullRequestID)
-	log.WithFields(f).Debugf("Got commit SHA for %s/%s PR %d: %s", owner, repo, pullRequestID, commitSHA)
-	if err != nil {
-		return err
+	if commitSHA == "" {
+		commitSHA, err = GetPRCommitSHA(ctx, client, owner, repo, pullRequestID)
+		log.WithFields(f).Debugf("Got commit SHA for %s/%s PR %d: %s", owner, repo, pullRequestID, commitSHA)
+		if err != nil {
+			return err
+		}
 	}
 
 	_, _, err = CreateStatus(ctx, client, owner, repo, commitSHA, &status)
@@ -1851,6 +1883,72 @@ func UpdatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 	log.WithFields(f).Debugf("Created '%s' status commit SHA for %s/%s PR %d: %s", *status.State, owner, repo, pullRequestID, commitSHA)
 
 	return nil
+}
+
+const legacyInvalidAuthorHelpURL = "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
+
+func createLegacyActionRequiredCheckRun(ctx context.Context, client *github.Client, owner, repo, commitSHA string, installationID int64, repoID *int64, pullRequestID int, missing []*UserCommitSummary, apiBaseURL, projectVersion string) error {
+	if client == nil || repoID == nil || commitSHA == "" || len(missing) == 0 {
+		return nil
+	}
+
+	signURL := ""
+	seenRenderKeys := make(map[string]struct{}, len(missing))
+	var text strings.Builder
+	for _, userSummary := range missing {
+		if userSummary == nil {
+			continue
+		}
+		if !userSummary.IsValid() {
+			signURL = legacyInvalidAuthorHelpURL
+		} else {
+			signURL = getFullSignURL(strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), apiBaseURL, projectVersion)
+		}
+
+		renderKey := legacyCheckRunRenderKey(userSummary)
+		if _, ok := seenRenderKeys[renderKey]; ok {
+			continue
+		}
+		seenRenderKeys[renderKey] = struct{}{}
+		text.WriteString(userSummary.GetDisplayText(true))
+	}
+
+	payload := map[string]interface{}{
+		"name":        "CLA check",
+		"head_sha":    commitSHA,
+		"status":      "completed",
+		"conclusion":  "action_required",
+		"details_url": signURL,
+		"output": map[string]string{
+			"title":   "EasyCLA: Signed CLA not found",
+			"summary": "One or more committers are not authorized under a signed CLA.",
+			"text":    text.String(),
+		},
+	}
+
+	req, err := client.NewRequest("POST", fmt.Sprintf("repos/%s/%s/check-runs", owner, repo), payload)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/vnd.github.antiope-preview+json")
+	_, err = client.Do(ctx, req, nil)
+	return err
+}
+
+func legacyCheckRunRenderKey(userSummary *UserCommitSummary) string {
+	if userSummary == nil || userSummary.CommitAuthor == nil {
+		return ""
+	}
+
+	authorID := userSummary.GetCommitAuthorID()
+	authorLogin := strings.ToLower(strings.TrimSpace(utils.StringValue(userSummary.CommitAuthor.Login)))
+	authorEmail := strings.ToLower(strings.TrimSpace(userSummary.GetCommitAuthorEmail()))
+	if authorID != "" || authorLogin != "" || authorEmail != "" {
+		return strings.Join([]string{authorID, authorLogin, authorEmail, ""}, "|")
+	}
+
+	authorName := strings.ToLower(strings.TrimSpace(utils.StringValue(userSummary.CommitAuthor.Name)))
+	return strings.Join([]string{"", "", "", authorName}, "|")
 }
 
 func hasCheckPreviouslyFailed(ctx context.Context, client *github.Client, owner, repo string, pullRequestID int) (bool, *github.IssueComment, error) {
@@ -1984,7 +2082,7 @@ func assembleCLAStatus(authorName string, signed bool) (string, string) {
 	return authorName, "Missing CLA Authorization."
 }
 
-func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, repositoryID *int64, signed, missing []*UserCommitSummary, anyMissing bool, apiBaseURL, CLALogoURL, CLALandingPage string) string {
+func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, repositoryID *int64, signed, missing []*UserCommitSummary, anyMissing bool, apiBaseURL, CLALogoURL, CLALandingPage, projectVersion string) string {
 	f := logrus.Fields{
 		"functionName":   "github.github_repository.assembleCLAComment",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -2003,10 +2101,10 @@ func assembleCLAComment(ctx context.Context, installationID, pullRequestID int, 
 	}
 
 	log.WithFields(f).Debug("Building CLAComment body.")
-	signURL := getFullSignURL(repositoryType, strconv.Itoa(installationID), strconv.Itoa(int(*repositoryID)), strconv.Itoa(pullRequestID), apiBaseURL)
+	signURL := getFullSignURL(strconv.Itoa(installationID), strconv.Itoa(int(*repositoryID)), strconv.Itoa(pullRequestID), apiBaseURL, projectVersion)
 	commentBody := getCommentBody(repositoryType, signURL, signed, missing, anyMissing)
 	allSigned := len(missing) == 0
-	badge := getCommentBadge(allSigned, signURL, missingID, false, CLALandingPage, CLALogoURL)
+	badge := getCommentBadge(allSigned, signURL, missingID, false, CLALandingPage, CLALogoURL, projectVersion)
 	body := fmt.Sprintf("%s<br >%s", badge, commentBody)
 	if len(body) > MaxCommentLength {
 		body = TrimComment(body, 40, 20, 20, "…")
@@ -2258,7 +2356,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 	return text + committersComment.String()
 }
 
-func getCommentBadge(allSigned bool, signURL string, missingUserId, managerApproved bool, CLALandingPage, CLALogoURL string) string {
+func getCommentBadge(allSigned bool, signURL string, missingUserId, managerApproved bool, CLALandingPage, CLALogoURL, projectVersion string) string {
 	var alt string
 	var text string
 	var badgeHyperLink string
@@ -2266,7 +2364,7 @@ func getCommentBadge(allSigned bool, signURL string, missingUserId, managerAppro
 
 	if allSigned {
 		badgeURL = fmt.Sprintf("%s/cla-signed.svg%s", CLALogoURL, svgVersion)
-		badgeHyperLink = fmt.Sprintf("%s/#/?version=2", CLALandingPage)
+		badgeHyperLink = appendProjectVersionToURL(fmt.Sprintf("%s/#/", CLALandingPage), projectVersion)
 		alt = "CLA Signed"
 		return fmt.Sprintf(`<a href="%s"><img src="%s" alt="%s" align="left" height="28" width="328" ></a>`, badgeHyperLink, badgeURL, alt)
 	}
@@ -2286,8 +2384,24 @@ func getCommentBadge(allSigned bool, signURL string, missingUserId, managerAppro
 	return fmt.Sprintf("%s<br/>", text)
 }
 
-func getFullSignURL(repositoryType, installationID, githubRepositoryID, pullRequestID, apiBaseURL string) string {
-	return fmt.Sprintf("%s/v2/repository-provider/%s/sign/%s/%s/%s/#/?version=2", apiBaseURL, repositoryType, installationID, githubRepositoryID, pullRequestID)
+func getFullSignURL(installationID, githubRepositoryID, pullRequestID, apiBaseURL, projectVersion string) string {
+	baseURL := fmt.Sprintf("%s/v2/repository-provider/github/sign/%s/%s/%s/#/", apiBaseURL, installationID, githubRepositoryID, pullRequestID)
+	return appendProjectVersionToURL(baseURL, projectVersion)
+}
+
+func appendProjectVersionToURL(address, projectVersion string) string {
+	version := "1"
+	if strings.TrimSpace(projectVersion) == utils.V2 {
+		version = "2"
+	}
+	if strings.Contains(address, "version=") {
+		return address
+	}
+	separator := "?"
+	if strings.Contains(address, "?") {
+		separator = "&"
+	}
+	return address + separator + "version=" + version
 }
 
 // GetRepositoryByExternalID finds github repository by github repository id

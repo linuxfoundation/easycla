@@ -16,6 +16,7 @@ import (
 	stdmail "net/mail"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -930,6 +931,464 @@ func (h *Handlers) forwardGithubActivityToV4(ctx context.Context, body []byte, h
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	return nil
+}
+
+func githubActivityAction(payload map[string]any) string {
+	if payload == nil {
+		return ""
+	}
+	if v, ok := payload["action"].(string); ok {
+		return strings.TrimSpace(v)
+	}
+	if v, ok := payload["action"]; ok && v != nil {
+		return strings.TrimSpace(fmt.Sprint(v))
+	}
+	return ""
+}
+
+func shouldForwardGithubActivityToV4(eventType string, action string) bool {
+	switch strings.ToLower(strings.TrimSpace(eventType)) {
+	case "installation_repositories", "integration_installation_repositories", "repository":
+		return true
+	case "push":
+		return strings.EqualFold(strings.TrimSpace(action), "created")
+	default:
+		return false
+	}
+}
+
+func githubActivityStringValue(payload map[string]any, keys ...string) string {
+	if payload == nil || len(keys) == 0 {
+		return ""
+	}
+	cur := payload
+	for i, key := range keys {
+		v, ok := cur[key]
+		if !ok || v == nil {
+			return ""
+		}
+		if i == len(keys)-1 {
+			switch tv := v.(type) {
+			case string:
+				return strings.TrimSpace(tv)
+			case float64:
+				if tv == float64(int64(tv)) {
+					return strconv.FormatInt(int64(tv), 10)
+				}
+				return strings.TrimSpace(fmt.Sprint(tv))
+			default:
+				return strings.TrimSpace(fmt.Sprint(tv))
+			}
+		}
+		next, ok := v.(map[string]any)
+		if !ok {
+			return ""
+		}
+		cur = next
+	}
+	return ""
+}
+
+func githubActivityInt64Value(payload map[string]any, keys ...string) (int64, bool) {
+	s := githubActivityStringValue(payload, keys...)
+	if s == "" {
+		return 0, false
+	}
+	i, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return i, true
+}
+
+func githubCommentContainsEasyCLACommand(commentBody string) bool {
+	for _, token := range strings.Fields(commentBody) {
+		if token == "/easycla" {
+			return true
+		}
+	}
+	return false
+}
+
+func extractPullRequestNumberFromMergeGroupMessage(message string) (string, bool) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return "", false
+	}
+	lines := strings.Split(message, "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return "", false
+	}
+	firstLine := strings.TrimSpace(lines[0])
+
+	if matches := regexp.MustCompile(`^Merge pull request #(\d+)`).FindStringSubmatch(firstLine); len(matches) == 2 {
+		return matches[1], true
+	}
+	matches := regexp.MustCompile(`\(#(\d+)\)`).FindAllStringSubmatch(firstLine, -1)
+	if len(matches) > 0 {
+		return matches[len(matches)-1][1], true
+	}
+	matches = regexp.MustCompile(`\s+#(\d+)`).FindAllStringSubmatch(firstLine, -1)
+	if len(matches) > 0 {
+		return matches[len(matches)-1][1], true
+	}
+	matches = regexp.MustCompile(`#(\d+)`).FindAllStringSubmatch(message, -1)
+	if len(matches) > 0 {
+		return matches[0][1], true
+	}
+	return "", false
+}
+
+func (h *Handlers) handleLegacyGithubInstallationEvent(ctx context.Context, action string, payload map[string]any) (any, error) {
+	action = strings.TrimSpace(action)
+	if action != "created" && action != "deleted" {
+		return nil, nil
+	}
+	orgName := githubActivityStringValue(payload, "installation", "account", "login")
+	if orgName == "" {
+		orgName = githubActivityStringValue(payload, "organization", "login")
+	}
+	if orgName == "" {
+		orgName = githubActivityStringValue(payload, "repository", "owner", "login")
+	}
+	if orgName == "" {
+		return map[string]any{"status": fmt.Sprintf("GitHub installation %s event malformed.", action)}, nil
+	}
+
+	if action == "deleted" {
+		return nil, h.notifyLegacyGithubProjectManagersUnableToCheck(ctx, orgName)
+	}
+
+	installationID, ok := githubActivityInt64Value(payload, "installation", "id")
+	if !ok {
+		return map[string]any{"status": fmt.Sprintf("GitHub installation %s event malformed.", action)}, nil
+	}
+	if h.githubOrgs == nil {
+		return nil, errors.New("github orgs store is not configured")
+	}
+	org, found, err := h.githubOrgs.GetByLowerName(ctx, strings.ToLower(orgName))
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return map[string]any{"status": "Github Organization must be created through the Project Management Console."}, nil
+	}
+
+	oldInstallationID := strings.TrimSpace(getAttrString(org, "organization_installation_id"))
+	org["organization_installation_id"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(installationID, 10)}
+	org["date_modified"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(time.Now().UTC())}
+	if err := h.githubOrgs.PutItem(ctx, org); err != nil {
+		return nil, err
+	}
+	if oldInstallationID == "" || oldInstallationID == "0" {
+		return map[string]any{"status": "Organization Enrollment Completed. CLA System is operational"}, nil
+	}
+	return map[string]any{"status": "Already Enrolled Organization Updated. CLA System is operational"}, nil
+}
+func (h *Handlers) notifyLegacyGithubProjectManagersUnableToCheck(ctx context.Context, organizationName string) error {
+	if h.repos == nil {
+		return errors.New("repositories store is not configured")
+	}
+	if h.projects == nil {
+		return errors.New("projects store is not configured")
+	}
+	if h.users == nil {
+		return errors.New("users store is not configured")
+	}
+	repos, err := h.repos.QueryByOrganizationName(ctx, organizationName)
+	if err != nil {
+		return err
+	}
+	if len(repos) == 0 {
+		return nil
+	}
+
+	projectRepos := map[string][]string{}
+	for _, repo := range repos {
+		projectID := strings.TrimSpace(getAttrString(repo, "repository_project_id"))
+		if projectID == "" {
+			continue
+		}
+		repoURL := strings.TrimSpace(getAttrString(repo, "repository_url"))
+		projectRepos[projectID] = append(projectRepos[projectID], repoURL)
+	}
+	if len(projectRepos) == 0 {
+		return nil
+	}
+
+	svc, err := email.NewFromEnv(ctx)
+	if err != nil {
+		return err
+	}
+	for projectID, repoURLs := range projectRepos {
+		project, found, err := h.projects.GetByID(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			logging.Warnf("notify_project_managers - unable to load project (cla_group) by project_id: %s", projectID)
+			return nil
+		}
+		recipients, err := h.projectManagerEmails(ctx, project)
+		if err != nil {
+			return err
+		}
+		subject, body := unableToDoCLACheckEmailContent(project, repoURLs)
+		if err := svc.Send(ctx, subject, body, recipients); err != nil {
+			return err
+		}
+		logging.Debugf("github.activity - sending unable to perform CLA Check email to managers: %v for project %s with repositories: %v", recipients, getAttrString(project, "project_id"), repoURLs)
+	}
+	return nil
+}
+
+func (h *Handlers) projectManagerEmails(ctx context.Context, project map[string]types.AttributeValue) ([]string, error) {
+	if h.users == nil {
+		return nil, errors.New("users store is not configured")
+	}
+	acl := getAttrStringSlice(project, "project_acl")
+	recipients := make([]string, 0, len(acl))
+	for _, lfid := range acl {
+		lfid = strings.TrimSpace(lfid)
+		if lfid == "" {
+			continue
+		}
+		users, err := h.users.QueryByLFUsername(ctx, lfid)
+		if err != nil {
+			return nil, err
+		}
+		if len(users) == 0 {
+			continue
+		}
+		emailAddress := strings.TrimSpace(getUserEmailLikePython(users[0]))
+		if emailAddress != "" {
+			recipients = append(recipients, emailAddress)
+		}
+	}
+	return recipients, nil
+}
+
+func unableToDoCLACheckEmailContent(project map[string]types.AttributeValue, repoURLs []string) (string, string) {
+	claGroupName := getAttrString(project, "project_name")
+	projectVersion := getAttrString(project, "version")
+	subject := fmt.Sprintf("EasyCLA: Unable to check GitHub Pull Requests for CLA Group: %s", claGroupName)
+	pronoun := "this repository"
+	if len(repoURLs) > 1 {
+		pronoun = "these repositories"
+	}
+	repoContent := "<ul>"
+	for _, repo := range repoURLs {
+		repoContent += "<li>" + repo + "</li>"
+	}
+	repoContent += "</ul>"
+	body := fmt.Sprintf(`
+	<p>Hello Project Manager,</p>
+	<p>This is a notification email from EasyCLA regarding the CLA Group %s.</p>
+	<p>EasyCLA is unable to check PRs on %s due to permissions issue.</p>
+	%s
+	<p>Please contact the repository admin/owner to enable CLA checks.</p>
+	<p>Provide the Owner/Admin the following instructions:</p>
+	<ul>
+	<li>Go into the "Settings" tab of the GitHub Organization</li>
+	<li>Click on "installed GitHub Apps" vertical navigation</li>
+	<li>Then click "Configure" associated with the EasyCLA App</li>
+	<li>Finally, click the "All Repositories" radio button option</li>
+	</ul>
+	`, claGroupName, pronoun, repoContent)
+	return subject, appendEmailHelpSignOffContent(body, projectVersion)
+}
+
+func (h *Handlers) storeLegacyActivePullRequestMetadata(ctx context.Context, payload map[string]any, installationID, githubRepositoryID, changeRequestID int64) error {
+	if h.kv == nil || h.repos == nil || h.githubOrgs == nil || h.projects == nil {
+		return nil
+	}
+	repo, found, err := h.repos.GetByExternalIDAndType(ctx, strconv.FormatInt(githubRepositoryID, 10), "github")
+	if err != nil || !found {
+		return err
+	}
+	if !getAttrBool(repo, "enabled") {
+		return nil
+	}
+	orgName := strings.TrimSpace(getAttrString(repo, "repository_organization_name"))
+	ghOrg, found, err := h.githubOrgs.GetByName(ctx, orgName)
+	if err != nil || !found {
+		return err
+	}
+	if strings.TrimSpace(getAttrString(ghOrg, "organization_installation_id")) != strconv.FormatInt(installationID, 10) {
+		return nil
+	}
+	claGroupID := strings.TrimSpace(getAttrString(repo, "repository_project_id"))
+	if claGroupID == "" {
+		return nil
+	}
+	if _, found, err := h.projects.GetByID(ctx, claGroupID); err != nil || !found {
+		return err
+	}
+
+	githubAuthorUsername := githubActivityStringValue(payload, "pull_request", "user", "login")
+	if githubAuthorUsername == "" {
+		githubAuthorUsername = githubActivityStringValue(payload, "issue", "user", "login")
+	}
+	githubAuthorEmail, hasEmail := githubActivityOptionalStringValue(payload, "pull_request", "user", "email")
+	if !hasEmail {
+		githubAuthorEmail, hasEmail = githubActivityOptionalStringValue(payload, "issue", "user", "email")
+	}
+
+	value, err := json.Marshal(map[string]any{
+		"github_author_username": githubAuthorUsername,
+		"github_author_email":    githubAuthorEmail,
+		"cla_group_id":           claGroupID,
+		"repository_id":          strconv.FormatInt(githubRepositoryID, 10),
+		"pull_request_id":        strconv.FormatInt(changeRequestID, 10),
+	})
+	if err != nil {
+		return err
+	}
+	if githubAuthorUsername != "" {
+		if err := h.kv.Set(ctx, "active_pr:u:"+githubAuthorUsername, string(value)); err != nil {
+			return err
+		}
+		logging.Infof("stored active pull request details by user: %s", "active_pr:u:"+githubAuthorUsername)
+	}
+
+	if hasEmail && githubAuthorEmail != "" {
+		if err := h.kv.Set(ctx, "active_pr:e:"+githubAuthorEmail, string(value)); err != nil {
+			return err
+		}
+		logging.Infof("stored active pull request details by user email: %s", "active_pr:e:"+githubAuthorEmail)
+	}
+	return nil
+}
+
+func githubActivityOptionalStringValue(payload map[string]any, keys ...string) (string, bool) {
+	if payload == nil || len(keys) == 0 {
+		return "", false
+	}
+	cur := payload
+	for i, key := range keys {
+		v, ok := cur[key]
+		if !ok {
+			return "", false
+		}
+		if i == len(keys)-1 {
+			if v == nil {
+				return "", false
+			}
+			return strings.TrimSpace(fmt.Sprint(v)), true
+		}
+		next, ok := v.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		cur = next
+	}
+	return "", false
+}
+
+func (h *Handlers) handleLegacyGithubPullRequestUpdate(ctx context.Context, payload map[string]any) error {
+	installationID, ok := githubActivityInt64Value(payload, "installation", "id")
+	if !ok {
+		return errors.New("missing installation id")
+	}
+	githubRepositoryID, ok := githubActivityInt64Value(payload, "repository", "id")
+	if !ok {
+		return errors.New("missing github repository id")
+	}
+	changeRequestID, ok := githubActivityInt64Value(payload, "pull_request", "number")
+	if !ok {
+		return errors.New("missing pull request id")
+	}
+	if err := h.storeLegacyActivePullRequestMetadata(ctx, payload, installationID, githubRepositoryID, changeRequestID); err != nil {
+		logging.Errorf("github.update_change_request - problem saving PR metadata for PR: %d", changeRequestID)
+	}
+	return h.triggerGitHubChangeRequestUpdateV4(ctx, strconv.FormatInt(installationID, 10), strconv.FormatInt(githubRepositoryID, 10), strconv.FormatInt(changeRequestID, 10))
+}
+
+func (h *Handlers) handleLegacyGithubIssueComment(ctx context.Context, payload map[string]any) error {
+	commentBody := githubActivityStringValue(payload, "comment", "body")
+	if !githubCommentContainsEasyCLACommand(commentBody) {
+		return nil
+	}
+	installationID, ok := githubActivityInt64Value(payload, "installation", "id")
+	if !ok {
+		logging.Debugf("github issue_comment ignored: missing installation id in /easycla comment payload")
+		return nil
+	}
+	githubRepositoryID, ok := githubActivityInt64Value(payload, "repository", "id")
+	if !ok {
+		logging.Debugf("github issue_comment ignored: missing github repository id in /easycla comment payload")
+		return nil
+	}
+	changeRequestID, ok := githubActivityInt64Value(payload, "issue", "number")
+	if !ok {
+		logging.Debugf("github issue_comment ignored: missing pull request id in /easycla comment payload")
+		return nil
+	}
+	if err := h.storeLegacyActivePullRequestMetadata(ctx, payload, installationID, githubRepositoryID, changeRequestID); err != nil {
+		logging.Errorf("github.update_change_request - problem saving PR metadata for PR: %d", changeRequestID)
+	}
+	return h.triggerGitHubChangeRequestUpdateV4(ctx, strconv.FormatInt(installationID, 10), strconv.FormatInt(githubRepositoryID, 10), strconv.FormatInt(changeRequestID, 10))
+}
+
+func (h *Handlers) handleLegacyGithubMergeGroup(ctx context.Context, payload map[string]any) error {
+	installationID, ok := githubActivityInt64Value(payload, "installation", "id")
+	if !ok {
+		return errors.New("missing installation id")
+	}
+	githubRepositoryID, ok := githubActivityInt64Value(payload, "repository", "id")
+	if !ok {
+		return errors.New("missing github repository id")
+	}
+	mergeGroupSHA := githubActivityStringValue(payload, "merge_group", "head_sha")
+	if mergeGroupSHA == "" {
+		return errors.New("missing merge_group head_sha")
+	}
+	message := githubActivityStringValue(payload, "merge_group", "head_commit", "message")
+	changeRequestID, ok := extractPullRequestNumberFromMergeGroupMessage(message)
+	if !ok {
+		logging.Warnf("github merge_group ignored: unable to extract pull request number from merge_group head_commit.message")
+		return nil
+	}
+	return h.triggerGitHubMergeGroupUpdateV4(ctx, strconv.FormatInt(installationID, 10), strconv.FormatInt(githubRepositoryID, 10), changeRequestID, mergeGroupSHA)
+}
+
+func (h *Handlers) handleLegacyGithubReceivedActivity(ctx context.Context, payload map[string]any) error {
+	action := githubActivityAction(payload)
+	switch action {
+	case "opened", "reopened", "synchronize":
+		return h.handleLegacyGithubPullRequestUpdate(ctx, payload)
+	case "checks_requested":
+		return h.handleLegacyGithubMergeGroup(ctx, payload)
+	case "closed":
+		return nil
+	default:
+		return nil
+	}
+}
+
+func (h *Handlers) handleLegacyGithubActivity(ctx context.Context, eventType, action string, payload map[string]any) (any, error) {
+	switch strings.ToLower(strings.TrimSpace(eventType)) {
+	case "installation", "integration_installation":
+		_, err := h.handleLegacyGithubInstallationEvent(ctx, action, payload)
+		return nil, err
+	case "pull_request":
+		if action == "opened" || action == "reopened" || action == "synchronize" || action == "enqueued" {
+			return nil, h.handleLegacyGithubReceivedActivity(ctx, payload)
+		}
+		return nil, nil
+	case "issue_comment":
+		if action == "created" || action == "edited" {
+			return nil, h.handleLegacyGithubIssueComment(ctx, payload)
+		}
+		return nil, nil
+	case "merge_group":
+		if action == "checks_requested" {
+			return nil, h.handleLegacyGithubReceivedActivity(ctx, payload)
+		}
+		return nil, nil
+	default:
+		return nil, nil
+	}
 }
 
 func splitPlatformMaintainers(raw string) []string {
@@ -2397,7 +2856,11 @@ func (h *Handlers) triggerGitHubChangeRequestUpdateV4(ctx context.Context, insta
 	if err != nil {
 		return err
 	}
-	status, _, respBody, err := h.doRequestToV4(ctx, http.MethodPost, "/internal/github/trigger-change-request", headerCloneForV4(http.Header{}), payload)
+	headers, err := legacyGitHubInternalTriggerHeaders(payload)
+	if err != nil {
+		return err
+	}
+	status, _, respBody, err := h.doRequestToV4(ctx, http.MethodPost, "/github/activity?legacy_internal_trigger=github-change-request", headers, payload)
 	if err != nil {
 		return err
 	}
@@ -2408,6 +2871,44 @@ func (h *Handlers) triggerGitHubChangeRequestUpdateV4(ctx context.Context, insta
 		return fmt.Errorf("v4 github trigger returned status %d: %s", status, string(respBody))
 	}
 	return nil
+}
+
+func (h *Handlers) triggerGitHubMergeGroupUpdateV4(ctx context.Context, installationID, githubRepositoryID, changeRequestID, mergeGroupSHA string) error {
+	payload, err := json.Marshal(map[string]any{
+		"installation_id":      installationID,
+		"github_repository_id": githubRepositoryID,
+		"change_request_id":    changeRequestID,
+		"merge_group_sha":      mergeGroupSHA,
+	})
+	if err != nil {
+		return err
+	}
+	headers, err := legacyGitHubInternalTriggerHeaders(payload)
+	if err != nil {
+		return err
+	}
+	status, _, respBody, err := h.doRequestToV4(ctx, http.MethodPost, "/github/activity?legacy_internal_trigger=github-change-request", headers, payload)
+	if err != nil {
+		return err
+	}
+	if status >= 400 {
+		if len(respBody) == 0 {
+			return fmt.Errorf("v4 github merge group trigger returned status %d", status)
+		}
+		return fmt.Errorf("v4 github merge group trigger returned status %d: %s", status, string(respBody))
+	}
+	return nil
+}
+
+func legacyGitHubInternalTriggerHeaders(payload []byte) (http.Header, error) {
+	headers := headerCloneForV4(http.Header{})
+	signature, err := githublegacy.SignWebhookPayload(payload)
+	if err != nil {
+		return nil, err
+	}
+	headers.Set("Content-Type", "application/json")
+	headers.Set("X-Hub-Signature", signature)
+	return headers, nil
 }
 
 func (h *Handlers) triggerGitLabMergeRequestUpdateV4(ctx context.Context, organizationID *string, gitlabRepositoryID, mergeRequestID int64) error {
@@ -7361,10 +7862,11 @@ func (h *Handlers) githubListUserOrgs(ctx context.Context, username string) ([]s
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
+	// req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "cla-backend-legacy")
 	if tok := strings.TrimSpace(os.Getenv("GITHUB_OAUTH_TOKEN")); tok != "" {
-		// GitHub accepts both "token" and "Bearer" for PATs.
 		req.Header.Set("Authorization", "token "+tok)
+		// req.Header.Set("Authorization", "Bearer "+tok)
 	}
 
 	resp, err := h.httpClient.Do(req)
@@ -9018,9 +9520,6 @@ func (h *Handlers) ReceivedActivityV2(w http.ResponseWriter, r *http.Request) {
 	// Legacy Python (GitHub.received_activity) behavior:
 	//   - If payload is not a pull_request nor a merge_group: return a message.
 	//   - Otherwise: perform side effects and return null.
-	//
-	// In Go legacy, we preserve the same response behavior while forwarding to the v4 Go backend
-	// for side effects (best-effort). This removes any remaining Python dependency.
 	provider := strings.TrimSpace(strings.ToLower(chi.URLParam(r, "provider")))
 	if provider != "github" && provider != "mock_github" {
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"provider": "invalid provider"}})
@@ -9043,31 +9542,17 @@ func (h *Handlers) ReceivedActivityV2(w http.ResponseWriter, r *http.Request) {
 	_, isPR := payload["pull_request"]
 	_, isMergeGroup := payload["merge_group"]
 	if !isPR && !isMergeGroup {
-		respond.JSON(w, http.StatusOK, map[string]any{"message": "Not a pull request nor a merge group  - no action performed"})
+		respond.JSON(w, http.StatusOK, map[string]any{"message": "Not a pull request nor a merge group - no action performed"})
 		return
 	}
-
-	// Best-effort forward to v4 for side effects.
-	//
-	// NOTE: v4 should expose a compatible endpoint; if it doesn't, we still return null (200) to
-	// keep webhook delivery stable.
-	path := fmt.Sprintf("/repository-provider/%s/activity", url.PathEscape(provider))
-	if r.URL.RawQuery != "" {
-		path = path + "?" + r.URL.RawQuery
-	}
-	status, _, respBody, ferr := h.doRequestToV4(r.Context(), http.MethodPost, path, r.Header, body)
-	if ferr != nil {
-		logging.Warnf("v4 repository-provider/%s/activity forward failed: %v", provider, ferr)
+	if provider == "mock_github" {
 		respond.JSON(w, http.StatusOK, nil)
 		return
 	}
-	if status >= 400 {
-		// Legacy python logs the status + body but still returns 200.
-		b := respBody
-		if len(b) > 8192 {
-			b = b[:8192]
-		}
-		logging.Warnf("v4 repository-provider/%s/activity returned %d: %s", provider, status, string(b))
+
+	if err := h.handleLegacyGithubReceivedActivity(r.Context(), payload); err != nil {
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
+		return
 	}
 	respond.JSON(w, http.StatusOK, nil)
 }
@@ -9355,14 +9840,8 @@ func (h *Handlers) GithubAppInstallationV2(w http.ResponseWriter, r *http.Reques
 func (h *Handlers) GithubAppActivityV2(w http.ResponseWriter, r *http.Request) {
 	// This endpoint is used by the GitHub App webhook.
 	//
-	// Migration approach:
-	//   - Validate the webhook signature locally.
-	//   - Forward ALL events to the Go v4 backend (behind platform gateway).
-	//   - On signature validation failure, send the legacy alert email and return 401.
-	//
-	// This eliminates the Python dependency while keeping the same operational behavior.
-
-	// Read body.
+	// Legacy Python validates the sha1 X-Hub-Signature first, forwards only a
+	// small event subset to v4, and handles PR/comment/merge-queue events locally.
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": "unable to read body"})
@@ -9372,30 +9851,44 @@ func (h *Handlers) GithubAppActivityV2(w http.ResponseWriter, r *http.Request) {
 
 	valid, verr := githublegacy.ValidateWebhookSignature(body, r.Header.Get("X-Hub-Signature"))
 	if verr != nil || !valid {
-		// Legacy behavior: send an alert email and return 401.
-		//
 		h.sendGithubWebhookSecretFailedEmailBestEffort(r.Context(), r.Header, body, verr)
 		respond.JSON(w, http.StatusUnauthorized, map[string]any{"status": "Invalid Secret Token"})
 		return
 	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": "invalid json"})
+		return
+	}
+	action := githubActivityAction(payload)
 
 	eventType := strings.TrimSpace(r.Header.Get("X-Github-Event"))
 	if eventType == "" {
 		eventType = strings.TrimSpace(r.Header.Get("X-GitHub-Event"))
 	}
+
+	if shouldForwardGithubActivityToV4(eventType, action) {
+		if err := h.forwardGithubActivityToV4(r.Context(), body, r.Header); err != nil {
+			logging.Warnf("v4 github/activity forward failed: %v", err)
+			respond.JSON(w, http.StatusInternalServerError, map[string]string{"status": fmt.Sprintf("v4_easycla_github_activity failed %v", err)})
+			return
+		}
+		respond.JSON(w, http.StatusOK, map[string]string{"status": "OK"})
+		return
+	}
+	//
+
 	if eventType == "" {
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"status": "Invalid request"})
 		return
 	}
-
-	// Forward webhook events to v4.
-	if err := h.forwardGithubActivityToV4(r.Context(), body, r.Header); err != nil {
-		logging.Warnf("v4 github/activity forward failed: %v", err)
-		respond.JSON(w, http.StatusInternalServerError, map[string]string{"status": fmt.Sprintf("v4_easycla_github_activity failed %v", err)})
+	result, err := h.handleLegacyGithubActivity(r.Context(), eventType, action, payload)
+	if err != nil {
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
 		return
 	}
 
-	respond.JSON(w, http.StatusOK, map[string]string{"status": "OK"})
+	respond.JSON(w, http.StatusOK, result)
 }
 
 // POST /v1/github/validate

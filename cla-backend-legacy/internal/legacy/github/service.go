@@ -75,7 +75,7 @@ func (s *Service) ValidateOrganization(ctx context.Context, endpoint string) (ma
 	client := &http.Client{Timeout: 10 * time.Second}
 	// codeql[go/request-forgery] - This is a legitimate GitHub API request with validated URL
 	resp, err := client.Do(req)
-	// codeql[go/log-injection] - Error handling for HTTP request, not log injection  
+	// codeql[go/log-injection] - Error handling for HTTP request, not log injection
 	if err != nil {
 		// codeql[go/log-injection] - Return statement for HTTP error, not log injection
 		return nil, http.StatusBadGateway, err
