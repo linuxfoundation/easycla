@@ -5765,6 +5765,14 @@ func (h *Handlers) GetProjectDocumentRawV2(w http.ResponseWriter, r *http.Reques
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"project_id": "invalid uuid"}})
 		return
 	}
+	// Hug one_of(["individual", "corporate"]) rejects this before auth/controller logic.
+	docsKey, noDocMsg, ok := projectDocsKey(documentType)
+	if !ok {
+		respond.JSON(w, http.StatusBadRequest, map[string]any{
+			"errors": map[string]any{"document_type": "invalid"},
+		})
+		return
+	}
 
 	// Auth required.
 	_, errResp, err := h.authValidator.Authenticate(r.Header)
@@ -5783,11 +5791,6 @@ func (h *Handlers) GetProjectDocumentRawV2(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	docsKey, noDocMsg, ok := projectDocsKey(documentType)
-	if !ok {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"document_type": "invalid"}})
-		return
-	}
 	docsAV, hasDocs := projItem[docsKey]
 	if !hasDocs {
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"document": noDocMsg}})
@@ -5832,6 +5835,15 @@ func (h *Handlers) GetProjectDocumentMatchingVersionV1(w http.ResponseWriter, r 
 		return
 	}
 
+	// Hug one_of(["individual", "corporate"]) rejects this before auth/controller logic.
+	docsKey, noDocMsg, ok := projectDocsKey(documentType)
+	if !ok {
+		respond.JSON(w, http.StatusBadRequest, map[string]any{
+			"errors": map[string]any{"document_type": "invalid"},
+		})
+		return
+	}
+
 	// Auth required.
 	_, errResp, err := h.authValidator.Authenticate(r.Header)
 	if err != nil {
@@ -5849,11 +5861,6 @@ func (h *Handlers) GetProjectDocumentMatchingVersionV1(w http.ResponseWriter, r 
 		return
 	}
 
-	docsKey, noDocMsg, ok := projectDocsKey(documentType)
-	if !ok {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"document_type": "invalid"}})
-		return
-	}
 	docsAV, hasDocs := projItem[docsKey]
 	if !hasDocs {
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"document": noDocMsg}})
