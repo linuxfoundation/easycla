@@ -276,7 +276,7 @@ cla-backend-go/golang-api.log
 utils/otel_dd_go/otel_dd
 audit.json
 spans*.json
-*api_usage.csv
+*api_usage*.csv
 
 *.exe
 *.exe~

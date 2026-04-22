@@ -20,7 +20,7 @@ Env vars required:
 Example:
   ./utils/otel_dd/api_usage_stats_ddog.py --from now-60m --to now > api_usage.csv
   ./utils/otel_dd/api_usage_stats_ddog.py --no-skip-e2e | head
-  ./utils/otel_dd/api_usage_stats_ddog.py --from now-24h --to now > api_usage.csv
+  ./utils/otel_dd/api_usage_stats_ddog.py --from now-24h --to now --env prod > api_usage.csv
   ./utils/otel_dd/api_usage_stats_ddog.py --verbose | head
 """
 
@@ -34,6 +34,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -143,6 +144,24 @@ def is_e2e_true(span: Dict[str, Any]) -> bool:
     return str(v).strip().lower() == "true"
 
 
+def api_path_from_candidate(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+
+    if raw.startswith("http://") or raw.startswith("https://"):
+        parsed = urllib.parse.urlparse(raw)
+        path = parsed.path or ""
+    else:
+        path = raw.split("?", 1)[0]
+
+    if not path.startswith("/v"):
+        return None
+    return path
+
+
 def extract_route(span: Dict[str, Any], *, sanitize_routes: bool = False) -> Optional[str]:
     """
     Prefer templated HTTP route:
@@ -160,17 +179,28 @@ def extract_route(span: Dict[str, Any], *, sanitize_routes: bool = False) -> Opt
         value = route.strip()
         return sanitize_api_path(value) if sanitize_routes else value
 
+    for candidate in (
+        http.get("target"),
+        http.get("path"),
+        (http.get("url_details") or {}).get("path") if isinstance(http.get("url_details"), dict) else None,
+        http.get("url"),
+    ):
+        path = api_path_from_candidate(candidate)
+        if path:
+            return sanitize_api_path(path) if sanitize_routes else path
+
     resource_name = attrs.get("resource_name")
     if isinstance(resource_name, str):
         rn = resource_name.strip()
         # Often "METHOD /path"
         parts = rn.split(None, 1)
         if len(parts) == 2 and parts[1].startswith("/"):
-            value = parts[1].strip()
+            value = parts[1].strip().split("?", 1)[0]
             return sanitize_api_path(value) if sanitize_routes else value
         # Sometimes just "/path"
         if rn.startswith("/"):
-            return sanitize_api_path(rn) if sanitize_routes else rn
+            value = rn.split("?", 1)[0]
+            return sanitize_api_path(value) if sanitize_routes else value
 
     return None
 
@@ -320,15 +350,19 @@ def main() -> int:
 
     kept = 0
     skipped_e2e = 0
+    skipped_e2e_routes: Dict[str, int] = {}
     skipped_missing_route = 0
     skipped_missing_ts = 0
 
     for span in spans:
+        route = extract_route(span, sanitize_routes=args.sanitize_routes)
+
         if skip_e2e and is_e2e_true(span):
             skipped_e2e += 1
+            if route:
+                skipped_e2e_routes[route] = skipped_e2e_routes.get(route, 0) + 1
             continue
 
-        route = extract_route(span, sanitize_routes=args.sanitize_routes)
         if not route:
             skipped_missing_route += 1
             continue
@@ -355,10 +389,16 @@ def main() -> int:
         w.writerow([route, cnt, fmt_ts(tmin), fmt_ts(tmax)])
 
     if args.verbose:
+        eprint(f"[ddog] query:        {query}")
+        eprint(f"[ddog] from/to:      {args.time_from} -> {args.time_to}")
         eprint(f"[ddog] spans fetched: {len(spans)}")
         eprint(f"[ddog] spans kept:   {kept}")
         if skip_e2e:
             eprint(f"[ddog] e2e skipped:  {skipped_e2e}")
+            if skipped_e2e_routes:
+                eprint("[ddog] top skipped e2e routes:")
+                for route, cnt in sorted(skipped_e2e_routes.items(), key=lambda x: (-x[1], x[0]))[:25]:
+                    eprint(f"[ddog]   {cnt:5d} {route}")
         eprint(f"[ddog] no-route:     {skipped_missing_route}")
         eprint(f"[ddog] no-ts:        {skipped_missing_ts}")
         eprint(f"[ddog] routes:       {len(stats)}")

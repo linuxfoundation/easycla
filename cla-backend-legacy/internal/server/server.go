@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/api"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/logging"
@@ -116,6 +117,13 @@ func wrapHTTPHandlerWithTelemetryBestEffort(next http.Handler) (wrapped http.Han
 	return telemetry.WrapHTTPHandler(next)
 }
 
+func flushTelemetryAfterResponse(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+		telemetry.ForceFlushBestEffort(250 * time.Millisecond)
+	})
+}
+
 // NewHTTPHandler builds the HTTP handler for both Lambda (via adapter) and local runs.
 //
 // Note: router-level middleware already handles request logging and CORS.
@@ -126,5 +134,5 @@ func NewHTTPHandler() http.Handler {
 	if !otelEnabled {
 		return router
 	}
-	return wrapHTTPHandlerWithTelemetryBestEffort(router)
+	return flushTelemetryAfterResponse(wrapHTTPHandlerWithTelemetryBestEffort(router))
 }
