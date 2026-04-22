@@ -1755,7 +1755,7 @@ func updatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 	previouslySucceeded, previousSucceededComment, succeedErr := hasCheckPreviouslySucceeded(ctx, client, owner, repo, pullRequestID)
 	if succeedErr != nil {
 		log.WithFields(f).WithError(succeedErr).Debugf("unable to check previously succeeded PR: %d", pullRequestID)
-		return failedErr
+		return succeedErr
 	}
 
 	var commitSHA string
