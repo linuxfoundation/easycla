@@ -219,6 +219,7 @@ func RegisterRoutes(r chi.Router, h *Handlers) {
 		r.Post("/send-authority-email", h.SendAuthorityEmailV2)
 
 		r.Get("/repository-provider/{provider}/sign/{installation_id}/{github_repository_id}/{change_request_id}", h.SignRequestV2)
+		r.Get("/repository-provider/{provider}/sign/{installation_id}/{github_repository_id}/{change_request_id}/", h.SignRequestV2)
 
 		r.Get("/repository-provider/{provider}/oauth2_redirect", h.Oauth2RedirectV2)
 
