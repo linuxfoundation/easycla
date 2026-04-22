@@ -2681,23 +2681,62 @@ func (h *Handlers) loadActiveSignatureMetadata(ctx context.Context, userID strin
 	return metadata, true, nil
 }
 
+func metadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
+	}
+	v, ok := metadata[key]
+	if !ok || v == nil {
+		return ""
+	}
+	s := strings.TrimSpace(fmt.Sprintf("%v", v))
+	if s == "<nil>" {
+		return ""
+	}
+	return s
+}
+
 func (h *Handlers) computeReturnURLFromActiveSignatureMetadata(ctx context.Context, metadata map[string]any) (string, error) {
 	if metadata == nil {
 		return "", nil
 	}
 	if _, isGitLab := metadata["merge_request_id"]; isGitLab {
-		return strings.TrimSpace(fmt.Sprintf("%v", metadata["return_url"])), nil
+		// return strings.TrimSpace(fmt.Sprintf("%v", metadata["return_url"])), nil
+		return "", nil
 	}
-	// GitHub flow: compute the PR URL from repository + pull request ids.
-	repoID := strings.TrimSpace(fmt.Sprintf("%v", metadata["repository_id"]))
-	prID := strings.TrimSpace(fmt.Sprintf("%v", metadata["pull_request_id"]))
-	if repoID == "<nil>" {
-		repoID = ""
+
+	// GitHub flow: compute the PR URL through the GitHub API when possible. This
+	// matches Python GitHub.get_return_url(), which returns pull_request.html_url.
+	repoID := metadataString(metadata, "repository_id")
+	prID := metadataString(metadata, "pull_request_id")
+	if repoID == "" || prID == "" {
+		return "", nil
 	}
-	if prID == "<nil>" {
-		prID = ""
+	if h.github != nil {
+		installationID, found, err := h.githubInstallationIDFromRepository(ctx, repoID)
+		if err != nil {
+			return "", err
+		}
+		if found {
+			installationIDInt, installErr := strconv.ParseInt(strings.TrimSpace(installationID), 10, 64)
+			repositoryIDInt, repoErr := strconv.ParseInt(strings.TrimSpace(repoID), 10, 64)
+			pullRequestIDInt, prErr := strconv.ParseInt(strings.TrimSpace(prID), 10, 64)
+			if installErr == nil && repoErr == nil && prErr == nil {
+				returnURL, ghErr := h.github.GetPullRequestHTMLURL(ctx, installationIDInt, repositoryIDInt, pullRequestIDInt)
+				if ghErr != nil {
+					return "", ghErr
+				}
+				if strings.TrimSpace(returnURL) != "" {
+					return strings.TrimSpace(returnURL), nil
+				}
+			}
+		}
 	}
-	if repoID == "" || prID == "" || h.repos == nil {
+
+	// Fallback for tests/local setups where the GitHub service is unavailable.
+	// repository_name may be either "repo" or "org/repo"; do not prepend the
+	// organization twice.
+	if h.repos == nil {
 		return "", nil
 	}
 	repo, found, err := h.repos.GetByExternalIDAndType(ctx, repoID, "github")
@@ -2707,15 +2746,15 @@ func (h *Handlers) computeReturnURLFromActiveSignatureMetadata(ctx context.Conte
 	if !found {
 		return "", nil
 	}
-	org := ""
-	name := ""
-	if av, ok := repo["repository_organization_name"].(*types.AttributeValueMemberS); ok {
-		org = av.Value
+	org := strings.TrimSpace(getAttrString(repo, "repository_organization_name"))
+	name := strings.TrimSpace(getAttrString(repo, "repository_name"))
+	if name == "" {
+		return "", nil
 	}
-	if av, ok := repo["repository_name"].(*types.AttributeValueMemberS); ok {
-		name = av.Value
+	if strings.Contains(name, "/") {
+		return fmt.Sprintf("https://github.com/%s/pull/%s", strings.Trim(name, "/"), prID), nil
 	}
-	if org == "" || name == "" {
+	if org == "" {
 		return "", nil
 	}
 	return fmt.Sprintf("https://github.com/%s/%s/pull/%s", org, name, prID), nil
@@ -7469,6 +7508,18 @@ func (h *Handlers) RequestIndividualSignatureV2(w http.ResponseWriter, r *http.R
 		respond.JSON(w, http.StatusOK, nil)
 		return
 	}
+	if strings.TrimSpace(returnURL) == "" && h.kv != nil {
+		metadata, ok, lookupErr := h.loadActiveSignatureMetadata(r.Context(), userID)
+		if lookupErr != nil {
+			logging.Warnf("active signature metadata lookup failed for individual signature user=%s err=%v", userID, lookupErr)
+		} else if ok {
+			if ru, rerr := h.computeReturnURLFromActiveSignatureMetadata(r.Context(), metadata); rerr != nil {
+				logging.Warnf("active signature return URL computation failed for individual signature user=%s err=%v", userID, rerr)
+			} else if strings.TrimSpace(ru) != "" {
+				returnURL = strings.TrimSpace(ru)
+			}
+		}
+	}
 
 	forwardPayload := map[string]any{
 		"project_id":      projectID,
@@ -7476,7 +7527,7 @@ func (h *Handlers) RequestIndividualSignatureV2(w http.ResponseWriter, r *http.R
 		"return_url_type": returnURLType,
 	}
 	if strings.TrimSpace(returnURL) != "" {
-		forwardPayload["return_url"] = returnURL
+		forwardPayload["return_url"] = strings.TrimSpace(returnURL)
 	}
 	forwardBody, err := json.Marshal(forwardPayload)
 	if err != nil {
