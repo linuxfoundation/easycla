@@ -2700,8 +2700,12 @@ func (h *Handlers) computeReturnURLFromActiveSignatureMetadata(ctx context.Conte
 	if metadata == nil {
 		return "", nil
 	}
+
+	if returnURL := metadataString(metadata, "return_url"); returnURL != "" {
+		return returnURL, nil
+	}
+
 	if _, isGitLab := metadata["merge_request_id"]; isGitLab {
-		// return strings.TrimSpace(fmt.Sprintf("%v", metadata["return_url"])), nil
 		return "", nil
 	}
 
