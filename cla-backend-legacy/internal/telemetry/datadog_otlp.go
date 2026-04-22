@@ -138,6 +138,32 @@ func InitDatadogOTel(cfg DatadogOTelConfig) (err error) {
 	return ddInitErr
 }
 
+type forceFlusher interface {
+	ForceFlush(context.Context) error
+}
+
+// ForceFlushBestEffort asks the global tracer provider to flush queued spans.
+// This is intentionally fail-open for Lambda: flushing must never affect API behavior.
+func ForceFlushBestEffort(timeout time.Duration) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warnf("LG:otel-datadog-forceflush-panic recovered=%v", r)
+		}
+	}()
+
+	ff, ok := otel.GetTracerProvider().(forceFlusher)
+	if !ok {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	if err := ff.ForceFlush(ctx); err != nil {
+		log.Debugf("LG:otel-datadog-forceflush-err err=%v", err)
+	}
+}
+
 // NewHTTPClient returns an HTTP client whose outbound requests are instrumented
 // and propagate trace context when OTel is enabled.
 //
