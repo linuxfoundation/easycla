@@ -5362,15 +5362,15 @@ func (h *Handlers) GetProjectV2(w http.ResponseWriter, r *http.Request) {
 			standalone := false
 			lfSupported := false
 			if projectSFID != "" && h.salesforce != nil {
-				standalone, err = h.salesforce.IsStandaloneProject(ctx, projectSFID)
-				if err != nil {
-					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"project_id": err.Error()}})
-					return
+				if v, psErr := h.salesforce.IsStandaloneProject(ctx, projectSFID); psErr != nil {
+					logging.Warnf("get_project: unable to compute standalone_project for project_sfid=%s: %v", projectSFID, psErr)
+				} else {
+					standalone = v
 				}
-				lfSupported, err = h.salesforce.IsLFSupportedProject(ctx, projectSFID)
-				if err != nil {
-					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"project_id": err.Error()}})
-					return
+				if v, psErr := h.salesforce.IsLFSupportedProject(ctx, projectSFID); psErr != nil {
+					logging.Warnf("get_project: unable to compute lf_supported for project_sfid=%s: %v", projectSFID, psErr)
+				} else {
+					lfSupported = v
 				}
 			}
 			md["standalone_project"] = standalone
