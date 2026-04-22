@@ -326,7 +326,10 @@ func (s *Service) getAccessToken(ctx context.Context) (string, int, error) {
 func (s *Service) IsStandaloneProject(ctx context.Context, projectSFID string) (bool, error) {
 	project, err := s.getProjectDetailByID(ctx, projectSFID)
 	if err != nil {
-		return false, err
+		//return false, err
+		// Python ProjectService.get_project_by_id() returns None on downstream
+		// project-service HTTP errors; is_standalone() then returns False.
+		return false, nil
 	}
 	if project == nil {
 		return false, nil
@@ -334,7 +337,9 @@ func (s *Service) IsStandaloneProject(ctx context.Context, projectSFID string) (
 
 	parentName := s.getParentName(project)
 	if parentName == nil {
-		return false, nil
+		//return false, nil
+		// Python: parent_name is None => standalone.
+		return true, nil
 	}
 	if *parentName == TheLinuxFoundation || *parentName == LFProjectsLLC {
 		if len(project.Projects) == 0 {
@@ -350,7 +355,10 @@ func (s *Service) IsStandaloneProject(ctx context.Context, projectSFID string) (
 func (s *Service) IsLFSupportedProject(ctx context.Context, projectSFID string) (bool, error) {
 	project, err := s.getProjectDetailByID(ctx, projectSFID)
 	if err != nil {
-		return false, err
+		//return false, err
+		// Python ProjectService.get_project_by_id() returns None on downstream
+		// project-service HTTP errors; is_lf_supported() then returns False.
+		return false, nil
 	}
 	if project == nil {
 		return false, nil
@@ -379,13 +387,19 @@ func (s *Service) getProjectDetailByID(ctx context.Context, projectID string) (*
 		return nil, &AuthFailureError{Status: status, Cause: err}
 	}
 
-	// Use the same endpoint as GetProject but with a different struct for full details
-	projectURL := fmt.Sprintf("%s/project-service/v2/projects/%s", s.platformGatewayURL, url.QueryEscape(projectID))
+	base := strings.TrimRight(s.platformGatewayURL, "/")
+	if base == "" {
+		return nil, errors.New("PLATFORM_GATEWAY_URL is empty")
+	}
+
+	// Legacy Python uses /project-service/v1/projects/{project_id}.
+	projectURL := fmt.Sprintf("%s/project-service/v1/projects/%s", base, url.PathEscape(projectID))
 	req, err := http.NewRequestWithContext(ctx, "GET", projectURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	// req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Authorization", "bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := s.httpClient.Do(req)
@@ -395,11 +409,9 @@ func (s *Service) getProjectDetailByID(ctx context.Context, projectID string) (*
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-		return nil, &ProjectServiceError{
-			Status: resp.StatusCode,
-			Cause:  fmt.Errorf("project-service GET project status %d: %s", resp.StatusCode, string(body)),
-		}
+		// Legacy Python catches HTTPError and returns None.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 8192))
+		return nil, nil
 	}
 
 	var project ProjectDetail
