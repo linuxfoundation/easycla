@@ -1,3 +1,6 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+#
 # Build the legacy (v1/v2) API lambda binary consumed by cla-backend/serverless.yml
 # Usage:
 #   make lambdas

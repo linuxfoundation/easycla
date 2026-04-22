@@ -1,3 +1,6 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+#
 name: "CodeQL Config for CLA Backend Legacy"
 
 # This configuration is for the legacy Go backend which mirrors Python behavior

@@ -61,7 +61,15 @@ func (e ddLoggingExporter) Shutdown(ctx context.Context) error {
 
 // InitDatadogOTel initializes the global OTel SDK (tracer provider + OTLP exporter).
 // Safe to call multiple times (sync.Once). Never panics.
-func InitDatadogOTel(cfg DatadogOTelConfig) error {
+func InitDatadogOTel(cfg DatadogOTelConfig) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			ddInitErr = fmt.Errorf("otel datadog init panic: %v", r)
+			err = ddInitErr
+			log.Infof("LG:otel-datadog-init-failed err=%v", ddInitErr)
+		}
+	}()
+
 	ddInitOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -128,6 +136,30 @@ func InitDatadogOTel(cfg DatadogOTelConfig) error {
 		log.Infof("LG:otel-datadog-init-failed err=%v", ddInitErr)
 	}
 	return ddInitErr
+}
+
+// NewHTTPClient returns an HTTP client whose outbound requests are instrumented
+// and propagate trace context when OTel is enabled.
+//
+// This is fail-open: if otelhttp setup ever panics, the client falls back to the
+// default transport and normal API behavior continues.
+func NewHTTPClient(timeout time.Duration) *http.Client {
+	transport := http.DefaultTransport
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Warnf("LG:otel-http-client-transport-panic recovered=%v", r)
+				transport = http.DefaultTransport
+			}
+		}()
+		transport = otelhttp.NewTransport(http.DefaultTransport)
+	}()
+
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+	}
 }
 
 // WrapHTTPHandler instruments inbound HTTP requests using otelhttp and produces spans.
@@ -242,10 +274,28 @@ func WrapHTTPHandler(next http.Handler) http.Handler {
 
 		span := trace.SpanFromContext(r.Context())
 		span.SetAttributes(
+			attribute.String("easycla.backend", "cla-backend-legacy"),
 			attribute.String("http.route", route),
 			attribute.String("url.path", rawPath),
 			attribute.String("http.target", rawTarget),
 		)
+
+		if r != nil {
+			if v := strings.TrimSpace(r.Header.Get("X-GitHub-Delivery")); v != "" {
+				span.SetAttributes(attribute.String("github.delivery_id", v))
+			}
+			if v := strings.TrimSpace(r.Header.Get("X-EasyCLA-Source-Backend")); v != "" {
+				span.SetAttributes(attribute.String("easycla.source_backend", v))
+			}
+			if v := strings.TrimSpace(r.Header.Get("X-EasyCLA-Trace-ID")); v != "" {
+				span.SetAttributes(attribute.String("easycla.trace_id", v))
+			}
+		}
+		if r != nil && r.URL != nil {
+			if v := strings.TrimSpace(r.URL.Query().Get("legacy_internal_trigger")); v != "" {
+				span.SetAttributes(attribute.String("easycla.legacy_internal_trigger", v))
+			}
+		}
 
 		// Optional E2E marker (lets us filter CI noise in Datadog).
 		e2eVal := ""

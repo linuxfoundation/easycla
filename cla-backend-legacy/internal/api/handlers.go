@@ -43,6 +43,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/pdf"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/respond"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/store"
+	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/telemetry"
 )
 
 // Handlers implements the legacy (v1/v2) API surface in Go.
@@ -75,7 +76,7 @@ type Handlers struct {
 }
 
 func NewHandlers() *Handlers {
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := telemetry.NewHTTPClient(30 * time.Second)
 	h := &Handlers{
 		httpClient: client,
 	}
@@ -2908,6 +2909,7 @@ func legacyGitHubInternalTriggerHeaders(payload []byte) (http.Header, error) {
 	}
 	headers.Set("Content-Type", "application/json")
 	headers.Set("X-Hub-Signature", signature)
+	headers.Set("X-EasyCLA-Source-Backend", "cla-backend-legacy")
 	return headers, nil
 }
 
