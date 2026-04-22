@@ -311,7 +311,7 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 	return normalizeUserDict(item), nil
 }
 
-func (h *Handlers) setActiveSignatureMetadata(ctx context.Context, userID, projectID, repositoryID, pullRequestID string) error {
+func (h *Handlers) setActiveSignatureMetadata(ctx context.Context, userID, projectID, repositoryID, pullRequestID string, returnURLs ...string) error {
 	if h.kv == nil {
 		return nil
 	}
@@ -323,6 +323,14 @@ func (h *Handlers) setActiveSignatureMetadata(ctx context.Context, userID, proje
 		"cla_group_id":    projectID,
 		"repository_id":   repositoryID,
 		"pull_request_id": pullRequestID,
+	}
+	for _, returnURL := range returnURLs {
+		returnURL = strings.TrimSpace(returnURL)
+		if returnURL == "" {
+			continue
+		}
+		val["return_url"] = returnURL
+		break
 	}
 	b, _ := json.Marshal(val)
 	return h.kv.Set(ctx, key, string(b))
@@ -374,7 +382,7 @@ func (h *Handlers) githubRedirectToConsole(ctx context.Context, installationID, 
 	}
 
 	// Store active signature metadata (used later by signing flow).
-	_ = h.setActiveSignatureMetadata(ctx, userID, projectID, repositoryExternalID, pullRequestID)
+	_ = h.setActiveSignatureMetadata(ctx, userID, projectID, repositoryExternalID, pullRequestID, originURL)
 
 	base := strings.TrimSpace(os.Getenv("CLA_CONTRIBUTOR_BASE"))
 	if version == "v2" {
