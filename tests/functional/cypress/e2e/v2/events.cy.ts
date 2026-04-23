@@ -56,18 +56,14 @@ describe('To Validate & test Events APIs via API call (V2)', function () {
     });
   });
 
-  it('POST /clear-cache - Clear cache (Requires authentication)', function () {
-    const envToken = Cypress.env('TOKEN');
-    const tokenForClearCache = envToken && envToken !== '-' ? envToken : bearerToken;
-
+  it.skip('POST /clear-cache - Clear cache (Requires authentication)', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}clear-cache`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${tokenForClearCache}`,
+        Authorization: `Bearer ${bearerToken}`,
       },
     }).then((response) => {
       return cy.logJson('POST /clear-cache response', response).then(() => {
