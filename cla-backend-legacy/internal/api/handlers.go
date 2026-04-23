@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"html"
@@ -9151,6 +9152,45 @@ func (h *Handlers) CheckAndPrepareEmployeeSignatureV2(w http.ResponseWriter, r *
 	respond.JSON(w, http.StatusOK, map[string]any{"success": []string{"the employee is ready to sign the CCLA"}})
 }
 
+type docusignCallbackEnvelope struct {
+	EnvelopeStatus struct {
+		RecipientStatuses []struct {
+			ClientUserID string `xml:"ClientUserId"`
+			Status       string `xml:"Status"`
+		} `xml:"RecipientStatuses>RecipientStatus"`
+	} `xml:"EnvelopeStatus"`
+}
+
+func extractDocuSignSignatureCompletion(payload []byte) (string, bool) {
+	var envelope docusignCallbackEnvelope
+	if err := xml.Unmarshal(payload, &envelope); err != nil {
+		return "", false
+	}
+	if len(envelope.EnvelopeStatus.RecipientStatuses) == 0 {
+		return "", false
+	}
+	recipient := envelope.EnvelopeStatus.RecipientStatuses[0]
+	signatureID := strings.TrimSpace(recipient.ClientUserID)
+	completed := strings.EqualFold(strings.TrimSpace(recipient.Status), "Completed")
+	return signatureID, completed
+}
+
+func (h *Handlers) waitForSignedSignature(ctx context.Context, signatureID string, attempts int, delay time.Duration) bool {
+	if h == nil || h.signatures == nil || strings.TrimSpace(signatureID) == "" {
+		return false
+	}
+	for i := 0; i < attempts; i++ {
+		sig, found, err := h.signatures.GetByID(ctx, signatureID)
+		if err == nil && found && getAttrBool(sig, "signature_signed") {
+			return true
+		}
+		if i+1 < attempts {
+			time.Sleep(delay)
+		}
+	}
+	return false
+}
+
 // POST /v2/signed/individual/{installation_id}/{github_repository_id}/{change_request_id}
 // Python: cla/routes.py:1884 post_individual_signed()
 // Calls: cla.controllers.signing.post_individual_signed
@@ -9189,6 +9229,21 @@ func (h *Handlers) PostIndividualSignedV2(w http.ResponseWriter, r *http.Request
 	if status >= 400 {
 		logging.Warnf("v4 signed/individual returned %d: %s", status, string(respBody))
 	}
+	if signatureID, completed := extractDocuSignSignatureCompletion(body); completed && signatureID != "" {
+		if h.waitForSignedSignature(r.Context(), signatureID, 10, 500*time.Millisecond) {
+			if err := h.triggerGitHubChangeRequestUpdateV4(
+				r.Context(),
+				strings.TrimSpace(chi.URLParam(r, "installation_id")),
+				strings.TrimSpace(chi.URLParam(r, "github_repository_id")),
+				strings.TrimSpace(chi.URLParam(r, "change_request_id")),
+			); err != nil {
+				logging.Warnf("post_individual_signed - best-effort GitHub change request refresh failed: %v", err)
+			}
+		} else {
+			logging.Warnf("post_individual_signed - signed signature did not become visible in time: %s", signatureID)
+		}
+	}
+
 	copyV4ResponseHeaders(w, hdr)
 	w.WriteHeader(http.StatusOK)
 	if len(respBody) == 0 {

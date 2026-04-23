@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { validate_200_Status, validate_expected_status, getAPIBaseURL, getTokenForV2, getXACLHeader } from '../../support/commands';
+import { validate_200_Status, validate_expected_status, getAPIBaseURL, getTokenForV2 } from '../../support/commands';
 
 describe('To Validate & test Events APIs via API call (V2)', function () {
   const claEndpoint = getAPIBaseURL('v2');
@@ -57,14 +57,17 @@ describe('To Validate & test Events APIs via API call (V2)', function () {
   });
 
   it('POST /clear-cache - Clear cache (Requires authentication)', function () {
+    const envToken = Cypress.env('TOKEN');
+    const tokenForClearCache = envToken && envToken !== '-' ? envToken : bearerToken;
+
     cy.request({
       method: 'POST',
       url: `${claEndpoint}clear-cache`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: {
-        ...getXACLHeader(),
-        Authorization: `Bearer ${bearerToken}`,
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${tokenForClearCache}`,
       },
     }).then((response) => {
       return cy.logJson('POST /clear-cache response', response).then(() => {
