@@ -5323,6 +5323,8 @@ func (h *Handlers) GetProjectV2(w http.ResponseWriter, r *http.Request) {
 	}
 
 	projectDict := store.ItemToInterfaceMap(projItem)
+	projectExternalID := getAttrString(projItem, "project_external_id")
+	projectDict["logoUrl"] = fmt.Sprintf("%s/%s.png", os.Getenv("CLA_BUCKET_LOGO_URL"), projectExternalID)
 	delete(projectDict, "project_external_id")
 
 	// Remove document_tabs from all project document lists.
@@ -8915,14 +8917,27 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 
 		for _, gerrit := range gerrits {
 			groupID := strings.TrimSpace(getAttrString(gerrit, "group_id_ccla"))
-			if groupID == "" || h.lfGroup == nil {
+			if groupID == "" {
 				continue
 			}
-			res := h.lfGroup.AddUserToGroup(ctx, groupID, lfUsername)
-			if _, bad := res["error"]; bad {
-				logging.Warnf("request_employee_signature_gerrit add user to group failed group_id=%s user=%s result=%v", groupID, lfUsername, res)
-				respond.JSON(w, http.StatusOK, nil)
-				return
+
+			// LFGroup/LDAP membership updates are legacy best-effort side effects.
+			// Do not let a removed or unconfigured LFGroup service change the Gerrit
+			// acknowledgement response after the signature has already been saved.
+			lfGroupConfigured := h.lfGroup != nil &&
+				strings.TrimSpace(h.lfGroup.BaseURL) != "" &&
+				strings.TrimSpace(h.lfGroup.ClientID) != "" &&
+				strings.TrimSpace(h.lfGroup.ClientSecret) != "" &&
+				strings.TrimSpace(h.lfGroup.RefreshToken) != ""
+			if !lfGroupConfigured {
+				logging.Debugf("request_employee_signature_gerrit skipping legacy LFGroup update; LFGroup client not configured group_id=%s user=%s", groupID, lfUsername)
+				continue
+			}
+
+			if res := h.lfGroup.AddUserToGroup(ctx, groupID, lfUsername); res != nil {
+				if _, bad := res["error"]; bad {
+					logging.Warnf("request_employee_signature_gerrit ignored legacy LFGroup update failure group_id=%s user=%s result=%v", groupID, lfUsername, res)
+				}
 			}
 		}
 	} else {
@@ -10980,6 +10995,24 @@ func (h *Handlers) ClearCacheV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	githublegacy.ClearCaches()
+
+	status, hdr, respBody, err := h.doRequestToV4(r.Context(), http.MethodPost, "/clear-cache", headerCloneForV4(r.Header), nil)
+	if err != nil {
+		respond.JSON(w, http.StatusBadGateway, map[string]any{"errors": map[string]any{"v4": err.Error()}})
+		return
+	}
+	if status >= 400 {
+		respond.JSON(w, http.StatusBadGateway, map[string]any{"errors": map[string]any{"v4": string(respBody)}})
+		return
+	}
+
+	copyV4ResponseHeaders(w, hdr)
+	if len(respBody) > 0 {
+		w.WriteHeader(status)
+		_, _ = w.Write(respBody)
+		return
+	}
+
 	respond.JSON(w, http.StatusOK, map[string]string{"status": "OK"})
 }
 
