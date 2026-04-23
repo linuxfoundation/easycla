@@ -425,19 +425,39 @@ func (h *Handlers) githubSignRequest(w http.ResponseWriter, r *http.Request) {
 	sessionSetString(sess, "github_installation_id", installationID)
 	sessionSetString(sess, "github_repository_id", repoID)
 	sessionSetString(sess, "github_change_request_id", changeID)
-
-	// Determine origin URL from PR.
-	inst, _ := strconv.ParseInt(strings.TrimSpace(installationID), 10, 64)
-	repo, _ := strconv.ParseInt(strings.TrimSpace(repoID), 10, 64)
-	pr, _ := strconv.ParseInt(strings.TrimSpace(changeID), 10, 64)
-	if inst > 0 && repo > 0 && pr > 0 {
-		if origin, err := h.github.GetPullRequestHTMLURL(ctx, inst, repo, pr); err == nil {
-			sessionSetString(sess, "github_origin_url", origin)
-		} else {
-			// Mirror Python: exceptions bubble up as server errors.
-			respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": "unable to fetch pull request", "details": err.Error()})
-			return
+	// Determine origin URL from PR. Python parses all three path IDs as int()
+	// before creating the GitHub PR URL/OAuth state; malformed IDs raise and
+	// never proceed to OAuth. Keep that fail-fast behavior.
+	inst, err := strconv.ParseInt(strings.TrimSpace(installationID), 10, 64)
+	if err != nil || inst <= 0 {
+		if err == nil {
+			err = errors.New("installation_id must be a positive integer")
 		}
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": "unable to fetch pull request", "details": err.Error()})
+		return
+	}
+	repo, err := strconv.ParseInt(strings.TrimSpace(repoID), 10, 64)
+	if err != nil || repo <= 0 {
+		if err == nil {
+			err = errors.New("github_repository_id must be a positive integer")
+		}
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": "unable to fetch pull request", "details": err.Error()})
+		return
+	}
+	pr, err := strconv.ParseInt(strings.TrimSpace(changeID), 10, 64)
+	if err != nil || pr <= 0 {
+		if err == nil {
+			err = errors.New("change_request_id must be a positive integer")
+		}
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": "unable to fetch pull request", "details": err.Error()})
+		return
+	}
+	if origin, err := h.github.GetPullRequestHTMLURL(ctx, inst, repo, pr); err == nil {
+		sessionSetString(sess, "github_origin_url", origin)
+	} else {
+		// Mirror Python: exceptions bubble up as server errors.
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": "unable to fetch pull request", "details": err.Error()})
+		return
 	}
 
 	if sessionGetMap(sess, "github_oauth2_token") != nil {
