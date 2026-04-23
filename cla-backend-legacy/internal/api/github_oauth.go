@@ -317,12 +317,11 @@ func (h *Handlers) setActiveSignatureMetadata(ctx context.Context, userID, proje
 	}
 	key := "active_signature:" + userID
 	val := map[string]any{
-		// Python legacy metadata uses project_id. Keep cla_group_id too for backward compatibility
-		// with earlier Go checkpoints.
 		"project_id":      projectID,
 		"cla_group_id":    projectID,
 		"repository_id":   repositoryID,
 		"pull_request_id": pullRequestID,
+		"user_id":         userID,
 	}
 	for _, returnURL := range returnURLs {
 		returnURL = strings.TrimSpace(returnURL)
