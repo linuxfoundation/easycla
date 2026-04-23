@@ -2727,11 +2727,11 @@ func (h *Handlers) computeReturnURLFromActiveSignatureMetadata(ctx context.Conte
 			pullRequestIDInt, prErr := strconv.ParseInt(strings.TrimSpace(prID), 10, 64)
 			if installErr == nil && repoErr == nil && prErr == nil {
 				returnURL, ghErr := h.github.GetPullRequestHTMLURL(ctx, installationIDInt, repositoryIDInt, pullRequestIDInt)
-				if ghErr != nil {
-					return "", ghErr
-				}
-				if strings.TrimSpace(returnURL) != "" {
+				if ghErr == nil && strings.TrimSpace(returnURL) != "" {
 					return strings.TrimSpace(returnURL), nil
+				}
+				if ghErr != nil {
+					logging.Warnf("active signature return_url: github html_url lookup failed for repo=%s pr=%s installation=%s: %v", repoID, prID, installationID, ghErr)
 				}
 			}
 		}
@@ -2756,8 +2756,9 @@ func (h *Handlers) computeReturnURLFromActiveSignatureMetadata(ctx context.Conte
 		return "", nil
 	}
 	if strings.Contains(name, "/") {
-		return fmt.Sprintf("https://github.com/%s/pull/%s", strings.Trim(name, "/"), prID), nil
+		return fmt.Sprintf("https://github.com/%s/pull/%s", strings.TrimSuffix(strings.Trim(name, "/"), ".git"), prID), nil
 	}
+	name = strings.TrimSuffix(name, ".git")
 	if org == "" {
 		return "", nil
 	}
@@ -7667,12 +7668,51 @@ func (h *Handlers) RequestCorporateSignatureV1(w http.ResponseWriter, r *http.Re
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": missing})
 		return
 	}
+	projectItem, projectFound, err := h.projects.GetByID(r.Context(), projectID)
+	if err != nil {
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"project_id": err.Error()}})
+		return
+	}
+	if !projectFound {
+		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"project_id": "Project not found"}})
+		return
+	}
+	projectSFID := strings.TrimSpace(getAttrString(projectItem, "project_external_id"))
+	if projectSFID == "" {
+		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"project_id": "Project external ID not found"}})
+		return
+	}
+
+	companyItem, companyFound, err := h.companies.GetByID(r.Context(), companyID)
+	if err != nil {
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"company_id": err.Error()}})
+		return
+	}
+	if !companyFound {
+		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"company_id": "Company not found"}})
+		return
+	}
+	companySFID := strings.TrimSpace(getAttrString(companyItem, "company_external_id"))
+	if companySFID == "" {
+		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"company_id": "Company external ID not found"}})
+		return
+	}
 
 	forwardPayload := map[string]any{
-		"project_id": projectID,
-		"company_id": companyID,
+		"project_sfid": projectSFID,
+		"company_sfid": companySFID,
 	}
-	for _, key := range []string{"signing_entity_name", "authority_name", "authority_email", "return_url_type", "return_url"} {
+	signingEntityName := getString("signing_entity_name")
+	if signingEntityName == "" {
+		signingEntityName = strings.TrimSpace(getAttrString(companyItem, "signing_entity_name"))
+		if signingEntityName == "" {
+			signingEntityName = strings.TrimSpace(getAttrString(companyItem, "company_name"))
+		}
+	}
+	if signingEntityName != "" {
+		forwardPayload["signing_entity_name"] = signingEntityName
+	}
+	for _, key := range []string{ /*"signing_entity_name", */ "authority_name", "authority_email", "return_url_type", "return_url"} {
 		if v := getString(key); v != "" {
 			forwardPayload[key] = v
 		}
@@ -7693,6 +7733,16 @@ func (h *Handlers) RequestCorporateSignatureV1(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"v4": err.Error()}})
 		return
+	}
+	if status < 400 {
+		var out map[string]any
+		if err := json.Unmarshal(respBody, &out); err == nil && out != nil {
+			out["project_id"] = projectID
+			out["company_id"] = companyID
+			if b, merr := json.Marshal(out); merr == nil {
+				respBody = b
+			}
+		}
 	}
 	copyV4ResponseHeaders(w, hdr)
 	// Normalize non-2xx into 200 to match legacy Hug behavior.

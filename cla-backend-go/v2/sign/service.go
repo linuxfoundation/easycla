@@ -1886,6 +1886,18 @@ func (s *service) populateSignURL(ctx context.Context,
 			log.WithFields(f).WithError(err).Warnf("unable to get document resource from url: %s", pdfURL)
 			return err
 		}
+	} else if strings.HasPrefix(contentType, "storage+") {
+		documentFileID := strings.TrimSpace(document.DocumentFileID)
+		if documentFileID == "" {
+			return fmt.Errorf("storage document has empty document_file_id for signature %s", latestSignature.SignatureID)
+		}
+
+		log.WithFields(f).Debugf("getting document resource from storage: %s...", documentFileID)
+		pdf, err = utils.DownloadFromS3(documentFileID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get document resource from storage: %s", documentFileID)
+			return err
+		}
 	} else {
 		log.WithFields(f).Debugf("getting document resource from content...")
 		content := document.DocumentContent
@@ -1914,14 +1926,16 @@ func (s *service) populateSignURL(ctx context.Context,
 		log.WithFields(f).Debugf("setting up webhook properties with callback url: %s", callbackURL)
 		recipientEvents := []DocuSignRecipientEvent{
 			{
-				EnvelopeEventStatusCode: "Completed",
+				// EnvelopeEventStatusCode: "Completed",
+				RecipientEventStatusCode: "Completed",
 			},
 		}
 
 		eventNotification := DocuSignEventNotification{
 			URL:            callbackURL,
 			LoggingEnabled: true,
-			EnvelopeEvents: recipientEvents,
+			// EnvelopeEvents: recipientEvents,
+			RecipientEvents: recipientEvents,
 		}
 
 		envelopeRequest = DocuSignEnvelopeRequest{

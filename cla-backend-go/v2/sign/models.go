@@ -326,13 +326,15 @@ type ClaSignatoryEmailParams struct {
 }
 
 type DocuSignRecipientEvent struct {
-	EnvelopeEventStatusCode string `json:"envelopeEventStatusCode"`
+	// EnvelopeEventStatusCode string `json:"envelopeEventStatusCode"`
+	RecipientEventStatusCode string `json:"recipientEventStatusCode"`
 }
 
 type DocuSignEventNotification struct {
-	URL            string                   `json:"url"`
-	LoggingEnabled bool                     `json:"loggingEnabled"`
-	EnvelopeEvents []DocuSignRecipientEvent `json:"envelopeEvents"`
+	URL            string `json:"url"`
+	LoggingEnabled bool   `json:"loggingEnabled"`
+	// EnvelopeEvents []DocuSignRecipientEvent `json:"envelopeEvents"`
+	RecipientEvents []DocuSignRecipientEvent `json:"recipientEvents"`
 	// EventData             EventData                `json:"eventData"`
 	// RequireAcknowledgment string                   `json:"requireAcknowledgment"`
 }
