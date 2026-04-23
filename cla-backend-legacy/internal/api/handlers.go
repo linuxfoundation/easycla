@@ -9229,20 +9229,22 @@ func (h *Handlers) PostIndividualSignedV2(w http.ResponseWriter, r *http.Request
 	if status >= 400 {
 		logging.Warnf("v4 signed/individual returned %d: %s", status, string(respBody))
 	}
-	if signatureID, completed := extractDocuSignSignatureCompletion(body); completed && signatureID != "" {
-		if h.waitForSignedSignature(r.Context(), signatureID, 10, 500*time.Millisecond) {
-			if err := h.triggerGitHubChangeRequestUpdateV4(
-				r.Context(),
-				strings.TrimSpace(chi.URLParam(r, "installation_id")),
-				strings.TrimSpace(chi.URLParam(r, "github_repository_id")),
-				strings.TrimSpace(chi.URLParam(r, "change_request_id")),
-			); err != nil {
-				logging.Warnf("post_individual_signed - best-effort GitHub change request refresh failed: %v", err)
-			}
-		} else {
-			logging.Warnf("post_individual_signed - signed signature did not become visible in time: %s", signatureID)
+	signatureID, completed := extractDocuSignSignatureCompletion(body)
+	logging.Debugf("post_individual_signed - extracted signature completion from DocuSign callback: signatureID=%s completed=%t", signatureID, completed)
+	//if signatureID, completed := extractDocuSignSignatureCompletion(body); completed && signatureID != "" {
+	if h.waitForSignedSignature(r.Context(), signatureID, 10, 500*time.Millisecond) {
+		if err := h.triggerGitHubChangeRequestUpdateV4(
+			r.Context(),
+			strings.TrimSpace(chi.URLParam(r, "installation_id")),
+			strings.TrimSpace(chi.URLParam(r, "github_repository_id")),
+			strings.TrimSpace(chi.URLParam(r, "change_request_id")),
+		); err != nil {
+			logging.Warnf("post_individual_signed - best-effort GitHub change request refresh failed: %v", err)
 		}
+	} else {
+		logging.Warnf("post_individual_signed - signed signature did not become visible in time: %s", signatureID)
 	}
+	//}
 
 	copyV4ResponseHeaders(w, hdr)
 	w.WriteHeader(http.StatusOK)
