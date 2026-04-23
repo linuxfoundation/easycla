@@ -9257,6 +9257,81 @@ func (h *Handlers) PostCorporateSignedV2(w http.ResponseWriter, r *http.Request)
 // Python: cla/routes.py:1950 get_return_url()
 // Calls: cla.controllers.signing.return_url
 
+var githubSignedIndividualCallbackPathRE = regexp.MustCompile(`/v[0-9]+/signed/individual/([^/?#]+)/([^/?#]+)/([^/?#]+)`) // installation, repository, PR
+
+func githubSignedIndividualCallbackParams(sig map[string]types.AttributeValue) (installationID, repositoryID, pullRequestID string, ok bool) {
+	callbackURL := strings.TrimSpace(getAttrString(sig, "signature_callback_url"))
+	if callbackURL == "" {
+		return "", "", "", false
+	}
+	if u, err := url.Parse(callbackURL); err == nil && strings.TrimSpace(u.Path) != "" {
+		callbackURL = u.Path
+	}
+	matches := githubSignedIndividualCallbackPathRE.FindStringSubmatch(callbackURL)
+	if len(matches) != 4 {
+		return "", "", "", false
+	}
+	installationID = strings.TrimSpace(matches[1])
+	repositoryID = strings.TrimSpace(matches[2])
+	pullRequestID = strings.TrimSpace(matches[3])
+	if installationID == "" || repositoryID == "" || pullRequestID == "" {
+		return "", "", "", false
+	}
+	return installationID, repositoryID, pullRequestID, true
+}
+
+func isGitHubIndividualSignature(sig map[string]types.AttributeValue) bool {
+	if sig == nil {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(getAttrString(sig, "signature_reference_type")), "user") {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(getAttrString(sig, "signature_return_url_type")), "github") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(getAttrString(sig, "signature_callback_url")), "/signed/individual/") && strings.Contains(strings.ToLower(getAttrString(sig, "signature_return_url")), "github.com/")
+}
+
+func (h *Handlers) refreshGitHubChangeRequestBeforeReturn(ctx context.Context, signatureID string, sig map[string]types.AttributeValue) {
+	if h == nil || h.signatures == nil || !isGitHubIndividualSignature(sig) {
+		return
+	}
+
+	currentSig := sig
+	const attempts = 10
+	for attempt := 1; attempt <= attempts && !getAttrBool(currentSig, "signature_signed"); attempt++ {
+		if attempt > 1 {
+			time.Sleep(500 * time.Millisecond)
+		}
+		refreshed, found, err := h.signatures.GetByID(ctx, signatureID)
+		if err != nil {
+			logging.Warnf("return_url - unable to refresh signature before GitHub status update (signature_id=%s): %v", signatureID, err)
+			return
+		}
+		if found {
+			currentSig = refreshed
+		}
+	}
+
+	if !getAttrBool(currentSig, "signature_signed") {
+		logging.Warnf("return_url - GitHub signature still not marked signed before redirect (signature_id=%s); skipping status refresh", signatureID)
+		return
+	}
+
+	installationID, repositoryID, pullRequestID, ok := githubSignedIndividualCallbackParams(currentSig)
+	if !ok {
+		logging.Warnf("return_url - unable to derive GitHub callback metadata before redirect (signature_id=%s)", signatureID)
+		return
+	}
+
+	if err := h.triggerGitHubChangeRequestUpdateV4(ctx, installationID, repositoryID, pullRequestID); err != nil {
+		logging.Warnf("return_url - GitHub status refresh failed before redirect (signature_id=%s, installation_id=%s, repository_id=%s, pull_request_id=%s): %v", signatureID, installationID, repositoryID, pullRequestID, err)
+		return
+	}
+	logging.Infof("return_url - refreshed GitHub status before redirect (signature_id=%s, repository_id=%s, pull_request_id=%s)", signatureID, repositoryID, pullRequestID)
+}
+
 var canceledSignatureHTML = template.Must(template.New("canceledSignature").Parse(`
 <html lang="en">
 <head>
@@ -9369,6 +9444,7 @@ func (h *Handlers) GetReturnUrlV2(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if returnURL := getAttrString(sig, "signature_return_url"); returnURL != "" {
+		h.refreshGitHubChangeRequestBeforeReturn(ctx, signatureID, sig)
 		// Legacy Python (cla/controllers/signing.py::return_url) has an eventual-consistency wait loop
 		// for v2 company signatures: it checks that all CLA managers listed in signature_acl have
 		// the "cla-manager" role assigned (via platform org service scopes) before redirecting.
