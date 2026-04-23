@@ -544,7 +544,7 @@ functions:
       - http:
           method: ANY
           path: v1/{proxy+}
-          cors: true
+          # cors: true
     package:
       individually: true
       patterns:
@@ -562,7 +562,7 @@ functions:
       - http:
           method: ANY
           path: v2/{proxy+}
-          cors: true
+          # cors: true
     package:
       individually: true
       patterns:
@@ -634,6 +634,9 @@ functions:
     events:
       - http:
           method: POST
+          path: v2/github/activity
+      - http:
+          method: OPTIONS
           path: v2/github/activity
     package:
       individually: true

@@ -61,6 +61,39 @@ func addAllowedOrigin(raw string) {
 func addContributorConsoleOrigins() {
 	addAllowedOrigin(os.Getenv("CLA_CONTRIBUTOR_BASE"))
 	addAllowedOrigin(os.Getenv("CLA_CONTRIBUTOR_V2_BASE"))
+	addAllowedOrigin(os.Getenv("CLA_CORPORATE_BASE"))
+	addAllowedOrigin(os.Getenv("CLA_CORPORATE_V2_BASE"))
+	addAllowedOrigin(os.Getenv("CLA_LANDING_PAGE"))
+}
+
+func addBuiltInEasyCLAOrigins() {
+	// Keep known EasyCLA dev/staging/prod UI and API aliases available even when
+	// ALLOWED_ORIGINS in SSM is incomplete. Credentialed browser requests cannot
+	// use a wildcard Access-Control-Allow-Origin value.
+	for _, origin := range []string{
+		"https://easycla.dev.communitybridge.org",
+		"https://easycla.staging.communitybridge.org",
+		"https://easycla.communitybridge.org",
+		"https://easycla.dev.platform.linuxfoundation.org",
+		"https://easycla.staging.platform.linuxfoundation.org",
+		"https://easycla.lfx.linuxfoundation.org",
+		"https://contributor.easycla.lfx.linuxfoundation.org",
+		"https://project.dev.lfcla.com",
+		"https://project.v1.easycla.lfx.linuxfoundation.org",
+		"https://corporate.dev.lfcla.com",
+		"https://corporate.v1.easycla.lfx.linuxfoundation.org",
+		"https://api.lfcla.dev.platform.linuxfoundation.org",
+		"https://api.lfcla.staging.platform.linuxfoundation.org",
+		"https://api.easycla.lfx.linuxfoundation.org",
+		"https://api.dev.lfcla.com",
+		"https://api.staging.lfcla.com",
+		"https://api.lfcla.com",
+		"https://api-gw.dev.platform.linuxfoundation.org",
+		"https://api-gw.staging.platform.linuxfoundation.org",
+		"https://api-gw.platform.linuxfoundation.org",
+	} {
+		addAllowedOrigin(origin)
+	}
 }
 
 func loadAllowedOriginsFromEnv() {
@@ -69,6 +102,7 @@ func loadAllowedOriginsFromEnv() {
 		// Backwards compatible default: allow all.
 		allowAllOrigins = true
 		addContributorConsoleOrigins()
+		addBuiltInEasyCLAOrigins()
 		return
 	}
 
@@ -83,6 +117,7 @@ func loadAllowedOriginsFromEnv() {
 				addAllowedOrigin(v)
 			}
 			addContributorConsoleOrigins()
+			addBuiltInEasyCLAOrigins()
 			if len(allowedOrigins) == 0 && !allowAllOrigins {
 				allowAllOrigins = true
 			}
@@ -106,6 +141,7 @@ func loadAllowedOriginsFromEnv() {
 	// Therefore these origins must be allowed to call the v1/v2 APIs after
 	// GitHub OAuth redirects back to EasyCLA.
 	addContributorConsoleOrigins()
+	addBuiltInEasyCLAOrigins()
 
 	if len(allowedOrigins) == 0 && !allowAllOrigins {
 		allowAllOrigins = true
@@ -148,7 +184,8 @@ func CORS(next http.Handler) http.Handler {
 
 		// Legacy Python sets the string literal "true".
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		// w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Hub-Signature, X-Hub-Signature-256, X-GitHub-Event, X-GitHub-Delivery")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 
 		if r.Method == http.MethodOptions {

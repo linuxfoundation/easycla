@@ -1356,7 +1356,7 @@ func (h *Handlers) handleLegacyGithubMergeGroup(ctx context.Context, payload map
 func (h *Handlers) handleLegacyGithubReceivedActivity(ctx context.Context, payload map[string]any) error {
 	action := githubActivityAction(payload)
 	switch action {
-	case "opened", "reopened", "synchronize":
+	case "opened", "reopened", "synchronize", "enqueued":
 		return h.handleLegacyGithubPullRequestUpdate(ctx, payload)
 	case "checks_requested":
 		return h.handleLegacyGithubMergeGroup(ctx, payload)
@@ -3002,7 +3002,9 @@ func (h *Handlers) GetUserActiveSignatureV2(w http.ResponseWriter, r *http.Reque
 		respond.JSON(w, http.StatusOK, nil)
 		return
 	}
-
+	if metadataString(metadata, "user_id") == "" {
+		metadata["user_id"] = userID
+	}
 	returnURL, err := h.computeReturnURLFromActiveSignatureMetadata(r.Context(), metadata)
 	if err != nil {
 		respond.JSON(w, http.StatusInternalServerError, err.Error())
