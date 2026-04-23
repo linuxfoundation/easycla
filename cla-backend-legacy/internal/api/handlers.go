@@ -9230,7 +9230,9 @@ func (h *Handlers) PostIndividualSignedV2(w http.ResponseWriter, r *http.Request
 		logging.Warnf("v4 signed/individual returned %d: %s", status, string(respBody))
 	}
 	signatureID, completed := extractDocuSignSignatureCompletion(body)
+	// TODO:CONTINUE:
 	logging.Debugf("post_individual_signed - extracted signature completion from DocuSign callback: signatureID=%s completed=%t", signatureID, completed)
+	// TODO:CONTINUE:
 	//if signatureID, completed := extractDocuSignSignatureCompletion(body); completed && signatureID != "" {
 	if h.waitForSignedSignature(r.Context(), signatureID, 10, 500*time.Millisecond) {
 		if err := h.triggerGitHubChangeRequestUpdateV4(
@@ -9244,6 +9246,7 @@ func (h *Handlers) PostIndividualSignedV2(w http.ResponseWriter, r *http.Request
 	} else {
 		logging.Warnf("post_individual_signed - signed signature did not become visible in time: %s", signatureID)
 	}
+	// TODO:CONTINUE:
 	//}
 
 	copyV4ResponseHeaders(w, hdr)
