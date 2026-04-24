@@ -462,6 +462,16 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 		log.WithFields(f).Debugf("updated signature record: %s", signatureID)
 
+		var claUser *v1Models.User
+		if fetchedUser, userErr := s.userService.GetUser(signature.SignatureReferenceID); userErr != nil {
+			log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID before pull request refresh: %s", signature.SignatureReferenceID)
+		} else {
+			claUser = fetchedUser
+			if cacheErr := github.UpdateCacheAfterSignature(ctx, claUser, signature.ProjectID); cacheErr != nil {
+				log.WithFields(f).WithError(cacheErr).Warnf("unable to prime GitHub authorization cache for user: %s", signature.SignatureReferenceID)
+			}
+		}
+
 		// Update the repository provider with this change - this will update the comment (if necessary)
 		// and the status - do this early in the flow as the user will be immediately redirected back
 		installtionIDInt, err := strconv.Atoi(installationID)
@@ -489,10 +499,13 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 			return err
 		}
 
-		claUser, userErr := s.userService.GetUser(signature.SignatureReferenceID)
-		if userErr != nil {
-			log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", signature.SignatureReferenceID)
-			return userErr
+		if claUser == nil {
+			var userErr error
+			claUser, userErr = s.userService.GetUser(signature.SignatureReferenceID)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", signature.SignatureReferenceID)
+				return userErr
+			}
 		}
 
 		if claUser.Username == "" {
