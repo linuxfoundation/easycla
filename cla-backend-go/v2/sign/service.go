@@ -465,7 +465,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 		var claUser *v1Models.User
 		if fetchedUser, userErr := s.userService.GetUser(signature.SignatureReferenceID); userErr != nil {
 			log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID before pull request refresh: %s", signature.SignatureReferenceID)
-		} else {
+		} else if fetchedUser != nil {
 			claUser = fetchedUser
 			if cacheErr := github.UpdateCacheAfterSignature(ctx, claUser, signature.ProjectID); cacheErr != nil {
 				log.WithFields(f).WithError(cacheErr).Warnf("unable to prime GitHub authorization cache for user: %s", signature.SignatureReferenceID)
@@ -505,6 +505,11 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 			if userErr != nil {
 				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", signature.SignatureReferenceID)
 				return userErr
+			}
+			if claUser == nil {
+				err = fmt.Errorf("user not found: %s", signature.SignatureReferenceID)
+				log.WithFields(f).WithError(err).Warn("unable to lookup user by ID - user not found")
+				return err
 			}
 		}
 
