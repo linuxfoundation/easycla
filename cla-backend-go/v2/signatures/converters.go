@@ -23,9 +23,6 @@ func v2Signature(src *v1Models.Signature) (*models.Signature, error) {
 	if err != nil {
 		return nil, err
 	}
-	if dst.Signatures == nil {
-		dst.Signatures = make([]*models.Signature, 0)
-	}
 	return &dst, nil
 }
 

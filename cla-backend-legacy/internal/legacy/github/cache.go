@@ -18,11 +18,11 @@ import (
 
 const (
 	// NegativeCacheTTL mirrors Python NEGATIVE_CACHE_TTL (3 minutes).
-	NegativeCacheTTL = 180 * time.Second
+	NegativeCacheTTL = 120 * time.Second
 	// ProjectCacheTTL mirrors Python PROJECT_CACHE_TTL (3 hours).
-	ProjectCacheTTL = 10800 * time.Second
+	ProjectCacheTTL = 15 * time.Minute
 	// DefaultCacheTTL mirrors Python github_user_cache default TTL (12 hours).
-	DefaultCacheTTL = 43200 * time.Second
+	DefaultCacheTTL = 1 * time.Hour
 )
 
 type cacheEntry struct {
