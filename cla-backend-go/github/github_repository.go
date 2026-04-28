@@ -65,13 +65,14 @@ Please update your commit message(s) by doing |git commit --amend| and then |git
 `
 
 const (
-	unknown          = "Unknown"
-	failureState     = "failure"
-	successState     = "success"
-	svgVersion       = "?v=2"
-	NegativeCacheTTL = 3 * time.Minute // Used for negative caching of missing/not-signed users
-	ProjectCacheTTL  = 3 * time.Hour   // Used for per-project caching of signed users
-	MaxCommentLength = 0xff00          // 65520 characters - leave some buffer under 64KB limit
+	unknown                  = "Unknown"
+	failureState             = "failure"
+	successState             = "success"
+	svgVersion               = "?v=2"
+	NegativeCacheTTL         = 2 * time.Minute  // Used for negative caching of missing/not-signed users
+	ProjectCacheTTL          = 15 * time.Minute // Used for per-project caching of signed users
+	coAuthorNegativeCacheTTL = 15 * time.Minute
+	MaxCommentLength         = 0xff00 // 65520 characters - leave some buffer under 64KB limit
 )
 
 type gqlError struct {
@@ -1041,8 +1042,8 @@ func GetCoAuthorCommits(
 	if found {
 		GithubUserCache.Set(cacheKey, user)
 	} else {
-		// negative cache for 30 minutes (this is for GitHub user not found)
-		GithubUserCache.SetWithTTL(cacheKey, user, 30*time.Minute)
+		// negative cache for GitHub user not found
+		GithubUserCache.SetWithTTL(cacheKey, user, coAuthorNegativeCacheTTL)
 	}
 
 	return summary, found
