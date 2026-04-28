@@ -346,7 +346,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 	}
 
 	// gitlabSupportURL := "https://about.gitlab.com/support"
-	easyCLASupportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
+	easyCLASupportURL := "https://easycla.lfx.linuxfoundation.org/"
 	// faq := "https://docs.linuxfoundation.org/lfx/easycla/v2-current/getting-started/easycla-troubleshooting#github-unable-to-contribute-to-easycla-enforced-repositories"
 
 	if len(missingUsers) > 0 {
@@ -358,14 +358,14 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 								  Start the authorization process <a href='%s'> by clicking here</a>, click "Corporate", 
 								  select the appropriate company from the list, then confirm your affiliation on the page that appears.
 								  For further assistance with EasyCLA,
-								  <a href='%s' target='_blank'>please submit a support request ticket</a>. </li>`, failed, authorInfo, signURL, easyCLASupportURL)
+								  <a href='%s' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot.</li>`, failed, authorInfo, signURL, easyCLASupportURL)
 				result += msg
 				body = confirmationNeededBadge
 			} else {
 				msg := fmt.Sprintf(`<li><a href='%s' target='_blank'>%s</a> - %s. The commit is not authorized under a signed CLA.
 									<a href='%s' target='_blank'>Please click here to be authorized</a>.
 									For further assistance with EasyCLA,
-									<a href='%s' target='_blank'>please submit a support request ticket</a>.
+									<a href='%s' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot.
 									</li>`, signURL, failed, authorInfo, signURL, easyCLASupportURL)
 				result += msg
 				body = failedBadge
