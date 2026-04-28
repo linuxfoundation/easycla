@@ -1136,7 +1136,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
             committers_comment += f'<li>{success} {author_info} ({", ".join(commit_shas)})</li>'
 
     if num_missing > 0:
-        support_url = "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
+        support_url = "https://easycla.lfx.linuxfoundation.org/"
         missing_id_help_url = "https://linuxfoundation.atlassian.net/wiki/spaces/LP/pages/160923756/Missing+ID+on+Commit+but+I+have+an+agreement+on+file"
 
         # Build a lookup table to group all the commits by author.
@@ -1166,7 +1166,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                     f"<a href='{github_help_url}' target='_blank'>GitHub Help</a> to resolve. "
                     "(To view the commit's email address, add .patch at the end of this PR page's URL.) "
                     "For further assistance with EasyCLA, "
-                    f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
+                    f"<a href='{support_url}' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot."
                     "</li>"
                 )
             else:
@@ -1191,7 +1191,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                         f"select the appropriate company from the list, then confirm "
                         f"your affiliation on the page that appears. "
                         f"For further assistance with EasyCLA, "
-                        f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
+                        f"<a href='{support_url}' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot."
                         "</li>"
                     )
                 else:
@@ -1204,7 +1204,7 @@ def get_comment_body(repository_type, sign_url, signed: List[UserCommitSummary],
                         "is not authorized under a signed CLA. "
                         f"<a href='{sign_url}' target='_blank'>Please click here to be authorized</a>. "
                         f"For further assistance with EasyCLA, "
-                        f"<a href='{support_url}' target='_blank'>please submit a support request ticket</a>."
+                        f"<a href='{support_url}' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot."
                         "</li>"
                     )
 

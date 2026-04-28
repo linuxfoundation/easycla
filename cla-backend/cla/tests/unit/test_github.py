@@ -12,7 +12,7 @@ from cla.utils import get_comment_badge
 SUCCESS = ":white_check_mark:"
 FAILED = ":x:"
 SIGN_URL = "http://test.contributor.lfcla/sign"
-SUPPORT_URL = "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
+SUPPORT_URL = "https://easycla.lfx.linuxfoundation.org/"
 GITHUB_HELP_URL = (
     "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
 )
@@ -36,11 +36,10 @@ GITHUB_FAKE_SHA_2 = "fake_sha_2"
 #             + f"is missing the User's ID, preventing the EasyCLA check. "
 #             + f"<a href='{GITHUB_HELP_URL}' target='_blank'>Consult GitHub Help</a> to resolve."
 #             + f"For further assistance with EasyCLA, "
-#             + f"<a href='{SUPPORT_URL}' target='_blank'>please submit a support request ticket</a>."
+#             + f"<a href='{SUPPORT_URL}' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot."
 #             + "</li></url>"
 #     )
 #     assert response == expected
-
 
 # def test_get_comment_body_cla_fail_no_user_id_and_user_id():
 #     """
@@ -63,14 +62,14 @@ GITHUB_FAKE_SHA_2 = "fake_sha_2"
 #             + " ,".join([GITHUB_FAKE_SHA])
 #             + ") is not authorized under a signed CLA. "
 #             + f"[Please click here to be authorized]({SIGN_URL}). For further assistance with "
-#             + f"EasyCLA, [please submit a support request ticket]({SUPPORT_URL})."
+#             + f"EasyCLA, [please visit our EasyCLA portal]({SUPPORT_URL}) and chat with our support bot."
 #             + "</li>"
 #             + "<li> " + FAILED + " The commit ("
 #             + " ,".join([GITHUB_FAKE_SHA_2])
 #             + ") is missing the User's ID, preventing the EasyCLA check. [Consult GitHub Help]("
 #             + GITHUB_HELP_URL
 #             + ") to resolve. For further assistance with EasyCLA, "
-#             + f"[please submit a support request ticket]({SUPPORT_URL})."
+#             + f"[please visit our EasyCLA portal]({SUPPORT_URL}) and chat with our support bot."
 #             + "</li></ul>"
 #     )
 #
@@ -93,7 +92,7 @@ GITHUB_FAKE_SHA_2 = "fake_sha_2"
 #             + f'[Start the authorization process by clicking here]({SIGN_URL}), click "Corporate",'
 #             + "select the appropriate company from the list, then confirm "
 #             + "your affiliation on the page that appears. For further assistance with EasyCLA, "
-#             + f"[please submit a support request ticket]({SUPPORT_URL})."
+#             + f"[please visit our EasyCLA portal]({SUPPORT_URL}) and chat with our support bot."
 #             + "</li>"
 #             + "</ul>"
 #     )
