@@ -2248,7 +2248,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 
 	// ---------- Missing section (group by author) ----------
 	if numMissing > 0 {
-		supportURL := "https://jira.linuxfoundation.org/servicedesk/customer/portal/4"
+		supportURL := "https://easycla.lfx.linuxfoundation.org/"
 		missingIDHelpURL := "https://linuxfoundation.atlassian.net/wiki/spaces/LP/pages/160923756/Missing+ID+on+Commit+but+I+have+an+agreement+on+file"
 		githubHelpURL := "https://help.github.com/en/github/committing-changes-to-your-project/why-are-my-commits-linked-to-the-wrong-user"
 
@@ -2288,7 +2288,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 						"<a href='%s' target='_blank'>GitHub Help</a> to resolve. "+
 						"(To view the commit's email address, add .patch at the end of this PR page's URL.) "+
 						"For further assistance with EasyCLA, "+
-						"<a href='%s' target='_blank'>please submit a support request ticket</a>.</li>",
+						"<a href='%s' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot.</li>",
 					failed, strings.Join(shas, ", "), missingIDHelpURL, githubHelpURL, supportURL,
 				))
 				continue
@@ -2312,7 +2312,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 					`<li>%s %s (%s). This user is authorized, but they must confirm their affiliation with their company. `+
 						`Start the authorization process <a href='%s' target='_blank'> by clicking here</a>, `+
 						`click "Corporate", select the appropriate company from the list, then confirm your affiliation on the page that appears. `+
-						`For further assistance with EasyCLA, <a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`,
+						`For further assistance with EasyCLA, <a href='%s' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot.</li>`,
 					failed, authorInfo, strings.Join(shas, ", "),
 					signURL, supportURL,
 				))
@@ -2326,7 +2326,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 				committersComment.WriteString(fmt.Sprintf(
 					`<li><a href='%s' target='_blank'>%s</a> - %s. The commit (%s) is not authorized under a signed CLA. `+
 						`<a href='%s' target='_blank'>Please click here to be authorized</a>. `+
-						`For further assistance with EasyCLA, <a href='%s' target='_blank'>please submit a support request ticket</a>.</li>`,
+						`For further assistance with EasyCLA, <a href='%s' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot.</li>`,
 					signURL, failed, authorInfo, strings.Join(shas, ", "),
 					signURL, supportURL,
 				))
