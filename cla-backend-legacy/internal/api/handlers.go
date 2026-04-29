@@ -9538,7 +9538,7 @@ func (h *Handlers) GetReturnUrlV2(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if returnURL := getAttrString(sig, "signature_return_url"); returnURL != "" {
-		h.refreshGitHubChangeRequestBeforeReturn(ctx, signatureID, sig)
+		// h.refreshGitHubChangeRequestBeforeReturn(ctx, signatureID, sig)
 		// Legacy Python (cla/controllers/signing.py::return_url) has an eventual-consistency wait loop
 		// for v2 company signatures: it checks that all CLA managers listed in signature_acl have
 		// the "cla-manager" role assigned (via platform org service scopes) before redirecting.
