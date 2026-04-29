@@ -4,6 +4,6 @@
     "mochawesome-merge": "^4.3.0",
     "mochawesome-report-generator": "^6.2.0",
     "prettier": "^3.0.2",
-    "validator": "^13.15.22"
+    "validator": "^13.15.35"
   }
 }
