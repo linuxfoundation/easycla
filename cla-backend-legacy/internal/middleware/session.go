@@ -91,7 +91,7 @@ func SessionMiddleware(kv *store.KVStore) func(http.Handler) http.Handler {
 				Value:    sid,
 				Path:     "/",
 				MaxAge:   300,
-				Secure:   true,
+				Secure:   false,
 				HttpOnly: true,
 			})
 
