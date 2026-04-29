@@ -6840,17 +6840,9 @@ func (h *Handlers) PostProjectDocumentTemplateV1(w http.ResponseWriter, r *http.
 	}
 
 	// Validate ACL
-	aclSet := map[string]bool{}
-	if av, ok := projectItem["project_acl"]; ok {
-		if l, ok := av.(*types.AttributeValueMemberL); ok {
-			for _, v := range l.Value {
-				if s, ok := v.(*types.AttributeValueMemberS); ok {
-					aclSet[s.Value] = true
-				}
-			}
-		}
-	}
-	if !aclSet[authUser.Username] {
+	// project_acl can be stored as a DynamoDB string set (SS) or list (L).
+	// Keep the legacy exact-username membership check while accepting both shapes.
+	if !stringSliceContainsExact(getAttrStringSlice(projectItem, "project_acl"), authUser.Username) {
 		respond.JSON(w, http.StatusForbidden, map[string]any{
 			"title":       "Forbidden",
 			"description": "You do not have permission to create project document templates",
@@ -8793,12 +8785,15 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if strings.TrimSpace(req.ReturnURL) != "" {
-		if _, err := validateURL(req.ReturnURL); err != nil {
-			respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"return_url": "invalid"}})
-			return
+	// This now happens in V4
+	/*
+		if strings.TrimSpace(req.ReturnURL) != "" {
+			if _, err := validateURL(req.ReturnURL); err != nil {
+				respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"return_url": "invalid"}})
+				return
+			}
 		}
-	}
+	*/
 
 	project, company, user, cclaSig, errResp, err := h.employeeSignaturePrecheck(ctx, req.ProjectID, req.CompanyID, req.UserID)
 	if err != nil {
@@ -9184,10 +9179,18 @@ func (h *Handlers) PostIndividualSignedV2(w http.ResponseWriter, r *http.Request
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
+		// FIXME: possible block if failed
+		// w.WriteHeader(http.StatusBadGateway)
+		// _, _ = w.Write([]byte("Bad Gateway"))
 		return
 	}
 	if status >= 400 {
 		logging.Warnf("v4 signed/individual returned %d: %s", status, string(respBody))
+		// FIXME: possible block if failed
+		// copyV4ResponseHeaders(w, hdr)
+		// w.WriteHeader(status)
+		// _, _ = w.Write(respBody)
+		// return
 	}
 
 	copyV4ResponseHeaders(w, hdr)
@@ -9229,10 +9232,17 @@ func (h *Handlers) PostIndividualSignedGitlabV2(w http.ResponseWriter, r *http.R
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
+		// FIXME: possible block if failed
+		// w.WriteHeader(http.StatusBadGateway)
+		// _, _ = w.Write([]byte("Bad Gateway"))
 		return
 	}
 	if status >= 400 {
 		logging.Warnf("v4 signed/gitlab/individual returned %d: %s", status, string(respBody))
+		// copyV4ResponseHeaders(w, hdr)
+		// w.WriteHeader(status)
+		// _, _ = w.Write(respBody)
+		// return
 	}
 	copyV4ResponseHeaders(w, hdr)
 	w.WriteHeader(http.StatusOK)
@@ -9267,10 +9277,18 @@ func (h *Handlers) PostIndividualSignedGerritV2(w http.ResponseWriter, r *http.R
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
+		// FIXME: possible block if failed
+		// w.WriteHeader(http.StatusBadGateway)
+		// _, _ = w.Write([]byte("Bad Gateway"))
 		return
 	}
 	if status >= 400 {
 		logging.Warnf("v4 signed/gerrit/individual returned %d: %s", status, string(respBody))
+		// FIXME: possible block if failed
+		// copyV4ResponseHeaders(w, hdr)
+		// w.WriteHeader(status)
+		// _, _ = w.Write(respBody)
+		// return
 	}
 	copyV4ResponseHeaders(w, hdr)
 	w.WriteHeader(http.StatusOK)
@@ -9307,10 +9325,18 @@ func (h *Handlers) PostCorporateSignedV2(w http.ResponseWriter, r *http.Request)
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
+		// FIXME: possible block if failed
+		// w.WriteHeader(http.StatusBadGateway)
+		// _, _ = w.Write([]byte("Bad Gateway"))
 		return
 	}
 	if status >= 400 {
 		logging.Warnf("v4 signed/corporate returned %d: %s", status, string(respBody))
+		// FIXME: possible block if failed
+		// copyV4ResponseHeaders(w, hdr)
+		// w.WriteHeader(status)
+		// _, _ = w.Write(respBody)
+		// return
 	}
 	copyV4ResponseHeaders(w, hdr)
 	w.WriteHeader(http.StatusOK)
