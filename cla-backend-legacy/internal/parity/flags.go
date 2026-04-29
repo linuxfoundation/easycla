@@ -42,10 +42,8 @@ var (
 	// EASYCLA_PARITY_FLAG: when true, require role scope across every project mapping in the CLA group.
 	FixUserServiceHasRoleAllMappings = envBool("EASYCLA_FIX_USER_SERVICE_HAS_ROLE_ALL_MAPPINGS")
 
-	// EASYCLA_PARITY_FLAG: when true, wait in GET /v2/return-url/{signature_id} until v2 company CLA managers
-	// have visible cla-manager role scopes before redirecting. Disabled by default because it is a user-visible
-	// latency source; the handler redirects regardless, so skipping the wait preserves the final response.
-	EnableReturnURLCompanyManagerWait = envBool("EASYCLA_ENABLE_RETURN_URL_COMPANY_MANAGER_WAIT")
+	// EASYCLA_PARITY_FLAG: when true, skip waiting in GET /v2/return-url/{signature_id} until v2 company CLA managers
+	DisableReturnURLCompanyManagerWait = envBool("EASYCLA_DISABLE_RETURN_URL_COMPANY_MANAGER_WAIT")
 
 	// EASYCLA_PARITY_FLAG: when true, return signature_id instead of preserving the legacy project_id error key bug.
 	FixAddClaManagerV1NotFoundErrorKey = envBool("EASYCLA_FIX_ADD_CLA_MANAGER_V1_NOT_FOUND_ERROR_KEY")

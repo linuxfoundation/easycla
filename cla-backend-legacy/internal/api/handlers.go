@@ -9465,8 +9465,7 @@ func (h *Handlers) GetReturnUrlV2(w http.ResponseWriter, r *http.Request) {
 	if returnURL := getAttrString(sig, "signature_return_url"); returnURL != "" {
 		projectID := getAttrString(sig, "signature_project_id")
 		refType := strings.ToLower(strings.TrimSpace(getAttrString(sig, "signature_reference_type")))
-		// if parity.EnableReturnURLCompanyManagerWait && projectID != "" && refType == "company" && h.projects != nil && h.companies != nil && h.userService != nil && h.projectCLAGroups != nil {
-		if projectID != "" && refType == "company" && h.projects != nil && h.companies != nil && h.userService != nil && h.projectCLAGroups != nil {
+		if !parity.DisableReturnURLCompanyManagerWait && projectID != "" && refType == "company" && h.projects != nil && h.companies != nil && h.userService != nil && h.projectCLAGroups != nil {
 			proj, pFound, pErr := h.projects.GetByID(ctx, projectID)
 			if pErr == nil && pFound {
 				version := strings.ToLower(strings.TrimSpace(getAttrString(proj, "version")))
