@@ -228,6 +228,7 @@ provider:
     # Currently, we use DynamoDB in the us-east-1 region
     DYNAMODB_AWS_REGION: us-east-1
     GH_APP_WEBHOOK_SECRET: ${file(./env.json):gh-app-webhook-secret, ssm:/cla-gh-app-webhook-secret-${opt:stage}}
+    GITHUB_APP_WEBHOOK_SECRET: ${file(./env.json):gh-app-webhook-secret, ssm:/cla-gh-app-webhook-secret-${opt:stage}}
     GH_APP_ID: ${file(./env.json):gh-app-id, ssm:/cla-gh-app-id-${opt:stage}}
     GH_OAUTH_CLIENT_ID: ${file(./env.json):gh-oauth-client-id, ssm:/cla-gh-oauth-client-id-${opt:stage}}
     GH_OAUTH_SECRET: ${file(./env.json):gh-oauth-secret, ssm:/cla-gh-oauth-secret-${opt:stage}}

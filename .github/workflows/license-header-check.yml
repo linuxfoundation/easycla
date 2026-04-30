@@ -21,11 +21,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Check License Headers - Python
+      - name: Check License Headers - Deployment Stack / Authorizer
         working-directory: cla-backend
         run: |
           ./check-headers.sh
-      - name: Check License Headers - Go
+      - name: Check License Headers - Go Legacy v1/v2
+        working-directory: cla-backend-legacy
+        run: |
+          ./check-headers.sh
+      - name: Check License Headers - Go v3/v4
         working-directory: cla-backend-go
         run: |
           ./check-headers.sh

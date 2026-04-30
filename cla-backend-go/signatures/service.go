@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -94,6 +95,12 @@ type service struct {
 	claLandingPage      string
 	claLogoURL          string
 }
+
+const (
+	errNilGitHubRepositoryOrOwner = "unable to get github repository - repository response is nil or owner is nil"
+	githubStatusStateFailure      = "failure"
+	githubStatusMissingCLA        = "Missing CLA Authorization."
+)
 
 // NewService creates a new signature service
 func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string) SignatureService {
@@ -993,7 +1000,179 @@ func (s service) GetClaGroupCorporateContributors(ctx context.Context, claGroupI
 	return s.repo.GetClaGroupCorporateContributors(ctx, claGroupID, companyID, pageSize, nextKey, searchTerm)
 }
 
-// updateChangeRequest is a helper function that updates PR - typically after the auto ecla update
+func legacyOwnerFromRepositoryName(repositoryName string) string {
+	parts := strings.SplitN(strings.TrimSpace(repositoryName), "/", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	return strings.TrimSpace(parts[0])
+}
+
+// UpdateGitHubChangeRequest re-runs the EasyCLA GitHub PR evaluation.
+//
+// This is the exported wiring for the existing v4 PR/check implementation. It preserves
+// legacy Python behavior for missing/disabled/unrelated repositories by returning nil
+// without posting a status.
+func (s service) UpdateGitHubChangeRequest(ctx context.Context, installationID, repositoryID, pullRequestID int64) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.service.UpdateGitHubChangeRequest",
+		"installationID": installationID,
+		"repositoryID":   repositoryID,
+		"pullRequestID":  pullRequestID,
+	}
+	if installationID <= 0 {
+		return fmt.Errorf("invalid installation id: %d", installationID)
+	}
+	if repositoryID <= 0 {
+		return fmt.Errorf("invalid github repository id: %d", repositoryID)
+	}
+	if pullRequestID <= 0 {
+		return fmt.Errorf("invalid pull request id: %d", pullRequestID)
+	}
+
+	repo, err := s.repositoryService.GetRepositoryByExternalID(ctx, strconv.FormatInt(repositoryID, 10))
+	if err != nil {
+		if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
+			log.WithFields(f).Warn("repository is not configured in EasyCLA; skipping PR update")
+			return nil
+		}
+		return err
+	}
+	if repo == nil {
+		log.WithFields(f).Warn("repository lookup returned nil; skipping PR update")
+		return nil
+	}
+	if !repo.Enabled {
+		log.WithFields(f).Warnf("repository %s is disabled; skipping PR update", repo.RepositoryID)
+		return nil
+	}
+
+	orgName := strings.TrimSpace(repo.RepositoryOrganizationName)
+	if orgName == "" {
+		orgName = legacyOwnerFromRepositoryName(repo.RepositoryName)
+	}
+	if orgName == "" {
+		log.WithFields(f).Warnf("repository %s has no GitHub organization name; skipping update", repo.RepositoryID)
+		return nil
+	}
+	ghOrg, err := s.githubOrgService.GetGitHubOrganizationByName(ctx, orgName)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to load GitHub organization %s", orgName)
+		return err
+	}
+	if ghOrg == nil {
+		log.WithFields(f).Warnf("GitHub organization %s is not configured; skipping PR update", orgName)
+		return nil
+	}
+	if ghOrg.OrganizationInstallationID != installationID {
+		log.WithFields(f).Warnf("GitHub organization installation id %d does not match webhook installation id %d; skipping PR update", ghOrg.OrganizationInstallationID, installationID)
+		return nil
+	}
+
+	projectID := strings.TrimSpace(repo.RepositoryClaGroupID)
+	if projectID == "" {
+		log.WithFields(f).Warnf("repository %s has no CLA group id; skipping PR update", repo.RepositoryID)
+		return nil
+	}
+
+	projectVersion, projectErr := s.legacyProjectVersion(ctx, projectID)
+	if projectErr != nil {
+		log.WithFields(f).WithError(projectErr).Warnf("unable to load CLA group %s; unable to update PR", projectID)
+		return projectErr
+	}
+
+	return s.updateChangeRequestLegacyCompat(ctx, ghOrg, repositoryID, pullRequestID, projectID, projectVersion)
+}
+
+// UpdateGitHubMergeGroup re-runs the EasyCLA GitHub merge-queue status evaluation.
+func (s service) UpdateGitHubMergeGroup(ctx context.Context, installationID, repositoryID int64, mergeGroupSHA string, pullRequestID int64) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.service.UpdateGitHubMergeGroup",
+		"installationID": installationID,
+		"repositoryID":   repositoryID,
+		"mergeGroupSHA":  mergeGroupSHA,
+		"pullRequestID":  pullRequestID,
+	}
+	if installationID <= 0 {
+		return fmt.Errorf("invalid installation id: %d", installationID)
+	}
+	if repositoryID <= 0 {
+		return fmt.Errorf("invalid github repository id: %d", repositoryID)
+	}
+	mergeGroupSHA = strings.TrimSpace(mergeGroupSHA)
+	if mergeGroupSHA == "" {
+		return fmt.Errorf("invalid merge group sha")
+	}
+	if pullRequestID <= 0 {
+		return fmt.Errorf("invalid pull request id: %d", pullRequestID)
+	}
+
+	repo, err := s.repositoryService.GetRepositoryByExternalID(ctx, strconv.FormatInt(repositoryID, 10))
+	if err != nil {
+		if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
+			log.WithFields(f).Warn("repository is not configured in EasyCLA; skipping merge-group update")
+			return nil
+		}
+		return err
+	}
+	if repo == nil {
+		log.WithFields(f).Warn("repository lookup returned nil; skipping merge-group update")
+		return nil
+	}
+	if !repo.Enabled {
+		log.WithFields(f).Warnf("repository %s is disabled; skipping merge-group update", repo.RepositoryID)
+		return nil
+	}
+
+	orgName := strings.TrimSpace(repo.RepositoryOrganizationName)
+	if orgName == "" {
+		orgName = legacyOwnerFromRepositoryName(repo.RepositoryName)
+	}
+	if orgName == "" {
+		log.WithFields(f).Warnf("repository %s has no GitHub organization name; skipping update", repo.RepositoryID)
+		return nil
+	}
+	ghOrg, err := s.githubOrgService.GetGitHubOrganizationByName(ctx, orgName)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to load GitHub organization %s", orgName)
+		return err
+	}
+	if ghOrg == nil {
+		log.WithFields(f).Warnf("GitHub organization %s is not configured; skipping merge-group update", orgName)
+		return nil
+	}
+	if ghOrg.OrganizationInstallationID != installationID {
+		log.WithFields(f).Warnf("GitHub organization installation id %d does not match webhook installation id %d; skipping merge-group update", ghOrg.OrganizationInstallationID, installationID)
+		return nil
+	}
+
+	projectID := strings.TrimSpace(repo.RepositoryClaGroupID)
+	if projectID == "" {
+		log.WithFields(f).Warnf("repository %s has no CLA group id; skipping merge-group update", repo.RepositoryID)
+		return nil
+	}
+
+	projectVersion, projectErr := s.legacyProjectVersion(ctx, projectID)
+	if projectErr != nil {
+		log.WithFields(f).WithError(projectErr).Warnf("unable to load CLA group %s; unable to update merge-group status", projectID)
+		return projectErr
+	}
+
+	return s.updateMergeGroup(ctx, ghOrg, repositoryID, mergeGroupSHA, pullRequestID, projectID, projectVersion)
+}
+
+func (s service) legacyProjectVersion(ctx context.Context, projectID string) (string, error) {
+	claGroup, err := s.claGroupService.GetCLAGroupByID(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	if claGroup == nil {
+		return "", fmt.Errorf("CLA group %s not found", projectID)
+	}
+	return strings.TrimSpace(claGroup.Version), nil
+}
+
+// updateChangeRequest is a helper function that updates PR - typically after the auto ecla update.
 func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOrganization, repositoryID, pullRequestID int64, projectID string) error {
 	f := logrus.Fields{
 		"functionName":  "v1.signatures.service.updateChangeRequest",
@@ -1008,7 +1187,7 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 		return ghErr
 	}
 	if githubRepository == nil || githubRepository.Owner == nil {
-		msg := "unable to get github repository - repository response is nil or owner is nil"
+		msg := errNilGitHubRepositoryOrOwner
 		log.WithFields(f).Warn(msg)
 		return errors.New(msg)
 	}
@@ -1057,6 +1236,189 @@ func (s service) updateChangeRequest(ctx context.Context, ghOrg *models.GithubOr
 	}
 
 	return nil
+}
+
+// updateChangeRequestLegacyCompat updates a legacy v1/v2-triggered PR while preserving the CLA group version in generated URLs.
+func (s service) updateChangeRequestLegacyCompat(ctx context.Context, ghOrg *models.GithubOrganization, repositoryID, pullRequestID int64, projectID, projectVersion string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.service.updateChangeRequestLegacyCompat",
+		"repositoryID":   repositoryID,
+		"pullRequestID":  pullRequestID,
+		"projectID":      projectID,
+		"projectVersion": projectVersion,
+	}
+
+	githubRepository, ghErr := github.GetGitHubRepository(ctx, ghOrg.OrganizationInstallationID, repositoryID)
+	if ghErr != nil {
+		log.WithFields(f).WithError(ghErr).Warn("unable to get github repository")
+		return ghErr
+	}
+	if githubRepository == nil || githubRepository.Owner == nil {
+		msg := errNilGitHubRepositoryOrOwner
+		log.WithFields(f).Warn(msg)
+		return errors.New(msg)
+	}
+	if githubRepository.Name == nil || githubRepository.Owner.Login == nil {
+		msg := fmt.Sprintf("unable to get github repository - missing repository name or owner name for repository ID: %d", repositoryID)
+		log.WithFields(f).Warn(msg)
+		return errors.New(msg)
+	}
+
+	gitHubOrgName := utils.StringValue(githubRepository.Owner.Login)
+	gitHubRepoName := utils.StringValue(githubRepository.Name)
+
+	withCoAuthors := github.IsCoAuthorsEnabledForRepo(ghOrg.EnableCoAuthors, gitHubRepoName)
+	log.WithFields(f).Debugf("fetching commit authors for PR: %d using repository owner: %s, repo: %s", pullRequestID, gitHubOrgName, gitHubRepoName)
+	authors, anyMissing, authorsErr := github.GetPullRequestCommitAuthors(ctx, s.usersService, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, withCoAuthors)
+	if authorsErr != nil {
+		log.WithFields(f).WithError(authorsErr).Warnf("unable to get commit authors for %s/%s for PR: %d", gitHubOrgName, gitHubRepoName, pullRequestID)
+		return authorsErr
+	}
+	log.WithFields(f).Debugf("found %d commit authors for %s/%s for PR: %d", len(authors), gitHubOrgName, gitHubRepoName, pullRequestID)
+
+	// triage signed and unsigned users
+	log.WithFields(f).Debugf("triaging %d commit authors for PR: %d using repository %s/%s",
+		len(authors), pullRequestID, gitHubOrgName, gitHubRepoName)
+
+	signed, unsigned := github.GetCommitAuthorsSignedStatuses(ctx, s.usersService, s.HasUserSigned, projectID, authors)
+
+	log.WithFields(f).Debugf("commit authors status => signed: %+v and missing: %+v", signed, unsigned)
+	var allowlisted []*github.UserCommitSummary
+	unsigned, allowlisted = github.SkipAllowlistedBots(s.eventsService, ghOrg, gitHubRepoName, projectID, unsigned)
+	if len(allowlisted) > 0 {
+		log.WithFields(f).Debugf("adding %d allowlisted actors to signed list", len(allowlisted))
+		signed = append(signed, allowlisted...)
+	}
+	signed = github.DedupAndSortCommitSummaries(signed)
+	unsigned = github.DedupAndSortCommitSummaries(unsigned)
+	log.WithFields(f).Debugf("commit authors status after allowlisting bots => signed: %+v, missing: %+v, allowlisted: %+v", signed, unsigned, allowlisted)
+
+	// update pull request
+	updateErr := github.UpdatePullRequestLegacyCompat(ctx, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, githubRepository.ID, signed, unsigned, anyMissing, s.claBaseAPIURL, s.claLandingPage, s.claLogoURL, projectVersion)
+	if updateErr != nil {
+		log.WithFields(f).Debugf("unable to update PR: %d", pullRequestID)
+		return updateErr
+	}
+
+	return nil
+}
+
+func (s service) updateMergeGroup(ctx context.Context, ghOrg *models.GithubOrganization, repositoryID int64, mergeGroupSHA string, pullRequestID int64, projectID, projectVersion string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.service.updateMergeGroup",
+		"repositoryID":   repositoryID,
+		"mergeGroupSHA":  mergeGroupSHA,
+		"pullRequestID":  pullRequestID,
+		"projectID":      projectID,
+		"projectVersion": projectVersion,
+	}
+
+	githubRepository, ghErr := github.GetGitHubRepository(ctx, ghOrg.OrganizationInstallationID, repositoryID)
+	if ghErr != nil {
+		log.WithFields(f).WithError(ghErr).Warn("unable to get github repository")
+		return ghErr
+	}
+	if githubRepository == nil || githubRepository.Owner == nil {
+		msg := errNilGitHubRepositoryOrOwner
+		log.WithFields(f).Warn(msg)
+		return errors.New(msg)
+	}
+	if githubRepository.Name == nil || githubRepository.Owner.Login == nil {
+		msg := fmt.Sprintf("unable to get github repository - missing repository name or owner name for repository ID: %d", repositoryID)
+		log.WithFields(f).Warn(msg)
+		return errors.New(msg)
+	}
+
+	gitHubOrgName := utils.StringValue(githubRepository.Owner.Login)
+	gitHubRepoName := utils.StringValue(githubRepository.Name)
+
+	withCoAuthors := github.IsCoAuthorsEnabledForRepo(ghOrg.EnableCoAuthors, gitHubRepoName)
+	log.WithFields(f).Debugf("fetching commit authors for PR: %d using repository owner: %s, repo: %s", pullRequestID, gitHubOrgName, gitHubRepoName)
+	authors, anyMissing, authorsErr := github.GetPullRequestCommitAuthors(ctx, s.usersService, ghOrg.OrganizationInstallationID, int(pullRequestID), gitHubOrgName, gitHubRepoName, withCoAuthors)
+	if authorsErr != nil {
+		log.WithFields(f).WithError(authorsErr).Warnf("unable to get commit authors for %s/%s for PR: %d", gitHubOrgName, gitHubRepoName, pullRequestID)
+		return authorsErr
+	}
+
+	signed, unsigned := github.GetCommitAuthorsSignedStatuses(ctx, s.usersService, s.HasUserSigned, projectID, authors)
+	var allowlisted []*github.UserCommitSummary
+	unsigned, allowlisted = github.SkipAllowlistedBots(s.eventsService, ghOrg, gitHubRepoName, projectID, unsigned)
+	if len(allowlisted) > 0 {
+		log.WithFields(f).Debugf("adding %d allowlisted actors to signed list", len(allowlisted))
+		signed = append(signed, allowlisted...)
+	}
+	signed = github.DedupAndSortCommitSummaries(signed)
+	unsigned = github.DedupAndSortCommitSummaries(unsigned)
+
+	client, err := github.NewGithubAppClient(ghOrg.OrganizationInstallationID)
+	if err != nil || client == nil {
+		log.WithFields(f).WithError(err).Warn("unable to create Github client")
+		return err
+	}
+
+	ctxName := legacyGitHubStatusContext()
+	var statusBody string
+	var state string
+	var signURL string
+	if len(unsigned) > 0 {
+		state = githubStatusStateFailure
+		statusBody = githubStatusMissingCLA
+		signURL = legacyGitHubSignURL(s.claBaseAPIURL, ghOrg.OrganizationInstallationID, repositoryID, pullRequestID, projectVersion)
+		log.WithFields(f).Debugf("creating merge-group CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(unsigned), signURL)
+	} else if len(signed) > 0 {
+		state = "success"
+		statusBody = "EasyCLA check passed. You are authorized to contribute."
+		signURL = legacyAppendProjectVersionToURL(fmt.Sprintf("%s/#/", s.claLandingPage), projectVersion)
+		log.WithFields(f).Debugf("creating merge-group CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(unsigned), signURL)
+	} else {
+		state = githubStatusStateFailure
+		statusBody = githubStatusMissingCLA
+		signURL = legacyGitHubSignURL(s.claBaseAPIURL, ghOrg.OrganizationInstallationID, repositoryID, pullRequestID, projectVersion)
+		log.WithFields(f).Debugf("creating merge-group CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(unsigned), signURL)
+	}
+
+	status := github.Status{
+		State:       &state,
+		TargetURL:   &signURL,
+		Context:     &ctxName,
+		Description: &statusBody,
+	}
+
+	_, _, err = github.CreateStatus(ctx, client, gitHubOrgName, gitHubRepoName, mergeGroupSHA, &status)
+	if err != nil {
+		log.WithFields(f).WithError(err).Debugf("unable to create merge-group status on %s", mergeGroupSHA)
+		return err
+	}
+	log.WithFields(f).Debugf("created '%s' merge-group status commit SHA for %s/%s PR %d: %s (anyMissing=%t)", state, gitHubOrgName, gitHubRepoName, pullRequestID, mergeGroupSHA, anyMissing)
+	return nil
+}
+
+func legacyGitHubStatusContext() string {
+	ctxName := strings.TrimSpace(os.Getenv("GH_STATUS_CTX_NAME"))
+	if ctxName == "" {
+		return "communitybridge/cla"
+	}
+	return ctxName
+}
+
+func legacyGitHubSignURL(apiBaseURL string, installationID, repositoryID, pullRequestID int64, projectVersion string) string {
+	baseURL := fmt.Sprintf("%s/v2/repository-provider/github/sign/%d/%d/%d/#/", apiBaseURL, installationID, repositoryID, pullRequestID)
+	return legacyAppendProjectVersionToURL(baseURL, projectVersion)
+}
+
+func legacyAppendProjectVersionToURL(address, projectVersion string) string {
+	version := "1"
+	if strings.TrimSpace(projectVersion) == utils.V2 {
+		version = "2"
+	}
+	if strings.Contains(address, "version=") {
+		return address
+	}
+	separator := "?"
+	if strings.Contains(address, "?") {
+		separator = "&"
+	}
+	return address + separator + "version=" + version
 }
 
 // hasUserSigned checks to see if the user has signed an ICLA or ECLA for the project, returns:

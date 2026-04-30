@@ -29,18 +29,19 @@ jobs:
       - name: Setup go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - name: Go Version
         run: go version
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Setup python
+      - name: Setup python (swagger tooling)
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: cla-backend-go/swagger/requirements.txt
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -64,14 +65,6 @@ jobs:
       - name: Add OS Tools
         run: sudo apt update && sudo apt-get install file -y
 
-      - name: Python Setup
-        working-directory: cla-backend
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
       - name: Go Setup
         working-directory: cla-backend-go
         run: |
@@ -91,6 +84,24 @@ jobs:
         run: |
           make build-lambdas-linux build-functional-tests-linux
 
+      - name: Go Setup CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: |
+          go mod tidy
+
+      - name: Go Build CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: |
+          make lambdas
+
+      - name: Go Test CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: go test ./...
+
+      - name: Go Lint CLA Legacy Backend
+        working-directory: cla-backend-legacy
+        run: make lint
+
       - name: Setup Deployment
         working-directory: cla-backend
         run: |
@@ -103,8 +114,9 @@ jobs:
           cp ../cla-backend-go/bin/zipbuilder-scheduler-lambda bin/
           cp ../cla-backend-go/bin/zipbuilder-lambda bin/
           cp ../cla-backend-go/bin/gitlab-repository-check-lambda bin/
+          cp ../cla-backend-legacy/bin/legacy-api-lambda bin/
 
-      - name: EasyCLA v1 Deployment us-east-1
+      - name: EasyCLA API Deployment us-east-1
         working-directory: cla-backend
         run: |
           yarn install
@@ -116,26 +128,28 @@ jobs:
           if [[ ! -f bin/zipbuilder-lambda ]]; then echo "Missing bin/zipbuilder-lambda binary file. Exiting..."; exit 1; fi
           if [[ ! -f bin/zipbuilder-scheduler-lambda ]]; then echo "Missing bin/zipbuilder-scheduler-lambda binary file. Exiting..."; exit 1; fi
           if [[ ! -f bin/gitlab-repository-check-lambda ]]; then echo "Missing bin/gitlab-repository-check-lambda binary file. Exiting..."; exit 1; fi
+          if [[ ! -f bin/legacy-api-lambda ]]; then echo "Missing bin/legacy-api-lambda binary file. Exiting..."; exit 1; fi
           if [[ ! -f serverless.yml ]]; then echo "Missing serverless.yml file. Exiting..."; exit 1; fi
           if [[ ! -f serverless-authorizer.yml ]]; then echo "Missing serverless-authorizer.yml file. Exiting..."; exit 1; fi
           yarn sls deploy --force --stage ${STAGE} --region us-east-1 --verbose
 
-      - name: EasyCLA v1 Service Check
+      - name: EasyCLA API Service Check
         run: |
+          set -euo pipefail
           sudo apt install curl jq -y
-          
-          # Production environment endpoints to test
+
           declare -r v2_url="https://api.easycla.lfx.linuxfoundation.org/v2/health"
           declare -r v3_url="https://api.easycla.lfx.linuxfoundation.org/v3/ops/health"
 
           echo "Validating v2 backend using endpoint: ${v2_url}"
-          curl --fail -XGET ${v2_url}
-          exit_code=$?
-          if [[ ${exit_code} -eq 0 ]]; then
-            echo "Successful response from endpoint: ${v2_url}"
+          v2_headers="$(mktemp)"
+          curl --fail -sS -D "${v2_headers}" -o /dev/null -XGET "${v2_url}"
+          if tr -d '\r' < "${v2_headers}" | grep -iq '^x-easycla-backend: cla-backend-legacy$'; then
+            echo "v2 is served by cla-backend-legacy"
           else
-            echo "Failed to get a successful response from endpoint: ${v2_url}"
-            exit ${exit_code}
+            echo "Missing X-EasyCLA-Backend: cla-backend-legacy header on ${v2_url}"
+            cat "${v2_headers}"
+            exit 1
           fi
 
           echo "Validating v3 backend using endpoint: ${v3_url}"
@@ -143,7 +157,6 @@ jobs:
           exit_code=$?
           if [[ ${exit_code} -eq 0 ]]; then
             echo "Successful response from endpoint: ${v3_url}"
-            # JSON response should include "Status": "healthy"
             if [[ `curl -s -XGET ${v3_url} | jq -r '.Status'` == "healthy" ]]; then
               echo "Service is healthy"
             else
@@ -154,6 +167,7 @@ jobs:
             echo "Failed to get a successful response from endpoint: ${v3_url}"
             exit ${exit_code}
           fi
+
       - name: EasyCLA v2 Deployment us-east-2
         working-directory: cla-backend-go
         run: |
@@ -166,7 +180,7 @@ jobs:
       - name: EasyCLA v2 Service Check
         run: |
           sudo apt install curl jq -y
-          
+
           # Production environment endpoint to test
           v4_url="https://api-gw.platform.linuxfoundation.org/cla-service/v4/ops/health"
 
