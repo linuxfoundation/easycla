@@ -1,0 +1,1319 @@
+{
+  "CNCFTemplate": {
+    "files": {
+      "Corporate": "cncf-corporate-cla.html",
+      "Individual": "cncf-individual-cla.html"
+    },
+    "prefix": "cncf",
+    "tabs": {
+      "Corporate": [
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation name:",
+          "anchor_x_offset": 140,
+          "anchor_y_offset": -5,
+          "height": 20,
+          "id": "corporation_name",
+          "name": "Corporation Name",
+          "page": 1,
+          "type": "text",
+          "width": 355
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation address:",
+          "anchor_x_offset": 140,
+          "anchor_y_offset": -8,
+          "height": 20,
+          "id": "corporation_address1",
+          "name": "Corporation Address",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 340
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation address:",
+          "anchor_x_offset": 0,
+          "anchor_y_offset": 29,
+          "height": 20,
+          "id": "corporation_address2",
+          "name": "Corporation Address",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 400
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation address:",
+          "anchor_x_offset": 0,
+          "anchor_y_offset": 64,
+          "height": 20,
+          "id": "corporation_address3",
+          "name": "Corporation Address",
+          "page": 1,
+          "type": "text_optional",
+          "width": 400
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Point of Contact:",
+          "anchor_x_offset": 120,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "point_of_contact",
+          "name": "Point of Contact",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 340
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "E-Mail:",
+          "anchor_x_offset": 50,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 340
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Telephone:",
+          "anchor_x_offset": 70,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 405
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Please sign:",
+          "anchor_x_offset": 140,
+          "anchor_y_offset": -6,
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Date:",
+          "anchor_x_offset": 80,
+          "anchor_y_offset": -7,
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "type": "date",
+          "width": 0
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Title:",
+          "anchor_x_offset": 40,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "title",
+          "name": "Title",
+          "page": 3,
+          "type": "text_unlocked",
+          "width": 430
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation:",
+          "anchor_x_offset": 100,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "corporation",
+          "name": "Corporation",
+          "page": 3,
+          "type": "text",
+          "width": 385
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "List of employees who",
+          "anchor_x_offset": 0,
+          "anchor_y_offset": 100,
+          "height": 600,
+          "id": "scheduleA",
+          "name": "Schedule A",
+          "page": 4,
+          "type": "text",
+          "width": 550
+        }
+      ],
+      "Individual": [
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Full name:",
+          "anchor_x_offset": 72,
+          "anchor_y_offset": -8,
+          "height": 20,
+          "id": "full_name",
+          "name": "Full Name",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 360
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Public name:",
+          "anchor_x_offset": 84,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "public_name",
+          "name": "Public Name",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 345
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Country:",
+          "anchor_x_offset": 60,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "country",
+          "name": "Country",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 350
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Telephone:",
+          "anchor_x_offset": 70,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 350
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "E-Mail:",
+          "anchor_x_offset": 50,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 380
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Please sign:",
+          "anchor_x_offset": 140,
+          "anchor_y_offset": -5,
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Date:",
+          "anchor_x_offset": 60,
+          "anchor_y_offset": -7,
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "type": "date",
+          "width": 0
+        }
+      ]
+    }
+  },
+  "ONAPTemplate": {
+    "files": {
+      "Corporate": "onap-corporate-cla.html",
+      "Individual": "onap-individual-cla.html"
+    },
+    "prefix": "onap",
+    "tabs": {
+      "Corporate": [
+        {
+          "height": 20,
+          "id": "corporation_name",
+          "name": "Corporation Name",
+          "page": 1,
+          "position_x": 151,
+          "position_y": 355,
+          "type": "text",
+          "width": 355
+        },
+        {
+          "height": 20,
+          "id": "corporation_address1",
+          "name": "Corporation Address",
+          "page": 1,
+          "position_x": 161,
+          "position_y": 383,
+          "type": "text_unlocked",
+          "width": 340
+        },
+        {
+          "height": 20,
+          "id": "corporation_address2",
+          "name": "Corporation Address",
+          "page": 1,
+          "position_x": 73,
+          "position_y": 411,
+          "type": "text_unlocked",
+          "width": 445
+        },
+        {
+          "height": 20,
+          "id": "corporation_address3",
+          "name": "Corporation Address",
+          "page": 1,
+          "position_x": 73,
+          "position_y": 439,
+          "type": "text_optional",
+          "width": 445
+        },
+        {
+          "height": 20,
+          "id": "point_of_contact",
+          "name": "Point of Contact",
+          "page": 1,
+          "position_x": 144,
+          "position_y": 466,
+          "type": "text_unlocked",
+          "width": 355
+        },
+        {
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "position_x": 101,
+          "position_y": 494,
+          "type": "text_unlocked",
+          "width": 420
+        },
+        {
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "position_x": 113,
+          "position_y": 522,
+          "type": "text_unlocked",
+          "width": 405
+        },
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "position_x": 180,
+          "position_y": 227,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "position_x": 364,
+          "position_y": 267,
+          "type": "date",
+          "width": 0
+        },
+        {
+          "height": 20,
+          "id": "title",
+          "name": "Title",
+          "page": 3,
+          "position_x": 89,
+          "position_y": 290,
+          "type": "text_unlocked",
+          "width": 430
+        },
+        {
+          "height": 20,
+          "id": "corporation",
+          "name": "Corporation",
+          "page": 3,
+          "position_x": 126,
+          "position_y": 319,
+          "type": "text",
+          "width": 385
+        },
+        {
+          "height": 600,
+          "id": "scheduleA",
+          "name": "Schedule A",
+          "page": 4,
+          "position_x": 54,
+          "position_y": 207,
+          "type": "text",
+          "width": 550
+        }
+      ],
+      "Individual": [
+        {
+          "height": 20,
+          "id": "full_name",
+          "name": "Full Name",
+          "page": 1,
+          "position_x": 105,
+          "position_y": 297,
+          "type": "text_unlocked",
+          "width": 360
+        },
+        {
+          "height": 20,
+          "id": "public_name",
+          "name": "Public Name",
+          "page": 1,
+          "position_x": 120,
+          "position_y": 325,
+          "type": "text_unlocked",
+          "width": 345
+        },
+        {
+          "height": 20,
+          "id": "country",
+          "name": "Country",
+          "page": 1,
+          "position_x": 100,
+          "position_y": 409,
+          "type": "text_unlocked",
+          "width": 370
+        },
+        {
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "position_x": 115,
+          "position_y": 437,
+          "type": "text_unlocked",
+          "width": 350
+        },
+        {
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "position_x": 90,
+          "position_y": 464,
+          "type": "text_unlocked",
+          "width": 380
+        },
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "position_x": 180,
+          "position_y": 120,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "position_x": 350,
+          "position_y": 162,
+          "type": "date",
+          "width": 0
+        }
+      ]
+    }
+  },
+  "OpenBMCTemplate": {
+    "files": {
+      "Corporate": "openbmc-corporate-cla.html",
+      "Individual": "openbmc-individual-cla.html"
+    },
+    "prefix": "openbmc",
+    "tabs": {
+      "Corporate": [
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation name:",
+          "anchor_x_offset": 140,
+          "anchor_y_offset": -5,
+          "height": 20,
+          "id": "corporation_name",
+          "name": "Corporation Name",
+          "page": 1,
+          "type": "text",
+          "width": 355
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation address:",
+          "anchor_x_offset": 140,
+          "anchor_y_offset": -8,
+          "height": 20,
+          "id": "corporation_address1",
+          "name": "Corporation Address",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 340
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation address:",
+          "anchor_x_offset": 0,
+          "anchor_y_offset": 29,
+          "height": 20,
+          "id": "corporation_address2",
+          "name": "Corporation Address",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 400
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation address:",
+          "anchor_x_offset": 0,
+          "anchor_y_offset": 64,
+          "height": 20,
+          "id": "corporation_address3",
+          "name": "Corporation Address",
+          "page": 1,
+          "type": "text_optional",
+          "width": 400
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Point of Contact:",
+          "anchor_x_offset": 120,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "point_of_contact",
+          "name": "Point of Contact",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 340
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "E-Mail:",
+          "anchor_x_offset": 50,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 340
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Telephone:",
+          "anchor_x_offset": 70,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 405
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Please sign:",
+          "anchor_x_offset": 140,
+          "anchor_y_offset": -6,
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Date:",
+          "anchor_x_offset": 80,
+          "anchor_y_offset": -7,
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "type": "date",
+          "width": 0
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Title:",
+          "anchor_x_offset": 40,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "title",
+          "name": "Title",
+          "page": 3,
+          "type": "text_unlocked",
+          "width": 430
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Corporation:",
+          "anchor_x_offset": 100,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "corporation",
+          "name": "Corporation",
+          "page": 3,
+          "type": "text",
+          "width": 385
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "List of employees who",
+          "anchor_x_offset": 0,
+          "anchor_y_offset": 100,
+          "height": 600,
+          "id": "scheduleA",
+          "name": "Schedule A",
+          "page": 4,
+          "type": "text",
+          "width": 550
+        }
+      ],
+      "Individual": [
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Full name:",
+          "anchor_x_offset": 72,
+          "anchor_y_offset": -8,
+          "height": 20,
+          "id": "full_name",
+          "name": "Full Name",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 360
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Public name:",
+          "anchor_x_offset": 84,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "public_name",
+          "name": "Public Name",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 345
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Country:",
+          "anchor_x_offset": 60,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "country",
+          "name": "Country",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 350
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Telephone:",
+          "anchor_x_offset": 70,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 350
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "E-Mail:",
+          "anchor_x_offset": 50,
+          "anchor_y_offset": -7,
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "type": "text_unlocked",
+          "width": 380
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Please sign:",
+          "anchor_x_offset": 140,
+          "anchor_y_offset": -5,
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "anchor_ignore_if_not_present": "true",
+          "anchor_string": "Date:",
+          "anchor_x_offset": 60,
+          "anchor_y_offset": -7,
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "type": "date",
+          "width": 0
+        }
+      ]
+    }
+  },
+  "OpenColorIOTemplate": {
+    "files": {
+      "Corporate": "opencolorio-corporate-cla.html",
+      "Individual": "opencolorio-individual-cla.html"
+    },
+    "prefix": "opencolorio",
+    "tabs": {
+      "Corporate": [
+        {
+          "height": 20,
+          "id": "cla_manager_name",
+          "name": "CLA Manager Name",
+          "page": 1,
+          "position_x": 86,
+          "position_y": 525,
+          "type": "text",
+          "width": 200
+        },
+        {
+          "height": 20,
+          "id": "cla_manager_email",
+          "name": "CLA Manager Email",
+          "page": 1,
+          "position_x": 304,
+          "position_y": 525,
+          "type": "text",
+          "width": 200
+        },
+        {
+          "height": 20,
+          "id": "corporation_name",
+          "name": "Company Name",
+          "page": 1,
+          "position_x": 135,
+          "position_y": 608,
+          "type": "text",
+          "width": 300
+        },
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 1,
+          "position_x": 180,
+          "position_y": 603,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 20,
+          "id": "name",
+          "name": "Name",
+          "page": 1,
+          "position_x": 85,
+          "position_y": 665,
+          "type": "text_unlocked",
+          "width": 300
+        },
+        {
+          "height": 20,
+          "id": "title",
+          "name": "Title",
+          "page": 1,
+          "position_x": 78,
+          "position_y": 692,
+          "type": "text_unlocked",
+          "width": 300
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 1,
+          "position_x": 149,
+          "position_y": 720,
+          "type": "date",
+          "width": 0
+        }
+      ],
+      "Individual": [
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 1,
+          "position_x": 180,
+          "position_y": 317,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 20,
+          "id": "name",
+          "name": "Name",
+          "page": 1,
+          "position_x": 85,
+          "position_y": 382,
+          "type": "text_unlocked",
+          "width": 300
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 1,
+          "position_x": 157,
+          "position_y": 412,
+          "type": "date",
+          "width": 0
+        }
+      ]
+    }
+  },
+  "OpenVDBTemplate": {
+    "files": {
+      "Corporate": "openvdb-corporate-cla.html",
+      "Individual": "openvdb-individual-cla.html"
+    },
+    "prefix": "openvdb",
+    "tabs": {
+      "Corporate": [
+        {
+          "height": 20,
+          "id": "cla_manager_name",
+          "name": "CLA Manager Name",
+          "page": 1,
+          "position_x": 86,
+          "position_y": 382,
+          "type": "text",
+          "width": 200
+        },
+        {
+          "height": 20,
+          "id": "cla_manager_email",
+          "name": "CLA Manager Email",
+          "page": 1,
+          "position_x": 304,
+          "position_y": 382,
+          "type": "text",
+          "width": 200
+        },
+        {
+          "height": 20,
+          "id": "corporation_name",
+          "name": "Company Name",
+          "page": 1,
+          "position_x": 140,
+          "position_y": 465,
+          "type": "text",
+          "width": 355
+        },
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 1,
+          "position_x": 188,
+          "position_y": 461,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 20,
+          "id": "name",
+          "name": "Name",
+          "page": 1,
+          "position_x": 86,
+          "position_y": 521,
+          "type": "text_unlocked",
+          "width": 350
+        },
+        {
+          "height": 20,
+          "id": "title",
+          "name": "Title",
+          "page": 1,
+          "position_x": 78,
+          "position_y": 549,
+          "type": "text_unlocked",
+          "width": 350
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 1,
+          "position_x": 180,
+          "position_y": 580,
+          "type": "date",
+          "width": 0
+        }
+      ],
+      "Individual": [
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 1,
+          "position_x": 204,
+          "position_y": 272,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 20,
+          "id": "name",
+          "name": "Name",
+          "page": 1,
+          "position_x": 85,
+          "position_y": 338,
+          "type": "text_unlocked",
+          "width": 300
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 1,
+          "position_x": 169,
+          "position_y": 368,
+          "type": "date",
+          "width": 0
+        }
+      ]
+    }
+  },
+  "TektonTemplate": {
+    "files": {
+      "Corporate": "tekton-corporate-cla.html",
+      "Individual": "tekton-individual-cla.html"
+    },
+    "prefix": "tekton",
+    "tabs": {
+      "Corporate": [
+        {
+          "height": 20,
+          "id": "corporation_name",
+          "name": "Corporation Name",
+          "page": 1,
+          "position_x": 148,
+          "position_y": 371,
+          "type": "text",
+          "width": 355
+        },
+        {
+          "height": 20,
+          "id": "corporation_address1",
+          "name": "Corporation Address",
+          "page": 1,
+          "position_x": 158,
+          "position_y": 399,
+          "type": "text_unlocked",
+          "width": 340
+        },
+        {
+          "height": 20,
+          "id": "corporation_address2",
+          "name": "Corporation Address",
+          "page": 1,
+          "position_x": 70,
+          "position_y": 427,
+          "type": "text_unlocked",
+          "width": 445
+        },
+        {
+          "height": 20,
+          "id": "corporation_address3",
+          "name": "Corporation Address",
+          "page": 1,
+          "position_x": 70,
+          "position_y": 455,
+          "type": "text_optional",
+          "width": 445
+        },
+        {
+          "height": 20,
+          "id": "point_of_contact",
+          "name": "Point of Contact",
+          "page": 1,
+          "position_x": 140,
+          "position_y": 483,
+          "type": "text_unlocked",
+          "width": 355
+        },
+        {
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "position_x": 98,
+          "position_y": 511,
+          "type": "text_unlocked",
+          "width": 420
+        },
+        {
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "position_x": 110,
+          "position_y": 539,
+          "type": "text_unlocked",
+          "width": 405
+        },
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "position_x": 180,
+          "position_y": 254,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "position_x": 350,
+          "position_y": 295,
+          "type": "date",
+          "width": 0
+        },
+        {
+          "height": 20,
+          "id": "title",
+          "name": "Title",
+          "page": 3,
+          "position_x": 85,
+          "position_y": 319,
+          "type": "text_unlocked",
+          "width": 430
+        },
+        {
+          "height": 20,
+          "id": "corporation",
+          "name": "Corporation",
+          "page": 3,
+          "position_x": 120,
+          "position_y": 347,
+          "type": "text",
+          "width": 385
+        },
+        {
+          "height": 600,
+          "id": "scheduleA",
+          "name": "Schedule A",
+          "page": 4,
+          "position_x": 54,
+          "position_y": 250,
+          "type": "text",
+          "width": 550
+        }
+      ],
+      "Individual": [
+        {
+          "height": 20,
+          "id": "full_name",
+          "name": "Full Name",
+          "page": 1,
+          "position_x": 105,
+          "position_y": 315,
+          "type": "text_unlocked",
+          "width": 360
+        },
+        {
+          "height": 20,
+          "id": "public_name",
+          "name": "Public Name",
+          "page": 1,
+          "position_x": 120,
+          "position_y": 343,
+          "type": "text_unlocked",
+          "width": 345
+        },
+        {
+          "height": 20,
+          "id": "country",
+          "name": "Country",
+          "page": 1,
+          "position_x": 100,
+          "position_y": 427,
+          "type": "text_unlocked",
+          "width": 370
+        },
+        {
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "position_x": 115,
+          "position_y": 455,
+          "type": "text_unlocked",
+          "width": 350
+        },
+        {
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "position_x": 90,
+          "position_y": 482,
+          "type": "text_unlocked",
+          "width": 380
+        },
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "position_x": 180,
+          "position_y": 140,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "position_x": 350,
+          "position_y": 182,
+          "type": "date",
+          "width": 0
+        }
+      ]
+    }
+  },
+  "TungstenFabricTemplate": {
+    "files": {
+      "Corporate": "tungsten-fabric-corporate-cla.html",
+      "Individual": "tungsten-fabric-individual-cla.html"
+    },
+    "prefix": "tungsten-fabric",
+    "tabs": {
+      "Corporate": [
+        {
+          "height": 20,
+          "id": "corporation_name",
+          "name": "Corporation Name",
+          "page": 1,
+          "position_x": 151,
+          "position_y": 353,
+          "type": "text",
+          "width": 355
+        },
+        {
+          "height": 20,
+          "id": "corporation_address1",
+          "name": "Corporation Address",
+          "page": 1,
+          "position_x": 161,
+          "position_y": 381,
+          "type": "text_unlocked",
+          "width": 340
+        },
+        {
+          "height": 20,
+          "id": "corporation_address2",
+          "name": "Corporation Address",
+          "page": 1,
+          "position_x": 73,
+          "position_y": 409,
+          "type": "text_unlocked",
+          "width": 445
+        },
+        {
+          "height": 20,
+          "id": "corporation_address3",
+          "name": "Corporation Address",
+          "page": 1,
+          "position_x": 73,
+          "position_y": 437,
+          "type": "text_optional",
+          "width": 445
+        },
+        {
+          "height": 20,
+          "id": "point_of_contact",
+          "name": "Point of Contact",
+          "page": 1,
+          "position_x": 144,
+          "position_y": 464,
+          "type": "text_unlocked",
+          "width": 355
+        },
+        {
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "position_x": 101,
+          "position_y": 492,
+          "type": "text_unlocked",
+          "width": 420
+        },
+        {
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "position_x": 113,
+          "position_y": 520,
+          "type": "text_unlocked",
+          "width": 405
+        },
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "position_x": 180,
+          "position_y": 227,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "position_x": 364,
+          "position_y": 267,
+          "type": "date",
+          "width": 0
+        },
+        {
+          "height": 20,
+          "id": "title",
+          "name": "Title",
+          "page": 3,
+          "position_x": 89,
+          "position_y": 291,
+          "type": "text_unlocked",
+          "width": 430
+        },
+        {
+          "height": 20,
+          "id": "corporation",
+          "name": "Corporation",
+          "page": 3,
+          "position_x": 126,
+          "position_y": 319,
+          "type": "text",
+          "width": 385
+        },
+        {
+          "height": 600,
+          "id": "scheduleA",
+          "name": "Schedule A",
+          "page": 4,
+          "position_x": 54,
+          "position_y": 207,
+          "type": "text",
+          "width": 550
+        }
+      ],
+      "Individual": [
+        {
+          "height": 20,
+          "id": "full_name",
+          "name": "Full Name",
+          "page": 1,
+          "position_x": 105,
+          "position_y": 297,
+          "type": "text_unlocked",
+          "width": 360
+        },
+        {
+          "height": 20,
+          "id": "public_name",
+          "name": "Public Name",
+          "page": 1,
+          "position_x": 120,
+          "position_y": 325,
+          "type": "text_unlocked",
+          "width": 345
+        },
+        {
+          "height": 20,
+          "id": "country",
+          "name": "Country",
+          "page": 1,
+          "position_x": 100,
+          "position_y": 409,
+          "type": "text_unlocked",
+          "width": 370
+        },
+        {
+          "height": 20,
+          "id": "telephone",
+          "name": "Telephone",
+          "page": 1,
+          "position_x": 115,
+          "position_y": 437,
+          "type": "text_unlocked",
+          "width": 350
+        },
+        {
+          "height": 20,
+          "id": "email",
+          "name": "Email",
+          "page": 1,
+          "position_x": 90,
+          "position_y": 464,
+          "type": "text_unlocked",
+          "width": 380
+        },
+        {
+          "height": 0,
+          "id": "sign",
+          "name": "Please Sign",
+          "page": 3,
+          "position_x": 180,
+          "position_y": 120,
+          "type": "sign",
+          "width": 0
+        },
+        {
+          "height": 0,
+          "id": "date",
+          "name": "Date",
+          "page": 3,
+          "position_x": 350,
+          "position_y": 162,
+          "type": "date",
+          "width": 0
+        }
+      ]
+    }
+  }
+}

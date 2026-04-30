@@ -7,7 +7,8 @@ git status
 echo -n 'proceed (ctrl+c to stop)? '
 read
 
-git rm -r --cached .
+# git rm -r --cached .
+git rm -rf .
 # git checkout origin/dev -- .
 git checkout dev -- .
 git add -A

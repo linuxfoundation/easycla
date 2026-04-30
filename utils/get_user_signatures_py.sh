@@ -8,6 +8,18 @@ then
 fi
 export user_id="$1"
 
+if [ -z "$TOKEN" ]
+then
+  # source ./auth0_token.secret
+  TOKEN="$(cat ./auth0.token.secret)"
+fi
+
+if [ -z "$TOKEN" ]
+then
+  echo "$0: TOKEN not specified and unable to obtain one"
+  exit 1
+fi
+
 if [ -z "$API_URL" ]
 then
   export API_URL="http://localhost:5000"
@@ -17,8 +29,8 @@ API="${API_URL}/v1/user/${user_id}/signatures"
 
 if [ ! -z "$DEBUG" ]
 then
-  echo "curl -s -XGET -H \"Content-Type: application/json\" \"${API}\""
-  curl -s -XGET -H "Content-Type: application/json" "${API}"
+  echo "curl -s -XGET -H \"Authorization: Bearer ${TOKEN}\" -H \"Content-Type: application/json\" \"${API}\""
+  curl -s -XGET -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" "${API}"
 else
-  curl -s -XGET -H "Content-Type: application/json" "${API}" | jq -r '.'
+  curl -s -XGET -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" "${API}" | jq -r '.'
 fi

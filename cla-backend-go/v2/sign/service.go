@@ -462,6 +462,16 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 		log.WithFields(f).Debugf("updated signature record: %s", signatureID)
 
+		var claUser *v1Models.User
+		if fetchedUser, userErr := s.userService.GetUser(signature.SignatureReferenceID); userErr != nil {
+			log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID before pull request refresh: %s", signature.SignatureReferenceID)
+		} else if fetchedUser != nil {
+			claUser = fetchedUser
+			if cacheErr := github.UpdateCacheAfterSignature(ctx, claUser, signature.ProjectID); cacheErr != nil {
+				log.WithFields(f).WithError(cacheErr).Warnf("unable to prime GitHub authorization cache for user: %s", signature.SignatureReferenceID)
+			}
+		}
+
 		// Update the repository provider with this change - this will update the comment (if necessary)
 		// and the status - do this early in the flow as the user will be immediately redirected back
 		installtionIDInt, err := strconv.Atoi(installationID)
@@ -489,10 +499,18 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 			return err
 		}
 
-		claUser, userErr := s.userService.GetUser(signature.SignatureReferenceID)
-		if userErr != nil {
-			log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", signature.SignatureReferenceID)
-			return userErr
+		if claUser == nil {
+			var userErr error
+			claUser, userErr = s.userService.GetUser(signature.SignatureReferenceID)
+			if userErr != nil {
+				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", signature.SignatureReferenceID)
+				return userErr
+			}
+			if claUser == nil {
+				err = fmt.Errorf("user not found: %s", signature.SignatureReferenceID)
+				log.WithFields(f).WithError(err).Warn("unable to lookup user by ID - user not found")
+				return err
+			}
 		}
 
 		if claUser.Username == "" {
@@ -1886,6 +1904,18 @@ func (s *service) populateSignURL(ctx context.Context,
 			log.WithFields(f).WithError(err).Warnf("unable to get document resource from url: %s", pdfURL)
 			return err
 		}
+	} else if strings.HasPrefix(contentType, "storage+") {
+		documentFileID := strings.TrimSpace(document.DocumentFileID)
+		if documentFileID == "" {
+			return fmt.Errorf("storage document has empty document_file_id for signature %s", latestSignature.SignatureID)
+		}
+
+		log.WithFields(f).Debugf("getting document resource from storage: %s...", documentFileID)
+		pdf, err = utils.DownloadFromS3(documentFileID)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to get document resource from storage: %s", documentFileID)
+			return err
+		}
 	} else {
 		log.WithFields(f).Debugf("getting document resource from content...")
 		content := document.DocumentContent
@@ -1914,14 +1944,16 @@ func (s *service) populateSignURL(ctx context.Context,
 		log.WithFields(f).Debugf("setting up webhook properties with callback url: %s", callbackURL)
 		recipientEvents := []DocuSignRecipientEvent{
 			{
-				EnvelopeEventStatusCode: "Completed",
+				// EnvelopeEventStatusCode: "Completed",
+				RecipientEventStatusCode: "Completed",
 			},
 		}
 
 		eventNotification := DocuSignEventNotification{
 			URL:            callbackURL,
 			LoggingEnabled: true,
-			EnvelopeEvents: recipientEvents,
+			// EnvelopeEvents: recipientEvents,
+			RecipientEvents: recipientEvents,
 		}
 
 		envelopeRequest = DocuSignEnvelopeRequest{
@@ -2061,7 +2093,7 @@ func (s *service) populateUserDetails(ctx context.Context, signatureReferenceTyp
 			if userModel.Username != "" {
 				userSignDetails.userSignatureName = userModel.Username
 			}
-			if userEmail := getUserEmail(userModel, preferredEmail, allowLFEmail); userEmail != "" {
+			if userEmail := getUserEmail(userModel, preferredEmail, latestSignature.SignatureReturnURLType, allowLFEmail); userEmail != "" {
 				userSignDetails.userSignatureEmail = userEmail
 			}
 		}
@@ -2162,11 +2194,15 @@ func getTabsFromDocument(document *v1Models.ClaGroupDocument, documentID string,
 }
 
 // helper function to get user email
-func getUserEmail(user *v1Models.User, preferredEmail string, allowLFEmail bool) string {
+func getUserEmail(user *v1Models.User, preferredEmail string, providerType string, allowLFEmail bool) string {
 	if user == nil {
 		return ""
 	}
 	if preferredEmail != "" {
+		if strings.EqualFold(providerType, "github") || strings.EqualFold(providerType, "gitlab") {
+			return preferredEmail
+		}
+
 		if utils.StringInSlice(preferredEmail, user.Emails) || (allowLFEmail && user.LfEmail == strfmt.Email(preferredEmail)) {
 			return preferredEmail
 		}
@@ -2244,7 +2280,7 @@ func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEm
 		}
 	}
 
-	if userEmail := getUserEmail(user, preferredEmail, allowLFEmail); userEmail != "" {
+	if userEmail := getUserEmail(user, preferredEmail, "", allowLFEmail); userEmail != "" {
 		defaultValues["email"] = userEmail
 	}
 

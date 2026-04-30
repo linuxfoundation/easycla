@@ -28,7 +28,7 @@
     "serverless-prune-plugin": "^2.0.2",
     "simple-git": "^3.33.0",
     "xml2js": "^0.6.0",
-    "yarn-audit-fix": "^9.3.10"
+    "yarn-audit-fix": "^10.0.0"
   },
   "resolutions": {
     "axios": "^0.30.3",
