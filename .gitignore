@@ -285,3 +285,4 @@ spans*.json
 *.dylib
 *.test
 *.out
+CLAUDE.md

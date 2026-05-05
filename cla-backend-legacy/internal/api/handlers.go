@@ -188,19 +188,16 @@ func NewHandlers() *Handlers {
 	return h
 }
 
-// formatPynamoDateTimeUTC formats timestamps like Python's datetime.utcnow().isoformat().
+// formatPynamoDateTimeUTC formats timestamps the way Python's pynamodb
+// UTCDateTimeAttribute serializes them when written to DynamoDB.
 //
-// Python stores naive UTC datetimes (no timezone suffix). It only includes fractional
-// seconds when microseconds are non-zero.
+// pynamodb forces tzinfo=UTC and calls strftime("%Y-%m-%dT%H:%M:%S.%f%z"),
+// producing strings like "2025-05-05T14:23:45.123456+0000" — always six
+// microsecond digits (zero-padded), always a "+0000" offset (no colon).
+// Matching this exactly preserves byte-for-byte parity for date_created,
+// date_modified, event_time, document_creation_date, etc.
 func formatPynamoDateTimeUTC(t time.Time) string {
-	// Use microsecond precision (pynamodb DateTimeAttribute uses ISO strings).
-	s := t.UTC().Format("2006-01-02T15:04:05.000000")
-	// Trim trailing zeros to mimic datetime.isoformat() behavior.
-	if strings.Contains(s, ".") {
-		s = strings.TrimRight(s, "0")
-		s = strings.TrimRight(s, ".")
-	}
-	return s
+	return t.UTC().Format("2006-01-02T15:04:05.000000-0700")
 }
 
 func boolToPythonString(b bool) string {
@@ -3393,16 +3390,39 @@ func (h *Handlers) PostSignatureV1(w http.ResponseWriter, r *http.Request) {
 	// Audit event (best-effort)
 	projectName := getAttrString(projectItem, "project_name")
 	eventData := fmt.Sprintf("Signature added. Signature_id - %s for Project - %s", sigID, projectName)
-	eventSummary := fmt.Sprintf("Signature Created by signature_id %s", sigID)
+	// Python sets event_summary == event_data (cla.controllers.signature.create_signature).
 	h.putAuditEventBestEffort(ctx, auditEventInput{
 		EventType:       "CreateSignature",
 		EventCLAGroupID: projectIDStr,
 		EventData:       eventData,
-		EventSummary:    eventSummary,
+		EventSummary:    eventData,
 		ContainsPII:     false,
 	})
 
-	respond.JSON(w, http.StatusOK, map[string]any{"signature_id": sigID})
+	// Match Python's Signature.to_dict() — return the fields we just wrote so
+	// consumers (legacy console, contributor flow) get the full signature back,
+	// not just the id.
+	resp := map[string]any{
+		"signature_id":                     sigID,
+		"signature_project_id":             projectIDStr,
+		"signature_reference_id":           refID,
+		"signature_reference_type":         refType,
+		"signature_type":                   sigType,
+		"signature_signed":                 signed,
+		"signature_approved":               approved,
+		"signature_embargo_acked":          embargoAcked,
+		"signature_return_url":             returnURL,
+		"signature_sign_url":               signURL,
+		"signature_document_major_version": maj,
+		"signature_document_minor_version": min,
+		"date_created":                     formatPynamoDateTimeUTC(now),
+		"date_modified":                    formatPynamoDateTimeUTC(now),
+		"version":                          "v1",
+	}
+	if userCclaCompanyID != "" {
+		resp["signature_user_ccla_company_id"] = userCclaCompanyID
+	}
+	respond.JSON(w, http.StatusOK, resp)
 }
 
 // PUT /v1/signature
@@ -4283,16 +4303,9 @@ func (h *Handlers) AddClaManagerV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If already present, return managers list unchanged.
-	if stringSliceContainsExact(sigACL, lfid) {
-		resp, err := h.buildClaManagersResponse(ctx, sigACL)
-		if err != nil {
-			respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
-			return
-		}
-		respond.JSON(w, http.StatusOK, resp)
-		return
-	}
+	// Python parity: cla.controllers.signature.add_cla_manager() does NOT skip
+	// when lfid is already in the ACL — it always proceeds, sends email, and
+	// creates an audit event. We must not short-circuit here.
 
 	companyID := getAttrString(sig, "signature_reference_id")
 	claGroupID := getAttrString(sig, "signature_project_id")
@@ -6867,7 +6880,7 @@ func (h *Handlers) PostProjectDocumentTemplateV1(w http.ResponseWriter, r *http.
 	// Build new document entry.
 	docID := uuid.NewString()
 	fileID := uuid.NewString()
-	creation := time.Now().UTC().Format("2006-01-02T15:04:05.999999")
+	creation := formatPynamoDateTimeUTC(time.Now())
 
 	// Legacy Python default major_version=1, minor_version=0 for new Document() instances.
 	newMajor := 1
@@ -7189,7 +7202,11 @@ func parsePynamoDateTimeStringLocal(s string) (time.Time, bool) {
 	if s == "" {
 		return time.Time{}, false
 	}
+	// pynamodb's canonical UTCDateTimeAttribute format uses a "+0000" suffix
+	// (no colon), so the no-colon layouts must come before the colon ones.
 	layouts := []string{
+		"2006-01-02T15:04:05.999999-0700",
+		"2006-01-02T15:04:05-0700",
 		"2006-01-02T15:04:05.999999",
 		"2006-01-02T15:04:05.99999",
 		"2006-01-02T15:04:05.9999",
@@ -8366,7 +8383,7 @@ func (h *Handlers) createBotEmployeeSignatureBestEffort(ctx context.Context, bot
 		"signature_user_ccla_company_id": &types.AttributeValueMemberS{Value: companyID},
 		"note":                           &types.AttributeValueMemberS{Value: note},
 		// Legacy Python wrapper sets date_modified on save() even though it is not part of SignatureModel.
-		"date_modified": &types.AttributeValueMemberS{Value: now.Format("2006-01-02T15:04:05.000000-07:00")},
+		"date_modified": &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
 	}
 	if docMaj > 0 {
 		item["signature_document_major_version"] = &types.AttributeValueMemberN{Value: strconv.Itoa(docMaj)}
@@ -9749,7 +9766,10 @@ func (h *Handlers) GetGithubOrganizationV1(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if !found {
-		respond.JSON(w, http.StatusNotFound, map[string]any{"errors": map[string]any{"organization_name": "GitHub org not found"}})
+		// Python parity: cla.controllers.github.get_organization() returns
+		// {"errors": {"organization_name": ...}} as the function value, and the
+		// Hug route does NOT accept `response`, so Hug serializes it as 200.
+		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"organization_name": "GitHub org not found"}})
 		return
 	}
 
@@ -9776,7 +9796,10 @@ func (h *Handlers) GetGithubOrganizationReposV1(w http.ResponseWriter, r *http.R
 		return
 	}
 	if !found {
-		respond.JSON(w, http.StatusNotFound, map[string]any{"errors": map[string]any{"organization_name": "GitHub org not found"}})
+		// Python parity: cla.controllers.github.get_organization_repositories()
+		// returns {"errors": {...}} on DoesNotExist; the Hug route has no
+		// `response` parameter, so the response is HTTP 200.
+		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"organization_name": orgName, "error": "GitHub org not found"}})
 		return
 	}
 
@@ -9825,7 +9848,10 @@ func (h *Handlers) GetGithubOrganizationBySfidV1(w http.ResponseWriter, r *http.
 		return
 	}
 	if len(items) == 0 {
-		respond.JSON(w, http.StatusNotFound, map[string]any{"errors": map[string]any{"sfid": "GitHub org not found"}})
+		// Python parity: cla.controllers.github.get_organization_by_sfid()
+		// returns {"errors": {"sfid": ...}} on DoesNotExist; Hug serializes
+		// that as 200.
+		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"sfid": "GitHub org not found"}})
 		return
 	}
 
@@ -9922,7 +9948,9 @@ func (h *Handlers) DeleteOrganizationV1(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if !found {
-		respond.JSON(w, http.StatusNotFound, map[string]any{"errors": map[string]any{"organization_name": "GitHub org not found"}})
+		// Python parity: cla.controllers.github.delete_organization() returns
+		// {"errors": {...}} on DoesNotExist; Hug serializes as 200.
+		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"organization_name": "GitHub org not found"}})
 		return
 	}
 

@@ -102,17 +102,16 @@ func (s *UserPermissionsStore) Get(ctx context.Context, username string) (*UserP
 	return &up, nil
 }
 
-// formatPynamoDateTimeUTC formats timestamps like Python's datetime.utcnow().isoformat().
+// formatPynamoDateTimeUTC formats timestamps the way Python's pynamodb
+// UTCDateTimeAttribute serializes them when written to DynamoDB.
 //
-// Python stores naive UTC datetimes (no timezone suffix). It only includes fractional
-// seconds when microseconds are non-zero.
+// pynamodb forces tzinfo=UTC and calls strftime("%Y-%m-%dT%H:%M:%S.%f%z"),
+// producing strings like "2025-05-05T14:23:45.123456+0000" — always six
+// microsecond digits (zero-padded), always a "+0000" offset (no colon).
+// Matching this exactly preserves byte-for-byte parity for date_created,
+// date_modified, etc.
 func formatPynamoDateTimeUTC(t time.Time) string {
-	s := t.UTC().Format("2006-01-02T15:04:05.000000")
-	if strings.Contains(s, ".") {
-		s = strings.TrimRight(s, "0")
-		s = strings.TrimRight(s, ".")
-	}
-	return s
+	return t.UTC().Format("2006-01-02T15:04:05.000000-0700")
 }
 
 // AddProject adds (or creates) a user-permissions record with the given project SFID.
