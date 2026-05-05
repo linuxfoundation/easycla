@@ -3403,16 +3403,16 @@ func (h *Handlers) PostSignatureV1(w http.ResponseWriter, r *http.Request) {
 	// consumers (legacy console, contributor flow) get the full signature back,
 	// not just the id.
 	resp := map[string]any{
-		"signature_id":                     sigID,
-		"signature_project_id":             projectIDStr,
-		"signature_reference_id":           refID,
-		"signature_reference_type":         refType,
-		"signature_type":                   sigType,
-		"signature_signed":                 signed,
-		"signature_approved":               approved,
-		"signature_embargo_acked":          embargoAcked,
-		"signature_return_url":             returnURL,
-		"signature_sign_url":               signURL,
+		"signature_id":             sigID,
+		"signature_project_id":     projectIDStr,
+		"signature_reference_id":   refID,
+		"signature_reference_type": refType,
+		"signature_type":           sigType,
+		"signature_signed":         signed,
+		"signature_approved":       approved,
+		"signature_embargo_acked":  embargoAcked,
+		"signature_return_url":     returnURL,
+		"signature_sign_url":       signURL,
 		// Match the rest of the codebase: store.ToInterface (dynamo_conv.go:14)
 		// returns DynamoDB N as strings for pynamodb parity. GET /v1/signature
 		// reads through that path and emits strings here too — so POST must do
