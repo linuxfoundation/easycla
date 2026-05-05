@@ -33,6 +33,7 @@ func TestSanitizePullRequestURL(t *testing.T) {
 		{name: "embedded angle bracket rejected", in: "https://github.com/o/r/pull/1<x", out: ""},
 		{name: "garbage string rejected", in: "not a url", out: ""},
 		{name: "scheme casing accepted", in: "HTTPS://github.com/o/r/pull/1", out: "HTTPS://github.com/o/r/pull/1"},
+		{name: "userinfo rejected", in: "https://user:pass@github.com/o/r/pull/1", out: ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

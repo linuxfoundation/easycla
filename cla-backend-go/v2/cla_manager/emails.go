@@ -46,6 +46,10 @@ func sanitizePullRequestURL(ctx context.Context, rawURL string) string {
 		log.WithFields(f).Warn("dropping pullRequestURL: must be an absolute URL")
 		return ""
 	}
+	if parsed.User != nil {
+		log.WithFields(f).Warn("dropping pullRequestURL: userinfo is not allowed")
+		return ""
+	}
 	if strings.ToLower(parsed.Scheme) != "https" {
 		log.WithFields(f).Warnf("dropping pullRequestURL: scheme %q is not https", parsed.Scheme)
 		return ""
