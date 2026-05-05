@@ -87,8 +87,9 @@ func interfaceToAV(v any) (types.AttributeValue, error) {
 		}
 		return &types.AttributeValueMemberN{Value: vv.String()}, nil
 	case time.Time:
-		// Used rarely; callers should prefer explicit pynamodb datetime formatting.
-		return &types.AttributeValueMemberS{Value: vv.UTC().Format(time.RFC3339Nano)}, nil
+		// Match Python pynamodb UTCDateTimeAttribute serialization
+		// ("YYYY-MM-DDTHH:MM:SS.ffffff+0000") for parity with stored records.
+		return &types.AttributeValueMemberS{Value: vv.UTC().Format("2006-01-02T15:04:05.000000-0700")}, nil
 	case []string:
 		// Treat []string as a DynamoDB string set (SS). This matches ItemToInterfaceMap,
 		// which converts both SS and NS into []string. We do not attempt to infer NS.

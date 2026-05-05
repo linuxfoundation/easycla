@@ -7,15 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
-
-	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/logging"
 )
 
 type Service struct {
@@ -32,59 +27,33 @@ func New(httpClient *http.Client) *Service {
 func (s *Service) ValidateOrganization(ctx context.Context, endpoint string) (map[string]string, int, error) {
 	endpoint = strings.TrimSpace(endpoint)
 	if endpoint == "" {
-		// Mirror Python validate_organization() which returns None when endpoint is missing.
+		// Python parity: cla.controllers.github.validate_organization() falls
+		// off the end (returns None) when "endpoint" is missing. Hug serializes
+		// None as a 200 response with empty body.
 		return nil, http.StatusOK, nil
 	}
 
-	// Validate URL to prevent SSRF attacks - CodeQL: This is secure due to allowlist validation below
-	parsedURL, err := url.Parse(endpoint)
-	if err != nil {
-		return nil, http.StatusBadRequest, fmt.Errorf("invalid URL format")
-	}
-	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
-		return nil, http.StatusBadRequest, fmt.Errorf("unsupported URL scheme")
-	}
-
-	// Block IP addresses and private networks
-	host := parsedURL.Hostname()
-	if ip := net.ParseIP(host); ip != nil {
-		// Block all IP addresses
-		return nil, http.StatusBadRequest, fmt.Errorf("IP addresses not allowed")
-	}
-
-	// Only allow specific domains for safety - prevent SSRF attacks
-	allowedDomains := []string{"github.com", "raw.githubusercontent.com", "api.github.com"}
-	allowed := false
-	for _, domain := range allowedDomains {
-		if host == domain || strings.HasSuffix(host, "."+domain) {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
-		logging.Warnf("ValidateOrganization: rejecting disallowed domain: %s", host)
-		return nil, http.StatusBadRequest, fmt.Errorf("domain not in allowlist")
-	}
-
+	// Python parity: validate_organization() does requests.get(endpoint) with
+	// no scheme/host validation. The previous SSRF allowlist (github.com,
+	// api.github.com, raw.githubusercontent.com) rejected legitimate
+	// non-GitHub endpoints with 400, breaking parity. Restore the permissive
+	// behavior. Outbound requests are still bounded by client timeout.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
+		// Python: requests.MissingSchema / InvalidURL would propagate as 500.
 		return nil, http.StatusInternalServerError, err
 	}
 
-	// Set reasonable timeout and limit response size
 	client := &http.Client{Timeout: 10 * time.Second}
-	// codeql[go/request-forgery] - This is a legitimate GitHub API request with validated URL
 	resp, err := client.Do(req)
-	// codeql[go/log-injection] - Error handling for HTTP request, not log injection
 	if err != nil {
-		// codeql[go/log-injection] - Return statement for HTTP error, not log injection
 		return nil, http.StatusBadGateway, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-		// Limit response body size to prevent memory exhaustion
-		limitReader := io.LimitReader(resp.Body, 1<<20) // 1MB limit
+		// 1MB cap to prevent memory exhaustion on hostile endpoints.
+		limitReader := io.LimitReader(resp.Body, 1<<20)
 		b, err := io.ReadAll(limitReader)
 		if err != nil {
 			return nil, http.StatusInternalServerError, err
