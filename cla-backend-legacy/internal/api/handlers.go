@@ -4337,9 +4337,13 @@ func (h *Handlers) AddClaManagerV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Update signature ACL
-	sigACL = append(sigACL, lfid)
-	sig["signature_acl"] = &types.AttributeValueMemberSS{Value: uniqueStringsPreserveOrder(sigACL)}
+	// Update signature ACL. Python's signature_acl is a set, so re-adding an
+	// existing lfid is a no-op there. In Go we append unconditionally (Python
+	// parity does not skip on already-present), so dedupe before reusing the
+	// slice for the email recipient list and the response — otherwise a stale
+	// re-add would render the manager twice.
+	sigACL = uniqueStringsPreserveOrder(append(sigACL, lfid))
+	sig["signature_acl"] = &types.AttributeValueMemberSS{Value: sigACL}
 	sig["date_modified"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(time.Now().UTC())}
 	if err := h.signatures.PutItem(ctx, sig); err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
@@ -8938,7 +8942,11 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 	}
 
 	now := time.Now().UTC()
-	currentTime := now.Format(time.RFC3339Nano)
+	// Match the rest of the codebase's signature writes — pynamodb
+	// UTCDateTimeAttribute format ("YYYY-MM-DDTHH:MM:SS.ffffff+0000"), not
+	// RFC3339Nano. Mixed formats break downstream date parsers tuned to the
+	// six-microsecond +0000 layout.
+	currentTime := formatPynamoDateTimeUTC(now)
 	sigID := uuid.NewString()
 	sigItem := map[string]types.AttributeValue{
 		"signature_id":                     &types.AttributeValueMemberS{Value: sigID},
