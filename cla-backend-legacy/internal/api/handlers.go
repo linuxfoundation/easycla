@@ -3413,8 +3413,12 @@ func (h *Handlers) PostSignatureV1(w http.ResponseWriter, r *http.Request) {
 		"signature_embargo_acked":          embargoAcked,
 		"signature_return_url":             returnURL,
 		"signature_sign_url":               signURL,
-		"signature_document_major_version": maj,
-		"signature_document_minor_version": min,
+		// Match the rest of the codebase: store.ToInterface (dynamo_conv.go:14)
+		// returns DynamoDB N as strings for pynamodb parity. GET /v1/signature
+		// reads through that path and emits strings here too — so POST must do
+		// the same to avoid clients seeing different types on the same field.
+		"signature_document_major_version": strconv.Itoa(maj),
+		"signature_document_minor_version": strconv.Itoa(min),
 		"date_created":                     formatPynamoDateTimeUTC(now),
 		"date_modified":                    formatPynamoDateTimeUTC(now),
 		"version":                          "v1",

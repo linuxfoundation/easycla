@@ -7,10 +7,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/parity"
 )
 
 type Service struct {
@@ -33,19 +38,26 @@ func (s *Service) ValidateOrganization(ctx context.Context, endpoint string) (ma
 		return nil, http.StatusOK, nil
 	}
 
-	// Python parity: validate_organization() does requests.get(endpoint) with
-	// no scheme/host validation. The previous SSRF allowlist (github.com,
-	// api.github.com, raw.githubusercontent.com) rejected legitimate
-	// non-GitHub endpoints with 400, breaking parity. Restore the permissive
-	// behavior. Outbound requests are still bounded by client timeout.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
+	// Python parity: validate_organization() does requests.get(endpoint) with no
+	// scheme/host validation. POST /v1/github/validate is unauthenticated, so the
+	// permissive behavior is an SSRF primitive. EnableGithubValidateSSRFGuard
+	// (default OFF) preserves Python parity; flipping it ON restores the original
+	// Go hardening (http(s)-only, no IP literals, allowlist of GitHub hosts).
+	if parity.EnableGithubValidateSSRFGuard {
+		if status, err := validateOrganizationEndpointSafe(endpoint); err != nil {
+			return nil, status, err
+		}
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		// Python: requests.MissingSchema / InvalidURL would propagate as 500.
 		return nil, http.StatusInternalServerError, err
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, http.StatusBadGateway, err
 	}
@@ -67,6 +79,31 @@ func (s *Service) ValidateOrganization(ctx context.Context, endpoint string) (ma
 		return map[string]string{"status": "not found"}, http.StatusOK, nil
 	}
 	return map[string]string{"status": "error"}, http.StatusOK, nil
+}
+
+// validateOrganizationEndpointSafe is the opt-in SSRF guard previously applied
+// unconditionally. It rejects non-http(s) schemes, IP literals, and any host
+// outside the GitHub allowlist. Returns (httpStatus, err) on rejection;
+// (0, nil) when the endpoint passes.
+func validateOrganizationEndpointSafe(endpoint string) (int, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return http.StatusBadRequest, fmt.Errorf("invalid URL format")
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return http.StatusBadRequest, fmt.Errorf("unsupported URL scheme")
+	}
+	host := parsed.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		return http.StatusBadRequest, fmt.Errorf("IP addresses not allowed")
+	}
+	allowed := []string{"github.com", "raw.githubusercontent.com", "api.github.com"}
+	for _, d := range allowed {
+		if host == d || strings.HasSuffix(host, "."+d) {
+			return 0, nil
+		}
+	}
+	return http.StatusBadRequest, fmt.Errorf("domain not in allowlist")
 }
 
 // CheckNamespace returns true if GitHub user namespace exists.
