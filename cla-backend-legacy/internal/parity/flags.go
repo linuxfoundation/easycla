@@ -47,4 +47,11 @@ var (
 
 	// EASYCLA_PARITY_FLAG: when true, return signature_id instead of preserving the legacy project_id error key bug.
 	FixAddClaManagerV1NotFoundErrorKey = envBool("EASYCLA_FIX_ADD_CLA_MANAGER_V1_NOT_FOUND_ERROR_KEY")
+
+	// EASYCLA_PARITY_FLAG: when true, re-enable the SSRF guard on POST /v1/github/validate
+	// (block non-http(s) schemes, IP literals, and require host in {github.com,
+	// api.github.com, raw.githubusercontent.com} or subdomains). Default OFF preserves
+	// Python's permissive requests.get(endpoint) behavior. The endpoint is unauthenticated;
+	// turning this ON is recommended for production deployments.
+	EnableGithubValidateSSRFGuard = envBool("EASYCLA_ENABLE_GITHUB_VALIDATE_SSRF_GUARD")
 )
