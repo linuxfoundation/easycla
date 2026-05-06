@@ -168,13 +168,17 @@ func parsePynamoDateTimeString(s string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	// Try layouts used by legacy Python/pynamodb.
+	// pynamodb's canonical UTCDateTimeAttribute format uses a "+0000" suffix
+	// (no colon), so the no-colon layouts must come before the colon ones.
 	layouts := []string{
+		"2006-01-02T15:04:05.999999-0700",
+		"2006-01-02T15:04:05-0700",
 		"2006-01-02T15:04:05.999999",
 		"2006-01-02T15:04:05.99999",
 		"2006-01-02T15:04:05.9999",
 		"2006-01-02T15:04:05.999",
 		"2006-01-02T15:04:05",
-		// Some records may include timezone offsets.
+		// Some records may include colon-style timezone offsets.
 		time.RFC3339Nano,
 		"2006-01-02T15:04:05.999999-07:00",
 		"2006-01-02T15:04:05-07:00",
