@@ -5843,23 +5843,19 @@ func (h *Handlers) PostProjectV1(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	projectID := uuid.New().String()
 
-	proj := map[string]any{
-		"project_id":                           projectID,
-		"project_external_id":                  req.ProjectExternalID,
-		"project_name":                         req.ProjectName,
-		"project_icla_enabled":                 *req.ProjectICLAEnabled,
-		"project_ccla_enabled":                 *req.ProjectCCLAEnabled,
-		"project_ccla_requires_icla_signature": *req.ProjectCCLARequiresICLASignature,
-		"project_acl":                          []string{authUser.Username},
-		"date_created":                         formatPynamoDateTimeUTC(now),
-		"date_modified":                        formatPynamoDateTimeUTC(now),
-		"version":                              "v1",
-	}
-
-	item, err := store.InterfaceMapToItem(proj)
-	if err != nil {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
-		return
+	// Build the AttributeValue map directly so InterfaceMapToItem's
+	// isNumericString heuristic cannot coerce an all-digit project_name to N.
+	item := map[string]types.AttributeValue{
+		"project_id":                           &types.AttributeValueMemberS{Value: projectID},
+		"project_external_id":                  &types.AttributeValueMemberS{Value: req.ProjectExternalID},
+		"project_name":                         &types.AttributeValueMemberS{Value: req.ProjectName},
+		"project_icla_enabled":                 &types.AttributeValueMemberBOOL{Value: *req.ProjectICLAEnabled},
+		"project_ccla_enabled":                 &types.AttributeValueMemberBOOL{Value: *req.ProjectCCLAEnabled},
+		"project_ccla_requires_icla_signature": &types.AttributeValueMemberBOOL{Value: *req.ProjectCCLARequiresICLASignature},
+		"project_acl":                          &types.AttributeValueMemberSS{Value: []string{authUser.Username}},
+		"date_created":                         &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
+		"date_modified":                        &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
+		"version":                              &types.AttributeValueMemberS{Value: "v1"},
 	}
 	if err := h.projects.PutItem(ctx, item); err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
@@ -5876,7 +5872,7 @@ func (h *Handlers) PostProjectV1(w http.ResponseWriter, r *http.Request) {
 		ContainsPII:     false,
 	})
 
-	respond.JSON(w, http.StatusOK, proj)
+	respond.JSON(w, http.StatusOK, store.ItemToInterfaceMap(item))
 }
 
 // PUT /v1/project
@@ -5962,39 +5958,36 @@ func (h *Handlers) PutProjectV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proj := store.ItemToInterfaceMap(item)
+	// Patch the AttributeValue map directly so we never round-trip pynamodb
+	// types through InterfaceMapToItem's isNumericString heuristic, which
+	// can silently coerce digit-only S fields to N.
 	updatedString := " "
 
 	if req.ProjectExternalID != nil {
-		proj["project_external_id"] = *req.ProjectExternalID
+		item["project_external_id"] = &types.AttributeValueMemberS{Value: *req.ProjectExternalID}
 		updatedString += fmt.Sprintf("project_external_id changed to %s \n", *req.ProjectExternalID)
 	}
 	if req.ProjectName != nil {
-		proj["project_name"] = *req.ProjectName
+		item["project_name"] = &types.AttributeValueMemberS{Value: *req.ProjectName}
 		updatedString += fmt.Sprintf("project_name changed to %s \n", *req.ProjectName)
 	}
 	if req.ProjectICLAEnabled != nil {
-		proj["project_icla_enabled"] = *req.ProjectICLAEnabled
+		item["project_icla_enabled"] = &types.AttributeValueMemberBOOL{Value: *req.ProjectICLAEnabled}
 		updatedString += fmt.Sprintf("project_icla_enabled changed to %s \n", boolString(*req.ProjectICLAEnabled))
 	}
 	if req.ProjectCCLAEnabled != nil {
-		proj["project_ccla_enabled"] = *req.ProjectCCLAEnabled
+		item["project_ccla_enabled"] = &types.AttributeValueMemberBOOL{Value: *req.ProjectCCLAEnabled}
 		updatedString += fmt.Sprintf("project_ccla_enabled changed to %s \n", boolString(*req.ProjectCCLAEnabled))
 	}
 	if req.ProjectCCLARequiresICLASignature != nil {
-		proj["project_ccla_requires_icla_signature"] = *req.ProjectCCLARequiresICLASignature
+		item["project_ccla_requires_icla_signature"] = &types.AttributeValueMemberBOOL{Value: *req.ProjectCCLARequiresICLASignature}
 		updatedString += fmt.Sprintf("project_ccla_requires_icla_signature changed to %s \n", boolString(*req.ProjectCCLARequiresICLASignature))
 	}
 
 	now := time.Now().UTC()
-	proj["date_modified"] = formatPynamoDateTimeUTC(now)
+	item["date_modified"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)}
 
-	putItem, err := store.InterfaceMapToItem(proj)
-	if err != nil {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
-		return
-	}
-	if err := h.projects.PutItem(ctx, putItem); err != nil {
+	if err := h.projects.PutItem(ctx, item); err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
 		return
 	}
@@ -6008,7 +6001,7 @@ func (h *Handlers) PutProjectV1(w http.ResponseWriter, r *http.Request) {
 		ContainsPII:     false,
 	})
 
-	respond.JSON(w, http.StatusOK, proj)
+	respond.JSON(w, http.StatusOK, store.ItemToInterfaceMap(item))
 }
 
 // DELETE /v1/project/{project_id}

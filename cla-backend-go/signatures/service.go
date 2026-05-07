@@ -1635,23 +1635,36 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 		}
 	}
 
-	// check github org email ApprovalList
+	// check github org approval list. Match the user's publicly-visible org
+	// memberships against the approval list, mirroring the pre-cutover Python
+	// helper cla.utils.lookup_github_organizations. The previous implementation
+	// called /orgs/<org>/memberships/<user>, which the EasyCLA OAuth bot has
+	// no permission to read for customer orgs (returns 403) — so every
+	// org-only-approved contributor failed the check.
 	if user.GithubUsername != "" {
 		githubOrgApprovalList := cclaSignature.GithubOrgApprovalList
 		if len(githubOrgApprovalList) > 0 {
-			log.WithFields(f).Debugf("determining if github user :%s is associated with ant of the github orgs : %+v", user.GithubUsername, githubOrgApprovalList)
-		}
-
-		for _, org := range githubOrgApprovalList {
-			membership, err := github.GetMembership(ctx, user.GithubUsername, org)
+			login := strings.TrimSpace(user.GithubUsername)
+			log.WithFields(f).Debugf("determining if github user :%s is associated with any of the github orgs : %+v", login, githubOrgApprovalList)
+			userOrgs, err := github.ListUserPublicOrgs(ctx, login)
 			if err != nil {
-				break
-			}
-			if membership != nil {
-				log.WithFields(f).Debugf("found matching github organization: %s for user: %s", org, user.GithubUsername)
-				return true, nil
+				log.WithFields(f).Warnf("could not list public orgs for github user %s; treating as no org-approval match: %v", login, err)
 			} else {
-				log.WithFields(f).Debugf("user: %s is not in the organization: %s", user.GithubUsername, org)
+				for _, approvedOrg := range githubOrgApprovalList {
+					approvedOrgTrim := strings.TrimSpace(approvedOrg)
+					matched := false
+					for _, userOrg := range userOrgs {
+						if strings.EqualFold(approvedOrgTrim, userOrg) {
+							matched = true
+							break
+						}
+					}
+					if matched {
+						log.WithFields(f).Debugf("found matching github organization: %s for user: %s", approvedOrg, login)
+						return true, nil
+					}
+					log.WithFields(f).Debugf("user: %s is not in the organization: %s", login, approvedOrg)
+				}
 			}
 		}
 	}
