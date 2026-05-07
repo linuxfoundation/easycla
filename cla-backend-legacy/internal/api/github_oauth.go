@@ -290,7 +290,15 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 		if err := h.users.PutItem(ctx, userAV); err != nil {
 			return nil, &httpErr{status: http.StatusInternalServerError, payload: map[string]any{"errors": err.Error()}, err: err}
 		}
-		return normalizeUserDict(store.ItemToInterfaceMap(userAV)), nil
+		result := store.ItemToInterfaceMap(userAV)
+		// Preserve the pre-cutover wire shape for the OAuth callers
+		// (/v2/github/auth/callback no-redirect branch and /v2/user-from-session):
+		// pynamodb User.to_dict() returned user_github_id as an int, and the
+		// previous Go code mirrored that by overwriting the map entry with an
+		// int64. ItemToInterfaceMap converts N to a string, so re-apply the
+		// int64 here so JSON consumers continue to see a number.
+		result["user_github_id"] = githubID
+		return normalizeUserDict(result), nil
 	}
 
 	// Create new user.
@@ -312,7 +320,11 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 	if err := h.users.PutItem(ctx, itemAV); err != nil {
 		return nil, &httpErr{status: http.StatusInternalServerError, payload: map[string]any{"errors": err.Error()}, err: err}
 	}
-	return normalizeUserDict(store.ItemToInterfaceMap(itemAV)), nil
+	result := store.ItemToInterfaceMap(itemAV)
+	// See the update branch above: keep user_github_id as int64 in the
+	// response to match pre-cutover Python wire shape.
+	result["user_github_id"] = githubID
+	return normalizeUserDict(result), nil
 }
 
 func (h *Handlers) setActiveSignatureMetadata(ctx context.Context, userID, projectID, repositoryID, pullRequestID string, returnURLs ...string) error {
