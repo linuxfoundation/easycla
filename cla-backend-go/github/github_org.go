@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
@@ -77,11 +78,19 @@ func GetOrganization(ctx context.Context, organizationName string) (*github.Orga
 // list (case-insensitive) rather than against /orgs/<org>/memberships/<user>,
 // because the EasyCLA OAuth bot is not itself a member of customer orgs and
 // gets a 403 from the latter endpoint.
+//
+// An empty user is rejected with an error: go-github routes an empty user
+// to GET /user/orgs (the authenticated bot's own orgs), which would silently
+// approve unrelated callers if it ever leaked through.
 func ListUserPublicOrgs(ctx context.Context, user string) ([]string, error) {
 	f := logrus.Fields{
 		"functionName":   "github.ListUserPublicOrgs",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"user":           user,
+	}
+
+	if strings.TrimSpace(user) == "" {
+		return nil, errors.New("ListUserPublicOrgs: user is empty")
 	}
 
 	client := NewGithubOauthClient()

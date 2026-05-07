@@ -102,6 +102,12 @@ const (
 	githubStatusMissingCLA        = "Missing CLA Authorization."
 )
 
+// listUserPublicOrgs is the indirection that lets unit tests for
+// UserIsApproved stub the GitHub /users/<user>/orgs call without standing up
+// a real OAuth client. Production callers always go through
+// github.ListUserPublicOrgs.
+var listUserPublicOrgs = github.ListUserPublicOrgs
+
 // NewService creates a new signature service
 func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string) SignatureService {
 	return service{
@@ -1641,13 +1647,17 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 	// called /orgs/<org>/memberships/<user>, which the EasyCLA OAuth bot has
 	// no permission to read for customer orgs (returns 403) — so every
 	// org-only-approved contributor failed the check.
-	if user.GithubUsername != "" {
+	if login := strings.TrimSpace(user.GithubUsername); login != "" {
 		githubOrgApprovalList := cclaSignature.GithubOrgApprovalList
 		if len(githubOrgApprovalList) > 0 {
-			login := strings.TrimSpace(user.GithubUsername)
 			log.WithFields(f).Debugf("determining if github user :%s is associated with any of the github orgs : %+v", login, githubOrgApprovalList)
-			userOrgs, err := github.ListUserPublicOrgs(ctx, login)
+			userOrgs, err := listUserPublicOrgs(ctx, login)
 			if err != nil {
+				// Mirror the Python flow (cla.utils.is_approved): if the
+				// public-orgs lookup fails, log and treat as no match — do
+				// not propagate. Returning an error here would 500 the
+				// /v3/sign route and a transient GitHub blip would block
+				// every org-approved contributor across the project.
 				log.WithFields(f).Warnf("could not list public orgs for github user %s; treating as no org-approval match: %v", login, err)
 			} else {
 				for _, approvedOrg := range githubOrgApprovalList {

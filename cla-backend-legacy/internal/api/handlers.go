@@ -5767,6 +5767,24 @@ func (h *Handlers) GetExternalProjectV1(w http.ResponseWriter, r *http.Request) 
 	respond.JSON(w, http.StatusOK, projects)
 }
 
+// normalizeProjectStringFields rewrites the named keys of item from
+// AttributeValueMemberN back to AttributeValueMemberS, preserving the digits
+// as the new string value. It is used on the PutProjectV1 read-modify-write
+// path so that records persisted under the previous InterfaceMapToItem
+// numeric-coercion bug are healed on the next update, even when the request
+// does not touch the affected field. Keys that are absent, missing, or
+// already strings are left untouched.
+func normalizeProjectStringFields(item map[string]types.AttributeValue, names ...string) {
+	if item == nil {
+		return
+	}
+	for _, name := range names {
+		if num, ok := item[name].(*types.AttributeValueMemberN); ok && num != nil {
+			item[name] = &types.AttributeValueMemberS{Value: num.Value}
+		}
+	}
+}
+
 // POST /v1/project
 // Python: cla/routes.py:1438 post_project()
 // Calls: cla.controllers.project.create_project
@@ -5961,6 +5979,12 @@ func (h *Handlers) PutProjectV1(w http.ResponseWriter, r *http.Request) {
 	// Patch the AttributeValue map directly so we never round-trip pynamodb
 	// types through InterfaceMapToItem's isNumericString heuristic, which
 	// can silently coerce digit-only S fields to N.
+	//
+	// Heal records persisted under that bug: any project_name or
+	// project_external_id stored as N is rewritten to S before the PutItem
+	// below, so a PUT that only flips a boolean cannot preserve a broken
+	// type from the affected window.
+	normalizeProjectStringFields(item, "project_name", "project_external_id")
 	updatedString := " "
 
 	if req.ProjectExternalID != nil {
