@@ -685,7 +685,12 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 	var sb strings.Builder
 	sb.WriteString(userInfo)
 
-	log.WithFields(f).Debugf("author: %+v", u.CommitAuthor)
+	if u.CommitAuthor != nil {
+		log.WithFields(f).Debugf("author: login=%s id=%s email=%s",
+			utils.StringValue(u.CommitAuthor.Login),
+			fmt.Sprintf("%d", utils.Int64Value(u.CommitAuthor.ID)),
+			utils.StringValue(u.CommitAuthor.Email))
+	}
 
 	if tagUser {
 		tagValue = "@"
@@ -822,7 +827,9 @@ func ExpandWithCoAuthors(
 		"pr":           pr,
 	}
 	coAuthors := GetCoAuthorsFromCommit(ctx, commit)
-	log.WithFields(f).Debugf("co-authors found: %s", coAuthors)
+	if len(coAuthors) > 0 {
+		log.WithFields(f).Debugf("co-authors found: %s", coAuthors)
+	}
 	missing := false
 	for _, coAuthor := range coAuthors {
 		summary, found := GetCoAuthorCommits(ctx, client, usersService, coAuthor, commit, pr, installationID)
@@ -1161,11 +1168,8 @@ func GetCommitAuthorSignedStatus(
 	// (project_id, id, login, email) -> (user || None, authorized, affiliated)
 	projectCacheKey := ProjectUserKey(projectID, commitAuthorID, commitAuthorUsername, commitAuthorEmail)
 	cachedUser, authorized, affiliated, ok := ModelProjectUserCache.Get(projectCacheKey)
-	if cachedUser != nil {
-		log.WithFields(f).Debugf("per-project cache: %+v -> (%+v, %v, %v, %v)", projectCacheKey, *cachedUser, authorized, affiliated, ok)
-	} else {
-		log.WithFields(f).Debugf("per-project cache: %+v -> (nil, %v, %v, %v)", projectCacheKey, authorized, affiliated, ok)
-	}
+	log.WithFields(f).Debugf("per-project cache: %+v -> (user=%t, authorized=%v, affiliated=%v, hit=%v)",
+		projectCacheKey, cachedUser != nil, authorized, affiliated, ok)
 	if ok {
 		if cachedUser == nil {
 			log.WithFields(f).Debugf("per-project cache: unsigned, user is null")
@@ -1193,11 +1197,7 @@ func GetCommitAuthorSignedStatus(
 	// (id, login, email) -> (user || None)
 	cacheKey := UserKey(commitAuthorID, commitAuthorUsername, commitAuthorEmail)
 	cachedUser, ok = ModelUserCache.Get(cacheKey)
-	if cachedUser != nil {
-		log.WithFields(f).Debugf("general cache: %+v -> (%+v, %v)", cacheKey, *cachedUser, ok)
-	} else {
-		log.WithFields(f).Debugf("general cache: %+v -> (nil, %v)", cacheKey, ok)
-	}
+	log.WithFields(f).Debugf("general cache: %+v -> (user=%t, hit=%v)", cacheKey, cachedUser != nil, ok)
 	if ok {
 		if cachedUser == nil {
 			mu.Lock()
@@ -1672,8 +1672,8 @@ func EditIssueCommentIfChanged(ctx context.Context, client *github.Client, owner
 	if oldNorm == newNorm {
 		return false, nil
 	}
-	log.WithFields(f).Debugf("editing comment %d on %s/%s PR #%d", commentID, owner, repo, prNum)
-	log.WithFields(f).Debugf("old comment:\n%s\n---\nnew comment:\n%s\n---", oldNorm, newNorm)
+	log.WithFields(f).Debugf("editing comment %d on %s/%s PR #%d (old=%d bytes, new=%d bytes)",
+		commentID, owner, repo, prNum, len(oldNorm), len(newNorm))
 	_, _, err = client.Issues.EditComment(ctx, owner, repo, commentID, &github.IssueComment{Body: &newBody})
 	if err != nil {
 		return false, err
@@ -1786,7 +1786,7 @@ func updatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 				return err2
 			}
 			if edited {
-				log.WithFields(f).Debugf("Updated CLA comment for PR %d (body changed).", pullRequestID)
+				log.WithFields(f).Infof("Updated CLA comment for PR %d (body changed).", pullRequestID)
 			} else {
 				log.WithFields(f).Debugf("CLA comment unchanged for PR %d, skipping edit.", pullRequestID)
 			}
@@ -1800,7 +1800,7 @@ func updatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 				return err2
 			}
 			if edited {
-				log.WithFields(f).Debugf("Updated failing CLA comment for PR %d (body changed).", pullRequestID)
+				log.WithFields(f).Infof("Updated failing CLA comment for PR %d (body changed).", pullRequestID)
 			} else {
 				log.WithFields(f).Debugf("Failing CLA comment unchanged for PR %d, skipping edit.", pullRequestID)
 			}
@@ -1813,7 +1813,7 @@ func updatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 				return err2
 			}
 			if edited {
-				log.WithFields(f).Debugf("Updated previously succeeded comment to failing for PR %d.", pullRequestID)
+				log.WithFields(f).Infof("Updated previously succeeded comment to failing for PR %d.", pullRequestID)
 			} else {
 				log.WithFields(f).Debugf("Previously succeeded comment already matches failing body for PR %d; skipping edit.", pullRequestID)
 			}
@@ -1825,7 +1825,7 @@ func updatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 				log.WithFields(f).WithError(err2).Debug("unable to create comment")
 				return err2
 			}
-			log.WithFields(f).Debugf("Created new failing CLA comment for PR %d.", pullRequestID)
+			log.WithFields(f).Infof("Created new failing CLA comment for PR %d.", pullRequestID)
 		}
 	}
 
@@ -1845,19 +1845,21 @@ func updatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 		state = failureState
 		ctxName, statusBody = assembleCLAStatus(ctxName, false)
 		signURL = getFullSignURL(strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL, projectVersion)
-		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(missing), signURL)
+		log.WithFields(f).Infof("CLA gate decision PR %s/%s#%d: state=%s passed=%d missing=%d signing_url=%s",
+			owner, repo, pullRequestID, state, len(signed), len(missing), signURL)
 	} else if len(signed) > 0 {
 		state = successState
 		ctxName, statusBody = assembleCLAStatus(ctxName, true)
 		signURL = appendProjectVersionToURL(fmt.Sprintf("%s/#/", CLALandingPage), projectVersion)
-		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(missing), signURL)
+		log.WithFields(f).Infof("CLA gate decision PR %s/%s#%d: state=%s passed=%d missing=%d signing_url=%s",
+			owner, repo, pullRequestID, state, len(signed), len(missing), signURL)
 
 	} else {
 		state = failureState
 		ctxName, statusBody = assembleCLAStatus(ctxName, false)
 		signURL = getFullSignURL(strconv.Itoa(int(installationID)), strconv.Itoa(int(*repoID)), strconv.Itoa(pullRequestID), CLABaseAPIURL, projectVersion)
-		log.WithFields(f).Debugf("Creating new CLA %s status - %d passed, %d missing, signing url %s", state, len(signed), len(missing), signURL)
-		log.WithFields(f).Debugf("This is an error condition - should have at least one committer in one of these lists: signed : %+v passed, %+v", signed, missing)
+		log.WithFields(f).Warnf("CLA gate decision PR %s/%s#%d: state=%s passed=0 missing=0 (no committers identified) signing_url=%s",
+			owner, repo, pullRequestID, state, signURL)
 	}
 
 	status := Status{
