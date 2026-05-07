@@ -1932,7 +1932,20 @@ func createLegacyActionRequiredCheckRun(ctx context.Context, client *github.Clie
 		return err
 	}
 	req.Header.Set("Accept", "application/vnd.github.antiope-preview+json")
-	_, err = client.Do(ctx, req, nil)
+	resp, err := client.Do(ctx, req, nil)
+	if err != nil && resp != nil && resp.Response != nil {
+		log.WithFields(logrus.Fields{
+			"functionName":            "github.github_repository.createLegacyActionRequiredCheckRun",
+			"owner":                   owner,
+			"repo":                    repo,
+			"installationID":          installationID,
+			"pullRequestID":           pullRequestID,
+			"statusCode":              resp.Response.StatusCode,
+			"x-accepted-github-perms": resp.Response.Header.Get("X-Accepted-GitHub-Permissions"),
+			"x-oauth-scopes":          resp.Response.Header.Get("X-OAuth-Scopes"),
+			"x-github-request-id":     resp.Response.Header.Get("X-GitHub-Request-Id"),
+		}).Warnf("check-run create failed; see X-Accepted-GitHub-Permissions for required GitHub App permissions")
+	}
 	return err
 }
 
