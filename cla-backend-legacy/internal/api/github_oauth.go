@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -233,9 +234,12 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 	if err != nil {
 		return nil, &httpErr{status: http.StatusInternalServerError, payload: map[string]any{"errors": err.Error()}, err: err}
 	}
-	var userItem map[string]any
+	// Operate on the raw AttributeValue map so we never round-trip pynamodb
+	// types through InterfaceMapToItem's isNumericString heuristic, which
+	// can silently coerce digit-only S fields to N.
+	var userAV map[string]types.AttributeValue
 	if len(items) > 0 {
-		userItem = store.ItemToInterfaceMap(items[0])
+		userAV = items[0]
 	} else {
 		// Fallback: look up by email.
 		for _, e := range emails {
@@ -252,7 +256,7 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 				}
 			}
 			if len(its) > 0 {
-				userItem = store.ItemToInterfaceMap(its[0])
+				userAV = its[0]
 				break
 			}
 		}
@@ -264,51 +268,51 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 	githubName = strings.TrimSpace(githubName)
 
 	now := time.Now().UTC()
-	if userItem != nil {
+	if userAV != nil {
 		// Update existing user: set github id, username, display name and emails
 		if githubLogin != "" {
-			userItem["user_github_username"] = githubLogin
+			userAV["user_github_username"] = &types.AttributeValueMemberS{Value: githubLogin}
 		}
 		if githubName != "" {
-			userItem["user_name"] = githubName
+			userAV["user_name"] = &types.AttributeValueMemberS{Value: githubName}
 		}
-		userItem["user_emails"] = emails
-		userItem["user_github_id"] = githubID
-		userItem["date_modified"] = formatPynamoDateTimeUTC(now)
+		// PatchedUnicodeSetAttribute on the Python side. DynamoDB does not
+		// allow empty SS, so omit if there are no emails (delete the field
+		// rather than write a malformed value).
+		if len(emails) > 0 {
+			userAV["user_emails"] = &types.AttributeValueMemberSS{Value: emails}
+		} else {
+			delete(userAV, "user_emails")
+		}
+		userAV["user_github_id"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(githubID, 10)}
+		userAV["date_modified"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)}
 
-		// Persist.
-		userItemAV, convErr := store.InterfaceMapToItem(userItem)
-		if convErr != nil {
-			return nil, &httpErr{status: http.StatusInternalServerError, payload: map[string]any{"errors": convErr.Error()}, err: convErr}
-		}
-		if err := h.users.PutItem(ctx, userItemAV); err != nil {
+		if err := h.users.PutItem(ctx, userAV); err != nil {
 			return nil, &httpErr{status: http.StatusInternalServerError, payload: map[string]any{"errors": err.Error()}, err: err}
 		}
-		return normalizeUserDict(userItem), nil
+		return normalizeUserDict(store.ItemToInterfaceMap(userAV)), nil
 	}
 
 	// Create new user.
 	newID := uuid.New().String()
-	item := map[string]any{
-		"user_id":              newID,
-		"version":              "v1",
-		"date_created":         formatPynamoDateTimeUTC(now),
-		"date_modified":        formatPynamoDateTimeUTC(now),
-		"user_github_id":       githubID,
-		"user_github_username": githubLogin,
-		"user_emails":          emails,
+	itemAV := map[string]types.AttributeValue{
+		"user_id":              &types.AttributeValueMemberS{Value: newID},
+		"version":              &types.AttributeValueMemberS{Value: "v1"},
+		"date_created":         &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
+		"date_modified":        &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
+		"user_github_id":       &types.AttributeValueMemberN{Value: strconv.FormatInt(githubID, 10)},
+		"user_github_username": &types.AttributeValueMemberS{Value: githubLogin},
+	}
+	if len(emails) > 0 {
+		itemAV["user_emails"] = &types.AttributeValueMemberSS{Value: emails}
 	}
 	if githubName != "" {
-		item["user_name"] = githubName
-	}
-	itemAV, convErr := store.InterfaceMapToItem(item)
-	if convErr != nil {
-		return nil, &httpErr{status: http.StatusInternalServerError, payload: map[string]any{"errors": convErr.Error()}, err: convErr}
+		itemAV["user_name"] = &types.AttributeValueMemberS{Value: githubName}
 	}
 	if err := h.users.PutItem(ctx, itemAV); err != nil {
 		return nil, &httpErr{status: http.StatusInternalServerError, payload: map[string]any{"errors": err.Error()}, err: err}
 	}
-	return normalizeUserDict(item), nil
+	return normalizeUserDict(store.ItemToInterfaceMap(itemAV)), nil
 }
 
 func (h *Handlers) setActiveSignatureMetadata(ctx context.Context, userID, projectID, repositoryID, pullRequestID string, returnURLs ...string) error {
