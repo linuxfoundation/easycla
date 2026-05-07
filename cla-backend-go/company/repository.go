@@ -164,7 +164,11 @@ func (repo repository) GetCompanyByExternalID(ctx context.Context, companySFID s
 	const includeChildCompanies = false // Include child/other signing entity name records?
 	companyRecords, err := repo.GetCompaniesByExternalID(ctx, companySFID, includeChildCompanies)
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to unmarshall response from the database")
+		if _, ok := err.(*utils.CompanyNotFound); ok {
+			log.WithFields(f).WithError(err).Debug("no company found for SFID")
+			return nil, err
+		}
+		log.WithFields(f).WithError(err).Warn("error looking up company by SFID")
 		return nil, err
 	}
 	log.WithFields(f).Debugf("loaded %d records", len(companyRecords))
