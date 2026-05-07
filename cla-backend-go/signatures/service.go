@@ -102,6 +102,12 @@ const (
 	githubStatusMissingCLA        = "Missing CLA Authorization."
 )
 
+// listUserPublicOrgs is the indirection that lets unit tests for
+// UserIsApproved stub the GitHub /users/<user>/orgs call without standing up
+// a real OAuth client. Production callers always go through
+// github.ListUserPublicOrgs.
+var listUserPublicOrgs = github.ListUserPublicOrgs
+
 // NewService creates a new signature service
 func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string) SignatureService {
 	return service{
@@ -1635,23 +1641,40 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 		}
 	}
 
-	// check github org email ApprovalList
-	if user.GithubUsername != "" {
+	// check github org approval list. Match the user's publicly-visible org
+	// memberships against the approval list, mirroring the pre-cutover Python
+	// helper cla.utils.lookup_github_organizations. The previous implementation
+	// called /orgs/<org>/memberships/<user>, which the EasyCLA OAuth bot has
+	// no permission to read for customer orgs (returns 403) — so every
+	// org-only-approved contributor failed the check.
+	if login := strings.TrimSpace(user.GithubUsername); login != "" {
 		githubOrgApprovalList := cclaSignature.GithubOrgApprovalList
 		if len(githubOrgApprovalList) > 0 {
-			log.WithFields(f).Debugf("determining if github user :%s is associated with ant of the github orgs : %+v", user.GithubUsername, githubOrgApprovalList)
-		}
-
-		for _, org := range githubOrgApprovalList {
-			membership, err := github.GetMembership(ctx, user.GithubUsername, org)
+			log.WithFields(f).Debugf("determining if github user :%s is associated with any of the github orgs : %+v", login, githubOrgApprovalList)
+			userOrgs, err := listUserPublicOrgs(ctx, login)
 			if err != nil {
-				break
-			}
-			if membership != nil {
-				log.WithFields(f).Debugf("found matching github organization: %s for user: %s", org, user.GithubUsername)
-				return true, nil
+				// Mirror the Python flow (cla.utils.is_approved): if the
+				// public-orgs lookup fails, log and treat as no match — do
+				// not propagate. Returning an error here would 500 the
+				// /v3/sign route and a transient GitHub blip would block
+				// every org-approved contributor across the project.
+				log.WithFields(f).Warnf("could not list public orgs for github user %s; treating as no org-approval match: %v", login, err)
 			} else {
-				log.WithFields(f).Debugf("user: %s is not in the organization: %s", user.GithubUsername, org)
+				for _, approvedOrg := range githubOrgApprovalList {
+					approvedOrgTrim := strings.TrimSpace(approvedOrg)
+					matched := false
+					for _, userOrg := range userOrgs {
+						if strings.EqualFold(approvedOrgTrim, userOrg) {
+							matched = true
+							break
+						}
+					}
+					if matched {
+						log.WithFields(f).Debugf("found matching github organization: %s for user: %s", approvedOrg, login)
+						return true, nil
+					}
+					log.WithFields(f).Debugf("user: %s is not in the organization: %s", login, approvedOrg)
+				}
 			}
 		}
 	}
