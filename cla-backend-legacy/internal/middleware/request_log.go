@@ -49,12 +49,14 @@ func extractE2EMarker(h http.Header) (bool, string) {
 	return false, ""
 }
 
-// RequestLog mirrors the legacy Python request middleware log lines and adds
+// RequestLog mirrors the legacy Python request middleware log line and adds
 // an explicit backend marker for cutover verification:
-// - LG:api-request-path:<path>
-// - LG:e2e-request-path:<path> e2e=1 [e2e_run_id=...]
-// - LG:api-backend:cla-backend-legacy path=<path>
-// - LG:e2e-backend:cla-backend-legacy path=<path> e2e=1 [e2e_run_id=...]
+// - LG:api-request-path:<path> backend=cla-backend-legacy
+// - LG:e2e-request-path:<path> backend=cla-backend-legacy e2e=1 [e2e_run_id=...]
+//
+// The X-EasyCLA-Backend response header (set on every response below) is the
+// runtime verification mechanism, so an additional dedicated `LG:api-backend`
+// log line per request is redundant.
 func RequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := "/"
@@ -65,16 +67,14 @@ func RequestLog(next http.Handler) http.Handler {
 		w.Header().Set(backendHeader, backendName)
 		w.Header().Set(backendVersionHeader, "go")
 
-		logging.Infof("LG:api-request-path:%s", path)
-		logging.Infof("LG:api-backend:%s path=%s", backendName, path)
+		logging.Infof("LG:api-request-path:%s backend=%s", path, backendName)
 
 		if ok, runID := extractE2EMarker(r.Header); ok {
 			suffix := " e2e=1"
 			if runID != "" {
 				suffix += fmt.Sprintf(" e2e_run_id=%s", runID)
 			}
-			logging.Infof("LG:e2e-request-path:%s%s", path, suffix)
-			logging.Infof("LG:e2e-backend:%s path=%s%s", backendName, path, suffix)
+			logging.Infof("LG:e2e-request-path:%s backend=%s%s", path, backendName, suffix)
 		}
 
 		next.ServeHTTP(w, r)

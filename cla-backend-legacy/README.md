@@ -17,8 +17,8 @@ domains while keeping the existing `/v3` deployment in the same stack.
   - `X-EasyCLA-Backend: cla-backend-legacy`
   - `X-EasyCLA-Backend-Version: go`
 - Logs now include:
-  - `LG:api-backend:cla-backend-legacy path=...`
-  - `LG:e2e-backend:cla-backend-legacy path=...`
+  - `LG:api-request-path:<path> backend=cla-backend-legacy`
+  - `LG:e2e-request-path:<path> backend=cla-backend-legacy e2e=1 [e2e_run_id=...]`
 
 ## Build
 
@@ -109,6 +109,6 @@ X-EasyCLA-Backend: cla-backend-legacy
 In logs, search for:
 
 ```text
-LG:api-backend:cla-backend-legacy
-LG:e2e-backend:cla-backend-legacy
+LG:api-request-path:... backend=cla-backend-legacy
+LG:e2e-request-path:... backend=cla-backend-legacy
 ```
