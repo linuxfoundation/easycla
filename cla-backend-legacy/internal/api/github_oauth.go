@@ -276,14 +276,9 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 		if githubName != "" {
 			userAV["user_name"] = &types.AttributeValueMemberS{Value: githubName}
 		}
-		// PatchedUnicodeSetAttribute on the Python side. DynamoDB does not
-		// allow empty SS, so omit if there are no emails (delete the field
-		// rather than write a malformed value).
-		if len(emails) > 0 {
-			userAV["user_emails"] = &types.AttributeValueMemberSS{Value: emails}
-		} else {
-			delete(userAV, "user_emails")
-		}
+		// PatchedUnicodeSetAttribute on the Python side. emails is guaranteed
+		// non-empty by the len(emails) < 1 guard above, so SS is always valid.
+		userAV["user_emails"] = &types.AttributeValueMemberSS{Value: emails}
 		userAV["user_github_id"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(githubID, 10)}
 		userAV["date_modified"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)}
 
@@ -304,15 +299,15 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 	// Create new user.
 	newID := uuid.New().String()
 	itemAV := map[string]types.AttributeValue{
-		"user_id":              &types.AttributeValueMemberS{Value: newID},
-		"version":              &types.AttributeValueMemberS{Value: "v1"},
-		"date_created":         &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
-		"date_modified":        &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
-		"user_github_id":       &types.AttributeValueMemberN{Value: strconv.FormatInt(githubID, 10)},
-		"user_github_username": &types.AttributeValueMemberS{Value: githubLogin},
+		"user_id":        &types.AttributeValueMemberS{Value: newID},
+		"version":        &types.AttributeValueMemberS{Value: "v1"},
+		"date_created":   &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
+		"date_modified":  &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
+		"user_github_id": &types.AttributeValueMemberN{Value: strconv.FormatInt(githubID, 10)},
+		"user_emails":    &types.AttributeValueMemberSS{Value: emails},
 	}
-	if len(emails) > 0 {
-		itemAV["user_emails"] = &types.AttributeValueMemberSS{Value: emails}
+	if githubLogin != "" {
+		itemAV["user_github_username"] = &types.AttributeValueMemberS{Value: githubLogin}
 	}
 	if githubName != "" {
 		itemAV["user_name"] = &types.AttributeValueMemberS{Value: githubName}
