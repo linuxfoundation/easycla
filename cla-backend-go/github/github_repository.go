@@ -723,7 +723,9 @@ func SearchGithubUserByEmail(ctx context.Context, client *github.Client, email s
 	}
 	result, _, err := client.Search.Users(ctx, query, opts)
 	if err != nil {
-		log.WithFields(f).WithError(err).Errorf("Error searching for user by email: %s", email)
+		// Soft failure: caller (GetCoAuthorCommits) falls back to GetUsersByLFEmail/GetUsersByEmail.
+		// Most common cause is the GitHub Search API rate limit (30/min/installation), which is expected during PR bursts.
+		log.WithFields(f).WithError(err).Warnf("Could not search GitHub user by email (falling back to DB lookup): %s", email)
 		return nil, err
 	}
 	if result.GetTotal() == 0 || len(result.Users) == 0 {
