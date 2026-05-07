@@ -86,7 +86,7 @@ type service struct {
 type Service interface {
 	CreateCLAManager(ctx context.Context, authUser *auth.User, claGroupID string, params cla_manager.CreateCLAManagerParams, authUsername string) (*models.CompanyClaManager, *models.ErrorResponse)
 	DeleteCLAManager(ctx context.Context, authUser *auth.User, claGroupID string, params cla_manager.DeleteCLAManagerParams) *models.ErrorResponse
-	InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User) ([]*models.ClaManagerDesignee, error)
+	InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, pullRequestURL string) ([]*models.ClaManagerDesignee, error)
 	CreateCLAManagerDesignee(ctx context.Context, companyID string, projectID string, userEmail string) (*models.ClaManagerDesignee, error)
 	CreateCLAManagerRequest(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, fullName string, authUser *auth.User) (*models.ClaManagerDesignee, error)
 	NotifyCLAManagers(ctx context.Context, notifyCLAManagers *models.NotifyClaManagerList, CorporateConsoleV2URL string) error
@@ -875,7 +875,7 @@ func (s *service) ValidateInviteCompanyAdminCheck(ctx context.Context, f logrus.
 	return nil
 }
 
-func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User) ([]*models.ClaManagerDesignee, error) { //nolint
+func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, companyID string, projectID string, userEmail string, name string, contributor *v1User.User, pullRequestURL string) ([]*models.ClaManagerDesignee, error) { //nolint
 	f := logrus.Fields{
 		"functionName":   "cla_manager.service.InviteCompanyAdmin",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -883,6 +883,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		"claGroupID":     projectID,
 		"userEmail":      userEmail,
 		"name":           name,
+		"pullRequestURL": pullRequestURL,
 	}
 
 	orgService := v2OrgService.GetClient()
@@ -1002,12 +1003,13 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 			}
 
 			s.ContributorEmailToOrgAdmin(ctx, ContributorEmailToOrgAdminModel{
-				adminEmail:   userService.GetPrimaryEmail(adminUser),
-				adminName:    admin.Contact.Name,
-				companyName:  organization.Name,
-				projectSFIDs: projectSFIDs,
-				contributor:  userModel,
-				userDetails:  getFormattedUserDetails(userModel),
+				adminEmail:     userService.GetPrimaryEmail(adminUser),
+				adminName:      admin.Contact.Name,
+				companyName:    organization.Name,
+				projectSFIDs:   projectSFIDs,
+				contributor:    userModel,
+				userDetails:    getFormattedUserDetails(userModel),
+				pullRequestURL: sanitizePullRequestURL(ctx, pullRequestURL),
 			})
 			designeeScope := models.ClaManagerDesignee{
 				Email: strfmt.Email(admin.Contact.EmailAddress),
@@ -1214,6 +1216,7 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 	}
 
 	log.Debugf("Sending notification emails to CLA Managers: %+v", notifyCLAManagers.List)
+	pullRequestURL := sanitizePullRequestURL(ctx, notifyCLAManagers.PullRequestURL)
 	for _, claManager := range notifyCLAManagers.List {
 		s.SendEmailToCLAManager(ctx, &EmailToCLAManagerModel{
 			Contributor:         userModel,
@@ -1221,6 +1224,7 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 			CLAManagerEmail:     claManager.Email.String(),
 			CompanyName:         notifyCLAManagers.CompanyName,
 			CorporateConsoleURL: CorporateConsoleV2URL,
+			PullRequestURL:      pullRequestURL,
 		}, projectSFIDs)
 	}
 

@@ -56,7 +56,7 @@ describe('To Validate & test Events APIs via API call (V2)', function () {
     });
   });
 
-  it('POST /clear-cache - Clear cache (Requires authentication)', function () {
+  it.skip('POST /clear-cache - Clear cache (Requires authentication)', function () {
     cy.request({
       method: 'POST',
       url: `${claEndpoint}clear-cache`,

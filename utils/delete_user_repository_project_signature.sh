@@ -1,6 +1,9 @@
 #!/bin/bash
 # DRY=1 - dry run
 # DRY=1 ./utils/delete_user_repository_project_signature.sh mlehotskylf-org2/easycla-dev lukaszgryglicki
+# For ECLA use 'Infosys Limited' on dev - it has lukaszgryglicki allowlisted and ICLA+ECLA requirement
+# ./utils/delete_user_repository_project_signature.sh 'mlehotskylf-org2/easycla-dev' lukaszgryglicki ; API_URL=https://api-gw.dev.platform.linuxfoundation.org/cla-service DEBUG='' ./utils/clear_cache_go.sh ; API_URL=https://api.lfcla.dev.platform.linuxfoundation.org DEBUG='' ./utils/clear_cache_py.sh
+
 if [ -z "$STAGE" ]
 then
   export STAGE=dev

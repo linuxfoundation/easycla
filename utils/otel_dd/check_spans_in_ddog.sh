@@ -2,13 +2,12 @@
 set -euo pipefail
 
 # Example:
-# ./utils/otel_dd/check_spans_in_ddog.sh --env prod --skip-e2e \
-#   | jq -r '.data[].attributes.custom.http.route' | sort | uniq
+# ./utils/otel_dd/check_spans_in_ddog.sh --env prod --skip-e2e | jq -r '.data[].attributes.custom.http.route' | sort | uniq
 
 usage() {
   cat <<'EOF' >&2
 Usage:
-  check_spans_in_ddog.sh [--env <dev|prod|...>] [--stage <dev|prod|...>] [--skip-e2e|--no-skip-e2e]
+  check_spans_in_ddog.sh [--env <dev|prod|...>] [--stage <dev|prod|...>] [--from <time>] [--to <time>] [--skip-e2e|--no-skip-e2e]
 
 Env vars:
   DD_SITE, DD_API_KEY, DD_APP_KEY  (required)
@@ -24,6 +23,8 @@ EOF
 SKIP_E2E=0
 DD_ENV="${DD_ENV:-${ENV:-${STAGE:-dev}}}"
 DD_SERVICE="${DD_SERVICE:-easycla-backend}"
+TIME_FROM="now-60m"
+TIME_TO="now"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -32,6 +33,16 @@ while [[ $# -gt 0 ]]; do
     --env|--environment|--stage)
       [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; usage; exit 2; }
       DD_ENV="$2"
+      shift 2
+      ;;
+    --from)
+      [[ $# -ge 2 ]] || { echo "ERROR: --from requires a value" >&2; usage; exit 2; }
+      TIME_FROM="$2"
+      shift 2
+      ;;
+    --to)
+      [[ $# -ge 2 ]] || { echo "ERROR: --to requires a value" >&2; usage; exit 2; }
+      TIME_TO="$2"
       shift 2
       ;;
     --service)
@@ -51,11 +62,11 @@ done
 QUERY="service:${DD_SERVICE} env:${DD_ENV}"
 
 # Build request JSON safely with jq (avoids quoting bugs)
-payload="$(jq -n --arg query "$QUERY" '{
+payload="$(TIME_FROM="$TIME_FROM" TIME_TO="$TIME_TO" jq -n --arg query "$QUERY" '{
   data: {
     type: "search_request",
     attributes: {
-      filter: { from: "now-60m", to: "now", query: $query },
+      filter: { from: env.TIME_FROM, to: env.TIME_TO, query: $query },
       sort: "timestamp",
       page: { limit: 5000 }
     }

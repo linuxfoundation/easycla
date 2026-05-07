@@ -6,6 +6,7 @@ package cla_manager
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	v2AcsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
@@ -17,6 +18,49 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// sanitizePullRequestURL returns rawURL unchanged when it is empty or a
+// well-formed absolute https URL with a non-empty host; otherwise logs a
+// warning and returns "" so the email still sends without the link.
+// Host/path shape is intentionally not pinned so GitLab MR and Gerrit
+// change URLs are accepted alongside GitHub PR URLs.
+func sanitizePullRequestURL(ctx context.Context, rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	f := logrus.Fields{
+		"functionName":   "cla_manager.sanitizePullRequestURL",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"pullRequestURL": rawURL,
+	}
+	if strings.ContainsAny(rawURL, " \t\r\n\"'<>") {
+		log.WithFields(f).Warn("dropping pullRequestURL: contains disallowed whitespace or markup characters")
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("dropping pullRequestURL: not a parseable URL")
+		return ""
+	}
+	if !parsed.IsAbs() {
+		log.WithFields(f).Warn("dropping pullRequestURL: must be an absolute URL")
+		return ""
+	}
+	if parsed.User != nil {
+		log.WithFields(f).Warn("dropping pullRequestURL: userinfo is not allowed")
+		return ""
+	}
+	if strings.ToLower(parsed.Scheme) != "https" {
+		log.WithFields(f).Warnf("dropping pullRequestURL: scheme %q is not https", parsed.Scheme)
+		return ""
+	}
+	if parsed.Host == "" {
+		log.WithFields(f).Warn("dropping pullRequestURL: missing host")
+		return ""
+	}
+	return rawURL
+}
+
 // EmailToCLAManagerModel data model for sending emails to CLA Managers
 type EmailToCLAManagerModel struct {
 	Contributor         *v1Models.User
@@ -25,6 +69,7 @@ type EmailToCLAManagerModel struct {
 	CompanyName         string
 	CLAGroupName        string
 	CorporateConsoleURL string
+	PullRequestURL      string
 }
 
 // ToCLAManagerDesigneeCorporateModel data model for sending emails
@@ -87,12 +132,13 @@ type EmailToOrgAdminModel struct {
 
 // ContributorEmailToOrgAdminModel data model for sending emails
 type ContributorEmailToOrgAdminModel struct {
-	adminEmail   string
-	adminName    string
-	companyName  string
-	projectSFIDs []string
-	contributor  *v1Models.User
-	userDetails  string
+	adminEmail     string
+	adminName      string
+	companyName    string
+	projectSFIDs   []string
+	contributor    *v1Models.User
+	userDetails    string
+	pullRequestURL string
 }
 
 // SendEmailToCLAManager handles sending an email to the specified CLA Manager
@@ -110,6 +156,7 @@ func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAMa
 		"claManagerEmail":           input.CLAManagerEmail,
 		"companyName":               input.CompanyName,
 		"claGroupName":              input.CLAGroupName,
+		"pullRequestURL":            input.PullRequestURL,
 	}
 
 	subject := fmt.Sprintf("EasyCLA: Approval Request for contributor: %s", getBestUserName(input.Contributor))
@@ -121,6 +168,7 @@ func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAMa
 		},
 		SigningEntityName: input.CompanyName,
 		UserDetails:       getFormattedUserDetails(input.Contributor),
+		PullRequestURL:    input.PullRequestURL,
 	})
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("rendering email template: %s", emails.V2ContributorApprovalRequestTemplateName)
@@ -185,6 +233,7 @@ func (s *service) ContributorEmailToOrgAdmin(ctx context.Context, input Contribu
 		"contributorLFUsername":     input.contributor.LfUsername,
 		"contributorLFEmail":        input.contributor.LfEmail,
 		"contributorEmails":         strings.Join(input.contributor.Emails, ","),
+		"pullRequestURL":            input.pullRequestURL,
 	}
 
 	subject := fmt.Sprintf("EasyCLA:  Invitation to Sign the %s Corporate CLA and add to approved list %s ", input.companyName, getBestUserName(input.contributor))
@@ -194,7 +243,8 @@ func (s *service) ContributorEmailToOrgAdmin(ctx context.Context, input Contribu
 			RecipientName: input.adminName,
 			CompanyName:   input.companyName,
 		},
-		UserDetails: input.userDetails,
+		UserDetails:    input.userDetails,
+		PullRequestURL: input.pullRequestURL,
 	})
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("rendering template : %s failed : %v", emails.V2ContributorToOrgAdminTemplateName, err)

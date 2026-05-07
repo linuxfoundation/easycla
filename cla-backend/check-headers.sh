@@ -59,3 +59,4 @@ fi
 
 # Exit with status code 0 = success, 1 = failed
 exit ${missing_license_header}
+
