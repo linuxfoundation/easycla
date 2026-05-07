@@ -8750,7 +8750,10 @@ func (h *Handlers) employeeSignaturePrecheck(ctx context.Context, projectID, com
 		}
 		if id != "" {
 			githubID = strings.TrimSpace(id)
-			user["user_github_id"] = &types.AttributeValueMemberS{Value: githubID}
+			// UserModel.user_github_id is a pynamodb NumberAttribute (DDB N) and
+			// the github-id-index GSI hash key is typed N. Writing S would leave
+			// this row out of the index. githubID is already a numeric string.
+			user["user_github_id"] = &types.AttributeValueMemberN{Value: githubID}
 			changed = true
 		}
 	}
