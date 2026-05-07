@@ -1,0 +1,21 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+#
+name: "CodeQL Config for CLA Backend Legacy"
+
+# This configuration is for the legacy Go backend which mirrors Python behavior
+# Some CodeQL warnings are suppressed due to proper validation and legacy compatibility
+
+disable-default-queries: false
+
+queries:
+  - uses: security-and-quality
+
+paths:
+  - cla-backend-legacy/
+
+paths-ignore:
+  - cla-backend-legacy/resources/
+  - cla-backend-legacy/bin/
+  - cla-backend-legacy/vendor/
+  - cla-backend-legacy/.github-security-suppressions.yml

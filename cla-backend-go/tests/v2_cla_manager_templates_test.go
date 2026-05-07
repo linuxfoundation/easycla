@@ -35,6 +35,7 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 	assert.Contains(t, result, "The following contributor would like to submit a contribution to the projects(s): Project Spaced 1")
 	assert.Contains(t, result, "UserDetailsValue")
 	assert.Contains(t, result, "target=\"_blank\">Project Spaced 1</a>")
+	assert.NotContains(t, result, "Pull request:")
 
 	assert.Contains(t, result, "CLA Managers can visit the EasyCLA corporate console page for <a href=\"http://CorporateConsole.com/foundation/FoundationSFID2/project/ProjectSFID2/cla\" target=\"_blank\">Project Spaced 1</a>")
 	assert.Contains(t, result, "and add the contributor to one of the approval lists.")
@@ -47,6 +48,14 @@ func TestV2ContributorApprovalRequestTemplate(t *testing.T) {
 	assert.Contains(t, result, "Hello JohnsClaManager")
 	assert.Contains(t, result, "regarding the organization JohnsCompany")
 	assert.Contains(t, result, "UserDetailsValue")
+
+	params.PullRequestURL = "https://github.com/example-org/example-repo/pull/123"
+
+	result, err = emails.RenderTemplate(utils.V1, emails.V2ContributorApprovalRequestTemplateName, emails.V2ContributorApprovalRequestTemplate,
+		params)
+	assert.NoError(t, err)
+	assert.Contains(t, result, "Pull request:")
+	assert.Contains(t, result, `<a href="https://github.com/example-org/example-repo/pull/123" target="_blank">https://github.com/example-org/example-repo/pull/123</a>`)
 }
 
 func TestV2OrgAdminTemplate(t *testing.T) {
@@ -108,6 +117,15 @@ func TestV2ContributorToOrgAdminTemplate(t *testing.T) {
 	assert.Contains(t, result, "<p>UserDetailsValue</p>")
 	assert.Contains(t, result, "Please notify the contributor once they are added so that they may complete the contribution process")
 	assert.Contains(t, result, `CLA for any of the project(s): <a href="http://CorporateConsole.com/foundation/FoundationSFID1/project/ProjectSFID1/cla" target="_blank">Project1</a>,<a href="http://CorporateConsole.com/foundation/FoundationSFID2/project/ProjectSFID2/cla" target="_blank">Project2</a>`)
+	assert.NotContains(t, result, "Pull request:")
+
+	params.PullRequestURL = "https://github.com/example-org/example-repo/pull/456"
+
+	result, err = emails.RenderTemplate(utils.V1, emails.V2ContributorToOrgAdminTemplateName, emails.V2ContributorToOrgAdminTemplate,
+		params)
+	assert.NoError(t, err)
+	assert.Contains(t, result, "Pull request:")
+	assert.Contains(t, result, `<a href="https://github.com/example-org/example-repo/pull/456" target="_blank">https://github.com/example-org/example-repo/pull/456</a>`)
 }
 
 func TestV2CLAManagerDesigneeCorporateTemplate(t *testing.T) {

@@ -2691,6 +2691,10 @@ paths:
                 pattern: "^[a-zA-Z]+(([',. -][a-zA-Z ])?[a-zA-Z.]*)*$"
                 minLength: 1
                 maxLength: 60
+              pullRequestURL:
+                type: string
+                description: URL of the pull request that triggered this approval-list notification, included in the email so CLA Managers can identify the contribution
+                example: "https://github.com/example-org/example-repo/pull/123"
       responses:
         '200':
           description: 'Success'
@@ -5751,6 +5755,10 @@ definitions:
         description: The CLA Group ID
         $ref: './common/properties/internal-id.yaml'
         x-omitempty: false
+      pullRequestURL:
+        type: string
+        description: URL of the pull request that triggered this approval-list notification, included in the email so CLA Managers can identify the contribution
+        example: "https://github.com/example-org/example-repo/pull/123"
 
   notify-cla-manager:
     type: object

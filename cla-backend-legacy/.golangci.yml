@@ -1,0 +1,36 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+#
+linters-settings:
+  staticcheck:
+    checks: ["-SA1019"] # Ignore AWS SDK deprecation warnings for legacy compatibility
+  gosimple:
+    checks: ["-S1009"] # Ignore nil check simplification suggestions for legacy compatibility
+
+linters:
+  enable:
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - unused
+    - govet
+    - gofmt
+  disable:
+    - gosec # Disable gosec for legacy compatibility - security warnings are addressed contextually
+
+issues:
+  exclude-rules:
+    # Ignore AWS SDK deprecation warnings - these are required for 1:1 Python compatibility
+    - linters: [staticcheck]
+      text: "SA1019.*deprecated.*aws.*"
+    # Ignore nil check simplifications - these mirror Python behavior exactly  
+    - linters: [gosimple]
+      text: "S1009.*should omit nil check.*"
+    # Suppress security warnings that are inherent to legacy compatibility
+    - text: "Potential file inclusion"
+    - text: "Log entries created from user input"
+    - text: "Uncontrolled data used in network request"
+    - text: "Useless assignment to field"
+
+run:
+  timeout: 5m

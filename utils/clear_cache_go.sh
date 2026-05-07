@@ -1,4 +1,5 @@
 #!/bin/bash
+# API_URL=https://api-gw.dev.platform.linuxfoundation.org/cla-service DEBUG='' ./utils/clear_cache_go.sh
 
 if [ -z "$TOKEN" ]
 then

@@ -5,6 +5,8 @@ package cmd
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha1" // #nosec G505 -- legacy Python compatibility: GitHub X-Hub-Signature uses SHA1
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -578,6 +580,8 @@ func server(localMode bool) http.Handler {
 			configFile.AllowedOrigins)
 	}
 
+	apiHandler = legacyGitHubInternalTriggerHandler(apiHandler, v1SignaturesService)
+
 	// OTel/Datadog (OTLP -> Datadog Lambda Extension) - enabled by flag
 	if otelDatadogEnabled {
 		apiHandler = telemetry.WrapHTTPHandler(apiHandler)
@@ -632,6 +636,164 @@ func setupCORSHandler(handler http.Handler, allowedOrigins []string) http.Handle
 	})
 
 	return c.Handler(handler)
+}
+
+type legacyGitHubTriggerService interface {
+	UpdateGitHubChangeRequest(ctx context.Context, installationID, repositoryID, pullRequestID int64) error
+	UpdateGitHubMergeGroup(ctx context.Context, installationID, repositoryID int64, mergeGroupSHA string, pullRequestID int64) error
+}
+
+func legacyGitHubInternalTriggerHandler(next http.Handler, signatureService signatures.SignatureService) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLegacyGitHubInternalTriggerRequest(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if signatureService == nil {
+			writeLegacyGitHubTriggerJSON(w, http.StatusInternalServerError, map[string]string{"error": "signature service is not configured"})
+			return
+		}
+		triggerService, ok := signatureService.(legacyGitHubTriggerService)
+		if !ok {
+			writeLegacyGitHubTriggerJSON(w, http.StatusInternalServerError, map[string]string{"error": "signature service does not support legacy github trigger updates"})
+			return
+		}
+		rawBody, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			writeLegacyGitHubTriggerJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
+			return
+		}
+		if sigStatus, sigErr := validateLegacyGitHubInternalTriggerSignature(rawBody, r.Header.Get("X-Hub-Signature")); sigErr != nil {
+			writeLegacyGitHubTriggerJSON(w, sigStatus, map[string]string{"error": sigErr.Error()})
+			return
+		}
+
+		var payload map[string]any
+		if unmarshalErr := json.Unmarshal(rawBody, &payload); unmarshalErr != nil {
+			writeLegacyGitHubTriggerJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+			return
+		}
+
+		installationID, err := legacyGitHubTriggerInt64(payload, "installation_id")
+		if err != nil {
+			writeLegacyGitHubTriggerJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		repositoryID, err := legacyGitHubTriggerInt64(payload, "github_repository_id")
+		if err != nil {
+			writeLegacyGitHubTriggerJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		changeRequestID, err := legacyGitHubTriggerInt64(payload, "change_request_id")
+		if err != nil {
+			writeLegacyGitHubTriggerJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		mergeGroupSHA := legacyGitHubTriggerString(payload, "merge_group_sha")
+		if mergeGroupSHA != "" {
+			if err := triggerService.UpdateGitHubMergeGroup(r.Context(), installationID, repositoryID, mergeGroupSHA, changeRequestID); err != nil {
+				writeLegacyGitHubTriggerJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			writeLegacyGitHubTriggerJSON(w, http.StatusOK, map[string]string{"status": "OK"})
+			return
+		}
+
+		if err := triggerService.UpdateGitHubChangeRequest(r.Context(), installationID, repositoryID, changeRequestID); err != nil {
+			writeLegacyGitHubTriggerJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeLegacyGitHubTriggerJSON(w, http.StatusOK, map[string]string{"status": "OK"})
+	})
+}
+
+func isLegacyGitHubInternalTriggerRequest(r *http.Request) bool {
+	if r == nil || r.URL == nil {
+		return false
+	}
+	return strings.HasSuffix(strings.TrimRight(r.URL.Path, "/"), "/github/activity") &&
+		r.URL.Query().Get("legacy_internal_trigger") == "github-change-request"
+}
+
+func validateLegacyGitHubInternalTriggerSignature(payload []byte, signatureHeader string) (int, error) {
+	secret := strings.TrimSpace(os.Getenv("GITHUB_APP_WEBHOOK_SECRET"))
+	if secret == "" {
+		secret = strings.TrimSpace(os.Getenv("GH_APP_WEBHOOK_SECRET"))
+	}
+	if secret == "" {
+		return http.StatusInternalServerError, errors.New("GITHUB_APP_WEBHOOK_SECRET is empty")
+	}
+
+	signatureHeader = strings.TrimSpace(signatureHeader)
+	if signatureHeader == "" {
+		return http.StatusUnauthorized, errors.New("missing X-Hub-Signature")
+	}
+	parts := strings.SplitN(signatureHeader, "=", 2)
+	if len(parts) != 2 || parts[0] != "sha1" {
+		return http.StatusUnauthorized, errors.New("invalid X-Hub-Signature")
+	}
+
+	mac := hmac.New(sha1.New, []byte(secret))
+	_, _ = mac.Write(payload)
+	expected := fmt.Sprintf("%x", mac.Sum(nil))
+	if !hmac.Equal([]byte(expected), []byte(strings.TrimSpace(parts[1]))) {
+		return http.StatusUnauthorized, errors.New("invalid X-Hub-Signature")
+	}
+	return 0, nil
+}
+
+func legacyGitHubTriggerString(payload map[string]any, key string) string {
+	v, ok := payload[key]
+	if !ok || v == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(v))
+}
+
+func legacyGitHubTriggerInt64(payload map[string]any, key string) (int64, error) {
+	v, ok := payload[key]
+	if !ok || v == nil {
+		return 0, fmt.Errorf("missing %s", key)
+	}
+	switch tv := v.(type) {
+	case string:
+		i, err := strconv.ParseInt(strings.TrimSpace(tv), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid %s", key)
+		}
+		return i, nil
+	case float64:
+		if tv != float64(int64(tv)) {
+			return 0, fmt.Errorf("invalid %s", key)
+		}
+		return int64(tv), nil
+	case int64:
+		return tv, nil
+	case int:
+		return int64(tv), nil
+	default:
+		i, err := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(tv)), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid %s", key)
+		}
+		return i, nil
+	}
+}
+
+func writeLegacyGitHubTriggerJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.WithFields(logrus.Fields{
+			"functionName": "cmd.writeLegacyGitHubTriggerJSON",
+			"status":       status,
+		}).WithError(err).Warn("unable to encode legacy github trigger response")
+	}
 }
 
 // wrapHandlers routes the request to the appropriate handler

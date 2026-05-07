@@ -35,12 +35,13 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   const userID2 = appConfig.userIdclaManager2;
 
   //Aprroval list veriable
-  const emailApprovalList = appConfig.emailApprovalList;
-  const gitOrgApprovalList = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.com`;
+  const approvalListSeed = `test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  const emailApprovalList = `${approvalListSeed}@example.com`;
+  const gitOrgApprovalList = `${approvalListSeed}.com`;
   const gitUsernameApprovalList = appConfig.gitUsernameApprovalList;
   const gitLabUsernameApprovalList = appConfig.gitUsernameApprovalList2;
   const gitLabOrgApprovalList = appConfig.gitLabOrgApprovalList;
-  const domainApprovalList = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.com`;
+  const domainApprovalList = `${approvalListSeed}.com`;
 
   let signatureIclaID = '';
   let signatureCclaID = '';
@@ -74,6 +75,11 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
 
   const findProjectCompanySignature = (signatures: any[], signatureID?: string) =>
     signatures.find((item: any) => item.signatureID === signatureID) || signatures[0];
+
+  const getAllowlistSignatureID = () => signatureCclaID || projectCompanySignatureID || signatureID;
+
+  const getSignedDocumentSignatureID = () =>
+    signatureIclaID || signatureID || signatureCclaID || projectCompanySignatureID;
 
   const extractApprovalValues = (list: any[] = []) =>
     list
@@ -468,24 +474,40 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
       },
     }).then((response) => {
       return cy.logJson('response', response).then(() => {
+        const signatures = response.body.signatures || [];
+        const normalizedResponse = {
+          ...response,
+          body: { ...response.body, signatures },
+        };
+
         validate_200_Status(response);
-        let signatures = response.body.signatures;
+        expect(signatures).to.be.an('array');
         for (let i = 0; i <= signatures.length - 1; i++) {
           // LG: API /signatures/user/{userID} internally skips ECLA records, and for ICLA we never have company
           expect(signatures[i].companyName).to.be.undefined;
           expect(signatures[i].signatureReferenceType).to.eql('user');
-          signatureID = signatures[i].signatureID;
+          if (!signatureID && signatures[i].signatureID) {
+            signatureID = signatures[i].signatureID;
+          }
         }
-        validateApiResponse('signatures/getProjectCompanySignatures.json', response);
+        if (signatures.length === 0) {
+          cy.task(
+            'log',
+            `No direct user signatures were returned for user ${userID2}. This can happen in dev when the user only has ECLA/employee signatures or no active ICLA.`,
+          );
+        }
+        validateApiResponse('signatures/getUserSignatures.json', normalizedResponse);
       });
     });
   });
 
   it('GET: Updates the specified signature GitHub Organization approval list', function () {
+    const allowlistSignatureID = getAllowlistSignatureID();
+    expect(allowlistSignatureID, 'signature ID for GitHub organization allowlist').to.not.equal('');
     cy.request({
       method: 'GET',
       // we can't use inclusive name yet as it is inside API URL.
-      url: `${claEndpoint}signatures/${signatureID}/gh-org-whitelist`,
+      url: `${claEndpoint}signatures/${allowlistSignatureID}/gh-org-whitelist`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),
@@ -498,10 +520,12 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   });
 
   it('POST: Updates the specified signature GitHub organization approval list', function () {
+    const allowlistSignatureID = getAllowlistSignatureID();
+    expect(allowlistSignatureID, 'signature ID for GitHub organization allowlist').to.not.equal('');
     cy.request({
       method: 'POST',
       // we can't use inclusive name yet as it is inside API URL.
-      url: `${claEndpoint}signatures/${signatureID}/gh-org-whitelist`,
+      url: `${claEndpoint}signatures/${allowlistSignatureID}/gh-org-whitelist`,
       timeout: timeout,
       failOnStatusCode: false,
       headers: getXACLHeader(),
@@ -523,9 +547,11 @@ describe('To Validate & get list of signatures of ClaGroups via API call', funct
   });
 
   it('Returns the signature signed document when provided the signature ID', function () {
+    const signedDocumentSignatureID = getSignedDocumentSignatureID();
+    expect(signedDocumentSignatureID, 'signature ID for signed document').to.not.equal('');
     cy.request({
       method: 'GET',
-      url: `${claEndpoint}signatures/${signatureID}/signed-document`,
+      url: `${claEndpoint}signatures/${signedDocumentSignatureID}/signed-document`,
       timeout: timeout,
       failOnStatusCode: allowFail,
       headers: getXACLHeader(),

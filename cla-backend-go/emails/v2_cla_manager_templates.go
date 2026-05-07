@@ -21,6 +21,7 @@ type V2ContributorApprovalRequestTemplateParams struct {
 	CLAGroupTemplateParams
 	SigningEntityName string
 	UserDetails       string
+	PullRequestURL    string
 }
 
 const (
@@ -32,6 +33,7 @@ const (
 <p>This is a notification email from EasyCLA regarding the organization {{.CompanyName}}.</p>
 <p>The following contributor would like to submit a contribution to the projects(s): {{.GetProjectsOrProject}} and is requesting to be added to the approval list as a contributor for your organization: </p>
 <p>{{.UserDetails}}</p>
+{{if .PullRequestURL}}<p>Pull request: <a href="{{.PullRequestURL}}" target="_blank">{{.PullRequestURL}}</a></p>{{end}}
 <p> CLA Managers can visit the EasyCLA corporate console page for {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}} and add the contributor to one of the approval lists.</p>
 <p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their contribution.</p>
 `
@@ -89,7 +91,8 @@ func RenderV2OrgAdminTemplate(svc EmailTemplateService, projectSFID string, para
 type V2ContributorToOrgAdminTemplateParams struct {
 	CommonEmailParams
 	CLAGroupTemplateParams
-	UserDetails string
+	UserDetails    string
+	PullRequestURL string
 }
 
 const (
@@ -100,6 +103,7 @@ const (
 <p>Hello {{.RecipientName}},</p>
 <p>The following contributor would like to submit a contribution to {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.ExternalProjectName}}{{end}} and is requesting to be added to the approval list as a contributor for your organization:</p>
 <p>{{.UserDetails}}</p>
+{{if .PullRequestURL}}<p>Pull request: <a href="{{.PullRequestURL}}" target="_blank">{{.PullRequestURL}}</a></p>{{end}}
 <p>Before the contribution can be accepted, your organization must sign a CLA. Either you or someone whom you designate from your company can login to this portal and sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}.</p>
 <p>Please notify the contributor once they are added so that they may complete the contribution process.</p>
 
