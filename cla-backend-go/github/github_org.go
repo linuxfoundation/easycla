@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
@@ -64,6 +65,55 @@ func GetOrganization(ctx context.Context, organizationName string) (*github.Orga
 		return nil, errors.New(msg)
 	}
 	return org, nil
+}
+
+// ListUserPublicOrgs returns the GitHub organization logins that <user> is a
+// publicly visible member of. It calls GET /users/<user>/orgs, which is the
+// same endpoint the pre-cutover Python helper cla.utils.lookup_github_organizations
+// used. Membership in private orgs is invisible to this endpoint unless the
+// user has set their membership to public on github.com.
+//
+// Returns an empty slice (with a nil error) when the user has no visible org
+// memberships. The github-org approval-list check must be done against this
+// list (case-insensitive) rather than against /orgs/<org>/memberships/<user>,
+// because the EasyCLA OAuth bot is not itself a member of customer orgs and
+// gets a 403 from the latter endpoint.
+//
+// An empty user is rejected with an error: go-github routes an empty user
+// to GET /user/orgs (the authenticated bot's own orgs), which would silently
+// approve unrelated callers if it ever leaked through.
+func ListUserPublicOrgs(ctx context.Context, user string) ([]string, error) {
+	f := logrus.Fields{
+		"functionName":   "github.ListUserPublicOrgs",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"user":           user,
+	}
+
+	if strings.TrimSpace(user) == "" {
+		return nil, errors.New("ListUserPublicOrgs: user is empty")
+	}
+
+	client := NewGithubOauthClient()
+	var logins []string
+	opt := &github.ListOptions{PerPage: 100}
+	for {
+		orgs, resp, err := client.Organizations.List(ctx, user, opt)
+		if err != nil {
+			log.WithFields(f).Warnf("ListUserPublicOrgs %s failed. error = %s", user, err.Error())
+			return nil, err
+		}
+		for _, org := range orgs {
+			if org == nil || org.Login == nil {
+				continue
+			}
+			logins = append(logins, *org.Login)
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
+	}
+	return logins, nil
 }
 
 // GetOrganizationMembers gets members in organization
