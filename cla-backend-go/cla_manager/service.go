@@ -577,7 +577,7 @@ func (s service) sendClaManagerDeleteEmailToCLAManagers(emailSvc emails.EmailTem
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Removed Notice for %s", claGroupModel.ProjectName)
 	recipients := []string{emailParams.RecipientAddress}
-	body, err := emails.RenderClaManagerDeletedToCLAManagersTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectName)
+	body, err := emails.RenderClaManagerDeletedToCLAManagersTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectName, emailParams)
 
 	if err != nil {
 		log.Warnf("email template render : %s failed : %v", emails.ClaManagerDeletedToCLAManagersTemplateName, err)

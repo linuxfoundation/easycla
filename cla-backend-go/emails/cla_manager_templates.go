@@ -291,9 +291,8 @@ const (
 )
 
 // RenderClaManagerDeletedToCLAManagersTemplate renders the RemovedCLAManagerTemplate
-func RenderClaManagerDeletedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, claGroupName string) (string, error) {
-
-	params := CLAGroupTemplateParams{
+func RenderClaManagerDeletedToCLAManagersTemplate(svc EmailTemplateService, claGroupModelVersion, claGroupName string, params ClaManagerDeletedToCLAManagersTemplateParams) (string, error) {
+	params.CLAGroupTemplateParams = CLAGroupTemplateParams{
 		CLAGroupName: claGroupName,
 	}
 
