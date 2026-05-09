@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 
@@ -298,9 +299,10 @@ func (s *service) loadLFUser(ctx context.Context, args *LogEventArgs) error {
 	}
 
 	if args.LfUsername != "" {
-		lfUser, lfErr := user_service.GetClient().GetUserByUsername(args.LfUsername)
+		lfUsername := strings.TrimSpace(args.LfUsername)
+		lfUser, lfErr := user_service.GetClient().GetUserByUsername(lfUsername)
 		if lfErr != nil || lfUser == nil {
-			log.WithFields(f).Warnf("unable to fetch user by username: %s ", args.LfUsername)
+			log.WithFields(f).Warnf("unable to fetch user by username: %q", lfUsername)
 			return nil
 		}
 		args.LFUser = lfUser
