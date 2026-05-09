@@ -542,6 +542,15 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		return updatedCorporateSignature, err
 	}
 
+	// Invalidate every cached PR-check decision for this project. Approval
+	// list mutations change who is authorized: users newly added must flip
+	// red→green and removed users must flip green→red. The cache is keyed
+	// on (project, github user, login, email), and any negative entry from
+	// before this update is now stale — the handleGitHubStatusUpdate
+	// goroutines below otherwise see the same stale negatives.
+	invalidated := github.ModelProjectUserCache.InvalidateByProject(claGroupModel.ProjectID)
+	log.WithFields(f).Infof("invalidated %d ProjectUserCache entries for project %s after approval list update", invalidated, claGroupModel.ProjectID)
+
 	// If auto create ECLA is enabled for this Corporate Agreement, then create an ECLA for each employee that was added to the approval list
 	// we get the complete user list as output from the processing of the approval list
 	var userModelList []*models.User
