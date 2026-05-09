@@ -465,6 +465,24 @@ func (c *UserCache) Clear() {
 
 func (c *UserCache) Delete(key [3]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
 
+// InvalidateByUser removes every entry whose (id, login) prefix matches,
+// regardless of the email component. login must already be lowercased.
+// Used after a signature event to drop stale entries keyed on commit-email
+// shapes the caller cannot enumerate (e.g. the GitHub noreply form emitted
+// when a user has email privacy enabled).
+func (c *UserCache) InvalidateByUser(id, loginLower string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for k := range c.data {
+		if k[0] == id && k[1] == loginLower {
+			delete(c.data, k)
+			n++
+		}
+	}
+	return n
+}
+
 type projectUserCacheEntry struct {
 	value      *models.User
 	signed     bool
@@ -538,6 +556,24 @@ func (c *ProjectUserCache) Clear() {
 }
 
 func (c *ProjectUserCache) Delete(key [4]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
+
+// InvalidateByUser removes every entry whose (projectID, id, login) prefix
+// matches, regardless of the email component. login must already be lowercased.
+// Used after a signature event to drop stale per-project entries keyed on
+// commit-email shapes the caller cannot enumerate (e.g. the GitHub noreply
+// form emitted when a user has email privacy enabled).
+func (c *ProjectUserCache) InvalidateByUser(projectID, id, loginLower string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for k := range c.data {
+		if k[0] == projectID && k[1] == id && k[2] == loginLower {
+			delete(c.data, k)
+			n++
+		}
+	}
+	return n
+}
 
 var GithubUserCache = NewCache(12 * time.Hour)
 var ModelUserCache = NewUserCache(12 * time.Hour)
@@ -2023,15 +2059,25 @@ func UpdateCacheAfterSignature(ctx context.Context, user *models.User, projectID
 	}
 
 	affiliated := strings.TrimSpace(user.CompanyID) != ""
-
-	emails := collectUserEmails(user)
-	if len(emails) == 0 {
-		log.WithFields(f).Debugf("no emails found for user (githubID=%s, login=%s) - nothing to cache", githubID, githubLogin)
-		return nil
-	}
-
 	loginLower := strings.ToLower(githubLogin)
 
+	// Wipe every cache entry for this (projectID, githubID, login) tuple
+	// regardless of email. The pre-signature webhook may have stored a
+	// negative entry keyed on a commit-email shape we cannot enumerate from
+	// the user record — most commonly the GitHub noreply form
+	// "<id>+<login>@users.noreply.github.com" when the user has email
+	// privacy enabled. Without this wipe, the stale negative entry survives
+	// the signature callback and the PR stays red until NegativeCacheTTL
+	// (2m) expires or the next webhook lands on a different Lambda.
+	projInvalidated := ModelProjectUserCache.InvalidateByUser(projectID, githubID, loginLower)
+	userInvalidated := ModelUserCache.InvalidateByUser(githubID, loginLower)
+
+	// Pre-populate positive entries for the user's known emails so a webhook
+	// whose commit-email matches one of them gets an immediate cache hit.
+	// Webhooks for unknown email shapes (e.g. noreply) will fall through to
+	// the slow path, find the freshly-recorded signature, and cache a fresh
+	// positive entry — no stale negative left to mislead them.
+	emails := collectUserEmails(user)
 	for _, email := range emails {
 		genKey := UserKey(githubID, loginLower, email)
 		ModelUserCache.Set(genKey, user)
@@ -2040,8 +2086,8 @@ func UpdateCacheAfterSignature(ctx context.Context, user *models.User, projectID
 		ModelProjectUserCache.Set(projKey, user, true, affiliated)
 	}
 
-	log.WithFields(f).Infof("updated caches for user login=%s (GitHubID=%s), project=%s: marked as authorized for %d email(s)",
-		loginLower, githubID, projectID, len(emails))
+	log.WithFields(f).Infof("updated caches for user login=%s (GitHubID=%s), project=%s: invalidated %d project + %d user stale entries; pre-populated %d authorized email(s)",
+		loginLower, githubID, projectID, projInvalidated, userInvalidated, len(emails))
 
 	return nil
 }
