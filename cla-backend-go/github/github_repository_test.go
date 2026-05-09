@@ -274,3 +274,73 @@ func TestUpdateCacheAfterSignatureInvalidatesUnknownEmailKeys(t *testing.T) {
 	assert.True(t, signed, "real-email entry must be marked signed")
 	assert.True(t, affiliated, "user has CompanyID, must be marked affiliated")
 }
+
+// TestInvalidateByProjectScopesToProject verifies that InvalidateByProject
+// drops every entry for the given project regardless of user, but does not
+// touch entries for other projects. Used after UpdateApprovalList because
+// approval-list mutations may flip authorization in either direction for
+// any user who has cached state under that project.
+func TestInvalidateByProjectScopesToProject(t *testing.T) {
+	ModelProjectUserCache.Clear()
+	t.Cleanup(func() { ModelProjectUserCache.Clear() })
+
+	const (
+		targetProj = "01af041c-0000-0000-0000-000000000000"
+		otherProj  = "ffffffff-1111-2222-3333-444444444444"
+	)
+
+	a := ProjectUserKey(targetProj, "1", "userA", "a@example.com")
+	b := ProjectUserKey(targetProj, "2", "userB", "b@example.com")
+	c := ProjectUserKey(otherProj, "3", "userC", "c@example.com")
+	ModelProjectUserCache.SetWithTTL(a, nil, false, false, NegativeCacheTTL)
+	ModelProjectUserCache.SetWithTTL(b, nil, true, true, NegativeCacheTTL)
+	ModelProjectUserCache.SetWithTTL(c, nil, true, true, NegativeCacheTTL)
+
+	n := ModelProjectUserCache.InvalidateByProject(targetProj)
+	assert.Equal(t, 2, n, "must invalidate exactly the target project's entries")
+
+	_, _, _, ok := ModelProjectUserCache.Get(a)
+	assert.False(t, ok, "target-project entry A must be gone")
+	_, _, _, ok = ModelProjectUserCache.Get(b)
+	assert.False(t, ok, "target-project entry B must be gone")
+	_, _, _, ok = ModelProjectUserCache.Get(c)
+	assert.True(t, ok, "other-project entry C must NOT be touched")
+}
+
+// TestInvalidateByUserNormalizesLoginCase verifies that InvalidateByUser
+// lowercases the login internally and matches entries regardless of the
+// caller's casing. UserKey/ProjectUserKey lowercase the login on insert,
+// so callers passing a mixed-case login must still hit those entries.
+func TestInvalidateByUserNormalizesLoginCase(t *testing.T) {
+	ModelProjectUserCache.Clear()
+	ModelUserCache.Clear()
+	t.Cleanup(func() {
+		ModelProjectUserCache.Clear()
+		ModelUserCache.Clear()
+	})
+
+	const (
+		projectID = "01af041c-0000-0000-0000-000000000000"
+		githubID  = "12345"
+		mixedCase = "MixedCaseLogin"
+		email     = "u@example.com"
+	)
+
+	// Insert via canonical keys (login is lowercased by the *Key helpers).
+	pKey := ProjectUserKey(projectID, githubID, mixedCase, email)
+	ModelProjectUserCache.SetWithTTL(pKey, nil, false, false, NegativeCacheTTL)
+	uKey := UserKey(githubID, mixedCase, email)
+	ModelUserCache.SetWithTTL(uKey, nil, NegativeCacheTTL)
+
+	// Caller passes the original mixed-case login (the common mistake).
+	pn := ModelProjectUserCache.InvalidateByUser(projectID, githubID, mixedCase)
+	un := ModelUserCache.InvalidateByUser(githubID, mixedCase)
+
+	assert.Equal(t, 1, pn, "project cache entry must be invalidated despite mixed-case login")
+	assert.Equal(t, 1, un, "user cache entry must be invalidated despite mixed-case login")
+
+	_, _, _, ok := ModelProjectUserCache.Get(pKey)
+	assert.False(t, ok, "project cache entry must be gone")
+	_, ok = ModelUserCache.Get(uKey)
+	assert.False(t, ok, "user cache entry must be gone")
+}

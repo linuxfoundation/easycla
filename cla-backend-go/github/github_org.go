@@ -94,7 +94,7 @@ func ListUserPublicOrgs(ctx context.Context, user string) ([]string, error) {
 	}
 
 	client := NewGithubOauthClient()
-	var logins []string
+	logins := make([]string, 0)
 	opt := &github.ListOptions{PerPage: 100}
 	for {
 		orgs, resp, err := client.Organizations.List(ctx, user, opt)

@@ -466,11 +466,14 @@ func (c *UserCache) Clear() {
 func (c *UserCache) Delete(key [3]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
 
 // InvalidateByUser removes every entry whose (id, login) prefix matches,
-// regardless of the email component. login must already be lowercased.
-// Used after a signature event to drop stale entries keyed on commit-email
-// shapes the caller cannot enumerate (e.g. the GitHub noreply form emitted
-// when a user has email privacy enabled).
-func (c *UserCache) InvalidateByUser(id, loginLower string) int {
+// regardless of the email component. The login is lowercased internally to
+// match how UserKey stores it, so callers may pass either the original
+// GitHub login or a pre-lowercased form. Used after a signature event to
+// drop stale entries keyed on commit-email shapes the caller cannot
+// enumerate (e.g. the GitHub noreply form emitted when a user has email
+// privacy enabled).
+func (c *UserCache) InvalidateByUser(id, login string) int {
+	loginLower := strings.ToLower(login)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	n := 0
@@ -557,12 +560,34 @@ func (c *ProjectUserCache) Clear() {
 
 func (c *ProjectUserCache) Delete(key [4]string) { c.mu.Lock(); delete(c.data, key); c.mu.Unlock() }
 
+// InvalidateByProject removes every entry for the given project, regardless
+// of user. Used after an approval-list mutation (UpdateApprovalList), since
+// any cached signed/authorized decision under that project may now be
+// stale: users newly added to email/domain/org/github approvals must flip
+// red→green, and users removed must flip green→red. Cache misses for
+// affected webhooks are then resolved against fresh DDB state on next read.
+func (c *ProjectUserCache) InvalidateByProject(projectID string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for k := range c.data {
+		if k[0] == projectID {
+			delete(c.data, k)
+			n++
+		}
+	}
+	return n
+}
+
 // InvalidateByUser removes every entry whose (projectID, id, login) prefix
-// matches, regardless of the email component. login must already be lowercased.
-// Used after a signature event to drop stale per-project entries keyed on
-// commit-email shapes the caller cannot enumerate (e.g. the GitHub noreply
-// form emitted when a user has email privacy enabled).
-func (c *ProjectUserCache) InvalidateByUser(projectID, id, loginLower string) int {
+// matches, regardless of the email component. The login is lowercased
+// internally to match how ProjectUserKey stores it, so callers may pass
+// either the original GitHub login or a pre-lowercased form. Used after a
+// signature event to drop stale per-project entries keyed on commit-email
+// shapes the caller cannot enumerate (e.g. the GitHub noreply form emitted
+// when a user has email privacy enabled).
+func (c *ProjectUserCache) InvalidateByUser(projectID, id, login string) int {
+	loginLower := strings.ToLower(login)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	n := 0
