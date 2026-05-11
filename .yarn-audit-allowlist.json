@@ -9,7 +9,13 @@
     1116365,
     1116473,
     1116454,
-    1116478
+    1116478,
+    1117083,
+    1117575,
+    1117590,
+    1117592,
+    1117673,
+    1117726
   ],
   "notes": {
     "1111997": "aws-sdk v2 advisory flagged as 'No patch available' in our current baseline; accepted until migration.",
@@ -20,6 +26,12 @@
     "1116365": "Axios has a NO_PROXY Hostname Normalization Bypass Leads to SSRF",
     "1116473": "Axios has Unrestricted Cloud Metadata Exfiltration via Header Injection Chain",
     "1116454": "basic-ftp: Incomplete CRLF Injection Protection Allows Arbitrary FTP Command Execution via Credentials and MKD Commands",
-    "1116478": "basic-ftp has FTP Command Injection via CRLF"
+    "1116478": "basic-ftp has FTP Command Injection via CRLF",
+    "1117083": "basic-ftp DoS via Client.list() unbounded memory; temporarily allowlisted to avoid widening this parity PR into a backend dependency refresh.",
+    "1117575": "axios CVE-2025-62718 NO_PROXY bypass via 127.0.0.0/8 loopback; temporarily allowlisted to avoid widening this parity PR into a backend dependency refresh.",
+    "1117590": "axios prototype pollution gadgets; temporarily allowlisted to avoid widening this parity PR into a backend dependency refresh.",
+    "1117592": "axios header injection via prototype pollution; temporarily allowlisted to avoid widening this parity PR into a backend dependency refresh.",
+    "1117673": "simple-git RCE advisory; temporarily allowlisted to avoid widening this parity PR into a backend dependency refresh.",
+    "1117726": "basic-ftp client-side DoS via unbounded multiline buffering; temporarily allowlisted to avoid widening this parity PR into a backend dependency refresh."
   }
 }

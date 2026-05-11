@@ -14,6 +14,7 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v37/github"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -202,4 +203,144 @@ func TestListPullRequestCommitsComparePreservesPageOrder(t *testing.T) {
 		assert.Equal(t, "sha2", commits[1].GetSHA())
 		assert.Equal(t, "sha3", commits[2].GetSHA())
 	}
+}
+
+// TestUpdateCacheAfterSignatureInvalidatesUnknownEmailKeys verifies that a
+// pre-signature negative cache entry keyed on a commit-email shape that is NOT
+// in the user record (e.g. the GitHub noreply form emitted when email privacy
+// is on) is wiped by UpdateCacheAfterSignature, while the user's known emails
+// are pre-populated as authorized positives.
+func TestUpdateCacheAfterSignatureInvalidatesUnknownEmailKeys(t *testing.T) {
+	ModelProjectUserCache.Clear()
+	ModelUserCache.Clear()
+	t.Cleanup(func() {
+		ModelProjectUserCache.Clear()
+		ModelUserCache.Clear()
+	})
+
+	const (
+		projectID    = "01af041c-0000-0000-0000-000000000000"
+		githubID     = "196905385"
+		githubLogin  = "lukaszgryglicki2"
+		noreplyEmail = "196905385+lukaszgryglicki2@users.noreply.github.com"
+		realEmail    = "lukaszgryglicki2@proton.me"
+		anotherEmail = "lg2@elsewhere.example"
+	)
+
+	// Pre-populate: pre-signature webhook stored a negative entry on the
+	// noreply form, plus an unrelated negative on a different email.
+	staleNoreply := ProjectUserKey(projectID, githubID, githubLogin, noreplyEmail)
+	ModelProjectUserCache.SetWithTTL(staleNoreply, nil, false, false, NegativeCacheTTL)
+	staleOther := ProjectUserKey(projectID, githubID, githubLogin, anotherEmail)
+	ModelProjectUserCache.SetWithTTL(staleOther, nil, false, false, NegativeCacheTTL)
+
+	staleNoreplyUser := UserKey(githubID, githubLogin, noreplyEmail)
+	ModelUserCache.SetWithTTL(staleNoreplyUser, nil, NegativeCacheTTL)
+
+	// An unrelated entry under a different login must NOT be touched.
+	otherLoginKey := ProjectUserKey(projectID, "999", "someoneelse", "x@y.example")
+	ModelProjectUserCache.SetWithTTL(otherLoginKey, nil, false, false, NegativeCacheTTL)
+
+	user := &models.User{
+		GithubID:       githubID,
+		GithubUsername: githubLogin,
+		Emails:         []string{realEmail},
+		CompanyID:      "f7c7ac9c-1111-2222-3333-444444444444",
+	}
+
+	err := UpdateCacheAfterSignature(context.Background(), user, projectID)
+	assert.NoError(t, err)
+
+	// All stale entries for this user (regardless of email shape) must be
+	// gone from the project cache. They were not in the user.Emails set, so
+	// the previous code would have left them behind.
+	_, _, _, ok := ModelProjectUserCache.Get(staleNoreply)
+	assert.False(t, ok, "noreply project-cache entry must be invalidated")
+	_, _, _, ok = ModelProjectUserCache.Get(staleOther)
+	assert.False(t, ok, "unrelated-email project-cache entry must be invalidated")
+
+	_, ok = ModelUserCache.Get(staleNoreplyUser)
+	assert.False(t, ok, "noreply user-cache entry must be invalidated")
+
+	// Unrelated user under a different login must survive.
+	_, _, _, ok = ModelProjectUserCache.Get(otherLoginKey)
+	assert.True(t, ok, "unrelated user's cache entry must NOT be invalidated")
+
+	// The user's known email is pre-populated as an authorized positive.
+	realKey := ProjectUserKey(projectID, githubID, githubLogin, realEmail)
+	cachedUser, signed, affiliated, ok := ModelProjectUserCache.Get(realKey)
+	assert.True(t, ok, "real-email project-cache entry must be set")
+	assert.NotNil(t, cachedUser)
+	assert.True(t, signed, "real-email entry must be marked signed")
+	assert.True(t, affiliated, "user has CompanyID, must be marked affiliated")
+}
+
+// TestInvalidateByProjectScopesToProject verifies that InvalidateByProject
+// drops every entry for the given project regardless of user, but does not
+// touch entries for other projects. Used after UpdateApprovalList because
+// approval-list mutations may flip authorization in either direction for
+// any user who has cached state under that project.
+func TestInvalidateByProjectScopesToProject(t *testing.T) {
+	ModelProjectUserCache.Clear()
+	t.Cleanup(func() { ModelProjectUserCache.Clear() })
+
+	const (
+		targetProj = "01af041c-0000-0000-0000-000000000000"
+		otherProj  = "ffffffff-1111-2222-3333-444444444444"
+	)
+
+	a := ProjectUserKey(targetProj, "1", "userA", "a@example.com")
+	b := ProjectUserKey(targetProj, "2", "userB", "b@example.com")
+	c := ProjectUserKey(otherProj, "3", "userC", "c@example.com")
+	ModelProjectUserCache.SetWithTTL(a, nil, false, false, NegativeCacheTTL)
+	ModelProjectUserCache.SetWithTTL(b, nil, true, true, NegativeCacheTTL)
+	ModelProjectUserCache.SetWithTTL(c, nil, true, true, NegativeCacheTTL)
+
+	n := ModelProjectUserCache.InvalidateByProject(targetProj)
+	assert.Equal(t, 2, n, "must invalidate exactly the target project's entries")
+
+	_, _, _, ok := ModelProjectUserCache.Get(a)
+	assert.False(t, ok, "target-project entry A must be gone")
+	_, _, _, ok = ModelProjectUserCache.Get(b)
+	assert.False(t, ok, "target-project entry B must be gone")
+	_, _, _, ok = ModelProjectUserCache.Get(c)
+	assert.True(t, ok, "other-project entry C must NOT be touched")
+}
+
+// TestInvalidateByUserNormalizesLoginCase verifies that InvalidateByUser
+// lowercases the login internally and matches entries regardless of the
+// caller's casing. UserKey/ProjectUserKey lowercase the login on insert,
+// so callers passing a mixed-case login must still hit those entries.
+func TestInvalidateByUserNormalizesLoginCase(t *testing.T) {
+	ModelProjectUserCache.Clear()
+	ModelUserCache.Clear()
+	t.Cleanup(func() {
+		ModelProjectUserCache.Clear()
+		ModelUserCache.Clear()
+	})
+
+	const (
+		projectID = "01af041c-0000-0000-0000-000000000000"
+		githubID  = "12345"
+		mixedCase = "MixedCaseLogin"
+		email     = "u@example.com"
+	)
+
+	// Insert via canonical keys (login is lowercased by the *Key helpers).
+	pKey := ProjectUserKey(projectID, githubID, mixedCase, email)
+	ModelProjectUserCache.SetWithTTL(pKey, nil, false, false, NegativeCacheTTL)
+	uKey := UserKey(githubID, mixedCase, email)
+	ModelUserCache.SetWithTTL(uKey, nil, NegativeCacheTTL)
+
+	// Caller passes the original mixed-case login (the common mistake).
+	pn := ModelProjectUserCache.InvalidateByUser(projectID, githubID, mixedCase)
+	un := ModelUserCache.InvalidateByUser(githubID, mixedCase)
+
+	assert.Equal(t, 1, pn, "project cache entry must be invalidated despite mixed-case login")
+	assert.Equal(t, 1, un, "user cache entry must be invalidated despite mixed-case login")
+
+	_, _, _, ok := ModelProjectUserCache.Get(pKey)
+	assert.False(t, ok, "project cache entry must be gone")
+	_, ok = ModelUserCache.Get(uKey)
+	assert.False(t, ok, "user cache entry must be gone")
 }
