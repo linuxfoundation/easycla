@@ -54,6 +54,7 @@ type Handlers struct {
 	// Loaded from AWS_REGION (preferred) or REGION; defaults to us-east-1.
 	region            string
 	httpClient        *http.Client
+	v4HTTPClient      *http.Client
 	authValidator     *auth.Auth0Validator
 	userPerms         *store.UserPermissionsStore
 	users             *store.UsersStore
@@ -77,8 +78,15 @@ type Handlers struct {
 
 func NewHandlers() *Handlers {
 	client := telemetry.NewHTTPClient(30 * time.Second)
+	// v4HTTPClient is used only for forwarding to the v4 Go backend, which can
+	// itself take tens of seconds (GitHub PR enumeration, CLA group lookups, etc.).
+	// Sized 2s below the lambda timeout (60s per serverless.yml provider.timeout)
+	// so the handler still has time to log and return a 500 cleanly instead of
+	// being hard-killed by Lambda.
+	v4Client := telemetry.NewHTTPClient(58 * time.Second)
 	h := &Handlers{
-		httpClient: client,
+		httpClient:   client,
+		v4HTTPClient: v4Client,
 	}
 
 	// Ensure region is always initialized (handlers use h.region for AWS clients).
@@ -1551,7 +1559,7 @@ func (h *Handlers) doRequestToV4(ctx context.Context, method, pathWithQuery stri
 			req.Header.Add(k, v)
 		}
 	}
-	resp, err := h.httpClient.Do(req)
+	resp, err := h.v4HTTPClient.Do(req)
 	if err != nil {
 		return 0, nil, nil, err
 	}

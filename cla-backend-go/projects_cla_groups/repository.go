@@ -196,6 +196,9 @@ func (repo *repo) GetClaGroupIDForProject(ctx context.Context, projectSFID strin
 }
 
 func (repo *repo) GetProjectsIdsForClaGroup(ctx context.Context, claGroupID string) ([]*ProjectClaGroup, error) {
+	if claGroupID == "" {
+		return nil, nil
+	}
 	keyCondition := expression.Key("cla_group_id").Equal(expression.Value(claGroupID))
 	return repo.queryClaGroupsProjects(ctx, keyCondition, aws.String(CLAGroupIDIndex))
 }

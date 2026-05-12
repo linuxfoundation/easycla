@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -357,6 +358,16 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		if params.CompanyName == nil && params.WebsiteName == nil && params.DollarFilter == nil {
 			log.WithFields(f).Debugf("CompanyName or WebsiteName or filter at least one required")
 			return organization.NewSearchOrganizationBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(errors.New("companyName or websiteName or filter at least one required")))
+		}
+
+		// Short prefixes (e.g. "Te") expand to huge Salesforce result sets and have
+		// caused lambda timeouts. When companyName is shorter than 3 characters,
+		// return an empty result set rather than an error so autocomplete UIs that
+		// fire requests on every keystroke don't surface a 4xx to the user.
+		// websiteName / filter searches are unaffected.
+		if params.CompanyName != nil && len(strings.TrimSpace(*params.CompanyName)) < 3 {
+			log.WithFields(f).Debugf("companyName shorter than 3 characters; returning empty result")
+			return organization.NewSearchOrganizationOK().WithXRequestID(reqID).WithPayload(&models.OrgList{List: []*models.Org{}})
 		}
 
 		companyName, websiteName, filter := validateParams(params)
