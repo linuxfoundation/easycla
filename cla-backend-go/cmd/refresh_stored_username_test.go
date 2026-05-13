@@ -13,42 +13,54 @@ import (
 )
 
 type stubUsersService struct {
-	called  bool
-	updates map[string]interface{}
+	called     bool
+	calledWith string
+	updates    map[string]interface{}
 }
 
 func (s *stubUsersService) UpdateUser(userID string, updates map[string]interface{}) (*models.User, error) {
 	s.called = true
+	s.calledWith = userID
 	s.updates = updates
 	return &models.User{UserID: userID}, nil
 }
-func (s *stubUsersService) CreateUser(*models.User, *user.CLAUser) (*models.User, error) { return nil, nil }
-func (s *stubUsersService) Save(*models.UserUpdate, *user.CLAUser) (*models.User, error) { return nil, nil }
-func (s *stubUsersService) Delete(string, *user.CLAUser) error                          { return nil }
-func (s *stubUsersService) GetUser(string) (*models.User, error)                        { return nil, nil }
-func (s *stubUsersService) GetUserByLFUserName(string) (*models.User, error)            { return nil, nil }
-func (s *stubUsersService) GetUserByUserName(string, bool) (*models.User, error)        { return nil, nil }
-func (s *stubUsersService) GetUserByEmail(string) (*models.User, error)                 { return nil, nil }
-func (s *stubUsersService) GetUsersByEmail(string) ([]*models.User, error)              { return nil, nil }
-func (s *stubUsersService) GetUsersByLFEmail(string) ([]*models.User, error)            { return nil, nil }
-func (s *stubUsersService) GetUserByGitHubID(string) (*models.User, error)              { return nil, nil }
-func (s *stubUsersService) GetUserByGitHubUsername(string) (*models.User, error)        { return nil, nil }
-func (s *stubUsersService) GetUserByGitlabID(int) (*models.User, error)                 { return nil, nil }
-func (s *stubUsersService) GetUserByGitLabUsername(string) (*models.User, error)        { return nil, nil }
-func (s *stubUsersService) SearchUsers(string, string, bool) (*models.Users, error)     { return nil, nil }
-func (s *stubUsersService) UpdateUserCompanyID(string, string, string) error            { return nil }
+
+func (s *stubUsersService) CreateUser(*models.User, *user.CLAUser) (*models.User, error) {
+	return nil, nil
+}
+
+func (s *stubUsersService) Save(*models.UserUpdate, *user.CLAUser) (*models.User, error) {
+	return nil, nil
+}
+
+func (s *stubUsersService) Delete(string, *user.CLAUser) error                      { return nil }
+func (s *stubUsersService) GetUser(string) (*models.User, error)                    { return nil, nil }
+func (s *stubUsersService) GetUserByLFUserName(string) (*models.User, error)        { return nil, nil }
+func (s *stubUsersService) GetUserByUserName(string, bool) (*models.User, error)    { return nil, nil }
+func (s *stubUsersService) GetUserByEmail(string) (*models.User, error)             { return nil, nil }
+func (s *stubUsersService) GetUsersByEmail(string) ([]*models.User, error)          { return nil, nil }
+func (s *stubUsersService) GetUsersByLFEmail(string) ([]*models.User, error)        { return nil, nil }
+func (s *stubUsersService) GetUserByGitHubID(string) (*models.User, error)          { return nil, nil }
+func (s *stubUsersService) GetUserByGitHubUsername(string) (*models.User, error)    { return nil, nil }
+func (s *stubUsersService) GetUserByGitlabID(int) (*models.User, error)             { return nil, nil }
+func (s *stubUsersService) GetUserByGitLabUsername(string) (*models.User, error)    { return nil, nil }
+func (s *stubUsersService) SearchUsers(string, string, bool) (*models.Users, error) { return nil, nil }
+func (s *stubUsersService) UpdateUserCompanyID(string, string, string) error        { return nil }
 func (s *stubUsersService) ConvertUserModelToUserCompatModel(*models.User) (*models.UserCompat, error) {
 	return nil, nil
 }
 
-func makeStoredUser(name, email string) *models.User {
-	return &models.User{Username: name, LfEmail: strfmt.Email(email)}
+const testUserID = "user-id-123"
+
+func makeStoredUser(email string) *models.User {
+	return &models.User{UserID: testUserID, Username: "Alice", LfEmail: strfmt.Email(email)}
 }
+
 func makeTestCLAUser(name, email string) *user.CLAUser {
 	return &user.CLAUser{Name: name, LFEmail: email}
 }
 
-func TestRefreshStoredUserName(t *testing.T) {
+func TestRefreshStoredUserIdentity(t *testing.T) {
 	cases := []struct {
 		desc         string
 		stored       *models.User
@@ -66,19 +78,19 @@ func TestRefreshStoredUserName(t *testing.T) {
 		},
 		{
 			desc:       "nil claUser → no-op",
-			stored:     makeStoredUser("Alice", "alice@example.com"),
+			stored:     makeStoredUser("alice@example.com"),
 			claUser:    nil,
 			wantCalled: false,
 		},
 		{
 			desc:       "name unchanged, email unchanged → no-op",
-			stored:     makeStoredUser("Alice", "alice@example.com"),
+			stored:     makeStoredUser("alice@example.com"),
 			claUser:    makeTestCLAUser("Alice", "alice@example.com"),
 			wantCalled: false,
 		},
 		{
 			desc:         "name changed only → only user_name updated",
-			stored:       makeStoredUser("Alice", "alice@example.com"),
+			stored:       makeStoredUser("alice@example.com"),
 			claUser:      makeTestCLAUser("Alice Smith", "alice@example.com"),
 			wantCalled:   true,
 			wantNameKey:  true,
@@ -86,7 +98,7 @@ func TestRefreshStoredUserName(t *testing.T) {
 		},
 		{
 			desc:         "email changed only → only lf_email updated",
-			stored:       makeStoredUser("Alice", "alice-old@example.com"),
+			stored:       makeStoredUser("alice-old@example.com"),
 			claUser:      makeTestCLAUser("Alice", "alice-new@example.com"),
 			wantCalled:   true,
 			wantNameKey:  false,
@@ -95,7 +107,7 @@ func TestRefreshStoredUserName(t *testing.T) {
 		},
 		{
 			desc:         "both changed → both updated",
-			stored:       makeStoredUser("Alice", "alice-old@example.com"),
+			stored:       makeStoredUser("alice-old@example.com"),
 			claUser:      makeTestCLAUser("Alice Smith", "alice-new@example.com"),
 			wantCalled:   true,
 			wantNameKey:  true,
@@ -103,22 +115,38 @@ func TestRefreshStoredUserName(t *testing.T) {
 			wantEmailVal: "alice-new@example.com",
 		},
 		{
-			desc:       "case-insensitive email match → no-op",
-			stored:     makeStoredUser("Alice", "Alice@Example.COM"),
-			claUser:    makeTestCLAUser("Alice", "alice@example.com"),
+			desc:         "stored email differs only in case → normalize on write",
+			stored:       makeStoredUser("Alice@Example.COM"),
+			claUser:      makeTestCLAUser("Alice", "alice@example.com"),
+			wantCalled:   true,
+			wantEmailKey: true,
+			wantEmailVal: "alice@example.com",
+		},
+		{
+			desc:       "incoming email differs only in case from already-normalized stored → no-op",
+			stored:     makeStoredUser("alice@example.com"),
+			claUser:    makeTestCLAUser("Alice", "ALICE@EXAMPLE.COM"),
 			wantCalled: false,
 		},
 		{
 			desc:         "email uppercased in JWT → lowercased on write",
-			stored:       makeStoredUser("Alice", "old@example.com"),
+			stored:       makeStoredUser("old@example.com"),
 			claUser:      makeTestCLAUser("Alice", "NEW@Example.COM"),
 			wantCalled:   true,
 			wantEmailKey: true,
 			wantEmailVal: "new@example.com",
 		},
 		{
+			desc:         "incoming email has whitespace → trimmed and lowercased",
+			stored:       makeStoredUser("old@example.com"),
+			claUser:      makeTestCLAUser("Alice", "  NEW@Example.COM  "),
+			wantCalled:   true,
+			wantEmailKey: true,
+			wantEmailVal: "new@example.com",
+		},
+		{
 			desc:         "empty name in claUser → name not touched, email still synced",
-			stored:       makeStoredUser("Alice", "old@example.com"),
+			stored:       makeStoredUser("old@example.com"),
 			claUser:      makeTestCLAUser("", "new@example.com"),
 			wantCalled:   true,
 			wantNameKey:  false,
@@ -126,7 +154,7 @@ func TestRefreshStoredUserName(t *testing.T) {
 		},
 		{
 			desc:         "empty email in claUser → email not touched, name still synced",
-			stored:       makeStoredUser("Alice", "old@example.com"),
+			stored:       makeStoredUser("old@example.com"),
 			claUser:      makeTestCLAUser("Alice Smith", ""),
 			wantCalled:   true,
 			wantNameKey:  true,
@@ -134,7 +162,7 @@ func TestRefreshStoredUserName(t *testing.T) {
 		},
 		{
 			desc:       "both empty in claUser → no-op",
-			stored:     makeStoredUser("Alice", "old@example.com"),
+			stored:     makeStoredUser("old@example.com"),
 			claUser:    makeTestCLAUser("", ""),
 			wantCalled: false,
 		},
@@ -143,13 +171,16 @@ func TestRefreshStoredUserName(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			svc := &stubUsersService{}
-			result := refreshStoredUserName(svc, tc.stored, tc.claUser)
+			result := refreshStoredUserIdentity(svc, tc.stored, tc.claUser)
 
 			if svc.called != tc.wantCalled {
 				t.Fatalf("UpdateUser called=%v, want %v", svc.called, tc.wantCalled)
 			}
 			if !svc.called {
 				return
+			}
+			if svc.calledWith != testUserID {
+				t.Errorf("UpdateUser userID=%q, want %q", svc.calledWith, testUserID)
 			}
 			_, hasName := svc.updates["user_name"]
 			if hasName != tc.wantNameKey {

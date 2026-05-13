@@ -908,13 +908,19 @@ func responseLoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func refreshStoredUserName(usersService users.Service, userModel *models.User, claUser *user.CLAUser) *models.User {
+func refreshStoredUserIdentity(usersService users.Service, userModel *models.User, claUser *user.CLAUser) *models.User {
 	if userModel == nil || claUser == nil {
 		return userModel
 	}
 
+	// Normalize the incoming email before compare/persist: the lf-email-index
+	// query path (users/repository.go:GetUsersByLFEmail) lowercases the
+	// search key, so a mixed-case stored value would be orphaned from that
+	// index. Compare byte-wise against the stored value to detect that
+	// situation and rewrite to the normalized form.
+	normalizedIncomingEmail := strings.ToLower(strings.TrimSpace(claUser.LFEmail))
 	nameChanged := claUser.Name != "" && userModel.Username != claUser.Name
-	emailChanged := claUser.LFEmail != "" && !strings.EqualFold(string(userModel.LfEmail), claUser.LFEmail)
+	emailChanged := normalizedIncomingEmail != "" && string(userModel.LfEmail) != normalizedIncomingEmail
 	if !nameChanged && !emailChanged {
 		return userModel
 	}
@@ -926,16 +932,16 @@ func refreshStoredUserName(usersService users.Service, userModel *models.User, c
 		updates["user_name"] = claUser.Name
 	}
 	if emailChanged {
-		updates["lf_email"] = strings.ToLower(claUser.LFEmail)
+		updates["lf_email"] = normalizedIncomingEmail
 	}
 
 	updatedUser, err := usersService.UpdateUser(userModel.UserID, updates)
 	if err != nil {
 		log.WithFields(logrus.Fields{
-			"functionName": "cmd.refreshStoredUserName",
+			"functionName": "cmd.refreshStoredUserIdentity",
 			"userID":       userModel.UserID,
 			"lfUsername":   claUser.LFUsername,
-		}).WithError(err).Warn("unable to refresh stored user_name from current identity claims")
+		}).WithError(err).Warn("unable to refresh stored user identity from current identity claims")
 		return userModel
 	}
 
@@ -986,7 +992,7 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 	}
 	// If found - refresh the stored display name and return
 	if userModel != nil {
-		userModel = refreshStoredUserName(usersService, userModel, claUser)
+		userModel = refreshStoredUserIdentity(usersService, userModel, claUser)
 		if !needToStoreUser {
 			return r
 		}
@@ -1006,7 +1012,7 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 	}
 	// If found - refresh the stored display name and return
 	if userModel != nil {
-		userModel = refreshStoredUserName(usersService, userModel, claUser)
+		userModel = refreshStoredUserIdentity(usersService, userModel, claUser)
 		if !needToStoreUser {
 			return r
 		}

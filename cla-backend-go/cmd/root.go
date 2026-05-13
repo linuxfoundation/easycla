@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"testing"
 
 	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
@@ -51,6 +52,14 @@ func init() {
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+
+	// Skip AWS/SSM init when running under `go test`: ini.Init() fatals on
+	// missing DYNAMODB_AWS_REGION (and other env vars) which are not set in
+	// CI test environments, and unit tests in this package don't exercise
+	// that code path.
+	if testing.Testing() {
+		return
+	}
 
 	// Initialize our common stuff
 	ini.Init()
