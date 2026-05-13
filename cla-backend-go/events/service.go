@@ -439,6 +439,15 @@ func (s *service) LogEventWithContext(ctx context.Context, args *LogEventArgs) {
 		return
 	}
 
+	// loadDetails resolves UserID from LfUsername via DDB lookup; if the user is
+	// not found in EasyCLA's user table (e.g. external contractor whose LFX profile
+	// predates their EasyCLA record) UserID stays empty and CreateEvent would fail
+	// with ErrUserIDRequired. Log at warn and skip instead of surfacing a level=error.
+	if args.UserID == "" {
+		log.WithFields(f).Warnf("skipping event %s: UserID could not be resolved for LfUsername=%s", args.EventType, args.LfUsername)
+		return
+	}
+
 	eventData, containsPII := args.EventData.GetEventDetailsString(args)
 	eventSummary, _ := args.EventData.GetEventSummaryString(args)
 	event := models.Event{
