@@ -348,6 +348,12 @@ func (repo repository) GetCompany(ctx context.Context, companyID string) (*model
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 	}
+
+	if companyID == "" {
+		log.WithFields(f).Warn("companyID is empty, skipping DynamoDB lookup")
+		return nil, &utils.CompanyNotFound{Message: "company_id cannot be empty", CompanyID: companyID}
+	}
+
 	companyTableData, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(repo.companyTableName),
 		Key: map[string]*dynamodb.AttributeValue{

@@ -80,6 +80,10 @@ type CLAGroupTemplateParams struct {
 // GetProjectNameOrFoundation returns if the foundationName is set it gets back
 // the foundation Name otherwise the ProjectName is  returned
 func (claParams CLAGroupTemplateParams) GetProjectNameOrFoundation() string {
+	if len(claParams.Projects) == 0 {
+		log.Warnf("GetProjectNameOrFoundation called with empty Projects slice (CLAGroupName=%q); rendering as empty string", claParams.CLAGroupName)
+		return ""
+	}
 	project := claParams.Projects[0]
 	if claParams.ChildProjectCount == 1 {
 		return claParams.Projects[0].ExternalProjectName
@@ -96,6 +100,10 @@ func (claParams CLAGroupTemplateParams) GetProjectNameOrFoundation() string {
 // Project is used generally in v1 templates because the matching there was 1:1
 // it will returns the first element from the projects list
 func (claParams CLAGroupTemplateParams) Project() CLAProjectParams {
+	if len(claParams.Projects) == 0 {
+		log.Warnf("Project called with empty Projects slice (CLAGroupName=%q); rendering as zero CLAProjectParams", claParams.CLAGroupName)
+		return CLAProjectParams{}
+	}
 	return claParams.Projects[0]
 }
 
