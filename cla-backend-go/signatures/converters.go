@@ -57,12 +57,16 @@ func (repo repository) buildProjectSignatureModels(ctx context.Context, results 
 			claType = utils.ClaTypeICLA
 		}
 
-		// Use the signedOn field if possible, for older signatures that are missing it, use the date created value as the default/fallback
+		// Use the signedOn field if possible, for older signatures that are missing it, use the date created value as the default/fallback.
+		// Both fields can be empty for legacy signatures predating the SignedOn column — leave signedOn as "" in that case
+		// rather than calling FormatTimeString("") and emitting a spurious warning.
 		signedOn := dbSignature.DateCreated
 		if dbSignature.SignedOn != "" {
 			signedOn = dbSignature.SignedOn
 		}
-		signedOn = utils.FormatTimeString(signedOn)
+		if signedOn != "" {
+			signedOn = utils.FormatTimeString(signedOn)
+		}
 
 		sig := &models.Signature{
 			SignatureID:                   dbSignature.SignatureID,

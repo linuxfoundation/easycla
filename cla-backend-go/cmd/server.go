@@ -909,14 +909,27 @@ func responseLoggingMiddleware(next http.Handler) http.Handler {
 }
 
 func refreshStoredUserName(usersService users.Service, userModel *models.User, claUser *user.CLAUser) *models.User {
-	if userModel == nil || claUser == nil || claUser.Name == "" || userModel.Username == claUser.Name {
+	if userModel == nil || claUser == nil {
 		return userModel
 	}
 
-	updatedUser, err := usersService.UpdateUser(userModel.UserID, map[string]interface{}{
-		"user_name":     claUser.Name,
+	nameChanged := claUser.Name != "" && userModel.Username != claUser.Name
+	emailChanged := claUser.LFEmail != "" && !strings.EqualFold(string(userModel.LfEmail), claUser.LFEmail)
+	if !nameChanged && !emailChanged {
+		return userModel
+	}
+
+	updates := map[string]interface{}{
 		"date_modified": time.Now().UTC().Format(time.RFC3339),
-	})
+	}
+	if nameChanged {
+		updates["user_name"] = claUser.Name
+	}
+	if emailChanged {
+		updates["lf_email"] = strings.ToLower(claUser.LFEmail)
+	}
+
+	updatedUser, err := usersService.UpdateUser(userModel.UserID, updates)
 	if err != nil {
 		log.WithFields(logrus.Fields{
 			"functionName": "cmd.refreshStoredUserName",
