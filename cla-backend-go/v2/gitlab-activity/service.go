@@ -280,11 +280,15 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 
 	signURL := GetFullSignURL(gitlabOrg.OrganizationID, strconv.Itoa(int(gitlabRepo.RepositoryExternalID)), strconv.Itoa(mergeID))
 	mrCommentContent := PrepareMrCommentContent(missingUsers, signedUsers, signURL)
+	// Post the MR comment unconditionally — the sign URL is the contributor's
+	// only way out. SetCommitStatus can fail with 404 "References for commit
+	// Not Found" when the MR is opened from a fork: the commit only lives in
+	// the fork's refs, but the webhook hits the upstream project ID. We log
+	// the status failure and keep going so the comment still lands.
 	if len(missingUsers) > 0 {
 		log.WithFields(f).Errorf("merge request faild with 1 or more users not passing authorization - failed users : %+v", missingUsers)
 		if statusErr := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Failed, missingCLAMsg, signURL); statusErr != nil {
-			log.WithFields(f).WithError(statusErr).Warnf("problem setting the commit status for merge request ID: %d, sha: %s", mergeID, lastCommitSha)
-			return fmt.Errorf("setting commit status failed : %v", statusErr)
+			log.WithFields(f).WithError(statusErr).Warnf("problem setting the commit status for merge request ID: %d, sha: %s (continuing to post MR comment)", mergeID, lastCommitSha)
 		}
 
 		if mrCommentErr := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, mrCommentContent); mrCommentErr != nil {
@@ -295,10 +299,8 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 		return nil
 	}
 
-	commitStatusErr := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Success, signedCLAMsg, "")
-	if commitStatusErr != nil {
-		log.WithFields(f).WithError(commitStatusErr).Warnf("problem setting the commit status for merge request ID: %d, sha: %s", mergeID, lastCommitSha)
-		return fmt.Errorf("setting commit status failed : %v", commitStatusErr)
+	if commitStatusErr := gitlab_api.SetCommitStatus(gitlabClient, projectID, lastCommitSha, gitlab.Success, signedCLAMsg, ""); commitStatusErr != nil {
+		log.WithFields(f).WithError(commitStatusErr).Warnf("problem setting the commit status for merge request ID: %d, sha: %s (continuing to post MR comment)", mergeID, lastCommitSha)
 	}
 
 	if mrCommentErr := gitlab_api.SetMrComment(gitlabClient, projectID, mergeID, mrCommentContent); mrCommentErr != nil {
