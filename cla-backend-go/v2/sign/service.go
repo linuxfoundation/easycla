@@ -1572,6 +1572,7 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 	if found, ok := metadata["repository_id"].(string); ok {
 		repositoryID = found
 	} else {
+		err = errors.New("missing repository_id in metadata")
 		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
 		return "", err
 	}
@@ -1579,6 +1580,7 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 	if found, ok := metadata["merge_request_id"].(string); ok {
 		mergeRequestID = found
 	} else {
+		err = errors.New("missing merge_request_id in metadata")
 		log.WithFields(f).WithError(err).Warnf("unable to get merge request ID for user: %s", userID)
 		return "", err
 	}
@@ -1599,6 +1601,7 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 	}
 
 	if gitlabOrg.OrganizationID == "" {
+		err = errors.New("missing organization ID for GitLab repository")
 		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", repositoryID)
 		return "", err
 	}
@@ -1631,6 +1634,7 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 	if found, ok := metadata["repository_id"].(string); ok {
 		repositoryID = found
 	} else {
+		err = errors.New("missing repository_id in metadata")
 		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
 		return "", err
 	}
@@ -1640,6 +1644,7 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 	if found, ok := metadata["pull_request_id"].(string); ok {
 		pullRequestID = found
 	} else {
+		err = errors.New("missing pull_request_id in metadata")
 		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
 		return "", err
 	}
