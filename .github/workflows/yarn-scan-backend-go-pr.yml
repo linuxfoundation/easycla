@@ -12,7 +12,6 @@ on:
     paths:
       - "cla-backend-go/package.json"
       - "cla-backend-go/yarn.lock"
-      - ".yarn-audit-allowlist.json"
       - ".github/workflows/yarn-scan-backend-go-pr.yml"
 
 jobs:
@@ -26,9 +25,9 @@ jobs:
         with:
           node-version: '20'
       - name: Setup
+        working-directory: cla-backend-go
         run: yarn install
       - name: Yarn Audit
         working-directory: cla-backend-go
         run: |
-          yarn audit --json > audit.json || true
-          node ../scripts/yarn-audit-filter.mjs audit.json ../.yarn-audit-allowlist.json
+          yarn audit --level high

@@ -20,7 +20,7 @@ import (
 // (Legacy Python: cla/config.py sets these constants.)
 const (
 	githubOAuthAuthorizeURL = "https://github.com/login/oauth/authorize"
-	githubOAuthTokenURL     = "https://github.com/login/oauth/access_token"
+	githubOAuthExchangeURL  = "https://github.com/login/oauth/access_token"
 )
 
 // OAuthToken is the JSON response returned by GitHub when exchanging a code.
@@ -83,7 +83,7 @@ func (s *Service) ExchangeOAuthToken(ctx context.Context, clientID, clientSecret
 		form.Set("state", state)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubOAuthTokenURL, bytes.NewBufferString(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubOAuthExchangeURL, bytes.NewBufferString(form.Encode()))
 	if err != nil {
 		return nil, err
 	}

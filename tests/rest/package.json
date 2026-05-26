@@ -8,17 +8,22 @@
   "dependencies": {
     "newman": "^6.2.1"
   },
+  "resolutions": {
+    "brace-expansion": "1.1.14",
+    "lodash": "4.18.1",
+    "qs": "6.15.2"
+  },
   "overrides": {
     "form-data": "^4.0.4",
     "ajv": "8.17.1",
     "tough-cookie": "4.1.4",
-    "lodash": "4.17.21",
-    "qs": "6.14.1",
+    "lodash": "4.18.1",
+    "qs": "6.15.2",
     "serialize-javascript": "7.0.3",
     "underscore": "1.13.8",
     "validator": "13.15.22",
     "minimatch": "10.0.1",
-    "brace-expansion": "2.0.1",
+    "brace-expansion": "1.1.14",
     "tmp": "0.2.4",
     "handlebars": "^4.7.8",
     "json-schema": "^0.4.0",
