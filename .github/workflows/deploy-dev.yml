@@ -7,6 +7,11 @@ on:
   push:
     branches:
       - dev
+  pull_request_target:
+    types: [closed]
+    branches:
+      - dev
+  workflow_dispatch:
 
 permissions:
   # These permissions are needed to interact with GitHub's OIDC Token endpoint to fetch/set the AWS deployment credentials.
@@ -16,14 +21,22 @@ permissions:
 env:
   AWS_REGION: us-east-1
   STAGE: dev
-  DD_VERSION: ${{ github.sha }}
+  DD_VERSION: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
 
 jobs:
   build-deploy-dev:
     runs-on: ubuntu-latest
     environment: dev
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.merged == true
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          persist-credentials: false
 
       - name: Setup go
         uses: actions/setup-go@v5
