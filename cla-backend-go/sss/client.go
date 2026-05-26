@@ -206,9 +206,12 @@ func parseRetryAfter(value string) time.Duration {
 	}
 
 	if parsedTime, err := http.ParseTime(value); err == nil {
-		return time.Until(parsedTime)
-	}
-
+    d := time.Until(parsedTime)
+    if d < 0 {
+        return 0
+    }
+    return d
+}
 	return 0
 }
 
