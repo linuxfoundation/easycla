@@ -177,6 +177,45 @@ func TestGetOrganizationStatus_TooManyRequestsReturnsRetryableError(t *testing.T
 	}
 }
 
+func TestGetOrganizationStatus_TooManyRequestsClampsNegativeRetryAfter(t *testing.T) {
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"token-negative-retry","expires_in":3600,"token_type":"Bearer"}`)
+	}))
+	defer authServer.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "-5")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"message":"rate limit exceeded"}}`)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(SSSConfig{
+		BaseURL:           server.URL,
+		Auth0Domain:       authServer.URL,
+		Auth0ClientID:     "id",
+		Auth0ClientSecret: "secret",
+		Auth0Audience:     "audience",
+		Timeout:           5 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "RateOrg"})
+	var retryErr *RetryableError
+	if !errors.As(err, &retryErr) {
+		t.Fatalf("expected RetryableError, got %T: %v", err, err)
+	}
+	if retryErr.RetryAfter != 0 {
+		t.Fatalf("expected retry after 0s, got %v", retryErr.RetryAfter)
+	}
+	if retryErr.Message != "rate limit exceeded" {
+		t.Fatalf("unexpected retry message: %s", retryErr.Message)
+	}
+}
+
 func TestGetOrganizationStatus_FlaggedResponse(t *testing.T) {
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

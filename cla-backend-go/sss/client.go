@@ -224,6 +224,9 @@ func parseRetryAfter(value string) time.Duration {
 	}
 
 	if seconds, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
+		if seconds < 0 {
+			return 0
+		}
 		return time.Duration(seconds) * time.Second
 	}
 
