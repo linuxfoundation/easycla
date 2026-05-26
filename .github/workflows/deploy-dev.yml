@@ -26,10 +26,10 @@ env:
   # the PR context is null and we fall back to github.sha.
   DD_VERSION: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
-# Serialize deploys so push and pull_request:closed firing for the same merge don't deploy twice in parallel.
+# nsure duplicate deploys triggered by both push and pull_request:closed for the same merge are cancelled instead of queued back-to-back.
 concurrency:
   group: deploy-dev
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-deploy-dev:
