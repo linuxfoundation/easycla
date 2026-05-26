@@ -114,7 +114,7 @@ func retrieveToken() error {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		err = fmt.Errorf("invalid response from auth0 service %s - received error code: %d, response: %s",
 			oauthTokenURL, resp.StatusCode, string(respBody))
-		log.WithFields(f).WithError(err)
+		log.WithFields(f).WithError(err).Warn("refresh token request returned non-2xx status")
 		return err
 	}
 
