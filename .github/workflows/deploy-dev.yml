@@ -7,7 +7,7 @@ on:
   push:
     branches:
       - dev
-  pull_request:
+  pull_request_target:
     types: [closed]
     branches:
       - dev
@@ -21,12 +21,8 @@ permissions:
 env:
   AWS_REGION: us-east-1
   STAGE: dev
-  # On pull_request: merge_commit_sha is the actual commit on dev (matters for squash/rebase merges
-  # where github.sha is the synthetic refs/pull/N/merge, not the dev tip). On push / workflow_dispatch
-  # the PR context is null and we fall back to github.sha.
   DD_VERSION: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
-# Ensure duplicate deploys triggered by both push and pull_request:closed for the same merge are cancelled instead of queued back-to-back.
 concurrency:
   group: deploy-dev
   cancel-in-progress: true
@@ -35,18 +31,11 @@ jobs:
   build-deploy-dev:
     runs-on: ubuntu-latest
     environment: dev
-    # On pull_request: only run when the PR was actually merged (skip plain close).
-    # On push / workflow_dispatch: always run.
-    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.merged == true
     steps:
       - uses: actions/checkout@v4
         with:
-          # Deploy the actual dev tip after merge, not the synthetic refs/pull/N/merge that checkout
-          # picks up by default on pull_request events.
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
-          # OIDC supplies AWS creds; the default-persisted GITHUB_TOKEN in .git/config isn't needed
-          # by any later step (private deps clone via PAT insteadOf redirect) and shouldn't sit
-          # readable by subsequent run steps.
           persist-credentials: false
 
       - name: Setup go
