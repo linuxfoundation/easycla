@@ -18,7 +18,9 @@ on:
 jobs:
   yarn-scan-backend-pr:
     runs-on: ubuntu-latest
-    environment: dev
+    environment:
+      name: dev
+      deployment: false
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node

@@ -3,10 +3,17 @@
 # SPDX-License-Identifier: MIT
 
 name: Build and Deploy to DEV
+run-name: Deploy DEV ${{ github.ref_name }} @ ${{ github.sha }}
+
 on:
   push:
     branches:
       - dev
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
 
 permissions:
   # These permissions are needed to interact with GitHub's OIDC Token endpoint to fetch/set the AWS deployment credentials.
@@ -21,7 +28,9 @@ env:
 jobs:
   build-deploy-dev:
     runs-on: ubuntu-latest
-    environment: dev
+    environment:
+      name: dev
+      url: https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/ops/health
     steps:
       - uses: actions/checkout@v4
 
@@ -220,7 +229,9 @@ jobs:
     continue-on-error: true
     timeout-minutes: 75
     needs: [build-deploy-dev]
-    environment: dev
+    environment:
+      name: dev
+      deployment: false
     defaults:
       run:
         working-directory: tests/functional

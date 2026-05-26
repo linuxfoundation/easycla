@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: MIT
 
 name: Build and Deploy to PROD
+run-name: Deploy PROD ${{ github.ref_name }} @ ${{ github.sha }}
+
 
 on:
   push:
@@ -23,7 +25,9 @@ env:
 jobs:
   build-deploy-prod:
     runs-on: ubuntu-latest
-    environment: prod
+    environment:
+      name: prod
+      url: https://api-gw.platform.linuxfoundation.org/cla-service/v4/ops/health
     steps:
       - uses: actions/checkout@v4
       - name: Setup go
