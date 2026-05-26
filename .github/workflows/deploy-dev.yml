@@ -7,6 +7,11 @@ on:
   push:
     branches:
       - dev
+  pull_request:
+    types: [closed]
+    branches:
+      - dev
+  workflow_dispatch:
 
 permissions:
   # These permissions are needed to interact with GitHub's OIDC Token endpoint to fetch/set the AWS deployment credentials.
@@ -16,14 +21,29 @@ permissions:
 env:
   AWS_REGION: us-east-1
   STAGE: dev
-  DD_VERSION: ${{ github.sha }}
+  # On pull_request: merge_commit_sha is the actual commit on dev (matters for squash/rebase merges
+  # where github.sha is the synthetic refs/pull/N/merge, not the dev tip). On push / workflow_dispatch
+  # the PR context is null and we fall back to github.sha.
+  DD_VERSION: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+
+# Serialize deploys so push and pull_request:closed firing for the same merge don't deploy twice in parallel.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
 
 jobs:
   build-deploy-dev:
     runs-on: ubuntu-latest
     environment: dev
+    # On pull_request: only run when the PR was actually merged (skip plain close).
+    # On push / workflow_dispatch: always run.
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Deploy the actual dev tip after merge, not the synthetic refs/pull/N/merge that checkout
+          # picks up by default on pull_request events.
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
       - name: Setup go
         uses: actions/setup-go@v5
