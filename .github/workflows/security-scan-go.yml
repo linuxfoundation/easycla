@@ -55,6 +55,7 @@ jobs:
 
     # staticcheck for additional Go analysis
     - name: staticcheck
+      if: always()
       working-directory: ./cla-backend-legacy
       run: |
         go install honnef.co/go/tools/cmd/staticcheck@latest
