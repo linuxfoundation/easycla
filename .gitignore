@@ -286,3 +286,4 @@ spans*.json
 *.test
 *.out
 CLAUDE.md
+.claude/*

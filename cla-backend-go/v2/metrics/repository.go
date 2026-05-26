@@ -5,14 +5,16 @@ package metrics
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	project_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 
-	"github.com/imroc/req"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 
@@ -490,6 +492,10 @@ func (cm *CompanyMetrics) processCompanyItem(company *ItemCompany) {
 	m.CompanyName = company.CompanyName
 }
 
+// httpClient mirrors the imroc/req v0.3.0 default client (2 minute overall timeout)
+// that this package previously used, so downstream timeout behavior is preserved.
+var httpClient = &http.Client{Timeout: 2 * time.Minute}
+
 func cacheProjectMembership(externalProjectID, apiGatewayURL string) {
 	url := apiGatewayURL + "/project-service/v1/projects/" + externalProjectID + "/members"
 
@@ -500,21 +506,30 @@ func cacheProjectMembership(externalProjectID, apiGatewayURL string) {
 		return
 	}
 
-	// Use Req object to initiate requests.
-	r := req.New()
-	authHeader := req.Header{
-		"Authorization": "Bearer " + authToken,
-		"Accept":        "application/json",
+	httpReq, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		log.Warnf("project fetch request build failed: %+v", err)
+		return
 	}
-	resp, err := r.Get(url, authHeader)
+	httpReq.Header.Set("Authorization", "Bearer "+authToken)
+	httpReq.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		log.Warnf("project fetch failed with error: %+v", err)
 		return
 	}
+	defer resp.Body.Close() // nolint:errcheck
 
-	log.Debugf("Project %s service query response code: %d", externalProjectID, resp.Response().StatusCode)
-	if resp.Response().StatusCode < 200 || resp.Response().StatusCode > 299 {
-		log.Warnf("unable to query project service - received error response: %s", resp.String())
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Warnf("project response read failed: %+v", err)
+		return
+	}
+
+	log.Debugf("Project %s service query response code: %d", externalProjectID, resp.StatusCode)
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		log.Warnf("unable to query project service - received error response: %s", string(respBody))
 		return
 	}
 
@@ -522,8 +537,7 @@ func cacheProjectMembership(externalProjectID, apiGatewayURL string) {
 		Name string `json:"name"`
 	}
 
-	jsonErr := resp.ToJSON(&response)
-	if jsonErr != nil {
+	if jsonErr := json.Unmarshal(respBody, &response); jsonErr != nil {
 		log.Warnf("error unmarshalling response to JSON, error: %+v", jsonErr)
 		return
 	}
