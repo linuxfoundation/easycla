@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/server"
 )
@@ -22,7 +23,15 @@ func main() {
 	log.Printf("cla-backend-legacy local listening on %s", addr)
 	log.Printf("STAGE=%q", os.Getenv("STAGE"))
 
-	if err := http.ListenAndServe(addr, h); err != nil {
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }

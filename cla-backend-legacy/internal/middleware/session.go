@@ -55,7 +55,7 @@ func withSession(ctx context.Context, s Session) context.Context {
 // This is intentionally minimal and matches legacy behavior closely:
 //   - cookie_name: cla-sid
 //   - cookie_max_age: 300
-//   - secure: false
+//   - secure: true
 //   - domain: none
 //   - context_name: session
 func SessionMiddleware(kv *store.KVStore) func(http.Handler) http.Handler {
@@ -91,8 +91,9 @@ func SessionMiddleware(kv *store.KVStore) func(http.Handler) http.Handler {
 				Value:    sid,
 				Path:     "/",
 				MaxAge:   300,
-				Secure:   false,
+				Secure:   true,
 				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
 			})
 
 			// Attach session to request context.

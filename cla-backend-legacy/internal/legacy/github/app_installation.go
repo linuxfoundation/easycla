@@ -214,8 +214,14 @@ func (s *Service) ListInstallationRepositories(ctx context.Context, installation
 		if err != nil {
 			return nil, err
 		}
-		b, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		b, readErr := io.ReadAll(resp.Body)
+		closeErr := resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read GitHub installation repositories response: %w", readErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("failed to close GitHub installation repositories response: %w", closeErr)
+		}
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
 			return nil, fmt.Errorf("github list installation repositories failed: status=%d body=%s", resp.StatusCode, string(b))
 		}

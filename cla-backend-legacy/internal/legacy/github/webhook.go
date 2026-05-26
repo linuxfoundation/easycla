@@ -5,7 +5,7 @@ package githublegacy
 
 import (
 	"crypto/hmac"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- GitHub's legacy X-Hub-Signature webhook format uses SHA-1.
 	"encoding/hex"
 	"errors"
 	"os"

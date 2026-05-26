@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	githublegacy "github.com/linuxfoundation/easycla/cla-backend-legacy/internal/legacy/github"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/respond"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/store"

@@ -41,8 +41,8 @@ jobs:
     - name: Nancy vulnerability scanner
       working-directory: ./cla-backend-legacy
       run: |
-        go install github.com/sonatypecommunity/nancy@latest
-        go list -json -deps ./... | nancy sleuth --loud
+        go install github.com/sonatype-nexus-community/nancy@latest
+        go list -json -deps ./... | nancy sleuth --loud --skip-update-check
 
     # Official Go vulnerability scanner
     - name: Go vulnerability database check

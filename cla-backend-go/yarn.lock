@@ -2609,9 +2609,9 @@
     safe-push-apply "^1.0.0"
     safe-regex-test "^1.1.0"
     set-proto "^1.0.0"
-    string.prototype.trim "^1.2.10"
-    string.prototype.trimend "^1.0.9"
-    string.prototype.trimstart "^1.0.8"
+    "string.prototype.trim" "^1.2.10"
+    "string.prototype.trimend" "^1.0.9"
+    "string.prototype.trimstart" "^1.0.8"
     typed-array-buffer "^1.0.3"
     typed-array-byte-length "^1.0.3"
     typed-array-byte-offset "^1.0.4"
@@ -2922,7 +2922,7 @@
 "follow-redirects@^1.15.4", "follow-redirects@^1.16.0":
   version "1.16.0"
   resolved "https://registry.yarnpkg.com/follow-redirects/-/follow-redirects-1.16.0.tgz"
-  integrity sha512-gew4GsXizNgdoRyqmyfMHyAmXsZDk6mHkSxZFCzW9gwlbtOW44CDtYavM+y+72qD/Vq2l550kMF52DT8fOLJqQ==
+  integrity "sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw== sha1-KEdKFZ07nRHvYgUKFO1g5N9tYbw="
 
 "for-each@^0.3.3":
   version "0.3.4"
