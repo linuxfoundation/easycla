@@ -4,14 +4,17 @@
 package token
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/imroc/req"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
@@ -27,6 +30,9 @@ var (
 	token         string
 	expiry        time.Time
 	tokenMutex    sync.RWMutex // Protects token and expiry variables
+	// httpClient mirrors the imroc/req v0.3.0 default client (2 minute overall timeout)
+	// that this package previously used, so downstream timeout behavior is preserved.
+	httpClient = &http.Client{Timeout: 2 * time.Minute}
 )
 
 type tokenGen struct {
@@ -79,23 +85,42 @@ func retrieveToken() error {
 		Audience:     audience,
 	}
 
-	resp, err := req.Post(oauthTokenURL, req.BodyJSON(&tg))
+	body, err := json.Marshal(&tg)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("refresh token request marshal failed")
+		return err
+	}
+
+	httpReq, err := http.NewRequest(http.MethodPost, oauthTokenURL, bytes.NewReader(body))
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("refresh token request build failed")
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json; charset=UTF-8")
+
+	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("refresh token request failed")
 		return err
 	}
+	defer resp.Body.Close() // nolint:errcheck
 
-	if resp.Response().StatusCode < 200 || resp.Response().StatusCode > 299 {
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("refresh token response read failed")
+		return err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		err = fmt.Errorf("invalid response from auth0 service %s - received error code: %d, response: %s",
-			oauthTokenURL, resp.Response().StatusCode, resp.String())
+			oauthTokenURL, resp.StatusCode, string(respBody))
 		log.WithFields(f).WithError(err)
 		return err
 	}
 
 	var tr tokenReturn
-	err = resp.ToJSON(&tr)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("refresh token::json unmarshal failed of response: %s, error: %+v", resp.String(), err)
+	if err = json.Unmarshal(respBody, &tr); err != nil {
+		log.WithFields(f).WithError(err).Warnf("refresh token::json unmarshal failed of response: %s, error: %+v", string(respBody), err)
 		return err
 	}
 
