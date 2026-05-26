@@ -58,9 +58,12 @@ func NewClient(cfg SSSConfig) (*Client, error) {
 }
 
 // GetOrganizationStatus retrieves the sanctions screening result for an organization.
-func (c *Client) GetOrganizationStatus(ctx context.Context, organizationID string) (*ScreeningResult, error) {
-	if strings.TrimSpace(organizationID) == "" {
-		return nil, &BadRequestError{Message: "organization id is required"}
+func (c *Client) GetOrganizationStatus(ctx context.Context, statusReq OrganizationStatusRequest) (*ScreeningResult, error) {
+	if strings.TrimSpace(statusReq.Domain) == "" {
+		return nil, &BadRequestError{Message: "domain is required"}
+	}
+	if strings.TrimSpace(statusReq.OrgName) == "" {
+		return nil, &BadRequestError{Message: "org_name is required"}
 	}
 
 	token, err := c.getToken(ctx)
@@ -75,7 +78,26 @@ func (c *Client) GetOrganizationStatus(ctx context.Context, organizationID strin
 	}
 
 	query := reqURL.Query()
-	query.Set("organization_id", strings.TrimSpace(organizationID))
+	query.Set("domain", strings.TrimSpace(statusReq.Domain))
+	query.Set("org_name", strings.TrimSpace(statusReq.OrgName))
+	if v := strings.TrimSpace(statusReq.Country); v != "" {
+		query.Set("country", v)
+	}
+	if v := strings.TrimSpace(statusReq.City); v != "" {
+		query.Set("city", v)
+	}
+	if v := strings.TrimSpace(statusReq.State); v != "" {
+		query.Set("state", v)
+	}
+	if v := strings.TrimSpace(statusReq.PostalCode); v != "" {
+		query.Set("postal_code", v)
+	}
+	if v := strings.TrimSpace(statusReq.SfdcID); v != "" {
+		query.Set("sfdc_id", v)
+	}
+	if v := strings.TrimSpace(statusReq.ClearbitID); v != "" {
+		query.Set("clearbit_id", v)
+	}
 	reqURL.RawQuery = query.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL.String(), nil)
@@ -105,13 +127,13 @@ func (c *Client) GetOrganizationStatus(ctx context.Context, organizationID strin
 		}
 		return &result, nil
 	case http.StatusBadRequest:
-		return nil, &BadRequestError{Message: strings.TrimSpace(string(body))}
+		return nil, &BadRequestError{Message: responseMessage(body)}
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return nil, &AuthError{Message: strings.TrimSpace(string(body))}
-	case http.StatusServiceUnavailable:
-		return nil, &RetryableError{Message: strings.TrimSpace(string(body)), RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		return nil, &AuthError{Message: responseMessage(body)}
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		return nil, &RetryableError{Message: responseMessage(body), RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 	default:
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, responseMessage(body))
 	}
 }
 
@@ -206,13 +228,25 @@ func parseRetryAfter(value string) time.Duration {
 	}
 
 	if parsedTime, err := http.ParseTime(value); err == nil {
-    d := time.Until(parsedTime)
-    if d < 0 {
-        return 0
-    }
-    return d
-}
+		d := time.Until(parsedTime)
+		if d < 0 {
+			return 0
+		}
+		return d
+	}
 	return 0
+}
+
+func responseMessage(body []byte) string {
+	var errPayload struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &errPayload); err == nil && strings.TrimSpace(errPayload.Error.Message) != "" {
+		return strings.TrimSpace(errPayload.Error.Message)
+	}
+	return strings.TrimSpace(string(body))
 }
 
 func toClientError(err error) error {

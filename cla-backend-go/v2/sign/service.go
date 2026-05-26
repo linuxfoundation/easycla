@@ -1460,7 +1460,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	var returnURL string
 	if input.ReturnURL.String() == "" {
 		log.WithFields(f).Warnf("signature return url is empty")
-		returnURL, err = getActiveSignatureReturnURL(*input.UserID, activeSignatureMetadata)
+		returnURL, err = s.getActiveSignatureReturnURL(ctx, *input.UserID, activeSignatureMetadata)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get active signature return url for user: %s", *input.UserID)
 			return nil, err
@@ -1682,7 +1682,8 @@ func (s *service) getInstallationIDFromRepositoryID(ctx context.Context, reposit
 
 	installationId = githubOrg.OrganizationInstallationID
 	if installationId == 0 {
-		log.WithFields(f).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
+		err = fmt.Errorf("installation ID missing for repository ID: %s", repositoryID)
+		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
 		return 0, err
 	}
 
