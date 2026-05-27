@@ -49,36 +49,48 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Configure Git to clone private Github repos
+        if: github.event.pull_request.head.repo.full_name == github.repository
         run: git config --global url."https://${TOKEN_USER}:${TOKEN}@github.com".insteadOf "https://github.com"
         env:
           TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN_GITHUB }}
           TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER_GITHUB }}
 
+      - name: Note - cla-backend-go checks skipped (fork PR, no private module access)
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::notice title=Fork PR::cla-backend-go build/test/lint skipped — private github.com/LF-Engineering/* modules are not accessible from fork PRs. These checks will run on merge."
+
       - name: Add OS Tools
         run: sudo apt update && sudo apt-get install file -y
 
       - name: Go Setup
+        if: github.event.pull_request.head.repo.full_name == github.repository
         working-directory: cla-backend-go
         run: make clean setup
 
       - name: Go Dependencies
+        if: github.event.pull_request.head.repo.full_name == github.repository
         working-directory: cla-backend-go
         run: make deps
 
       - name: Go Swagger Generate
+        if: github.event.pull_request.head.repo.full_name == github.repository
         working-directory: cla-backend-go
         run: make swagger
 
       - name: Go Build
+        if: github.event.pull_request.head.repo.full_name == github.repository
         working-directory: cla-backend-go
         run: |
           make build-lambdas-linux build-functional-tests-linux
 
       - name: Go Test
+        if: github.event.pull_request.head.repo.full_name == github.repository
         working-directory: cla-backend-go
         run: make test
 
       - name: Go Lint
+        if: github.event.pull_request.head.repo.full_name == github.repository
         working-directory: cla-backend-go
         run: make lint
 

@@ -26,22 +26,31 @@ jobs:
         language: ['go', 'python', 'javascript']
 
     steps:
+      - name: Note - Go CodeQL skipped (fork PR, no private module access)
+        if: matrix.language == 'go' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::notice title=Fork PR::Go CodeQL skipped — cla-backend-go requires private github.com/LF-Engineering/* modules not accessible from fork PRs."
+
       - name: Checkout repository
+        if: matrix.language != 'go' || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
+        if: matrix.language != 'go' || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           config-file: ./.github/codeql/codeql-config.yml
 
       - name: Autobuild
+        if: matrix.language != 'go' || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
+        if: matrix.language != 'go' || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
