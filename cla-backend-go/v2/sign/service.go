@@ -1550,6 +1550,22 @@ func getUserName(user *v1Models.User) string {
 	return ""
 }
 
+// metadataStringValue extracts a string value from metadata and validates it.
+func metadataStringValue(metadata map[string]interface{}, key string) (string, error) {
+	if metadata == nil {
+		return "", fmt.Errorf("missing %s in metadata", key)
+	}
+	v, ok := metadata[key]
+	if !ok || v == nil {
+		return "", fmt.Errorf("missing %s in metadata", key)
+	}
+	s := strings.TrimSpace(fmt.Sprintf("%v", v))
+	if s == "" || s == "<nil>" {
+		return "", fmt.Errorf("missing %s in metadata", key)
+	}
+	return s, nil
+}
+
 func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, userID string, metadata map[string]interface{}) (string, error) {
 	f := logrus.Fields{
 		"functionName": "sign.getIndividualSignatureCallbackURLGitlab",
@@ -1687,7 +1703,7 @@ func (s *service) getInstallationIDFromRepositoryID(ctx context.Context, reposit
 
 	installationId = githubOrg.OrganizationInstallationID
 	if installationId == 0 {
-		err = fmt.Errorf("installation ID missing for repository ID: %s", repositoryID)
+		err = fmt.Errorf("missing installation ID for repository ID in metadata: %s", repositoryID)
 		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
 		return 0, err
 	}
