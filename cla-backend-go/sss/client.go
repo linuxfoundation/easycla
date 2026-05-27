@@ -92,7 +92,7 @@ func (c *Client) GetOrganizationStatus(ctx context.Context, statusReq Organizati
 	if v := strings.TrimSpace(statusReq.PostalCode); v != "" {
 		query.Set("postal_code", v)
 	}
-	if v := strings.TrimSpace(statusReq.SfdcID); v != "" {
+	if v := strings.TrimSpace(statusReq.SFDCID); v != "" {
 		query.Set("sfdc_id", v)
 	}
 	if v := strings.TrimSpace(statusReq.ClearbitID); v != "" {

@@ -58,7 +58,7 @@ func TestGetOrganizationStatus_Success(t *testing.T) {
 			t.Fatalf("unexpected auth header: %s", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"clean","entity_id":"org-123","source":"ofac","screened_at":"2025-05-16T12:34:56Z"}`)
+		fmt.Fprint(w, `{"status":"clean","entity_id":"org-123","source":"screening_db","screened_at":"2025-05-16T12:34:56Z","vendor":"descartes","clearbit_enriched":true,"sfdc_id":null,"domain":"example.com","org_name":"Example Corp"}`)
 	}))
 	defer serviceServer.Close()
 
@@ -81,14 +81,20 @@ func TestGetOrganizationStatus_Success(t *testing.T) {
 		City:       "San Francisco",
 		State:      "CA",
 		PostalCode: "94105",
-		SfdcID:     "SFDC-123",
+		SFDCID:     "SFDC-123",
 		ClearbitID: "CLEARBIT-123",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != StatusClean || result.EntityID != "org-123" || result.Source != "ofac" {
+	if result.Status != StatusClean || result.EntityID != "org-123" || result.Source != SourceScreeningDB {
 		t.Fatalf("unexpected result: %+v", result)
+	}
+	if result.SFDCID != nil {
+		t.Fatalf("expected nullable sfdc_id to decode as nil, got %q", *result.SFDCID)
+	}
+	if result.Vendor != "descartes" || !result.ClearbitEnriched || result.Domain != "example.com" || result.OrgName != "Example Corp" {
+		t.Fatalf("unexpected enriched fields: %+v", result)
 	}
 	if !result.ScreenedAt.Equal(time.Date(2025, 5, 16, 12, 34, 56, 0, time.UTC)) {
 		t.Fatalf("unexpected screened_at: %v", result.ScreenedAt)
@@ -225,7 +231,7 @@ func TestGetOrganizationStatus_FlaggedResponse(t *testing.T) {
 
 	serviceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"flagged","entity_id":"org-flagged","source":"ofac","screened_at":"2025-05-16T12:34:56Z"}`)
+		fmt.Fprint(w, `{"status":"flagged","entity_id":"org-flagged","source":"descartes_api","screened_at":"2025-05-16T12:34:56Z","vendor":"descartes","clearbit_enriched":false,"sfdc_id":"SFDC-456","domain":"example.org","org_name":"Flagged Org"}`)
 	}))
 	defer serviceServer.Close()
 
@@ -250,6 +256,12 @@ func TestGetOrganizationStatus_FlaggedResponse(t *testing.T) {
 	}
 	if result.Status != StatusFlagged || result.EntityID != "org-flagged" {
 		t.Fatalf("unexpected result: %+v", result)
+	}
+	if result.Source != SourceDescartesAPI {
+		t.Fatalf("unexpected source: %s", result.Source)
+	}
+	if result.SFDCID == nil || *result.SFDCID != "SFDC-456" {
+		t.Fatalf("unexpected sfdc_id: %+v", result.SFDCID)
 	}
 }
 
@@ -375,7 +387,7 @@ func TestGetOrganizationStatus_TimeoutReturnsTimeoutError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"status":"clean","entity_id":"org-timeout","source":"ofac","screened_at":"2025-05-16T12:34:56Z"}`)
+		fmt.Fprint(w, `{"status":"clean","entity_id":"org-timeout","source":"sfdc","screened_at":"2025-05-16T12:34:56Z","vendor":"descartes","clearbit_enriched":true,"sfdc_id":null,"domain":"example.com","org_name":"TimeoutOrg"}`)
 	}))
 	defer server.Close()
 
@@ -409,7 +421,7 @@ func TestGetOrganizationStatus_UsesCachedToken(t *testing.T) {
 
 	serviceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"clean","entity_id":"org-cache","source":"ofac","screened_at":"2025-05-16T12:34:56Z"}`)
+		fmt.Fprint(w, `{"status":"clean","entity_id":"org-cache","source":"sfdc","screened_at":"2025-05-16T12:34:56Z","vendor":"descartes","clearbit_enriched":true,"sfdc_id":null,"domain":"example.com","org_name":"CacheOrg"}`)
 	}))
 	defer serviceServer.Close()
 
@@ -451,7 +463,7 @@ func TestGetOrganizationStatus_RefreshesExpiredToken(t *testing.T) {
 			t.Fatalf("missing authorization header")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"clean","entity_id":"org-expire","source":"ofac","screened_at":"2025-05-16T12:34:56Z"}`)
+		fmt.Fprint(w, `{"status":"clean","entity_id":"org-expire","source":"screening_db","screened_at":"2025-05-16T12:34:56Z","vendor":"descartes","clearbit_enriched":true,"sfdc_id":null,"domain":"example.com","org_name":"ExpireOrg"}`)
 	}))
 	defer serviceServer.Close()
 

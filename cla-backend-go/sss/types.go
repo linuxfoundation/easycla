@@ -23,13 +23,17 @@ type OrganizationStatusRequest struct {
 	City       string `json:"city,omitempty"`
 	State      string `json:"state,omitempty"`
 	PostalCode string `json:"postal_code,omitempty"`
-	SfdcID     string `json:"sfdc_id,omitempty"`
+	SFDCID     string `json:"sfdc_id,omitempty"`
 	ClearbitID string `json:"clearbit_id,omitempty"`
 }
 
 const (
 	StatusClean   = "clean"
 	StatusFlagged = "flagged"
+
+	SourceScreeningDB  = "screening_db"
+	SourceSFDC         = "sfdc"
+	SourceDescartesAPI = "descartes_api"
 )
 
 // ScreeningResult is returned by the SSS organization status endpoint.
@@ -39,7 +43,7 @@ type ScreeningResult struct {
 	Source           string    `json:"source"`
 	ScreenedAt       time.Time `json:"screened_at"`
 	ClearbitID       string    `json:"clearbit_id,omitempty"`
-	SfdcID           string    `json:"sfdc_id,omitempty"`
+	SFDCID           *string   `json:"sfdc_id"`
 	OrgName          string    `json:"org_name,omitempty"`
 	Domain           string    `json:"domain,omitempty"`
 	Vendor           string    `json:"vendor,omitempty"`

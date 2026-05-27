@@ -2223,49 +2223,6 @@ func getUserEmail(user *v1Models.User, preferredEmail string, providerType strin
 	return ""
 }
 
-func getActiveSignatureReturnURL(userID string, metadata map[string]interface{}) (string, error) {
-
-	f := logrus.Fields{
-		"functionName": "sign.getActiveSignatureReturnURL",
-	}
-
-	var returnURL string
-	var err error
-	var pullRequestID int
-	var installationID int64
-	var repositoryID int64
-
-	if found, ok := metadata["pull_request_id"].(int); ok {
-		pullRequestID = found
-	} else {
-		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
-		return "", err
-	}
-
-	if found, ok := metadata["installation_id"].(int64); ok {
-		installationID = found
-	} else {
-		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for user: %s", userID)
-		return "", err
-	}
-
-	if found, ok := metadata["repository_id"].(int64); ok {
-		repositoryID = found
-	} else {
-		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
-		return "", err
-	}
-
-	returnURL, err = github.GetReturnURL(context.Background(), installationID, repositoryID, pullRequestID)
-
-	if err != nil {
-		return "", err
-	}
-
-	return returnURL, nil
-
-}
-
 func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEmail string, allowLFEmail bool) map[string]interface{} {
 	f := logrus.Fields{
 		"functionName": "sign.createDefaultIndiviualValues",
