@@ -15,6 +15,9 @@ on:
       - ".yarn-audit-allowlist.json"
       - ".github/workflows/yarn-scan-backend-go-pr.yml"
 
+permissions:
+  contents: read
+
 jobs:
   yarn-scan-backend-go-pr:
     runs-on: ubuntu-latest
