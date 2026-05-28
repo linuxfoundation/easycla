@@ -201,27 +201,43 @@ func (c *Client) fetchToken(ctx context.Context) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		details := responseErrorDetails(body)
-		if details.Message == "" {
+		var auth0Err struct {
+			Error            string `json:"error"`
+			ErrorDescription string `json:"error_description"`
+		}
+		details := upstreamErrorDetails{}
+		if err := json.Unmarshal(body, &auth0Err); err == nil {
+			details.Code = strings.TrimSpace(auth0Err.Error)
+			details.Message = strings.TrimSpace(auth0Err.ErrorDescription)
+			if details.Message == "" && details.Code != "" {
+				details.Message = details.Code
+			}
+			if details.Message == "" {
+				details.Message = resp.Status
+			}
+		} else {
 			details.Message = strings.TrimSpace(string(body))
+			if details.Message == "" {
+				details.Message = resp.Status
+			}
 		}
 		return "", &AuthError{Message: fmt.Sprintf("authentication failed: %s", details.Message), Code: details.Code, RequestID: details.RequestID}
 	}
 
-	var authResponse authResponse
-	if err := json.Unmarshal(body, &authResponse); err != nil {
+	var tokenResp authResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return "", fmt.Errorf("failed to decode auth response: %w", err)
 	}
 
-	if authResponse.AccessToken == "" {
+	if tokenResp.AccessToken == "" {
 		return "", &AuthError{Message: "empty access token from auth server"}
 	}
 
-	expiresIn := time.Duration(authResponse.ExpiresIn) * time.Second
+	expiresIn := time.Duration(tokenResp.ExpiresIn) * time.Second
 	if expiresIn <= 0 {
 		expiresIn = defaultTokenTTL
 	}
-	c.token = authResponse.AccessToken
+	c.token = tokenResp.AccessToken
 	c.expiry = time.Now().Add(expiresIn)
 
 	return c.token, nil

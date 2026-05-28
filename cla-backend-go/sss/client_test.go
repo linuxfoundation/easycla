@@ -14,10 +14,17 @@ import (
 	"time"
 )
 
+const (
+	testAuthTokenPath     = "/oauth/token"
+	testOrgDomain         = "example.com"
+	testOrgName           = "Example Corp"
+	testRateLimitExceeded = "rate limit exceeded"
+)
+
 func TestGetOrganizationStatus_Success(t *testing.T) {
 	authCalls := int32(0)
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/oauth/token" {
+		if r.Method != http.MethodPost || r.URL.Path != testAuthTokenPath {
 			t.Fatalf("unexpected auth request %s %s", r.Method, r.URL.Path)
 		}
 		if got := r.Header.Get("User-Agent"); got != userAgent {
@@ -33,10 +40,10 @@ func TestGetOrganizationStatus_Success(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/organizations/status" {
 			t.Fatalf("unexpected service request %s %s", r.Method, r.URL.Path)
 		}
-		if got := r.URL.Query().Get("domain"); got != "example.com" {
+		if got := r.URL.Query().Get("domain"); got != testOrgDomain {
 			t.Fatalf("unexpected domain: %s", got)
 		}
-		if got := r.URL.Query().Get("org_name"); got != "Example Corp" {
+		if got := r.URL.Query().Get("org_name"); got != testOrgName {
 			t.Fatalf("unexpected org_name: %s", got)
 		}
 		if got := r.URL.Query().Get("country"); got != "US" {
@@ -81,8 +88,8 @@ func TestGetOrganizationStatus_Success(t *testing.T) {
 	}
 
 	result, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{
-		Domain:     "example.com",
-		OrgName:    "Example Corp",
+		Domain:     testOrgDomain,
+		OrgName:    testOrgName,
 		Country:    "US",
 		City:       "San Francisco",
 		State:      "CA",
@@ -99,7 +106,7 @@ func TestGetOrganizationStatus_Success(t *testing.T) {
 	if result.SFDCID != nil {
 		t.Fatalf("expected nullable sfdc_id to decode as nil, got %q", *result.SFDCID)
 	}
-	if result.Vendor != "descartes" || !result.ClearbitEnriched || result.Domain != "example.com" || result.OrgName != "Example Corp" {
+	if result.Vendor != "descartes" || !result.ClearbitEnriched || result.Domain != testOrgDomain || result.OrgName != testOrgName {
 		t.Fatalf("unexpected enriched fields: %+v", result)
 	}
 	if !result.ScreenedAt.Equal(time.Date(2025, 5, 16, 12, 34, 56, 0, time.UTC)) {
@@ -112,7 +119,7 @@ func TestGetOrganizationStatus_Success(t *testing.T) {
 
 func TestGetOrganizationStatus_MissingDomain(t *testing.T) {
 	client, err := NewClient(SSSConfig{
-		BaseURL:           "https://example.com",
+		BaseURL:           "https://" + testOrgDomain,
 		Auth0Domain:       "https://auth.example.com",
 		Auth0ClientID:     "id",
 		Auth0ClientSecret: "secret",
@@ -132,7 +139,7 @@ func TestGetOrganizationStatus_MissingDomain(t *testing.T) {
 
 func TestGetOrganizationStatus_MissingOrgName(t *testing.T) {
 	client, err := NewClient(SSSConfig{
-		BaseURL:           "https://example.com",
+		BaseURL:           "https://" + testOrgDomain,
 		Auth0Domain:       "https://auth.example.com",
 		Auth0ClientID:     "id",
 		Auth0ClientSecret: "secret",
@@ -143,7 +150,7 @@ func TestGetOrganizationStatus_MissingOrgName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com"})
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain})
 	var badReq *BadRequestError
 	if !errors.As(err, &badReq) {
 		t.Fatalf("expected BadRequestError, got %T: %v", err, err)
@@ -160,7 +167,7 @@ func TestGetOrganizationStatus_TooManyRequestsReturnsRetryableError(t *testing.T
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "5")
 		w.WriteHeader(http.StatusTooManyRequests)
-		fmt.Fprint(w, `{"error":{"code":"RATE_LIMITED","message":"rate limit exceeded"},"request_id":"req-429"}`)
+		fmt.Fprintf(w, `{"error":{"code":"RATE_LIMITED","message":"%s"},"request_id":"req-429"}`, testRateLimitExceeded)
 	}))
 	defer server.Close()
 
@@ -176,7 +183,7 @@ func TestGetOrganizationStatus_TooManyRequestsReturnsRetryableError(t *testing.T
 		t.Fatal(err)
 	}
 
-	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "RateOrg"})
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "RateOrg"})
 	var retryErr *RetryableError
 	if !errors.As(err, &retryErr) {
 		t.Fatalf("expected RetryableError, got %T: %v", err, err)
@@ -184,7 +191,7 @@ func TestGetOrganizationStatus_TooManyRequestsReturnsRetryableError(t *testing.T
 	if retryErr.RetryAfter != 5*time.Second {
 		t.Fatalf("expected retry after 5s, got %v", retryErr.RetryAfter)
 	}
-	if retryErr.Message != "rate limit exceeded" {
+	if retryErr.Message != testRateLimitExceeded {
 		t.Fatalf("unexpected retry message: %s", retryErr.Message)
 	}
 	if retryErr.Code != "RATE_LIMITED" || retryErr.RequestID != "req-429" {
@@ -202,7 +209,7 @@ func TestGetOrganizationStatus_TooManyRequestsClampsNegativeRetryAfter(t *testin
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "-5")
 		w.WriteHeader(http.StatusTooManyRequests)
-		fmt.Fprint(w, `{"error":{"message":"rate limit exceeded"}}`)
+		fmt.Fprintf(w, `{"error":{"message":"%s"}}`, testRateLimitExceeded)
 	}))
 	defer server.Close()
 
@@ -218,7 +225,7 @@ func TestGetOrganizationStatus_TooManyRequestsClampsNegativeRetryAfter(t *testin
 		t.Fatal(err)
 	}
 
-	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "RateOrg"})
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "RateOrg"})
 	var retryErr *RetryableError
 	if !errors.As(err, &retryErr) {
 		t.Fatalf("expected RetryableError, got %T: %v", err, err)
@@ -226,7 +233,7 @@ func TestGetOrganizationStatus_TooManyRequestsClampsNegativeRetryAfter(t *testin
 	if retryErr.RetryAfter != 0 {
 		t.Fatalf("expected retry after 0s, got %v", retryErr.RetryAfter)
 	}
-	if retryErr.Message != "rate limit exceeded" {
+	if retryErr.Message != testRateLimitExceeded {
 		t.Fatalf("unexpected retry message: %s", retryErr.Message)
 	}
 }
@@ -276,7 +283,7 @@ func TestGetOrganizationStatus_FlaggedResponse(t *testing.T) {
 
 func TestGetOrganizationStatus_400ReturnsBadRequestError(t *testing.T) {
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/oauth/token" {
+		if r.Method != http.MethodPost || r.URL.Path != testAuthTokenPath {
 			t.Fatalf("unexpected auth request %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -302,7 +309,7 @@ func TestGetOrganizationStatus_400ReturnsBadRequestError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "BadOrg"})
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "BadOrg"})
 	var badReq *BadRequestError
 	if !errors.As(err, &badReq) {
 		t.Fatalf("expected BadRequestError, got %T: %v", err, err)
@@ -381,7 +388,7 @@ func TestGetOrganizationStatus_404ReturnsNotFoundError(t *testing.T) {
 
 func TestGetOrganizationStatus_401ReturnsAuthError(t *testing.T) {
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/oauth/token" {
+		if r.Method != http.MethodPost || r.URL.Path != testAuthTokenPath {
 			t.Fatalf("unexpected auth request %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -407,7 +414,7 @@ func TestGetOrganizationStatus_401ReturnsAuthError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "AuthOrg"})
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "AuthOrg"})
 	var authErr *AuthError
 	if !errors.As(err, &authErr) {
 		t.Fatalf("expected AuthError, got %T: %v", err, err)
@@ -457,13 +464,13 @@ func TestGetOrganizationStatus_401InvalidatesCachedToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "RefreshOrg"})
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "RefreshOrg"})
 	var authErr *AuthError
 	if !errors.As(err, &authErr) {
 		t.Fatalf("expected AuthError, got %T: %v", err, err)
 	}
 
-	if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "RefreshOrg"}); err != nil {
+	if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "RefreshOrg"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := atomic.LoadInt32(&authCalls); got != 2 {
@@ -471,9 +478,47 @@ func TestGetOrganizationStatus_401InvalidatesCachedToken(t *testing.T) {
 	}
 }
 
+func TestGetOrganizationStatus_Auth0ErrorUsesAuth0Payload(t *testing.T) {
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != testAuthTokenPath {
+			t.Fatalf("unexpected auth request %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"invalid_client","error_description":"Client authentication failed"}`)
+	}))
+	defer authServer.Close()
+
+	client, err := NewClient(SSSConfig{
+		BaseURL:           "https://sss.example.com",
+		Auth0Domain:       authServer.URL,
+		Auth0ClientID:     "id",
+		Auth0ClientSecret: "secret",
+		Auth0Audience:     "audience",
+		Timeout:           5 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "Auth0Org"})
+	var authErr *AuthError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("expected AuthError, got %T: %v", err, err)
+	}
+	if authErr.Code != "invalid_client" {
+		t.Fatalf("unexpected auth code: %s", authErr.Code)
+	}
+	if authErr.Message != "authentication failed: Client authentication failed" {
+		t.Fatalf("unexpected auth message: %s", authErr.Message)
+	}
+	if got := authErr.Error(); got != "authentication error: authentication failed: Client authentication failed (code=invalid_client request_id=)" {
+		t.Fatalf("unexpected auth error string: %s", got)
+	}
+}
+
 func TestGetOrganizationStatus_503ReturnsRetryableError(t *testing.T) {
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/oauth/token" {
+		if r.Method != http.MethodPost || r.URL.Path != testAuthTokenPath {
 			t.Fatalf("unexpected auth request %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -500,7 +545,7 @@ func TestGetOrganizationStatus_503ReturnsRetryableError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "RetryOrg"})
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "RetryOrg"})
 	var retryErr *RetryableError
 	if !errors.As(err, &retryErr) {
 		t.Fatalf("expected RetryableError, got %T: %v", err, err)
@@ -512,7 +557,7 @@ func TestGetOrganizationStatus_503ReturnsRetryableError(t *testing.T) {
 
 func TestGetOrganizationStatus_TimeoutReturnsTimeoutError(t *testing.T) {
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/oauth/token" {
+		if r.Method != http.MethodPost || r.URL.Path != testAuthTokenPath {
 			t.Fatalf("unexpected auth request %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -539,7 +584,7 @@ func TestGetOrganizationStatus_TimeoutReturnsTimeoutError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "TimeoutOrg"})
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "TimeoutOrg"})
 	var timeoutErr *TimeoutError
 	if !errors.As(err, &timeoutErr) {
 		t.Fatalf("expected TimeoutError, got %T: %v", err, err)
@@ -574,7 +619,7 @@ func TestGetOrganizationStatus_UsesCachedToken(t *testing.T) {
 	}
 
 	for i := 0; i < 2; i++ {
-		if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "CacheOrg"}); err != nil {
+		if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "CacheOrg"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -611,7 +656,7 @@ func TestGetOrganizationStatus_CachesTokenWhenExpiresInMissing(t *testing.T) {
 	}
 
 	for i := 0; i < 2; i++ {
-		if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "FallbackOrg"}); err != nil {
+		if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "FallbackOrg"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -652,10 +697,10 @@ func TestGetOrganizationStatus_RefreshesExpiredToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "ExpireOrg"}); err != nil {
+	if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "ExpireOrg"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "ExpireOrg"}); err != nil {
+	if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: testOrgDomain, OrgName: "ExpireOrg"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := atomic.LoadInt32(&tokenIndex); got < 2 {

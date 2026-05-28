@@ -11,8 +11,12 @@ type SSSConfig struct {
 	Auth0Domain       string
 	Auth0ClientID     string
 	Auth0ClientSecret string
-	Auth0Audience     string
-	Timeout           time.Duration
+	// Auth0Audience is the Auth0 API audience/resource server identifier.
+	// Production values may require the exact identifier configured in Auth0,
+	// including a trailing slash when the resource server uses one.
+	Auth0Audience string
+	// Timeout is shared by SSS API requests and Auth0 token acquisition requests.
+	Timeout time.Duration
 }
 
 // OrganizationStatusRequest holds parameters for querying organization screening status.

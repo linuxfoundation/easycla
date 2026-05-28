@@ -16,7 +16,7 @@ type BadRequestError struct {
 }
 
 func (e *BadRequestError) Error() string {
-	return fmt.Sprintf("bad request: %s", e.Message)
+	return formatError("bad request", e.Message, e.Code, e.RequestID)
 }
 
 // AuthError indicates a 401 or 403 response from the SSS API.
@@ -27,7 +27,7 @@ type AuthError struct {
 }
 
 func (e *AuthError) Error() string {
-	return fmt.Sprintf("authentication error: %s", e.Message)
+	return formatError("authentication error", e.Message, e.Code, e.RequestID)
 }
 
 // RetryableError indicates a 503 response from the SSS API.
@@ -39,7 +39,7 @@ type RetryableError struct {
 }
 
 func (e *RetryableError) Error() string {
-	return fmt.Sprintf("retryable error: %s", e.Message)
+	return formatError("retryable error", e.Message, e.Code, e.RequestID)
 }
 
 // NotFoundError indicates a 404 response from the SSS API.
@@ -50,14 +50,23 @@ type NotFoundError struct {
 }
 
 func (e *NotFoundError) Error() string {
-	return fmt.Sprintf("not found: %s", e.Message)
+	return formatError("not found", e.Message, e.Code, e.RequestID)
 }
 
 // TimeoutError indicates the request timed out.
 type TimeoutError struct {
-	Message string
+	Message   string
+	Code      string
+	RequestID string
 }
 
 func (e *TimeoutError) Error() string {
-	return fmt.Sprintf("timeout: %s", e.Message)
+	return formatError("timeout", e.Message, e.Code, e.RequestID)
+}
+
+func formatError(prefix, message, code, requestID string) string {
+	if code != "" || requestID != "" {
+		return fmt.Sprintf("%s: %s (code=%s request_id=%s)", prefix, message, code, requestID)
+	}
+	return fmt.Sprintf("%s: %s", prefix, message)
 }
