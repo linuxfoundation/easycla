@@ -2629,8 +2629,8 @@ func GetReturnURL(ctx context.Context, installationID, repositoryID int64, pullR
 		log.WithFields(f).WithError(err).Warnf("unable to get repository by ID: %d", repositoryID)
 		return "", err
 	}
-	if repo == nil || repo.Owner == nil || repo.Owner.Login == nil || repo.Name == nil {
-		err := fmt.Errorf("missing repository owner or name for repository ID %d", repositoryID)
+	if repo == nil {
+		err := fmt.Errorf("missing repository for repository ID %d", repositoryID)
 		log.WithFields(f).WithError(err).Warn("invalid repository metadata")
 		return "", err
 	}
@@ -2653,13 +2653,20 @@ func GetReturnURL(ctx context.Context, installationID, repositoryID int64, pullR
 		log.WithFields(f).WithError(err).Warnf("unable to get pull request by ID: %d", pullRequestID)
 		return "", err
 	}
-	if pullRequest == nil || pullRequest.HTMLURL == nil || *pullRequest.HTMLURL == "" {
+	if pullRequest == nil {
+		err := fmt.Errorf("missing pull request %d/%s/%s", pullRequestID, owner, name)
+		log.WithFields(f).WithError(err).Warn("invalid pull request metadata")
+		return "", err
+	}
+
+	htmlURL := pullRequest.GetHTMLURL()
+	if htmlURL == "" {
 		err := fmt.Errorf("missing html url for pull request %d/%s/%s", pullRequestID, owner, name)
 		log.WithFields(f).WithError(err).Warn("invalid pull request metadata")
 		return "", err
 	}
 
-	log.WithFields(f).Debugf("returning pull request html url: %s", *pullRequest.HTMLURL)
+	log.WithFields(f).Debugf("returning pull request html url: %s", htmlURL)
 
-	return *pullRequest.HTMLURL, nil
+	return htmlURL, nil
 }

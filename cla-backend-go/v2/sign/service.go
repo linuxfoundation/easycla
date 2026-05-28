@@ -1585,18 +1585,14 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 		}
 	}
 
-	if found, ok := metadata["repository_id"].(string); ok {
-		repositoryID = found
-	} else {
-		err = errors.New("missing repository_id in metadata")
+	repositoryID, err = metadataStringValue(metadata, "repository_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
 		return "", err
 	}
 
-	if found, ok := metadata["merge_request_id"].(string); ok {
-		mergeRequestID = found
-	} else {
-		err = errors.New("missing merge_request_id in metadata")
+	mergeRequestID, err = metadataStringValue(metadata, "merge_request_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get merge request ID for user: %s", userID)
 		return "", err
 	}
@@ -1647,20 +1643,16 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		}
 	}
 
-	if found, ok := metadata["repository_id"].(string); ok {
-		repositoryID = found
-	} else {
-		err = errors.New("missing repository_id in metadata")
+	repositoryID, err = metadataStringValue(metadata, "repository_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
 		return "", err
 	}
 
 	log.WithFields(f).Debugf("found repository ID: %s", repositoryID)
 
-	if found, ok := metadata["pull_request_id"].(string); ok {
-		pullRequestID = found
-	} else {
-		err = errors.New("missing pull_request_id in metadata")
+	pullRequestID, err = metadataStringValue(metadata, "pull_request_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
 		return "", err
 	}
@@ -1703,7 +1695,7 @@ func (s *service) getInstallationIDFromRepositoryID(ctx context.Context, reposit
 
 	installationId = githubOrg.OrganizationInstallationID
 	if installationId == 0 {
-		err = fmt.Errorf("missing installation ID for repository ID in metadata: %s", repositoryID)
+		err = fmt.Errorf("installation ID missing for repository ID: %s", repositoryID)
 		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
 		return 0, err
 	}
