@@ -1550,6 +1550,22 @@ func getUserName(user *v1Models.User) string {
 	return ""
 }
 
+// metadataStringValue extracts a string value from metadata and validates it.
+func metadataStringValue(metadata map[string]interface{}, key string) (string, error) {
+	if metadata == nil {
+		return "", fmt.Errorf("missing %s in metadata", key)
+	}
+	v, ok := metadata[key]
+	if !ok || v == nil {
+		return "", fmt.Errorf("missing %s in metadata", key)
+	}
+	s := strings.TrimSpace(fmt.Sprintf("%v", v))
+	if s == "" || s == "<nil>" {
+		return "", fmt.Errorf("missing %s in metadata", key)
+	}
+	return s, nil
+}
+
 func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, userID string, metadata map[string]interface{}) (string, error) {
 	f := logrus.Fields{
 		"functionName": "sign.getIndividualSignatureCallbackURLGitlab",
@@ -1569,16 +1585,14 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 		}
 	}
 
-	if found, ok := metadata["repository_id"].(string); ok {
-		repositoryID = found
-	} else {
+	repositoryID, err = metadataStringValue(metadata, "repository_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
 		return "", err
 	}
 
-	if found, ok := metadata["merge_request_id"].(string); ok {
-		mergeRequestID = found
-	} else {
+	mergeRequestID, err = metadataStringValue(metadata, "merge_request_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get merge request ID for user: %s", userID)
 		return "", err
 	}
@@ -1599,6 +1613,7 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 	}
 
 	if gitlabOrg.OrganizationID == "" {
+		err = errors.New("missing organization ID for GitLab repository")
 		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", repositoryID)
 		return "", err
 	}
@@ -1628,18 +1643,16 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		}
 	}
 
-	if found, ok := metadata["repository_id"].(string); ok {
-		repositoryID = found
-	} else {
+	repositoryID, err = metadataStringValue(metadata, "repository_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
 		return "", err
 	}
 
 	log.WithFields(f).Debugf("found repository ID: %s", repositoryID)
 
-	if found, ok := metadata["pull_request_id"].(string); ok {
-		pullRequestID = found
-	} else {
+	pullRequestID, err = metadataStringValue(metadata, "pull_request_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
 		return "", err
 	}
