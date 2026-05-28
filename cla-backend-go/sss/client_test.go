@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	testAuthTokenPath     = "/oauth/token"
+	testAuthTokenPath     = "/oauth/token" // #nosec G101 -- endpoint path, not a hardcoded credential
 	testOrgDomain         = "example.com"
 	testOrgName           = "Example Corp"
 	testRateLimitExceeded = "rate limit exceeded"
