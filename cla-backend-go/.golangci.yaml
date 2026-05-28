@@ -4,6 +4,7 @@
 # More info on config here: https://github.com/golangci/golangci-lint#config-file
 run:
   deadline: 5m
+  go: "1.24"
   issues-exit-code: 1
   tests: true
   skip-dirs:

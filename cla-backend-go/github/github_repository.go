@@ -2630,7 +2630,7 @@ func GetReturnURL(ctx context.Context, installationID, repositoryID int64, pullR
 		return "", err
 	}
 	if repo == nil {
-		err := fmt.Errorf("missing repository for repository ID %d", repositoryID)
+		err = fmt.Errorf("missing repository for repository ID %d", repositoryID)
 		log.WithFields(f).WithError(err).Warn("invalid repository metadata")
 		return "", err
 	}
@@ -2638,7 +2638,7 @@ func GetReturnURL(ctx context.Context, installationID, repositoryID int64, pullR
 	owner := repo.GetOwner().GetLogin()
 	name := repo.GetName()
 	if owner == "" || name == "" {
-		err := fmt.Errorf("invalid repository owner/name for repository ID %d", repositoryID)
+		err = fmt.Errorf("invalid repository owner/name for repository ID %d", repositoryID)
 		log.WithFields(f).WithError(err).Warn("invalid repository metadata")
 		return "", err
 	}
