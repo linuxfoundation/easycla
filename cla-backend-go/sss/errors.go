@@ -10,7 +10,9 @@ import (
 
 // BadRequestError indicates a 400 response from the SSS API.
 type BadRequestError struct {
-	Message string
+	Message   string
+	Code      string
+	RequestID string
 }
 
 func (e *BadRequestError) Error() string {
@@ -19,7 +21,9 @@ func (e *BadRequestError) Error() string {
 
 // AuthError indicates a 401 or 403 response from the SSS API.
 type AuthError struct {
-	Message string
+	Message   string
+	Code      string
+	RequestID string
 }
 
 func (e *AuthError) Error() string {
@@ -29,11 +33,24 @@ func (e *AuthError) Error() string {
 // RetryableError indicates a 503 response from the SSS API.
 type RetryableError struct {
 	Message    string
+	Code       string
+	RequestID  string
 	RetryAfter time.Duration
 }
 
 func (e *RetryableError) Error() string {
 	return fmt.Sprintf("retryable error: %s", e.Message)
+}
+
+// NotFoundError indicates a 404 response from the SSS API.
+type NotFoundError struct {
+	Message   string
+	Code      string
+	RequestID string
+}
+
+func (e *NotFoundError) Error() string {
+	return fmt.Sprintf("not found: %s", e.Message)
 }
 
 // TimeoutError indicates the request timed out.

@@ -42,10 +42,10 @@ type ScreeningResult struct {
 	EntityID         string    `json:"entity_id"`
 	Source           string    `json:"source"`
 	ScreenedAt       time.Time `json:"screened_at"`
-	ClearbitID       string    `json:"clearbit_id,omitempty"`
+	ClearbitID       string    `json:"clearbit_id"`
 	SFDCID           *string   `json:"sfdc_id"`
-	OrgName          string    `json:"org_name,omitempty"`
-	Domain           string    `json:"domain,omitempty"`
-	Vendor           string    `json:"vendor,omitempty"`
-	ClearbitEnriched bool      `json:"clearbit_enriched,omitempty"`
+	OrgName          string    `json:"org_name"`
+	Domain           string    `json:"domain"`
+	Vendor           string    `json:"vendor"`
+	ClearbitEnriched bool      `json:"clearbit_enriched"`
 }

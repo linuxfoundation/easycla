@@ -20,6 +20,9 @@ func TestGetOrganizationStatus_Success(t *testing.T) {
 		if r.Method != http.MethodPost || r.URL.Path != "/oauth/token" {
 			t.Fatalf("unexpected auth request %s %s", r.Method, r.URL.Path)
 		}
+		if got := r.Header.Get("User-Agent"); got != userAgent {
+			t.Fatalf("unexpected auth user-agent: %s", got)
+		}
 		atomic.AddInt32(&authCalls, 1)
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"access_token":"token-abc","expires_in":3600,"token_type":"Bearer"}`)
@@ -56,6 +59,9 @@ func TestGetOrganizationStatus_Success(t *testing.T) {
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer token-abc" {
 			t.Fatalf("unexpected auth header: %s", got)
+		}
+		if got := r.Header.Get("User-Agent"); got != userAgent {
+			t.Fatalf("unexpected service user-agent: %s", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"status":"clean","entity_id":"org-123","source":"screening_db","screened_at":"2025-05-16T12:34:56Z","vendor":"descartes","clearbit_enriched":true,"sfdc_id":null,"domain":"example.com","org_name":"Example Corp"}`)
@@ -154,7 +160,7 @@ func TestGetOrganizationStatus_TooManyRequestsReturnsRetryableError(t *testing.T
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "5")
 		w.WriteHeader(http.StatusTooManyRequests)
-		fmt.Fprint(w, `{"error":{"message":"rate limit exceeded"}}`)
+		fmt.Fprint(w, `{"error":{"code":"RATE_LIMITED","message":"rate limit exceeded"},"request_id":"req-429"}`)
 	}))
 	defer server.Close()
 
@@ -180,6 +186,9 @@ func TestGetOrganizationStatus_TooManyRequestsReturnsRetryableError(t *testing.T
 	}
 	if retryErr.Message != "rate limit exceeded" {
 		t.Fatalf("unexpected retry message: %s", retryErr.Message)
+	}
+	if retryErr.Code != "RATE_LIMITED" || retryErr.RequestID != "req-429" {
+		t.Fatalf("unexpected retry details: %+v", retryErr)
 	}
 }
 
@@ -300,6 +309,76 @@ func TestGetOrganizationStatus_400ReturnsBadRequestError(t *testing.T) {
 	}
 }
 
+func TestGetOrganizationStatus_400PreservesStructuredErrorDetails(t *testing.T) {
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"token-400-structured","expires_in":3600,"token_type":"Bearer"}`)
+	}))
+	defer authServer.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"code":"INVALID_DOMAIN","message":"invalid domain"},"request_id":"req-400"}`)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(SSSConfig{
+		BaseURL:           server.URL,
+		Auth0Domain:       authServer.URL,
+		Auth0ClientID:     "id",
+		Auth0ClientSecret: "secret",
+		Auth0Audience:     "audience",
+		Timeout:           5 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "bad domain", OrgName: "BadOrg"})
+	var badReq *BadRequestError
+	if !errors.As(err, &badReq) {
+		t.Fatalf("expected BadRequestError, got %T: %v", err, err)
+	}
+	if badReq.Message != "invalid domain" || badReq.Code != "INVALID_DOMAIN" || badReq.RequestID != "req-400" {
+		t.Fatalf("unexpected bad request details: %+v", badReq)
+	}
+}
+
+func TestGetOrganizationStatus_404ReturnsNotFoundError(t *testing.T) {
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"token-404","expires_in":3600,"token_type":"Bearer"}`)
+	}))
+	defer authServer.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"error":{"code":"ORG_NOT_FOUND","message":"Organization not found in any tier"},"request_id":"req-404"}`)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(SSSConfig{
+		BaseURL:           server.URL,
+		Auth0Domain:       authServer.URL,
+		Auth0ClientID:     "id",
+		Auth0ClientSecret: "secret",
+		Auth0Audience:     "audience",
+		Timeout:           5 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "missing.example", OrgName: "MissingOrg"})
+	var notFound *NotFoundError
+	if !errors.As(err, &notFound) {
+		t.Fatalf("expected NotFoundError, got %T: %v", err, err)
+	}
+	if notFound.Message != "Organization not found in any tier" || notFound.Code != "ORG_NOT_FOUND" || notFound.RequestID != "req-404" {
+		t.Fatalf("unexpected not found details: %+v", notFound)
+	}
+}
+
 func TestGetOrganizationStatus_401ReturnsAuthError(t *testing.T) {
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/oauth/token" {
@@ -312,7 +391,7 @@ func TestGetOrganizationStatus_401ReturnsAuthError(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `unauthorized`)
+		fmt.Fprint(w, `{"error":{"code":"TOKEN_EXPIRED","message":"unauthorized"},"request_id":"req-401"}`)
 	}))
 	defer server.Close()
 
@@ -332,6 +411,63 @@ func TestGetOrganizationStatus_401ReturnsAuthError(t *testing.T) {
 	var authErr *AuthError
 	if !errors.As(err, &authErr) {
 		t.Fatalf("expected AuthError, got %T: %v", err, err)
+	}
+	if authErr.Message != "unauthorized" || authErr.Code != "TOKEN_EXPIRED" || authErr.RequestID != "req-401" {
+		t.Fatalf("unexpected auth details: %+v", authErr)
+	}
+}
+
+func TestGetOrganizationStatus_401InvalidatesCachedToken(t *testing.T) {
+	authCalls := int32(0)
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		index := atomic.AddInt32(&authCalls, 1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"access_token":"token-%d","expires_in":3600,"token_type":"Bearer"}`, index)
+	}))
+	defer authServer.Close()
+
+	serviceCalls := int32(0)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		index := atomic.AddInt32(&serviceCalls, 1)
+		if index == 1 {
+			if got := r.Header.Get("Authorization"); got != "Bearer token-1" {
+				t.Fatalf("unexpected first auth header: %s", got)
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":{"code":"TOKEN_EXPIRED","message":"token expired"},"request_id":"req-expired"}`)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-2" {
+			t.Fatalf("expected refreshed token on second request, got %s", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"clean","entity_id":"org-refresh","source":"sfdc","screened_at":"2025-05-16T12:34:56Z","vendor":"descartes","clearbit_enriched":true,"sfdc_id":null,"domain":"example.com","org_name":"RefreshOrg"}`)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(SSSConfig{
+		BaseURL:           server.URL,
+		Auth0Domain:       authServer.URL,
+		Auth0ClientID:     "id",
+		Auth0ClientSecret: "secret",
+		Auth0Audience:     "audience",
+		Timeout:           5 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "RefreshOrg"})
+	var authErr *AuthError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("expected AuthError, got %T: %v", err, err)
+	}
+
+	if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "RefreshOrg"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&authCalls); got != 2 {
+		t.Fatalf("expected token refetch after auth failure, got %d auth calls", got)
 	}
 }
 
@@ -447,6 +583,43 @@ func TestGetOrganizationStatus_UsesCachedToken(t *testing.T) {
 	}
 }
 
+func TestGetOrganizationStatus_CachesTokenWhenExpiresInMissing(t *testing.T) {
+	authCalls := int32(0)
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&authCalls, 1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"fallback-token","expires_in":0,"token_type":"Bearer"}`)
+	}))
+	defer authServer.Close()
+
+	serviceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"clean","entity_id":"org-fallback","source":"sfdc","screened_at":"2025-05-16T12:34:56Z","vendor":"descartes","clearbit_enriched":true,"sfdc_id":null,"domain":"example.com","org_name":"FallbackOrg"}`)
+	}))
+	defer serviceServer.Close()
+
+	client, err := NewClient(SSSConfig{
+		BaseURL:           serviceServer.URL,
+		Auth0Domain:       authServer.URL,
+		Auth0ClientID:     "id",
+		Auth0ClientSecret: "secret",
+		Auth0Audience:     "audience",
+		Timeout:           5 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if _, err := client.GetOrganizationStatus(context.Background(), OrganizationStatusRequest{Domain: "example.com", OrgName: "FallbackOrg"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := atomic.LoadInt32(&authCalls); got != 1 {
+		t.Fatalf("expected fallback token ttl to cache token, got %d auth calls", got)
+	}
+}
+
 func TestGetOrganizationStatus_RefreshesExpiredToken(t *testing.T) {
 	tokenIndex := int32(0)
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -487,5 +660,21 @@ func TestGetOrganizationStatus_RefreshesExpiredToken(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&tokenIndex); got < 2 {
 		t.Fatalf("expected token refresh after expiry, got %d auth calls", got)
+	}
+}
+
+func TestNewClient_DefaultTimeout(t *testing.T) {
+	client, err := NewClient(SSSConfig{
+		BaseURL:           "https://sss.example.com",
+		Auth0Domain:       "https://auth.example.com",
+		Auth0ClientID:     "id",
+		Auth0ClientSecret: "secret",
+		Auth0Audience:     "audience",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.httpClient.Timeout != defaultTimeout {
+		t.Fatalf("expected default timeout %v, got %v", defaultTimeout, client.httpClient.Timeout)
 	}
 }

@@ -19,7 +19,11 @@ import (
 	"time"
 )
 
-const defaultTimeout = 10 * time.Second
+const (
+	defaultTimeout  = 30 * time.Second
+	defaultTokenTTL = time.Hour
+	userAgent       = "easycla-cla-backend-go/sss-client"
+)
 
 // Client is a reusable HTTP client for the Sanctions Screening Service.
 type Client struct {
@@ -107,6 +111,7 @@ func (c *Client) GetOrganizationStatus(ctx context.Context, statusReq Organizati
 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -127,11 +132,18 @@ func (c *Client) GetOrganizationStatus(ctx context.Context, statusReq Organizati
 		}
 		return &result, nil
 	case http.StatusBadRequest:
-		return nil, &BadRequestError{Message: responseMessage(body)}
+		details := responseErrorDetails(body)
+		return nil, &BadRequestError{Message: details.Message, Code: details.Code, RequestID: details.RequestID}
+	case http.StatusNotFound:
+		details := responseErrorDetails(body)
+		return nil, &NotFoundError{Message: details.Message, Code: details.Code, RequestID: details.RequestID}
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return nil, &AuthError{Message: responseMessage(body)}
+		c.invalidateToken(token)
+		details := responseErrorDetails(body)
+		return nil, &AuthError{Message: details.Message, Code: details.Code, RequestID: details.RequestID}
 	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
-		return nil, &RetryableError{Message: responseMessage(body), RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		details := responseErrorDetails(body)
+		return nil, &RetryableError{Message: details.Message, Code: details.Code, RequestID: details.RequestID, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 	default:
 		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, responseMessage(body))
 	}
@@ -175,6 +187,7 @@ func (c *Client) fetchToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to create auth request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -188,7 +201,11 @@ func (c *Client) fetchToken(ctx context.Context) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", &AuthError{Message: fmt.Sprintf("authentication failed: %s", strings.TrimSpace(string(body)))}
+		details := responseErrorDetails(body)
+		if details.Message == "" {
+			details.Message = strings.TrimSpace(string(body))
+		}
+		return "", &AuthError{Message: fmt.Sprintf("authentication failed: %s", details.Message), Code: details.Code, RequestID: details.RequestID}
 	}
 
 	var authResponse authResponse
@@ -202,12 +219,22 @@ func (c *Client) fetchToken(ctx context.Context) (string, error) {
 
 	expiresIn := time.Duration(authResponse.ExpiresIn) * time.Second
 	if expiresIn <= 0 {
-		expiresIn = defaultTimeout
+		expiresIn = defaultTokenTTL
 	}
 	c.token = authResponse.AccessToken
 	c.expiry = time.Now().Add(expiresIn)
 
 	return c.token, nil
+}
+
+func (c *Client) invalidateToken(token string) {
+	c.tokenMutex.Lock()
+	defer c.tokenMutex.Unlock()
+
+	if c.token == token {
+		c.token = ""
+		c.expiry = time.Time{}
+	}
 }
 
 func (c *Client) authTokenURL() string {
@@ -240,16 +267,36 @@ func parseRetryAfter(value string) time.Duration {
 	return 0
 }
 
-func responseMessage(body []byte) string {
+type upstreamErrorDetails struct {
+	Message   string
+	Code      string
+	RequestID string
+}
+
+func responseErrorDetails(body []byte) upstreamErrorDetails {
 	var errPayload struct {
 		Error struct {
+			Code    string `json:"code"`
 			Message string `json:"message"`
 		} `json:"error"`
+		RequestID string `json:"request_id"`
 	}
-	if err := json.Unmarshal(body, &errPayload); err == nil && strings.TrimSpace(errPayload.Error.Message) != "" {
-		return strings.TrimSpace(errPayload.Error.Message)
+	if err := json.Unmarshal(body, &errPayload); err == nil {
+		details := upstreamErrorDetails{
+			Message:   strings.TrimSpace(errPayload.Error.Message),
+			Code:      strings.TrimSpace(errPayload.Error.Code),
+			RequestID: strings.TrimSpace(errPayload.RequestID),
+		}
+		if details.Message != "" || details.Code != "" || details.RequestID != "" {
+			return details
+		}
 	}
-	return strings.TrimSpace(string(body))
+
+	return upstreamErrorDetails{Message: strings.TrimSpace(string(body))}
+}
+
+func responseMessage(body []byte) string {
+	return responseErrorDetails(body).Message
 }
 
 func toClientError(err error) error {
