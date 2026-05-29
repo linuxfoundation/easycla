@@ -15,7 +15,7 @@
 - `/v2/user/<userId>/project/<projectId>/last-signature`.
 
 
-3. EasyCLA corporate console [here](https://github.com/LF-Engineering/lfx-corp-cla-console/blob/main/backend/src/data/cla-api.ts):
+3. EasyCLA corporate console [here](https://github.com/linuxfoundation/lfx-corp-cla-console/blob/main/backend/src/data/cla-api.ts):
 - No V1 or V2 APIs used.
 
 

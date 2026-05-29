@@ -41,10 +41,18 @@ jobs:
 
     - name: Upload Gosec results to GitHub Security Tab
       uses: github/codeql-action/upload-sarif@v3
-      if: always()
+      if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
       with:
         sarif_file: cla-backend-legacy/gosec-results.sarif
         category: gosec
+
+    - name: Upload Gosec SARIF as artifact (fork PR - security tab write not available)
+      uses: actions/upload-artifact@v4
+      if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+      with:
+        name: gosec-results-sarif
+        path: cla-backend-legacy/gosec-results.sarif
+        if-no-files-found: ignore
 
     # govulncheck - official Go vulnerability scanner
     - name: Go vulnerability check
@@ -52,10 +60,10 @@ jobs:
       run: |
         go install golang.org/x/vuln/cmd/govulncheck@latest
         govulncheck ./...
-      continue-on-error: true
 
     # staticcheck for additional Go analysis
     - name: staticcheck
+      if: always()
       working-directory: ./cla-backend-legacy
       run: |
         go install honnef.co/go/tools/cmd/staticcheck@latest

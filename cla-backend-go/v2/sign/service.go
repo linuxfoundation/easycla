@@ -1460,7 +1460,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	var returnURL string
 	if input.ReturnURL.String() == "" {
 		log.WithFields(f).Warnf("signature return url is empty")
-		returnURL, err = getActiveSignatureReturnURL(*input.UserID, activeSignatureMetadata)
+		returnURL, err = s.getActiveSignatureReturnURL(ctx, *input.UserID, activeSignatureMetadata)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get active signature return url for user: %s", *input.UserID)
 			return nil, err
@@ -1550,6 +1550,22 @@ func getUserName(user *v1Models.User) string {
 	return ""
 }
 
+// metadataStringValue extracts a string value from metadata and validates it.
+func metadataStringValue(metadata map[string]interface{}, key string) (string, error) {
+	if metadata == nil {
+		return "", fmt.Errorf("missing %s in metadata", key)
+	}
+	v, ok := metadata[key]
+	if !ok || v == nil {
+		return "", fmt.Errorf("missing %s in metadata", key)
+	}
+	s := strings.TrimSpace(fmt.Sprintf("%v", v))
+	if s == "" || s == "<nil>" {
+		return "", fmt.Errorf("missing %s in metadata", key)
+	}
+	return s, nil
+}
+
 func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, userID string, metadata map[string]interface{}) (string, error) {
 	f := logrus.Fields{
 		"functionName": "sign.getIndividualSignatureCallbackURLGitlab",
@@ -1569,16 +1585,14 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 		}
 	}
 
-	if found, ok := metadata["repository_id"].(string); ok {
-		repositoryID = found
-	} else {
+	repositoryID, err = metadataStringValue(metadata, "repository_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
 		return "", err
 	}
 
-	if found, ok := metadata["merge_request_id"].(string); ok {
-		mergeRequestID = found
-	} else {
+	mergeRequestID, err = metadataStringValue(metadata, "merge_request_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get merge request ID for user: %s", userID)
 		return "", err
 	}
@@ -1599,6 +1613,7 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 	}
 
 	if gitlabOrg.OrganizationID == "" {
+		err = errors.New("missing organization ID for GitLab repository")
 		log.WithFields(f).WithError(err).Warnf("unable to get organization ID for repository ID: %s", repositoryID)
 		return "", err
 	}
@@ -1628,18 +1643,16 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 		}
 	}
 
-	if found, ok := metadata["repository_id"].(string); ok {
-		repositoryID = found
-	} else {
+	repositoryID, err = metadataStringValue(metadata, "repository_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
 		return "", err
 	}
 
 	log.WithFields(f).Debugf("found repository ID: %s", repositoryID)
 
-	if found, ok := metadata["pull_request_id"].(string); ok {
-		pullRequestID = found
-	} else {
+	pullRequestID, err = metadataStringValue(metadata, "pull_request_id")
+	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
 		return "", err
 	}
@@ -1682,7 +1695,8 @@ func (s *service) getInstallationIDFromRepositoryID(ctx context.Context, reposit
 
 	installationId = githubOrg.OrganizationInstallationID
 	if installationId == 0 {
-		log.WithFields(f).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
+		err = fmt.Errorf("installation ID missing for repository ID: %s", repositoryID)
+		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for repository ID: %s", repositoryID)
 		return 0, err
 	}
 
@@ -2220,49 +2234,6 @@ func getUserEmail(user *v1Models.User, preferredEmail string, providerType strin
 		return user.Emails[0]
 	}
 	return ""
-}
-
-func getActiveSignatureReturnURL(userID string, metadata map[string]interface{}) (string, error) {
-
-	f := logrus.Fields{
-		"functionName": "sign.getActiveSignatureReturnURL",
-	}
-
-	var returnURL string
-	var err error
-	var pullRequestID int
-	var installationID int64
-	var repositoryID int64
-
-	if found, ok := metadata["pull_request_id"].(int); ok {
-		pullRequestID = found
-	} else {
-		log.WithFields(f).WithError(err).Warnf("unable to get pull request ID for user: %s", userID)
-		return "", err
-	}
-
-	if found, ok := metadata["installation_id"].(int64); ok {
-		installationID = found
-	} else {
-		log.WithFields(f).WithError(err).Warnf("unable to get installation ID for user: %s", userID)
-		return "", err
-	}
-
-	if found, ok := metadata["repository_id"].(int64); ok {
-		repositoryID = found
-	} else {
-		log.WithFields(f).WithError(err).Warnf("unable to get repository ID for user: %s", userID)
-		return "", err
-	}
-
-	returnURL, err = github.GetReturnURL(context.Background(), installationID, repositoryID, pullRequestID)
-
-	if err != nil {
-		return "", err
-	}
-
-	return returnURL, nil
-
 }
 
 func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEmail string, allowLFEmail bool) map[string]interface{} {

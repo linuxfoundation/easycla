@@ -2597,28 +2597,76 @@ func GetReturnURL(ctx context.Context, installationID, repositoryID int64, pullR
 		"pullRequestID":  pullRequestID,
 	}
 
-	client, err := NewGithubAppClient(installationID)
+	if installationID <= 0 {
+		err := errors.New("invalid installation ID")
+		log.WithFields(f).WithError(err).Warn("invalid installation ID")
+		return "", err
+	}
+	if repositoryID <= 0 {
+		err := errors.New("invalid repository ID")
+		log.WithFields(f).WithError(err).Warn("invalid repository ID")
+		return "", err
+	}
+	if pullRequestID <= 0 {
+		err := errors.New("invalid pull request ID")
+		log.WithFields(f).WithError(err).Warn("invalid pull request ID")
+		return "", err
+	}
 
+	client, err := NewGithubAppClient(installationID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to create Github client")
 		return "", err
 	}
 
 	log.WithFields(f).Debugf("getting github repository by id: %d", repositoryID)
-	repo, _, err := client.Repositories.GetByID(ctx, repositoryID)
+	repo, resp, err := client.Repositories.GetByID(ctx, repositoryID)
 	if err != nil {
+		if ok, wrapped := CheckAndWrapForKnownErrors(resp, err); ok {
+			log.WithFields(f).WithError(wrapped).Warnf("unable to get repository by ID: %d", repositoryID)
+			return "", wrapped
+		}
 		log.WithFields(f).WithError(err).Warnf("unable to get repository by ID: %d", repositoryID)
+		return "", err
+	}
+	if repo == nil {
+		err = fmt.Errorf("missing repository for repository ID %d", repositoryID)
+		log.WithFields(f).WithError(err).Warn("invalid repository metadata")
+		return "", err
+	}
+
+	owner := repo.GetOwner().GetLogin()
+	name := repo.GetName()
+	if owner == "" || name == "" {
+		err = fmt.Errorf("invalid repository owner/name for repository ID %d", repositoryID)
+		log.WithFields(f).WithError(err).Warn("invalid repository metadata")
 		return "", err
 	}
 
 	log.WithFields(f).Debugf("getting pull request by id: %d", pullRequestID)
-	pullRequest, _, err := client.PullRequests.Get(ctx, *repo.Owner.Login, *repo.Name, pullRequestID)
+	pullRequest, resp, err := client.PullRequests.Get(ctx, owner, name, pullRequestID)
 	if err != nil {
+		if ok, wrapped := CheckAndWrapForKnownErrors(resp, err); ok {
+			log.WithFields(f).WithError(wrapped).Warnf("unable to get pull request by ID: %d", pullRequestID)
+			return "", wrapped
+		}
 		log.WithFields(f).WithError(err).Warnf("unable to get pull request by ID: %d", pullRequestID)
 		return "", err
 	}
+	if pullRequest == nil {
+		err := fmt.Errorf("missing pull request %d/%s/%s", pullRequestID, owner, name)
+		log.WithFields(f).WithError(err).Warn("invalid pull request metadata")
+		return "", err
+	}
 
-	log.WithFields(f).Debugf("returning pull request html url: %s", *pullRequest.HTMLURL)
+	htmlURL := pullRequest.GetHTMLURL()
+	if htmlURL == "" {
+		err := fmt.Errorf("missing html url for pull request %d/%s/%s", pullRequestID, owner, name)
+		log.WithFields(f).WithError(err).Warn("invalid pull request metadata")
+		return "", err
+	}
 
-	return *pullRequest.HTMLURL, nil
+	log.WithFields(f).Debugf("returning pull request html url: %s", htmlURL)
+
+	return htmlURL, nil
 }

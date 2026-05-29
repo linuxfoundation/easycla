@@ -30,7 +30,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		errs <- http.ListenAndServe(fmt.Sprintf(":%d", viper.GetInt("PORT")), handler) // nolint gosec no support for setting timeouts
 	}()
 	go func() {
-		c := make(chan os.Signal)
+		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGINT) // nolint
 		errs <- fmt.Errorf("%s", <-c)
 	}()

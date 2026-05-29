@@ -12,6 +12,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   license-header-check:
     name: License Header Check

@@ -274,6 +274,7 @@ cla-backend/python-api.err
 cla-backend-go/golang-api.err
 cla-backend-go/golang-api.log
 utils/otel_dd_go/otel_dd
+utils/otel_dd_go/otel_dd_go
 audit.json
 spans*.json
 *api_usage*.csv
@@ -286,3 +287,4 @@ spans*.json
 *.test
 *.out
 CLAUDE.md
+.claude/*
