@@ -28,6 +28,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/sss"
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/cla_groups"
 	gitlab_activity "github.com/linuxfoundation/easycla/cla-backend-go/v2/gitlab-activity"
@@ -117,12 +118,13 @@ type service struct {
 	gitlabActivityService gitlab_activity.Service
 	gitlabApp             *gitlab_api.App
 	gerritService         gerrits.Service
+	sssClient             *sss.Client
 }
 
 // NewService returns an instance of v2 project service
 func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
 	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface, claLandingPage string, claLogoURL string, emailTemplateService emails.EmailTemplateService, eventsService events.Service, gitlabActivityService gitlab_activity.Service, gitlabApp *gitlab_api.App,
-	gerritService gerrits.Service) Service {
+	gerritService gerrits.Service, sssClient *sss.Client) Service {
 	return &service{
 		ClaV4ApiURL:           apiURL,
 		ClaV1ApiURL:           v1API,
@@ -145,6 +147,7 @@ func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo 
 		gitlabApp:             gitlabApp,
 		gerritService:         gerritService,
 		eventsService:         eventsService,
+		sssClient:             sssClient,
 	}
 }
 
@@ -243,14 +246,21 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	}
 
 	// 1.5 Check if company is sanctioned
-	if comp != nil && comp.IsSanctioned {
-		if input.CompanySfid != nil {
-			err = fmt.Errorf("company %s is sanctioned", *input.CompanySfid)
-		} else {
-			err = fmt.Errorf("company is sanctioned")
+	if comp != nil {
+		sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, comp)
+		if sanctionErr != nil {
+			log.WithFields(f).WithError(sanctionErr).Error("failed to check company compliance")
+			return nil, sanctionErr
 		}
-		log.WithFields(f).WithError(err).Error("company is sanctioned")
-		return nil, err
+		if sanctioned {
+			if input.CompanySfid != nil {
+				err = fmt.Errorf("company %s is sanctioned", *input.CompanySfid)
+			} else {
+				err = fmt.Errorf("company is sanctioned")
+			}
+			log.WithFields(f).WithError(err).Error("company is sanctioned")
+			return nil, err
+		}
 	}
 
 	// 2. Ensure this is a valid project
@@ -2935,4 +2945,71 @@ func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*m
 		ReturnURL:      strfmt.URI(returnURL),
 		UserID:         userID,
 	}, nil
+}
+
+// checkCompanyCompliance queries the Sanctions Screening Service for the given company
+// and persists the result. Returns (sanctioned, error). A nil sssClient is a no-op.
+func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.Company) (bool, error) {
+	f := logrus.Fields{
+		"functionName":   "sign.checkCompanyCompliance",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      company.CompanyID,
+		"companyName":    company.CompanyName,
+	}
+
+	if s.sssClient == nil {
+		log.WithFields(f).Debug("SSS client not configured, skipping compliance check")
+		return false, nil
+	}
+
+	// Fetch org from organization service to get the website/domain.
+	orgClient := organizationService.GetClient()
+	org, err := orgClient.GetOrganization(ctx, company.CompanyExternalID)
+	if err != nil {
+		return false, fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", company.CompanyExternalID, err)
+	}
+	if org == nil {
+		return false, fmt.Errorf("checkCompanyCompliance: organization record is nil for %s", company.CompanyExternalID)
+	}
+
+	if strings.TrimSpace(org.Link) == "" {
+		log.WithFields(f).Warnf("organization %s has no Link/website; skipping SSS check", company.CompanyExternalID)
+		return false, nil
+	}
+
+	// Strip protocol to get bare domain.
+	domain := org.Link
+	if idx := strings.Index(domain, "://"); idx != -1 {
+		domain = domain[idx+3:]
+	}
+	domain = strings.TrimRight(domain, "/")
+
+	req := sss.OrganizationStatusRequest{
+		Domain:  domain,
+		OrgName: company.CompanyName,
+	}
+	if strings.HasPrefix(company.CompanyExternalID, "001") {
+		req.SFDCID = company.CompanyExternalID
+	}
+
+	result, err := s.sssClient.GetOrganizationStatus(ctx, req)
+	if err != nil {
+		return false, fmt.Errorf("checkCompanyCompliance: SSS request failed for company %s: %w", company.CompanyID, err)
+	}
+
+	sanctioned := result.Status == sss.StatusFlagged
+
+	if persistErr := s.companyRepo.UpdateCompanySanctionStatus(
+		ctx,
+		company.CompanyID,
+		sanctioned,
+	); persistErr != nil {
+		return false, fmt.Errorf(
+			"failed to persist sanction status for company %s: %w",
+			company.CompanyID,
+			persistErr,
+		)
+	}
+
+	return sanctioned, nil
 }
