@@ -246,21 +246,26 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	}
 
 	// 1.5 Check if company is sanctioned
-	if comp != nil {
-		sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, comp)
-		if sanctionErr != nil {
-			log.WithFields(f).WithError(sanctionErr).Error("failed to check company compliance")
-			return nil, sanctionErr
+	if comp == nil {
+		if input.CompanySfid != nil {
+			return nil, fmt.Errorf("company not found for SFID %s", *input.CompanySfid)
 		}
-		if sanctioned {
-			if input.CompanySfid != nil {
-				err = fmt.Errorf("company %s is sanctioned", *input.CompanySfid)
-			} else {
-				err = fmt.Errorf("company is sanctioned")
-			}
-			log.WithFields(f).WithError(err).Error("company is sanctioned")
-			return nil, err
+		return nil, fmt.Errorf("company not found")
+	}
+
+	sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, comp)
+	if sanctionErr != nil {
+		log.WithFields(f).WithError(sanctionErr).Error("failed to check company compliance")
+		return nil, sanctionErr
+	}
+	if sanctioned {
+		if input.CompanySfid != nil {
+			err = fmt.Errorf("company %s is sanctioned", *input.CompanySfid)
+		} else {
+			err = fmt.Errorf("company is sanctioned")
 		}
+		log.WithFields(f).WithError(err).Error("company is sanctioned")
+		return nil, err
 	}
 
 	// 2. Ensure this is a valid project
@@ -2977,12 +2982,17 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		return false, nil
 	}
 
-	// Strip protocol to get bare domain.
-	domain := org.Link
-	if idx := strings.Index(domain, "://"); idx != -1 {
-		domain = domain[idx+3:]
+	// Parse org.Link to extract bare hostname (strips scheme, path, port, query).
+	domain := strings.TrimSpace(org.Link)
+	if u, parseErr := url.Parse(domain); parseErr == nil && u.Hostname() != "" {
+		domain = u.Hostname()
+	} else {
+		// Fallback: strip scheme and trailing slashes.
+		if idx := strings.Index(domain, "://"); idx != -1 {
+			domain = domain[idx+3:]
+		}
+		domain = strings.TrimRight(domain, "/")
 	}
-	domain = strings.TrimRight(domain, "/")
 
 	req := sss.OrganizationStatusRequest{
 		Domain:  domain,
