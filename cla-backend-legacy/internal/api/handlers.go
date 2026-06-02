@@ -9123,7 +9123,7 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	fn := "docusign_models.check_and_prepare_employee_signature"
+	
 
 	// If the employee signature already exists, return it.
 	existing, err := h.signatures.QueryByProjectAndReference(ctx, req.ProjectID, req.UserID)
