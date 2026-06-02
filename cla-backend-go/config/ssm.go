@@ -268,5 +268,32 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		}
 	}
 
+	// Sanctions Screening Service (SSS) configuration is loaded leniently - the
+	// keys may not be provisioned in every environment yet, so look them up
+	// best-effort (non-fatal) rather than aborting startup like the keys above.
+	// This is only a rollout convenience: SSS is required by policy in deployed
+	// environments, and the caller must enforce that (see config.SSS).
+	loadOptionalSSSConfig(ssmClient, stage, &config, f)
+
 	return config
+}
+
+// loadOptionalSSSConfig fetches the SSS keys without aborting startup when they
+// are missing, so the SSM parameters can be provisioned before the feature is
+// switched on. A stage that requires SSS must reject an empty configuration at
+// the call site rather than silently skipping the screening check.
+func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+	baseURLKey := fmt.Sprintf("cla-sss-base-url-%s", stage)
+	if value, err := getSSMString(ssmClient, baseURLKey); err == nil {
+		config.SSS.BaseURL = value
+	} else {
+		log.WithFields(f).Warnf("optional SSM key %s not set - sanctions screening disabled", baseURLKey)
+	}
+
+	audienceKey := fmt.Sprintf("cla-sss-auth0-audience-%s", stage)
+	if value, err := getSSMString(ssmClient, audienceKey); err == nil {
+		config.SSS.Audience = value
+	} else {
+		log.WithFields(f).Warnf("optional SSM key %s not set - sanctions screening disabled", audienceKey)
+	}
 }
