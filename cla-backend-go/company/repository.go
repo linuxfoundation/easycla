@@ -21,6 +21,7 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -53,7 +54,8 @@ type IRepository interface { //nolint
 	ApproveCompanyAccessRequest(ctx context.Context, companyInviteID string) error
 	RejectCompanyAccessRequest(ctx context.Context, companyInviteID string) error
 	UpdateCompanyAccessList(ctx context.Context, companyID string, companyACL []string) error
-	UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool) error
+	UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error
+	ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) error
 	IsCCLAEnabledForCompany(ctx context.Context, companyID string) (bool, error)
 }
 
@@ -1277,70 +1279,90 @@ func (repo repository) UpdateCompanyAccessList(ctx context.Context, companyID st
 	return nil
 }
 
-// UpdateCompanySanctionStatus updates the is_sanctioned flag for a company.
-// It only performs the update if the value has changed to avoid unnecessary DynamoDB writes.
-func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool) error {
+// UpdateCompanySanctionStatus sets is_sanctioned and, when origin is non-empty, sanction_origin.
+// Pass origin="sss" when flagging via SSS; pass origin="" for manual admin updates.
+func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error {
 	f := logrus.Fields{
 		"functionName":   "company.repository.UpdateCompanySanctionStatus",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 		"sanctioned":     sanctioned,
+		"origin":         origin,
 	}
 
-	// SSS may only set a sanction block, never clear one (clearing could override a manual block).
-	if !sanctioned {
-		log.WithFields(f).Debugf("ignoring request to clear sanction flag via SSS to protect manual/other-source blocks")
-		return nil
+	_, now := utils.CurrentTime()
+
+	names := map[string]*string{
+		"#S": aws.String("is_sanctioned"),
+		"#M": aws.String("date_modified"),
+	}
+	values := map[string]*dynamodb.AttributeValue{
+		":s": {BOOL: aws.Bool(sanctioned)},
+		":m": {S: aws.String(now)},
+	}
+	updateExpr := "SET #S = :s, #M = :m"
+
+	if origin != "" {
+		names["#O"] = aws.String("sanction_origin")
+		values[":o"] = &dynamodb.AttributeValue{S: aws.String(origin)}
+		updateExpr += ", #O = :o"
 	}
 
-	// Fetch current company to check if value has changed
-	currentCompany, err := repo.GetCompany(ctx, companyID)
-	if err != nil {
-		log.WithFields(f).Warnf("unable to fetch current company record to check sanction status, error: %v", err)
+	input := &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames:  names,
+		ExpressionAttributeValues: values,
+		TableName:                 aws.String(repo.companyTableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"company_id": {S: aws.String(companyID)},
+		},
+		UpdateExpression: aws.String(updateExpr),
+	}
+
+	if _, err := repo.dynamoDBClient.UpdateItem(input); err != nil {
+		log.WithFields(f).Warnf("error updating company sanction status, error: %v", err)
 		return err
 	}
-	if currentCompany == nil {
-		return fmt.Errorf("company not found: %s", companyID)
-	}
+	return nil
+}
 
-	// Avoid unnecessary writes - only update if value has changed
-	if currentCompany.IsSanctioned == sanctioned {
-		log.WithFields(f).Debugf("sanction status unchanged (current=%v, new=%v), skipping update", currentCompany.IsSanctioned, sanctioned)
-		return nil
+// ClearCompanySanctionStatusIfSSS clears is_sanctioned only when sanction_origin="sss".
+// A ConditionalCheckFailedException (manual/absent origin) is silently ignored.
+func (repo repository) ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) error {
+	f := logrus.Fields{
+		"functionName":   "company.repository.ClearCompanySanctionStatusIfSSS",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyID,
 	}
-
-	log.WithFields(f).Debugf("updating sanction status from %v to %v", currentCompany.IsSanctioned, sanctioned)
 
 	_, now := utils.CurrentTime()
 
 	input := &dynamodb.UpdateItemInput{
+		TableName: aws.String(repo.companyTableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"company_id": {S: aws.String(companyID)},
+		},
+		UpdateExpression: aws.String("SET #S = :false, #M = :m REMOVE #O"),
+		ConditionExpression: aws.String("#O = :sss"),
 		ExpressionAttributeNames: map[string]*string{
 			"#S": aws.String("is_sanctioned"),
 			"#M": aws.String("date_modified"),
+			"#O": aws.String("sanction_origin"),
 		},
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":s": {
-				BOOL: aws.Bool(sanctioned),
-			},
-			":m": {
-				S: aws.String(now),
-			},
+			":false": {BOOL: aws.Bool(false)},
+			":m":     {S: aws.String(now)},
+			":sss":   {S: aws.String("sss")},
 		},
-		TableName: aws.String(repo.companyTableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"company_id": {
-				S: aws.String(companyID),
-			},
-		},
-		UpdateExpression: aws.String("SET #S = :s, #M = :m"),
 	}
 
-	_, err = repo.dynamoDBClient.UpdateItem(input)
-	if err != nil {
-		log.WithFields(f).Warnf("error updating company sanction status, error: %v", err)
+	if _, err := repo.dynamoDBClient.UpdateItem(input); err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			log.WithFields(f).Debugf("sanction_origin != sss for company %s; not auto-clearing (manual/admin block)", companyID)
+			return nil
+		}
+		log.WithFields(f).Warnf("error clearing company sanction status: %v", err)
 		return err
 	}
-
 	return nil
 }
 

@@ -13,7 +13,6 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +43,7 @@ import (
 
 	sigs "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	organizationService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
+	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 
 	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	userService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
@@ -62,7 +62,8 @@ const (
 	DontLoadRepoDetails = false
 	DocSignFalse        = "false"
 	DocusignCompleted   = "Completed"
-	complianceCacheTTL  = 5 * time.Minute
+	complianceCacheTTL      = 5 * time.Minute
+	maxComplianceCacheSize  = 1000
 )
 
 // errors
@@ -129,7 +130,6 @@ type service struct {
 
 type complianceCacheEntry struct {
 	sanctioned bool
-	err        error
 	expiresAt  time.Time
 }
 
@@ -2976,16 +2976,17 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		"companyName":    company.CompanyName,
 	}
 
-	// Check if company is already manually sanctioned - if so, always block
-	if company.IsSanctioned {
-		log.WithFields(f).Warnf("company is manually sanctioned, blocking")
+	// Short-circuit for manually/admin-set blocks (sanction_origin != "sss" or no origin).
+	// SSS-origin blocks fall through so a now-clean result can clear them.
+	if company.IsSanctioned && company.SanctionOrigin != "sss" {
+		log.WithFields(f).Warnf("company has non-SSS sanction block (origin=%q), blocking without SSS call", company.SanctionOrigin)
 		return true, nil
 	}
 
 	cacheKey := s.complianceCacheKey(company)
 	if cached, ok := s.getComplianceCache(cacheKey); ok {
 		log.WithFields(f).Debugf("using cached compliance result for organization/company: %s", cacheKey)
-		return cached.sanctioned, cached.err
+		return cached.sanctioned, nil
 	}
 
 	if s.sssClient == nil {
@@ -3057,22 +3058,28 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 
 	sanctioned := result.Status == sss.StatusFlagged
 
-	// Only persist if flagged (never clear a manual sanction via SSS clean result)
-	if sanctioned {
-		log.WithFields(f).Warnf("SSS returned flagged status for company %s, persisting sanction", company.CompanyID)
-		if persistErr := s.companyRepo.UpdateCompanySanctionStatus(ctx, company.CompanyID, true); persistErr != nil {
-			log.WithFields(f).WithError(persistErr).Warnf("failed to persist sanction status for company %s", company.CompanyID)
-			resultErr := fmt.Errorf("failed to persist sanction status for company %s: %w", company.CompanyID, persistErr)
-			return false, resultErr
-		}
-	} else {
-		log.WithFields(f).Debugf("SSS returned clean status for company %s", company.CompanyID)
+	// In required mode, only an explicit "clean" is acceptable — any other status blocks.
+	if s.sssRequired && result.Status != sss.StatusClean && result.Status != sss.StatusFlagged {
+		return false, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s (required mode blocks on ambiguous results)", result.Status, company.CompanyID)
 	}
 
-	// Return combined result: blocked if manually sanctioned OR sss flagged
-	blocked := company.IsSanctioned || sanctioned
-	s.setComplianceCache(cacheKey, blocked, nil)
-	return blocked, nil
+	// Persist result: set origin="sss" on flagged; conditionally clear on clean (only if sss-origin).
+	if sanctioned {
+		log.WithFields(f).Warnf("SSS returned flagged status for company %s, persisting sanction with origin=sss", company.CompanyID)
+		if persistErr := s.companyRepo.UpdateCompanySanctionStatus(ctx, company.CompanyID, true, "sss"); persistErr != nil {
+			log.WithFields(f).WithError(persistErr).Warnf("failed to persist sanction status for company %s", company.CompanyID)
+			return false, fmt.Errorf("failed to persist sanction status for company %s: %w", company.CompanyID, persistErr)
+		}
+	} else {
+		// Clear only when previously set by SSS; manual blocks are left untouched.
+		log.WithFields(f).Debugf("SSS returned clean status for company %s; attempting conditional clear", company.CompanyID)
+		if clearErr := s.companyRepo.ClearCompanySanctionStatusIfSSS(ctx, company.CompanyID); clearErr != nil {
+			log.WithFields(f).WithError(clearErr).Warnf("failed to conditionally clear sanction status for company %s", company.CompanyID)
+		}
+	}
+
+	s.setComplianceCache(cacheKey, sanctioned)
+	return sanctioned, nil
 }
 
 func (s *service) complianceCacheKey(company *v1Models.Company) string {
@@ -3103,8 +3110,8 @@ func (s *service) getComplianceCache(key string) (complianceCacheEntry, bool) {
 	return entry, true
 }
 
-func (s *service) setComplianceCache(key string, sanctioned bool, err error) {
-	if key == "" || err != nil {
+func (s *service) setComplianceCache(key string, sanctioned bool) {
+	if key == "" {
 		return
 	}
 	s.complianceCacheMu.Lock()
@@ -3112,76 +3119,44 @@ func (s *service) setComplianceCache(key string, sanctioned bool, err error) {
 	if s.complianceCache == nil {
 		s.complianceCache = make(map[string]complianceCacheEntry)
 	}
+	if len(s.complianceCache) >= maxComplianceCacheSize {
+		// Evict one expired entry or, if none, the first entry found.
+		evicted := false
+		now := time.Now()
+		for k, v := range s.complianceCache {
+			if now.After(v.expiresAt) {
+				delete(s.complianceCache, k)
+				evicted = true
+				break
+			}
+		}
+		if !evicted {
+			for k := range s.complianceCache {
+				delete(s.complianceCache, k)
+				break
+			}
+		}
+	}
 	s.complianceCache[key] = complianceCacheEntry{
 		sanctioned: sanctioned,
-		err:        err,
 		expiresAt:  time.Now().Add(complianceCacheTTL),
 	}
 }
 
-// resolveDomain attempts to resolve the domain for an organization.
-// Priority: 1) Domains field from org (if available), 2) Parse Link field.
-func (s *service) resolveDomain(f logrus.Fields, org interface{}) string {
-	if domains := s.stringField(org, "Domains"); domains != "" {
-		if domain := s.firstDomain(domains); domain != "" {
-			log.WithFields(f).Debugf("resolved domain from Domains field: %s", domain)
-			return domain
-		}
-	}
-
-	link := s.stringField(org, "Link")
-	if link != "" {
-		domain := s.parseDomain(link)
-		if domain != "" {
-			return domain
-		}
-	}
-
-	return ""
-}
-
-func (s *service) stringField(v interface{}, fieldName string) string {
-	if v == nil {
+// resolveDomain returns the best domain for an org: first entry from Domains, else host from Link.
+func (s *service) resolveDomain(f logrus.Fields, org *orgModels.Organization) string {
+	if org == nil {
 		return ""
 	}
-	rv := reflect.ValueOf(v)
-	if rv.Kind() == reflect.Ptr {
-		if rv.IsNil() {
-			return ""
-		}
-		rv = rv.Elem()
-	}
-	if rv.Kind() != reflect.Struct {
-		return ""
-	}
-	field := rv.FieldByName(fieldName)
-	if !field.IsValid() {
-		return ""
-	}
-	switch field.Kind() {
-	case reflect.String:
-		return strings.TrimSpace(field.String())
-	case reflect.Slice:
-		if field.Type().Elem().Kind() != reflect.String {
-			return ""
-		}
-		for i := 0; i < field.Len(); i++ {
-			if value := strings.TrimSpace(field.Index(i).String()); value != "" {
-				return value
-			}
+	for _, d := range org.Domains {
+		if d = strings.TrimPrefix(strings.TrimSpace(d), "www."); d != "" {
+			log.WithFields(f).Debugf("resolved domain from Domains field: %s", d)
+			return d
 		}
 	}
-	return ""
-}
-
-func (s *service) firstDomain(domains string) string {
-	parts := strings.FieldsFunc(domains, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
-	})
-	for _, part := range parts {
-		domain := strings.TrimPrefix(strings.TrimSpace(part), "www.")
-		if domain != "" {
-			return domain
+	if org.Link != "" {
+		if d := s.parseDomain(org.Link); d != "" {
+			return d
 		}
 	}
 	return ""
@@ -3246,8 +3221,7 @@ func (s *service) handleSSSError(f logrus.Fields, companyID string, err error) (
 
 	case errors.As(err, &notFoundErr):
 		log.WithFields(f).WithError(err).Warnf("SSS organization not found for company %s", companyID)
-		// Not found is not a blocking error - proceed without SSS result
-		return false, nil
+		return allowWhenOptional("SSS organization not found")
 
 	case errors.As(err, &badReqErr):
 		log.WithFields(f).WithError(err).Warnf("SSS bad request for company %s", companyID)

@@ -7,6 +7,7 @@ go 1.25.0
 toolchain go1.25.10
 
 replace github.com/awslabs/aws-lambda-go-api-proxy => github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
+replace github.com/linuxfoundation/easycla/cla-sss-base => ../cla-sss-base
 
 require (
 	github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2

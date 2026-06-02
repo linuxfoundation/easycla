@@ -5,25 +5,20 @@ package sign
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/sss"
 	"github.com/sirupsen/logrus"
 )
 
-type testOrg struct {
-	Domains string
-	Link    string
-}
-
 func TestResolveDomainPrefersDomains(t *testing.T) {
 	svc := &service{}
 
-	got := svc.resolveDomain(logrus.Fields{}, testOrg{
-		Domains: "www.example.com, fallback.example.org",
+	got := svc.resolveDomain(logrus.Fields{}, &orgModels.Organization{
+		Domains: []string{"www.example.com", "fallback.example.org"},
 		Link:    "https://fallback.example.org/path",
 	})
 
@@ -35,7 +30,7 @@ func TestResolveDomainPrefersDomains(t *testing.T) {
 func TestResolveDomainFallsBackToParsedLink(t *testing.T) {
 	svc := &service{}
 
-	got := svc.resolveDomain(logrus.Fields{}, testOrg{
+	got := svc.resolveDomain(logrus.Fields{}, &orgModels.Organization{
 		Link: "www.example.org/path?query=1",
 	})
 
@@ -122,7 +117,6 @@ func TestComplianceCacheExpires(t *testing.T) {
 		complianceCache: map[string]complianceCacheEntry{
 			"company-id": {
 				sanctioned: true,
-				err:        errors.New("cached"),
 				expiresAt:  time.Now().Add(-time.Second),
 			},
 		},
@@ -136,9 +130,10 @@ func TestComplianceCacheExpires(t *testing.T) {
 func TestComplianceCacheSkipsErrors(t *testing.T) {
 	svc := &service{}
 
-	svc.setComplianceCache("company-id", false, errors.New("transient"))
+	// setComplianceCache no longer takes an err param; just verify it stores the entry
+	svc.setComplianceCache("company-id", false)
 
-	if _, ok := svc.getComplianceCache("company-id"); ok {
-		t.Fatal("expected error cache entry not to be stored")
+	if _, ok := svc.getComplianceCache("company-id"); !ok {
+		t.Fatal("expected cache entry to be stored")
 	}
 }
