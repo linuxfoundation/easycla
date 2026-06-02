@@ -53,6 +53,7 @@ type IRepository interface { //nolint
 	ApproveCompanyAccessRequest(ctx context.Context, companyInviteID string) error
 	RejectCompanyAccessRequest(ctx context.Context, companyInviteID string) error
 	UpdateCompanyAccessList(ctx context.Context, companyID string, companyACL []string) error
+	UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool) error
 	IsCCLAEnabledForCompany(ctx context.Context, companyID string) (bool, error)
 }
 
@@ -1276,7 +1277,67 @@ func (repo repository) UpdateCompanyAccessList(ctx context.Context, companyID st
 	return nil
 }
 
-// CreateCompany creates a new company record
+// UpdateCompanySanctionStatus updates the is_sanctioned flag for a company.
+// It only performs the update if the value has changed to avoid unnecessary DynamoDB writes.
+func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool) error {
+	f := logrus.Fields{
+		"functionName":   "company.repository.UpdateCompanySanctionStatus",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyID,
+		"sanctioned":     sanctioned,
+	}
+
+	// Fetch current company to check if value has changed
+	currentCompany, err := repo.GetCompany(ctx, companyID)
+	if err != nil {
+		log.WithFields(f).Warnf("unable to fetch current company record to check sanction status, error: %v", err)
+		return err
+	}
+	if currentCompany == nil {
+		return fmt.Errorf("company not found: %s", companyID)
+	}
+
+	// Avoid unnecessary writes - only update if value has changed
+	if currentCompany.IsSanctioned == sanctioned {
+		log.WithFields(f).Debugf("sanction status unchanged (current=%v, new=%v), skipping update", currentCompany.IsSanctioned, sanctioned)
+		return nil
+	}
+
+	log.WithFields(f).Debugf("updating sanction status from %v to %v", currentCompany.IsSanctioned, sanctioned)
+
+	_, now := utils.CurrentTime()
+
+	input := &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]*string{
+			"#S": aws.String("is_sanctioned"),
+			"#M": aws.String("date_modified"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":s": {
+				BOOL: aws.Bool(sanctioned),
+			},
+			":m": {
+				S: aws.String(now),
+			},
+		},
+		TableName: aws.String(repo.companyTableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"company_id": {
+				S: aws.String(companyID),
+			},
+		},
+		UpdateExpression: aws.String("SET #S = :s, #M = :m"),
+	}
+
+	_, err = repo.dynamoDBClient.UpdateItem(input)
+	if err != nil {
+		log.WithFields(f).Warnf("error updating company sanction status, error: %v", err)
+		return err
+	}
+
+	return nil
+}
+
 func (repo repository) CreateCompany(ctx context.Context, in *models.Company) (*models.Company, error) {
 	f := logrus.Fields{
 		"functionName":      "company.repository.CreateCompany",

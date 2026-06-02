@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-openapi/strfmt"
@@ -60,6 +61,7 @@ const (
 	DontLoadRepoDetails = false
 	DocSignFalse        = "false"
 	DocusignCompleted   = "Completed"
+	complianceCacheTTL  = 5 * time.Minute
 )
 
 // errors
@@ -119,12 +121,21 @@ type service struct {
 	gitlabApp             *gitlab_api.App
 	gerritService         gerrits.Service
 	sssClient             *sss.Client
+	sssRequired           bool
+	complianceCache       map[string]complianceCacheEntry
+	complianceCacheMu     sync.Mutex
+}
+
+type complianceCacheEntry struct {
+	sanctioned bool
+	err        error
+	expiresAt  time.Time
 }
 
 // NewService returns an instance of v2 project service
 func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
 	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface, claLandingPage string, claLogoURL string, emailTemplateService emails.EmailTemplateService, eventsService events.Service, gitlabActivityService gitlab_activity.Service, gitlabApp *gitlab_api.App,
-	gerritService gerrits.Service, sssClient *sss.Client) Service {
+	gerritService gerrits.Service, sssClient *sss.Client, sssRequired bool) Service {
 	return &service{
 		ClaV4ApiURL:           apiURL,
 		ClaV1ApiURL:           v1API,
@@ -148,6 +159,8 @@ func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo 
 		gerritService:         gerritService,
 		eventsService:         eventsService,
 		sssClient:             sssClient,
+		sssRequired:           sssRequired,
+		complianceCache:       make(map[string]complianceCacheEntry),
 	}
 }
 
@@ -2962,37 +2975,69 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		"companyName":    company.CompanyName,
 	}
 
+	// Check if company is already manually sanctioned - if so, always block
+	if company.IsSanctioned {
+		log.WithFields(f).Warnf("company is manually sanctioned, blocking")
+		return true, nil
+	}
+
+	cacheKey := s.complianceCacheKey(company)
+	if cached, ok := s.getComplianceCache(cacheKey); ok {
+		log.WithFields(f).Debugf("using cached compliance result for organization/company: %s", cacheKey)
+		return cached.sanctioned, cached.err
+	}
+
 	if s.sssClient == nil {
-		log.WithFields(f).Debug("SSS client not configured, skipping compliance check")
+		log.WithFields(f).Debug("SSS client not configured, skipping live compliance check")
+		s.setComplianceCache(cacheKey, false, nil)
 		return false, nil
 	}
 
 	// Fetch org from organization service to get the website/domain.
 	orgClient := organizationService.GetClient()
+	if orgClient == nil {
+		resultErr := fmt.Errorf("checkCompanyCompliance: organization service client is not configured")
+		if !s.sssRequired {
+			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
+			s.setComplianceCache(cacheKey, false, nil)
+			return false, nil
+		}
+		s.setComplianceCache(cacheKey, false, resultErr)
+		return false, resultErr
+	}
 	org, err := orgClient.GetOrganization(ctx, company.CompanyExternalID)
 	if err != nil {
-		return false, fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", company.CompanyExternalID, err)
+		log.WithFields(f).WithError(err).Warnf("failed to get organization %s for domain resolution", company.CompanyExternalID)
+		resultErr := fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", company.CompanyExternalID, err)
+		if !s.sssRequired {
+			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
+			s.setComplianceCache(cacheKey, false, nil)
+			return false, nil
+		}
+		s.setComplianceCache(cacheKey, false, resultErr)
+		return false, resultErr
 	}
 	if org == nil {
-		return false, fmt.Errorf("checkCompanyCompliance: organization record is nil for %s", company.CompanyExternalID)
+		log.WithFields(f).Warnf("organization record is nil for %s", company.CompanyExternalID)
+		resultErr := fmt.Errorf("checkCompanyCompliance: organization record is nil for %s", company.CompanyExternalID)
+		if !s.sssRequired {
+			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
+			s.setComplianceCache(cacheKey, false, nil)
+			return false, nil
+		}
+		s.setComplianceCache(cacheKey, false, resultErr)
+		return false, resultErr
 	}
 
-	if strings.TrimSpace(org.Link) == "" {
-		log.WithFields(f).Warnf("organization %s has no Link/website; skipping SSS check", company.CompanyExternalID)
+	// Resolve domain: prefer Domains field, fallback to Link field
+	domain := s.resolveDomain(f, org)
+	if domain == "" {
+		log.WithFields(f).Warnf("unable to resolve domain for organization %s; skipping SSS check", company.CompanyExternalID)
+		s.setComplianceCache(cacheKey, false, nil)
 		return false, nil
 	}
 
-	// Parse org.Link to extract bare hostname (strips scheme, path, port, query).
-	domain := strings.TrimSpace(org.Link)
-	if u, parseErr := url.Parse(domain); parseErr == nil && u.Hostname() != "" {
-		domain = u.Hostname()
-	} else {
-		// Fallback: strip scheme and trailing slashes.
-		if idx := strings.Index(domain, "://"); idx != -1 {
-			domain = domain[idx+3:]
-		}
-		domain = strings.TrimRight(domain, "/")
-	}
+	log.WithFields(f).Debugf("resolved domain: %s for SSS check", domain)
 
 	req := sss.OrganizationStatusRequest{
 		Domain:  domain,
@@ -3004,22 +3049,170 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 
 	result, err := s.sssClient.GetOrganizationStatus(ctx, req)
 	if err != nil {
-		return false, fmt.Errorf("checkCompanyCompliance: SSS request failed for company %s: %w", company.CompanyID, err)
+		blocked, handledErr := s.handleSSSError(f, company.CompanyID, err)
+		s.setComplianceCache(cacheKey, blocked, handledErr)
+		return blocked, handledErr
 	}
 
 	sanctioned := result.Status == sss.StatusFlagged
 
-	if persistErr := s.companyRepo.UpdateCompanySanctionStatus(
-		ctx,
-		company.CompanyID,
-		sanctioned,
-	); persistErr != nil {
-		return false, fmt.Errorf(
-			"failed to persist sanction status for company %s: %w",
-			company.CompanyID,
-			persistErr,
-		)
+	// Only persist if flagged (never clear a manual sanction via SSS clean result)
+	if sanctioned {
+		log.WithFields(f).Warnf("SSS returned flagged status for company %s, persisting sanction", company.CompanyID)
+		if persistErr := s.companyRepo.UpdateCompanySanctionStatus(ctx, company.CompanyID, true); persistErr != nil {
+			log.WithFields(f).WithError(persistErr).Warnf("failed to persist sanction status for company %s", company.CompanyID)
+			resultErr := fmt.Errorf("failed to persist sanction status for company %s: %w", company.CompanyID, persistErr)
+			s.setComplianceCache(cacheKey, false, resultErr)
+			return false, resultErr
+		}
+	} else {
+		log.WithFields(f).Debugf("SSS returned clean status for company %s", company.CompanyID)
 	}
 
-	return sanctioned, nil
+	// Return combined result: blocked if manually sanctioned OR sss flagged
+	blocked := company.IsSanctioned || sanctioned
+	s.setComplianceCache(cacheKey, blocked, nil)
+	return blocked, nil
+}
+
+func (s *service) complianceCacheKey(company *v1Models.Company) string {
+	if company == nil {
+		return ""
+	}
+	if key := strings.TrimSpace(company.CompanyExternalID); key != "" {
+		return key
+	}
+	return strings.TrimSpace(company.CompanyID)
+}
+
+func (s *service) getComplianceCache(key string) (complianceCacheEntry, bool) {
+	if key == "" || s.complianceCache == nil {
+		return complianceCacheEntry{}, false
+	}
+	s.complianceCacheMu.Lock()
+	defer s.complianceCacheMu.Unlock()
+
+	entry, ok := s.complianceCache[key]
+	if !ok {
+		return complianceCacheEntry{}, false
+	}
+	if time.Now().After(entry.expiresAt) {
+		delete(s.complianceCache, key)
+		return complianceCacheEntry{}, false
+	}
+	return entry, true
+}
+
+func (s *service) setComplianceCache(key string, sanctioned bool, err error) {
+	if key == "" {
+		return
+	}
+	s.complianceCacheMu.Lock()
+	defer s.complianceCacheMu.Unlock()
+	if s.complianceCache == nil {
+		s.complianceCache = make(map[string]complianceCacheEntry)
+	}
+	s.complianceCache[key] = complianceCacheEntry{
+		sanctioned: sanctioned,
+		err:        err,
+		expiresAt:  time.Now().Add(complianceCacheTTL),
+	}
+}
+
+// resolveDomain attempts to resolve the domain for an organization.
+// Priority: 1) Domains field from org (if available), 2) Parse Link field
+func (s *service) resolveDomain(f logrus.Fields, org interface{}) string {
+	if domainStruct, ok := org.(interface{ GetDomains() []string }); ok {
+		domains := domainStruct.GetDomains()
+		if len(domains) > 0 && strings.TrimSpace(domains[0]) != "" {
+			domain := strings.TrimSpace(domains[0])
+			domain = strings.TrimPrefix(domain, "www.")
+			log.WithFields(f).Debugf("resolved domain from Domains field: %s", domain)
+			return domain
+		}
+	}
+
+	if linkStruct, ok := org.(interface{ GetLink() string }); ok {
+		link := strings.TrimSpace(linkStruct.GetLink())
+		if link != "" {
+			domain := s.parseDomain(link)
+			if domain != "" {
+				return domain
+			}
+		}
+	}
+
+	return ""
+}
+
+// parseDomain extracts the hostname from a URL string.
+// If the URL lacks a scheme, it prepends https:// for parsing.
+func (s *service) parseDomain(urlStr string) string {
+	urlStr = strings.TrimSpace(urlStr)
+	if urlStr == "" {
+		return ""
+	}
+
+	// Prepend https:// if no scheme is present
+	if !strings.Contains(urlStr, "://") {
+		urlStr = "https://" + urlStr
+	}
+
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return ""
+	}
+
+	hostname := u.Hostname()
+	if hostname == "" {
+		return ""
+	}
+
+	// Strip leading www.
+	hostname = strings.TrimPrefix(hostname, "www.")
+	return hostname
+}
+
+// handleSSSError differentiates between various SSS error types and logs appropriately.
+// Returns a non-nil error for SSS failures that should block signing.
+func (s *service) handleSSSError(f logrus.Fields, companyID string, err error) (bool, error) {
+	var badReqErr *sss.BadRequestError
+	var authErr *sss.AuthError
+	var retryErr *sss.RetryableError
+	var notFoundErr *sss.NotFoundError
+	var timeoutErr *sss.TimeoutError
+	allowWhenOptional := func(message string) (bool, error) {
+		if s.sssRequired {
+			return false, fmt.Errorf("%s for company %s: %w", message, companyID, err)
+		}
+		log.WithFields(f).WithError(err).Warnf("%s for company %s; SSS is not required, continuing", message, companyID)
+		return false, nil
+	}
+
+	switch {
+	case errors.As(err, &timeoutErr):
+		log.WithFields(f).WithError(err).Warnf("SSS request timed out for company %s", companyID)
+		return allowWhenOptional("SSS screening unavailable (timeout)")
+
+	case errors.As(err, &authErr):
+		log.WithFields(f).WithError(err).Errorf("SSS authentication/configuration error for company %s", companyID)
+		return allowWhenOptional("SSS authentication error (check configuration)")
+
+	case errors.As(err, &retryErr):
+		log.WithFields(f).WithError(err).Warnf("SSS request failed with retryable error for company %s", companyID)
+		return allowWhenOptional("SSS screening unavailable (transient failure)")
+
+	case errors.As(err, &notFoundErr):
+		log.WithFields(f).WithError(err).Warnf("SSS organization not found for company %s", companyID)
+		// Not found is not a blocking error - proceed without SSS result
+		return false, nil
+
+	case errors.As(err, &badReqErr):
+		log.WithFields(f).WithError(err).Warnf("SSS bad request for company %s", companyID)
+		return false, fmt.Errorf("SSS bad request for company %s: %w", companyID, err)
+
+	default:
+		log.WithFields(f).WithError(err).Warnf("SSS request failed with unexpected error for company %s", companyID)
+		return allowWhenOptional("SSS request failed")
+	}
 }
