@@ -1287,6 +1287,12 @@ func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyI
 		"sanctioned":     sanctioned,
 	}
 
+	// SSS may only set a sanction block, never clear one (clearing could override a manual block).
+	if !sanctioned {
+		log.WithFields(f).Debugf("ignoring request to clear sanction flag via SSS to protect manual/other-source blocks")
+		return nil
+	}
+
 	// Fetch current company to check if value has changed
 	currentCompany, err := repo.GetCompany(ctx, companyID)
 	if err != nil {

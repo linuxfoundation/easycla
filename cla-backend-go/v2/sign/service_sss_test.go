@@ -60,7 +60,7 @@ func TestHandleSSSErrorRequiredBlocksAvailabilityErrors(t *testing.T) {
 	}
 }
 
-func TestHandleSSSErrorOptionalAllowsAvailabilityErrors(t *testing.T) {
+func TestHandleSSSErrorOptionalAllowsAuthErrors(t *testing.T) {
 	svc := &service{sssRequired: false}
 
 	blocked, err := svc.handleSSSError(logrus.Fields{}, "company-id", &sss.AuthError{Message: "auth failed"})
