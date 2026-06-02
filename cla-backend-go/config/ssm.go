@@ -13,6 +13,7 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ssm"
 )
@@ -283,17 +284,28 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 // switched on. A stage that requires SSS must reject an empty configuration at
 // the call site rather than silently skipping the screening check.
 func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
-	baseURLKey := fmt.Sprintf("cla-sss-base-url-%s", stage)
-	if value, err := getSSMString(ssmClient, baseURLKey); err == nil {
-		config.SSS.BaseURL = value
-	} else {
-		log.WithFields(f).Warnf("optional SSM key %s not set - sanctions screening disabled", baseURLKey)
+	config.SSS.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-base-url-%s", stage), f)
+	config.SSS.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-auth0-audience-%s", stage), f)
+}
+
+// getOptionalSSMString fetches a parameter that may legitimately be absent while
+// the feature is being rolled out. It logs exactly once: a missing parameter is
+// reported at debug (an expected, benign state), while any other failure - IAM,
+// throttling, etc. - is reported as a warning with the underlying error so it is
+// not silently misattributed to "not set". Returns "" when the value is unreadable.
+func getOptionalSSMString(ssmClient *ssm.SSM, key string, f logrus.Fields) string {
+	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
+		Name:           aws.String(key),
+		WithDecryption: aws.Bool(false),
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
+			log.WithFields(f).Debugf("optional SSM key %s not provisioned - sanctions screening disabled until it is set", key)
+		} else {
+			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - sanctions screening disabled", key)
+		}
+		return ""
 	}
 
-	audienceKey := fmt.Sprintf("cla-sss-auth0-audience-%s", stage)
-	if value, err := getSSMString(ssmClient, audienceKey); err == nil {
-		config.SSS.Audience = value
-	} else {
-		log.WithFields(f).Warnf("optional SSM key %s not set - sanctions screening disabled", audienceKey)
-	}
+	return strings.TrimSpace(*out.Parameter.Value)
 }

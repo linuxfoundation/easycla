@@ -19,20 +19,39 @@ import (
 // It returns (nil, nil) when baseURL or audience is empty so callers can treat
 // an unconfigured SSS as a disabled, no-op feature rather than an error.
 func NewClientFromPlatformCredentials(baseURL, audience, oauthTokenURL, clientID, clientSecret string) (*Client, error) {
-	if strings.TrimSpace(baseURL) == "" || strings.TrimSpace(audience) == "" {
+	baseURL = strings.TrimSpace(baseURL)
+	audience = strings.TrimSpace(audience)
+	if baseURL == "" || audience == "" {
 		return nil, nil
-	}
-
-	auth0Domain := strings.TrimSpace(oauthTokenURL)
-	if u, err := url.Parse(auth0Domain); err == nil && u.Host != "" {
-		auth0Domain = u.Scheme + "://" + u.Host
 	}
 
 	return NewClient(SSSConfig{
 		BaseURL:           baseURL,
-		Auth0Domain:       auth0Domain,
-		Auth0ClientID:     clientID,
-		Auth0ClientSecret: clientSecret,
+		Auth0Domain:       auth0DomainFromTokenURL(oauthTokenURL),
+		Auth0ClientID:     strings.TrimSpace(clientID),
+		Auth0ClientSecret: strings.TrimSpace(clientSecret),
 		Auth0Audience:     audience,
 	})
+}
+
+// auth0DomainFromTokenURL reduces a full Auth0 token endpoint to its scheme+host
+// (e.g. https://tenant.auth0.com), which is what the SSS client expects as its
+// Auth0 domain. It tolerates a missing scheme: url.Parse on a scheme-less value
+// puts the whole string in Path and leaves Host empty, so a value like
+// "tenant.auth0.com/oauth/token" would otherwise be passed through verbatim and
+// produce a doubled "/oauth/token" when the client builds the token URL.
+func auth0DomainFromTokenURL(oauthTokenURL string) string {
+	oauthTokenURL = strings.TrimSpace(oauthTokenURL)
+	if oauthTokenURL == "" {
+		return ""
+	}
+
+	parseTarget := oauthTokenURL
+	if !strings.Contains(parseTarget, "://") {
+		parseTarget = "https://" + parseTarget
+	}
+	if u, err := url.Parse(parseTarget); err == nil && u.Host != "" {
+		return u.Scheme + "://" + u.Host
+	}
+	return oauthTokenURL
 }
