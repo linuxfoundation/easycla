@@ -98,6 +98,20 @@ type Config struct {
 
 	// DocuSignPrivateKey is the private key for the DocuSign API
 	DocuSignPrivateKey string `json:"docuSignPrivateKey"`
+
+	// SSS (Sanctions Screening Service) configuration
+	SSS SSS `json:"sss"`
+}
+
+// SSS model for Sanctions Screening Service configuration
+type SSS struct {
+	BaseURL           string `json:"base_url"`
+	Auth0Domain       string `json:"auth0_domain"`
+	Auth0ClientID     string `json:"auth0_client_id"`
+	Auth0ClientSecret string `json:"auth0_client_secret"`
+	Auth0Audience     string `json:"auth0_audience"`
+	RequestTimeoutSec int    `json:"request_timeout_sec"`
+	Required          bool   `json:"required"`
 }
 
 // Auth0 model

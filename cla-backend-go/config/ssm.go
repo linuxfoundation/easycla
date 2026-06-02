@@ -45,6 +45,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 	}
 	config := Config{}
 	config.SignatureQueryDefaultValue = "all"
+	config.SSS.Required = true
 
 	ssmClient := ssm.New(awsSession)
 
@@ -266,6 +267,15 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		case fmt.Sprintf("cla-docusign-private-key-%s", stage):
 			config.DocuSignPrivateKey = resp.value
 		}
+	}
+
+	sssRequiredKey := fmt.Sprintf("cla-sss-required-%s", stage)
+	if value, err := getSSMString(ssmClient, sssRequiredKey); err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to read optional SSS required flag %s - defaulting to true", sssRequiredKey)
+	} else if boolVal, err := strconv.ParseBool(value); err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert %s value to a boolean - defaulting to true", sssRequiredKey)
+	} else {
+		config.SSS.Required = boolVal
 	}
 
 	return config

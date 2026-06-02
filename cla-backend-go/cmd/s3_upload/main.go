@@ -57,7 +57,7 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	signService = sign.NewService("", "", companyRepo, nil, nil, nil, nil, configFile.DocuSignPrivateKey, nil, nil, nil, nil, githubOrgService, nil, "", "", nil, nil, nil, nil, nil, nil)
+	signService = sign.NewService("", "", companyRepo, nil, nil, nil, nil, configFile.DocuSignPrivateKey, nil, nil, nil, nil, githubOrgService, nil, "", "", nil, nil, nil, nil, nil, nil, configFile.SSS.Required)
 	// projectRepo = repository.NewRepository(awsSession, stage, nil, nil, nil)
 	utils.SetS3Storage(awsSession, configFile.SignatureFilesBucket)
 }

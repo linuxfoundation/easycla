@@ -83,6 +83,7 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/api_logs"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/sss"
 	"github.com/linuxfoundation/easycla/cla-backend-go/telemetry"
 	v2Signatures "github.com/linuxfoundation/easycla/cla-backend-go/v2/signatures"
 
@@ -448,7 +449,31 @@ func server(localMode bool) http.Handler {
 	v2GithubActivityService := v2GithubActivity.NewService(gitV1Repository, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
 
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
-	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, nil)
+
+	// Initialize SSS (Sanctions Screening Service) client if configured
+	var sssClient *sss.Client
+	if configFile.SSS.BaseURL != "" && configFile.SSS.Auth0Domain != "" && configFile.SSS.Auth0ClientID != "" && configFile.SSS.Auth0ClientSecret != "" && configFile.SSS.Auth0Audience != "" {
+		sssTimeout := time.Duration(configFile.SSS.RequestTimeoutSec) * time.Second
+		if sssTimeout <= 0 {
+			sssTimeout = 30 * time.Second // default timeout
+		}
+		sssConfig := sss.SSSConfig{
+			BaseURL:           configFile.SSS.BaseURL,
+			Auth0Domain:       configFile.SSS.Auth0Domain,
+			Auth0ClientID:     configFile.SSS.Auth0ClientID,
+			Auth0ClientSecret: configFile.SSS.Auth0ClientSecret,
+			Auth0Audience:     configFile.SSS.Auth0Audience,
+			Timeout:           sssTimeout,
+		}
+		var sssErr error
+		sssClient, sssErr = sss.NewClient(sssConfig)
+		if sssErr != nil {
+			log.WithFields(f).WithError(sssErr).Warnf("failed to initialize SSS client, screening will be unavailable: %v", sssErr)
+			sssClient = nil
+		}
+	}
+
+	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, sssClient, configFile.SSS.Required)
 
 	sessionStore, err := dynastore.New(dynastore.Path("/"), dynastore.HTTPOnly(), dynastore.TableName(configFile.SessionStoreTableName), dynastore.DynamoDB(dynamodb.New(awsSession)))
 	if err != nil {
