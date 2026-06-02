@@ -451,7 +451,8 @@ func server(localMode bool) http.Handler {
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 
 	// Initialize SSS (Sanctions Screening Service) client if configured.
-	sssRequired := !localMode
+	// The sssRequired flag is controlled by the cla-sss-required-{stage} SSM parameter.
+	sssRequired := configFile.SSS.Required
 	var sssClient *sss.Client
 	sssClient, err = sss.NewClientFromPlatformCredentials(configFile.SSS.BaseURL, configFile.SSS.Audience, configFile.Auth0Platform.URL, configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret)
 	if err != nil {
