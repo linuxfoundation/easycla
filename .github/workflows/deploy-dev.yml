@@ -25,7 +25,7 @@ env:
 
 concurrency:
   group: deploy-dev
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-deploy-dev:
