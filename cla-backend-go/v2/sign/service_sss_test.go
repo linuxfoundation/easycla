@@ -4,6 +4,7 @@
 package sign
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -14,24 +15,16 @@ import (
 )
 
 type testOrg struct {
-	domains []string
-	link    string
-}
-
-func (o testOrg) GetDomains() []string {
-	return o.domains
-}
-
-func (o testOrg) GetLink() string {
-	return o.link
+	Domains string
+	Link    string
 }
 
 func TestResolveDomainPrefersDomains(t *testing.T) {
 	svc := &service{}
 
 	got := svc.resolveDomain(logrus.Fields{}, testOrg{
-		domains: []string{"www.example.com"},
-		link:    "https://fallback.example.org/path",
+		Domains: "www.example.com, fallback.example.org",
+		Link:    "https://fallback.example.org/path",
 	})
 
 	if got != "example.com" {
@@ -43,11 +36,38 @@ func TestResolveDomainFallsBackToParsedLink(t *testing.T) {
 	svc := &service{}
 
 	got := svc.resolveDomain(logrus.Fields{}, testOrg{
-		link: "www.example.org/path?query=1",
+		Link: "www.example.org/path?query=1",
 	})
 
 	if got != "example.org" {
 		t.Fatalf("expected parsed Link hostname, got %q", got)
+	}
+}
+
+func TestCheckCompanyComplianceRequiredBlocksMissingClient(t *testing.T) {
+	svc := &service{sssRequired: true}
+
+	_, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
+		CompanyID:   "company-id",
+		CompanyName: "Company",
+	})
+	if err == nil {
+		t.Fatal("expected required SSS missing client to block")
+	}
+}
+
+func TestCheckCompanyComplianceOptionalAllowsMissingClient(t *testing.T) {
+	svc := &service{sssRequired: false}
+
+	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
+		CompanyID:   "company-id",
+		CompanyName: "Company",
+	})
+	if err != nil {
+		t.Fatalf("expected optional SSS missing client to continue, got %v", err)
+	}
+	if blocked {
+		t.Fatal("expected optional SSS missing client not to block")
 	}
 }
 
@@ -69,6 +89,18 @@ func TestHandleSSSErrorOptionalAllowsAuthErrors(t *testing.T) {
 	}
 	if blocked {
 		t.Fatal("expected optional SSS auth error not to block")
+	}
+}
+
+func TestHandleSSSErrorOptionalAllowsBadRequest(t *testing.T) {
+	svc := &service{sssRequired: false}
+
+	blocked, err := svc.handleSSSError(logrus.Fields{}, "company-id", &sss.BadRequestError{Message: "bad request"})
+	if err != nil {
+		t.Fatalf("expected optional SSS bad request to continue, got %v", err)
+	}
+	if blocked {
+		t.Fatal("expected optional SSS bad request not to block")
 	}
 }
 
@@ -98,5 +130,15 @@ func TestComplianceCacheExpires(t *testing.T) {
 
 	if _, ok := svc.getComplianceCache("company-id"); ok {
 		t.Fatal("expected expired cache entry to be ignored")
+	}
+}
+
+func TestComplianceCacheSkipsErrors(t *testing.T) {
+	svc := &service{}
+
+	svc.setComplianceCache("company-id", false, errors.New("transient"))
+
+	if _, ok := svc.getComplianceCache("company-id"); ok {
+		t.Fatal("expected error cache entry not to be stored")
 	}
 }

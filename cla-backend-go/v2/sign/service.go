@@ -13,6 +13,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -2966,7 +2967,7 @@ func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*m
 }
 
 // checkCompanyCompliance queries the Sanctions Screening Service for the given company
-// and persists the result. Returns (sanctioned, error). A nil sssClient is a no-op.
+// and persists the result. Returns (sanctioned, error).
 func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.Company) (bool, error) {
 	f := logrus.Fields{
 		"functionName":   "sign.checkCompanyCompliance",
@@ -2988,8 +2989,12 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	}
 
 	if s.sssClient == nil {
-		log.WithFields(f).Debug("SSS client not configured, skipping live compliance check")
-		s.setComplianceCache(cacheKey, false, nil)
+		if s.sssRequired {
+			resultErr := fmt.Errorf("checkCompanyCompliance: SSS is required but the client is not configured")
+			log.WithFields(f).WithError(resultErr).Error("SSS client not configured")
+			return false, resultErr
+		}
+		log.WithFields(f).Debug("SSS client not configured, skipping optional live compliance check")
 		return false, nil
 	}
 
@@ -2999,10 +3004,8 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		resultErr := fmt.Errorf("checkCompanyCompliance: organization service client is not configured")
 		if !s.sssRequired {
 			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
-			s.setComplianceCache(cacheKey, false, nil)
 			return false, nil
 		}
-		s.setComplianceCache(cacheKey, false, resultErr)
 		return false, resultErr
 	}
 	org, err := orgClient.GetOrganization(ctx, company.CompanyExternalID)
@@ -3011,10 +3014,8 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		resultErr := fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", company.CompanyExternalID, err)
 		if !s.sssRequired {
 			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
-			s.setComplianceCache(cacheKey, false, nil)
 			return false, nil
 		}
-		s.setComplianceCache(cacheKey, false, resultErr)
 		return false, resultErr
 	}
 	if org == nil {
@@ -3022,18 +3023,20 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		resultErr := fmt.Errorf("checkCompanyCompliance: organization record is nil for %s", company.CompanyExternalID)
 		if !s.sssRequired {
 			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
-			s.setComplianceCache(cacheKey, false, nil)
 			return false, nil
 		}
-		s.setComplianceCache(cacheKey, false, resultErr)
 		return false, resultErr
 	}
 
-	// Resolve domain: prefer Domains field, fallback to Link field
+	// Resolve domain: prefer Domains field, fallback to Link field.
 	domain := s.resolveDomain(f, org)
 	if domain == "" {
-		log.WithFields(f).Warnf("unable to resolve domain for organization %s; skipping SSS check", company.CompanyExternalID)
-		s.setComplianceCache(cacheKey, false, nil)
+		resultErr := fmt.Errorf("checkCompanyCompliance: unable to resolve domain for organization %s", company.CompanyExternalID)
+		if s.sssRequired {
+			log.WithFields(f).WithError(resultErr).Error("unable to resolve domain for required SSS check")
+			return false, resultErr
+		}
+		log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
 		return false, nil
 	}
 
@@ -3049,9 +3052,7 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 
 	result, err := s.sssClient.GetOrganizationStatus(ctx, req)
 	if err != nil {
-		blocked, handledErr := s.handleSSSError(f, company.CompanyID, err)
-		s.setComplianceCache(cacheKey, blocked, handledErr)
-		return blocked, handledErr
+		return s.handleSSSError(f, company.CompanyID, err)
 	}
 
 	sanctioned := result.Status == sss.StatusFlagged
@@ -3062,7 +3063,6 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		if persistErr := s.companyRepo.UpdateCompanySanctionStatus(ctx, company.CompanyID, true); persistErr != nil {
 			log.WithFields(f).WithError(persistErr).Warnf("failed to persist sanction status for company %s", company.CompanyID)
 			resultErr := fmt.Errorf("failed to persist sanction status for company %s: %w", company.CompanyID, persistErr)
-			s.setComplianceCache(cacheKey, false, resultErr)
 			return false, resultErr
 		}
 	} else {
@@ -3104,7 +3104,7 @@ func (s *service) getComplianceCache(key string) (complianceCacheEntry, bool) {
 }
 
 func (s *service) setComplianceCache(key string, sanctioned bool, err error) {
-	if key == "" {
+	if key == "" || err != nil {
 		return
 	}
 	s.complianceCacheMu.Lock()
@@ -3120,28 +3120,70 @@ func (s *service) setComplianceCache(key string, sanctioned bool, err error) {
 }
 
 // resolveDomain attempts to resolve the domain for an organization.
-// Priority: 1) Domains field from org (if available), 2) Parse Link field
+// Priority: 1) Domains field from org (if available), 2) Parse Link field.
 func (s *service) resolveDomain(f logrus.Fields, org interface{}) string {
-	if domainStruct, ok := org.(interface{ GetDomains() []string }); ok {
-		domains := domainStruct.GetDomains()
-		if len(domains) > 0 && strings.TrimSpace(domains[0]) != "" {
-			domain := strings.TrimSpace(domains[0])
-			domain = strings.TrimPrefix(domain, "www.")
+	if domains := s.stringField(org, "Domains"); domains != "" {
+		if domain := s.firstDomain(domains); domain != "" {
 			log.WithFields(f).Debugf("resolved domain from Domains field: %s", domain)
 			return domain
 		}
 	}
 
-	if linkStruct, ok := org.(interface{ GetLink() string }); ok {
-		link := strings.TrimSpace(linkStruct.GetLink())
-		if link != "" {
-			domain := s.parseDomain(link)
-			if domain != "" {
-				return domain
-			}
+	link := s.stringField(org, "Link")
+	if link != "" {
+		domain := s.parseDomain(link)
+		if domain != "" {
+			return domain
 		}
 	}
 
+	return ""
+}
+
+func (s *service) stringField(v interface{}, fieldName string) string {
+	if v == nil {
+		return ""
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return ""
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return ""
+	}
+	field := rv.FieldByName(fieldName)
+	if !field.IsValid() {
+		return ""
+	}
+	switch field.Kind() {
+	case reflect.String:
+		return strings.TrimSpace(field.String())
+	case reflect.Slice:
+		if field.Type().Elem().Kind() != reflect.String {
+			return ""
+		}
+		for i := 0; i < field.Len(); i++ {
+			if value := strings.TrimSpace(field.Index(i).String()); value != "" {
+				return value
+			}
+		}
+	}
+	return ""
+}
+
+func (s *service) firstDomain(domains string) string {
+	parts := strings.FieldsFunc(domains, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
+	})
+	for _, part := range parts {
+		domain := strings.TrimPrefix(strings.TrimSpace(part), "www.")
+		if domain != "" {
+			return domain
+		}
+	}
 	return ""
 }
 
@@ -3209,7 +3251,7 @@ func (s *service) handleSSSError(f logrus.Fields, companyID string, err error) (
 
 	case errors.As(err, &badReqErr):
 		log.WithFields(f).WithError(err).Warnf("SSS bad request for company %s", companyID)
-		return false, fmt.Errorf("SSS bad request for company %s: %w", companyID, err)
+		return allowWhenOptional("SSS bad request")
 
 	default:
 		log.WithFields(f).WithError(err).Warnf("SSS request failed with unexpected error for company %s", companyID)

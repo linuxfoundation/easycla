@@ -46,7 +46,6 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 	}
 	config := Config{}
 	config.SignatureQueryDefaultValue = "all"
-	config.SSS.Required = true
 
 	ssmClient := ssm.New(awsSession)
 
