@@ -125,7 +125,7 @@ type service struct {
 	sssClient             *sss.Client
 	sssRequired           bool
 	complianceCache       map[string]complianceCacheEntry
-	complianceCacheMu     sync.Mutex
+	complianceCacheMu     *sync.Mutex
 }
 
 type complianceCacheEntry struct {
@@ -162,6 +162,7 @@ func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo 
 		sssClient:             sssClient,
 		sssRequired:           sssRequired,
 		complianceCache:       make(map[string]complianceCacheEntry),
+		complianceCacheMu:     &sync.Mutex{},
 	}
 }
 
