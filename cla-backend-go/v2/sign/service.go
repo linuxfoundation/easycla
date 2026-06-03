@@ -59,11 +59,11 @@ import (
 
 // constants
 const (
-	DontLoadRepoDetails = false
-	DocSignFalse        = "false"
-	DocusignCompleted   = "Completed"
-	complianceCacheTTL      = 5 * time.Minute
-	maxComplianceCacheSize  = 1000
+	DontLoadRepoDetails    = false
+	DocSignFalse           = "false"
+	DocusignCompleted      = "Completed"
+	complianceCacheTTL     = 5 * time.Minute
+	maxComplianceCacheSize = 1000
 )
 
 // errors
@@ -3148,8 +3148,11 @@ func (s *service) resolveDomain(f logrus.Fields, org *orgModels.Organization) st
 	if org == nil {
 		return ""
 	}
-	for _, d := range org.Domains {
-		if d = strings.TrimPrefix(strings.TrimSpace(d), "www."); d != "" {
+	domains := strings.Split(org.Domains, ",")
+
+	for _, d := range domains {
+		d = strings.TrimPrefix(strings.TrimSpace(d), "www.")
+		if d != "" {
 			log.WithFields(f).Debugf("resolved domain from Domains field: %s", d)
 			return d
 		}

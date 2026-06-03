@@ -269,10 +269,10 @@ func (s *Service) projectsSearchURL(projectIDs []string) (string, error) {
 
 // Organization represents a minimal platform organization record.
 type Organization struct {
-	ID      string   `json:"ID"`
-	Name    string   `json:"Name"`
-	Domains []string `json:"Domains"`
-	Link    string   `json:"Link"`
+	ID      string `json:"ID"`
+	Name    string `json:"Name"`
+	Domains string `json:"Domains"`
+	Link    string `json:"Link"`
 }
 
 // GetOrganization retrieves an organization by its Salesforce ID.
@@ -291,7 +291,7 @@ func (s *Service) GetOrganization(ctx context.Context, sfid string) (*Organizati
 		return nil, errors.New("PLATFORM_GATEWAY_URL is empty")
 	}
 
-	endpoint := fmt.Sprintf("%s/organization-service/v1/organizations/%s", base, sfid)
+	endpoint := fmt.Sprintf("%s/organization-service/v1/orgs/%s", base, sfid)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		return nil, err

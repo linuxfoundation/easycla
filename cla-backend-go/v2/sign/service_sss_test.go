@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
-	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/sss"
+	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,7 +18,7 @@ func TestResolveDomainPrefersDomains(t *testing.T) {
 	svc := &service{}
 
 	got := svc.resolveDomain(logrus.Fields{}, &orgModels.Organization{
-		Domains: []string{"www.example.com", "fallback.example.org"},
+		Domains: "www.example.com,fallback.example.org",
 		Link:    "https://fallback.example.org/path",
 	})
 

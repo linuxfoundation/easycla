@@ -216,9 +216,9 @@ func NewHandlers() *Handlers {
 	sssAudience := getOptionalSSMString(ctx, ssmClient, fmt.Sprintf("cla-sss-auth0-audience-%s", stage), f)
 	sssRequired := getOptionalSSMBool(ctx, ssmClient, fmt.Sprintf("cla-sss-required-%s", stage), f)
 
-	auth0URL := strings.TrimSpace(os.Getenv("AUTH0_URL"))
-	auth0ClientID := strings.TrimSpace(os.Getenv("AUTH0_PLATFORM_CLIENT_ID"))
-	auth0ClientSecret := strings.TrimSpace(os.Getenv("AUTH0_PLATFORM_CLIENT_SECRET"))
+	auth0ClientID := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_CLIENT_ID"))
+	auth0ClientSecret := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_CLIENT_SECRET"))
+	auth0URL := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_URL"))
 
 	h.sssRequired = sssRequired
 	if sssBaseURL != "" && sssAudience != "" {
@@ -8950,11 +8950,16 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		return isSanctioned, nil
 	}
 
-	result, err := h.sssClient.GetOrganizationStatus(ctx, sss.OrganizationStatusRequest{
+	req := sss.OrganizationStatusRequest{
 		Domain:  domain,
 		OrgName: companyName,
-		SFDCID:  companyExternalID,
-	})
+	}
+
+	if strings.HasPrefix(companyExternalID, "001") {
+		req.SFDCID = companyExternalID
+	}
+
+	result, err := h.sssClient.GetOrganizationStatus(ctx, req)
 	if err != nil {
 		return h.handleSSSError(ctx, companyID, err)
 	}
@@ -9032,8 +9037,11 @@ func (h *Handlers) resolveDomain(org *salesforce.Organization) string {
 	if org == nil {
 		return ""
 	}
-	for _, d := range org.Domains {
-		if d = strings.TrimPrefix(strings.TrimSpace(d), "www."); d != "" {
+	domains := strings.Split(org.Domains, ",")
+
+	for _, d := range domains {
+		d = strings.TrimPrefix(strings.TrimSpace(d), "www.")
+		if d != "" {
 			return d
 		}
 	}
@@ -9122,8 +9130,6 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		respond.JSON(w, http.StatusOK, errResp)
 		return
 	}
-
-	
 
 	// If the employee signature already exists, return it.
 	existing, err := h.signatures.QueryByProjectAndReference(ctx, req.ProjectID, req.UserID)
