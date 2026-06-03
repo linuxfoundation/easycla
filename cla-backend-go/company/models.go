@@ -88,6 +88,7 @@ func (dbCompanyModel *DBModel) toModel() (*models.Company, error) {
 		Updated:           strfmt.DateTime(updateDateTime),
 		Note:              dbCompanyModel.Note,
 		IsSanctioned:      dbCompanyModel.IsSanctioned,
+		SanctionOrigin:    dbCompanyModel.SanctionOrigin,
 		Version:           dbCompanyModel.Version,
 	}, nil
 }
@@ -149,6 +150,7 @@ func toSwaggerModel(dbCompanyModel *DBModel) (*models.Company, error) {
 		CompanyName:       dbCompanyModel.CompanyName,
 		SigningEntityName: dbCompanyModel.SigningEntityName,
 		IsSanctioned:      dbCompanyModel.IsSanctioned,
+		SanctionOrigin:    dbCompanyModel.SanctionOrigin,
 		CompanyExternalID: dbCompanyModel.CompanyExternalID,
 		CompanyManagerID:  dbCompanyModel.CompanyManagerID,
 		Created:           strfmt.DateTime(createdDateTime),

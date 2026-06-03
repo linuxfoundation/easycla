@@ -111,3 +111,22 @@ jobs:
       - name: Go Lint CLA Legacy Backend
         working-directory: cla-backend-legacy
         run: make lint
+
+      - name: Go Setup CLA SSS Base
+        working-directory: cla-sss-base
+        run: |
+          go mod tidy
+
+      - name: Go Build CLA SSS Base
+        working-directory: cla-sss-base
+        run: go build ./...
+
+      - name: Go Test CLA SSS Base
+        working-directory: cla-sss-base
+        run: go test ./...
+
+      - name: Go Lint CLA SSS Base
+        working-directory: cla-sss-base
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+          golangci-lint run ./...
