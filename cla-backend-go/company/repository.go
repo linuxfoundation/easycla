@@ -1341,7 +1341,7 @@ func (repo repository) ClearCompanySanctionStatusIfSSS(ctx context.Context, comp
 		Key: map[string]*dynamodb.AttributeValue{
 			"company_id": {S: aws.String(companyID)},
 		},
-		UpdateExpression: aws.String("SET #S = :false, #M = :m REMOVE #O"),
+		UpdateExpression:    aws.String("SET #S = :false, #M = :m REMOVE #O"),
 		ConditionExpression: aws.String("#O = :sss"),
 		ExpressionAttributeNames: map[string]*string{
 			"#S": aws.String("is_sanctioned"),

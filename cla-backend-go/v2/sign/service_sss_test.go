@@ -5,6 +5,7 @@ package sign
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -120,6 +121,7 @@ func TestComplianceCacheExpires(t *testing.T) {
 				expiresAt:  time.Now().Add(-time.Second),
 			},
 		},
+		complianceCacheMu: &sync.Mutex{},
 	}
 
 	if _, ok := svc.getComplianceCache("company-id"); ok {
@@ -128,7 +130,7 @@ func TestComplianceCacheExpires(t *testing.T) {
 }
 
 func TestComplianceCacheSkipsErrors(t *testing.T) {
-	svc := &service{}
+	svc := &service{complianceCacheMu: &sync.Mutex{}}
 
 	// setComplianceCache no longer takes an err param; just verify it stores the entry
 	svc.setComplianceCache("company-id", false)
