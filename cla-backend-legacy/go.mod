@@ -2,7 +2,7 @@ module github.com/linuxfoundation/easycla/cla-backend-legacy
 
 go 1.25.0
 
-toolchain go1.25.10
+toolchain go1.25.11
 
 replace github.com/linuxfoundation/easycla/cla-sss-base => ../cla-sss-base
 
