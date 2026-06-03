@@ -27,8 +27,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssmTypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/auth"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/contracts"
@@ -44,6 +47,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/respond"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/store"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/telemetry"
+	sss "github.com/linuxfoundation/easycla/cla-sss-base"
 )
 
 // Handlers implements the legacy (v1/v2) API surface in Go.
@@ -74,6 +78,8 @@ type Handlers struct {
 	github            *githublegacy.Service
 	lfGroup           *lfgroup.Client
 	userService       *userservicelegacy.Client
+	sssClient         *sss.Client
+	sssRequired       bool
 }
 
 func NewHandlers() *Handlers {
@@ -193,7 +199,80 @@ func NewHandlers() *Handlers {
 		h.cclaAllowlistReqs = cars
 	}
 
+	// Initialize SSS (Sanctions Screening Service) client if configured.
+	// We load configuration from SSM to match the Go backend's behavior.
+	ssmClient, err := store.NewSSMClientFromEnv(ctx)
+	if err != nil {
+		logging.Fatalf("failed to create SSM client: %v", err)
+	}
+
+	stage := store.StageFromEnv()
+	f := logrus.Fields{
+		"stage": stage,
+	}
+
+	// SSS parameters are named according to the Go backend convention: cla-sss-<key>-<stage>
+	sssBaseURL := getOptionalSSMString(ctx, ssmClient, fmt.Sprintf("cla-sss-base-url-%s", stage), f)
+	sssAudience := getOptionalSSMString(ctx, ssmClient, fmt.Sprintf("cla-sss-auth0-audience-%s", stage), f)
+	sssRequired := getOptionalSSMBool(ctx, ssmClient, fmt.Sprintf("cla-sss-required-%s", stage), f)
+
+	auth0ClientID := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_CLIENT_ID"))
+	auth0ClientSecret := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_CLIENT_SECRET"))
+	auth0URL := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_URL"))
+
+	h.sssRequired = sssRequired
+	if sssBaseURL != "" && sssAudience != "" {
+		sssClient, err := sss.NewClientFromPlatformCredentials(sssBaseURL, sssAudience, auth0URL, auth0ClientID, auth0ClientSecret)
+		if err != nil {
+			if sssRequired {
+				logging.Fatalf("failed to initialize required SSS client: %v", err)
+			}
+			logging.Warnf("failed to initialize optional SSS client, screening will be unavailable: %v", err)
+			h.sssClient = nil
+		} else if sssClient != nil {
+			h.sssClient = sssClient
+		}
+	}
+
+	if sssRequired && h.sssClient == nil {
+		logging.Fatalf("SSS is required but not configured (base URL or audience missing in SSM)")
+	}
+
 	return h
+}
+
+// getOptionalSSMString retrieves a string parameter from SSM.
+// It returns an empty string if the parameter is missing or unreadable.
+func getOptionalSSMString(ctx context.Context, ssmClient *ssm.Client, key string, f logrus.Fields) string {
+	out, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
+		Name:           &key,
+		WithDecryption: nil,
+	})
+	if err != nil {
+		var pnf *ssmTypes.ParameterNotFound
+		if errors.As(err, &pnf) {
+			logging.WithFields(f).Debugf("optional SSM key %s not provisioned - sanctions screening disabled until it is set", key)
+		} else {
+			logging.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - sanctions screening disabled", key)
+		}
+		return ""
+	}
+
+	if out.Parameter == nil || out.Parameter.Value == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(*out.Parameter.Value)
+}
+
+// getOptionalSSMBool retrieves a boolean parameter from SSM.
+// It returns false (the safe default) when the value is unreadable or the parameter is absent.
+func getOptionalSSMBool(ctx context.Context, ssmClient *ssm.Client, key string, f logrus.Fields) bool {
+	val := getOptionalSSMString(ctx, ssmClient, key, f)
+	if val == "" {
+		return false
+	}
+	return strings.ToLower(val) == "true"
 }
 
 // formatPynamoDateTimeUTC formats timestamps the way Python's pynamodb
@@ -8790,7 +8869,201 @@ func (h *Handlers) employeeSignaturePrecheck(ctx context.Context, projectID, com
 		}
 	}
 
+	// checkCompanyCompliance now handles SSS screening and sanction persistence.
+	blocked, sanctionErr := h.checkCompanyCompliance(ctx, company)
+	if sanctionErr != nil {
+		logging.Warnf("failed to check company compliance for company: %s, error: %v", companyID, sanctionErr)
+		return nil, nil, nil, nil, nil, sanctionErr
+	}
+	if blocked {
+		fn := "employeeSignaturePrecheck"
+		sanctioned := map[string]any{
+			"sanctioned":  fmt.Sprintf("%s - user %s, company %s is sanctioned", fn, userID, companyID),
+			"description": "We’re sorry, but you are currently unable to sign the Employee Contributor License Agreement (ECLA). If you believe this may be an error, please reach out to support",
+			"user_id":     userID,
+			"company_id":  companyID,
+		}
+		return project, company, user, cclaSig, map[string]any{"code": 403, "errors": sanctioned}, nil
+	}
+
 	return project, company, user, cclaSig, nil, nil
+}
+
+// checkCompanyCompliance queries the Sanctions Screening Service for the given company.
+// It returns true if the company is sanctioned and should be blocked.
+func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[string]types.AttributeValue) (bool, error) {
+	companyID := getAttrString(company, "company_id")
+	companyName := getAttrString(company, "company_name")
+	companyExternalID := getAttrString(company, "company_external_id")
+
+	// Short-circuit for manually/admin-set blocks (sanction_origin != "sss" or no origin).
+	// SSS-origin blocks fall through so a now-clean result can clear them.
+	isSanctioned := false
+	if av, ok := company["is_sanctioned"].(*types.AttributeValueMemberBOOL); ok {
+		isSanctioned = av.Value
+	}
+	sanctionOrigin := getAttrString(company, "sanction_origin")
+
+	if isSanctioned && sanctionOrigin != "sss" {
+		logging.Warnf("company has non-SSS sanction block (origin=%q), blocking without SSS call", sanctionOrigin)
+		return true, nil
+	}
+
+	if h.sssClient == nil {
+		if h.sssRequired {
+			return false, fmt.Errorf("checkCompanyCompliance: SSS is required but the client is not configured")
+		}
+		return isSanctioned, nil
+	}
+
+	if companyExternalID == "" {
+		logging.Warnf("company %s has no external ID, skipping SSS call", companyID)
+		if h.sssRequired {
+			return false, fmt.Errorf("checkCompanyCompliance: company %s has no external ID (SFDC ID) required for screening", companyID)
+		}
+		return isSanctioned, nil
+	}
+
+	// Fetch organization details from Salesforce to resolve the domain.
+	org, err := h.salesforce.GetOrganization(ctx, companyExternalID)
+	if err != nil {
+		logging.Warnf("failed to get organization %s: %v", companyExternalID, err)
+		if h.sssRequired {
+			return false, fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", companyExternalID, err)
+		}
+		return isSanctioned, nil
+	}
+	if org == nil {
+		logging.Warnf("organization record is nil for %s", companyExternalID)
+		if h.sssRequired {
+			return false, fmt.Errorf("checkCompanyCompliance: organization record is nil for %s", companyExternalID)
+		}
+		return isSanctioned, nil
+	}
+
+	domain := h.resolveDomain(org)
+	if domain == "" {
+		logging.Warnf("unable to resolve domain for organization %s, skipping SSS call", companyExternalID)
+		if h.sssRequired {
+			return false, fmt.Errorf("checkCompanyCompliance: unable to resolve domain for organization %s", companyExternalID)
+		}
+		return isSanctioned, nil
+	}
+
+	req := sss.OrganizationStatusRequest{
+		Domain:  domain,
+		OrgName: companyName,
+	}
+
+	if strings.HasPrefix(companyExternalID, "001") {
+		req.SFDCID = companyExternalID
+	}
+
+	result, err := h.sssClient.GetOrganizationStatus(ctx, req)
+	if err != nil {
+		return h.handleSSSError(ctx, companyID, err)
+	}
+
+	sanctioned := result.Status == sss.StatusFlagged
+
+	// In required mode, only an explicit "clean" is acceptable — any other status blocks.
+	if h.sssRequired && result.Status != sss.StatusClean && result.Status != sss.StatusFlagged {
+		return false, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s (required mode blocks on ambiguous results)", result.Status, companyID)
+	}
+
+	// Persist result: set origin="sss" on flagged; conditionally clear on clean (only if sss-origin).
+	if sanctioned {
+		logging.Warnf("SSS returned flagged status for company %s, persisting sanction with origin=sss", companyID)
+		if persistErr := h.companies.UpdateCompanySanctionStatus(ctx, companyID, true, "sss"); persistErr != nil {
+			logging.Warnf("failed to persist sanction status for company %s: %v", companyID, persistErr)
+			return false, fmt.Errorf("failed to persist sanction status for company %s: %w", companyID, persistErr)
+		}
+	} else {
+		// Clear only when previously set by SSS; manual blocks are left untouched.
+		logging.Debugf("SSS returned clean status for company %s; attempting conditional clear", companyID)
+		if clearErr := h.companies.ClearCompanySanctionStatusIfSSS(ctx, companyID); clearErr != nil {
+			logging.Warnf("failed to conditionally clear sanction status for company %s: %v", companyID, clearErr)
+		}
+	}
+
+	return sanctioned, nil
+}
+
+// handleSSSError differentiates between various SSS error types and logs appropriately.
+func (h *Handlers) handleSSSError(ctx context.Context, companyID string, err error) (bool, error) {
+	var badReqErr *sss.BadRequestError
+	var authErr *sss.AuthError
+	var retryErr *sss.RetryableError
+	var notFoundErr *sss.NotFoundError
+	var timeoutErr *sss.TimeoutError
+
+	allowWhenOptional := func(message string) (bool, error) {
+		if h.sssRequired {
+			return false, fmt.Errorf("%s for company %s: %w", message, companyID, err)
+		}
+		logging.Warnf("%s for company %s; SSS is not required, continuing", message, companyID)
+		return false, nil
+	}
+
+	switch {
+	case errors.As(err, &timeoutErr):
+		logging.Warnf("SSS request timed out for company %s: %v", companyID, err)
+		return allowWhenOptional("SSS screening unavailable (timeout)")
+
+	case errors.As(err, &authErr):
+		logging.Errorf("SSS authentication/configuration error for company %s: %v", companyID, err)
+		return allowWhenOptional("SSS authentication error (check configuration)")
+
+	case errors.As(err, &retryErr):
+		logging.Warnf("SSS request failed with retryable error for company %s: %v", companyID, err)
+		return allowWhenOptional("SSS screening unavailable (transient failure)")
+
+	case errors.As(err, &notFoundErr):
+		logging.Warnf("SSS organization not found for company %s: %v", companyID, err)
+		return allowWhenOptional("SSS organization not found")
+
+	case errors.As(err, &badReqErr):
+		logging.Warnf("SSS bad request for company %s: %v", companyID, err)
+		return allowWhenOptional("SSS bad request")
+
+	default:
+		logging.Warnf("SSS request failed with unexpected error for company %s: %v", companyID, err)
+		return allowWhenOptional("SSS request failed")
+	}
+}
+
+// resolveDomain returns the best domain for an org: first entry from Domains, else host from Link.
+func (h *Handlers) resolveDomain(org *salesforce.Organization) string {
+	if org == nil {
+		return ""
+	}
+	domains := strings.Split(org.Domains, ",")
+
+	for _, d := range domains {
+		d = strings.TrimPrefix(strings.TrimSpace(d), "www.")
+		if d != "" {
+			return d
+		}
+	}
+	if org.Link != "" {
+		return h.parseDomain(org.Link)
+	}
+	return ""
+}
+
+func (h *Handlers) parseDomain(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(u.Hostname(), "www.")
 }
 
 func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Request) {
@@ -8855,21 +9128,6 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 	}
 	if errResp != nil {
 		respond.JSON(w, http.StatusOK, errResp)
-		return
-	}
-
-	fn := "docusign_models.check_and_prepare_employee_signature"
-
-	// NOTE: Python does NOT do sanction checks in check_and_prepare_employee_signature().
-	// It does it here (request_employee_signature / request_employee_signature_gerrit) after the precheck.
-	if av, ok := company["is_sanctioned"].(*types.AttributeValueMemberBOOL); ok && av.Value {
-		sanctioned := map[string]any{
-			"sanctioned":  fmt.Sprintf("%s - user %s, company %s is sanctioned", fn, req.UserID, req.CompanyID),
-			"description": "We’re sorry, but you are currently unable to sign the Employee Contributor License Agreement (ECLA). If you believe this may be an error, please reach out to support",
-			"user_id":     req.UserID,
-			"company_id":  req.CompanyID,
-		}
-		respond.JSON(w, http.StatusOK, map[string]any{"code": 403, "errors": sanctioned})
 		return
 	}
 

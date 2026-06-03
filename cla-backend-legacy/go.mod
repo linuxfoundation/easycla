@@ -2,7 +2,9 @@ module github.com/linuxfoundation/easycla/cla-backend-legacy
 
 go 1.25.0
 
-toolchain go1.25.10
+toolchain go1.25.11
+
+replace github.com/linuxfoundation/easycla/cla-sss-base => ../cla-sss-base
 
 require (
 	github.com/aws/aws-lambda-go v1.53.0
@@ -18,6 +20,7 @@ require (
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
+	github.com/linuxfoundation/easycla/cla-sss-base v0.0.0
 	github.com/sirupsen/logrus v1.9.3
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.52.0
 	go.opentelemetry.io/otel v1.43.0

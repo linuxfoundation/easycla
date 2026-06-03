@@ -5,7 +5,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -137,4 +139,77 @@ func (s *CompaniesStore) DeleteByID(ctx context.Context, companyID string) error
 		},
 	})
 	return err
+}
+
+// UpdateCompanySanctionStatus sets is_sanctioned and, when origin is non-empty, sanction_origin.
+// Pass origin="sss" when flagging via SSS; pass origin="" for manual admin updates.
+func (s *CompaniesStore) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error {
+	if s == nil || s.client == nil {
+		return nil
+	}
+
+	now := time.Now().UTC().Format("2006-01-02T15:04:05.000000-0700") // Best effort for date_modified parity
+
+	names := map[string]string{
+		"#S": "is_sanctioned",
+		"#M": "date_modified",
+	}
+	values := map[string]types.AttributeValue{
+		":s": &types.AttributeValueMemberBOOL{Value: sanctioned},
+		":m": &types.AttributeValueMemberS{Value: now},
+	}
+	updateExpr := "SET #S = :s, #M = :m"
+
+	if origin != "" {
+		names["#O"] = "sanction_origin"
+		values[":o"] = &types.AttributeValueMemberS{Value: origin}
+		updateExpr += ", #O = :o"
+	}
+
+	_, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(s.table),
+		Key: map[string]types.AttributeValue{
+			"company_id": &types.AttributeValueMemberS{Value: companyID},
+		},
+		UpdateExpression:          aws.String(updateExpr),
+		ExpressionAttributeNames:  names,
+		ExpressionAttributeValues: values,
+	})
+	return err
+}
+
+// ClearCompanySanctionStatusIfSSS clears is_sanctioned only when sanction_origin="sss".
+func (s *CompaniesStore) ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) error {
+	if s == nil || s.client == nil {
+		return nil
+	}
+
+	now := time.Now().UTC().Format("2006-01-02T15:04:05.000000-0700")
+
+	_, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(s.table),
+		Key: map[string]types.AttributeValue{
+			"company_id": &types.AttributeValueMemberS{Value: companyID},
+		},
+		UpdateExpression:    aws.String("SET #S = :false, #M = :m REMOVE #O"),
+		ConditionExpression: aws.String("#O = :sss"),
+		ExpressionAttributeNames: map[string]string{
+			"#S": "is_sanctioned",
+			"#M": "date_modified",
+			"#O": "sanction_origin",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":false": &types.AttributeValueMemberBOOL{Value: false},
+			":m":     &types.AttributeValueMemberS{Value: now},
+			":sss":   &types.AttributeValueMemberS{Value: "sss"},
+		},
+	})
+	if err != nil {
+		var condErr *types.ConditionalCheckFailedException
+		if errors.As(err, &condErr) {
+			return nil // Already manual/admin or not SSS-flagged
+		}
+		return err
+	}
+	return nil
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
 // StageFromEnv returns the current deployment stage.
@@ -42,6 +43,25 @@ func TableNameFromSuffix(suffix string) string {
 // For legacy parity we keep this intentionally minimal and rely on the Lambda execution
 // role + standard AWS_REGION/AWS_DEFAULT_REGION behavior.
 func NewDynamoDBClientFromEnv(ctx context.Context) (*dynamodb.Client, error) {
+	region := getAWSRegion()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if err != nil {
+		return nil, err
+	}
+	return dynamodb.NewFromConfig(cfg), nil
+}
+
+// NewSSMClientFromEnv creates an SSM client using the ambient AWS environment.
+func NewSSMClientFromEnv(ctx context.Context) (*ssm.Client, error) {
+	region := getAWSRegion()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if err != nil {
+		return nil, err
+	}
+	return ssm.NewFromConfig(cfg), nil
+}
+
+func getAWSRegion() string {
 	region := strings.TrimSpace(os.Getenv("DYNAMODB_AWS_REGION"))
 	if region == "" {
 		region = strings.TrimSpace(os.Getenv("AWS_REGION"))
@@ -52,10 +72,5 @@ func NewDynamoDBClientFromEnv(ctx context.Context) (*dynamodb.Client, error) {
 	if region == "" {
 		region = "us-east-1"
 	}
-
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
-	if err != nil {
-		return nil, err
-	}
-	return dynamodb.NewFromConfig(cfg), nil
+	return region
 }

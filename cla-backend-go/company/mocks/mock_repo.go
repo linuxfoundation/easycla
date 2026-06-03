@@ -349,3 +349,31 @@ func (mr *MockIRepositoryMockRecorder) UpdateCompanyAccessList(ctx, companyID, c
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCompanyAccessList", reflect.TypeOf((*MockIRepository)(nil).UpdateCompanyAccessList), ctx, companyID, companyACL)
 }
+
+// UpdateCompanySanctionStatus mocks base method.
+func (m *MockIRepository) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateCompanySanctionStatus", ctx, companyID, sanctioned, origin)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateCompanySanctionStatus indicates an expected call of UpdateCompanySanctionStatus.
+func (mr *MockIRepositoryMockRecorder) UpdateCompanySanctionStatus(ctx, companyID, sanctioned, origin interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCompanySanctionStatus", reflect.TypeOf((*MockIRepository)(nil).UpdateCompanySanctionStatus), ctx, companyID, sanctioned, origin)
+}
+
+// ClearCompanySanctionStatusIfSSS mocks base method.
+func (m *MockIRepository) ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearCompanySanctionStatusIfSSS", ctx, companyID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearCompanySanctionStatusIfSSS indicates an expected call of ClearCompanySanctionStatusIfSSS.
+func (mr *MockIRepositoryMockRecorder) ClearCompanySanctionStatusIfSSS(ctx, companyID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearCompanySanctionStatusIfSSS", reflect.TypeOf((*MockIRepository)(nil).ClearCompanySanctionStatusIfSSS), ctx, companyID)
+}

@@ -138,6 +138,11 @@ type SSS struct {
 	// identifier exactly (e.g.
 	// https://sanctions-screening.dev.v2.cluster.linuxfound.info/)
 	Audience string `json:"audience"`
+	// Required is a flag controlling whether SSS screening is required or optional.
+	// When true, any SSS errors (unavailable, timeout, config errors, or missing domain)
+	// will block the operation. When false, SSS errors are logged but do not block.
+	// This flag is loaded from the SSM parameter cla-sss-required-{stage}.
+	Required bool `json:"required"`
 }
 
 // Docraptor model

@@ -286,6 +286,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
 	config.SSS.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-base-url-%s", stage), f)
 	config.SSS.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-auth0-audience-%s", stage), f)
+	config.SSS.Required = getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-sss-required-%s", stage), f)
 }
 
 // getOptionalSSMString fetches a parameter that may legitimately be absent while
@@ -308,4 +309,31 @@ func getOptionalSSMString(ssmClient *ssm.SSM, key string, f logrus.Fields) strin
 	}
 
 	return strings.TrimSpace(*out.Parameter.Value)
+}
+
+// getOptionalSSMBool fetches an optional boolean parameter. It logs exactly once:
+// a missing parameter is reported at debug (an expected, benign state), while any
+// other failure - IAM, throttling, parse errors, etc. - is reported as a warning.
+// Returns false (the default) when the value is unreadable or the parameter is absent.
+func getOptionalSSMBool(ssmClient *ssm.SSM, key string, f logrus.Fields) bool {
+	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
+		Name:           aws.String(key),
+		WithDecryption: aws.Bool(false),
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
+			log.WithFields(f).Debugf("optional SSM key %s not provisioned - using default value false", key)
+		} else {
+			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - using default value false", key)
+		}
+		return false
+	}
+
+	boolVal, err := strconv.ParseBool(strings.TrimSpace(*out.Parameter.Value))
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to parse optional SSM key %s as boolean - using default value false", key)
+		return false
+	}
+
+	return boolVal
 }

@@ -4,9 +4,11 @@ module github.com/linuxfoundation/easycla/cla-backend-go
 
 go 1.25.0
 
-toolchain go1.25.10
+toolchain go1.25.11
 
 replace github.com/awslabs/aws-lambda-go-api-proxy => github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
+
+replace github.com/linuxfoundation/easycla/cla-sss-base => ../cla-sss-base
 
 require (
 	github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
@@ -40,6 +42,7 @@ require (
 	github.com/juju/zip v0.0.0-20160205105221-f6b1e93fa2e2
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
+	github.com/linuxfoundation/easycla/cla-sss-base v0.0.0
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
