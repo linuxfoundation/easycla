@@ -1149,17 +1149,6 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 		return err
 	}
 
-	// Sanctions gate: re-screen the company before finalizing the CCLA. A company can
-	// become blocked (manual/admin or SSS) between the DocuSign request and this
-	// completion callback; do not finalize a corporate CLA for a sanctioned company.
-	if sanctioned, complianceErr := s.checkCompanyCompliance(ctx, companyModel); complianceErr != nil {
-		log.WithFields(f).WithError(complianceErr).Warnf("company compliance check failed in corporate callback for company %s; not finalizing CCLA", companyID)
-		return complianceErr
-	} else if sanctioned {
-		log.WithFields(f).Warnf("company %s is sanctioned; refusing to finalize corporate CLA in callback", companyID)
-		return fmt.Errorf("company %s is sanctioned; corporate CLA cannot be finalized", companyID)
-	}
-
 	// Assumme only one signature per company/project
 	var signatureID string
 	var signature *v1Models.Signature
@@ -1227,6 +1216,17 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 	// Update the signature status if changed
 	status := info.EnvelopeStatus.Status
 	if status == DocusignCompleted && !signature.SignatureSigned {
+		// Sanctions gate: re-screen the company before finalizing the CCLA. A company can
+		// become blocked (manual/admin or SSS) between the DocuSign request and this
+		// completion callback; do not finalize a corporate CLA for a sanctioned company.
+		if sanctioned, complianceErr := s.checkCompanyCompliance(ctx, companyModel); complianceErr != nil {
+			log.WithFields(f).WithError(complianceErr).Warnf("company compliance check failed in corporate callback for company %s; not finalizing CCLA", companyID)
+			return complianceErr
+		} else if sanctioned {
+			log.WithFields(f).Warnf("company %s is sanctioned; refusing to finalize corporate CLA in callback", companyID)
+			return fmt.Errorf("company %s is sanctioned; corporate CLA cannot be finalized", companyID)
+		}
+
 		_, currentTime := utils.CurrentTime()
 		updates := map[string]interface{}{
 			"signature_signed":        true,
@@ -3014,8 +3014,8 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 			log.WithFields(f).WithError(resultErr).Error("SSS client not configured")
 			return false, resultErr
 		}
-		log.WithFields(f).Debug("SSS client not configured, skipping optional live compliance check")
-		return false, nil
+		log.WithFields(f).Debug("SSS client not configured; honoring persisted sanction state without a live compliance check")
+		return company.IsSanctioned, nil
 	}
 
 	// Fetch org from organization service to get the website/domain.
@@ -3023,8 +3023,8 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	if orgClient == nil {
 		resultErr := fmt.Errorf("checkCompanyCompliance: organization service client is not configured")
 		if !s.sssRequired {
-			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
-			return false, nil
+			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
+			return company.IsSanctioned, nil
 		}
 		return false, resultErr
 	}
@@ -3033,8 +3033,8 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		log.WithFields(f).WithError(err).Warnf("failed to get organization %s for domain resolution", company.CompanyExternalID)
 		resultErr := fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", company.CompanyExternalID, err)
 		if !s.sssRequired {
-			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
-			return false, nil
+			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
+			return company.IsSanctioned, nil
 		}
 		return false, resultErr
 	}
@@ -3042,8 +3042,8 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		log.WithFields(f).Warnf("organization record is nil for %s", company.CompanyExternalID)
 		resultErr := fmt.Errorf("checkCompanyCompliance: organization record is nil for %s", company.CompanyExternalID)
 		if !s.sssRequired {
-			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
-			return false, nil
+			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
+			return company.IsSanctioned, nil
 		}
 		return false, resultErr
 	}
@@ -3056,8 +3056,8 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 			log.WithFields(f).WithError(resultErr).Error("unable to resolve domain for required SSS check")
 			return false, resultErr
 		}
-		log.WithFields(f).WithError(resultErr).Warn("SSS is not required; continuing without live compliance result")
-		return false, nil
+		log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
+		return company.IsSanctioned, nil
 	}
 
 	log.WithFields(f).Debugf("resolved domain: %s for SSS check", domain)
@@ -3104,6 +3104,16 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 				return false, fmt.Errorf("checkCompanyCompliance: SSS returned clean but clearing the persisted sanction failed for company %s: %w", company.CompanyID, clearErr)
 			}
 		}
+	}
+
+	// Reflect the live SSS decision on the in-memory model so any downstream gate in
+	// this same request (e.g. ProcessEmployeeSignature) sees the just-updated state
+	// rather than the now-stale value that was loaded before this check ran.
+	company.IsSanctioned = sanctioned
+	if sanctioned {
+		company.SanctionOrigin = "sss"
+	} else {
+		company.SanctionOrigin = ""
 	}
 
 	s.setComplianceCache(cacheKey, sanctioned)
