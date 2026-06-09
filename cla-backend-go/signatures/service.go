@@ -836,6 +836,9 @@ func (s service) CreateOrUpdateEmployeeSignature(ctx context.Context, claGroupMo
 	// Sanctions gate: never auto-create employee (ECLA) signatures for a sanctioned
 	// company. is_sanctioned is the persisted gate (SSS origin="sss" or a manual/admin
 	// block); both must block ECLA creation (auto-create toggle and approval-list edits).
+	// By design this enforces the persisted flag, not a live SSS call: the live screen runs
+	// at the sign/request entry points (CCLA request + legacy ECLA precheck) and keeps this
+	// flag fresh; secondary paths intentionally honor the persisted state.
 	if companyModel.IsSanctioned {
 		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); refusing to auto-create employee (ECLA) signatures", companyModel.CompanyID, companyModel.SanctionOrigin)
 		return nil, fmt.Errorf("company %s is sanctioned; employee (ECLA) signatures cannot be created", companyModel.CompanyID)
@@ -1529,7 +1532,9 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 	// Sanctions gate: a sanctioned company's employees are not authorized. is_sanctioned
 	// is the persisted gate (SSS origin="sss" or a manual/admin block); honor it here so
 	// employee-acknowledgement (ECLA) authorization fails for sanctioned companies on
-	// GitHub PR checks and authorization queries.
+	// GitHub PR checks and authorization queries. By design this enforces the persisted
+	// flag, not a live SSS call (the live screen at the sign/request entry points keeps it
+	// fresh).
 	if companyModel.IsSanctioned {
 		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); employee acknowledgement not authorized", companyModel.CompanyID, companyModel.SanctionOrigin)
 		notSigned := false

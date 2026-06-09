@@ -1341,7 +1341,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		// Sanctions gate: do not enable ECLA auto-create for a sanctioned company.
+		// Sanctions gate: do not enable ECLA auto-create for a sanctioned company. By design
+		// this enforces the persisted is_sanctioned flag, not a live SSS call (the live screen
+		// at the sign/request entry points keeps it fresh).
 		if eacp.Body.AutoCreateEcla && companyRecord.IsSanctioned {
 			msg := fmt.Sprintf("company %s is sanctioned (origin=%q); cannot enable ECLA auto-create", companyRecord.CompanyID, companyRecord.SanctionOrigin)
 			log.WithFields(f).Warn(msg)

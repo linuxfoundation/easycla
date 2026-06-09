@@ -525,7 +525,8 @@ func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroup
 
 	// Sanctions gate: a sanctioned company's employees are not authorized. Honor the
 	// persisted is_sanctioned gate (SSS origin="sss" or a manual/admin block) so GitLab
-	// MR checks fail for sanctioned companies.
+	// MR checks fail for sanctioned companies. By design this enforces the persisted flag,
+	// not a live SSS call (the live screen at the sign/request entry points keeps it fresh).
 	if companyModel != nil && companyModel.IsSanctioned {
 		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); GitLab contributor not authorized", companyID, companyModel.SanctionOrigin)
 		return false, fmt.Errorf("company %s is sanctioned", companyID)
