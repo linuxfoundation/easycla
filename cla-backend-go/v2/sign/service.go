@@ -64,6 +64,7 @@ const (
 	DocusignCompleted      = "Completed"
 	complianceCacheTTL     = 5 * time.Minute
 	maxComplianceCacheSize = 1000
+	sanctionOriginSSS      = "sss"
 )
 
 // errors
@@ -2997,7 +2998,7 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 
 	// Short-circuit for manually/admin-set blocks (sanction_origin != "sss" or no origin).
 	// SSS-origin blocks fall through so a now-clean result can clear them.
-	if company.IsSanctioned && company.SanctionOrigin != "sss" {
+	if company.IsSanctioned && company.SanctionOrigin != sanctionOriginSSS {
 		log.WithFields(f).Warnf("company has non-SSS sanction block (origin=%q), blocking without SSS call", company.SanctionOrigin)
 		return true, nil
 	}
@@ -3005,6 +3006,10 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	cacheKey := s.complianceCacheKey(company)
 	if cached, ok := s.getComplianceCache(cacheKey); ok {
 		log.WithFields(f).Debugf("using cached compliance result for organization/company: %s", cacheKey)
+		// Mirror the cached decision onto the loaded model so downstream gates in this
+		// request stay consistent. Manual/admin blocks already short-circuited above, so a
+		// cached-clean result here cannot be masking such a block.
+		s.applyComplianceToModel(company, cached.sanctioned)
 		return cached.sanctioned, nil
 	}
 
@@ -3091,40 +3096,55 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		return false, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s (required mode blocks on ambiguous results)", result.Status, company.CompanyID)
 	}
 
-	// Persist result: set origin="sss" on flagged; conditionally clear on clean (only if sss-origin).
+	// Persist result and reflect it on the in-memory model so downstream gates in this
+	// same request (e.g. ProcessEmployeeSignature) see the just-updated state instead of
+	// the stale value loaded before this check ran.
 	if sanctioned {
 		log.WithFields(f).Warnf("SSS returned flagged status for company %s, persisting sanction with origin=sss", company.CompanyID)
-		if persistErr := s.companyRepo.UpdateCompanySanctionStatus(ctx, company.CompanyID, true, "sss"); persistErr != nil {
+		if persistErr := s.companyRepo.UpdateCompanySanctionStatus(ctx, company.CompanyID, true, sanctionOriginSSS); persistErr != nil {
 			log.WithFields(f).WithError(persistErr).Warnf("failed to persist sanction status for company %s", company.CompanyID)
 			return false, fmt.Errorf("failed to persist sanction status for company %s: %w", company.CompanyID, persistErr)
 		}
+		// Flagged always blocks downstream, so reflecting it is safe even if a concurrent
+		// manual/admin block now owns the persisted record (that also blocks).
+		s.applyComplianceToModel(company, true)
 	} else {
 		// Clear only when previously set by SSS; manual blocks are left untouched.
-		// ClearCompanySanctionStatusIfSSS treats a conditional-check failure (manual
-		// block / nothing to clear) as a no-op, so a non-nil error here is a real
-		// persistence failure. In required mode we fail closed rather than allow with a
-		// stale persisted sanction still in place.
+		// ClearCompanySanctionStatusIfSSS reports whether it actually cleared; a non-nil
+		// error is a real persistence failure (not a benign conditional-check no-op), so in
+		// required mode we fail closed rather than allow with a stale persisted sanction.
 		log.WithFields(f).Debugf("SSS returned clean status for company %s; attempting conditional clear", company.CompanyID)
-		if clearErr := s.companyRepo.ClearCompanySanctionStatusIfSSS(ctx, company.CompanyID); clearErr != nil {
+		cleared, clearErr := s.companyRepo.ClearCompanySanctionStatusIfSSS(ctx, company.CompanyID)
+		if clearErr != nil {
 			log.WithFields(f).WithError(clearErr).Warnf("failed to conditionally clear sanction status for company %s", company.CompanyID)
 			if s.sssRequired {
 				return false, fmt.Errorf("checkCompanyCompliance: SSS returned clean but clearing the persisted sanction failed for company %s: %w", company.CompanyID, clearErr)
 			}
 		}
-	}
-
-	// Reflect the live SSS decision on the in-memory model so any downstream gate in
-	// this same request (e.g. ProcessEmployeeSignature) sees the just-updated state
-	// rather than the now-stale value that was loaded before this check ran.
-	company.IsSanctioned = sanctioned
-	if sanctioned {
-		company.SanctionOrigin = "sss"
-	} else {
-		company.SanctionOrigin = ""
+		// Only mirror the clear on the in-memory model when it actually applied. If the
+		// conditional did not match — e.g. a concurrent manual/admin block now owns the
+		// record — leave the loaded state so downstream gates still honor that block.
+		if cleared {
+			s.applyComplianceToModel(company, false)
+		}
 	}
 
 	s.setComplianceCache(cacheKey, sanctioned)
 	return sanctioned, nil
+}
+
+// applyComplianceToModel updates the in-memory company model to reflect a compliance
+// decision so downstream gates in the same request stay consistent with this check.
+func (s *service) applyComplianceToModel(company *v1Models.Company, sanctioned bool) {
+	if company == nil {
+		return
+	}
+	company.IsSanctioned = sanctioned
+	if sanctioned {
+		company.SanctionOrigin = sanctionOriginSSS
+	} else {
+		company.SanctionOrigin = ""
+	}
 }
 
 func (s *service) complianceCacheKey(company *v1Models.Company) string {

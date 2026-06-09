@@ -365,11 +365,12 @@ func (mr *MockIRepositoryMockRecorder) UpdateCompanySanctionStatus(ctx, companyI
 }
 
 // ClearCompanySanctionStatusIfSSS mocks base method.
-func (m *MockIRepository) ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) error {
+func (m *MockIRepository) ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) (bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ClearCompanySanctionStatusIfSSS", ctx, companyID)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // ClearCompanySanctionStatusIfSSS indicates an expected call of ClearCompanySanctionStatusIfSSS.
