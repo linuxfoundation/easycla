@@ -8938,6 +8938,16 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		return isSanctioned, nil
 	}
 
+	// Defensive: the Salesforce/org-service client may be unconfigured (it is treated as
+	// nil-able elsewhere in this file). Mirror the org-fetch fallback instead of panicking.
+	if h.salesforce == nil {
+		logging.Warnf("salesforce/org-service client not configured, cannot resolve domain for %s", companyExternalID)
+		if h.sssRequired {
+			return false, fmt.Errorf("checkCompanyCompliance: salesforce client not configured for organization %s", companyExternalID)
+		}
+		return isSanctioned, nil
+	}
+
 	// Fetch organization details from Salesforce to resolve the domain.
 	org, err := h.salesforce.GetOrganization(ctx, companyExternalID)
 	if err != nil {
