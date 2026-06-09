@@ -164,6 +164,11 @@ func (s *CompaniesStore) UpdateCompanySanctionStatus(ctx context.Context, compan
 		names["#O"] = "sanction_origin"
 		values[":o"] = &types.AttributeValueMemberS{Value: origin}
 		updateExpr += ", #O = :o"
+	} else {
+		// Manual/admin update: remove any stale SSS-set origin so the record becomes a
+		// sticky admin block (origin absent) that SSS will never auto-clear.
+		names["#O"] = "sanction_origin"
+		updateExpr += " REMOVE #O"
 	}
 
 	input := &dynamodb.UpdateItemInput{

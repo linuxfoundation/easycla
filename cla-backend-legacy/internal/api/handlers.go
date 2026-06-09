@@ -5244,6 +5244,9 @@ func (h *Handlers) PutCompanyV1(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.IsSanctioned != nil {
 		item["is_sanctioned"] = &types.AttributeValueMemberBOOL{Value: *req.IsSanctioned}
+		// Manual/admin sanction change: drop any SSS-set origin so this becomes an
+		// admin-controlled state (sticky when true; never later auto-cleared by SSS).
+		delete(item, "sanction_origin")
 		updateStr += fmt.Sprintf("The company is_sanctioned was updated to %t. ", *req.IsSanctioned)
 	}
 
@@ -8915,11 +8918,15 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		return true, nil
 	}
 
+	// Optional mode never blocks in the fallbacks below: a manual/admin block was
+	// already handled by the short-circuit above, and optional mode only blocks on an
+	// explicit live "flagged" result (parity with cla-backend-go, and avoids a durable
+	// false-positive when a stale sss-origin record can't be re-screened).
 	if h.sssClient == nil {
 		if h.sssRequired {
 			return false, fmt.Errorf("checkCompanyCompliance: SSS is required but the client is not configured")
 		}
-		return isSanctioned, nil
+		return false, nil
 	}
 
 	if companyExternalID == "" {
@@ -8927,7 +8934,7 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		if h.sssRequired {
 			return false, fmt.Errorf("checkCompanyCompliance: company %s has no external ID (SFDC ID) required for screening", companyID)
 		}
-		return isSanctioned, nil
+		return false, nil
 	}
 
 	// Fetch organization details from Salesforce to resolve the domain.
@@ -8937,14 +8944,14 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		if h.sssRequired {
 			return false, fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", companyExternalID, err)
 		}
-		return isSanctioned, nil
+		return false, nil
 	}
 	if org == nil {
 		logging.Warnf("organization record is nil for %s", companyExternalID)
 		if h.sssRequired {
 			return false, fmt.Errorf("checkCompanyCompliance: organization record is nil for %s", companyExternalID)
 		}
-		return isSanctioned, nil
+		return false, nil
 	}
 
 	domain := h.resolveDomain(org)
@@ -8953,7 +8960,7 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		if h.sssRequired {
 			return false, fmt.Errorf("checkCompanyCompliance: unable to resolve domain for organization %s", companyExternalID)
 		}
-		return isSanctioned, nil
+		return false, nil
 	}
 
 	req := sss.OrganizationStatusRequest{

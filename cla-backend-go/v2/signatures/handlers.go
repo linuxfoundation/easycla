@@ -1341,6 +1341,14 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseForbidden(reqID, msg))
 		}
 
+		// Sanctions gate: do not enable ECLA auto-create for a sanctioned company.
+		if eacp.Body.AutoCreateEcla && companyRecord.IsSanctioned {
+			msg := fmt.Sprintf("company %s is sanctioned (origin=%q); cannot enable ECLA auto-create", companyRecord.CompanyID, companyRecord.SanctionOrigin)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequestWithError(reqID, msg, fmt.Errorf("company is sanctioned")))
+		}
+
 		err = v2SignatureService.EclaAutoCreate(ctx, cclaSignature.SignatureID, eacp.Body.AutoCreateEcla)
 		if err != nil {
 			msg := "unable to update auto_create_ecla flag"

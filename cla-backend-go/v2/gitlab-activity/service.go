@@ -261,7 +261,7 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 			log.WithFields(f).WithError(signedCheckErr).Warnf("problem checking if user : %s (%d) has signed - assuming not signed", gitlabUser.Username, gitlabUser.ID)
 			missingUsers = append(missingUsers, &gatedGitlabUser{
 				User: gitlabUser,
-				err:  err,
+				err:  signedCheckErr,
 			})
 			continue
 		}
@@ -273,7 +273,7 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 			log.WithFields(f).Infof("gitlabUser: %s (%d) has NOT signed", gitlabUser.Username, gitlabUser.ID)
 			missingUsers = append(missingUsers, &gatedGitlabUser{
 				User: gitlabUser,
-				err:  err,
+				err:  nil,
 			})
 		}
 	}

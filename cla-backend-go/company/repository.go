@@ -1306,6 +1306,11 @@ func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyI
 		names["#O"] = aws.String("sanction_origin")
 		values[":o"] = &dynamodb.AttributeValue{S: aws.String(origin)}
 		updateExpr += ", #O = :o"
+	} else {
+		// Manual/admin update: remove any stale SSS-set origin so the record becomes a
+		// sticky admin block (origin absent) that SSS will never auto-clear.
+		names["#O"] = aws.String("sanction_origin")
+		updateExpr += " REMOVE #O"
 	}
 
 	input := &dynamodb.UpdateItemInput{
