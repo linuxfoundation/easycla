@@ -3121,11 +3121,16 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 				return false, fmt.Errorf("checkCompanyCompliance: SSS returned clean but clearing the persisted sanction failed for company %s: %w", company.CompanyID, clearErr)
 			}
 		}
-		// Only mirror the clear on the in-memory model when it actually applied. If the
-		// conditional did not match — e.g. a concurrent manual/admin block now owns the
-		// record — leave the loaded state so downstream gates still honor that block.
+		// Only mirror the clear on the in-memory model when it actually applied. If we
+		// loaded an SSS-origin block but the conditional did not match, the persisted
+		// record changed underneath us (e.g. a concurrent manual/admin block transition):
+		// the state is uncertain and may now be a manual block, so fail closed and do not
+		// cache the clean result.
 		if cleared {
 			s.applyComplianceToModel(company, false)
+		} else if company.IsSanctioned && company.SanctionOrigin == sanctionOriginSSS {
+			log.WithFields(f).Warnf("SSS returned clean for company %s but the persisted SSS block could not be cleared (record changed concurrently); blocking", company.CompanyID)
+			return true, nil
 		}
 	}
 

@@ -9017,11 +9017,19 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		// so a non-nil error here is a real persistence failure. In required mode we fail
 		// closed rather than allow with a stale persisted sanction still in place.
 		logging.Debugf("SSS returned clean status for company %s; attempting conditional clear", companyID)
-		if clearErr := h.companies.ClearCompanySanctionStatusIfSSS(ctx, companyID); clearErr != nil {
+		cleared, clearErr := h.companies.ClearCompanySanctionStatusIfSSS(ctx, companyID)
+		if clearErr != nil {
 			logging.Warnf("failed to conditionally clear sanction status for company %s: %v", companyID, clearErr)
 			if h.sssRequired {
 				return false, fmt.Errorf("checkCompanyCompliance: SSS returned clean but clearing the persisted sanction failed for company %s: %w", companyID, clearErr)
 			}
+		}
+		if !cleared && isSanctioned && sanctionOrigin == "sss" {
+			// We loaded an SSS-origin block but the conditional clear did not apply, so the
+			// persisted record changed underneath us (e.g. a concurrent manual/admin block):
+			// the state is uncertain and may now be a manual block, so fail closed.
+			logging.Warnf("SSS returned clean for company %s but the persisted SSS block could not be cleared (record changed concurrently); blocking", companyID)
+			return true, nil
 		}
 	}
 

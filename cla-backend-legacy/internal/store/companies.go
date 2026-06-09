@@ -205,9 +205,9 @@ func (s *CompaniesStore) UpdateCompanySanctionStatus(ctx context.Context, compan
 }
 
 // ClearCompanySanctionStatusIfSSS clears is_sanctioned only when sanction_origin="sss".
-func (s *CompaniesStore) ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) error {
+func (s *CompaniesStore) ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) (bool, error) {
 	if s == nil || s.client == nil {
-		return nil
+		return false, nil
 	}
 
 	now := time.Now().UTC().Format("2006-01-02T15:04:05.000000-0700")
@@ -233,9 +233,9 @@ func (s *CompaniesStore) ClearCompanySanctionStatusIfSSS(ctx context.Context, co
 	if err != nil {
 		var condErr *types.ConditionalCheckFailedException
 		if errors.As(err, &condErr) {
-			return nil // Already manual/admin or not SSS-flagged
+			return false, nil // Already manual/admin or not SSS-flagged
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
