@@ -8986,7 +8986,14 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 	logging.Infof("calling SSS GetOrganizationStatus for company %s: domain=%s, orgName=%s, sfdcID=%q (mode=%s)", companyID, req.Domain, req.OrgName, req.SFDCID, sssMode)
 	result, err := h.sssClient.GetOrganizationStatus(ctx, req)
 	if err != nil {
-		return h.handleSSSError(ctx, companyID, err)
+		blocked, herr := h.handleSSSError(ctx, companyID, err)
+		// Optional mode allows on SSS errors, but a company already persisted as
+		// SSS-sanctioned must keep blocking until a live clean result can clear it.
+		if herr == nil && !blocked && isSanctioned {
+			logging.Warnf("SSS call failed for company %s; honoring persisted sanction until a live clean result (mode=%s)", companyID, sssMode)
+			return true, nil
+		}
+		return blocked, herr
 	}
 	logging.Infof("SSS GetOrganizationStatus result for company %s: status=%q (domain=%s, mode=%s)", companyID, result.Status, req.Domain, sssMode)
 

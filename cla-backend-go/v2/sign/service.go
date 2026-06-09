@@ -3073,7 +3073,14 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	log.WithFields(f).Infof("calling SSS GetOrganizationStatus: domain=%s, orgName=%s, sfdcID=%q (mode=%s)", req.Domain, req.OrgName, req.SFDCID, sssMode)
 	result, err := s.sssClient.GetOrganizationStatus(ctx, req)
 	if err != nil {
-		return s.handleSSSError(f, company.CompanyID, err)
+		blocked, herr := s.handleSSSError(f, company.CompanyID, err)
+		// Optional mode allows on SSS errors, but a company already persisted as
+		// SSS-sanctioned must keep blocking until a live clean result can clear it.
+		if herr == nil && !blocked && company.IsSanctioned {
+			log.WithFields(f).Warnf("SSS call failed for company %s; honoring persisted sanction until a live clean result (mode=%s)", company.CompanyID, sssMode)
+			return true, nil
+		}
+		return blocked, herr
 	}
 	log.WithFields(f).Infof("SSS GetOrganizationStatus result for company %s: status=%q (domain=%s, mode=%s)", company.CompanyID, result.Status, req.Domain, sssMode)
 
