@@ -516,11 +516,19 @@ func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroup
 	}
 
 	companyID := userModel.CompanyID
-	_, err = s.companyRepository.GetCompany(ctx, companyID)
+	companyModel, err := s.companyRepository.GetCompany(ctx, companyID)
 	if err != nil {
 		msg := fmt.Sprintf("can't load company record: %s for user: %s (%s), error: %v", companyID, userModel.Username, userModel.UserID, err)
 		log.WithFields(f).Errorf("%s", msg)
 		return false, fmt.Errorf("%s", msg)
+	}
+
+	// Sanctions gate: a sanctioned company's employees are not authorized. Honor the
+	// persisted is_sanctioned gate (SSS origin="sss" or a manual/admin block) so GitLab
+	// MR checks fail for sanctioned companies.
+	if companyModel != nil && companyModel.IsSanctioned {
+		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); GitLab contributor not authorized", companyID, companyModel.SanctionOrigin)
+		return false, fmt.Errorf("company %s is sanctioned", companyID)
 	}
 
 	corporateSignature, err := s.signatureRepository.GetCorporateSignature(ctx, claGroupID, companyID, aws.Bool(true), aws.Bool(true))

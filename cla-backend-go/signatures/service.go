@@ -833,6 +833,14 @@ func (s service) CreateOrUpdateEmployeeSignature(ctx context.Context, claGroupMo
 		"companyID":      companyModel.CompanyID,
 	}
 
+	// Sanctions gate: never auto-create employee (ECLA) signatures for a sanctioned
+	// company. is_sanctioned is the persisted gate (SSS origin="sss" or a manual/admin
+	// block); both must block ECLA creation (auto-create toggle and approval-list edits).
+	if companyModel.IsSanctioned {
+		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); refusing to auto-create employee (ECLA) signatures", companyModel.CompanyID, companyModel.SanctionOrigin)
+		return nil, fmt.Errorf("company %s is sanctioned; employee (ECLA) signatures cannot be created", companyModel.CompanyID)
+	}
+
 	// Most of the following business logic is all the same - however, we need to handle the different types of approval lists entries and process them in the same way
 	// We build a list of users to process - this is a list of simple user models that contain the email, GitHub username, and GitLab username - typically only one of the values in the model will be set
 	userList, userErr := s.createOrGetEmployeeModels(ctx, claGroupModel, companyModel, corporateSignatureModel)
@@ -1517,6 +1525,17 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 		"projectID":      claGroupModel.ProjectID,
 		"userID":         user.UserID,
 	}
+
+	// Sanctions gate: a sanctioned company's employees are not authorized. is_sanctioned
+	// is the persisted gate (SSS origin="sss" or a manual/admin block); honor it here so
+	// employee-acknowledgement (ECLA) authorization fails for sanctioned companies on
+	// GitHub PR checks and authorization queries.
+	if companyModel.IsSanctioned {
+		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); employee acknowledgement not authorized", companyModel.CompanyID, companyModel.SanctionOrigin)
+		notSigned := false
+		return &notSigned, nil
+	}
+
 	var wg sync.WaitGroup
 	resultChannel := make(chan *EmployeeModel)
 	errorChannel := make(chan error)

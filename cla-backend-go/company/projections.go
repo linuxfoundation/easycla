@@ -19,6 +19,7 @@ func buildCompanyProjection() expression.ProjectionBuilder {
 		expression.Name("date_modified"),
 		expression.Name("note"),
 		expression.Name("is_sanctioned"),
+		expression.Name("sanction_origin"),
 		expression.Name("version"),
 	)
 }

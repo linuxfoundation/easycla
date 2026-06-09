@@ -8896,6 +8896,12 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 	companyName := getAttrString(company, "company_name")
 	companyExternalID := getAttrString(company, "company_external_id")
 
+	sssMode := "optional"
+	if h.sssRequired {
+		sssMode = "required"
+	}
+	logging.Debugf("starting company sanctions screening for company %s (external_id=%s, mode=%s)", companyID, companyExternalID, sssMode)
+
 	// Short-circuit for manually/admin-set blocks (sanction_origin != "sss" or no origin).
 	// SSS-origin blocks fall through so a now-clean result can clear them.
 	isSanctioned := false
@@ -8959,10 +8965,12 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		req.SFDCID = companyExternalID
 	}
 
+	logging.Infof("calling SSS GetOrganizationStatus for company %s: domain=%s, orgName=%s, sfdcID=%q (mode=%s)", companyID, req.Domain, req.OrgName, req.SFDCID, sssMode)
 	result, err := h.sssClient.GetOrganizationStatus(ctx, req)
 	if err != nil {
 		return h.handleSSSError(ctx, companyID, err)
 	}
+	logging.Infof("SSS GetOrganizationStatus result for company %s: status=%q (domain=%s, mode=%s)", companyID, result.Status, req.Domain, sssMode)
 
 	sanctioned := result.Status == sss.StatusFlagged
 
@@ -8980,9 +8988,15 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		}
 	} else {
 		// Clear only when previously set by SSS; manual blocks are left untouched.
+		// ClearCompanySanctionStatusIfSSS treats a conditional-check failure as a no-op,
+		// so a non-nil error here is a real persistence failure. In required mode we fail
+		// closed rather than allow with a stale persisted sanction still in place.
 		logging.Debugf("SSS returned clean status for company %s; attempting conditional clear", companyID)
 		if clearErr := h.companies.ClearCompanySanctionStatusIfSSS(ctx, companyID); clearErr != nil {
 			logging.Warnf("failed to conditionally clear sanction status for company %s: %v", companyID, clearErr)
+			if h.sssRequired {
+				return false, fmt.Errorf("checkCompanyCompliance: SSS returned clean but clearing the persisted sanction failed for company %s: %w", companyID, clearErr)
+			}
 		}
 	}
 

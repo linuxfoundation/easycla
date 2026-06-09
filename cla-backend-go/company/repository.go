@@ -1318,7 +1318,23 @@ func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyI
 		UpdateExpression: aws.String(updateExpr),
 	}
 
+	// When SSS sets a block, never overwrite a manual/admin block (is_sanctioned=true
+	// with absent or non-"sss" origin). Only set the SSS flag when the company is
+	// currently unblocked or already SSS-blocked. A ConditionalCheckFailedException
+	// therefore means a manual/admin block is already in place and must be preserved.
+	sssSettingBlock := sanctioned && origin == "sss"
+	if sssSettingBlock {
+		values[":false"] = &dynamodb.AttributeValue{BOOL: aws.Bool(false)}
+		input.ConditionExpression = aws.String("attribute_not_exists(#S) OR #S = :false OR #O = :o")
+	}
+
 	if _, err := repo.dynamoDBClient.UpdateItem(input); err != nil {
+		if sssSettingBlock {
+			if aerr, ok := err.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+				log.WithFields(f).Debugf("company %s already has a manual/admin sanction block; preserving it and not overwriting origin with sss", companyID)
+				return nil
+			}
+		}
 		log.WithFields(f).Warnf("error updating company sanction status, error: %v", err)
 		return err
 	}

@@ -1149,6 +1149,17 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 		return err
 	}
 
+	// Sanctions gate: re-screen the company before finalizing the CCLA. A company can
+	// become blocked (manual/admin or SSS) between the DocuSign request and this
+	// completion callback; do not finalize a corporate CLA for a sanctioned company.
+	if sanctioned, complianceErr := s.checkCompanyCompliance(ctx, companyModel); complianceErr != nil {
+		log.WithFields(f).WithError(complianceErr).Warnf("company compliance check failed in corporate callback for company %s; not finalizing CCLA", companyID)
+		return complianceErr
+	} else if sanctioned {
+		log.WithFields(f).Warnf("company %s is sanctioned; refusing to finalize corporate CLA in callback", companyID)
+		return fmt.Errorf("company %s is sanctioned; corporate CLA cannot be finalized", companyID)
+	}
+
 	// Assumme only one signature per company/project
 	var signatureID string
 	var signature *v1Models.Signature
@@ -2970,12 +2981,19 @@ func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*m
 // checkCompanyCompliance queries the Sanctions Screening Service for the given company
 // and persists the result. Returns (sanctioned, error).
 func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.Company) (bool, error) {
-	f := logrus.Fields{
-		"functionName":   "sign.checkCompanyCompliance",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"companyID":      company.CompanyID,
-		"companyName":    company.CompanyName,
+	sssMode := "optional"
+	if s.sssRequired {
+		sssMode = "required"
 	}
+	f := logrus.Fields{
+		"functionName":      "sign.checkCompanyCompliance",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"companyID":         company.CompanyID,
+		"companyName":       company.CompanyName,
+		"companyExternalID": company.CompanyExternalID,
+		"sssMode":           sssMode,
+	}
+	log.WithFields(f).Debugf("starting company sanctions screening (mode=%s)", sssMode)
 
 	// Short-circuit for manually/admin-set blocks (sanction_origin != "sss" or no origin).
 	// SSS-origin blocks fall through so a now-clean result can clear them.
@@ -3052,10 +3070,12 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		req.SFDCID = company.CompanyExternalID
 	}
 
+	log.WithFields(f).Infof("calling SSS GetOrganizationStatus: domain=%s, orgName=%s, sfdcID=%q (mode=%s)", req.Domain, req.OrgName, req.SFDCID, sssMode)
 	result, err := s.sssClient.GetOrganizationStatus(ctx, req)
 	if err != nil {
 		return s.handleSSSError(f, company.CompanyID, err)
 	}
+	log.WithFields(f).Infof("SSS GetOrganizationStatus result for company %s: status=%q (domain=%s, mode=%s)", company.CompanyID, result.Status, req.Domain, sssMode)
 
 	sanctioned := result.Status == sss.StatusFlagged
 
@@ -3073,9 +3093,16 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		}
 	} else {
 		// Clear only when previously set by SSS; manual blocks are left untouched.
+		// ClearCompanySanctionStatusIfSSS treats a conditional-check failure (manual
+		// block / nothing to clear) as a no-op, so a non-nil error here is a real
+		// persistence failure. In required mode we fail closed rather than allow with a
+		// stale persisted sanction still in place.
 		log.WithFields(f).Debugf("SSS returned clean status for company %s; attempting conditional clear", company.CompanyID)
 		if clearErr := s.companyRepo.ClearCompanySanctionStatusIfSSS(ctx, company.CompanyID); clearErr != nil {
 			log.WithFields(f).WithError(clearErr).Warnf("failed to conditionally clear sanction status for company %s", company.CompanyID)
+			if s.sssRequired {
+				return false, fmt.Errorf("checkCompanyCompliance: SSS returned clean but clearing the persisted sanction failed for company %s: %w", company.CompanyID, clearErr)
+			}
 		}
 	}
 
