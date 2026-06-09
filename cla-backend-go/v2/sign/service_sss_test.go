@@ -139,3 +139,68 @@ func TestComplianceCacheSkipsErrors(t *testing.T) {
 		t.Fatal("expected cache entry to be stored")
 	}
 }
+
+func TestCheckCompanyComplianceCacheHitMutatesModel(t *testing.T) {
+	// A cached "clean" result must clear the stale loaded model so downstream gates
+	// (e.g. ProcessEmployeeSignature) in the same request stay consistent.
+	svc := &service{
+		complianceCache: map[string]complianceCacheEntry{
+			"external-id": {sanctioned: false, expiresAt: time.Now().Add(time.Minute)},
+		},
+		complianceCacheMu: &sync.Mutex{},
+	}
+
+	company := &models.Company{
+		CompanyID:         "company-id",
+		CompanyExternalID: "external-id",
+		IsSanctioned:      true,
+		SanctionOrigin:    "sss",
+	}
+
+	blocked, err := svc.checkCompanyCompliance(context.Background(), company)
+	if err != nil {
+		t.Fatalf("expected cached clean result to continue, got %v", err)
+	}
+	if blocked {
+		t.Fatal("expected cached clean result not to block")
+	}
+	if company.IsSanctioned || company.SanctionOrigin != "" {
+		t.Fatalf("expected in-memory model cleared on cache hit, got IsSanctioned=%v origin=%q", company.IsSanctioned, company.SanctionOrigin)
+	}
+}
+
+func TestCheckCompanyComplianceOptionalHonorsPersistedSSSFlag(t *testing.T) {
+	// Optional mode with no SSS client: an already-persisted SSS-origin block must keep
+	// blocking until a live clean result can clear it (do not fail open on the flag).
+	svc := &service{sssRequired: false}
+
+	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
+		CompanyID:      "company-id",
+		CompanyName:    "Company",
+		IsSanctioned:   true,
+		SanctionOrigin: "sss",
+	})
+	if err != nil {
+		t.Fatalf("expected optional persisted-sanction check to continue without error, got %v", err)
+	}
+	if !blocked {
+		t.Fatal("expected a persisted SSS sanction to keep blocking in optional mode when SSS is unavailable")
+	}
+}
+
+func TestCheckCompanyComplianceAdminBlockAlwaysBlocks(t *testing.T) {
+	// A manual/admin block (is_sanctioned=true, no/!=sss origin) must short-circuit and
+	// block regardless of mode or SSS availability.
+	svc := &service{sssRequired: false}
+
+	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
+		CompanyID:    "company-id",
+		IsSanctioned: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error for admin block: %v", err)
+	}
+	if !blocked {
+		t.Fatal("expected a manual/admin sanction (no origin) to always block")
+	}
+}
