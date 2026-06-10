@@ -5244,6 +5244,9 @@ func (h *Handlers) PutCompanyV1(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.IsSanctioned != nil {
 		item["is_sanctioned"] = &types.AttributeValueMemberBOOL{Value: *req.IsSanctioned}
+		// Manual/admin sanction change: drop any SSS-set origin so this becomes an
+		// admin-controlled state (sticky when true; never later auto-cleared by SSS).
+		delete(item, "sanction_origin")
 		updateStr += fmt.Sprintf("The company is_sanctioned was updated to %t. ", *req.IsSanctioned)
 	}
 
@@ -8896,6 +8899,12 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 	companyName := getAttrString(company, "company_name")
 	companyExternalID := getAttrString(company, "company_external_id")
 
+	sssMode := "optional"
+	if h.sssRequired {
+		sssMode = "required"
+	}
+	logging.Debugf("starting company sanctions screening for company %s (external_id=%s, mode=%s)", companyID, companyExternalID, sssMode)
+
 	// Short-circuit for manually/admin-set blocks (sanction_origin != "sss" or no origin).
 	// SSS-origin blocks fall through so a now-clean result can clear them.
 	isSanctioned := false
@@ -8909,6 +8918,11 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		return true, nil
 	}
 
+	// In the fallbacks below (no live SSS check possible) we honor the persisted state:
+	// a manual/admin block was already handled by the short-circuit above, and a stale
+	// sss-origin block keeps blocking until a live "clean" can clear it. The mode only
+	// changes behavior for an UNflagged company: required blocks (cannot confirm clean),
+	// optional allows. (Parity with cla-backend-go.)
 	if h.sssClient == nil {
 		if h.sssRequired {
 			return false, fmt.Errorf("checkCompanyCompliance: SSS is required but the client is not configured")
@@ -8920,6 +8934,16 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		logging.Warnf("company %s has no external ID, skipping SSS call", companyID)
 		if h.sssRequired {
 			return false, fmt.Errorf("checkCompanyCompliance: company %s has no external ID (SFDC ID) required for screening", companyID)
+		}
+		return isSanctioned, nil
+	}
+
+	// Defensive: the Salesforce/org-service client may be unconfigured (it is treated as
+	// nil-able elsewhere in this file). Mirror the org-fetch fallback instead of panicking.
+	if h.salesforce == nil {
+		logging.Warnf("salesforce/org-service client not configured, cannot resolve domain for %s", companyExternalID)
+		if h.sssRequired {
+			return false, fmt.Errorf("checkCompanyCompliance: salesforce client not configured for organization %s", companyExternalID)
 		}
 		return isSanctioned, nil
 	}
@@ -8959,10 +8983,19 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		req.SFDCID = companyExternalID
 	}
 
+	logging.Infof("calling SSS GetOrganizationStatus for company %s: domain=%s, orgName=%s, sfdcID=%q (mode=%s)", companyID, req.Domain, req.OrgName, req.SFDCID, sssMode)
 	result, err := h.sssClient.GetOrganizationStatus(ctx, req)
 	if err != nil {
-		return h.handleSSSError(ctx, companyID, err)
+		blocked, herr := h.handleSSSError(ctx, companyID, err)
+		// Optional mode allows on SSS errors, but a company already persisted as
+		// SSS-sanctioned must keep blocking until a live clean result can clear it.
+		if herr == nil && !blocked && isSanctioned {
+			logging.Warnf("SSS call failed for company %s; honoring persisted sanction until a live clean result (mode=%s)", companyID, sssMode)
+			return true, nil
+		}
+		return blocked, herr
 	}
+	logging.Infof("SSS GetOrganizationStatus result for company %s: status=%q (domain=%s, mode=%s)", companyID, result.Status, req.Domain, sssMode)
 
 	sanctioned := result.Status == sss.StatusFlagged
 
@@ -8980,9 +9013,23 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		}
 	} else {
 		// Clear only when previously set by SSS; manual blocks are left untouched.
+		// ClearCompanySanctionStatusIfSSS treats a conditional-check failure as a no-op,
+		// so a non-nil error here is a real persistence failure. In required mode we fail
+		// closed rather than allow with a stale persisted sanction still in place.
 		logging.Debugf("SSS returned clean status for company %s; attempting conditional clear", companyID)
-		if clearErr := h.companies.ClearCompanySanctionStatusIfSSS(ctx, companyID); clearErr != nil {
+		cleared, clearErr := h.companies.ClearCompanySanctionStatusIfSSS(ctx, companyID)
+		if clearErr != nil {
 			logging.Warnf("failed to conditionally clear sanction status for company %s: %v", companyID, clearErr)
+			if h.sssRequired {
+				return false, fmt.Errorf("checkCompanyCompliance: SSS returned clean but clearing the persisted sanction failed for company %s: %w", companyID, clearErr)
+			}
+		}
+		if !cleared && isSanctioned && sanctionOrigin == "sss" {
+			// We loaded an SSS-origin block but the conditional clear did not apply, so the
+			// persisted record changed underneath us (e.g. a concurrent manual/admin block):
+			// the state is uncertain and may now be a manual block, so fail closed.
+			logging.Warnf("SSS returned clean for company %s but the persisted SSS block could not be cleared (record changed concurrently); blocking", companyID)
+			return true, nil
 		}
 	}
 

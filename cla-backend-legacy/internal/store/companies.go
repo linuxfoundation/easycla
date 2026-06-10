@@ -164,9 +164,14 @@ func (s *CompaniesStore) UpdateCompanySanctionStatus(ctx context.Context, compan
 		names["#O"] = "sanction_origin"
 		values[":o"] = &types.AttributeValueMemberS{Value: origin}
 		updateExpr += ", #O = :o"
+	} else {
+		// Manual/admin update: remove any stale SSS-set origin so the record becomes a
+		// sticky admin block (origin absent) that SSS will never auto-clear.
+		names["#O"] = "sanction_origin"
+		updateExpr += " REMOVE #O"
 	}
 
-	_, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String(s.table),
 		Key: map[string]types.AttributeValue{
 			"company_id": &types.AttributeValueMemberS{Value: companyID},
@@ -174,14 +179,35 @@ func (s *CompaniesStore) UpdateCompanySanctionStatus(ctx context.Context, compan
 		UpdateExpression:          aws.String(updateExpr),
 		ExpressionAttributeNames:  names,
 		ExpressionAttributeValues: values,
-	})
-	return err
+	}
+
+	// When SSS sets a block, never overwrite a manual/admin block (is_sanctioned=true
+	// with absent or non-"sss" origin). Only set the SSS flag when the company is
+	// currently unblocked or already SSS-blocked; a ConditionalCheckFailedException
+	// means a manual/admin block is already present and must be preserved.
+	sssSettingBlock := sanctioned && origin == "sss"
+	if sssSettingBlock {
+		values[":false"] = &types.AttributeValueMemberBOOL{Value: false}
+		input.ConditionExpression = aws.String("attribute_not_exists(#S) OR #S = :false OR #O = :o")
+	}
+
+	_, err := s.client.UpdateItem(ctx, input)
+	if err != nil {
+		if sssSettingBlock {
+			var condErr *types.ConditionalCheckFailedException
+			if errors.As(err, &condErr) {
+				return nil // Preserve the existing manual/admin block
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 // ClearCompanySanctionStatusIfSSS clears is_sanctioned only when sanction_origin="sss".
-func (s *CompaniesStore) ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) error {
+func (s *CompaniesStore) ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) (bool, error) {
 	if s == nil || s.client == nil {
-		return nil
+		return false, nil
 	}
 
 	now := time.Now().UTC().Format("2006-01-02T15:04:05.000000-0700")
@@ -207,9 +233,9 @@ func (s *CompaniesStore) ClearCompanySanctionStatusIfSSS(ctx context.Context, co
 	if err != nil {
 		var condErr *types.ConditionalCheckFailedException
 		if errors.As(err, &condErr) {
-			return nil // Already manual/admin or not SSS-flagged
+			return false, nil // Already manual/admin or not SSS-flagged
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
