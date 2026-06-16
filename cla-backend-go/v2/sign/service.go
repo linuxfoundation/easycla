@@ -3025,7 +3025,7 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 
 	// No external (SFDC) ID means there is no org record to resolve a domain from —
 	// skip the upstream lookup and treat it as "no live result".
-	if company.CompanyExternalID == "" {
+	if strings.TrimSpace(company.CompanyExternalID) == "" {
 		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: company %s has no external ID for domain resolution", company.CompanyID))
 	}
 
