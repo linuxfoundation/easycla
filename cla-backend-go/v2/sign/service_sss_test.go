@@ -111,6 +111,26 @@ func TestCheckCompanyComplianceOptionalAllowsMissingExternalID(t *testing.T) {
 	}
 }
 
+func TestCheckCompanyComplianceOptionalBlocksPersistedSanctionMissingExternalID(t *testing.T) {
+	svc := &service{sssRequired: false, sssClient: newTestSSSClient(t)}
+
+	// origin=sss bypasses the manual-block short-circuit so the missing-external-ID early
+	// exit is the path under test: in optional mode it must honor the persisted sanction.
+	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
+		CompanyID:      "company-id",
+		CompanyName:    "Company",
+		IsSanctioned:   true,
+		SanctionOrigin: "sss",
+		// CompanyExternalID intentionally empty
+	})
+	if err != nil {
+		t.Fatalf("expected optional SSS to honor persisted sanction without error, got %v", err)
+	}
+	if !blocked {
+		t.Fatal("expected optional SSS to keep blocking based on the persisted SSS sanction")
+	}
+}
+
 func TestHandleSSSErrorRequiredBlocksAvailabilityErrors(t *testing.T) {
 	svc := &service{sssRequired: true}
 
