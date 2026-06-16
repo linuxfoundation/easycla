@@ -3023,6 +3023,18 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		return company.IsSanctioned, nil
 	}
 
+	// No external (SFDC) ID means there is no org record to resolve a domain from —
+	// skip the upstream lookup and treat it as "no domain" (block only when required).
+	if company.CompanyExternalID == "" {
+		resultErr := fmt.Errorf("checkCompanyCompliance: company %s has no external ID for domain resolution", company.CompanyID)
+		if s.sssRequired {
+			log.WithFields(f).WithError(resultErr).Error("no external ID for required SSS check")
+			return false, resultErr
+		}
+		log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
+		return company.IsSanctioned, nil
+	}
+
 	// Fetch org from organization service to get the website/domain.
 	orgClient := organizationService.GetClient()
 	if orgClient == nil {

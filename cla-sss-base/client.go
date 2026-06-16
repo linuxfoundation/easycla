@@ -51,6 +51,13 @@ func NewClient(cfg SSSConfig) (*Client, error) {
 	if strings.TrimSpace(cfg.Auth0Audience) == "" {
 		return nil, fmt.Errorf("Auth0 audience is required")
 	}
+	// Store trimmed values so a padded config (e.g. an SSM value with a trailing
+	// newline) can't malform the request URL or token request later.
+	cfg.BaseURL = strings.TrimSpace(cfg.BaseURL)
+	cfg.Auth0Domain = strings.TrimSpace(cfg.Auth0Domain)
+	cfg.Auth0ClientID = strings.TrimSpace(cfg.Auth0ClientID)
+	cfg.Auth0ClientSecret = strings.TrimSpace(cfg.Auth0ClientSecret)
+	cfg.Auth0Audience = strings.TrimSpace(cfg.Auth0Audience)
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = defaultTimeout
 	}
