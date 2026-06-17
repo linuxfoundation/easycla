@@ -3023,46 +3023,31 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		return company.IsSanctioned, nil
 	}
 
+	// No external (SFDC) ID means there is no org record to resolve a domain from —
+	// skip the upstream lookup and treat it as "no live result".
+	if strings.TrimSpace(company.CompanyExternalID) == "" {
+		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: company %s has no external ID for domain resolution", company.CompanyID))
+	}
+
 	// Fetch org from organization service to get the website/domain.
 	orgClient := organizationService.GetClient()
 	if orgClient == nil {
-		resultErr := fmt.Errorf("checkCompanyCompliance: organization service client is not configured")
-		if !s.sssRequired {
-			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
-			return company.IsSanctioned, nil
-		}
-		return false, resultErr
+		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: organization service client is not configured"))
 	}
 	org, err := orgClient.GetOrganization(ctx, company.CompanyExternalID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("failed to get organization %s for domain resolution", company.CompanyExternalID)
-		resultErr := fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", company.CompanyExternalID, err)
-		if !s.sssRequired {
-			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
-			return company.IsSanctioned, nil
-		}
-		return false, resultErr
+		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", company.CompanyExternalID, err))
 	}
 	if org == nil {
 		log.WithFields(f).Warnf("organization record is nil for %s", company.CompanyExternalID)
-		resultErr := fmt.Errorf("checkCompanyCompliance: organization record is nil for %s", company.CompanyExternalID)
-		if !s.sssRequired {
-			log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
-			return company.IsSanctioned, nil
-		}
-		return false, resultErr
+		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: organization record is nil for %s", company.CompanyExternalID))
 	}
 
 	// Resolve domain: prefer Domains field, fallback to Link field.
 	domain := s.resolveDomain(f, org)
 	if domain == "" {
-		resultErr := fmt.Errorf("checkCompanyCompliance: unable to resolve domain for organization %s", company.CompanyExternalID)
-		if s.sssRequired {
-			log.WithFields(f).WithError(resultErr).Error("unable to resolve domain for required SSS check")
-			return false, resultErr
-		}
-		log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
-		return company.IsSanctioned, nil
+		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: unable to resolve domain for organization %s", company.CompanyExternalID))
 	}
 
 	log.WithFields(f).Debugf("resolved domain: %s for SSS check", domain)
@@ -3136,6 +3121,18 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 
 	s.setComplianceCache(cacheKey, sanctioned)
 	return sanctioned, nil
+}
+
+// complianceUnavailable returns the screening decision for a path that could not
+// produce a live SSS result: block when SSS is required, otherwise honor the
+// persisted sanction state. The specific cause is carried by resultErr.
+func (s *service) complianceUnavailable(f logrus.Fields, company *v1Models.Company, resultErr error) (bool, error) {
+	if s.sssRequired {
+		log.WithFields(f).WithError(resultErr).Error("blocking: SSS required but no live compliance result available")
+		return false, resultErr
+	}
+	log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
+	return company.IsSanctioned, nil
 }
 
 // applyComplianceToModel updates the in-memory company model to reflect a compliance

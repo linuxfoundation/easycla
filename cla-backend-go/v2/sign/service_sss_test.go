@@ -67,6 +67,70 @@ func TestCheckCompanyComplianceOptionalAllowsMissingClient(t *testing.T) {
 	}
 }
 
+func newTestSSSClient(t *testing.T) *sss.Client {
+	t.Helper()
+	client, err := sss.NewClient(sss.SSSConfig{
+		BaseURL:           "https://sss.example.com",
+		Auth0Domain:       "example.auth0.com",
+		Auth0ClientID:     "client-id",
+		Auth0ClientSecret: "client-secret",
+		Auth0Audience:     "https://sss.example.com/",
+	})
+	if err != nil {
+		t.Fatalf("failed to build SSS client: %v", err)
+	}
+	return client
+}
+
+func TestCheckCompanyComplianceRequiredBlocksMissingExternalID(t *testing.T) {
+	svc := &service{sssRequired: true, sssClient: newTestSSSClient(t)}
+
+	_, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
+		CompanyID:   "company-id",
+		CompanyName: "Company",
+		// CompanyExternalID intentionally empty
+	})
+	if err == nil {
+		t.Fatal("expected required SSS to block a company with no external ID")
+	}
+}
+
+func TestCheckCompanyComplianceOptionalAllowsMissingExternalID(t *testing.T) {
+	svc := &service{sssRequired: false, sssClient: newTestSSSClient(t)}
+
+	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
+		CompanyID:   "company-id",
+		CompanyName: "Company",
+		// CompanyExternalID intentionally empty; not persisted as sanctioned
+	})
+	if err != nil {
+		t.Fatalf("expected optional SSS to continue when external ID is missing, got %v", err)
+	}
+	if blocked {
+		t.Fatal("expected optional SSS not to block when external ID is missing")
+	}
+}
+
+func TestCheckCompanyComplianceOptionalBlocksPersistedSanctionMissingExternalID(t *testing.T) {
+	svc := &service{sssRequired: false, sssClient: newTestSSSClient(t)}
+
+	// origin=sss bypasses the manual-block short-circuit so the missing-external-ID early
+	// exit is the path under test: in optional mode it must honor the persisted sanction.
+	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
+		CompanyID:      "company-id",
+		CompanyName:    "Company",
+		IsSanctioned:   true,
+		SanctionOrigin: "sss",
+		// CompanyExternalID intentionally empty
+	})
+	if err != nil {
+		t.Fatalf("expected optional SSS to honor persisted sanction without error, got %v", err)
+	}
+	if !blocked {
+		t.Fatal("expected optional SSS to keep blocking based on the persisted SSS sanction")
+	}
+}
+
 func TestHandleSSSErrorRequiredBlocksAvailabilityErrors(t *testing.T) {
 	svc := &service{sssRequired: true}
 
