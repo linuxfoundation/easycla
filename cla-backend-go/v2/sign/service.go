@@ -3077,7 +3077,7 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	// Only an explicit clean/flagged is actionable. Any other status is ambiguous: block
 	// when required; otherwise honor the persisted sanction state without clearing or
 	// caching (never auto-clear an SSS-origin block on an unknown status).
-	if result.Status != sss.StatusClean && result.Status != sss.StatusFlagged {
+	if !sssStatusActionable(result.Status) {
 		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s", result.Status, company.CompanyID))
 	}
 
@@ -3135,6 +3135,13 @@ func (s *service) complianceUnavailable(f logrus.Fields, company *v1Models.Compa
 	}
 	log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
 	return company.IsSanctioned, nil
+}
+
+// sssStatusActionable reports whether an SSS status is one checkCompanyCompliance can act
+// on directly (clean or flagged). Any other (ambiguous/unknown) status must be treated as
+// "no live result" rather than silently as clean.
+func sssStatusActionable(status string) bool {
+	return status == sss.StatusClean || status == sss.StatusFlagged
 }
 
 // applyComplianceToModel updates the in-memory company model to reflect a compliance

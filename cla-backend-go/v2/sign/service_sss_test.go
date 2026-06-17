@@ -119,6 +119,27 @@ func TestComplianceUnavailableOptionalHonorsPersistedSanction(t *testing.T) {
 	}
 }
 
+// sssStatusActionable is the guard checkCompanyCompliance uses to route ambiguous statuses
+// to complianceUnavailable; flipping it is the regression that would let an unknown status
+// fall through to the clean/clear path.
+func TestSSSStatusActionable(t *testing.T) {
+	cases := []struct {
+		status string
+		want   bool
+	}{
+		{sss.StatusClean, true},
+		{sss.StatusFlagged, true},
+		{"pending", false},
+		{"PENDING", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := sssStatusActionable(tc.status); got != tc.want {
+			t.Errorf("sssStatusActionable(%q) = %v, want %v", tc.status, got, tc.want)
+		}
+	}
+}
+
 func TestCheckCompanyComplianceRequiredBlocksMissingExternalID(t *testing.T) {
 	svc := &service{sssRequired: true, sssClient: newTestSSSClient(t)}
 
