@@ -5,6 +5,7 @@ package sign
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -80,6 +81,63 @@ func newTestSSSClient(t *testing.T) *sss.Client {
 		t.Fatalf("failed to build SSS client: %v", err)
 	}
 	return client
+}
+
+// checkCompanyCompliance routes an unexpected (non-clean/non-flagged) SSS status through
+// complianceUnavailable; these cover its decision so an ambiguous status never auto-clears
+// or caches a sanction.
+func TestComplianceUnavailableRequiredBlocks(t *testing.T) {
+	svc := &service{sssRequired: true}
+	blocked, err := svc.complianceUnavailable(logrus.Fields{}, &models.Company{CompanyID: "company-id"}, errors.New(`unexpected SSS status "weird"`))
+	if err == nil {
+		t.Fatal("expected required mode to block (error) on an ambiguous result")
+	}
+	if blocked {
+		t.Fatal("expected blocked=false alongside the error in required mode")
+	}
+}
+
+func TestComplianceUnavailableOptionalAllowsUnsanctioned(t *testing.T) {
+	svc := &service{sssRequired: false}
+	blocked, err := svc.complianceUnavailable(logrus.Fields{}, &models.Company{CompanyID: "company-id", IsSanctioned: false}, errors.New(`unexpected SSS status "weird"`))
+	if err != nil {
+		t.Fatalf("optional mode should not error on an ambiguous result, got %v", err)
+	}
+	if blocked {
+		t.Fatal("optional mode with no persisted sanction should allow")
+	}
+}
+
+func TestComplianceUnavailableOptionalHonorsPersistedSanction(t *testing.T) {
+	svc := &service{sssRequired: false}
+	blocked, err := svc.complianceUnavailable(logrus.Fields{}, &models.Company{CompanyID: "company-id", IsSanctioned: true, SanctionOrigin: "sss"}, errors.New(`unexpected SSS status "weird"`))
+	if err != nil {
+		t.Fatalf("optional mode should not error on an ambiguous result, got %v", err)
+	}
+	if !blocked {
+		t.Fatal("optional mode must keep blocking a persisted sanction (no auto-clear) on an ambiguous result")
+	}
+}
+
+// sssStatusActionable is the guard checkCompanyCompliance uses to route ambiguous statuses
+// to complianceUnavailable; flipping it is the regression that would let an unknown status
+// fall through to the clean/clear path.
+func TestSSSStatusActionable(t *testing.T) {
+	cases := []struct {
+		status string
+		want   bool
+	}{
+		{sss.StatusClean, true},
+		{sss.StatusFlagged, true},
+		{"pending", false},
+		{"PENDING", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := sssStatusActionable(tc.status); got != tc.want {
+			t.Errorf("sssStatusActionable(%q) = %v, want %v", tc.status, got, tc.want)
+		}
+	}
 }
 
 func TestCheckCompanyComplianceRequiredBlocksMissingExternalID(t *testing.T) {

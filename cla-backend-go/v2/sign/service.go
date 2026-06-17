@@ -3074,12 +3074,14 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	}
 	log.WithFields(f).Infof("SSS GetOrganizationStatus result for company %s: status=%q (domain=%s, mode=%s)", company.CompanyID, result.Status, req.Domain, sssMode)
 
-	sanctioned := result.Status == sss.StatusFlagged
-
-	// In required mode, only an explicit "clean" is acceptable — any other status blocks.
-	if s.sssRequired && result.Status != sss.StatusClean && result.Status != sss.StatusFlagged {
-		return false, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s (required mode blocks on ambiguous results)", result.Status, company.CompanyID)
+	// Only an explicit clean/flagged is actionable. Any other status is ambiguous: block
+	// when required; otherwise honor the persisted sanction state without clearing or
+	// caching (never auto-clear an SSS-origin block on an unknown status).
+	if !sssStatusActionable(result.Status) {
+		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s", result.Status, company.CompanyID))
 	}
+
+	sanctioned := result.Status == sss.StatusFlagged
 
 	// Persist result and reflect it on the in-memory model so downstream gates in this
 	// same request (e.g. ProcessEmployeeSignature) see the just-updated state instead of
@@ -3133,6 +3135,13 @@ func (s *service) complianceUnavailable(f logrus.Fields, company *v1Models.Compa
 	}
 	log.WithFields(f).WithError(resultErr).Warn("SSS is not required; honoring persisted sanction state without a live compliance result")
 	return company.IsSanctioned, nil
+}
+
+// sssStatusActionable reports whether an SSS status is one checkCompanyCompliance can act
+// on directly (clean or flagged). Any other (ambiguous/unknown) status must be treated as
+// "no live result" rather than silently as clean.
+func sssStatusActionable(status string) bool {
+	return status == sss.StatusClean || status == sss.StatusFlagged
 }
 
 // applyComplianceToModel updates the in-memory company model to reflect a compliance
