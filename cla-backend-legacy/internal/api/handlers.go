@@ -8997,12 +8997,18 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 	}
 	logging.Infof("SSS GetOrganizationStatus result for company %s: status=%q (domain=%s, mode=%s)", companyID, result.Status, req.Domain, sssMode)
 
-	sanctioned := result.Status == sss.StatusFlagged
-
-	// In required mode, only an explicit "clean" is acceptable — any other status blocks.
-	if h.sssRequired && result.Status != sss.StatusClean && result.Status != sss.StatusFlagged {
-		return false, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s (required mode blocks on ambiguous results)", result.Status, companyID)
+	// Only an explicit clean/flagged is actionable. Any other status is ambiguous: block
+	// when required; otherwise honor the persisted sanction state without clearing (never
+	// auto-clear an SSS-origin block on an unknown status).
+	if result.Status != sss.StatusClean && result.Status != sss.StatusFlagged {
+		if h.sssRequired {
+			return false, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s", result.Status, companyID)
+		}
+		logging.Warnf("unexpected SSS status %q for company %s; SSS is not required, honoring persisted sanction state", result.Status, companyID)
+		return isSanctioned, nil
 	}
+
+	sanctioned := result.Status == sss.StatusFlagged
 
 	// Persist result: set origin="sss" on flagged; conditionally clear on clean (only if sss-origin).
 	if sanctioned {

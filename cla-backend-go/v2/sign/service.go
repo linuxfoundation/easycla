@@ -3074,12 +3074,14 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	}
 	log.WithFields(f).Infof("SSS GetOrganizationStatus result for company %s: status=%q (domain=%s, mode=%s)", company.CompanyID, result.Status, req.Domain, sssMode)
 
-	sanctioned := result.Status == sss.StatusFlagged
-
-	// In required mode, only an explicit "clean" is acceptable — any other status blocks.
-	if s.sssRequired && result.Status != sss.StatusClean && result.Status != sss.StatusFlagged {
-		return false, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s (required mode blocks on ambiguous results)", result.Status, company.CompanyID)
+	// Only an explicit clean/flagged is actionable. Any other status is ambiguous: block
+	// when required; otherwise honor the persisted sanction state without clearing or
+	// caching (never auto-clear an SSS-origin block on an unknown status).
+	if result.Status != sss.StatusClean && result.Status != sss.StatusFlagged {
+		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: unexpected SSS status %q for company %s", result.Status, company.CompanyID))
 	}
+
+	sanctioned := result.Status == sss.StatusFlagged
 
 	// Persist result and reflect it on the in-memory model so downstream gates in this
 	// same request (e.g. ProcessEmployeeSignature) see the just-updated state instead of
