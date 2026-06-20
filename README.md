@@ -1,4 +1,4 @@
-# Introduction to EasyCLA
+# Introduction to EasyCLA   
 
 [![Build Status](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml/badge.svg)](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml)
 
