@@ -267,6 +267,56 @@ func (s *Service) projectsSearchURL(projectIDs []string) (string, error) {
 	return endpoint, nil
 }
 
+// Organization represents a minimal platform organization record.
+type Organization struct {
+	ID      string `json:"ID"`
+	Name    string `json:"Name"`
+	Domains string `json:"Domains"`
+	Link    string `json:"Link"`
+}
+
+// GetOrganization retrieves an organization by its Salesforce ID.
+func (s *Service) GetOrganization(ctx context.Context, sfid string) (*Organization, error) {
+	if sfid == "" {
+		return nil, errors.New("salesforce id is required")
+	}
+
+	tok, code, err := s.getAccessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("auth failure (status=%d): %w", code, err)
+	}
+
+	base := strings.TrimRight(s.platformGatewayURL, "/")
+	if base == "" {
+		return nil, errors.New("PLATFORM_GATEWAY_URL is empty")
+	}
+
+	endpoint := fmt.Sprintf("%s/organization-service/v1/orgs/%s", base, sfid)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tok)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, &ProjectServiceError{Status: resp.StatusCode, Body: string(body), Cause: fmt.Errorf("failed to get organization %s", sfid)}
+	}
+
+	var org Organization
+	if err := json.NewDecoder(resp.Body).Decode(&org); err != nil {
+		return nil, fmt.Errorf("decode organization: %w", err)
+	}
+	return &org, nil
+}
+
 // getAccessToken performs the platform Auth0 client_credentials flow.
 //
 // Python parity: cla/salesforce.py:get_access_token() uses x-www-form-urlencoded

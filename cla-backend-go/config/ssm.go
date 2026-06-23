@@ -13,6 +13,7 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ssm"
 )
@@ -268,5 +269,71 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		}
 	}
 
+	// Sanctions Screening Service (SSS) configuration is loaded leniently - the
+	// keys may not be provisioned in every environment yet, so look them up
+	// best-effort (non-fatal) rather than aborting startup like the keys above.
+	// This is only a rollout convenience: SSS is required by policy in deployed
+	// environments, and the caller must enforce that (see config.SSS).
+	loadOptionalSSSConfig(ssmClient, stage, &config, f)
+
 	return config
+}
+
+// loadOptionalSSSConfig fetches the SSS keys without aborting startup when they
+// are missing, so the SSM parameters can be provisioned before the feature is
+// switched on. A stage that requires SSS must reject an empty configuration at
+// the call site rather than silently skipping the screening check.
+func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+	config.SSS.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-base-url-%s", stage), f)
+	config.SSS.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-auth0-audience-%s", stage), f)
+	config.SSS.Required = getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-sss-required-%s", stage), f)
+}
+
+// getOptionalSSMString fetches a parameter that may legitimately be absent while
+// the feature is being rolled out. It logs exactly once: a missing parameter is
+// reported at debug (an expected, benign state), while any other failure - IAM,
+// throttling, etc. - is reported as a warning with the underlying error so it is
+// not silently misattributed to "not set". Returns "" when the value is unreadable.
+func getOptionalSSMString(ssmClient *ssm.SSM, key string, f logrus.Fields) string {
+	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
+		Name:           aws.String(key),
+		WithDecryption: aws.Bool(false),
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
+			log.WithFields(f).Debugf("optional SSM key %s not provisioned - sanctions screening disabled until it is set", key)
+		} else {
+			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - sanctions screening disabled", key)
+		}
+		return ""
+	}
+
+	return strings.TrimSpace(*out.Parameter.Value)
+}
+
+// getOptionalSSMBool fetches an optional boolean parameter. It logs exactly once:
+// a missing parameter is reported at debug (an expected, benign state), while any
+// other failure - IAM, throttling, parse errors, etc. - is reported as a warning.
+// Returns false (the default) when the value is unreadable or the parameter is absent.
+func getOptionalSSMBool(ssmClient *ssm.SSM, key string, f logrus.Fields) bool {
+	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
+		Name:           aws.String(key),
+		WithDecryption: aws.Bool(false),
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
+			log.WithFields(f).Debugf("optional SSM key %s not provisioned - using default value false", key)
+		} else {
+			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - using default value false", key)
+		}
+		return false
+	}
+
+	boolVal, err := strconv.ParseBool(strings.TrimSpace(*out.Parameter.Value))
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to parse optional SSM key %s as boolean - using default value false", key)
+		return false
+	}
+
+	return boolVal
 }

@@ -858,10 +858,16 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 		}
 
 		companyID := claUser.CompanyID
-		_, err = s.companyRepository.GetCompany(ctx, companyID)
-		if err != nil {
-			msg := fmt.Sprintf("can't load company record: %s for user: %s (%s), error: %v", companyID, claUser.Username, claUser.UserID, err)
+		companyModel, companyErr := s.companyRepository.GetCompany(ctx, companyID)
+		if companyErr != nil {
+			msg := fmt.Sprintf("can't load company record: %s for user: %s (%s), error: %v", companyID, claUser.Username, claUser.UserID, companyErr)
 			log.WithFields(f).Errorf("%s", msg)
+			return &consoleURL, nil
+		}
+
+		// Sanctions gate: do not activate a corporate signature for a sanctioned company.
+		if companyModel != nil && companyModel.IsSanctioned {
+			log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); not activating signature for GitLab user %s", companyID, companyModel.SanctionOrigin, claUser.UserID)
 			return &consoleURL, nil
 		}
 

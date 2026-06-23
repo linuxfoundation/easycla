@@ -145,6 +145,23 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 			log.WithFields(f).WithError(compModelErr).Warnf("problem looking up company: %s", companyID)
 			return &hasSigned, &companyAffiliation, compModelErr
 		}
+		if companyModel == nil {
+			compModelErr = fmt.Errorf("company not found: %s", companyID)
+			log.WithFields(f).WithError(compModelErr).Warnf("company record is nil for company: %s", companyID)
+			return &hasSigned, &companyAffiliation, compModelErr
+		}
+
+		// Check if company is sanctioned before allowing ECLA acknowledgement
+		sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, companyModel)
+		if sanctionErr != nil {
+			log.WithFields(f).WithError(sanctionErr).Warnf("failed to check company compliance for company: %s", companyID)
+			return &hasSigned, &companyAffiliation, sanctionErr
+		}
+		if sanctioned {
+			sanctionedErr := fmt.Errorf("company %s is sanctioned", companyID)
+			log.WithFields(f).WithError(sanctionedErr).Error("company is sanctioned")
+			return &hasSigned, &companyAffiliation, sanctionedErr
+		}
 
 		// Load the CLA Group - make sure it is valid
 		claGroupModel, claGroupModelErr := s.claGroupService.GetCLAGroup(ctx, projectID)

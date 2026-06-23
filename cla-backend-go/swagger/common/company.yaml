@@ -43,6 +43,11 @@ properties:
     description: "Is this company OFAC sanctioned?"
     # default: false
     example: true
+  sanctionOrigin:
+    type: string
+    description: "Source of the sanction flag (e.g. sss)"
+    example: "sss"
+
   version:
     type: string
     description: 'the version of the company record'

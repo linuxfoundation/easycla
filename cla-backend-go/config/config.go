@@ -98,6 +98,9 @@ type Config struct {
 
 	// DocuSignPrivateKey is the private key for the DocuSign API
 	DocuSignPrivateKey string `json:"docuSignPrivateKey"`
+
+	// SSS holds the Sanctions Screening Service client configuration
+	SSS SSS `json:"sss"`
 }
 
 // Auth0 model
@@ -114,6 +117,32 @@ type Auth0Platform struct {
 	ClientSecret string `json:"auth0-clientSecret"`
 	Audience     string `json:"audience"`
 	URL          string `json:"url"`
+}
+
+// SSS holds the Sanctions Screening Service client configuration. The SSS
+// integration reuses the shared LFX platform M2M (Auth0Platform) credentials,
+// so only the SSS-specific base URL and audience are configured here.
+//
+// Sanctions screening is required by policy in deployed environments - these
+// values are only loaded leniently (see config/ssm.go) so the SSM parameters
+// can be provisioned before the feature is switched on. Whether a missing
+// configuration is tolerated (no-op) or fatal must be enforced by the caller
+// per stage; it must NOT be silently skipped in dev/staging/prod.
+type SSS struct {
+	// BaseURL is the SSS host root WITHOUT the /api/v1 suffix - the client
+	// appends /api/v1/organizations/status itself (e.g.
+	// https://sanctions-screening.dev.v2.cluster.linuxfound.info)
+	BaseURL string `json:"base_url"`
+	// Audience is the Auth0 resource-server identifier for SSS, including any
+	// trailing slash - it must match the auth0-terraform resource server
+	// identifier exactly (e.g.
+	// https://sanctions-screening.dev.v2.cluster.linuxfound.info/)
+	Audience string `json:"audience"`
+	// Required is a flag controlling whether SSS screening is required or optional.
+	// When true, any SSS errors (unavailable, timeout, config errors, or missing domain)
+	// will block the operation. When false, SSS errors are logged but do not block.
+	// This flag is loaded from the SSM parameter cla-sss-required-{stage}.
+	Required bool `json:"required"`
 }
 
 // Docraptor model

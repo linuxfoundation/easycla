@@ -261,7 +261,7 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 			log.WithFields(f).WithError(signedCheckErr).Warnf("problem checking if user : %s (%d) has signed - assuming not signed", gitlabUser.Username, gitlabUser.ID)
 			missingUsers = append(missingUsers, &gatedGitlabUser{
 				User: gitlabUser,
-				err:  err,
+				err:  signedCheckErr,
 			})
 			continue
 		}
@@ -273,7 +273,7 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 			log.WithFields(f).Infof("gitlabUser: %s (%d) has NOT signed", gitlabUser.Username, gitlabUser.ID)
 			missingUsers = append(missingUsers, &gatedGitlabUser{
 				User: gitlabUser,
-				err:  err,
+				err:  nil,
 			})
 		}
 	}
@@ -516,11 +516,20 @@ func (s *service) isSigned(ctx context.Context, userModel *models.User, claGroup
 	}
 
 	companyID := userModel.CompanyID
-	_, err = s.companyRepository.GetCompany(ctx, companyID)
+	companyModel, err := s.companyRepository.GetCompany(ctx, companyID)
 	if err != nil {
 		msg := fmt.Sprintf("can't load company record: %s for user: %s (%s), error: %v", companyID, userModel.Username, userModel.UserID, err)
 		log.WithFields(f).Errorf("%s", msg)
 		return false, fmt.Errorf("%s", msg)
+	}
+
+	// Sanctions gate: a sanctioned company's employees are not authorized. Honor the
+	// persisted is_sanctioned gate (SSS origin="sss" or a manual/admin block) so GitLab
+	// MR checks fail for sanctioned companies. By design this enforces the persisted flag,
+	// not a live SSS call (the live screen at the sign/request entry points keeps it fresh).
+	if companyModel != nil && companyModel.IsSanctioned {
+		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); GitLab contributor not authorized", companyID, companyModel.SanctionOrigin)
+		return false, fmt.Errorf("company %s is sanctioned", companyID)
 	}
 
 	corporateSignature, err := s.signatureRepository.GetCorporateSignature(ctx, claGroupID, companyID, aws.Bool(true), aws.Bool(true))
