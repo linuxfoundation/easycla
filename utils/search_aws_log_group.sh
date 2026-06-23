@@ -7,6 +7,13 @@
 # REGION=us-east-1 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-prod-api-v3-lambda' 'LG:api-request-path'
 # REGION=us-east-1 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-prod-apiv2' 'LG:api-request-path'
 # REGION=us-east-1 STAGE=prod DEBUG=1 DTFROM='15 minutes ago' DTTO='1 second ago' ./utils/search_aws_log_group.sh 'cla-backend-prod-githubactivity' 'LG:api-request-path'
+# REGION=us-east-2 STAGE=prod DTFROM='2 hours ago'  ./utils/search_aws_log_group.sh cla-backend-go-api-v4-lambda 'SSS'
+# REGION=us-east-2 STAGE=prod DTFROM='2 hours ago' ./utils/search_aws_log_group.sh cla-backend-go-api-v4-lambda 'is sanctioned'
+# REGION=us-east-2 STAGE=prod DTFROM='2 hours ago' ./utils/search_aws_log_group.sh cla-backend-go-api-v4-lambda 'persisting sanction'
+# REGION=us-east-1 STAGE=prod DTFROM='2 hours ago'  ./utils/search_aws_log_group.sh apiv2 'SSS'
+# REGION=us-east-1 STAGE=prod DTFROM='2 hours ago' ./utils/search_aws_log_group.sh apiv2 'is sanctioned'
+# REGION=us-east-2 STAGE=dev  DTFROM='1 day ago'  ./utils/search_aws_log_group.sh cla-backend-go-api-v4-lambda 'SSS'
+# REGION=us-east-1 STAGE=dev  DTFROM='1 day ago'  ./utils/search_aws_log_group.sh apiv2 'SSS'
 
 if [ -z "$STAGE" ]
 then
