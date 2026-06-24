@@ -84,18 +84,39 @@ DTF=$(date -u -d @$(echo "${DTFROM}/1000" | bc) "+%F %T.%6N")
 DTT=$(date -u -d @$(echo "${DTTO}/1000" | bc) "+%F %T.%6N")
 echo "Date range: ${DTF} .. ${DTT} (from ${DTFROM} to ${DTTO})"
 
+# Capture aws output to a temp file first (no pipe), so an aws failure and a jq failure
+# are reported accurately and independently. In a pipe, a jq failure can SIGPIPE aws and
+# surface as 141, misclassifying it as an aws failure.
+raw_log="$(mktemp)" || { echo "ERROR: mktemp failed — cannot capture aws output" >&2; exit 5; }
+trap 'rm -f "${raw_log}"' EXIT
+
 if [ -z "${search}" ]
 then
   if [ ! -z "${DEBUG}" ]
   then
-    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\""
+    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --output json"
   fi
-  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" | jq -r '.events | sort_by(.timestamp)'
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --output json > "${raw_log}"
 else
   if [ ! -z "${DEBUG}" ]
   then
-    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern \"${search}\""
+    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern '\"${search}\"' --output json"
   fi
-  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${search}\"" | jq -r '.events | sort_by(.timestamp)'
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${search}\"" --output json > "${raw_log}"
+fi
+aws_rc=$?
+
+# An aws failure (expired SSO, no access, crashed CLI) is NOT "no events": report it and
+# exit non-zero instead of leaving an empty/[] result that looks like "no hits". aws's own
+# error is shown above on stderr.
+if [ "${aws_rc}" -ne 0 ]
+then
+  echo "ERROR: aws failed (rc=${aws_rc}) — output above is NOT 'no events'; logs were not retrieved. Try: aws sso login --profile \"lfproduct-${STAGE}\"" >&2
+  exit 3
+fi
+if ! jq -r '.events | sort_by(.timestamp)' < "${raw_log}"
+then
+  echo "ERROR: jq failed — logs were retrieved but could not be parsed (is jq installed?)." >&2
+  exit 4
 fi
 
