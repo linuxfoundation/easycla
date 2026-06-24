@@ -95,10 +95,15 @@ fi
 # Distinguish an aws failure (expired SSO, no access, crashed CLI) from genuinely no
 # events: report it and exit non-zero rather than leaving an empty/[] result that looks
 # like "no hits". aws's own error is shown above on stderr.
-rc=${PIPESTATUS[0]}
-if [ "${rc}" -ne 0 ]
+rc=("${PIPESTATUS[@]}")
+if [ "${rc[0]}" -ne 0 ]
 then
-  echo "ERROR: aws failed (rc=${rc}) — output above is NOT 'no events'; logs were not retrieved. Try: aws sso login --profile \"lfproduct-${STAGE}\"" >&2
+  echo "ERROR: aws failed (rc=${rc[0]}) — output above is NOT 'no events'; logs were not retrieved. Try: aws sso login --profile \"lfproduct-${STAGE}\"" >&2
   exit 3
+fi
+if [ "${rc[1]:-0}" -ne 0 ]
+then
+  echo "ERROR: jq failed (rc=${rc[1]}) — logs were retrieved but could not be parsed (is jq installed?)." >&2
+  exit 4
 fi
 
