@@ -87,15 +87,15 @@ if [ -z "${search}" ]
 then
   if [ ! -z "${DEBUG}" ]
   then
-    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\""
+    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --output json"
   fi
-  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" > "${raw_log}"
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --output json > "${raw_log}"
 else
   if [ ! -z "${DEBUG}" ]
   then
-    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern '\"${search}\"'"
+    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern '\"${search}\"' --output json"
   fi
-  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${search}\"" > "${raw_log}"
+  aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${search}\"" --output json > "${raw_log}"
 fi
 aws_rc=$?
 
