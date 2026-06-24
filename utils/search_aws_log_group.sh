@@ -80,7 +80,7 @@ echo "Date range: ${DTF} .. ${DTT} (from ${DTFROM} to ${DTTO})"
 # Capture aws output to a temp file first (no pipe), so an aws failure and a jq failure
 # are reported accurately and independently. In a pipe, a jq failure can SIGPIPE aws and
 # surface as 141, misclassifying it as an aws failure.
-raw_log="$(mktemp)" || { echo "ERROR: mktemp failed — cannot capture aws output" >&2; exit 2; }
+raw_log="$(mktemp)" || { echo "ERROR: mktemp failed — cannot capture aws output" >&2; exit 5; }
 trap 'rm -f "${raw_log}"' EXIT
 
 if [ -z "${search}" ]
