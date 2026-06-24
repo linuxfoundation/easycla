@@ -92,3 +92,13 @@ else
   aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${search}\"" | jq -r '.events | sort_by(.timestamp)'
 fi
 
+# Distinguish an aws failure (expired SSO, no access, crashed CLI) from genuinely no
+# events: report it and exit non-zero rather than leaving an empty/[] result that looks
+# like "no hits". aws's own error is shown above on stderr.
+rc=${PIPESTATUS[0]}
+if [ "${rc}" -ne 0 ]
+then
+  echo "ERROR: aws failed (rc=${rc}) — output above is NOT 'no events'; logs were not retrieved. Try: aws sso login --profile \"lfproduct-${STAGE}\"" >&2
+  exit 3
+fi
+
