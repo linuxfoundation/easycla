@@ -80,7 +80,7 @@ echo "Date range: ${DTF} .. ${DTT} (from ${DTFROM} to ${DTTO})"
 # Capture aws output to a temp file first (no pipe), so an aws failure and a jq failure
 # are reported accurately and independently. In a pipe, a jq failure can SIGPIPE aws and
 # surface as 141, misclassifying it as an aws failure.
-raw_log="$(mktemp)"
+raw_log="$(mktemp)" || { echo "ERROR: mktemp failed — cannot capture aws output" >&2; exit 2; }
 trap 'rm -f "${raw_log}"' EXIT
 
 if [ -z "${search}" ]
@@ -93,7 +93,7 @@ then
 else
   if [ ! -z "${DEBUG}" ]
   then
-    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern \"${search}\""
+    echo "aws --region \"${REGION}\" --profile \"lfproduct-${STAGE}\" logs filter-log-events --log-group-name \"/aws/lambda/${log_group}\" --start-time \"${DTFROM}\" --end-time \"${DTTO}\" --filter-pattern '\"${search}\"'"
   fi
   aws --region "${REGION}" --profile "lfproduct-${STAGE}" logs filter-log-events --log-group-name "/aws/lambda/${log_group}" --start-time "${DTFROM}" --end-time "${DTTO}" --filter-pattern "\"${search}\"" > "${raw_log}"
 fi
