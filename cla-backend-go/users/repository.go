@@ -136,9 +136,9 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 		}
 	}
 
-	if len(user.Emails) > 0 {
+	if normalized := normalizeEmails(user.Emails); len(normalized) > 0 {
 		attributes["user_emails"] = &dynamodb.AttributeValue{
-			SS: utils.ArrayStringPointer(user.Emails),
+			SS: utils.ArrayStringPointer(normalized),
 		}
 	}
 
@@ -385,10 +385,10 @@ func (repo repository) Save(user *models.UserUpdate) (*models.User, error) {
 		updateExpression = updateExpression + " #UE = :ue, "
 	}
 
-	if user.Emails != nil {
-		log.WithFields(f).Debugf("building query - adding user_emails: %v", user.Emails)
+	if normalized := normalizeEmails(user.Emails); len(normalized) > 0 {
+		log.WithFields(f).Debugf("building query - adding user_emails: %v", normalized)
 		expressionAttributeNames["#UES"] = aws.String("user_emails")
-		expressionAttributeValues[":ues"] = &dynamodb.AttributeValue{SS: aws.StringSlice(user.Emails)}
+		expressionAttributeValues[":ues"] = &dynamodb.AttributeValue{SS: aws.StringSlice(normalized)}
 		updateExpression = updateExpression + " #UES = :ues, "
 	}
 
@@ -808,6 +808,10 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 		"userEmail":    userEmail,
 	}
 
+	// user_emails are stored lower-cased (as lf_email is), so look up with a lower-cased
+	// address regardless of how the caller cased it.
+	userEmail = strings.ToLower(strings.TrimSpace(userEmail))
+
 	// This is the filter we want to match
 	filter := expression.Name("user_emails").Contains(userEmail)
 
@@ -817,7 +821,7 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	// Use the nice builder to create the expression
 	expr, err := expression.NewBuilder().WithFilter(filter).WithProjection(projection).Build()
 	if err != nil {
-		log.WithFields(f).Warnf("error building expression for lf_email : %s, error: %v", userEmail, err)
+		log.WithFields(f).Warnf("error building expression for user_emails : %s, error: %v", userEmail, err)
 		return nil, err
 	}
 
@@ -881,6 +885,27 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	}
 
 	return users, nil
+}
+
+// normalizeEmails lower-cases and trims each address and drops empties/duplicates. Emails
+// are stored normalized (so lookups by a lower-cased address match) and de-duplication is
+// required because a DynamoDB String Set rejects duplicate members (which lower-casing can
+// otherwise introduce, e.g. "A@x.com" and "a@x.com").
+func normalizeEmails(emails []string) []string {
+	seen := make(map[string]struct{}, len(emails))
+	out := make([]string, 0, len(emails))
+	for _, email := range emails {
+		email = strings.ToLower(strings.TrimSpace(email))
+		if email == "" {
+			continue
+		}
+		if _, ok := seen[email]; ok {
+			continue
+		}
+		seen[email] = struct{}{}
+		out = append(out, email)
+	}
+	return out
 }
 
 // GetUsersByLFEmail fetches the user record by email

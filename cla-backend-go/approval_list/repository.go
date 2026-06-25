@@ -6,6 +6,7 @@ package approval_list
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	models2 "github.com/linuxfoundation/easycla/cla-backend-go/project/models"
 
@@ -86,7 +87,7 @@ func (repo repository) AddCclaApprovalRequest(company *models.Company, project *
 	addStringAttribute(input.Item, "project_id", project.ProjectID)
 	addStringAttribute(input.Item, "project_name", project.ProjectName)
 	addStringAttribute(input.Item, "user_id", user.UserID)
-	addStringSliceAttribute(input.Item, "user_emails", []string{requesterEmail})
+	addStringSliceAttribute(input.Item, "user_emails", []string{strings.ToLower(strings.TrimSpace(requesterEmail))})
 	addStringAttribute(input.Item, "user_name", requesterName)
 	addStringAttribute(input.Item, "user_github_id", user.GithubID)
 	addStringAttribute(input.Item, "user_github_username", user.GithubUsername)
