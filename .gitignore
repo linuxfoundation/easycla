@@ -288,3 +288,4 @@ spans*.json
 *.out
 CLAUDE.md
 .claude/*
+/*user_emails.json
