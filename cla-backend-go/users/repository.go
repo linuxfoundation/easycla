@@ -136,7 +136,6 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 		}
 	}
 
-	// Normalize in place so the returned model reflects what is stored.
 	user.Emails = normalizeEmails(user.Emails)
 	if len(user.Emails) > 0 {
 		attributes["user_emails"] = &dynamodb.AttributeValue{
@@ -388,16 +387,10 @@ func (repo repository) Save(user *models.UserUpdate) (*models.User, error) {
 	}
 
 	if user.Emails != nil {
-		// Preserve the prior nil-vs-set semantics: a nil slice leaves user_emails
-		// untouched, while a non-nil slice writes it (normalized to lower-case). An
-		// explicitly empty/blank slice still produces an empty String Set, which
-		// DynamoDB rejects — surfacing an error to the caller rather than silently
-		// dropping the update. Normalize in place (mirrors the lf_email handling above)
-		// so the returned model matches what is stored.
-		user.Emails = normalizeEmails(user.Emails)
-		log.WithFields(f).Debugf("building query - adding user_emails: %v", user.Emails)
+		normalized := normalizeEmails(user.Emails)
+		log.WithFields(f).Debugf("building query - adding user_emails: %v", normalized)
 		expressionAttributeNames["#UES"] = aws.String("user_emails")
-		expressionAttributeValues[":ues"] = &dynamodb.AttributeValue{SS: aws.StringSlice(user.Emails)}
+		expressionAttributeValues[":ues"] = &dynamodb.AttributeValue{SS: aws.StringSlice(normalized)}
 		updateExpression = updateExpression + " #UES = :ues, "
 	}
 
@@ -817,12 +810,8 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 		"userEmail":    userEmail,
 	}
 
-	// user_emails are stored lower-cased (as lf_email is), so look up with a lower-cased
-	// address regardless of how the caller cased it.
 	userEmail = strings.ToLower(strings.TrimSpace(userEmail))
 	if userEmail == "" {
-		// Nothing can match an empty address, and an empty value in a DynamoDB
-		// expression raises a ValidationException — return no results instead.
 		return []*models.User{}, nil
 	}
 
@@ -901,11 +890,11 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	return users, nil
 }
 
-// normalizeEmails lower-cases and trims each address and drops empties/duplicates. Emails
-// are stored normalized (so lookups by a lower-cased address match) and de-duplication is
-// required because a DynamoDB String Set rejects duplicate members (which lower-casing can
-// otherwise introduce, e.g. "A@x.com" and "a@x.com").
+// normalizeEmails lower-cases, trims and de-duplicates emails (DynamoDB string sets reject duplicates).
 func normalizeEmails(emails []string) []string {
+	if emails == nil {
+		return nil
+	}
 	seen := make(map[string]struct{}, len(emails))
 	out := make([]string, 0, len(emails))
 	for _, email := range emails {
