@@ -2,7 +2,6 @@
 set -euo pipefail
 
 STAGE=${STAGE:-dev}
-APPLY="${APPLY:-0}"
 PROFILE="lfproduct-${STAGE}"
 REGION=us-east-1
 TABLE="cla-${STAGE}-users"

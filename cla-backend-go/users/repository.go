@@ -385,7 +385,13 @@ func (repo repository) Save(user *models.UserUpdate) (*models.User, error) {
 		updateExpression = updateExpression + " #UE = :ue, "
 	}
 
-	if normalized := normalizeEmails(user.Emails); len(normalized) > 0 {
+	if user.Emails != nil {
+		// Preserve the prior nil-vs-set semantics: a nil slice leaves user_emails
+		// untouched, while a non-nil slice writes it (normalized to lower-case). An
+		// explicitly empty/blank slice still produces an empty String Set, which
+		// DynamoDB rejects — surfacing an error to the caller rather than silently
+		// dropping the update.
+		normalized := normalizeEmails(user.Emails)
 		log.WithFields(f).Debugf("building query - adding user_emails: %v", normalized)
 		expressionAttributeNames["#UES"] = aws.String("user_emails")
 		expressionAttributeValues[":ues"] = &dynamodb.AttributeValue{SS: aws.StringSlice(normalized)}
