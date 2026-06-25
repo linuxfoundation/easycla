@@ -811,6 +811,11 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	// user_emails are stored lower-cased (as lf_email is), so look up with a lower-cased
 	// address regardless of how the caller cased it.
 	userEmail = strings.ToLower(strings.TrimSpace(userEmail))
+	if userEmail == "" {
+		// Nothing can match an empty address, and an empty value in a DynamoDB
+		// expression raises a ValidationException — return no results instead.
+		return []*models.User{}, nil
+	}
 
 	// This is the filter we want to match
 	filter := expression.Name("user_emails").Contains(userEmail)
