@@ -136,6 +136,7 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 		}
 	}
 
+	user.Emails = normalizeEmails(user.Emails)
 	if len(user.Emails) > 0 {
 		attributes["user_emails"] = &dynamodb.AttributeValue{
 			SS: utils.ArrayStringPointer(user.Emails),
@@ -386,9 +387,10 @@ func (repo repository) Save(user *models.UserUpdate) (*models.User, error) {
 	}
 
 	if user.Emails != nil {
-		log.WithFields(f).Debugf("building query - adding user_emails: %v", user.Emails)
+		normalized := normalizeEmails(user.Emails)
+		log.WithFields(f).Debugf("building query - adding user_emails: %v", normalized)
 		expressionAttributeNames["#UES"] = aws.String("user_emails")
-		expressionAttributeValues[":ues"] = &dynamodb.AttributeValue{SS: aws.StringSlice(user.Emails)}
+		expressionAttributeValues[":ues"] = &dynamodb.AttributeValue{SS: aws.StringSlice(normalized)}
 		updateExpression = updateExpression + " #UES = :ues, "
 	}
 
@@ -808,6 +810,8 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 		"userEmail":    userEmail,
 	}
 
+	userEmail = strings.ToLower(strings.TrimSpace(userEmail))
+
 	// This is the filter we want to match
 	filter := expression.Name("user_emails").Contains(userEmail)
 
@@ -817,7 +821,7 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	// Use the nice builder to create the expression
 	expr, err := expression.NewBuilder().WithFilter(filter).WithProjection(projection).Build()
 	if err != nil {
-		log.WithFields(f).Warnf("error building expression for lf_email : %s, error: %v", userEmail, err)
+		log.WithFields(f).Warnf("error building expression for user_emails : %s, error: %v", userEmail, err)
 		return nil, err
 	}
 
@@ -881,6 +885,27 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	}
 
 	return users, nil
+}
+
+// normalizeEmails lower-cases, trims and de-duplicates emails (DynamoDB string sets reject duplicates).
+func normalizeEmails(emails []string) []string {
+	if emails == nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(emails))
+	out := make([]string, 0, len(emails))
+	for _, email := range emails {
+		email = strings.ToLower(strings.TrimSpace(email))
+		if email == "" {
+			continue
+		}
+		if _, ok := seen[email]; ok {
+			continue
+		}
+		seen[email] = struct{}{}
+		out = append(out, email)
+	}
+	return out
 }
 
 // GetUsersByLFEmail fetches the user record by email

@@ -3342,6 +3342,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			for _, email := range params.RemoveEmailApprovalList {
 				go func(email string) {
 					defer wg.Done()
+					email = strings.ToLower(strings.TrimSpace(email))
 					var iclas []*models.IclaSignature
 					var eclas []*models.Signature
 					log.WithFields(f).Debugf("getting cla user record for email: %s ", email)
