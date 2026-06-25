@@ -136,9 +136,11 @@ func (repo repository) CreateUser(user *models.User) (*models.User, error) {
 		}
 	}
 
-	if normalized := normalizeEmails(user.Emails); len(normalized) > 0 {
+	// Normalize in place so the returned model reflects what is stored.
+	user.Emails = normalizeEmails(user.Emails)
+	if len(user.Emails) > 0 {
 		attributes["user_emails"] = &dynamodb.AttributeValue{
-			SS: utils.ArrayStringPointer(normalized),
+			SS: utils.ArrayStringPointer(user.Emails),
 		}
 	}
 
@@ -390,11 +392,12 @@ func (repo repository) Save(user *models.UserUpdate) (*models.User, error) {
 		// untouched, while a non-nil slice writes it (normalized to lower-case). An
 		// explicitly empty/blank slice still produces an empty String Set, which
 		// DynamoDB rejects — surfacing an error to the caller rather than silently
-		// dropping the update.
-		normalized := normalizeEmails(user.Emails)
-		log.WithFields(f).Debugf("building query - adding user_emails: %v", normalized)
+		// dropping the update. Normalize in place (mirrors the lf_email handling above)
+		// so the returned model matches what is stored.
+		user.Emails = normalizeEmails(user.Emails)
+		log.WithFields(f).Debugf("building query - adding user_emails: %v", user.Emails)
 		expressionAttributeNames["#UES"] = aws.String("user_emails")
-		expressionAttributeValues[":ues"] = &dynamodb.AttributeValue{SS: aws.StringSlice(normalized)}
+		expressionAttributeValues[":ues"] = &dynamodb.AttributeValue{SS: aws.StringSlice(user.Emails)}
 		updateExpression = updateExpression + " #UES = :ues, "
 	}
 

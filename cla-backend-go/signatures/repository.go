@@ -3342,10 +3342,14 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			for _, email := range params.RemoveEmailApprovalList {
 				go func(email string) {
 					defer wg.Done()
+					// Normalize once and reuse for both the user lookup and the
+					// employee-signature criteria below, so the equality filter matches
+					// the normalized (lower-cased) stored values.
+					email = strings.ToLower(strings.TrimSpace(email))
 					var iclas []*models.IclaSignature
 					var eclas []*models.Signature
 					log.WithFields(f).Debugf("getting cla user record for email: %s ", email)
-					userSearch, userErr := repo.usersRepo.SearchUsers("user_emails", strings.ToLower(strings.TrimSpace(email)), false)
+					userSearch, userErr := repo.usersRepo.SearchUsers("user_emails", email, false)
 					if userErr != nil || userSearch == nil {
 						log.WithFields(f).Debugf("error getting user by email: %s ", email)
 						return
