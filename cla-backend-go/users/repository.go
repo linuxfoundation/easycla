@@ -811,9 +811,6 @@ func (repo repository) GetUsersByEmail(userEmail string) ([]*models.User, error)
 	}
 
 	userEmail = strings.ToLower(strings.TrimSpace(userEmail))
-	if userEmail == "" {
-		return []*models.User{}, nil
-	}
 
 	// This is the filter we want to match
 	filter := expression.Name("user_emails").Contains(userEmail)
