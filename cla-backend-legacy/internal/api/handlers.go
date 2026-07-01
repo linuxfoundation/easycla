@@ -269,13 +269,9 @@ func getOptionalSSMString(ctx context.Context, ssmClient *ssm.Client, key string
 }
 
 // getOptionalSSMBool retrieves a boolean parameter from SSM.
-// It returns false (the safe default) when the value is unreadable or the parameter is absent.
+// It returns false (the safe default) when the value is unreadable, absent, or malformed.
 func getOptionalSSMBool(ctx context.Context, ssmClient *ssm.Client, key string, f logrus.Fields) bool {
-	val := getOptionalSSMString(ctx, ssmClient, key, f)
-	if val == "" {
-		return false
-	}
-	return strings.ToLower(val) == "true"
+	return getOptionalSSMBoolDefault(ctx, ssmClient, key, false, f)
 }
 
 // getOptionalSSMBoolDefault is getOptionalSSMBool with a caller-supplied default for a

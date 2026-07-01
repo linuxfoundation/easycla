@@ -312,31 +312,10 @@ func getOptionalSSMString(ssmClient *ssm.SSM, key string, f logrus.Fields) strin
 	return strings.TrimSpace(*out.Parameter.Value)
 }
 
-// getOptionalSSMBool fetches an optional boolean parameter. It logs exactly once:
-// a missing parameter is reported at debug (an expected, benign state), while any
-// other failure - IAM, throttling, parse errors, etc. - is reported as a warning.
-// Returns false (the default) when the value is unreadable or the parameter is absent.
+// getOptionalSSMBool fetches an optional boolean parameter, returning false (the default)
+// when the value is unreadable, absent, or malformed.
 func getOptionalSSMBool(ssmClient *ssm.SSM, key string, f logrus.Fields) bool {
-	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
-		Name:           aws.String(key),
-		WithDecryption: aws.Bool(false),
-	})
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
-			log.WithFields(f).Debugf("optional SSM key %s not provisioned - using default value false", key)
-		} else {
-			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - using default value false", key)
-		}
-		return false
-	}
-
-	boolVal, err := strconv.ParseBool(strings.TrimSpace(*out.Parameter.Value))
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to parse optional SSM key %s as boolean - using default value false", key)
-		return false
-	}
-
-	return boolVal
+	return getOptionalSSMBoolDefault(ssmClient, key, false, f)
 }
 
 // getOptionalSSMBoolDefault is getOptionalSSMBool with a caller-supplied default for a
