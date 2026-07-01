@@ -80,6 +80,7 @@ type Handlers struct {
 	userService       *userservicelegacy.Client
 	sssClient         *sss.Client
 	sssRequired       bool
+	sssEnabled        bool
 }
 
 func NewHandlers() *Handlers {
@@ -215,16 +216,18 @@ func NewHandlers() *Handlers {
 	sssBaseURL := getOptionalSSMString(ctx, ssmClient, fmt.Sprintf("cla-sss-base-url-%s", stage), f)
 	sssAudience := getOptionalSSMString(ctx, ssmClient, fmt.Sprintf("cla-sss-auth0-audience-%s", stage), f)
 	sssRequired := getOptionalSSMBool(ctx, ssmClient, fmt.Sprintf("cla-sss-required-%s", stage), f)
+	sssEnabled := getOptionalSSMBoolDefault(ctx, ssmClient, fmt.Sprintf("cla-sss-enabled-%s", stage), true, f)
 
 	auth0ClientID := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_CLIENT_ID"))
 	auth0ClientSecret := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_CLIENT_SECRET"))
 	auth0URL := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_URL"))
 
 	h.sssRequired = sssRequired
+	h.sssEnabled = sssEnabled
 	if sssBaseURL != "" && sssAudience != "" {
 		sssClient, err := sss.NewClientFromPlatformCredentials(sssBaseURL, sssAudience, auth0URL, auth0ClientID, auth0ClientSecret)
 		if err != nil {
-			if sssRequired {
+			if sssEnabled && sssRequired {
 				logging.Fatalf("failed to initialize required SSS client: %v", err)
 			}
 			logging.Warnf("failed to initialize optional SSS client, screening will be unavailable: %v", err)
@@ -234,7 +237,7 @@ func NewHandlers() *Handlers {
 		}
 	}
 
-	if sssRequired && h.sssClient == nil {
+	if sssEnabled && sssRequired && h.sssClient == nil {
 		logging.Fatalf("SSS is required but not configured (base URL or audience missing in SSM)")
 	}
 
@@ -271,6 +274,17 @@ func getOptionalSSMBool(ctx context.Context, ssmClient *ssm.Client, key string, 
 	val := getOptionalSSMString(ctx, ssmClient, key, f)
 	if val == "" {
 		return false
+	}
+	return strings.ToLower(val) == "true"
+}
+
+// getOptionalSSMBoolDefault is getOptionalSSMBool with a caller-supplied default for a
+// missing parameter - used for cla-sss-enabled, which must default to true so a
+// not-yet-provisioned key never silently disables screening.
+func getOptionalSSMBoolDefault(ctx context.Context, ssmClient *ssm.Client, key string, def bool, f logrus.Fields) bool {
+	val := getOptionalSSMString(ctx, ssmClient, key, f)
+	if val == "" {
+		return def
 	}
 	return strings.ToLower(val) == "true"
 }
@@ -8916,6 +8930,11 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 	if isSanctioned && sanctionOrigin != "sss" {
 		logging.Warnf("company has non-SSS sanction block (origin=%q), blocking without SSS call", sanctionOrigin)
 		return true, nil
+	}
+
+	if !h.sssEnabled {
+		logging.Warnf("sanctions screening disabled (cla-sss-enabled=false); skipping SSS check for company %s", companyID)
+		return false, nil
 	}
 
 	// In the fallbacks below (no live SSS check possible) we honor the persisted state:

@@ -453,20 +453,21 @@ func server(localMode bool) http.Handler {
 	// Initialize SSS (Sanctions Screening Service) client if configured.
 	// The sssRequired flag is controlled by the cla-sss-required-{stage} SSM parameter.
 	sssRequired := configFile.SSS.Required
+	sssEnabled := configFile.SSS.Enabled
 	var sssClient *sss.Client
 	sssClient, err = sss.NewClientFromPlatformCredentials(configFile.SSS.BaseURL, configFile.SSS.Audience, configFile.Auth0Platform.URL, configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret)
 	if err != nil {
-		if sssRequired {
+		if sssEnabled && sssRequired {
 			log.WithFields(f).WithError(err).Fatal("failed to initialize required SSS client")
 		}
 		log.WithFields(f).WithError(err).Warn("failed to initialize optional SSS client, screening will be unavailable")
 		sssClient = nil
 	}
-	if sssRequired && sssClient == nil {
+	if sssEnabled && sssRequired && sssClient == nil {
 		log.WithFields(f).Fatal("SSS is required but not configured")
 	}
 
-	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, sssClient, sssRequired)
+	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, sssClient, sssRequired, sssEnabled)
 
 	sessionStore, err := dynastore.New(dynastore.Path("/"), dynastore.HTTPOnly(), dynastore.TableName(configFile.SessionStoreTableName), dynastore.DynamoDB(dynamodb.New(awsSession)))
 	if err != nil {

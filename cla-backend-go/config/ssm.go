@@ -287,6 +287,7 @@ func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f l
 	config.SSS.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-base-url-%s", stage), f)
 	config.SSS.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-auth0-audience-%s", stage), f)
 	config.SSS.Required = getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-sss-required-%s", stage), f)
+	config.SSS.Enabled = getOptionalSSMBoolDefault(ssmClient, fmt.Sprintf("cla-sss-enabled-%s", stage), true, f)
 }
 
 // getOptionalSSMString fetches a parameter that may legitimately be absent while
@@ -333,6 +334,32 @@ func getOptionalSSMBool(ssmClient *ssm.SSM, key string, f logrus.Fields) bool {
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to parse optional SSM key %s as boolean - using default value false", key)
 		return false
+	}
+
+	return boolVal
+}
+
+// getOptionalSSMBoolDefault is getOptionalSSMBool with a caller-supplied default for a
+// missing/unreadable parameter - used for cla-sss-enabled, which must default to true so a
+// not-yet-provisioned key never silently disables screening.
+func getOptionalSSMBoolDefault(ssmClient *ssm.SSM, key string, def bool, f logrus.Fields) bool {
+	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
+		Name:           aws.String(key),
+		WithDecryption: aws.Bool(false),
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
+			log.WithFields(f).Debugf("optional SSM key %s not provisioned - using default value %t", key, def)
+		} else {
+			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - using default value %t", key, def)
+		}
+		return def
+	}
+
+	boolVal, err := strconv.ParseBool(strings.TrimSpace(*out.Parameter.Value))
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to parse optional SSM key %s as boolean - using default value %t", key, def)
+		return def
 	}
 
 	return boolVal
