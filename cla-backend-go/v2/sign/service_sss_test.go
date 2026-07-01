@@ -42,7 +42,7 @@ func TestResolveDomainFallsBackToParsedLink(t *testing.T) {
 }
 
 func TestCheckCompanyComplianceRequiredBlocksMissingClient(t *testing.T) {
-	svc := &service{sssRequired: true}
+	svc := &service{sssRequired: true, sssEnabled: true}
 
 	_, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
 		CompanyID:   "company-id",
@@ -54,7 +54,7 @@ func TestCheckCompanyComplianceRequiredBlocksMissingClient(t *testing.T) {
 }
 
 func TestCheckCompanyComplianceOptionalAllowsMissingClient(t *testing.T) {
-	svc := &service{sssRequired: false}
+	svc := &service{sssRequired: false, sssEnabled: true}
 
 	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
 		CompanyID:   "company-id",
@@ -141,7 +141,7 @@ func TestSSSStatusActionable(t *testing.T) {
 }
 
 func TestCheckCompanyComplianceRequiredBlocksMissingExternalID(t *testing.T) {
-	svc := &service{sssRequired: true, sssClient: newTestSSSClient(t)}
+	svc := &service{sssRequired: true, sssEnabled: true, sssClient: newTestSSSClient(t)}
 
 	_, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
 		CompanyID:   "company-id",
@@ -154,7 +154,7 @@ func TestCheckCompanyComplianceRequiredBlocksMissingExternalID(t *testing.T) {
 }
 
 func TestCheckCompanyComplianceOptionalAllowsMissingExternalID(t *testing.T) {
-	svc := &service{sssRequired: false, sssClient: newTestSSSClient(t)}
+	svc := &service{sssRequired: false, sssEnabled: true, sssClient: newTestSSSClient(t)}
 
 	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
 		CompanyID:   "company-id",
@@ -170,7 +170,7 @@ func TestCheckCompanyComplianceOptionalAllowsMissingExternalID(t *testing.T) {
 }
 
 func TestCheckCompanyComplianceOptionalBlocksPersistedSanctionMissingExternalID(t *testing.T) {
-	svc := &service{sssRequired: false, sssClient: newTestSSSClient(t)}
+	svc := &service{sssRequired: false, sssEnabled: true, sssClient: newTestSSSClient(t)}
 
 	// origin=sss bypasses the manual-block short-circuit so the missing-external-ID early
 	// exit is the path under test: in optional mode it must honor the persisted sanction.
@@ -266,6 +266,7 @@ func TestCheckCompanyComplianceCacheHitMutatesModel(t *testing.T) {
 	// A cached "clean" result must clear the stale loaded model so downstream gates
 	// (e.g. ProcessEmployeeSignature) in the same request stay consistent.
 	svc := &service{
+		sssEnabled: true,
 		complianceCache: map[string]complianceCacheEntry{
 			"external-id": {sanctioned: false, expiresAt: time.Now().Add(time.Minute)},
 		},
@@ -294,7 +295,7 @@ func TestCheckCompanyComplianceCacheHitMutatesModel(t *testing.T) {
 func TestCheckCompanyComplianceOptionalHonorsPersistedSSSFlag(t *testing.T) {
 	// Optional mode with no SSS client: an already-persisted SSS-origin block must keep
 	// blocking until a live clean result can clear it (do not fail open on the flag).
-	svc := &service{sssRequired: false}
+	svc := &service{sssRequired: false, sssEnabled: true}
 
 	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
 		CompanyID:      "company-id",
@@ -313,7 +314,7 @@ func TestCheckCompanyComplianceOptionalHonorsPersistedSSSFlag(t *testing.T) {
 func TestCheckCompanyComplianceAdminBlockAlwaysBlocks(t *testing.T) {
 	// A manual/admin block (is_sanctioned=true, no/!=sss origin) must short-circuit and
 	// block regardless of mode or SSS availability.
-	svc := &service{sssRequired: false}
+	svc := &service{sssRequired: false, sssEnabled: true}
 
 	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
 		CompanyID:    "company-id",
@@ -324,5 +325,24 @@ func TestCheckCompanyComplianceAdminBlockAlwaysBlocks(t *testing.T) {
 	}
 	if !blocked {
 		t.Fatal("expected a manual/admin sanction (no origin) to always block")
+	}
+}
+
+func TestCheckCompanyComplianceDisabledSkipsSSS(t *testing.T) {
+	// Kill switch off (sssEnabled=false): the live SSS check is skipped and the company is
+	// not blocked, even in required mode with a persisted sss-origin flag.
+	svc := &service{sssRequired: true, sssEnabled: false, sssClient: newTestSSSClient(t)}
+
+	blocked, err := svc.checkCompanyCompliance(context.Background(), &models.Company{
+		CompanyID:      "company-id",
+		CompanyName:    "Company",
+		IsSanctioned:   true,
+		SanctionOrigin: "sss",
+	})
+	if err != nil {
+		t.Fatalf("expected disabled SSS to skip without error, got %v", err)
+	}
+	if blocked {
+		t.Fatal("expected disabled SSS not to block")
 	}
 }

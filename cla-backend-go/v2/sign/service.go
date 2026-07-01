@@ -125,6 +125,7 @@ type service struct {
 	gerritService         gerrits.Service
 	sssClient             *sss.Client
 	sssRequired           bool
+	sssEnabled            bool
 	complianceCache       map[string]complianceCacheEntry
 	complianceCacheMu     *sync.Mutex
 }
@@ -137,7 +138,7 @@ type complianceCacheEntry struct {
 // NewService returns an instance of v2 project service
 func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo ProjectRepo, pcgRepo projects_cla_groups.Repository, compService company.IService, claGroupService cla_groups.Service, docsignPrivateKey string, userService users.Service, signatureService signatures.SignatureService, storeRepository store.Repository,
 	repositoryService repositories.Service, githubOrgService github_organizations.Service, gitlabOrgService gitlab_organizations.ServiceInterface, claLandingPage string, claLogoURL string, emailTemplateService emails.EmailTemplateService, eventsService events.Service, gitlabActivityService gitlab_activity.Service, gitlabApp *gitlab_api.App,
-	gerritService gerrits.Service, sssClient *sss.Client, sssRequired bool) Service {
+	gerritService gerrits.Service, sssClient *sss.Client, sssRequired bool, sssEnabled bool) Service {
 	return &service{
 		ClaV4ApiURL:           apiURL,
 		ClaV1ApiURL:           v1API,
@@ -162,6 +163,7 @@ func NewService(apiURL, v1API string, compRepo company.IRepository, projectRepo 
 		eventsService:         eventsService,
 		sssClient:             sssClient,
 		sssRequired:           sssRequired,
+		sssEnabled:            sssEnabled,
 		complianceCache:       make(map[string]complianceCacheEntry),
 		complianceCacheMu:     &sync.Mutex{},
 	}
@@ -3001,6 +3003,11 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	if company.IsSanctioned && company.SanctionOrigin != sanctionOriginSSS {
 		log.WithFields(f).Warnf("company has non-SSS sanction block (origin=%q), blocking without SSS call", company.SanctionOrigin)
 		return true, nil
+	}
+
+	if !s.sssEnabled {
+		log.WithFields(f).Warn("sanctions screening disabled (cla-sss-enabled=false); skipping SSS check")
+		return false, nil
 	}
 
 	cacheKey := s.complianceCacheKey(company)
