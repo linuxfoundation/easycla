@@ -280,13 +280,19 @@ func getOptionalSSMBool(ctx context.Context, ssmClient *ssm.Client, key string, 
 
 // getOptionalSSMBoolDefault is getOptionalSSMBool with a caller-supplied default for a
 // missing parameter - used for cla-sss-enabled, which must default to true so a
-// not-yet-provisioned key never silently disables screening.
+// not-yet-provisioned key never silently disables screening. A malformed value also
+// falls back to the default rather than being treated as false.
 func getOptionalSSMBoolDefault(ctx context.Context, ssmClient *ssm.Client, key string, def bool, f logrus.Fields) bool {
-	val := getOptionalSSMString(ctx, ssmClient, key, f)
+	val := strings.TrimSpace(getOptionalSSMString(ctx, ssmClient, key, f))
 	if val == "" {
 		return def
 	}
-	return strings.ToLower(val) == "true"
+	boolVal, err := strconv.ParseBool(val)
+	if err != nil {
+		logging.Warnf("unable to parse optional SSM key %s=%q as boolean - using default value %t", key, val, def)
+		return def
+	}
+	return boolVal
 }
 
 // formatPynamoDateTimeUTC formats timestamps the way Python's pynamodb

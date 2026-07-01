@@ -143,9 +143,10 @@ type SSS struct {
 	// will block the operation. When false, SSS errors are logged but do not block.
 	// This flag is loaded from the SSM parameter cla-sss-required-{stage}.
 	Required bool `json:"required"`
-	// Enabled is the SSS master switch (kill switch): when false, screening is skipped
-	// entirely (no SSS call; sss-origin blocks ignored), independent of Required. Loaded
-	// from cla-sss-enabled-{stage}; defaults to true when the parameter is unset.
+	// Enabled is the SSS master switch (kill switch): when false, the live SSS check in
+	// checkCompanyCompliance is skipped (that path does not block), independent of Required.
+	// Persisted is_sanctioned blocks are still honored by other gates. Loaded from
+	// cla-sss-enabled-{stage}; defaults to true when the parameter is unset.
 	Enabled bool `json:"enabled"`
 }
 
