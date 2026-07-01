@@ -143,6 +143,9 @@ type SSS struct {
 	// will block the operation. When false, SSS errors are logged but do not block.
 	// This flag is loaded from the SSM parameter cla-sss-required-{stage}.
 	Required bool `json:"required"`
+	// Enabled is the SSS kill switch (cla-sss-enabled-{stage}, default true): when false,
+	// checkCompanyCompliance skips the live SSS check; persisted is_sanctioned still blocks elsewhere.
+	Enabled bool `json:"enabled"`
 }
 
 // Docraptor model
