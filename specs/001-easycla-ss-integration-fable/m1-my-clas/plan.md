@@ -1,7 +1,7 @@
 # Implementation Plan: Milestone 1 — Read-only "My CLAs" in Self Serve Me Lens
 
 **Branch**: `001-easycla-ss-integration` | **Date**: 2026-07-11 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification from `specs/001-easycla-ss-integration-fable/spec.md` (User Story 1 / FR-001…FR-006) and [01-milestone-read-only-me-lens-fable.md](01-milestone-read-only-me-lens-fable.md). M2–M6 are roadmap context only.
+**Input**: M1 feature spec [spec.md](spec.md) (extracted from the program spec [../spec.md](../spec.md), User Story 1 / FR-001…FR-006) and [../01-milestone-read-only-me-lens-fable.md](../01-milestone-read-only-me-lens-fable.md). M2–M6 are roadmap context only.
 
 ## Summary
 
@@ -36,15 +36,17 @@ Add a read-only "My CLAs" module to LFX Self Serve's Me lens showing the logged-
 ### Documentation (this feature)
 
 ```text
-specs/001-easycla-ss-integration-fable/
-├── plan.md              # This file
-├── research.md          # Phase 0 output
-├── data-model.md        # Phase 1 output
-├── quickstart.md        # Phase 1 output
-├── contracts/
-│   ├── ss-me-clas-api.md        # SS server API consumed by the Angular module
-│   └── upstream-easycla-api.md  # EasyCLA endpoints consumed, incl. auth notes
-└── tasks.md             # Phase 2 output (/speckit-tasks — not created here)
+specs/001-easycla-ss-integration-fable/          # program level (review docs)
+└── m1-my-clas/                                  # this milestone's feature directory
+    ├── spec.md              # extracted M1 spec (US1 / FR-001…006)
+    ├── plan.md              # This file
+    ├── research.md          # Phase 0 output
+    ├── data-model.md        # Phase 1 output
+    ├── quickstart.md        # Phase 1 output
+    ├── contracts/
+    │   ├── ss-me-clas-api.md        # SS server API consumed by the Angular module
+    │   └── upstream-easycla-api.md  # EasyCLA endpoints consumed, incl. auth notes
+    └── tasks.md             # Phase 2 output (/speckit-tasks — not created here)
 ```
 
 ### Source Code

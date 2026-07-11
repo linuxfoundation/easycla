@@ -1,7 +1,7 @@
 # Milestone 1 — Read-only "My CLAs" in the Me Lens
 
-**Status**: Draft | **Depends on**: nothing | **Retires**: nothing | **Effort**: S
-**Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
+**Status**: Planned — implementation artifacts in [m1-my-clas/](m1-my-clas/) | **Depends on**: nothing | **Retires**: nothing | **Effort**: S
+**Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md) | **Feature dir**: [m1-my-clas/spec.md](m1-my-clas/spec.md)
 
 ## Goal
 
