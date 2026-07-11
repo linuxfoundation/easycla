@@ -100,6 +100,16 @@ Beyond the six milestones as described, the program must also account for:
 - **Metrics/insights endpoints** consumed by the Corporate Console (M4).
 - **API consumers beyond the consoles** (anyone calling v3/v4 directly; audit before M6 contract changes).
 - **Decommission work as first-class scope**: DNS/CDN teardown, redirect stubs for bookmarked console URLs, support-doc updates in lfx-product-documentation.
+- **Parity long-tail from the product documentation** (lfx-product-documentation/easycla/v2-current, reviewed 2026-07-11):
+  - **Email-based CCLA signatory signing**: the CLA signatory signs via an emailed DocuSign link and **does not need an LF SSO account** — a distinct UX path that must survive M4 (don't force signatories into SS).
+  - **Embargo/OFAC checkbox**: mandatory attestation gating the Sign button on ICLA/CCLA — required in M2/M4 signing UIs.
+  - **ICLA status model**: Active / Incomplete / Disabled / Invalidated; deleting approval criteria auto-Disables related acknowledgements; PMs can invalidate ICLAs — M1 display and M5 admin parity.
+  - **Multi-PR behavior**: signing updates only the **earliest open PR**; others re-check via the `/easycla` PR comment command — documented behavior to preserve and to state in SS UX copy (M2).
+  - **Manual signing fallback**: templates carry a project contact email enabling offline/email CLA signing outside DocuSign.
+  - **ECLA version tracking**: acknowledgements record which CCLA version they were made under (M1 display candidate, M4 table parity).
+  - **Rules**: one CLA group per project (hierarchy constraints in the M5 wizard); cannot delete the last CLA Manager; a user's CLA role attaches to a single company at a time (documented known issue — constrains M4 role bridging).
+  - **Gerrit constraints**: instances are LF-hosted and added via support ticket (not self-service), CLA enablement is all-or-nothing per instance, and contributors must sign out/in of Gerrit after signing — M2c/M3c/M5 scope is narrower than GitHub/GitLab.
+  - **Ops details**: EasyCLA GitHub App needs Merge Queue read permission (else checks hang in "Expected"); auto branch protection covers only the default branch; PMs get automated emails on repo rename/archive/delete.
 
 ## 6. Sequencing rationale & effort signal
 

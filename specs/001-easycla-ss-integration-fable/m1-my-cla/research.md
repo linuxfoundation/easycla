@@ -53,6 +53,8 @@ Union all matched user records; query R1 per `userID`; merge + dedupe agreements
 
 **Rationale**: must match what PR gating honors, not approximate it; degrade gracefully where the response model lacks a field rather than fan out extra calls.
 
+**Official status vocabulary (product docs)**: EasyCLA documents ICLA statuses as **Active / Incomplete / Disabled / Invalidated** (`lfx-product-documentation/easycla/v2-current/project-managers/view-and-manage-cla-group-details.md`); deleting approval criteria auto-**Disables** related employee acknowledgements, and project managers can **Invalidate** ICLAs. Map the SS status labels to this vocabulary in the T1 spike (e.g., `valid`↔Active, `inactive`↔Disabled/Invalidated — decide whether to distinguish them in UI copy), and note that ECLAs record **which CCLA version** was acknowledged — a display candidate for the ECLA rows.
+
 ## R7. Testing approach
 
 **Decision**: unit tests for identity-merge logic (multi-record, no-match, dedupe) and controller authz (session-derived ID only); recorded-fixture contract tests for the two upstream response shapes; one E2E happy path against dev (user with ICLA + ECLA fixture data) behind the flag. Golden acceptance check = SC-001 sampling script comparing SS output to direct EasyCLA queries for a set of test users.

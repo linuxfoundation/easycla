@@ -43,6 +43,13 @@ Simpler than M4: PCC's CLA permissions are all **project-scoped admin** authorit
 - Any change to gating/enforcement behavior (GitHub checks, branch protection logic).
 - PCC v2 work of any kind.
 
+## Parity details from the product documentation
+
+- **One CLA group per project**: a project (or its parent) can belong to only one CLA group — the wizard's hierarchy validation encodes this; port the rule, not just the UI.
+- **Gerrit is narrower than it looks**: instances are LF-hosted and onboarded via support ticket (not self-service), and enablement is all-or-nothing per instance — the Project-lens Gerrit UI is list/link/unlink only.
+- **Ops behaviors to preserve**: automated PM emails on repo rename/archive/delete; auto branch protection covers only the default branch (documented limitation); the GitHub App needs Merge Queue read permission or checks hang in "Expected".
+- **Signature invalidation** is a documented PM capability (e.g., contributor left the company) — confirmation UX + audit event required (already in scope; docs confirm the use case).
+
 ## Risks
 
 | Risk | Notes |

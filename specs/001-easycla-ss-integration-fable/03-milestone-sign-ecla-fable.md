@@ -47,7 +47,7 @@ The brief flags role differences as the challenge here. Precisely scoped:
 ## Design notes
 
 - **All users are logged in** — the console requires LF login for every flow today, so there is no auth delta in M3.
-- ECLA creation is a plain API call — the "signing" UX is a consent screen with the agreement text; render the CLA group's current corporate document text as the console does.
+- ECLA creation is a plain API call — the "signing" UX is a consent screen with the agreement text; render the CLA group's current corporate document text as the console does. The acknowledgement records **which CCLA version** it was made under (documented behavior) — the API handles this; don't cache document text across versions.
 - Sanctions: never trust the persisted flag alone; the live pre-check is authoritative (mirrors console logic). Enforcements stay server-side; SS only renders outcomes.
 - The company-add retry choreography (Clearbit → create → poll Salesforce) belongs in one SS server-side orchestration with sensible timeouts, not client-side retry loops.
 

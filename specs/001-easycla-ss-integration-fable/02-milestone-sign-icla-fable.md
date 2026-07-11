@@ -51,6 +51,13 @@ The brief asked: *"SS will need to talk with DocuSign… maybe introduce a small
 
 Sequence by traffic (GitHub ≫ GitLab > Gerrit). Two cautions: (1) verify each platform's redirect is **independently switchable** before starting its sub-milestone — GitHub's SSM parameter is confirmed; GitLab's and Gerrit's mechanisms must be verified in `v2/gitlab_sign` and the gerrit-instance config respectively; (2) keep all sub-milestones inside one release train — the console cannot retire until M3c, and every month of split operation is dual-maintenance.
 
+## Parity details from the product documentation
+
+- **Embargo/OFAC attestation**: a mandatory checkbox ("I am not from an embargoed country") gates the Sign button — must exist in the SS signing UI (docs: `embargo-compliance-for-secure-cla-signing.md`).
+- **Multi-PR redirect**: after signing, EasyCLA updates only the **earliest open PR**; other PRs re-check via the `/easycla` comment command. Documented behavior — preserve it and say so in the SS completion copy.
+- **Manual signing fallback**: CLA templates display a project contact email for offline signing outside DocuSign; the SS page should keep surfacing template contact info.
+- ICLA statuses upstream are Active/Incomplete/Disabled/Invalidated — the "pending" state in SS maps to Incomplete.
+
 ## Identity: no longer an open question
 
 Earlier drafts flagged anonymous ICLA signing as a product decision. Verified in current console code: LF login is already mandatory for every contributor flow, so SS matches the status quo. Two residual notes: (a) preserve the deep-link context (CLA group, user, return URL) through the OIDC round-trip — the console solves this with local storage around the Auth0 redirect; (b) pre-login-era records may be unlinked from the LF account — M1's mapping and telemetry cover this.
