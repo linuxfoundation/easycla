@@ -37,7 +37,7 @@ Add a read-only "My CLAs" module to LFX Self Serve's Me lens showing the logged-
 
 ```text
 specs/001-easycla-ss-integration-fable/          # program level (review docs)
-└── m1-my-clas/                                  # this milestone's feature directory
+└── m1-my-cla/                                  # this milestone's feature directory
     ├── spec.md              # extracted M1 spec (US1 / FR-001…006)
     ├── plan.md              # This file
     ├── research.md          # Phase 0 output
