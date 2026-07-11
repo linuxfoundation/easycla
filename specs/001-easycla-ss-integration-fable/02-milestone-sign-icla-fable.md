@@ -53,8 +53,8 @@ Sequence by traffic (GitHub ≫ GitLab > Gerrit). Two cautions: (1) verify each 
 
 ## Parity details from the product documentation
 
-- **Embargo/OFAC attestation**: a mandatory checkbox ("I am not from an embargoed country") gates the Sign button — must exist in the SS signing UI (docs: `embargo-compliance-for-secure-cla-signing.md`).
-- **Multi-PR redirect**: after signing, EasyCLA updates only the **earliest open PR**; other PRs re-check via the `/easycla` comment command. Documented behavior — preserve it and say so in the SS completion copy.
+- **Embargo/OFAC attestation**: a mandatory checkbox gates the Sign button. **Verified nuance**: the backend persists `signature_embargo_acked=true` unconditionally in the signing paths (`v2/sign/service.go:483,741,975,1236`) — the actual gate is **client-side in the console**, so SS must reimplement the checkbox UI and should flag upstream that a compliance control currently lives only in the client.
+- **Multi-PR redirect**: only one PR gets updated after signing — verified: a single `active_signature:{userID}` KV record holds the return context (`cla-backend-legacy/internal/api/handlers.go:2767`); other PRs re-check via the `/easycla` comment (verified handler at `:1107`). Preserve and say so in the SS completion copy.
 - **Manual signing fallback**: CLA templates display a project contact email for offline signing outside DocuSign; the SS page should keep surfacing template contact info.
 - ICLA statuses upstream are Active/Incomplete/Disabled/Invalidated — the "pending" state in SS maps to Incomplete.
 

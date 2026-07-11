@@ -103,11 +103,11 @@ Beyond the six milestones as described, the program must also account for:
 - **Parity long-tail from the product documentation** (lfx-product-documentation/easycla/v2-current, reviewed 2026-07-11):
   - **Email-based CCLA signatory signing**: the CLA signatory signs via an emailed DocuSign link and **does not need an LF SSO account** — a distinct UX path that must survive M4 (don't force signatories into SS).
   - **Embargo/OFAC checkbox**: mandatory attestation gating the Sign button on ICLA/CCLA — required in M2/M4 signing UIs.
-  - **ICLA status model**: Active / Incomplete / Disabled / Invalidated; deleting approval criteria auto-Disables related acknowledgements; PMs can invalidate ICLAs — M1 display and M5 admin parity.
-  - **Multi-PR behavior**: signing updates only the **earliest open PR**; others re-check via the `/easycla` PR comment command — documented behavior to preserve and to state in SS UX copy (M2).
+  - **ICLA status model**: docs show Active / Incomplete / Disabled / Invalidated — verified as **UI-derived labels** over the stored `signed`/`approved` booleans; approval-criteria deletion invalidates related acknowledgements (`invalidateSignatures`, verified) and PMs can invalidate ICLAs (verified endpoint) — M1 display and M5 admin parity.
+  - **Multi-PR behavior**: signing updates only one PR — verified mechanism: a single `active_signature:{userID}` KV record holds one return context; other PRs re-check via the `/easycla` comment command (verified handler) — preserve and state in SS UX copy (M2).
   - **Manual signing fallback**: templates carry a project contact email enabling offline/email CLA signing outside DocuSign.
   - **ECLA version tracking**: acknowledgements record which CCLA version they were made under (M1 display candidate, M4 table parity).
-  - **Rules**: one CLA group per project (hierarchy constraints in the M5 wizard); cannot delete the last CLA Manager; a user's CLA role attaches to a single company at a time (documented known issue — constrains M4 role bridging).
+  - **Rules**: one CLA group per project (hierarchy validation exists in `cla_groups` service; trace fully in M5); "cannot delete the last CLA Manager" is **documented but no code guard was found** in the v4 backend or Corporate Console — verify/decide enforcement during M4; a user's CLA role attaches to a single company at a time (documented known issue — constrains M4 role bridging).
   - **Gerrit constraints**: instances are LF-hosted and added via support ticket (not self-service), CLA enablement is all-or-nothing per instance, and contributors must sign out/in of Gerrit after signing — M2c/M3c/M5 scope is narrower than GitHub/GitLab.
   - **Ops details**: EasyCLA GitHub App needs Merge Queue read permission (else checks hang in "Expected"); auto branch protection covers only the default branch; PMs get automated emails on repo rename/archive/delete.
 

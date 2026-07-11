@@ -55,7 +55,7 @@ Key mismatch: an org-lens admin (`b2b_org#writer`) is **not** a CLA manager, and
 
 - **Signatory signs by email, no LF SSO required**: the send-by-email CCLA path delivers a DocuSign link the signatory completes without any LF account (docs: `ccla-signatories/`). M4 must keep this path email-based — do not assume the signatory is an SS user.
 - **Embargo/OFAC checkbox** gates CCLA signing (as in M2).
-- **Cannot delete the last CLA Manager** (≥1 always); new managers require an LF SSO account.
+- **"Cannot delete the last CLA Manager"** (≥1 always) is documented, but **no enforcing code was found** in the v4 backend or Corporate Console — verify against the live API during M4 and decide where the guard belongs (recommend server-side in v4, not only SS UI). New managers require an LF SSO account.
 - **Known issue to respect**: a user's CLA role attaches to a single company at a time — constrains the role bridge for users active in multiple companies.
 - **ECLA version column**: acknowledgement tables show which CCLA version each contributor acknowledged — include in the org-lens tables.
 - **Approval-criteria deletion side effect**: deleting criteria auto-Disables related employee acknowledgements — surface the same warning UX as the console.
