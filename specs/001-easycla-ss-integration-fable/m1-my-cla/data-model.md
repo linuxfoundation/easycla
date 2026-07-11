@@ -59,6 +59,7 @@ Validation/invariants:
   identity: {
     matchedUserIds: number;        // count only — no raw EasyCLA IDs to client
     unmatched: boolean;            // true ⇒ show "history may be incomplete" hint
+    githubLinked: boolean;         // false ⇒ show "Don't see your CLAs? Link your GitHub account" CTA
   }
 }
 ```
@@ -71,7 +72,7 @@ Validation/invariants:
 
 ## Server-side session→identity mapping (in-memory, per request)
 
-`ResolvedClaIdentity`: `{ lfUsername, emails[], easyclaUserIds[] }` — computed per request (optionally memoized in the session for its lifetime), never persisted, never client-supplied. All upstream signature/PDF queries iterate only over `easyclaUserIds`; the PDF route re-verifies the requested `signatureID` is contained in the fetched agreement set before asking EasyCLA for the presigned URL (authorization boundary per research R3).
+`ResolvedClaIdentity`: `{ lfUsername, emails[], githubIds[], easyclaUserIds[] }` — GitHub IDs come from the Auth0 identities array (linked social accounts, numeric ID preferred over username); computed per request (optionally memoized in the session for its lifetime), never persisted, never client-supplied. All upstream signature/PDF queries iterate only over `easyclaUserIds`; the PDF route re-verifies the requested `signatureID` is contained in the fetched agreement set before asking EasyCLA for the presigned URL (authorization boundary per research R3).
 
 ## State transitions
 

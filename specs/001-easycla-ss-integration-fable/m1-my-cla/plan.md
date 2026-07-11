@@ -5,7 +5,7 @@
 
 ## Summary
 
-Add a read-only "My CLAs" module to LFX Self Serve's Me lens showing the logged-in user's signed ICLAs (with signed-PDF download) and valid ECLAs, backed by the existing EasyCLA v3/v4 APIs via the crowdfunding-style server-side integration pattern. The core technical problem is resolving the LF SSO identity to EasyCLA user record(s), including pre-LF-login history. Feature-flagged, no writes, no EasyCLA business-logic changes; at most one small read endpoint added to `cla-backend-go` if identity lookup by email proves necessary (research indicates existing endpoints likely suffice).
+Add a read-only "My CLAs" module to LFX Self Serve's Me lens showing the logged-in user's signed ICLAs (with signed-PDF download) and valid ECLAs, backed by the existing EasyCLA v3/v4 APIs via the crowdfunding-style server-side integration pattern. The core technical problem is resolving the LF SSO identity to EasyCLA user record(s), including pre-LF-login history: resolution unions three keys — LF username, verified emails, and GitHub account(s) linked to the LF identity (with a "Don't see your CLAs? Link your GitHub account" CTA when unlinked), since GitHub-derived EasyCLA records typically lack `lf_username`. Feature-flagged, no writes, no EasyCLA business-logic changes; one small read endpoint (`GET /v4/users/by-identity`) is expected in `cla-backend-go` because the only exposed generic search is scan-based and GitHub-ID lookup has no HTTP surface (research R2).
 
 ## Technical Context
 

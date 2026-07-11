@@ -4,19 +4,23 @@ All via lfx-gateway `/cla-service` prefix (`lfx-gateway/dynamic/services/cla-ser
 
 ## 1. Identity lookup
 
+Resolution unions three keys: LF username, verified emails, linked GitHub account(s) (research R2).
+
+### NEW (expected required): GET /cla-service/v4/users/by-identity?lfUsername=…&email=…&githubId=…
+
+- One small read endpoint to add in `cla-backend-go` (swagger-first in `cla.v2.yaml`, three-layer module pattern, read-only, no schema changes), wrapping the existing GSI-backed repository queries: `lf-username-index`, `lf-email-index` (+ `user_emails` match — verify `GetUsersByEmail` efficiency), `github-id-index` (`users/repository.go`; `GetUserByGitHubID` exists at service layer but is not exposed over HTTP today).
+- Accepts repeated `email`/`githubId` params; returns the matched user records (union, deduped by `user_id`).
+- Why new: the only exposed generic search, `GET /v3/users/search`, is a **DynamoDB table scan** (`users/repository.go:1279`) — unsuitable for per-request identity resolution; GitHub-ID lookup has no HTTP surface at all.
+- Requires EasyCLA-team review; same no-ownership-check caveat as §2 — treat as internal/service API, SS is the authorization boundary.
+
 ### GET /cla-service/v3/users/username/{userName}
 
-- Source: `cla-backend-go/users/handlers.go` (`GetUserByUserName`), swagger `cla.v1.yaml` `/users/username/{userName}`.
-- In: LF username from SS session. Out: EasyCLA user model (`user_id`, `lf_username`, `user_emails`, github identity) or 404.
+- Source: `cla-backend-go/users/handlers.go` (`GetUserByUserName`), swagger `cla.v1.yaml` `/users/username/{userName}`; GSI `lf-username-index`.
+- Usable immediately for the LF-username key (spike/bring-up) while the by-identity endpoint lands.
 
-### GET /cla-service/v3/users/search?searchTerm=…&searchField=…
+### (Supplementary if audience works) GET /cla-service/v4/user-from-token
 
-- Source: swagger `cla.v1.yaml` `/users/search`; used with email fields to catch pre-LF-login records.
-- Note: verify auth constraints and matching semantics in the T1 spike (handler requires a CLAUser context; emails are stored lowercased per recent backend change — lowercase the query).
-
-### (Preferred if audience works) GET /cla-service/v4/user-from-token
-
-- Derives the EasyCLA user from the caller's JWT — least-privilege identity resolution; only usable with the user-bearer token model.
+- Derives the EasyCLA user from the caller's JWT; only usable with the user-bearer token model. Cannot replace the union: it matches/creates by `lf_username`/`lf_email` only and never backfills `lf_username` onto GitHub-derived records (`cmd/server.go:930`), so it misses pre-LF-login history.
 
 ## 2. Agreements
 
@@ -33,6 +37,6 @@ All via lfx-gateway `/cla-service` prefix (`lfx-gateway/dynamic/services/cla-ser
 - Source: swagger `cla.v2.yaml` `/signatures/{signatureID}/signed-document`; returns presigned S3 URL (15-min TTL, bucket `cla-signature-files-{stage}`).
 - Called only after SS re-verifies ownership (contract `ss-me-clas-api.md`). Alternative ICLA-specific route `/v4/signatures/project/{claGroupID}/icla/{signatureID}/pdf` available if response shape fits better — pick one in implementation, don't use both.
 
-## Contingency (expected NOT needed)
+## Status of the "one small backend endpoint" allowance
 
-If `users/search` cannot serve email-based lookup for SS (auth or index constraints found in the spike): add one read endpoint to `cla-backend-go` — `GET /v4/users/by-identity?email=…` — swagger-first in `cla.v2.yaml`, three-layer module pattern, read-only, no schema changes. Decision point: end of T1 spike; requires EasyCLA-team review.
+Originally a contingency, `GET /v4/users/by-identity` (§1) is now **expected to be required** because `/v3/users/search` is scan-based and GitHub-ID lookup has no HTTP surface. Final confirmation at the end of the T1 spike; the endpoint stays within the spec's "at most one small read endpoint, no schema changes" boundary.

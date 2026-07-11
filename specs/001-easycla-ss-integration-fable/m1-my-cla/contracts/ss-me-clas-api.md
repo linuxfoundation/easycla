@@ -31,11 +31,12 @@ Returns the logged-in user's agreements.
       "pdfAvailable": false
     }
   ],
-  "identity": { "matchedUserIds": 2, "unmatched": false }
+  "identity": { "matchedUserIds": 2, "unmatched": false, "githubLinked": true }
 }
 ```
 
 - **Behavior**: ICLAs listed in any status with labels; ECLAs only when valid; sorted `signedOn` desc; empty `agreements` + `identity.unmatched=true` drives the "no CLA history found for your account" empty state.
+- **GitHub-link CTA**: when `identity.githubLinked=false` (no GitHub account linked to the LF identity), the UI shows "Don't see your CLAs? Link your GitHub account" pointing into SS's existing identity-linking flow (`/social/callback` social-connection pattern); on return, the page re-fetches and resolution now includes the linked GitHub ID (research R2).
 - **Errors**: 502 with `{ code: "UPSTREAM_ERROR" }` when EasyCLA is unavailable (UI shows retryable error); identity-resolution failure is not an error (returns empty + `unmatched`).
 
 ## GET /api/me/clas/:signatureId/pdf-url

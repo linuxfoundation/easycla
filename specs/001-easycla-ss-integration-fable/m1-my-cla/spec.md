@@ -22,7 +22,8 @@ A contributor logs into LFX Self Serve and, under the Me lens, opens "My CLAs". 
 - **FR-002**: Self Serve MUST display all of the user's currently valid ECLAs with company name, project/CLA group, and acknowledgement date, and MUST NOT offer a PDF for ECLAs (none exists).
 - **FR-003**: Users MUST be able to download the signed PDF for each of their signed ICLAs via a time-limited link.
 - **FR-004**: The view MUST be read-only; any signing affordance MUST link out to the existing Contributor Console.
-- **FR-005**: The system MUST resolve the Self Serve identity (LF SSO) to the user's EasyCLA user record(s), including users with multiple linked emails/GitHub identities and pre-LF-login history, and aggregate agreements across them.
+- **FR-005**: The system MUST resolve the Self Serve identity (LF SSO) to the user's EasyCLA user record(s) by LF username, verified emails, AND GitHub account(s) linked to the LF identity — covering pre-LF-login history — and aggregate agreements across all matched records.
+- **FR-005a**: When no GitHub account is linked to the LF identity (or no agreements are found), the UI MUST offer a "Don't see your CLAs? Link your GitHub account" action into Self Serve's existing identity-linking flow, and re-resolve after linking.
 - **FR-006**: Users MUST see only their own agreements; no access to other users' signature data through this surface.
 
 ## Success Criteria
@@ -33,7 +34,7 @@ A contributor logs into LFX Self Serve and, under the Me lens, opens "My CLAs". 
 ## Scope boundaries
 
 In: Me-lens module `/me/clas`, SS server routes, identity resolution + telemetry, PDF presigned-URL hand-off, empty state, feature flag.
-Out: any signing/writes, CCLA data (M4), approval lists/roles, changes to the PR remediation link, EasyCLA backend changes (one read endpoint only as documented contingency — see [contracts/upstream-easycla-api.md](contracts/upstream-easycla-api.md)).
+Out: any signing/writes, CCLA data (M4), approval lists/roles, changes to the PR remediation link, EasyCLA backend changes beyond the single expected read endpoint `GET /v4/users/by-identity` — see [contracts/upstream-easycla-api.md](contracts/upstream-easycla-api.md).
 
 ## Design artifacts
 

@@ -12,14 +12,18 @@ All Technical Context unknowns resolved. Facts verified in code on 2026-07-11 un
 
 ## R2. Identity resolution: LF SSO → EasyCLA user record(s)
 
-**Decision**: resolve server-side in SS, in order:
-1. `GET /v3/users/username/{userName}` (handler `users/handlers.go:198` `GetUserByUserName`) with the session's LF username → primary EasyCLA `userID`.
-2. If not found or to catch pre-LF-login history: `GET /v3/users/search` with `searchField=user_emails` / `lf_email` against the user's verified emails (from session claims; optionally enriched via `lfx-v2-auth-service` NATS lookup, which SS already uses). Union all matched user records; query R1 per `userID`; merge + dedupe agreements.
-3. Instrument: emit telemetry counting (a) no-match users, (b) multi-record users — the M2 launch gate metric from the milestone doc.
+**Decision**: resolve server-side in SS using **three keys, unioned**:
+1. **LF username** — `GET /v3/users/username/{userName}` (handler `users/handlers.go:198`; GSI `lf-username-index`).
+2. **Verified emails** — all verified emails on the LF identity (session claims, enriched via `lfx-v2-auth-service` NATS lookup which SS already uses); matched against `lf_email` and `user_emails`.
+3. **Linked GitHub account(s)** — SS/Auth0 supports linking GitHub to the LF identity (existing social-connection flow, `/social/callback`); the linked identity provides the GitHub numeric ID + username. GitHub-derived EasyCLA records (the ones created by the PR webhook, typically missing `lf_username`) are keyed on exactly this — it is the **highest-precision key** for pre-LF-login history. Prefer the immutable numeric `github_id` over username (renames/recycling).
 
-**Rationale**: both lookup endpoints already exist — the contingency `cla-backend-go` endpoint is **not needed** unless dev testing shows `users/search` can't match by email reliably (e.g., auth constraints or index gaps; recent "downcase emails" work reduces casing misses). Keep the contingency in scope but expect to drop it.
+Union all matched user records; query R1 per `userID`; merge + dedupe agreements. Telemetry: count (a) no-match users, (b) multi-record users, (c) resolutions that only succeeded via GitHub link — the M2 launch-gate metrics.
 
-**Alternatives considered**: new `GET /v4/users/by-identity` (only as contingency); client-side resolution (rejected — leaks other users' data paths, violates server-side enforcement); using `GET /v4/user-from-token` (attractive — derives the EasyCLA user from the caller's token — but depends on SS's token being an accepted audience; evaluate during T1 spike, use if it works since it's the least-privilege option).
+**UX hook**: when the result set is empty or the LF identity has no linked GitHub account, the page shows a "Don't see your CLAs? Link your GitHub account" call-to-action into SS's existing identity-linking flow, then re-resolves.
+
+**Upstream API gap (verified — changes the contingency assessment)**: the GSI-backed lookups all exist server-side (`lf-username-index`, `lf-email-index`, `github-id-index` in `users/repository.go`), but **`GetUserByGitHubID`/`GetUserByGitHubUsername` are not exposed over HTTP**, and the only generic search that is (`GET /v3/users/search`) performs a **DynamoDB table scan** with a filter expression (`users/repository.go:1279`) — unsuitable for per-request resolution. Therefore the previously-contingent EasyCLA endpoint is now **expected to be required**: `GET /v4/users/by-identity?lfUsername=…&email=…&githubId=…` (one small read endpoint wrapping the existing GSI queries; swagger-first; no schema changes). See `contracts/upstream-easycla-api.md`.
+
+**Alternatives considered**: `/v3/users/search` for email/GitHub matching (rejected — table scan); client-side resolution (rejected — leaks other users' data paths, violates server-side enforcement); `GET /v4/user-from-token` (useful for the LF-username record if the token audience works, but by design it only matches/creates by `lf_username`/`lf_email` — misses GitHub-derived history, and per `cmd/server.go:930` never backfills `lf_username`, so it cannot replace the union).
 
 ## R3. AuthN/AuthZ toward EasyCLA: which token does SS send?
 
