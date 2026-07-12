@@ -19,7 +19,7 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Contributor views their CLAs in Self Serve (Priority: P1)
+### User Story 1 (Milestone 1) - Contributor views their CLAs in Self Serve (Priority: P1)
 
 A contributor logs into LFX Self Serve and, under the Me lens, opens "My CLAs". They see every ICLA they have signed and every currently valid ECLA (employee acknowledgement), each showing the project/CLA group, signing date, and status. For signed ICLAs they can download the signed PDF. Actions that create new agreements (signing) still route to the existing Contributor Console.
 
@@ -36,7 +36,7 @@ A contributor logs into LFX Self Serve and, under the Me lens, opens "My CLAs". 
 
 ---
 
-### User Story 2 - Contributor signs an ICLA via Self Serve (Priority: P2)
+### User Story 2 (Milestone 2) - Contributor signs an ICLA via Self Serve (Priority: P2)
 
 A contributor opens a PR on a CLA-gated GitHub repository. The EasyCLA status check fails with "Signed Agreement Missing". Clicking the check's details link now lands the contributor in Self Serve (instead of the Contributor Console), where they choose "Individual contributor", review the ICLA, and are taken through the electronic-signature ceremony. On completion they are returned to their PR and the status check turns green.
 
@@ -53,7 +53,7 @@ A contributor opens a PR on a CLA-gated GitHub repository. The EasyCLA status ch
 
 ---
 
-### User Story 3 - Employee acknowledges a corporate CLA via Self Serve (Priority: P3)
+### User Story 3 (Milestone 3) - Employee acknowledges a corporate CLA via Self Serve (Priority: P3)
 
 A contributor whose employer has signed a CCLA clicks the failed PR check, lands in Self Serve, chooses "Corporate contributor", selects their company, and — being on the company's approval list — confirms the employee acknowledgement (ECLA). If they are not on the approval list they can notify their company's CLA managers; if their company has not signed a CCLA they can start the CLA-manager designation / company-admin invitation flow. After this milestone the Contributor Console is retired.
 
@@ -71,7 +71,7 @@ A contributor whose employer has signed a CCLA clicks the failed PR check, lands
 
 ---
 
-### User Story 4 - CLA manager administers their company's CLAs in the Organization lens (Priority: P4)
+### User Story 4 (Milestone 4) - CLA manager administers their company's CLAs in the Organization lens (Priority: P4)
 
 A CLA manager opens the Organization lens in Self Serve and manages everything they do in the Corporate Console today: view signed CCLAs per project, sign new CCLAs (as/with a CLA signatory), maintain approval lists (email, domain, GitHub org/username, GitLab), view employee acknowledgements, add/remove CLA managers, toggle auto-create-ECLA, view activity logs, and export CSVs. After parity is reached the Corporate Console is retired.
 
@@ -88,7 +88,7 @@ A CLA manager opens the Organization lens in Self Serve and manages everything t
 
 ---
 
-### User Story 5 - Project admin configures EasyCLA in the Project lens (Priority: P5)
+### User Story 5 (Milestone 5) - Project admin configures EasyCLA in the Project lens (Priority: P5)
 
 A project administrator manages EasyCLA setup from Self Serve's Project lens instead of PCC: create/edit CLA groups (ICLA/CCLA/ICLA-required flags), manage CLA templates (preview and regenerate PDFs), connect GitHub organizations (EasyCLA GitHub App) and enroll repositories, manage Gerrit instances and GitLab groups, view/invalidate signatures, and view events. EasyCLA functionality is then removed from PCC.
 
@@ -104,7 +104,7 @@ A project administrator manages EasyCLA setup from Self Serve's Project lens ins
 
 ---
 
-### User Story 6 - Platform operates EasyCLA APIs as a V2 Kubernetes service (Priority: P6)
+### User Story 6 (Milestone 6) - Platform operates EasyCLA APIs as a V2 Kubernetes service (Priority: P6)
 
 The platform team runs EasyCLA's APIs as an LFX V2 service on Kubernetes (replacing Lambdas behind API Gateway), with platform-standard authentication/authorization, observability, and deployment. Optionally, storage moves from DynamoDB to Postgres. No user-visible behavior changes.
 
