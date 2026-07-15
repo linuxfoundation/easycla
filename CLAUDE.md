@@ -15,7 +15,7 @@ The frontend consoles (Project/Corporate/Contributor) live in **separate reposit
 ## Repository Layout
 
 - `cla-backend-go/` — **primary backend**, Go. Powers `/v3` (EasyCLA v1, us-east-1) and `/v4` (EasyCLA v2, us-east-2, integrates with LFX Platform + Salesforce). Deployed as AWS Lambdas.
-- `cla-backend/` — Serverless Framework **deployment stack** (us-east-1). No application code of its own (the Python backend has been removed): it deploys Go binaries built elsewhere — the `/v3` API and worker lambdas (dynamo-events, metrics, zipbuilder, gitlab-repository-check, user-subscribe) from `cla-backend-go/`, the `/v1`/`/v2` `legacy-api-lambda` from `cla-backend-legacy/`, and the API Gateway authorizer from `cla-backend/auth/`.
+- `cla-backend/` — Serverless Framework **deployment stack** (us-east-1). The Python backend has been removed; the sole application code it still owns is the API Gateway authorizer (`cla-backend/auth/main.go`, `cla-backend/auth/authorizer/`). Otherwise it deploys Go binaries built elsewhere — the `/v3` API and worker lambdas (dynamo-events, metrics, zipbuilder, gitlab-repository-check, user-subscribe) from `cla-backend-go/`, and the `/v1`/`/v2` `legacy-api-lambda` from `cla-backend-legacy/`.
 - `cla-backend-legacy/` — Go module (own `go.mod`): the Go implementation of the legacy `/v1`/`/v2` API surface (replaced the Python backend). Built as `bin/legacy-api-lambda` and deployed via `cla-backend/serverless.yml` on the original `api.*` domains. Responses carry `X-EasyCLA-Backend: cla-backend-legacy` headers; parity tooling lives under `internal/parity`.
 - `cla-sss-base/` — standalone Go module (own `go.mod`): client for the Sanctions Screening Service (SSS).
 - `scripts/`, `utils/` — operational shell/Python scripts (data audits, DynamoDB manipulation, deploys, credential rotation). Many `utils/*.sh` scripts operate directly against AWS environments.
@@ -47,7 +47,7 @@ The API is **swagger-first**. `gen/` is fully generated and is deleted/rebuilt b
 
 ### Module architecture pattern
 
-Feature modules (e.g. `signatures/`, `approval_list/`, `company/`, `project/`, and everything under `v2/`) follow a consistent three-layer split:
+Domain feature modules (e.g. `signatures/`, `approval_list/`, `company/`, `project/`, and most packages under `v2/`) follow a consistent three-layer split, though a module omits a layer it doesn't need (e.g. `v2/health` is handler-only, `v2/project-service` is a generated client with no handlers/service/repository):
 
 - `handlers.go` — a `Configure(api, service, ...)` function that wires generated swagger operations to service calls. Handlers do request/response translation only.
 - `service.go` — business logic, defined behind an interface; the unit-testable layer.
@@ -72,7 +72,7 @@ STAGE=dev ADDR=":5000" make run-local   # run locally on :5000 pointing at dev e
 
 Health check: `http://localhost:5000/v2/health` (response includes `X-EasyCLA-Backend: cla-backend-legacy`). Port 5000 matches the Cypress functional-test helpers (`tests/functional/utils/run-single-test-local.sh` with `V=1`/`V=2`).
 
-Deployment: the built binary is copied into `cla-backend/bin/` and deployed from the `cla-backend` Serverless stack (`yarn deploy:<stage>` from `cla-backend/`).
+Deployment: the built binary is copied into `cla-backend/bin/` and deployed from the `cla-backend` Serverless stack (`yarn deploy:dev`, `yarn deploy:staging`, or `yarn deploy:prod` from `cla-backend/`).
 
 ## AWS Environments & Local Development
 
@@ -82,7 +82,7 @@ Be careful: scripts in `utils/` and `scripts/` can mutate DynamoDB in whichever 
 
 ## Conventions
 
-- **License headers are enforced in CI.** New code files need `// SPDX-License-Identifier: MIT`; docs need `SPDX-License-Identifier: CC-BY-4.0`. `make lint` runs `check-headers.sh`.
+- **License headers are enforced in CI for source files** (`.go`, `.py`, `.sh`, `.yaml`/`.yml`, `.txt` — Markdown docs are not scanned) via `check-headers.sh`. New code files need `// SPDX-License-Identifier: MIT`; docs need `SPDX-License-Identifier: CC-BY-4.0` by convention. Only `cla-backend-go`'s `make lint` invokes `check-headers.sh`; `cla-backend-legacy`'s `make lint` (go fmt + go vet) does not.
 - **DCO required** — every commit needs `Signed-off-by`.
 - Use "Approved List" terminology, not "whitelist" (renamed across code, APIs, and specs as of 8/2025).
 - Bot CLA exemptions: see `BOT_ALLOWLIST.md`. Co-authors support: see `CO_AUTHORS.md`. PR-check author/co-author caching design: see `COMMIT_AUTHORS_CACHING.md`.
