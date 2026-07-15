@@ -39,7 +39,7 @@ make all-mac        # full pipeline: clean swagger deps fmt build test lint (all
 
 Run a single test: `go test -v ./signatures/ -run TestName`
 
-Run locally (points at a real AWS environment — see below): build, set env, then `./bin/cla-mac`. Health checks at `http://localhost:8080/v3/ops/health` and `/v4/ops/health`. Set `GH_ORG_VALIDATION=false` to bypass GitHub auth checks for local curl/Postman testing.
+Run locally (points at a real AWS environment — see below): build, set env, then `./bin/cla-mac` (from `make build-mac`) or `./bin/cla` (from `make build-linux`). Health checks at `http://localhost:8080/v3/ops/health` and `/v4/ops/health`. Set `GH_ORG_VALIDATION=false` to bypass GitHub auth checks for local curl/Postman testing.
 
 ### Swagger code generation (important)
 
@@ -82,7 +82,7 @@ Be careful: scripts in `utils/` and `scripts/` can mutate DynamoDB in whichever 
 
 ## Conventions
 
-- **License headers are enforced in CI for source files** (`.go`, `.py`, `.sh`, `.yaml`/`.yml`, `.txt` — Markdown docs are not scanned) via `check-headers.sh`. New code files need `// SPDX-License-Identifier: MIT`; docs need `SPDX-License-Identifier: CC-BY-4.0` by convention. Only `cla-backend-go`'s `make lint` invokes `check-headers.sh`; `cla-backend-legacy`'s `make lint` (go fmt + go vet) does not.
+- **License headers are enforced in CI for source files** (`.go`, `.py`, `.sh`, `.yaml`/`.yml`, `.txt` — Markdown docs are not scanned) via `check-headers.sh`, which only checks for the `Copyright The Linux Foundation` line, not the SPDX identifier. New code files need `// SPDX-License-Identifier: MIT`; docs need `SPDX-License-Identifier: CC-BY-4.0` by convention, but the checker does not verify this. Only `cla-backend-go`'s `make lint` invokes `check-headers.sh`; `cla-backend-legacy`'s `make lint` (go fmt + go vet) does not.
 - **DCO required** — every commit needs `Signed-off-by`.
 - Use "Approved List" terminology, not "whitelist" (renamed across code, APIs, and specs as of 8/2025).
 - Bot CLA exemptions: see `BOT_ALLOWLIST.md`. Co-authors support: see `CO_AUTHORS.md`. PR-check author/co-author caching design: see `COMMIT_AUTHORS_CACHING.md`.
