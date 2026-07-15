@@ -1,6 +1,6 @@
 # Milestone 5 — EasyCLA Project Administration in the Project Lens; remove from PCC
 
-**Status**: Draft | **Depends on**: M4 patterns (role bridge, reporting components) | **Retires**: PCC EasyCLA module (v1-frontend) | **Effort**: L
+**Status**: **DECISION-GATED** (2026-07-15 review): whether project-level EasyCLA administration moves to Self Serve or stays in PCC is an open product decision (Kieran/Manish/Heather) — this document describes the move-to-SS option; do not start until the placement decision lands | **Depends on**: M4 patterns (role bridge, reporting components) | **Retires**: PCC EasyCLA module (v1-frontend) | **Effort**: L
 **Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
 
 ## Goal

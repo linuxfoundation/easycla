@@ -2,7 +2,8 @@
 
 **Feature Branch**: `001-easycla-ss-integration`
 **Created**: 2026-07-11
-**Status**: Draft (for Architecture Review + PM scope approval)
+**Status**: Reviewed 2026-07-15 — UI-first approach approved; see "Program review outcomes" below
+**Stakeholders**: Heather (lead PM) · Nuno (UI/UX design) · Michal (engineering) · Kieran (strategy)
 **Input**: User description: "Integrate EasyCLA with LFX Self Serve: migrate Contributor Console and Corporate CLA Console functionality into Self Serve with feature parity, evaluate moving EasyCLA APIs to Kubernetes as a V2 service, and evaluate DynamoDB → Postgres migration. Break into six milestones."
 
 **Companion documents** (this directory):
@@ -217,6 +218,16 @@ The platform team runs EasyCLA's APIs as an LFX V2 service on Kubernetes (replac
 - Gerrit and GitLab remain supported platforms; M2/M3 are split into per-platform sub-milestones and console retirement requires all three.
 - Corporate Console's GraphQL BFF logic (aggregation, Salesforce lookups) is absorbed into Self Serve's Express server or EasyCLA APIs during M4; the BFF is retired with the console.
 - Sanctions screening (SSS) checks remain enforced in the backend for corporate flows regardless of UI.
+
+## Program review outcomes *(leadership review, 2026-07-15)*
+
+- **UI-first approved**: migrate UIs onto the existing EasyCLA backend APIs first; backend modernization (M6) in later phases — confirms Q3 below.
+- **Timeline**: target completion **Q3 / early Q4 2026** (tighter than the original end-of-Q4 framing) — argues for parallelizing M4/M5 design work early (Nuno adding SS placement placeholders now).
+- **M5 is decision-gated**: whether PCC EasyCLA administration moves to Self Serve **or stays in PCC** is an open product decision (Kieran/Manish/Heather) — M5 scope is conditional until resolved; avoid SS/PCC duplication.
+- **Landing page retirement**: the standalone EasyCLA landing page (`easycla-landing-page`) was judged redundant — users reach the correct flow via the PR-check link directly. Added to the M3 decommission package.
+- **Post-signing profile redirect**: after signing, redirect contributors to their SS profile to collect additional data (e.g., GitHub identity linking) without adding friction *before* signing — UX requirement candidate for M2/M3; synergizes with M1's identity mapping.
+- **LFID prerequisite confirmed**: account creation precedes CLA signing (matches the verified code behavior; Q1 below stands).
+- **Open engineering action (Michal)**: formalize the roles/permissions mapping feasibility between EasyCLA/ACS and Self Serve (basis: [00-overview](00-overview-fable.md) §2.4/§3 and milestone 04's role-bridge options).
 
 ## Resolved Decisions *(after review feedback, 2026-07-11)*
 

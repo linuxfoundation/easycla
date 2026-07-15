@@ -36,7 +36,7 @@ The brief flags role differences as the challenge here. Precisely scoped:
 1. Corporate path in SS mirroring flows 1–5 above (company search/add, pre-checks incl. sanctions messaging, ECLA record, ICLA chaining, request-authorization, designee + invite flows) — all via existing v2/v3/v4 endpoints; retry/async patterns live in the SS server, not the browser.
 2. **Per-platform sub-milestones — M3a (GitHub), M3b (GitLab), M3c (Gerrit)**: all three platforms are in scope; console retirement requires M3c (FR-026). Same cautions as M2's split: verify each platform's cutover switch exists, and keep the sub-milestones in one release train.
 3. **Email/notification re-pointing**: manager-notification and invite emails contain console URLs; templates must point at SS.
-4. **Decommission package**: redirect stub at the console's domain (bookmarks, old PR comments, docs links), landing-page/docs updates, then infra teardown.
+4. **Decommission package**: redirect stub at the console's domain (bookmarks, old PR comments, docs links), docs updates, then infra teardown — **including retirement of `easycla-landing-page`** (judged redundant at the 2026-07-15 review: users reach the correct flow via the PR-check link directly).
 
 ### Out
 

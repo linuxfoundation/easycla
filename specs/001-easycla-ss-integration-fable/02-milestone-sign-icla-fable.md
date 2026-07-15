@@ -33,6 +33,7 @@ The brief asked: *"SS will need to talk with DocuSign… maybe introduce a small
 1. **Entry route in SS** accepting the PR-check redirect context (CLA group, user, return URL) — a public/deep-link route that survives the login redirect (context must not be lost through Auth0).
 2. **Decision screen** (individual vs corporate) at guidance parity; "corporate" links to the Contributor Console until M3.
 3. **Individual flow**: project/CLA-group load, active-signature check, request-individual-signature, redirect to `sign_url`, truthful pending state ("signature processing — your PR check updates automatically") for the webhook-latency window.
+   - **Post-signing profile nudge** (2026-07-15 review): after returning from DocuSign, offer a low-friction pointer to the SS profile (GitHub linking, additional data) — after the PR redirect promise is honored, never before signing.
 4. **Config cutover mechanism**: flip `CLAContributorv2Base` per environment; documented rollback.
 5. **Endpoint inventory**: the flow's `/v2` endpoints (`active-signature`, `project`, …) are served by the legacy Go backend (`cla-backend-legacy`) — keep calling them as-is (no port needed). Verify SS's network path to them early: they live on the `api.*` domains via the `cla-backend` stack, and only `/v3`/`/v4` are confirmed routed through lfx-gateway.
 6. **Baseline metrics**: instrument Contributor Console completion rate *before* cutover so SC-002 is measurable.
