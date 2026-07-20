@@ -31,7 +31,7 @@
     "yarn-audit-fix": "^10.0.0"
   },
   "resolutions": {
-    "axios": "^1.16.1",
+    "axios": "^1.18.1",
     "tar": "^7.5.10",
     "ansi-regex": "^5.0.1",
     "aws-sdk": "^2.1329.0",
