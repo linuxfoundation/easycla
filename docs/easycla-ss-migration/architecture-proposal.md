@@ -90,7 +90,7 @@ Current-state facts the proposal relies on (verified in code; details in the [fe
 | P6 | **All three git platforms in scope** via per-platform sub-milestones, each with its own cutover switch and parity checklist | Prevents Gerrit/GitLab slipping and blocking console retirement late |
 | P7 | **The legacy `/v1`/`/v2` Go surface stays until M6**, covered by parity/contract tests — contributor flows still call it | Second API codebase inside the blast radius even for "UI-only" milestones; absorbed/retired at M6 |
 | P8 | **Email-based CCLA signatory signing is preserved** — the signatory signs via an emailed DocuSign link, never forced into SS/LF SSO | Documented product behavior; a distinct UX path that must survive M4 |
-| P9 | **Audit v4 API payloads for v1 user-service/org-service IDs and plan the mapping lookups** (API shapes unchanged this phase). Users: resolve via the `lfx.lookup_v1_user_by_{username\|email}` NATS RPC; orgs: v1 org service via the api-gw secondary token | user-service and org-service are being deprecated in the LFX v2 transition (users collapse to email/username references; orgs to name/domain except true B2B orgs). SS UI must not hard-depend on v1 IDs it cannot resolve later |
+| P9 | **Audit v4 API payloads for v1 user-service/org-service IDs and plan the mapping lookups** (API shapes unchanged this phase). Users: resolve via the `lfx.lookup_v1_user_sfid.by_username` / `.by_email` NATS RPCs (lfx-v1-sync-helper); orgs: v1 org service via the api-gw secondary token | user-service and org-service are being deprecated in the LFX v2 transition (users collapse to email/username references; orgs to name/domain except true B2B orgs). SS UI must not hard-depend on v1 IDs it cannot resolve later |
 
 ## 5. Top risks
 
