@@ -29,9 +29,7 @@ Union all matched user records; query R1 per `userID`; merge + dedupe agreements
 
 ## R3. AuthN/AuthZ toward EasyCLA: which token does SS send?
 
-**Decision**: two-step verification spike, then commit:
-1. Preferred: forward the user's bearer token through lfx-gateway to `/cla-service/v4/*` (gateway route `cla-service.yaml` applies `secured` middleware; EasyCLA v4 validates Auth0 JWTs). If EasyCLA accepts SS's audience, use it — least privilege and enables `user-from-token`.
-2. Fallback (crowdfunding precedent): dedicated audience via token exchange (`exchangeRefreshTokenForAudience` util) or SS M2M credentials, with the SS server binding the subject (session user) to every upstream query itself.
+**Decision (updated 2026-07-20 after the role-mapping feasibility analysis and architecture review — see [docs/easycla-ss-migration/](../../../docs/easycla-ss-migration/README.md))**: SS sends a user-scoped **access token minted for the api-gw audience** via the existing `exchangeRefreshTokenForAudience` util (never ID tokens). Correction to the original framing: EasyCLA v4 does **not** validate Auth0 JWTs on `/v4` — the gateway validates signature+issuer only (audience check disabled) and injects ACS-derived scopes as `X-ACL`, which v4 decodes; authorization keys on the username claim, not the audience. Remaining verification is operational, not architectural (spikes 1–2 in the feasibility memo: role-less-user access through the gateway ACS check per path; per-environment Auth0 audience grant). Fallback if spike 2 fails: M2M credentials with the SS server binding the subject (session user) to every upstream query itself.
 
 **Critical constraint (verified)**: v4 `GetUserSignatures` performs **no ownership check** — any authenticated principal can query any `userID`. Therefore the SS server is the authorization boundary: routes derive `userID` strictly from the session, never from request input. Also flag this upstream as a hardening observation (out of M1 scope).
 

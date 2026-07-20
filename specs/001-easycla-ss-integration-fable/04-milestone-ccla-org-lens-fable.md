@@ -28,7 +28,7 @@ Key mismatch: an org-lens admin (`b2b_org#writer`) is **not** a CLA manager, and
 
 **Options:**
 
-- **A. Bridge (recommended)**: SS asks EasyCLA "what CLA authority does this user have for this company?" (existing v4 role/manager endpoints or the user's ACS-derived permissions) and gates UI accordingly; every write still lands on v4, which enforces via ACS. One source of truth; no sync; matches M3's pattern. Cost: the org lens embeds an EasyCLA-specific authorization vocabulary (contained in the SS `cla` server module).
+- **A. Bridge (recommended)**: SS gates UI via the user's **self permission check** (`POST user-service/v1/me/permissions/checks` — the same ACS decision the gateway enforces; architecture-review guidance 2026-07-20), with the public v4 manager-list endpoint for display data and post-assignment pending states; every write still lands on v4, which enforces via ACS. One source of truth; no sync; matches M3's pattern. Cost: the org lens embeds an EasyCLA-specific authorization vocabulary (contained in the SS `cla` server module).
 - **B. Model CLA in OpenFGA now** (`cla_group#manager@user:x`, synced from ACS via fga-sync): platform-consistent, but creates a **second, non-enforcing copy** of CLA authority (v4 still checks ACS), with sync lag exactly where the designee flow is already async — a recipe for "SS says I can, EasyCLA says I can't". Only worth doing when enforcement moves (M6).
 - **C. Replace ACS roles with org-lens roles** ("org admin = CLA manager"): simplifies UX but **changes the legal/authorization semantics** of who can alter approval lists and sign CCLAs — a product/legal decision, not an engineering one; also breaks project-scoped CLA managers. Not recommended within a parity milestone.
 

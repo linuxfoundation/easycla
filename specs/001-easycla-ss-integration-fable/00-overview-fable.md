@@ -60,7 +60,7 @@ Six milestones, each independently shippable and reversible:
 
 1. **M1–M5: Self Serve is a new client of the existing EasyCLA APIs**, following the crowdfunding precedent: SS Express server gets a `cla` service module that calls `/cla-service/v3|v4` through lfx-gateway with the user's token (plus M2M where needed). No business logic is reimplemented; enforcement (approval lists, sanctions, roles) stays server-side in EasyCLA.
 2. **DocuSign never moves in M2–M4.** The consoles already only fetch a `sign_url` and redirect; SS does the same. A dedicated "DocuSign bridge service" is unnecessary — building one would duplicate webhook handling, PDF storage, and envelope state that already live in `v2/sign` (critical analysis in doc 02).
-3. **Roles: bridge, don't migrate, until M6.** SS org/project lenses ask EasyCLA (or ACS-derived claims) "what CLA authority does this user have here?" rather than modeling CLA in OpenFGA early. Reason: EasyCLA's backend enforces via ACS on every write — a parallel OpenFGA model would be cosmetic (UI-gating only) while creating a second source of truth to keep in sync. CLA object types enter OpenFGA when the API is rewritten (M6), i.e., when enforcement itself moves.
+3. **Roles: bridge, don't migrate, until M6.** SS org/project lenses gate UI via the user's self permission check against ACS (`user-service/v1/me/permissions/checks`, per architecture review 2026-07-20) rather than modeling CLA in OpenFGA early. Reason: EasyCLA's backend enforces via ACS on every write — a parallel OpenFGA model would be cosmetic (UI-gating only) while creating a second source of truth to keep in sync. CLA object types enter OpenFGA when the API is rewritten (M6), i.e., when enforcement itself moves.
 4. **Cutover per milestone is a config flip** (the SSM redirect base for contributor flows; lens feature flags for org/project), giving SC-007's rollback guarantee.
 
 ### Correction to a stated assumption
@@ -85,6 +85,7 @@ Partially. The role difference is the **defining challenge of M6** (and shapes M
 | Legacy `/v1`/`/v2` Go surface drifts from `/v4` during migration | Contributor flow outages | Single ownership of both surfaces; extend the existing parity/contract tests; absorb in M6 |
 | M6 rework of M3–M5 adapters | Wasted effort | Q3 decided at this review; keep SS↔EasyCLA integration behind one server-side module |
 | DocuSign webhook/timing edge cases resurface in new UI | "Signed but still red PR" complaints | Reuse backend flow untouched; add truthful pending states in SS |
+| CLA permissions invisible to the OpenFGA/v2-Swagger-based automatic docs generation (architecture review, 2026-07-20) | Permission docs gap during M4/M5 | Document role-bridge behavior manually (M4 exit criterion); resolved when CLA enters OpenFGA at M6 |
 
 ## 5. What was missing from the original framing
 
@@ -99,6 +100,7 @@ Beyond the six milestones as described, the program must also account for:
 - **Signature invalidation** semantics (PCC feature, M5).
 - **Metrics/insights endpoints** consumed by the Corporate Console (M4).
 - **API consumers beyond the consoles** (anyone calling v3/v4 directly; audit before M6 contract changes).
+- **v1 user-service/org-service IDs inside v4 payloads** (both services are being deprecated in the LFX v2 transition): audit where they appear and resolve for rendering via the `lfx.lookup_v1_user_by_{username|email}` NATS RPC (users) and the v1 org service over the api-gw secondary token (orgs) — architecture-review action 2026-07-20.
 - **Decommission work as first-class scope**: DNS/CDN teardown, redirect stubs for bookmarked console URLs, support-doc updates in lfx-product-documentation.
 - **Parity long-tail from the product documentation** (lfx-product-documentation/easycla/v2-current, reviewed 2026-07-11):
   - **Email-based CCLA signatory signing**: the CLA signatory signs via an emailed DocuSign link and **does not need an LF SSO account** — a distinct UX path that must survive M4 (don't force signatories into SS).

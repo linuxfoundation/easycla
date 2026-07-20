@@ -24,7 +24,7 @@ Project administrators configure EasyCLA from Self Serve's Project lens: CLA gro
 
 Simpler than M4: PCC's CLA permissions are all **project-scoped admin** authority — they map naturally onto the Project lens's existing "project writer/admin" concept. Two credible options:
 
-- **A. Map to project lens authority (recommended)**: SS gates the CLA admin module on the same project-admin relation used by the lens's other admin features; EasyCLA v4 continues its own server-side checks. Verify v4 accepts SS-authenticated calls for these operations (it authorizes PCC's users today via ACS-derived scopes — confirm the same claims arrive via SS's token path, or use the M2M + subject pattern from earlier milestones).
+- **A. Map to project lens authority (recommended)**: SS gates the CLA admin module on the same project-admin relation used by the lens's other admin features; EasyCLA v4 continues its own server-side checks. v4 accepts SS-authenticated calls with api-gw-audience access tokens (verified in the role-mapping feasibility analysis — authorization keys on the username, not the client/audience); confirm the project-scoped ACS policies admit these operations via spikes 1–2 in [docs/easycla-ss-migration/role-mapping-feasibility.md](../../docs/easycla-ss-migration/role-mapping-feasibility.md), or fall back to the M2M + subject pattern.
 - **B. Reproduce PCC's fine-grained 24-permission matrix**: fidelity, but the matrix mostly collapses to "project CLA admin: yes/no" in practice — reproduce only if an actual persona split (e.g., view-only staff) is confirmed by PM. Audit real role assignments before choosing.
 
 ## Scope
