@@ -1,8 +1,11 @@
+<!-- Copyright The Linux Foundation and each contributor to CommunityBridge.
+SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Roles/Permissions Mapping Feasibility — EasyCLA ↔ LFX Self Serve
 
 **For**: Heather (PM), Kieran (strategy), architecture review | **From**: Michal (engineering) | **Date**: 2026-07-15
-**Basis**: [00-overview-fable.md](00-overview-fable.md) §2.4/§3, [04-milestone-ccla-org-lens-fable.md](04-milestone-ccla-org-lens-fable.md) role options; code citations verified 2026-07-15, re-checked 2026-07-20
-**Answers**: the open engineering action from the 2026-07-15 leadership review ([spec.md](spec.md) "Program review outcomes")
+**Basis**: [00-overview-fable.md](../../specs/001-easycla-ss-integration-fable/00-overview-fable.md) §2.4/§3, [04-milestone-ccla-org-lens-fable.md](../../specs/001-easycla-ss-integration-fable/04-milestone-ccla-org-lens-fable.md) role options; code citations verified 2026-07-15, re-checked 2026-07-20
+**Answers**: the open engineering action from the 2026-07-15 leadership review ([spec.md](../../specs/001-easycla-ss-integration-fable/spec.md) "Program review outcomes")
 
 **How to read**: §0 is the answer. §1–§2 explain how EasyCLA authorization actually works (where most assumptions were wrong). §3–§5 are evidence tables. §6 is the decision. §7 is what to verify next. **[verified]** claims cite `file:line`; **[inferred]** claims are covered by a spike.
 
