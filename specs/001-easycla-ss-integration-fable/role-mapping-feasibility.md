@@ -200,6 +200,23 @@ Candidate read paths, assessed:
 
 **Net: the role difference is a contained adapter in the SS `cla` server module**, consistent with the program strategy (strangler with v4 as enforcement core until M6).
 
+### 6.1 UX consistency: how the bridge differs from SS-native permission management
+
+Concern raised in review: SS users may expect to manage permissions "the same way" everywhere, while CLA authority is managed through ACS. Assessment: **the storage split is invisible to users, but the *behavioral* differences are real and need explicit M4 design.**
+
+Context **[verified]**: SS permission management is already federated per domain — org admins via member-service (`lfx-self-serve/apps/lfx-one/src/server/services/org-lens-access.service.ts:60-102`), committee seats via committee-service, key contacts via member-service — each publishing OpenFGA tuples over NATS (`lfx-v2-fga-sync/docs/fga-catalog.md`; grants effective near-instantly). There is no unified permissions console. EasyCLA-in-SS follows the same shape (SS UI → domain service owns the grant); ACS is plumbing users never see, like member-service. What *does* leak to users:
+
+| Difference | SS-native modules | CLA module (bridged) | M4 design consequence |
+|---|---|---|---|
+| Grant latency | Near-instant (sync write + NATS) | **Async** (org-service → ACS → Salesforce; console polls 30×; ~30-min ACS read cache) | Honest **pending states** — no other SS module needs them |
+| Role model | `writer`/`auditor` per org | `cla-manager`/`signatory`/`designee` per **company × project/CLA group** | Own screens; can't reuse the Access tab |
+| org-admin ≠ CLA-manager | Adding a `writer` grants org-wide abilities | Grants **no** CLA authority | Explicit UX copy in both places — the likeliest user surprise |
+| People views | Access tab lists org roles | CLA managers invisible there | Decide: surface CLA roles read-only in People (cheap — the cla-managers endpoint is public, §5) or keep them in the CLA module only |
+| Eligibility/limits | none comparable | LF SSO required for new managers; one-company-at-a-time role; staff-admin disallowed on CLA writes | Support docs + error copy |
+| Support runbook | SS → member-service → FGA | SS → v4 → org-service → ACS → Salesforce | Feeds M4's exit criterion "role-bridge behavior documented for support" |
+
+Mitigating fact: all of this is the **status quo** — the Corporate Console behaves this way today. The new risk is contrast, not regression: SS-native modules set a faster baseline that makes the bridged CLA module look worse unless its pending/error states are deliberately designed.
+
 ---
 
 ## 7. Spike list (dev environment, curl-level; each ≤ half a day)
