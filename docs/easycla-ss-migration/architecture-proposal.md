@@ -100,14 +100,3 @@ Current-state facts the proposal relies on (verified in code; details in the [fe
 | M4 scope illusion: "migrate a console" hides a ~648-file GraphQL BFF | Sized XL; inventory-driven parity checklist is the contract with PM |
 | Dual-console feature drift during migration | Freeze console feature work per area once its SS milestone starts |
 | M6 rework of M3–M5 adapters | All SS↔EasyCLA integration behind one server module |
-
-## 6. What the review should challenge
-
-1. **P2/P3 rest on two unverified operational facts** — the spikes in [feasibility §7](role-mapping-feasibility.md): (a) do role-less users pass the gateway's ACS check on secured v4 read paths; (b) is the api-gw audience grant enabled for SS's Auth0 client per environment. If (a) fails, the fallback is M2M + server-side subject binding — still P2, slightly less clean.
-2. **The hybrid-strangler alternative**: stand up a small CLA read/query V2 service after M2 for M4/M5 to consume. Rejected for now (adds a service before the M6 go/no-go); worth revisiting if M6 is committed early.
-3. **UX consistency of the role bridge**: CLA grants are async while SS-native grants are near-instant; CLA roles won't appear in SS's People/Access views. Design consequences tabled in [feasibility §6.1](role-mapping-feasibility.md).
-4. **Hardening observation (independent of this program)**: EasyCLA v4 trusts the gateway-injected `X-ACL` header unconditionally; no authorizer/API key found on the v4 stack itself ([feasibility §3](role-mapping-feasibility.md), spike 4).
-
-## Deep-dive references (implementation specs — not required for the review)
-
-[Program spec & review outcomes](../../specs/001-easycla-ss-integration-fable/spec.md) · [architecture overview](../../specs/001-easycla-ss-integration-fable/00-overview-fable.md) · milestone docs [01](../../specs/001-easycla-ss-integration-fable/01-milestone-read-only-me-lens-fable.md)–[06](../../specs/001-easycla-ss-integration-fable/06-milestone-k8s-v2-api-fable.md) · [M1 research](../../specs/001-easycla-ss-integration-fable/m1-my-cla/research.md)
