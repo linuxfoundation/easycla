@@ -38,7 +38,7 @@ The program bridges two authorization systems that share nothing — different m
 ```mermaid
 flowchart TB
     subgraph EASYCLA["EasyCLA authorization world (today, enforcing)"]
-        ACS["ACS<br/>role + scope tuples<br/>cla-manager, cla-signatory, cla-manager-designee<br/>(Salesforce-backed Postgres)"]
+        ACS["ACS<br/>role + scope tuples<br/>cla-manager, cla-signatory, cla-manager-designee<br/>(LFX v1 service, own Postgres)"]
         SIGACL["DynamoDB signature ACL<br/>(names on the CCLA signature record)"]
         V4["EasyCLA v4 API<br/>enforces on every write"]
         ACS -->|"scopes injected as X-ACL<br/>by lfx-gateway per request"| V4
@@ -146,6 +146,8 @@ The verified chain, link by link:
 
 **Finding: no token-exchange project is needed — it's already built.** From the gateway's, ACS's, and v4's perspective, a request with SS's token is indistinguishable from the same user arriving via the Corporate Console: same username → same warden answer → same X-ACL → same `authUser`.
 
+**Direction (confirmed at architecture review, 2026-07-20)**: SS sends **access tokens** minted for the api-gw audience — the same access/refresh-token authentication the me/project lenses use — **never ID tokens**. The console's ID-token behavior above is documented as legacy evidence, not a pattern to follow; if the interim cutover requires the gateway/ACS/v4 to support both token types simultaneously, that adjustment is acceptable.
+
 Residual unknowns are operational, not architectural **[inferred, spikes 1–2]**: (a) the SS Auth0 client's grant for the api-gw audience per environment (the exchange currently uses `PCC_AUTH0_*` credentials — `auth.middleware.ts:237-241`); (b) whether warden **allows role-less users** on secured v4 read paths (contributors today mostly ride the *public* router, so this is genuinely untested).
 
 ---
@@ -160,7 +162,7 @@ sequenceDiagram
     participant M as CLA manager<br/>(console or SS)
     participant V4 as EasyCLA v4
     participant DDB as DynamoDB<br/>signature ACL
-    participant OS as org-service / ACS<br/>(Salesforce-coupled)
+    participant OS as org-service / ACS<br/>(LFX v1)
     participant RC as ACS read cache<br/>(~30 min)
 
     M->>V4: POST .../cla-manager (add manager)
@@ -168,21 +170,21 @@ sequenceDiagram
     V4->>OS: assign cla-manager role, project|org scope (asynchronous)
     Note over OS: propagation delay<br/>(consoles poll up to 30x today)
     OS-->>RC: role visible after propagation + cache expiry
-    Note over M,RC: consequence - "who is a manager" has two truths with different freshness.<br/>Gate UI on the signature-ACL-backed endpoint or on live v4 calls,<br/>not on cached permission strings
+    Note over M,RC: consequence - "who is a manager" has two truths with different freshness.<br/>UI gating uses the self permission check (same ACS decision the gateway enforces),<br/>the signature-ACL endpoint gives the freshest pending-state signal
 ```
 
 Candidate read paths, assessed:
 
 | Candidate | Auth needed | Latency | Staleness | Verdict |
 |---|---|---|---|---|
-| `GET /v4/company/{id}/cla-group/{g}/cla-managers` | **None** (public router, `security: []`) | 1 DynamoDB read | Signature ACL — updated synchronously; same store `ecla-auto-create` enforces | **Use** for "is user a manager of company × CLA group" |
+| `GET /v4/company/{id}/cla-group/{g}/cla-managers` | **None** (public router, `security: []`) | 1 DynamoDB read | Signature ACL — updated synchronously; same store `ecla-auto-create` enforces | Display data for manager lists; freshest **post-assignment signal** for pending-state UX |
 | `GET /v4/company/{id}/project/{sfid}/cla-managers` | Org scope on the company (`v2/company/handlers.go:144`) | gateway + ACS + DDB | same, but gateway decision cached 30 min | Use where org context established |
-| user-service `POST /me/permissions/checks` (console's method) | User's api-gw token | ACS resolution | **Up to ~30 min stale** — ACS caches warden/permission-check responses (`acs/middleware/cache.go:39,52-54`); overlaps badly with the async designee flow | Coarse gating only; never post-assignment confirmation |
+| user-service `POST /me/permissions/checks` (self permission check) | User's api-gw token | ACS resolution | ~30-min cache (`acs/middleware/cache.go:39,52-54`) — **matches enforcement staleness**, so UI and API agree | **Primary UI-gating signal** (architecture-review guidance): pre-checks the same ACS decision the gateway enforces |
 | ACS rolescopes APIs (`acs/userrole/transport_http.go:38-43,106-111`) | Service-level (M2M) | Postgres direct | 30-min cache on some routes | Fallback for admin/reporting views |
 | `cla-{stage}-user-permissions` DynamoDB table | — | — | — | **Reject**: feeds only the v3 OAuth authorizer (`cla-backend-go/user/repository_dynamo.go:114`, `auth/authorizer.go:148`); not v4 truth |
-| Optimistic call-through: attempt the v4 call, treat 403 as "no authority" | User's api-gw token | one round trip | Matches enforcement (including its 30-min gateway cache) | **Primary pattern** for actions |
+| Optimistic call-through: attempt the v4 call, treat 403 as "no authority" | User's api-gw token | one round trip | Matches enforcement (including its 30-min gateway cache) | Backstop: always handle 403 gracefully — enforcement is the final word |
 
-**Recommendation**: gate SS UI on the two signals enforcement itself uses — the signature-ACL-backed cla-managers endpoint for "manager of company × group" views, and optimistic v4 calls (403 ⇒ hide/disable) for everything scope-based. **Do not build a permission-string evaluator in SS**: the strings are an ACS/console vocabulary, they're cached up to 30 minutes, and v4 doesn't check them — it checks scopes resolved (and cached) at request time.
+**Recommendation (updated after architecture review, 2026-07-20)**: gate SS UI via the user's **self permission check** (`POST user-service/v1/me/permissions/checks`) — it pre-checks the same ACS decision the gateway enforces, so UI gating and API enforcement agree by construction, including cache behavior. Always handle v4/gateway 403s gracefully rather than trying to out-predict enforcement. The public cla-managers endpoint remains the data source for *rendering* manager lists and the freshest signal for post-assignment "pending" UX (it reflects the synchronous signature-ACL write before ACS propagation and cache expiry). Do not build a permission-string evaluator in SS beyond these checks.
 
 ---
 
@@ -209,12 +211,12 @@ Context **[verified]**: SS permission management is already federated per domain
 
 | Difference | SS-native modules | CLA module (bridged) | M4 design consequence |
 |---|---|---|---|
-| Grant latency | Near-instant (sync write + NATS) | **Async** (org-service → ACS → Salesforce; console polls 30×; 30-min warden cache — affects revocations too) | Honest **pending states** — no other SS module needs them |
+| Grant latency | Near-instant (sync write + NATS) | **Async** (org-service → ACS; console polls 30×; 30-min warden cache — affects revocations too) | Honest **pending states** — no other SS module needs them |
 | Role model | `writer`/`auditor` per org | `cla-manager`/`signatory`/`designee` per **company × project/CLA group** | Own screens; can't reuse the Access tab |
 | org-admin ≠ CLA-manager | Adding a `writer` grants org-wide abilities | Grants **no** CLA authority | Explicit UX copy in both places — the likeliest user surprise |
 | People views | Access tab lists org roles | CLA managers invisible there | Decide: surface CLA roles read-only in People (cheap — the cla-managers endpoint is public, §5) or keep them in the CLA module |
 | Eligibility/limits | none comparable | LF SSO required for new managers; one-company-at-a-time role; staff-admin disallowed on CLA writes | Support docs + error copy |
-| Support runbook | SS → member-service → FGA | SS → v4 → org-service → ACS → Salesforce | Feeds M4's exit criterion "role-bridge behavior documented for support" |
+| Support runbook | SS → member-service → FGA | SS → v4 → org-service → ACS | Feeds M4's exit criterion "role-bridge behavior documented for support" |
 
 Mitigating fact: all of this is the **status quo** — the Corporate Console behaves this way today. The new risk is contrast, not regression: SS-native modules set a faster baseline that makes the bridged CLA module look worse unless its pending/error states are deliberately designed.
 

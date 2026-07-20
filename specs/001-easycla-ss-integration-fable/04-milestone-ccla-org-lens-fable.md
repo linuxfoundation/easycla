@@ -11,7 +11,7 @@ Everything a CLA manager or signatory does in the Corporate CLA Console moves to
 
 - **The console is two systems**: an Angular 13/NgRx frontend (~161 components) and a **dedicated GraphQL BFF** (Node/Express + Apollo, ~648 files, 20+ CLA queries / 8 mutations) that bridges to `/cla-service/v4` REST and aggregates (companies, Salesforce signing entities, metrics, Elasticsearch/Snowflake for analytics). Migration must absorb or replace the BFF's logic, not just the screens.
 - **Feature inventory** (verified): CCLA signing initiation (`POST /v4/request-corporate-signature`, incl. send-by-email to a signatory), signing-entity management, approval-list CRUD (email, domain, GitHub org, GitHub username, GitLab; `PUT …/approval-list`), auto-create-ECLA toggle (`PUT …/ecla-auto-create`), employee acknowledgements (paginated/searchable), ICLA listings per CLA group, CLA manager add/remove/designee (+ requests), signed-CLA views at foundation and project level, active-CLA list, CCLA PDF viewing, activity logs + CSV export, CLA metrics, CLA-enabled foundation/project browsing.
-- **Permissions today**: Auth0 login → permission strings like `signature_approval_list:update:project|organization:{projectId}|{companyId}` resolved from **ACS** (roles `cla-manager`, `cla-signatory`, `cla-manager-designee`, hardcoded in ACS, Salesforce-backed, org- and project|org-scoped).
+- **Permissions today**: Auth0 login → permission strings like `signature_approval_list:update:project|organization:{projectId}|{companyId}` resolved from **ACS** (roles `cla-manager`, `cla-signatory`, `cla-manager-designee`, hardcoded in ACS (LFX v1 component, own database), org- and project|org-scoped).
 - **SS Organization lens today**: dark-launched; access model is `b2b_org#writer/auditor` OpenFGA relations via member-service; per-org People/Settings modules exist. **No CLA concepts.**
 
 ## The role-mapping decision (core of this milestone)
@@ -20,7 +20,7 @@ Two authorization worlds meet here:
 
 | | EasyCLA/ACS | SS Org lens |
 |---|---|---|
-| Model | role + scope tuples (Salesforce-backed) | OpenFGA relations (`b2b_org#writer`…) |
+| Model | role + scope tuples (ACS, LFX v1) | OpenFGA relations (`b2b_org#writer`…) |
 | Granularity | per company **and per project/CLA group** | per org (today) |
 | Enforced by | EasyCLA v4 backend on every write | each V2 service via Heimdall/OpenFGA |
 

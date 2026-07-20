@@ -18,7 +18,7 @@ The console's corporate flow, verified in code:
 5. **No CCLA**: two sub-flows —
    - *Become CLA manager designee* (requires LF login): `POST /v4/company/{companyId}/claGroup/{claGroupId}/cla-manager-designee`, then poll `…/is-cla-manager-designee` **up to 30 times** (ACS/Salesforce role assignment is async), then hand off to the Corporate Console.
    - *Invite someone*: `GET /v4/company/{sfid}/admin` → `POST /v4/user/{id}/invite-company-admin` (contact admin, or name+email a CLA manager candidate).
-6. **Roles touched**: `cla-manager-designee` (assigned here), `cla-signatory`/`cla-manager` (assigned downstream when the CCLA gets signed) — all ACS roles, Salesforce-backed, hardcoded in ACS.
+6. **Roles touched**: `cla-manager-designee` (assigned here), `cla-signatory`/`cla-manager` (assigned downstream when the CCLA gets signed) — all ACS roles, hardcoded in ACS.
 7. **Gerrit** has its own entry (`/cla/gerrit/project/{id}/{type}`, `POST /v1/user/gerrit`, LF login mandatory). **GitLab** entry is constructed by `v2/gitlab_sign` on the backend.
 
 ## Role-model reality check
@@ -26,7 +26,7 @@ The console's corporate flow, verified in code:
 The brief flags role differences as the challenge here. Precisely scoped:
 
 - **What M3 actually does with roles**: *assigns* `cla-manager-designee` via the existing v4 endpoint and *reads* CLA manager lists. It does not evaluate CLA roles for UI gating. The EasyCLA backend + ACS keep doing assignment and enforcement — **SS does not need OpenFGA/CLA modeling for M3**.
-- **What is genuinely hard**: the *asynchrony* (retry loops against Salesforce-backed ACS) and the *hand-off target*. Today the designee flow ends by sending the user to the Corporate Console; if M4 isn't done yet, M3 must still hand off to the Corporate Console — an awkward SS→legacy-console hop that argues for keeping M3 and M4 close together on the roadmap, or accepting the hop temporarily.
+- **What is genuinely hard**: the *asynchrony* (retry loops against asynchronous ACS role assignment) and the *hand-off target*. Today the designee flow ends by sending the user to the Corporate Console; if M4 isn't done yet, M3 must still hand off to the Corporate Console — an awkward SS→legacy-console hop that argues for keeping M3 and M4 close together on the roadmap, or accepting the hop temporarily.
 - `lfx-v2-auth-service` (confirmed): NATS-based identity/user-metadata service — relevant for identity enrichment, **not** a role system. EasyCLA role management lives in **ACS** (roles hardcoded there; assignment via organization-service; EasyCLA v4 is routed through lfx-gateway).
 
 ## Scope

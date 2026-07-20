@@ -51,7 +51,7 @@ Six milestones, each independently shippable and reversible:
 
 ### 2.4 Roles today (the "role difference" made concrete)
 
-- EasyCLA roles `cla-manager`, `cla-signatory`, `cla-manager-designee` are **hardcoded in ACS** (Salesforce-backed Postgres), scoped `organization` or `project|organization`. EasyCLA assigns them via organization-service/ACS APIs; assignment is asynchronous (hence the console's retry loops).
+- EasyCLA roles `cla-manager`, `cla-signatory`, `cla-manager-designee` are **hardcoded in ACS** (an LFX v1 component with its own Postgres database), scoped `organization` or `project|organization`. EasyCLA assigns them via organization-service/ACS APIs; assignment is asynchronous (hence the console's retry loops).
 - LFX V2 authorization is **OpenFGA relations** synced from platform services; ACS and OpenFGA are separate systems with different models (role+scope tuples vs. relationship tuples) and different sources of truth.
 
 ## 3. Architectural strategy (recommended)
@@ -79,7 +79,7 @@ Partially. The role difference is the **defining challenge of M6** (and shapes M
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
 | Identity mapping gaps (LF account ↔ EasyCLA user records, esp. pre-LF-login history) | Users see empty/partial "My CLAs"; support load | M1 ships the mapping + telemetry on unmatched users before any signing moves |
-| ACS role assignment is async and Salesforce-coupled | Designee/manager flows in SS inherit today's retry-loop fragility | Keep retries server-side in SS; don't promise synchronous UX |
+| ACS role assignment is async | Designee/manager flows in SS inherit today's retry-loop fragility | Keep retries server-side in SS; don't promise synchronous UX |
 | Dual-console period (feature drift) | Fixes must land twice | Freeze console feature work per area once its SS milestone starts |
 | Gerrit/GitLab slip behind GitHub | Console retirement blocked late | Per-platform sub-milestones (M2a–c, M3a–c) inside one release train, each with a parity checklist |
 | Legacy `/v1`/`/v2` Go surface drifts from `/v4` during migration | Contributor flow outages | Single ownership of both surfaces; extend the existing parity/contract tests; absorb in M6 |
