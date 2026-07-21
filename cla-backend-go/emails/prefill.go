@@ -112,10 +112,7 @@ func (s *emailTemplateServiceProvider) GetCLAGroupTemplateParamsFromCLAGroup(cla
 
 	params := CLAGroupTemplateParams{}
 	params.CLAGroupName = claGroupModel.ProjectName
-	params.CorporateConsole = s.corporateConsoleV1
-	if claGroupModel.Version == utils.V2 {
-		params.CorporateConsole = s.corporateConsoleV2
-	}
+	params.CorporateConsole = s.corporateConsoleV2
 	params.Version = claGroupModel.Version
 
 	return params, nil
