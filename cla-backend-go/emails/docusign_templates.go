@@ -3,6 +3,8 @@
 
 package emails
 
+import "github.com/linuxfoundation/easycla/cla-backend-go/utils"
+
 type DocumentSignedTemplateParams struct {
 	CommonEmailParams
 	CLAGroupTemplateParams
@@ -29,8 +31,17 @@ const (
 )
 
 // RenderDocumentSignedTemplate renders RenderDocumentSignedTemplate
-func RenderDocumentSignedTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params DocumentSignedTemplateParams) (string, error) {
-	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
+func RenderDocumentSignedTemplate(svc EmailTemplateService, claGroupModelVersion, claGroupID, projectSFID string, params DocumentSignedTemplateParams) (string, error) {
+	var (
+		claGroupParams CLAGroupTemplateParams
+		err            error
+	)
+
+	if claGroupModelVersion == utils.V2 {
+		claGroupParams, err = svc.GetCLAGroupTemplateParamsFromCLAGroup(claGroupID)
+	} else {
+		claGroupParams, err = svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
+	}
 	if err != nil {
 		return "", err
 	}
