@@ -135,8 +135,8 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				if strings.Contains(err.Error(), "internal server error") {
 					return sign.NewRequestCorporateSignatureInternalServerError().WithPayload(errorResponse(reqID, err))
 				}
-				if strings.Contains(err.Error(), "is sanctioned") {
-					desc := "We’re sorry, but you are currently unable to sign the Corporate Contributor License Agreement (CCLA). If you believe this may be an error, please reach out to support"
+				if strings.Contains(err.Error(), "requires further review for trade compliance") {
+					desc := "We're sorry, but this organization requires additional trade compliance review, so the Contributor License Agreement (CLA) cannot be completed at this time. If you believe this is an error, please contact EasyCLA Support via the chat widget."
 					return sign.NewRequestCorporateSignatureForbidden().WithPayload(errorResponseWithDesc(reqID, err, desc))
 				}
 				if err == projects_cla_groups.ErrProjectNotAssociatedWithClaGroup {
