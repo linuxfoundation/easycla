@@ -4,55 +4,109 @@
 package emails
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
-func TestDocumentSignedTemplatesUseCLAGroupName(t *testing.T) {
+type documentSignedTemplateServiceStub struct {
+	params CLAGroupTemplateParams
+}
+
+func (s documentSignedTemplateServiceStub) PrefillV2CLAProjectParams(_ []string) ([]CLAProjectParams, error) {
+	return nil, errors.New("unexpected PrefillV2CLAProjectParams call")
+}
+
+func (s documentSignedTemplateServiceStub) GetCLAGroupTemplateParamsFromProjectSFID(_, _ string) (CLAGroupTemplateParams, error) {
+	return s.params, nil
+}
+
+func (s documentSignedTemplateServiceStub) GetCLAGroupTemplateParamsFromCLAGroup(_ string) (CLAGroupTemplateParams, error) {
+	return CLAGroupTemplateParams{}, errors.New("unexpected GetCLAGroupTemplateParamsFromCLAGroup call")
+}
+
+func TestRenderDocumentSignedTemplateUsesVersionAppropriateName(t *testing.T) {
 	const (
 		claGroupName = "Cloud Native Computing Foundation (CNCF)"
 		firstProject = "OpenTelemetry"
 	)
 
-	params := DocumentSignedTemplateParams{
-		CommonEmailParams: CommonEmailParams{RecipientName: "Heather"},
-		CLAGroupTemplateParams: CLAGroupTemplateParams{
-			CLAGroupName: claGroupName,
-			Projects: []CLAProjectParams{
-				{ExternalProjectName: firstProject},
-			},
-		},
-		PdfLink: "https://example.test/signed-cla.pdf",
-	}
+	projectText := "regarding the project " + firstProject + "."
+	claGroupText := "regarding the CLA Group " + claGroupName + "."
 
 	testCases := []struct {
-		name        string
-		version     string
-		templateStr string
+		name             string
+		version          string
+		prefilledVersion string
+		icla             bool
+		want             string
+		doNotWant        string
 	}{
-		{name: "V1 ICLA", version: utils.V1, templateStr: DocumentSignedICLATemplate},
-		{name: "V1 CCLA", version: utils.V1, templateStr: DocumentSignedCCLATemplate},
-		{name: "V2 ICLA", version: utils.V2, templateStr: DocumentSignedICLATemplate},
-		{name: "V2 CCLA", version: utils.V2, templateStr: DocumentSignedCCLATemplate},
+		{
+			name:             "V1 ICLA",
+			version:          utils.V1,
+			prefilledVersion: utils.V2,
+			icla:             true,
+			want:             projectText,
+			doNotWant:        claGroupText,
+		},
+		{
+			name:             "V1 CCLA",
+			version:          utils.V1,
+			prefilledVersion: utils.V2,
+			want:             projectText,
+			doNotWant:        claGroupText,
+		},
+		{
+			name:             "V2 ICLA",
+			version:          utils.V2,
+			prefilledVersion: utils.V1,
+			icla:             true,
+			want:             claGroupText,
+			doNotWant:        projectText,
+		},
+		{
+			name:             "V2 CCLA",
+			version:          utils.V2,
+			prefilledVersion: utils.V1,
+			want:             claGroupText,
+			doNotWant:        projectText,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			testParams := params
-			testParams.Version = tc.version
-			result, err := RenderTemplate(tc.version, DocumentSignedTemplateName, tc.templateStr, testParams)
-			if err != nil {
-				t.Fatalf("RenderTemplate() error = %v", err)
+			svc := documentSignedTemplateServiceStub{
+				params: CLAGroupTemplateParams{
+					CLAGroupName: claGroupName,
+					Version:      tc.prefilledVersion,
+					Projects: []CLAProjectParams{
+						{ExternalProjectName: firstProject},
+					},
+				},
 			}
 
-			expected := "regarding the CLA Group " + claGroupName + "."
-			if !strings.Contains(result, expected) {
-				t.Errorf("rendered email does not contain %q: %s", expected, result)
+			result, err := RenderDocumentSignedTemplate(
+				svc,
+				tc.version,
+				"project-sfid",
+				DocumentSignedTemplateParams{
+					CommonEmailParams: CommonEmailParams{RecipientName: "Heather"},
+					ICLA:              tc.icla,
+					PdfLink:           "https://example.test/signed-cla.pdf",
+				},
+			)
+			if err != nil {
+				t.Fatalf("RenderDocumentSignedTemplate() error = %v", err)
 			}
-			if strings.Contains(result, firstProject) {
-				t.Errorf("rendered email contains unrelated first project %q: %s", firstProject, result)
+
+			if !strings.Contains(result, tc.want) {
+				t.Errorf("rendered email does not contain %q: %s", tc.want, result)
+			}
+			if strings.Contains(result, tc.doNotWant) {
+				t.Errorf("rendered email unexpectedly contains %q: %s", tc.doNotWant, result)
 			}
 		})
 	}
