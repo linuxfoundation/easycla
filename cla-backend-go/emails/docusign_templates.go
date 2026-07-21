@@ -17,20 +17,20 @@ const (
 	// DocumentSignedTemplate is email template for
 	DocumentSignedICLATemplate = `
 		<p>Hello {{.RecipientName}},</p>
-		<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}}.</p>
+		<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
 		<p>The CLA has now been signed. You can download the signed CLA as a PDF <a href="{{.PdfLink}}" target="_blank" alt="ICLA Document Link">here</a>.</p>
 		`
 
 	DocumentSignedCCLATemplate = `
 		<p>Hello {{.RecipientName}},</p>
-		<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}}.</p>
+		<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
 		<p>The CLA has now been signed. You can download the signed CLA as a PDF <a href="{{.PdfLink}}" target="_blank" alt="CCLA Document Link">here</a>, or from within the <a href="{{.CorporateConsole}}" target="_blank"> EasyCLA CLA Manager console </a>.</p>
 		`
 )
 
 // RenderDocumentSignedTemplate renders RenderDocumentSignedTemplate
-func RenderDocumentSignedTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params DocumentSignedTemplateParams) (string, error) {
-	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
+func RenderDocumentSignedTemplate(svc EmailTemplateService, claGroupModelVersion, claGroupID string, params DocumentSignedTemplateParams) (string, error) {
+	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromCLAGroup(claGroupID)
 	if err != nil {
 		return "", err
 	}

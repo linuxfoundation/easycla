@@ -603,7 +603,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 		recipients := []string{utils.GetBestEmail(claUser)}
 
-		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectExternalID, emailParams)
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, signature.ProjectID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
 			return err
@@ -881,7 +881,7 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 
 		recipients := []string{utils.GetBestEmail(claUser)}
 
-		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectExternalID, emailParams)
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, signature.ProjectID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
 			return err
@@ -1044,7 +1044,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 
 		recipients := []string{utils.GetBestEmail(claUser)}
 
-		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectExternalID, emailParams)
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, signature.ProjectID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
 			return err
