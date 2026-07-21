@@ -29,15 +29,20 @@ func TestDocumentSignedTemplatesUseCLAGroupName(t *testing.T) {
 
 	testCases := []struct {
 		name        string
+		version     string
 		templateStr string
 	}{
-		{name: "ICLA", templateStr: DocumentSignedICLATemplate},
-		{name: "CCLA", templateStr: DocumentSignedCCLATemplate},
+		{name: "V1 ICLA", version: utils.V1, templateStr: DocumentSignedICLATemplate},
+		{name: "V1 CCLA", version: utils.V1, templateStr: DocumentSignedCCLATemplate},
+		{name: "V2 ICLA", version: utils.V2, templateStr: DocumentSignedICLATemplate},
+		{name: "V2 CCLA", version: utils.V2, templateStr: DocumentSignedCCLATemplate},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := RenderTemplate(utils.V2, DocumentSignedTemplateName, tc.templateStr, params)
+			testParams := params
+			testParams.Version = tc.version
+			result, err := RenderTemplate(tc.version, DocumentSignedTemplateName, tc.templateStr, testParams)
 			if err != nil {
 				t.Fatalf("RenderTemplate() error = %v", err)
 			}
