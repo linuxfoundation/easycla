@@ -8897,8 +8897,8 @@ func (h *Handlers) employeeSignaturePrecheck(ctx context.Context, projectID, com
 	if blocked {
 		fn := "employeeSignaturePrecheck"
 		sanctioned := map[string]any{
-			"sanctioned":  fmt.Sprintf("%s - user %s, company %s is sanctioned", fn, userID, companyID),
-			"description": "We’re sorry, but you are currently unable to sign the Employee Contributor License Agreement (ECLA). If you believe this may be an error, please reach out to support",
+			"sanctioned":  fmt.Sprintf("%s - user %s, company %s requires further review for trade compliance", fn, userID, companyID),
+			"description": "We're sorry, but this organization requires additional trade compliance review, so the Contributor License Agreement (CLA) cannot be completed at this time. If you believe this is an error, please contact EasyCLA Support via the chat widget.",
 			"user_id":     userID,
 			"company_id":  companyID,
 		}
