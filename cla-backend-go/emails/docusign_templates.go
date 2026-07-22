@@ -3,6 +3,8 @@
 
 package emails
 
+import "github.com/linuxfoundation/easycla/cla-backend-go/utils"
+
 type DocumentSignedTemplateParams struct {
 	CommonEmailParams
 	CLAGroupTemplateParams
@@ -17,25 +19,35 @@ const (
 	// DocumentSignedTemplate is email template for
 	DocumentSignedICLATemplate = `
 		<p>Hello {{.RecipientName}},</p>
-		<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}}.</p>
+		<p>This is a notification email from EasyCLA regarding the {{if eq .Version "v2"}}CLA Group {{.CLAGroupName}}{{else}}project {{.Project.ExternalProjectName}}{{end}}.</p>
 		<p>The CLA has now been signed. You can download the signed CLA as a PDF <a href="{{.PdfLink}}" target="_blank" alt="ICLA Document Link">here</a>.</p>
 		`
 
 	DocumentSignedCCLATemplate = `
 		<p>Hello {{.RecipientName}},</p>
-		<p>This is a notification email from EasyCLA regarding the project {{.Project.ExternalProjectName}}.</p>
+		<p>This is a notification email from EasyCLA regarding the {{if eq .Version "v2"}}CLA Group {{.CLAGroupName}}{{else}}project {{.Project.ExternalProjectName}}{{end}}.</p>
 		<p>The CLA has now been signed. You can download the signed CLA as a PDF <a href="{{.PdfLink}}" target="_blank" alt="CCLA Document Link">here</a>, or from within the <a href="{{.CorporateConsole}}" target="_blank"> EasyCLA CLA Manager console </a>.</p>
 		`
 )
 
 // RenderDocumentSignedTemplate renders RenderDocumentSignedTemplate
-func RenderDocumentSignedTemplate(svc EmailTemplateService, claGroupModelVersion, projectSFID string, params DocumentSignedTemplateParams) (string, error) {
-	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
+func RenderDocumentSignedTemplate(svc EmailTemplateService, claGroupModelVersion, claGroupID, projectSFID string, params DocumentSignedTemplateParams) (string, error) {
+	var (
+		claGroupParams CLAGroupTemplateParams
+		err            error
+	)
+
+	if claGroupModelVersion == utils.V2 {
+		claGroupParams, err = svc.GetCLAGroupTemplateParamsFromCLAGroup(claGroupID)
+	} else {
+		claGroupParams, err = svc.GetCLAGroupTemplateParamsFromProjectSFID(claGroupModelVersion, projectSFID)
+	}
 	if err != nil {
 		return "", err
 	}
 
 	params.CLAGroupTemplateParams = claGroupParams
+	params.Version = claGroupModelVersion
 	var template string
 	if params.ICLA {
 		template = DocumentSignedICLATemplate

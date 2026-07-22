@@ -278,11 +278,11 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	}
 	if sanctioned {
 		if input.CompanySfid != nil {
-			err = fmt.Errorf("company %s is sanctioned", *input.CompanySfid)
+			err = fmt.Errorf("company %s requires further review for trade compliance", *input.CompanySfid)
 		} else {
-			err = fmt.Errorf("company is sanctioned")
+			err = fmt.Errorf("company requires further review for trade compliance")
 		}
-		log.WithFields(f).WithError(err).Error("company is sanctioned")
+		log.WithFields(f).WithError(err).Error("company requires further review for trade compliance")
 		return nil, err
 	}
 
@@ -603,7 +603,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 		recipients := []string{utils.GetBestEmail(claUser)}
 
-		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectExternalID, emailParams)
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, signature.ProjectID, claGroup.ProjectExternalID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
 			return err
@@ -881,7 +881,7 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 
 		recipients := []string{utils.GetBestEmail(claUser)}
 
-		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectExternalID, emailParams)
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, signature.ProjectID, claGroup.ProjectExternalID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
 			return err
@@ -1044,7 +1044,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 
 		recipients := []string{utils.GetBestEmail(claUser)}
 
-		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, claGroup.ProjectExternalID, emailParams)
+		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, signature.ProjectID, claGroup.ProjectExternalID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
 			return err
@@ -1226,8 +1226,8 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 			log.WithFields(f).WithError(complianceErr).Warnf("company compliance check failed in corporate callback for company %s; not finalizing CCLA", companyID)
 			return complianceErr
 		} else if sanctioned {
-			log.WithFields(f).Warnf("company %s is sanctioned; refusing to finalize corporate CLA in callback", companyID)
-			return fmt.Errorf("company %s is sanctioned; corporate CLA cannot be finalized", companyID)
+			log.WithFields(f).Warnf("company %s requires further review for trade compliance; refusing to finalize corporate CLA in callback", companyID)
+			return fmt.Errorf("company %s requires further review for trade compliance; corporate CLA cannot be finalized", companyID)
 		}
 
 		_, currentTime := utils.CurrentTime()
@@ -2996,7 +2996,7 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		"companyExternalID": company.CompanyExternalID,
 		"sssMode":           sssMode,
 	}
-	log.WithFields(f).Debugf("starting company sanctions screening (mode=%s)", sssMode)
+	log.WithFields(f).Debugf("starting company trade compliance screening (mode=%s)", sssMode)
 
 	// Short-circuit for manually/admin-set blocks (sanction_origin != "sss" or no origin).
 	// SSS-origin blocks fall through so a now-clean result can clear them.
