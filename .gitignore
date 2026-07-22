@@ -288,3 +288,4 @@ spans*.json
 *.out
 .claude/*
 /*user_emails.json
+.venv
