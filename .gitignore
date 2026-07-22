@@ -286,6 +286,6 @@ spans*.json
 *.dylib
 *.test
 *.out
-CLAUDE.md
 .claude/*
 /*user_emails.json
+.venv
