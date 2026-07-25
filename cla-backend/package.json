@@ -36,7 +36,7 @@
     "serverless-layers": "^2.6.1",
     "serverless-plugin-tracing": "^2.0.0",
     "serverless-prune-plugin": "^2.0.2",
-    "shell-quote": "^1.7.3",
+    "shell-quote": "^1.9.0",
     "simple-git": "^3.36.0",
     "xml2js": "^0.6.0",
     "yarn-audit-fix": "^10.0.0"
@@ -67,7 +67,7 @@
     "picomatch": "^2.3.2",
     "qs": "6.14.2",
     "set-value": "^4.0.1",
-    "shell-quote": "^1.7.3",
+    "shell-quote": "^1.9.0",
     "simple-git": "^3.36.0",
     "ws": ">=7.5.10",
     "tar": "^7.5.10",
