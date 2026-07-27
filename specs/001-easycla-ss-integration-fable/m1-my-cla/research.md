@@ -33,6 +33,17 @@ Union all matched user records; query R1 per `userID`; merge + dedupe agreements
 
 **Critical constraint (verified)**: v4 `GetUserSignatures` performs **no ownership check** — any authenticated principal can query any `userID`. Therefore the SS server is the authorization boundary: routes derive `userID` strictly from the session, never from request input. Also flag this upstream as a hardening observation (out of M1 scope).
 
+**Spike progress (2026-07-27, partial — T001/T002 not yet run against the gateway):**
+
+- **Spike-1 Auth0 grant condition — VERIFIED in config (was [inferred]).** The SS "LFX One" Auth0 client is granted the api-gw resource-server audience with `access:api` in all environments: `auth0-terraform/grants_lfx.tf` `auth0_client_grant.lfxone_lfx` → `auth0_resource_server.lfx_api_gateway` (identifier workspace-keyed dev/staging/prod, `resource_servers.tf:319-321`). So no Auth0 client-grant change is needed — this removes one of the two feasibility-memo conditions.
+- **Exchange requests the correct audience — VERIFIED in logs.** Local SS logs `exchange refresh token ... audience: "https://api-gw.dev.platform.linuxfoundation.org/", sessionKey: "apiGatewayToken"` — SS asks Auth0 for the right audience via the existing `exchangeRefreshTokenForAudience` util (`auth.middleware.ts:238-257`, refresh_token grant, `refresh-token-exchange.util.ts`).
+- **NOT yet verified (still open):** the *contents* of the minted api-gw token (the local exchange served from the session-cached token every reload, so a fresh api-gw token was never captured cleanly), and the actual gateway calls **T001** (`GET /cla-service/v4/...` → 200 as a role-holder) and **T002** (role-less user → the secured read path — the real decision point). These need a captured api-gw refresh/access token + a role-less dev user; run via `scratchpad/run-spikes.sh` or a captured token. Router placement confirms T002 is a genuine gate: `/v4/signatures/user/{userID}` and `/signatures/{id}/signed-document` fall through to the **secured** router (`lfx-gateway/dynamic/services/cla-service.yaml:45-53`), not the public allow-list, so the ACS warden decides role-less access.
+
+**Local-dev setup prerequisites (found the hard way — add to quickstart):**
+
+1. `API_GW_AUDIENCE=https://api-gw.dev.platform.linuxfoundation.org/` must be set in `apps/lfx-one/.env`; if unset, `extractApiGatewayToken` no-ops silently (non-blocking by design, `auth.middleware.ts:240-242`) and every `/cla-service` call would go out unauthenticated.
+2. Local SS needs a NATS port-forward — `kubectl port-forward -n lfx svc/lfx-platform-nats 4222:4222` — or persona detection, root-UID resolution, and (relevant to M1) auth-service identity enrichment (verified emails, linked GitHub IDs, R2) all fail with `NATS TIMEOUT`.
+
 ## R4. Signed-PDF download
 
 **Decision**: on user click, SS calls `GET /v4/signatures/{signatureID}/signed-document` (or the ICLA-specific `/signatures/project/{claGroupID}/icla/{signatureID}/pdf`) after re-checking the signature belongs to one of the session's resolved EasyCLA userIDs; return the presigned S3 URL (15-min TTL, `utils/s3.go` `PresignedURLValidity`) as a redirect/JSON for the browser. Never prefetch on page load; never proxy the PDF bytes through SS.
