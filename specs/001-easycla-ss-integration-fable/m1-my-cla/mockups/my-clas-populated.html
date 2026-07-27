@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LFX Self Serve — My CLAs mockup (M1)</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #F3F4F8;
+    color: #1F2430;
+  }
+  .topbar { height: 6px; background: #111318; }
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 230px;
+    background: #FFFFFF;
+    border-right: 1px solid #E7E8EE;
+    padding: 20px 14px;
+    flex-shrink: 0;
+  }
+  .sidebar .who { display:flex; align-items:center; gap:10px; padding: 4px 8px 18px; }
+  .sidebar .avatar { width: 34px; height: 34px; border-radius: 50%; background:#1F2430; }
+  .sidebar .who b { font-size: 14px; }
+  .navtabs { display:flex; gap:4px; padding: 2px; background:#F1F2F6; border-radius:10px; margin-bottom: 18px; }
+  .navtabs div { flex:1; text-align:center; font-size:13px; padding:7px 6px; border-radius:8px; color:#5B6072; }
+  .navtabs div.active { background:#fff; color:#111318; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+  .navgroup-label { font-size: 11px; letter-spacing:.04em; color:#9AA0B4; margin: 16px 8px 6px; font-weight:600; }
+  .navitem { display:flex; align-items:center; gap:10px; font-size:13.5px; color:#3A3F52; padding:8px 8px; border-radius:8px; }
+  .navitem.active { background:#EEF3FC; color:#1D5FD6; font-weight:600; }
+  .navdot { width:16px; text-align:center; opacity:.7; }
+
+  main { flex:1; padding: 30px 40px 80px; max-width: 1180px; }
+  h1.pagetitle { font-size: 26px; font-weight:600; margin: 0 0 20px; color:#1B1E27; }
+
+  .profilecard {
+    background:#fff; border:1px solid #E7E8EE; border-radius:14px;
+    padding: 18px 22px; display:flex; align-items:center; justify-content:space-between; margin-bottom: 22px;
+  }
+  .profilecard .left { display:flex; align-items:center; gap:16px; }
+  .profilecard .bigavatar { width:52px; height:52px; border-radius:50%; background:#1F2430; }
+  .profilecard .name { font-size:16px; font-weight:700; margin:0; }
+  .profilecard .role { font-size:13px; color:#5B6072; margin:2px 0 0; }
+  .profilecard .meta { text-align:right; font-size:13px; color:#5B6072; line-height:1.6; }
+
+  .tabrow { display:flex; gap:28px; border-bottom:1px solid #E7E8EE; margin-bottom:24px; }
+  .tabrow div { font-size:14px; color:#5B6072; padding-bottom:12px; position:relative; cursor:default; display:flex; align-items:center; gap:6px;}
+  .tabrow div.active { color:#1D5FD6; font-weight:600; }
+  .tabrow div.active::after { content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:#1D5FD6; border-radius:2px; }
+  .newpill { background:#E7F4EA; color:#1D7A3B; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:20px; letter-spacing:.02em; }
+
+  .section-head { display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
+  .section-head h2 { font-size:19px; margin:0; font-weight:700; color:#1B1E27; }
+  .betabadge { background:#FDF1DC; color:#8A5A0B; font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; }
+  .subtext { font-size:13.5px; color:#5B6072; margin: 4px 0 18px; max-width: 640px; }
+
+  .infobox {
+    display:flex; gap:10px; align-items:flex-start; background:#EEF3FC; border:1px solid #D7E4FA;
+    color:#2C4D85; font-size:13px; padding:12px 14px; border-radius:10px; margin-bottom:18px;
+  }
+
+  table.clatable { width:100%; border-collapse:collapse; background:#fff; border:1px solid #E7E8EE; border-radius:12px; overflow:hidden; }
+  table.clatable th { text-align:left; font-size:11.5px; letter-spacing:.03em; color:#8A8FA0; text-transform:uppercase; padding:12px 16px; border-bottom:1px solid #E7E8EE; background:#FAFBFD; }
+  table.clatable td { font-size:13.5px; padding:14px 16px; border-bottom:1px solid #F0F1F5; vertical-align:middle; }
+  table.clatable tr:last-child td { border-bottom:none; }
+  .projcell { display:flex; align-items:center; gap:10px; }
+  .projicon { width:26px; height:26px; border-radius:6px; background:#EEF0F5; flex-shrink:0; }
+  .projname { font-weight:600; color:#1B1E27; }
+  .projsub { font-size:12px; color:#8A8FA0; }
+  .typepill { font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:20px; }
+  .typepill.icla { background:#EEF3FC; color:#1D5FD6; }
+  .typepill.ecla { background:#F3EEFC; color:#6B3FBF; }
+  .statuspill { font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:20px; background:#E7F4EA; color:#1D7A3B; }
+  .doclink { color:#1D5FD6; font-size:13px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+  .docmuted { color:#8A8FA0; font-size:12.5px; }
+
+  .ctabanner {
+    margin-top: 20px; background:#fff; border:1px dashed #C9CEDD; border-radius:12px;
+    padding:16px 18px; display:flex; align-items:center; justify-content:space-between; gap:16px;
+  }
+  .ctabanner .txt b { display:block; font-size:13.5px; color:#1B1E27; margin-bottom:2px; }
+  .ctabanner .txt span { font-size:12.5px; color:#5B6072; }
+  .ctabtn { background:#1B1E27; color:#fff; font-size:13px; font-weight:600; padding:9px 16px; border-radius:8px; white-space:nowrap; text-decoration:none; }
+</style>
+</head>
+<body>
+
+<div class="topbar"></div>
+<div class="shell">
+
+  <div class="sidebar">
+    <div class="who"><div class="avatar"></div><b>Heather Willson</b></div>
+    <div class="navtabs">
+      <div class="active">Me</div>
+      <div>Projects</div>
+      <div>Organization</div>
+    </div>
+
+    <div class="navgroup-label">MY ENGAGEMENT</div>
+    <div class="navitem"><span class="navdot">▤</span> My Dashboard</div>
+    <div class="navitem"><span class="navdot">▤</span> My Meetings</div>
+    <div class="navitem"><span class="navdot">▤</span> My Events</div>
+    <div class="navitem"><span class="navdot">▤</span> My Groups</div>
+
+    <div class="navgroup-label">MY ACCOUNT</div>
+    <div class="navitem active"><span class="navdot">◉</span> Profile</div>
+    <div class="navitem"><span class="navdot">◎</span> Settings</div>
+  </div>
+
+  <main>
+    <h1 class="pagetitle">Profile</h1>
+
+    <div class="profilecard">
+      <div class="left">
+        <div class="bigavatar"></div>
+        <div>
+          <p class="name">Heather Willson</p>
+          <p class="role">Manager, LFX and IT Support · IBM</p>
+        </div>
+      </div>
+      <div class="meta">
+        @HWillson<br>
+        hwillson@linuxfoundation.org
+      </div>
+    </div>
+
+    <div class="tabrow">
+      <div>Work history &amp; Affiliations</div>
+      <div>Identities</div>
+      <div>Individual Enrollment</div>
+      <div class="active">My CLAs</div>
+    </div>
+
+    <div class="section-head">
+      <h2>My CLAs</h2>
+    </div>
+
+    <div class="infobox">
+      <span>ⓘ</span>
+      <span>Your signed ICLAs (Individual CLA) and ECLAs (Employee CLA), matched to your Identities. Missing one? <a href="#" style="color:#1D5FD6; font-weight:600; text-decoration:none;">Link your Email, GitHub, or GitLab accounts →</a></span>
+    </div>
+
+    <table class="clatable">
+      <tr>
+        <th>Project</th>
+        <th>Type</th>
+        <th>Signed</th>
+        <th>Document</th>
+      </tr>
+      <tr>
+        <td>
+          <div class="projcell"><div class="projicon"></div>
+            <div><div class="projname">Linux Foundation</div><div class="projsub">Linux Foundation</div></div>
+          </div>
+        </td>
+        <td><span class="typepill icla">ICLA</span></td>
+        <td>Jul 15, 2019</td>
+        <td><a class="doclink" href="#">⬇ Download PDF</a></td>
+      </tr>
+      <tr>
+        <td>
+          <div class="projcell"><div class="projicon"></div>
+            <div><div class="projname">Academy Software Foundation</div><div class="projsub">Academy Software Foundation (ASWF)</div></div>
+          </div>
+        </td>
+        <td><span class="typepill icla">ICLA</span></td>
+        <td>Feb 2, 2021</td>
+        <td><a class="doclink" href="#">⬇ Download PDF</a></td>
+      </tr>
+      <tr>
+        <td>
+          <div class="projcell"><div class="projicon"></div>
+            <div><div class="projname">Cloud Native Computing Foundation (CNCF)</div><div class="projsub">Cloud Native Computing Foundation (CNCF)</div></div>
+          </div>
+        </td>
+        <td><span class="typepill ecla">ECLA · IBM</span></td>
+        <td>Sep 10, 2022</td>
+        <td><span class="docmuted">Covered by Corporate CLA (CCLA)</span></td>
+      </tr>
+      <tr>
+        <td>
+          <div class="projcell"><div class="projicon"></div>
+            <div><div class="projname">CDM</div><div class="projsub">FINOS CDM Community Specification License</div></div>
+          </div>
+        </td>
+        <td><span class="typepill icla">ICLA</span></td>
+        <td>May 6, 2024</td>
+        <td><a class="doclink" href="#">⬇ Download PDF</a></td>
+      </tr>
+      <tr>
+        <td>
+          <div class="projcell"><div class="projicon"></div>
+            <div><div class="projname">FDC3</div><div class="projsub">FDC3</div></div>
+          </div>
+        </td>
+        <td><span class="typepill icla">ICLA</span></td>
+        <td>Nov 30, 2023</td>
+        <td><a class="doclink" href="#">⬇ Download PDF</a></td>
+      </tr>
+    </table>
+
+  </main>
+</div>
+
+</body>
+</html>

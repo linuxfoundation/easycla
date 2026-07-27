@@ -2,6 +2,8 @@
 
 All Technical Context unknowns resolved. Facts verified in code on 2026-07-11 unless noted.
 
+**UI reference**: see `mockups/` (`my-clas-populated.html`, `my-clas-empty-state.html`) for the design of the Me-lens Profile "My CLAs" tab (T020–T022).
+
 ## R1. Which EasyCLA endpoints supply "my ICLAs and ECLAs"?
 
 **Decision**: `GET /v4/signatures/user/{userID}` (swagger `cla.v2.yaml` path `/signatures/user/{userID}`; handler `v2/signatures/handlers.go` `SignaturesGetUserSignaturesHandler`, paginated via `pageSize`/`nextKey`, also accepts an optional `userName` query param passed to the v1 service). Returns the user's signature records — ICLAs and ECLAs are distinguished by `signature_user_ccla_company_id` (present ⇒ ECLA) per the signatures data model (`signatures/models.go`).
