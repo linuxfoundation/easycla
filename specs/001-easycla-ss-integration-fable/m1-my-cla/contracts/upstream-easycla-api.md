@@ -1,25 +1,44 @@
 # Contract: EasyCLA endpoints consumed by M1
 
-All via lfx-gateway `/cla-service` prefix (`lfx-gateway/dynamic/services/cla-service.yaml`), `secured` middleware (user bearer token for the api-gw audience, per research R3). Full reference: [docs/MY_CLAS_API.md](../../../../docs/MY_CLAS_API.md).
+**Implementation update (PR #5125):** the endpoints below are superseded — that PR implements two consolidated read endpoints, `GET /v4/my-clas` and `GET /v4/my-clas/{signatureID}/pdf` (identity resolution, aggregation, ownership enforcement and validity evaluation inside EasyCLA; SS forwards all session-derived identity keys); see [docs/MY_CLAS_API.md](../../../../docs/MY_CLAS_API.md).
 
-**Implementation update (2026-07-28, supersedes the original design below):** instead of the originally-anticipated `GET /v4/users/by-identity` lookup plus SS-side aggregation over `GET /v4/signatures/user/{userID}` and `GET /v4/signatures/{signatureID}/signed-document`, M1 shipped two consolidated read endpoints in `cla-backend-go` (`v2/my_clas` module, swagger-first in `cla.v2.yaml`, no schema changes). Rationale: the per-user signatures endpoint excludes ECLAs, the signed-document endpoint requires project-scoped ACLs contributors do not hold, and "valid ECLA" evaluation against current approval lists is impossible from SS.
+All via lfx-gateway `/cla-service` prefix (`lfx-gateway/dynamic/services/cla-service.yaml`), `secured` middleware. Token model per research R3 (spike: user bearer vs dedicated audience/M2M).
 
-## 1. GET /cla-service/v4/my-clas
+## 1. Identity lookup
 
-- Query parameters (all optional, all capped and deduplicated): `lfUsername`, repeated `email`, `secondaryEmail`, `githubId`, `githubUsername`, `gitlabId`, `gitlabUsername`, `gerritUsername`. `lfUsername` defaults to the authenticated principal's username.
-- Resolves the identity keys to EasyCLA user records (union of **all** GSI matches per key, deduplicated by `user_id`), fetches every signed ICLA/ECLA, and computes per-row validity: ICLA = signed+approved; ECLA = signed+approved AND employer not sanctioned AND an approved+signed CCLA exists for the CLA group AND the user matches its current approval lists (v1 `UserIsApproved`, the PR-gating function; GitLab-group-only approvals defer to `signature_approved`).
-- **Ownership enforcement (upstream, defense-in-depth):** for non-admin callers each key must belong to the authenticated user — verified against all EasyCLA records matching the token LFID, then against the LF account's user-service profile emails and connected identities (source-scoped, `DataSource=platform` when present, canonical spellings used for exact-match index lookups). Unverifiable keys are not searched and are reported in `skippedIdentities`. This exceeds the original "SS is the authorization boundary" caveat — SS session-derived parameters remain the expected usage.
-- Out: `my-cla-list` (`lfUsername`, `userIds`, `skippedIdentities`, `resultCount`, `clas[]` with `signatureID`, `claType icla|ecla`, `claGroupID`, `claGroupName`, company fields, `signedOn`, `signed`, `approved`, `valid`, document versions, `pdfAvailable`). ICLAs are returned in all signed statuses (labeled via `valid`); consumers display ECLAs only when `valid` (FR-002).
+Resolution unions three keys: LF username, verified emails, linked GitHub account(s) (research R2).
 
-## 2. GET /cla-service/v4/my-clas/{signatureID}/pdf
+### NEW (expected required): GET /cla-service/v4/users/by-identity?lfUsername=…&email=…&githubId=…
 
-- Same identity parameters and ownership enforcement; the signature must resolve to an owned, signed ICLA and the S3 object must exist.
-- Out: `{signatureID, url, expiresInSeconds: 900}` — presigned S3 URL (15-min TTL, bucket `cla-signature-files-{stage}`). Unknown/not-owned/unsigned/ECLA/missing-document all return **404** (never 403). Fetch on click only (TTL).
+- One small read endpoint to add in `cla-backend-go` (swagger-first in `cla.v2.yaml`, three-layer module pattern, read-only, no schema changes), wrapping the existing GSI-backed repository queries: `lf-username-index`, `lf-email-index` (+ `user_emails` match — verify `GetUsersByEmail` efficiency), `github-id-index` (`users/repository.go`; `GetUserByGitHubID` exists at service layer but is not exposed over HTTP today).
+- Accepts repeated `email`/`githubId` params; returns the matched user records (union, deduped by `user_id`).
+- Why new: the only exposed generic search, `GET /v3/users/search`, is a **DynamoDB table scan** (`users/repository.go:1279`) — unsuitable for per-request identity resolution; GitHub-ID lookup has no HTTP surface at all.
+- Requires EasyCLA-team review; same no-ownership-check caveat as §2 — treat as internal/service API, SS is the authorization boundary.
 
-## 3. ACS registration
+### GET /cla-service/v3/users/username/{userName}
 
-Both paths ride the gateway's secured catch-all router (no lfx-gateway change); ACS resources `my_clas`/`my_clas_pdf` (`anyRole: true`, `ViewMyClas` policy on the `user` role) are registered via `acs-cli` (`services/11-cla-service.yaml`) and must be synced per environment before rollout.
+- Source: `cla-backend-go/users/handlers.go` (`GetUserByUserName`), swagger `cla.v1.yaml` `/users/username/{userName}`; GSI `lf-username-index`.
+- Usable immediately for the LF-username key (spike/bring-up) while the by-identity endpoint lands.
 
-## Superseded original design (kept for history)
+### (Supplementary if audience works) GET /cla-service/v4/user-from-token
 
-`GET /v4/users/by-identity` (identity lookup wrapping the GSI queries: `lf-username-index`, `lf-email-index`, `github-id-index`) + `GET /v4/signatures/user/{userID}` (per-user signatures — later found to exclude ECLAs via its `signature_user_ccla_company_id` not-exists filter) + `GET /v4/signatures/{signatureID}/signed-document` (presigned PDF — requires project-scoped authorization unavailable to plain contributors). The consolidated endpoints above replace all three for the M1 flow; `/v3/users/search` remains unsuitable (table scan).
+- Derives the EasyCLA user from the caller's JWT; only usable with the user-bearer token model. Cannot replace the union: it matches/creates by `lf_username`/`lf_email` only and never backfills `lf_username` onto GitHub-derived records (`cmd/server.go:930`), so it misses pre-LF-login history.
+
+## 2. Agreements
+
+### GET /cla-service/v4/signatures/user/{userID}?pageSize=…&nextKey=…
+
+- Source: swagger `cla.v2.yaml` `/signatures/user/{userID}`; handler `v2/signatures/handlers.go` `SignaturesGetUserSignaturesHandler`.
+- Out: paginated signature list (v2 models). SS classifies ICLA/ECLA per data-model.md and derives status per research R6.
+- ⚠️ **No ownership check upstream** (verified): the handler queries whatever `userID` it is given. SS is the authorization boundary — `userID` values come only from step 1. Raised as an upstream hardening note (out of M1 scope).
+
+## 3. Signed PDF
+
+### GET /cla-service/v4/signatures/{signatureID}/signed-document
+
+- Source: swagger `cla.v2.yaml` `/signatures/{signatureID}/signed-document`; returns presigned S3 URL (15-min TTL, bucket `cla-signature-files-{stage}`).
+- Called only after SS re-verifies ownership (contract `ss-me-clas-api.md`). Alternative ICLA-specific route `/v4/signatures/project/{claGroupID}/icla/{signatureID}/pdf` available if response shape fits better — pick one in implementation, don't use both.
+
+## Status of the "one small backend endpoint" allowance
+
+Originally a contingency, `GET /v4/users/by-identity` (§1) is now **expected to be required** because `/v3/users/search` is scan-based and GitHub-ID lookup has no HTTP surface. Final confirmation at the end of the T1 spike; the endpoint stays within the spec's "at most one small read endpoint, no schema changes" boundary.

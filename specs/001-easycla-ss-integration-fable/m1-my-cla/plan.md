@@ -5,7 +5,9 @@
 
 ## Summary
 
-Add a read-only "My CLAs" module to LFX Self Serve's Me lens showing the logged-in user's signed ICLAs (with signed-PDF download) and valid ECLAs, backed by the existing EasyCLA v3/v4 APIs via the crowdfunding-style server-side integration pattern. The core technical problem is resolving the LF SSO identity to EasyCLA user record(s), including pre-LF-login history: resolution unions three keys — LF username, verified emails, and GitHub account(s) linked to the LF identity (with a "Don't see your CLAs? Link your GitHub account" CTA when unlinked), since GitHub-derived EasyCLA records typically lack `lf_username`. Feature-flagged, no writes, no EasyCLA business-logic changes; two small read endpoints (`GET /v4/my-clas`, `GET /v4/my-clas/{signatureID}/pdf`) are implemented in `cla-backend-go`, superseding the originally-expected `GET /v4/users/by-identity` — identity resolution, aggregation, ownership enforcement and validity evaluation moved server-side because the only exposed generic search is scan-based, GitHub-ID lookup had no HTTP surface, the per-user signatures endpoint excludes ECLAs, and approval-list validity cannot be computed in SS (see [contracts/upstream-easycla-api.md](contracts/upstream-easycla-api.md) and `docs/MY_CLAS_API.md`).
+**Implementation update (PR #5125):** identity resolution, aggregation, ownership enforcement and PDF authorization are implemented inside EasyCLA (`GET /v4/my-clas`, `GET /v4/my-clas/{signatureID}/pdf`); SS forwards all session-derived identity keys. Statements below describing SS-side v3 lookups, per-user signature/PDF aggregation or the by-identity contingency are superseded — see [contracts/upstream-easycla-api.md](contracts/upstream-easycla-api.md).
+
+Add a read-only "My CLAs" module to LFX Self Serve's Me lens showing the logged-in user's signed ICLAs (with signed-PDF download) and valid ECLAs, backed by the existing EasyCLA v3/v4 APIs via the crowdfunding-style server-side integration pattern. The core technical problem is resolving the LF SSO identity to EasyCLA user record(s), including pre-LF-login history: resolution unions three keys — LF username, verified emails, and GitHub account(s) linked to the LF identity (with a "Don't see your CLAs? Link your GitHub account" CTA when unlinked), since GitHub-derived EasyCLA records typically lack `lf_username`. Feature-flagged, no writes, no EasyCLA business-logic changes; one small read endpoint (`GET /v4/users/by-identity`) is expected in `cla-backend-go` because the only exposed generic search is scan-based and GitHub-ID lookup has no HTTP surface (research R2).
 
 ## Technical Context
 
@@ -17,7 +19,7 @@ Add a read-only "My CLAs" module to LFX Self Serve's Me lens showing the logged-
 **Project Type**: web application (feature module in existing monorepo)
 **Performance Goals**: page interactive with agreement list < 2s p95 against dev/prod EasyCLA; PDF link issuance < 1s p95 (presigned URL fetch on click)
 **Constraints**: read-only (no EasyCLA writes); server-side identity derivation only (never trust client-supplied user IDs); presigned URLs are 15-minute TTL — fetch on demand; feature-flagged dark launch
-**Scale/Scope**: all LFX users with CLA history (~hundreds of thousands of signature records upstream; per-user result sets are small — typically < 50 agreements); 1 new lens module, ~2 server routes, 0–1 upstream endpoints
+**Scale/Scope**: all LFX users with CLA history (~hundreds of thousands of signature records upstream; per-user result sets are small — typically < 50 agreements); 1 new lens module, ~2 server routes, 2 upstream endpoints
 
 ## Constitution Check
 
@@ -51,7 +53,7 @@ specs/001-easycla-ss-integration-fable/          # program level (review docs)
 
 ### Source Code
 
-Primary repo: `/Users/michal/src/github/linuxfoundation/lfx-self-serve`
+Primary repo: `linuxfoundation/lfx-self-serve`
 
 ```text
 apps/lfx-one/src/
@@ -71,7 +73,7 @@ apps/lfx-one/src/
 packages/shared/src/interfaces/              # shared UI interfaces if needed (MyClaAgreement)
 ```
 
-Upstream repo (implemented): `easycla/cla-backend-go` — the `v2/my_clas` module (two read endpoints), swagger-first (`swagger/cla.v2.yaml` → `make swagger` → handlers), no schema changes.
+Contingency repo (only if email-based lookup gap confirmed): `linuxfoundation/easycla` `cla-backend-go` — one read endpoint in `users/` or `v2/`, swagger-first (`swagger/cla.v2.yaml` → `make swagger` → handler), no schema changes.
 
 **Structure Decision**: single feature module in the existing `lfx-one` app plus mirrored server routes — identical in shape to the crowdfunding module (`app/modules/crowdfunding` + `server/routes/crowdfunding.route.ts`), which is the repo's established pattern for integrating a non-V2 backend.
 

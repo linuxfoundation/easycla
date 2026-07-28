@@ -96,7 +96,7 @@ Example (through the gateway):
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "$GW/cla-service/v4/my-clas?email=jdoe@corp.com&githubId=1234567&gitlabId=890123"
+  "$GW/cla-service/v4/my-clas?email=jdoe@corp.com&secondaryEmail=jdoe@corp.com&githubId=1234567&githubUsername=jdoe-gh&gitlabId=890123&gitlabUsername=jdoe-gl&gerritUsername=jdoe"
 ```
 
 ### Identity ownership enforcement (step 0)
@@ -169,7 +169,7 @@ the same key (one person with multiple records), which would silently drop histo
 | `gitlabId` | `gitlab-id-index` GSI (N-typed key) | `GetUsersByGitlabID` |
 | `gitlabUsername` | `gitlab-username-index` GSI | `GetUsersByGitlabUsername` |
 
-Empty results are simply empty; any lookup error fails the request (`500`) rather
+Empty results are simply empty; any EasyCLA repository lookup error fails the request (`500`) — user-service failures instead skip and report the affected keys rather
 than silently returning a partial history — an incomplete list would erode user
 trust (spec: "an incomplete list here erodes trust in every later milestone"). The
 same rule applies to the display lookups: a *missing* CLA group or company record
@@ -444,7 +444,12 @@ emails, GitHub numeric IDs from Auth0 identities) and currently unions per-user 
 with a TODO for the missing lookup endpoint. With this API it collapses to:
 
 - `GET /api/me/clas` → one upstream call
-  `GET /cla-service/v4/my-clas?email=…&githubId=…` (server-derived values from the
+  `GET /cla-service/v4/my-clas?email=…&secondaryEmail=…&githubId=…&githubUsername=…&gitlabId=…&gitlabUsername=…&gerritUsername=…`
+  — SS MUST forward **all** available session-derived identity keys: each verified
+  email as both `email` and `secondaryEmail` (they search different attributes), and
+  provider usernames alongside numeric IDs (an ID present only on a detached
+  pre-LFID record cannot be authorized by itself; the verified username recovers
+  it). The same full set goes on the PDF call (server-derived values from the
   session — and EasyCLA now **re-verifies** every key against the LF account
   server-side, so the enforcement is defense-in-depth rather than SS-only). Mapping to
   `MyClaAgreement`: `kind = claType`, `projectName = claGroupName` (fixes the current
@@ -480,9 +485,9 @@ Per request, with all caches request-scoped:
   API call per evaluation when the CCLA actually uses org-based approval.
 
 No table scans except the explicitly opt-in `secondaryEmail` match (a single scan
-covering all provided values — callers should still treat it as a slow path). For the
-read-only Me-lens page (small per-user datasets) this is well within the v4 Lambda's
-normal latency envelope.
+covering all provided values — callers should still treat it as a slow path). Each
+logical query above may issue multiple paginated calls; the latency-envelope
+assumption is to be confirmed on dev.
 
 ## Deployment / rollout
 

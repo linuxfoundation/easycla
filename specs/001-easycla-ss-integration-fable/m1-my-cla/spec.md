@@ -34,7 +34,7 @@ A contributor logs into LFX Self Serve and, under the Me lens, opens "My CLAs". 
 ## Scope boundaries
 
 In: Me-lens module `/me/clas`, SS server routes, identity resolution + telemetry, PDF presigned-URL hand-off, empty state, feature flag.
-Out: any signing/writes, CCLA data (M4), approval lists/roles, changes to the PR remediation link, EasyCLA backend changes beyond the two implemented read endpoints `GET /v4/my-clas` and `GET /v4/my-clas/{signatureID}/pdf` (which superseded the originally-anticipated `GET /v4/users/by-identity`) — see [contracts/upstream-easycla-api.md](contracts/upstream-easycla-api.md).
+Out: any signing/writes, CCLA data (M4), approval lists/roles, changes to the PR remediation link, EasyCLA backend changes beyond the two read endpoints `GET /v4/my-clas` and `GET /v4/my-clas/{signatureID}/pdf` (implemented in PR #5125) — see [contracts/upstream-easycla-api.md](contracts/upstream-easycla-api.md).
 
 ## Design artifacts
 

@@ -40,12 +40,20 @@ type Identity struct {
 	GerritUsernames []string
 }
 
-// IsEmpty returns true when no identity key was provided
+// IsEmpty returns true when no non-blank identity key was provided
 func (i *Identity) IsEmpty() bool {
-	return i.LfUsername == "" && len(i.Emails) == 0 && len(i.SecondaryEmails) == 0 &&
-		len(i.GithubIDs) == 0 && len(i.GithubUsernames) == 0 &&
-		len(i.GitlabIDs) == 0 && len(i.GitlabUsernames) == 0 &&
-		len(i.GerritUsernames) == 0
+	return strings.TrimSpace(i.LfUsername) == "" && len(i.GithubIDs) == 0 && len(i.GitlabIDs) == 0 &&
+		!hasValue(i.Emails) && !hasValue(i.SecondaryEmails) && !hasValue(i.GithubUsernames) &&
+		!hasValue(i.GitlabUsernames) && !hasValue(i.GerritUsernames)
+}
+
+func hasValue(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // PlatformUsersService is the subset of the platform user-service client used to verify

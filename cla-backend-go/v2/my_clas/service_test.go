@@ -607,6 +607,7 @@ func TestGetMyClaPdfURLOwnershipEnforced(t *testing.T) {
 
 func TestIdentityIsEmpty(t *testing.T) {
 	assert.True(t, (&Identity{}).IsEmpty())
+	assert.True(t, (&Identity{LfUsername: " ", Emails: []string{"", "  "}, GerritUsernames: []string{" "}}).IsEmpty())
 	assert.False(t, (&Identity{LfUsername: "someone"}).IsEmpty())
 	assert.False(t, (&Identity{Emails: []string{"someone@example.org"}}).IsEmpty())
 	assert.False(t, (&Identity{SecondaryEmails: []string{"someone@example.org"}}).IsEmpty())

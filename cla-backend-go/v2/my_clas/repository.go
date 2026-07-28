@@ -138,7 +138,7 @@ func (repo repository) GetUsersBySecondaryEmails(ctx context.Context, emails []s
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.repository.GetUsersBySecondaryEmails",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"emails":         emails,
+		"emailCount":     len(emails),
 	}
 
 	if len(emails) == 0 {

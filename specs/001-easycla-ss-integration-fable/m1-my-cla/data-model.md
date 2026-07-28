@@ -2,6 +2,8 @@
 
 No persistent storage is introduced. These are view models and upstream-record mappings only.
 
+**Implementation update (PR #5125):** SS forwards session-derived identity keys to `GET /v4/my-clas` / `GET /v4/my-clas/{signatureID}/pdf`, which resolve users, aggregate signatures and enforce ownership inside EasyCLA; `signature_type` may also be `ecla`, GitHub/GitLab fields are identity-resolution keys, and M1 status is the boolean `valid` (no superseded detection). SS-side mappings below (v3 user endpoints, `easyclaUserIds`, per-user signature/PDF authorization, the `status` enum) are superseded — see [contracts/upstream-easycla-api.md](contracts/upstream-easycla-api.md).
+
 ## Upstream records (read-only, EasyCLA-owned)
 
 ### EasyCLA User (`cla-{stage}-users` via v3 users endpoints)
@@ -15,7 +17,7 @@ No persistent storage is introduced. These are view models and upstream-record m
 
 One LF person ⇒ 0..N EasyCLA user records (pre-LF-login history, multiple emails). M1 unions them.
 
-### Signature (`cla-{stage}-signatures` via `GET /v4/my-clas`)
+### Signature (`cla-{stage}-signatures` via `GET /v4/signatures/user/{userID}`)
 
 | Field | Meaning |
 |-------|---------|
