@@ -205,11 +205,12 @@ func (s service) GetUserByGitHubUsername(gitHubUsername string) (*models.User, e
 // "match any" resolver, so one missing key must not fail the others. Returns an empty (non-nil)
 // slice when nothing matches.
 func (s service) GetUsersByIdentity(lfUsername string, emails []string, githubIDs []string) ([]*models.User, error) {
+	// Identity values (LF username, emails) are PII — keep them out of the persistent log
+	// fields and the per-key miss logs; only counts are recorded.
 	f := logrus.Fields{
-		"functionName": "users.service.GetUsersByIdentity",
-		"lfUsername":   lfUsername,
-		"emailCount":   len(emails),
-		"githubIDs":    githubIDs,
+		"functionName":  "users.service.GetUsersByIdentity",
+		"emailCount":    len(emails),
+		"githubIDCount": len(githubIDs),
 	}
 
 	byUserID := make(map[string]*models.User)
@@ -221,9 +222,9 @@ func (s service) GetUsersByIdentity(lfUsername string, emails []string, githubID
 		}
 	}
 
-	if lfUsername != "" {
+	if lfUsername = strings.TrimSpace(lfUsername); lfUsername != "" {
 		if u, err := s.repo.GetUserByLFUserName(lfUsername); err != nil {
-			log.WithFields(f).WithError(err).Debugf("no user match for lfUsername: %s", lfUsername)
+			log.WithFields(f).WithError(err).Debug("no user match for lfUsername")
 		} else {
 			add(u)
 		}
@@ -234,14 +235,10 @@ func (s service) GetUsersByIdentity(lfUsername string, emails []string, githubID
 		if email == "" {
 			continue
 		}
-		// lf-email-index is keyed on lf_email; both helpers query that GSI (no scan).
-		if u, err := s.repo.GetUserByEmail(email); err != nil {
-			log.WithFields(f).WithError(err).Debugf("no user match for email: %s", email)
-		} else {
-			add(u)
-		}
+		// lf-email-index is keyed on lf_email; GetUsersByLFEmail queries that GSI (no scan) and
+		// returns every match, so it fully covers GetUserByEmail (same query, first-result-only).
 		if us, err := s.repo.GetUsersByLFEmail(email); err != nil {
-			log.WithFields(f).WithError(err).Debugf("no lf-email match for email: %s", email)
+			log.WithFields(f).WithError(err).Debug("no lf-email match for email")
 		} else {
 			for _, u := range us {
 				add(u)
@@ -255,7 +252,7 @@ func (s service) GetUsersByIdentity(lfUsername string, emails []string, githubID
 			continue
 		}
 		if u, err := s.repo.GetUserByGitHubID(githubID); err != nil {
-			log.WithFields(f).WithError(err).Debugf("no user match for githubID: %s", githubID)
+			log.WithFields(f).WithError(err).Debug("no user match for githubID")
 		} else {
 			add(u)
 		}

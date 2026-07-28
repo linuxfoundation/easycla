@@ -21,7 +21,6 @@ func TestGetUsersByIdentity(t *testing.T) {
 		repo := mock_user_repo.NewMockUserRepository(ctrl)
 
 		repo.EXPECT().GetUserByLFUserName("alice").Return(&models.User{UserID: "u-name"}, nil)
-		repo.EXPECT().GetUserByEmail("a@x.org").Return(&models.User{UserID: "u-email"}, nil)
 		repo.EXPECT().GetUsersByLFEmail("a@x.org").Return([]*models.User{{UserID: "u-lfemail"}}, nil)
 		repo.EXPECT().GetUserByGitHubID("13434323").Return(&models.User{UserID: "u-gh"}, nil)
 
@@ -29,7 +28,7 @@ func TestGetUsersByIdentity(t *testing.T) {
 		got, err := svc.GetUsersByIdentity("alice", []string{"a@x.org"}, []string{"13434323"})
 
 		assert.NoError(t, err)
-		assert.ElementsMatch(t, []string{"u-name", "u-email", "u-lfemail", "u-gh"}, userIDs(got))
+		assert.ElementsMatch(t, []string{"u-name", "u-lfemail", "u-gh"}, userIDs(got))
 	})
 
 	t.Run("dedupes the same user matched by multiple keys", func(t *testing.T) {
@@ -39,7 +38,6 @@ func TestGetUsersByIdentity(t *testing.T) {
 
 		same := &models.User{UserID: "u-1"}
 		repo.EXPECT().GetUserByLFUserName("alice").Return(same, nil)
-		repo.EXPECT().GetUserByEmail("a@x.org").Return(same, nil)
 		repo.EXPECT().GetUsersByLFEmail("a@x.org").Return([]*models.User{same}, nil)
 		repo.EXPECT().GetUserByGitHubID("42").Return(same, nil)
 
@@ -84,11 +82,12 @@ func TestGetUsersByIdentity(t *testing.T) {
 		defer ctrl.Finish()
 		repo := mock_user_repo.NewMockUserRepository(ctrl)
 
-		// Only the non-blank github id triggers a lookup; blank username/email are skipped.
+		// Only the non-blank github id triggers a lookup; whitespace-only username and blank/
+		// whitespace emails are trimmed to empty and skipped.
 		repo.EXPECT().GetUserByGitHubID("7").Return(&models.User{UserID: "u-gh"}, nil)
 
 		svc := users.NewService(repo, nil)
-		got, err := svc.GetUsersByIdentity("", []string{"", "   "}, []string{"7", " "})
+		got, err := svc.GetUsersByIdentity("   ", []string{"", "   "}, []string{"7", " "})
 
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"u-gh"}, userIDs(got))
