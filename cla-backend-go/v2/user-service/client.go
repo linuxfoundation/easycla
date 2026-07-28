@@ -277,6 +277,64 @@ func (usc *Client) ListUsersByUsername(lfUsername string) (*models.User, error) 
 	return userList[0], nil
 }
 
+// ListUserIdentities returns the identities (GitHub, Gerrit, etc.) connected to the
+// given user record (Salesforce ID)
+func (usc *Client) ListUserIdentities(userSFID string) ([]*models.UserIdentity, error) {
+	f := logrus.Fields{
+		"functionName": "ListUserIdentities",
+		"userSFID":     userSFID,
+	}
+
+	tok, err := token.GetToken()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem obtaining token")
+		return nil, err
+	}
+
+	url := fmt.Sprintf("https://%s/user-service/v1/users/%s/identities?pageSize=100", usc.apiGwURL, userSFID)
+	request, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem building new request")
+		return nil, err
+	}
+
+	request.Header.Set("X-API-KEY", usc.apiKey)
+	request.Header.Set("Authorization", "Bearer "+tok)
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem listing user identities")
+		return nil, err
+	}
+
+	defer func() {
+		closeErr := response.Body.Close()
+		if closeErr != nil {
+			log.WithFields(f).WithError(closeErr).Warn("error closing body")
+		}
+	}()
+
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem reading the user identities response")
+		return nil, err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		log.WithFields(f).Warnf("problem listing user identities - status: %d", response.StatusCode)
+		return nil, fmt.Errorf("listing user identities for user %s failed with status: %d", userSFID, response.StatusCode)
+	}
+
+	var identityList models.UserIdentityList
+	if err := json.Unmarshal(data, &identityList); err != nil {
+		log.WithFields(f).WithError(err).Warn("problem decoding the user identities response")
+		return nil, err
+	}
+
+	return identityList.Data, nil
+}
+
 // SearchUsersByEmail returns a single user based on the email parameter
 func (usc *Client) SearchUsersByEmail(email string) (*models.User, error) {
 	f := logrus.Fields{
