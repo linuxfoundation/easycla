@@ -2750,6 +2750,66 @@ paths:
       tags:
         - current_user
 
+  /users/by-identity:
+    get:
+      summary: Get users matching any of the supplied identity keys
+      description: >
+        Returns the EasyCLA user records that match ANY of the supplied identity keys —
+        LF username, verified email(s), or linked GitHub numeric ID(s) — unioned and
+        deduplicated by user ID. Used by downstream consumers (e.g. LFX Self Serve) to
+        resolve a single logged-in identity to its one-or-more EasyCLA user records,
+        including pre-LF-login GitHub-derived history. Wraps existing GSI-backed lookups
+        (lf-username-index, lf-email-index, github-id-index); performs no table scans.
+        Returns an empty array (200) when nothing matches.
+      operationId: getUsersByIdentity
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: lfUsername
+          description: the LF login username to match
+          in: query
+          type: string
+          required: false
+        - name: email
+          description: verified email address(es) to match; repeatable
+          in: query
+          type: array
+          items:
+            type: string
+          collectionFormat: multi
+          required: false
+        - name: githubId
+          description: linked GitHub numeric ID(s) to match; repeatable
+          in: query
+          type: array
+          items:
+            type: string
+          collectionFormat: multi
+          required: false
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/user'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - users
+
   /user/{userID}/request-company-admin:
     post:
       summary: Request Manager

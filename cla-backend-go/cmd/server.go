@@ -108,6 +108,7 @@ import (
 	v2Health "github.com/linuxfoundation/easycla/cla-backend-go/v2/health"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/store"
 	v2Template "github.com/linuxfoundation/easycla/cla-backend-go/v2/template"
+	v2Users "github.com/linuxfoundation/easycla/cla-backend-go/v2/users"
 
 	"github.com/go-openapi/loads"
 	"github.com/rs/cors"
@@ -511,6 +512,7 @@ func server(localMode bool) http.Handler {
 	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, v1ProjectClaGroupRepo)
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL)
 	v2CurrentUser.Configure(v2API, v2CurrentUserService)
+	v2Users.Configure(v2API, usersService)
 	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)
 	v2ClaManager.Configure(v2API, v2ClaManagerService, v1CompanyService, configFile.LFXPortalURL, configFile.CorporateConsoleV2URL, v1ProjectClaGroupRepo, userRepo)
 	cla_groups.Configure(v2API, v2ClaGroupService, v1ProjectService, v1ProjectClaGroupRepo, eventsService)

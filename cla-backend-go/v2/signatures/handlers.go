@@ -697,6 +697,28 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
+		// Enrich each signature with its CLA Group (project) display name. The signature
+		// payload carries only the CLA Group ID (ProjectID); resolve the name once per
+		// distinct ID (cached for this request). A lookup miss leaves ProjectName empty —
+		// the field is best-effort and must not fail the listing.
+		claGroupNameByID := make(map[string]string)
+		for _, sig := range resp.Signatures {
+			if sig.ProjectID == "" || sig.ProjectName != "" {
+				continue
+			}
+			name, cached := claGroupNameByID[sig.ProjectID]
+			if !cached {
+				if claGroupModel, cgErr := claGroupService.GetCLAGroupByID(ctx, sig.ProjectID); cgErr != nil || claGroupModel == nil {
+					log.WithFields(f).WithError(cgErr).Debugf("unable to resolve CLA group name for project ID: %s", sig.ProjectID)
+					name = ""
+				} else {
+					name = claGroupModel.ProjectName
+				}
+				claGroupNameByID[sig.ProjectID] = name
+			}
+			sig.ProjectName = name
+		}
+
 		log.WithFields(f).Debugf("returning %d user signatures to caller...", len(resp.Signatures))
 		return signatures.NewGetUserSignaturesOK().WithXRequestID(reqID).WithPayload(resp)
 	})

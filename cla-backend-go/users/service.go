@@ -5,11 +5,14 @@ package users
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
+	"github.com/sirupsen/logrus"
 )
 
 // Service interface for users
@@ -26,6 +29,7 @@ type Service interface {
 	GetUsersByLFEmail(userEmail string) ([]*models.User, error)
 	GetUserByGitHubID(gitHubID string) (*models.User, error)
 	GetUserByGitHubUsername(gitlabUsername string) (*models.User, error)
+	GetUsersByIdentity(lfUsername string, emails []string, githubIDs []string) ([]*models.User, error)
 	GetUserByGitlabID(gitHubID int) (*models.User, error)
 	GetUserByGitLabUsername(gitlabUsername string) (*models.User, error)
 	SearchUsers(field string, searchTerm string, fullMatch bool) (*models.Users, error)
@@ -188,6 +192,81 @@ func (s service) GetUserByGitHubUsername(gitHubUsername string) (*models.User, e
 		return nil, errors.New("gitHubUsername is empty")
 	}
 	return s.repo.GetUserByGitHubUsername(gitHubUsername)
+}
+
+// GetUsersByIdentity resolves the union of EasyCLA user records matching ANY of the
+// supplied identity keys — LF username, verified email(s), or linked GitHub numeric ID(s) —
+// deduplicated by user ID. It only ever uses GSI-backed lookups (lf-username-index,
+// lf-email-index, github-id-index); it never table-scans, so email matching is against the
+// primary lf_email only — a match that exists solely in a user's secondary user_emails list
+// is intentionally not resolved here (see the by-identity endpoint contract).
+//
+// A lookup that fails or finds nothing for one key is logged and skipped, not fatal: this is a
+// "match any" resolver, so one missing key must not fail the others. Returns an empty (non-nil)
+// slice when nothing matches.
+func (s service) GetUsersByIdentity(lfUsername string, emails []string, githubIDs []string) ([]*models.User, error) {
+	f := logrus.Fields{
+		"functionName": "users.service.GetUsersByIdentity",
+		"lfUsername":   lfUsername,
+		"emailCount":   len(emails),
+		"githubIDs":    githubIDs,
+	}
+
+	byUserID := make(map[string]*models.User)
+	add := func(u *models.User) {
+		if u != nil && u.UserID != "" {
+			if _, seen := byUserID[u.UserID]; !seen {
+				byUserID[u.UserID] = u
+			}
+		}
+	}
+
+	if lfUsername != "" {
+		if u, err := s.repo.GetUserByLFUserName(lfUsername); err != nil {
+			log.WithFields(f).WithError(err).Debugf("no user match for lfUsername: %s", lfUsername)
+		} else {
+			add(u)
+		}
+	}
+
+	for _, email := range emails {
+		email = strings.ToLower(strings.TrimSpace(email))
+		if email == "" {
+			continue
+		}
+		// lf-email-index is keyed on lf_email; both helpers query that GSI (no scan).
+		if u, err := s.repo.GetUserByEmail(email); err != nil {
+			log.WithFields(f).WithError(err).Debugf("no user match for email: %s", email)
+		} else {
+			add(u)
+		}
+		if us, err := s.repo.GetUsersByLFEmail(email); err != nil {
+			log.WithFields(f).WithError(err).Debugf("no lf-email match for email: %s", email)
+		} else {
+			for _, u := range us {
+				add(u)
+			}
+		}
+	}
+
+	for _, githubID := range githubIDs {
+		githubID = strings.TrimSpace(githubID)
+		if githubID == "" {
+			continue
+		}
+		if u, err := s.repo.GetUserByGitHubID(githubID); err != nil {
+			log.WithFields(f).WithError(err).Debugf("no user match for githubID: %s", githubID)
+		} else {
+			add(u)
+		}
+	}
+
+	result := make([]*models.User, 0, len(byUserID))
+	for _, u := range byUserID {
+		result = append(result, u)
+	}
+	log.WithFields(f).Debugf("resolved %d unique user record(s)", len(result))
+	return result, nil
 }
 
 // GetUserByGitlabID fetches the user by Gitlab ID

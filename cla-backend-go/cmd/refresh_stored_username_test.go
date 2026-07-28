@@ -33,15 +33,18 @@ func (s *stubUsersService) Save(*models.UserUpdate, *user.CLAUser) (*models.User
 	return nil, nil
 }
 
-func (s *stubUsersService) Delete(string, *user.CLAUser) error                      { return nil }
-func (s *stubUsersService) GetUser(string) (*models.User, error)                    { return nil, nil }
-func (s *stubUsersService) GetUserByLFUserName(string) (*models.User, error)        { return nil, nil }
-func (s *stubUsersService) GetUserByUserName(string, bool) (*models.User, error)    { return nil, nil }
-func (s *stubUsersService) GetUserByEmail(string) (*models.User, error)             { return nil, nil }
-func (s *stubUsersService) GetUsersByEmail(string) ([]*models.User, error)          { return nil, nil }
-func (s *stubUsersService) GetUsersByLFEmail(string) ([]*models.User, error)        { return nil, nil }
-func (s *stubUsersService) GetUserByGitHubID(string) (*models.User, error)          { return nil, nil }
-func (s *stubUsersService) GetUserByGitHubUsername(string) (*models.User, error)    { return nil, nil }
+func (s *stubUsersService) Delete(string, *user.CLAUser) error                   { return nil }
+func (s *stubUsersService) GetUser(string) (*models.User, error)                 { return nil, nil }
+func (s *stubUsersService) GetUserByLFUserName(string) (*models.User, error)     { return nil, nil }
+func (s *stubUsersService) GetUserByUserName(string, bool) (*models.User, error) { return nil, nil }
+func (s *stubUsersService) GetUserByEmail(string) (*models.User, error)          { return nil, nil }
+func (s *stubUsersService) GetUsersByEmail(string) ([]*models.User, error)       { return nil, nil }
+func (s *stubUsersService) GetUsersByLFEmail(string) ([]*models.User, error)     { return nil, nil }
+func (s *stubUsersService) GetUserByGitHubID(string) (*models.User, error)       { return nil, nil }
+func (s *stubUsersService) GetUserByGitHubUsername(string) (*models.User, error) { return nil, nil }
+func (s *stubUsersService) GetUsersByIdentity(string, []string, []string) ([]*models.User, error) {
+	return nil, nil
+}
 func (s *stubUsersService) GetUserByGitlabID(int) (*models.User, error)             { return nil, nil }
 func (s *stubUsersService) GetUserByGitLabUsername(string) (*models.User, error)    { return nil, nil }
 func (s *stubUsersService) SearchUsers(string, string, bool) (*models.Users, error) { return nil, nil }

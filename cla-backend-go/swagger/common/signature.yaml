@@ -79,6 +79,9 @@ properties:
   projectID:
     type: string
     description: the CLA Group ID
+  projectName:
+    type: string
+    description: the CLA Group (project) display name, when resolvable
   userGHID:
     type: string
     description: the user's GitHub ID, when available
