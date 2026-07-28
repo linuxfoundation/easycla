@@ -16,13 +16,13 @@ import (
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	platformModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 	"github.com/sirupsen/logrus"
 )
 
-// Identity sources reported by the platform user-service identities API
 const (
 	identitySourceGithub = "github"
 	identitySourceGitlab = "gitlab"
@@ -53,7 +53,6 @@ func (i *Identity) IsEmpty() bool {
 type UsersService interface {
 	GetUserByLFUserName(lfUserName string) (*v1Models.User, error)
 	GetUsersByLFEmail(userEmail string) ([]*v1Models.User, error)
-	GetUsersByEmail(userEmail string) ([]*v1Models.User, error)
 	GetUserByGitHubID(gitHubID string) (*v1Models.User, error)
 	GetUserByGitHubUsername(gitHubUsername string) (*v1Models.User, error)
 	GetUserByGitlabID(gitLabID int) (*v1Models.User, error)
@@ -113,9 +112,7 @@ func NewService(repo Repository, usersService UsersService, platformUsersService
 }
 
 // GetMyClas returns all signed ICLAs and ECLAs of the EasyCLA user records matching the
-// given identity, with validity evaluated against the current CCLA approval lists. For
-// non-admin callers every requested identity key is verified to belong to the
-// authenticated user (currentUsername) first; unverifiable keys are skipped and reported.
+// given identity, with validity evaluated against the current CCLA approval lists
 func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*models.MyClaList, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.GetMyClas",
@@ -161,10 +158,14 @@ func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin b
 			}
 			seen[sig.SignatureID] = true
 
+			claGroupName, nameErr := s.claGroupName(ctx, claGroupNames, sig.SignatureProjectID)
+			if nameErr != nil {
+				return nil, nameErr
+			}
 			row := models.MyCla{
 				SignatureID:          sig.SignatureID,
 				ClaGroupID:           sig.SignatureProjectID,
-				ClaGroupName:         s.claGroupName(ctx, claGroupNames, sig.SignatureProjectID),
+				ClaGroupName:         claGroupName,
 				UserID:               sig.SignatureReferenceID,
 				SignedOn:             signedOn(sig),
 				Signed:               sig.SignatureSigned,
@@ -180,7 +181,10 @@ func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin b
 			} else {
 				row.ClaType = utils.ClaTypeECLA
 				row.CompanyID = sig.SignatureUserCompanyID
-				companyModel := s.company(ctx, companies, sig.SignatureUserCompanyID)
+				companyModel, companyErr := s.company(ctx, companies, sig.SignatureUserCompanyID)
+				if companyErr != nil {
+					return nil, companyErr
+				}
 				if companyModel != nil {
 					row.CompanyName = companyModel.CompanyName
 					row.SigningEntityName = companyModel.SigningEntityName
@@ -206,10 +210,8 @@ func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin b
 }
 
 // GetMyClaPdfURL returns a time-limited download URL for the signed ICLA PDF when the
-// signature belongs to one of the EasyCLA user records matching the given identity.
-// The same identity-ownership enforcement as GetMyClas applies, so a non-admin caller
-// can only ever resolve their own signatures. A nil result means not found - unknown,
-// not-owned, unsigned or ECLA signature ID.
+// signature belongs to one of the EasyCLA user records matching the given identity -
+// a nil result means unknown, not-owned, unsigned or ECLA signature ID
 func (s *service) GetMyClaPdfURL(ctx context.Context, currentUsername string, admin bool, requested *Identity, signatureID string) (*models.MyClaPdf, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.GetMyClaPdfURL",
@@ -262,9 +264,6 @@ func (s *service) GetMyClaPdfURL(ctx context.Context, currentUsername string, ad
 	return nil, nil
 }
 
-// effectiveIdentity returns the identity that is actually searched. Admin callers may
-// search any identity (the LF username defaults to their own when not provided);
-// everyone else is restricted to identities verified to belong to currentUsername.
 func (s *service) effectiveIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {
 	if admin {
 		identity := *requested
@@ -279,26 +278,21 @@ func (s *service) effectiveIdentity(ctx context.Context, currentUsername string,
 	return s.authorizeIdentity(ctx, currentUsername, requested)
 }
 
-// platformIdentitySet holds the identities connected to the LF account per the platform
-// user-service - emails across all sources plus usernames per source (github/gitlab/gerrit)
 type platformIdentitySet struct {
 	emails    map[string]bool
 	usernames map[string]map[string]bool
 }
 
 // authorizeIdentity verifies each requested identity key against the authenticated
-// user's own EasyCLA user record first and, when not covered there, against the
-// identities connected to their LF account in the platform user-service. Keys that
-// cannot be verified are dropped from the search and reported back.
+// user's own EasyCLA record and, when not covered there, against the identities
+// connected to their LF account in the platform user-service - unverified keys are
+// dropped from the search and reported back
 func (s *service) authorizeIdentity(ctx context.Context, currentUsername string, requested *Identity) (*Identity, []string, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.authorizeIdentity",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"currentUsername": currentUsername,
 	}
-
-	allowed := &Identity{LfUsername: currentUsername}
-	skipped := []string{}
 
 	selfUser, err := s.usersService.GetUserByLFUserName(currentUsername)
 	if err != nil && !isNotFound(err) {
@@ -310,11 +304,11 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 	var selfGithubID, selfGithubUsername, selfGitlabID, selfGitlabUsername string
 	if selfUser != nil {
 		if selfUser.LfEmail != "" {
-			selfEmails[strings.ToLower(strings.TrimSpace(string(selfUser.LfEmail)))] = true
+			selfEmails[normalizeEmail(string(selfUser.LfEmail))] = true
 		}
 		for _, email := range selfUser.Emails {
 			if email != "" {
-				selfEmails[strings.ToLower(strings.TrimSpace(email))] = true
+				selfEmails[normalizeEmail(email)] = true
 			}
 		}
 		selfGithubID = strings.TrimSpace(selfUser.GithubID)
@@ -323,8 +317,6 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 		selfGitlabUsername = strings.TrimSpace(selfUser.GitlabUsername)
 	}
 
-	// LF-wide identities are loaded lazily - only when a requested key is not already
-	// covered by the EasyCLA user record
 	var platform *platformIdentitySet
 	platformIdentities := func() *platformIdentitySet {
 		if platform == nil {
@@ -335,96 +327,62 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 	emailAllowed := func(email string) bool {
 		return selfEmails[email] || platformIdentities().emails[email]
 	}
-	usernameAllowed := func(source, username string) bool {
-		return platformIdentities().usernames[source][strings.ToLower(username)]
+	usernameAllowed := func(source, selfValue string) func(string) bool {
+		return func(username string) bool {
+			return (selfValue != "" && strings.EqualFold(username, selfValue)) ||
+				platformIdentities().usernames[source][strings.ToLower(username)]
+		}
 	}
+	idAllowed := func(selfValue string) func(int64) bool {
+		return func(id int64) bool {
+			return selfValue != "" && strconv.FormatInt(id, 10) == selfValue
+		}
+	}
+
+	allowed := &Identity{LfUsername: currentUsername}
+	skipped := []string{}
 
 	if requested.LfUsername != "" && !strings.EqualFold(requested.LfUsername, currentUsername) {
 		skipped = append(skipped, "lfUsername:"+requested.LfUsername)
 	}
-
-	for _, email := range requested.Emails {
-		email = strings.ToLower(strings.TrimSpace(email))
-		if email == "" {
-			continue
-		}
-		if emailAllowed(email) {
-			allowed.Emails = append(allowed.Emails, email)
-		} else {
-			skipped = append(skipped, "email:"+email)
-		}
-	}
-
-	for _, email := range requested.SecondaryEmails {
-		email = strings.ToLower(strings.TrimSpace(email))
-		if email == "" {
-			continue
-		}
-		if emailAllowed(email) {
-			allowed.SecondaryEmails = append(allowed.SecondaryEmails, email)
-		} else {
-			skipped = append(skipped, "secondaryEmail:"+email)
-		}
-	}
-
-	for _, githubID := range requested.GithubIDs {
-		if selfGithubID != "" && strconv.FormatInt(githubID, 10) == selfGithubID {
-			allowed.GithubIDs = append(allowed.GithubIDs, githubID)
-		} else {
-			skipped = append(skipped, fmt.Sprintf("githubId:%d", githubID))
-		}
-	}
-
-	for _, githubUsername := range requested.GithubUsernames {
-		githubUsername = strings.TrimSpace(githubUsername)
-		if githubUsername == "" {
-			continue
-		}
-		if (selfGithubUsername != "" && strings.EqualFold(githubUsername, selfGithubUsername)) || usernameAllowed(identitySourceGithub, githubUsername) {
-			allowed.GithubUsernames = append(allowed.GithubUsernames, githubUsername)
-		} else {
-			skipped = append(skipped, "githubUsername:"+githubUsername)
-		}
-	}
-
-	for _, gitlabID := range requested.GitlabIDs {
-		if selfGitlabID != "" && strconv.FormatInt(gitlabID, 10) == selfGitlabID {
-			allowed.GitlabIDs = append(allowed.GitlabIDs, gitlabID)
-		} else {
-			skipped = append(skipped, fmt.Sprintf("gitlabId:%d", gitlabID))
-		}
-	}
-
-	for _, gitlabUsername := range requested.GitlabUsernames {
-		gitlabUsername = strings.TrimSpace(gitlabUsername)
-		if gitlabUsername == "" {
-			continue
-		}
-		if (selfGitlabUsername != "" && strings.EqualFold(gitlabUsername, selfGitlabUsername)) || usernameAllowed(identitySourceGitlab, gitlabUsername) {
-			allowed.GitlabUsernames = append(allowed.GitlabUsernames, gitlabUsername)
-		} else {
-			skipped = append(skipped, "gitlabUsername:"+gitlabUsername)
-		}
-	}
-
-	for _, gerritUsername := range requested.GerritUsernames {
-		gerritUsername = strings.TrimSpace(gerritUsername)
-		if gerritUsername == "" {
-			continue
-		}
-		if strings.EqualFold(gerritUsername, currentUsername) || usernameAllowed(identitySourceGerrit, gerritUsername) {
-			allowed.GerritUsernames = append(allowed.GerritUsernames, gerritUsername)
-		} else {
-			skipped = append(skipped, "gerritUsername:"+gerritUsername)
-		}
-	}
+	appendAllowedStrings(requested.Emails, "email", normalizeEmail, emailAllowed, &allowed.Emails, &skipped)
+	appendAllowedStrings(requested.SecondaryEmails, "secondaryEmail", normalizeEmail, emailAllowed, &allowed.SecondaryEmails, &skipped)
+	appendAllowedIDs(requested.GithubIDs, "githubId", idAllowed(selfGithubID), &allowed.GithubIDs, &skipped)
+	appendAllowedStrings(requested.GithubUsernames, "githubUsername", strings.TrimSpace, usernameAllowed(identitySourceGithub, selfGithubUsername), &allowed.GithubUsernames, &skipped)
+	appendAllowedIDs(requested.GitlabIDs, "gitlabId", idAllowed(selfGitlabID), &allowed.GitlabIDs, &skipped)
+	appendAllowedStrings(requested.GitlabUsernames, "gitlabUsername", strings.TrimSpace, usernameAllowed(identitySourceGitlab, selfGitlabUsername), &allowed.GitlabUsernames, &skipped)
+	appendAllowedStrings(requested.GerritUsernames, "gerritUsername", strings.TrimSpace, usernameAllowed(identitySourceGerrit, currentUsername), &allowed.GerritUsernames, &skipped)
 
 	return allowed, skipped, nil
 }
 
+func appendAllowedStrings(values []string, param string, normalize func(string) string, allowed func(string) bool, dst *[]string, skipped *[]string) {
+	for _, value := range values {
+		value = normalize(value)
+		if value == "" {
+			continue
+		}
+		if allowed(value) {
+			*dst = append(*dst, value)
+		} else {
+			*skipped = append(*skipped, param+":"+value)
+		}
+	}
+}
+
+func appendAllowedIDs(values []int64, param string, allowed func(int64) bool, dst *[]int64, skipped *[]string) {
+	for _, value := range values {
+		if allowed(value) {
+			*dst = append(*dst, value)
+		} else {
+			*skipped = append(*skipped, fmt.Sprintf("%s:%d", param, value))
+		}
+	}
+}
+
 // loadPlatformIdentities collects the emails and per-source usernames connected to the
-// LF account per the platform user-service. Lookup failures are logged and yield an
-// empty set - the affected identity keys are then skipped (and reported), never allowed.
+// LF account - lookup failures yield an empty set, so the affected keys are skipped,
+// never allowed
 func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string) *platformIdentitySet {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.service.loadPlatformIdentities",
@@ -452,7 +410,7 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 	}
 
 	if platformUser.Email != nil && *platformUser.Email != "" {
-		set.emails[strings.ToLower(strings.TrimSpace(*platformUser.Email))] = true
+		set.emails[normalizeEmail(*platformUser.Email)] = true
 	}
 	for _, email := range platformUser.Emails {
 		if email == nil || email.EmailAddress == nil || *email.EmailAddress == "" {
@@ -461,7 +419,7 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 		if email.IsDeleted != nil && *email.IsDeleted {
 			continue
 		}
-		set.emails[strings.ToLower(strings.TrimSpace(*email.EmailAddress))] = true
+		set.emails[normalizeEmail(*email.EmailAddress)] = true
 	}
 
 	if platformUser.ID == "" {
@@ -483,17 +441,13 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 			}
 		}
 		if identity.Email != "" {
-			set.emails[strings.ToLower(strings.TrimSpace(identity.Email))] = true
+			set.emails[normalizeEmail(identity.Email)] = true
 		}
 	}
 
 	return set
 }
 
-// resolveUsers unions the EasyCLA user records matching any of the identity keys,
-// deduplicated by user ID. All lookups are backed by DynamoDB GSI queries except the
-// explicitly opt-in secondary-email match, which requires a table scan (the user_emails
-// attribute is a string set and cannot be indexed).
 func (s *service) resolveUsers(ctx context.Context, identity *Identity) ([]*v1Models.User, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.service.resolveUsers",
@@ -502,113 +456,78 @@ func (s *service) resolveUsers(ctx context.Context, identity *Identity) ([]*v1Mo
 
 	var userModels []*v1Models.User
 	seen := make(map[string]bool)
-	add := func(userModel *v1Models.User) {
-		if userModel == nil || userModel.UserID == "" || seen[userModel.UserID] {
-			return
-		}
-		seen[userModel.UserID] = true
-		userModels = append(userModels, userModel)
-	}
-
-	lfUsernames := identity.GerritUsernames
-	if identity.LfUsername != "" {
-		lfUsernames = append([]string{identity.LfUsername}, lfUsernames...)
-	}
-	for _, lfUsername := range lfUsernames {
-		lfUsername = strings.TrimSpace(lfUsername)
-		if lfUsername == "" {
-			continue
-		}
-		userModel, err := s.usersService.GetUserByLFUserName(lfUsername)
-		if err != nil && !isNotFound(err) {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup user by LF username: %s", lfUsername)
-			return nil, err
-		}
-		add(userModel)
-	}
-
-	for _, email := range identity.Emails {
-		email = strings.ToLower(strings.TrimSpace(email))
-		if email == "" {
-			continue
-		}
-		matches, err := s.usersService.GetUsersByLFEmail(email)
-		if err != nil && !isNotFound(err) {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup users by email: %s", email)
-			return nil, err
-		}
+	add := func(matches ...*v1Models.User) {
 		for _, userModel := range matches {
-			add(userModel)
+			if userModel == nil || userModel.UserID == "" || seen[userModel.UserID] {
+				continue
+			}
+			seen[userModel.UserID] = true
+			userModels = append(userModels, userModel)
+		}
+	}
+	addByLookup := func(values []string, what string, lookup func(string) ([]*v1Models.User, error)) error {
+		for _, value := range values {
+			if value == "" {
+				continue
+			}
+			matches, err := lookup(value)
+			if err != nil && !isNotFound(err) {
+				log.WithFields(f).WithError(err).Warnf("unable to lookup user by %s: %s", what, value)
+				return err
+			}
+			add(matches...)
+		}
+		return nil
+	}
+	single := func(lookup func(string) (*v1Models.User, error)) func(string) ([]*v1Models.User, error) {
+		return func(value string) ([]*v1Models.User, error) {
+			userModel, err := lookup(value)
+			return []*v1Models.User{userModel}, err
 		}
 	}
 
-	for _, email := range identity.SecondaryEmails {
-		email = strings.ToLower(strings.TrimSpace(email))
-		if email == "" {
-			continue
-		}
-		matches, err := s.usersService.GetUsersByEmail(email)
-		if err != nil && !isNotFound(err) {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup users by secondary email: %s", email)
-			return nil, err
-		}
-		for _, userModel := range matches {
-			add(userModel)
-		}
+	lfUsernames := trimAll(append([]string{identity.LfUsername}, identity.GerritUsernames...))
+	if err := addByLookup(lfUsernames, "LF username", single(s.usersService.GetUserByLFUserName)); err != nil {
+		return nil, err
 	}
-
-	for _, githubID := range identity.GithubIDs {
-		userModel, err := s.usersService.GetUserByGitHubID(strconv.FormatInt(githubID, 10))
-		if err != nil && !isNotFound(err) {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup user by GitHub ID: %d", githubID)
-			return nil, err
-		}
-		add(userModel)
+	if err := addByLookup(normalizeEmails(identity.Emails), "email", s.usersService.GetUsersByLFEmail); err != nil {
+		return nil, err
 	}
-
-	for _, githubUsername := range identity.GithubUsernames {
-		githubUsername = strings.TrimSpace(githubUsername)
-		if githubUsername == "" {
-			continue
-		}
-		userModel, err := s.usersService.GetUserByGitHubUsername(githubUsername)
-		if err != nil && !isNotFound(err) {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup user by GitHub username: %s", githubUsername)
+	if secondaryEmails := normalizeEmails(identity.SecondaryEmails); len(secondaryEmails) > 0 {
+		matches, err := s.repo.GetUsersBySecondaryEmails(ctx, secondaryEmails)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to lookup users by secondary emails")
 			return nil, err
 		}
-		add(userModel)
+		add(matches...)
 	}
-
-	for _, gitlabID := range identity.GitlabIDs {
-		userModel, err := s.usersService.GetUserByGitlabID(int(gitlabID))
-		if err != nil && !isNotFound(err) {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup user by GitLab ID: %d", gitlabID)
-			return nil, err
-		}
-		add(userModel)
+	if err := addByLookup(formatIDs(identity.GithubIDs), "GitHub ID", single(s.usersService.GetUserByGitHubID)); err != nil {
+		return nil, err
 	}
-
-	for _, gitlabUsername := range identity.GitlabUsernames {
-		gitlabUsername = strings.TrimSpace(gitlabUsername)
-		if gitlabUsername == "" {
-			continue
+	if err := addByLookup(trimAll(identity.GithubUsernames), "GitHub username", single(s.usersService.GetUserByGitHubUsername)); err != nil {
+		return nil, err
+	}
+	gitlabByID := func(value string) (*v1Models.User, error) {
+		gitlabID, convErr := strconv.Atoi(value)
+		if convErr != nil {
+			return nil, convErr
 		}
-		userModel, err := s.usersService.GetUserByGitLabUsername(gitlabUsername)
-		if err != nil && !isNotFound(err) {
-			log.WithFields(f).WithError(err).Warnf("unable to lookup user by GitLab username: %s", gitlabUsername)
-			return nil, err
-		}
-		add(userModel)
+		return s.usersService.GetUserByGitlabID(gitlabID)
+	}
+	if err := addByLookup(formatIDs(identity.GitlabIDs), "GitLab ID", single(gitlabByID)); err != nil {
+		return nil, err
+	}
+	if err := addByLookup(trimAll(identity.GitlabUsernames), "GitLab username", single(s.usersService.GetUserByGitLabUsername)); err != nil {
+		return nil, err
 	}
 
 	return userModels, nil
 }
 
-// eclaCoveredByCurrentApprovalList evaluates whether an ECLA is still covered by the
-// employer's current CCLA and its approval lists, mirroring the PR gating logic
-// (signatures service ProcessEmployeeSignature/UserIsApproved): the company must not be
-// sanctioned, the company must hold an approved+signed CCLA for the CLA Group, and the
-// user must match the current approval lists.
+// eclaCoveredByCurrentApprovalList mirrors the PR gating logic (signatures service
+// ProcessEmployeeSignature/UserIsApproved): the company must not be sanctioned, must
+// hold an approved+signed CCLA for the CLA Group, and the user must match its current
+// approval lists
 func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas map[string]*v1Models.Signature, approvals map[string]bool, userModel *v1Models.User, companyModel *v1Models.Company, sig *signatures.ItemSignature) (bool, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.service.eclaCoveredByCurrentApprovalList",
@@ -644,58 +563,54 @@ func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas ma
 	}
 	covered, approvedErr := s.signaturesService.UserIsApproved(ctx, userModel, ccla)
 	if approvedErr != nil {
-		// Mirror the gating behavior for approval-list evaluation problems (e.g. a
-		// malformed domain pattern): log and treat as not covered rather than failing
-		// the whole listing.
 		log.WithFields(f).WithError(approvedErr).Warn("unable to evaluate the approval list for the employee acknowledgement")
 		covered = false
+	}
+	// UserIsApproved cannot evaluate GitLab group membership (it needs per-group OAuth
+	// tokens); defer to the signature_approved flag, which the approval-list
+	// invalidation flow maintains (see docs/MY_CLAS_API.md).
+	if !covered && approvedErr == nil && len(ccla.GitlabOrgApprovalList) > 0 {
+		covered = true
 	}
 	approvals[approvalKey] = covered
 	return covered, nil
 }
 
-// claGroupName resolves and caches the CLA Group name, returning an empty string when
-// the CLA Group record cannot be resolved.
-func (s *service) claGroupName(ctx context.Context, cache map[string]string, claGroupID string) string {
+func (s *service) claGroupName(ctx context.Context, cache map[string]string, claGroupID string) (string, error) {
 	if claGroupID == "" {
-		return ""
+		return "", nil
 	}
 	if name, ok := cache[claGroupID]; ok {
-		return name
+		return name, nil
 	}
 	name, err := s.projectsClaGroupsRepo.GetCLAGroupNameByID(ctx, claGroupID)
 	if err != nil {
-		log.WithFields(logrus.Fields{
-			"functionName":   "v2.my_clas.service.claGroupName",
-			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-			"claGroupID":     claGroupID,
-		}).WithError(err).Warn("unable to lookup the CLA Group name")
+		if !errors.Is(err, projects_cla_groups.ErrCLAGroupDoesNotExist) {
+			return "", err
+		}
 		name = ""
 	}
 	cache[claGroupID] = name
-	return name
+	return name, nil
 }
 
-// company resolves and caches the company record, returning nil when it cannot be resolved.
-func (s *service) company(ctx context.Context, cache map[string]*v1Models.Company, companyID string) *v1Models.Company {
+func (s *service) company(ctx context.Context, cache map[string]*v1Models.Company, companyID string) (*v1Models.Company, error) {
 	if companyModel, ok := cache[companyID]; ok {
-		return companyModel
+		return companyModel, nil
 	}
 	companyModel, err := s.companyRepo.GetCompany(ctx, companyID)
 	if err != nil {
-		log.WithFields(logrus.Fields{
-			"functionName":   "v2.my_clas.service.company",
-			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-			"companyID":      companyID,
-		}).WithError(err).Warn("unable to lookup the company record")
+		var companyNotFound *utils.CompanyNotFound
+		if !errors.As(err, &companyNotFound) {
+			return nil, err
+		}
 		companyModel = nil
 	}
 	cache[companyID] = companyModel
-	return companyModel
+	return companyModel, nil
 }
 
-// signedOn mirrors the v1 signatures converter behavior: prefer the signed_on value and
-// fall back to date_created for older records missing it.
+// signedOn mirrors the v1 signatures converter: prefer signed_on, fall back to date_created
 func signedOn(sig *signatures.ItemSignature) string {
 	value := sig.DateCreated
 	if sig.SignedOn != "" {
@@ -707,8 +622,42 @@ func signedOn(sig *signatures.ItemSignature) string {
 	return value
 }
 
-// isNotFound returns true when the given lookup error only indicates that no user
-// record matched the identity key.
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func normalizeEmails(emails []string) []string {
+	normalized := make([]string, 0, len(emails))
+	seen := make(map[string]bool)
+	for _, email := range emails {
+		email = normalizeEmail(email)
+		if email == "" || seen[email] {
+			continue
+		}
+		seen[email] = true
+		normalized = append(normalized, email)
+	}
+	return normalized
+}
+
+func trimAll(values []string) []string {
+	trimmed := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			trimmed = append(trimmed, value)
+		}
+	}
+	return trimmed
+}
+
+func formatIDs(ids []int64) []string {
+	formatted := make([]string, 0, len(ids))
+	for _, id := range ids {
+		formatted = append(formatted, strconv.FormatInt(id, 10))
+	}
+	return formatted
+}
+
 func isNotFound(err error) bool {
 	if err == nil {
 		return false

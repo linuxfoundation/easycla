@@ -277,8 +277,8 @@ func (usc *Client) ListUsersByUsername(lfUsername string) (*models.User, error) 
 	return userList[0], nil
 }
 
-// ListUserIdentities returns the identities (GitHub, Gerrit, etc.) connected to the
-// given user record (Salesforce ID)
+// ListUserIdentities returns all identities (GitHub, Gerrit, etc.) connected to the
+// given user record (Salesforce ID), following the pagination
 func (usc *Client) ListUserIdentities(userSFID string) ([]*models.UserIdentity, error) {
 	f := logrus.Fields{
 		"functionName": "ListUserIdentities",
@@ -291,48 +291,54 @@ func (usc *Client) ListUserIdentities(userSFID string) ([]*models.UserIdentity, 
 		return nil, err
 	}
 
-	url := fmt.Sprintf("https://%s/user-service/v1/users/%s/identities?pageSize=100", usc.apiGwURL, userSFID)
-	request, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem building new request")
-		return nil, err
-	}
+	const pageSize = int64(100)
+	var identities []*models.UserIdentity
+	for offset := int64(0); ; offset += pageSize {
+		url := fmt.Sprintf("https://%s/user-service/v1/users/%s/identities?pageSize=%d&offset=%d", usc.apiGwURL, userSFID, pageSize, offset)
+		request, reqErr := http.NewRequest("GET", url, nil)
+		if reqErr != nil {
+			log.WithFields(f).WithError(reqErr).Warn("problem building new request")
+			return nil, reqErr
+		}
 
-	request.Header.Set("X-API-KEY", usc.apiKey)
-	request.Header.Set("Authorization", "Bearer "+tok)
-	request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("X-API-KEY", usc.apiKey)
+		request.Header.Set("Authorization", "Bearer "+tok)
+		request.Header.Set("Content-Type", "application/json")
 
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem listing user identities")
-		return nil, err
-	}
+		response, doErr := http.DefaultClient.Do(request)
+		if doErr != nil {
+			log.WithFields(f).WithError(doErr).Warn("problem listing user identities")
+			return nil, doErr
+		}
 
-	defer func() {
+		data, readErr := io.ReadAll(response.Body)
 		closeErr := response.Body.Close()
 		if closeErr != nil {
 			log.WithFields(f).WithError(closeErr).Warn("error closing body")
 		}
-	}()
+		if readErr != nil {
+			log.WithFields(f).WithError(readErr).Warn("problem reading the user identities response")
+			return nil, readErr
+		}
 
-	data, err := io.ReadAll(response.Body)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("problem reading the user identities response")
-		return nil, err
+		if response.StatusCode != http.StatusOK {
+			log.WithFields(f).Warnf("problem listing user identities - status: %d", response.StatusCode)
+			return nil, fmt.Errorf("listing user identities for user %s failed with status: %d", userSFID, response.StatusCode)
+		}
+
+		var identityList models.UserIdentityList
+		if unmarshalErr := json.Unmarshal(data, &identityList); unmarshalErr != nil {
+			log.WithFields(f).WithError(unmarshalErr).Warn("problem decoding the user identities response")
+			return nil, unmarshalErr
+		}
+
+		identities = append(identities, identityList.Data...)
+		if len(identityList.Data) == 0 || identityList.Metadata == nil || int64(len(identities)) >= identityList.Metadata.TotalSize {
+			break
+		}
 	}
 
-	if response.StatusCode != http.StatusOK {
-		log.WithFields(f).Warnf("problem listing user identities - status: %d", response.StatusCode)
-		return nil, fmt.Errorf("listing user identities for user %s failed with status: %d", userSFID, response.StatusCode)
-	}
-
-	var identityList models.UserIdentityList
-	if err := json.Unmarshal(data, &identityList); err != nil {
-		log.WithFields(f).WithError(err).Warn("problem decoding the user identities response")
-		return nil, err
-	}
-
-	return identityList.Data, nil
+	return identities, nil
 }
 
 // SearchUsersByEmail returns a single user based on the email parameter

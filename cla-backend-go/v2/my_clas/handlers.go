@@ -95,7 +95,6 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 		})
 }
 
-// principal extracts the authenticated username and admin flag from the auth principal
 func principal(authUser *auth.User) (string, bool) {
 	if authUser == nil {
 		return "", false
@@ -103,7 +102,6 @@ func principal(authUser *auth.User) (string, bool) {
 	return authUser.UserName, utils.IsUserAdmin(authUser)
 }
 
-// newIdentity builds the requested identity from the request parameters
 func newIdentity(lfUsername *string, emails, secondaryEmails []string, githubIDs []int64, githubUsernames []string, gitlabIDs []int64, gitlabUsernames []string, gerritUsernames []string) *Identity {
 	return &Identity{
 		LfUsername:      utils.StringValue(lfUsername),

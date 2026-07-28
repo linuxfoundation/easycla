@@ -11,21 +11,21 @@ import (
 	openapiErrors "github.com/go-openapi/errors"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	platformModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeUsers struct {
-	byLFUsername      map[string]*v1Models.User
-	byEmail           map[string][]*v1Models.User
-	bySecondaryEmail  map[string][]*v1Models.User
-	byGithubID        map[string]*v1Models.User
-	byGithubUsername  map[string]*v1Models.User
-	byGitlabID        map[int]*v1Models.User
-	byGitlabUsername  map[string]*v1Models.User
-	secondaryScanRuns int
+	byLFUsername     map[string]*v1Models.User
+	byEmail          map[string][]*v1Models.User
+	byGithubID       map[string]*v1Models.User
+	byGithubUsername map[string]*v1Models.User
+	byGitlabID       map[int]*v1Models.User
+	byGitlabUsername map[string]*v1Models.User
 }
 
 func (f *fakeUsers) GetUserByLFUserName(lfUserName string) (*v1Models.User, error) {
@@ -37,14 +37,6 @@ func (f *fakeUsers) GetUsersByLFEmail(userEmail string) ([]*v1Models.User, error
 		return userModels, nil
 	}
 	return nil, &utils.UserNotFound{UserEmail: userEmail}
-}
-
-func (f *fakeUsers) GetUsersByEmail(userEmail string) ([]*v1Models.User, error) {
-	f.secondaryScanRuns++
-	if userModels, ok := f.bySecondaryEmail[userEmail]; ok {
-		return userModels, nil
-	}
-	return nil, nil
 }
 
 func (f *fakeUsers) GetUserByGitHubID(gitHubID string) (*v1Models.User, error) {
@@ -94,11 +86,22 @@ func (f *fakePlatform) ListUserIdentities(_ string) ([]*platformModels.UserIdent
 }
 
 type fakeRepo struct {
-	byUserID map[string][]*signatures.ItemSignature
+	byUserID         map[string][]*signatures.ItemSignature
+	bySecondaryEmail map[string][]*v1Models.User
+	secondaryScans   int
 }
 
 func (f *fakeRepo) GetUserCLASignatures(_ context.Context, userID string) ([]*signatures.ItemSignature, error) {
 	return f.byUserID[userID], nil
+}
+
+func (f *fakeRepo) GetUsersBySecondaryEmails(_ context.Context, emails []string) ([]*v1Models.User, error) {
+	f.secondaryScans++
+	var matches []*v1Models.User
+	for _, email := range emails {
+		matches = append(matches, f.bySecondaryEmail[email]...)
+	}
+	return matches, nil
 }
 
 type fakeSignatures struct {
@@ -126,7 +129,7 @@ func (f *fakeCompanies) GetCompany(_ context.Context, companyID string) (*v1Mode
 	if companyModel, ok := f.byID[companyID]; ok {
 		return companyModel, nil
 	}
-	return nil, fmt.Errorf("company does not exist: %s", companyID)
+	return nil, &utils.CompanyNotFound{CompanyID: companyID}
 }
 
 type fakeClaGroups struct {
@@ -137,7 +140,7 @@ func (f *fakeClaGroups) GetCLAGroupNameByID(_ context.Context, claGroupID string
 	if name, ok := f.names[claGroupID]; ok {
 		return name, nil
 	}
-	return "", fmt.Errorf("cla group does not exist")
+	return "", projects_cla_groups.ErrCLAGroupDoesNotExist
 }
 
 func icla(signatureID, userID, claGroupID, signedOn string, approved bool) *signatures.ItemSignature {
@@ -154,21 +157,27 @@ func icla(signatureID, userID, claGroupID, signedOn string, approved bool) *sign
 	}
 }
 
-// ecla builds an auto-created-style ECLA (signature_type=ecla); DocuSign-era ECLAs carry
-// signature_type=cla instead - classification must not depend on it, so tests use both.
-func ecla(signatureID, userID, claGroupID, companyID, signedOn string, approved bool) *signatures.ItemSignature {
-	sig := icla(signatureID, userID, claGroupID, signedOn, approved)
+// ECLAs auto-created from approval-list changes carry signature_type=ecla while
+// DocuSign-era ECLAs carry signature_type=cla - classification must not depend on it
+func ecla(signatureID, companyID, signedOn string, approved bool) *signatures.ItemSignature {
+	sig := icla(signatureID, "user-a", "cla-group-1", signedOn, approved)
 	sig.SignatureUserCompanyID = companyID
 	sig.SignatureType = utils.ClaTypeECLA
 	return sig
 }
 
 func newTestService(repo Repository, usersService UsersService, platform PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, claGroups ProjectsCLAGroupsRepository) *service {
-	svc := NewService(repo, usersService, platform, signaturesService, companyRepo, claGroups).(*service)
-	svc.presign = func(filename string) (string, error) {
-		return "https://s3.example.org/" + filename, nil
+	return &service{
+		repo:                  repo,
+		usersService:          usersService,
+		platformUsersService:  platform,
+		signaturesService:     signaturesService,
+		companyRepo:           companyRepo,
+		projectsClaGroupsRepo: claGroups,
+		presign: func(filename string) (string, error) {
+			return "https://s3.example.org/" + filename, nil
+		},
 	}
-	return svc
 }
 
 func TestGetMyClasUnionAndDedupe(t *testing.T) {
@@ -190,12 +199,11 @@ func TestGetMyClasUnionAndDedupe(t *testing.T) {
 		Emails:    []string{"Someone@Example.org "},
 		GithubIDs: []int64{12345},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []string{"user-a", "user-b"}, result.UserIds)
 	assert.Empty(t, result.SkippedIdentities)
 	assert.Equal(t, int64(2), result.ResultCount)
-	assert.Len(t, result.Clas, 2)
-	// sorted by signedOn descending
+	require.Len(t, result.Clas, 2)
 	assert.Equal(t, "sig-2", result.Clas[0].SignatureID)
 	assert.Equal(t, "sig-1", result.Clas[1].SignatureID)
 	assert.Equal(t, "My CLA Group", result.Clas[0].ClaGroupName)
@@ -205,7 +213,7 @@ func TestGetMyClasNoMatches(t *testing.T) {
 	svc := newTestService(&fakeRepo{}, &fakeUsers{}, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "missing", false, &Identity{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, result.UserIds)
 	assert.Empty(t, result.Clas)
 	assert.Equal(t, int64(0), result.ResultCount)
@@ -239,9 +247,9 @@ func TestGetMyClasOwnershipRejectsForeignIdentities(t *testing.T) {
 		GitlabUsernames: []string{"victim-gl"},
 		GerritUsernames: []string{"victim"},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []string{"user-a"}, result.UserIds, "only the caller's own record is searched")
-	assert.Len(t, result.Clas, 1)
+	require.Len(t, result.Clas, 1)
 	assert.Equal(t, "sig-own", result.Clas[0].SignatureID)
 	assert.ElementsMatch(t, []string{
 		"lfUsername:victim",
@@ -253,37 +261,40 @@ func TestGetMyClasOwnershipRejectsForeignIdentities(t *testing.T) {
 		"gitlabUsername:victim-gl",
 		"gerritUsername:victim",
 	}, result.SkippedIdentities)
+	assert.Equal(t, 0, repo.secondaryScans)
 }
 
 func TestGetMyClasOwnershipViaEasyCLARecord(t *testing.T) {
 	userA := &v1Models.User{
 		UserID: "user-a", LfUsername: "someone", LfEmail: "someone@example.org",
-		Emails: []string{"alt@example.org"}, GithubID: "12345", GithubUsername: "someone-gh",
+		Emails: []string{"alt@example.org", "alt2@example.org"}, GithubID: "12345", GithubUsername: "someone-gh",
 		GitlabID: "777", GitlabUsername: "someone-gl",
 	}
 	userB := &v1Models.User{UserID: "user-b"}
 	userC := &v1Models.User{UserID: "user-c"}
 
 	usersService := &fakeUsers{
-		byLFUsername:     map[string]*v1Models.User{"someone": userA},
-		bySecondaryEmail: map[string][]*v1Models.User{"alt@example.org": {userB}},
-		byGitlabID:       map[int]*v1Models.User{777: userC},
+		byLFUsername: map[string]*v1Models.User{"someone": userA},
+		byGitlabID:   map[int]*v1Models.User{777: userC},
 	}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-b": {icla("sig-b", "user-b", "cla-group-1", "2024-01-01T00:00:00Z", true)},
-		"user-c": {icla("sig-c", "user-c", "cla-group-1", "2024-02-01T00:00:00Z", true)},
-	}}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-b": {icla("sig-b", "user-b", "cla-group-1", "2024-01-01T00:00:00Z", true)},
+			"user-c": {icla("sig-c", "user-c", "cla-group-1", "2024-02-01T00:00:00Z", true)},
+		},
+		bySecondaryEmail: map[string][]*v1Models.User{"alt@example.org": {userB}},
+	}
 	platform := &fakePlatform{}
 	svc := newTestService(repo, usersService, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{
-		SecondaryEmails: []string{"Alt@Example.org"},
+		SecondaryEmails: []string{"Alt@Example.org", "alt2@example.org", "alt@example.org"},
 		GitlabIDs:       []int64{777},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, result.SkippedIdentities)
 	assert.ElementsMatch(t, []string{"user-a", "user-b", "user-c"}, result.UserIds)
-	assert.Equal(t, 1, usersService.secondaryScanRuns, "secondary-email scan runs only for the provided value")
+	assert.Equal(t, 1, repo.secondaryScans, "one scan for all secondary emails")
 	assert.Equal(t, 0, platform.lookups, "user-service is not consulted when the EasyCLA record covers the identities")
 }
 
@@ -314,16 +325,15 @@ func TestGetMyClasOwnershipViaPlatformIdentities(t *testing.T) {
 		GithubUsernames: []string{"octocat"},
 		GerritUsernames: []string{"old-ldap-id"},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, result.SkippedIdentities)
 	assert.ElementsMatch(t, []string{"user-a", "user-gh", "user-gerrit"}, result.UserIds)
 	assert.Equal(t, 1, platform.lookups, "platform identities are loaded once")
 
-	// a slack username must not authorize a github/gitlab/gerrit search
 	result, err = svc.GetMyClas(context.Background(), "someone", false, &Identity{
 		GithubUsernames: []string{"not-a-code-identity"},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []string{"githubUsername:not-a-code-identity"}, result.SkippedIdentities)
 }
 
@@ -338,7 +348,7 @@ func TestGetMyClasAdminBypass(t *testing.T) {
 	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "staff-admin", true, &Identity{LfUsername: "victim"})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, result.SkippedIdentities)
 	assert.Equal(t, "victim", result.LfUsername)
 	assert.Equal(t, []string{"user-v"}, result.UserIds)
@@ -360,8 +370,8 @@ func TestGetMyClasIclaValidity(t *testing.T) {
 	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
-	assert.NoError(t, err)
-	assert.Len(t, result.Clas, 2, "unsigned records must be excluded")
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 2, "unsigned records must be excluded")
 
 	byID := map[string]int{}
 	for i, row := range result.Clas {
@@ -395,21 +405,22 @@ func TestGetMyClasEclaValidity(t *testing.T) {
 		},
 		approvedUserIDs: map[string]bool{"user-a": true},
 	}
-	docusignEraEcla := ecla("sig-1", "user-a", "cla-group-1", "company-1", "2024-01-01T00:00:00Z", true)
+	docusignEraEcla := ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)
 	docusignEraEcla.SignatureType = utils.SignatureTypeCLA
 	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
 		"user-a": {
 			docusignEraEcla,
-			ecla("sig-2", "user-a", "cla-group-1", "company-2", "2024-02-01T00:00:00Z", true),
-			ecla("sig-3", "user-a", "cla-group-1", "company-3", "2024-03-01T00:00:00Z", true),
-			ecla("sig-4", "user-a", "cla-group-1", "company-1", "2024-04-01T00:00:00Z", false),
+			ecla("sig-2", "company-2", "2024-02-01T00:00:00Z", true),
+			ecla("sig-3", "company-3", "2024-03-01T00:00:00Z", true),
+			ecla("sig-4", "company-1", "2024-04-01T00:00:00Z", false),
+			ecla("sig-5", "company-5", "2024-05-01T00:00:00Z", true),
 		},
 	}}
 	svc := newTestService(repo, usersService, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
-	assert.NoError(t, err)
-	assert.Len(t, result.Clas, 4)
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 5)
 
 	byID := map[string]models.MyCla{}
 	for _, row := range result.Clas {
@@ -427,6 +438,8 @@ func TestGetMyClasEclaValidity(t *testing.T) {
 	assert.False(t, byID["sig-2"].Valid, "sanctioned company invalidates the ECLA")
 	assert.False(t, byID["sig-3"].Valid, "missing current CCLA invalidates the ECLA")
 	assert.False(t, byID["sig-4"].Valid, "signature_approved=false invalidates the ECLA")
+	assert.False(t, byID["sig-5"].Valid, "unknown company invalidates the ECLA")
+	assert.Empty(t, byID["sig-5"].CompanyName)
 }
 
 func TestGetMyClasEclaNotOnCurrentApprovalList(t *testing.T) {
@@ -442,14 +455,61 @@ func TestGetMyClasEclaNotOnCurrentApprovalList(t *testing.T) {
 		approvedUserIDs: map[string]bool{},
 	}
 	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-a": {ecla("sig-1", "user-a", "cla-group-1", "company-1", "2024-01-01T00:00:00Z", true)},
+		"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
 	}}
 	svc := newTestService(repo, usersService, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
-	assert.NoError(t, err)
-	assert.Len(t, result.Clas, 1)
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 1)
 	assert.True(t, result.Clas[0].Approved)
 	assert.False(t, result.Clas[0].Valid, "ECLA no longer matching the current approval list is invalid")
+}
+
+func TestGetMyClasEclaGitlabGroupFallback(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	usersService := &fakeUsers{byLFUsername: map[string]*v1Models.User{"someone": userA}}
+	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
+		"company-1": {CompanyID: "company-1", CompanyName: "GitLab Group Corp"},
+	}}
+	signaturesService := &fakeSignatures{
+		cclas: map[string]*v1Models.Signature{
+			"cla-group-1|company-1": {SignatureID: "ccla-1", GitlabOrgApprovalList: []string{"https://gitlab.com/groups/good-group"}},
+		},
+		approvedUserIDs: map[string]bool{},
+	}
+	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
+		"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
+	}}
+	svc := newTestService(repo, usersService, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+
+	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 1)
+	assert.True(t, result.Clas[0].Valid, "GitLab-group-approved ECLAs defer to the signature_approved flag")
+}
+
+func TestGetMyClasEclaApprovalEvaluationError(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	usersService := &fakeUsers{byLFUsername: map[string]*v1Models.User{"someone": userA}}
+	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
+		"company-1": {CompanyID: "company-1", CompanyName: "Good Corp"},
+	}}
+	signaturesService := &fakeSignatures{
+		cclas: map[string]*v1Models.Signature{
+			"cla-group-1|company-1": {SignatureID: "ccla-1", GitlabOrgApprovalList: []string{"https://gitlab.com/groups/good-group"}},
+		},
+		userIsApprovedErr: fmt.Errorf("bad approval pattern"),
+	}
+	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
+		"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
+	}}
+	svc := newTestService(repo, usersService, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+
+	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	require.NoError(t, err, "approval-list evaluation problems must not fail the listing")
+	require.Len(t, result.Clas, 1)
+	assert.False(t, result.Clas[0].Valid, "evaluation errors leave the ECLA not covered - no GitLab fallback")
 }
 
 func TestGetMyClaPdfURL(t *testing.T) {
@@ -460,29 +520,30 @@ func TestGetMyClaPdfURL(t *testing.T) {
 	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
 		"user-a": {
 			icla("sig-icla", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true),
-			ecla("sig-ecla", "user-a", "cla-group-1", "company-1", "2024-02-01T00:00:00Z", true),
+			ecla("sig-ecla", "company-1", "2024-02-01T00:00:00Z", true),
 			unsigned,
 		},
 	}}
 	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	identity := &Identity{}
 
-	result, err := svc.GetMyClaPdfURL(context.Background(), "someone", false, &Identity{}, "sig-icla")
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	result, err := svc.GetMyClaPdfURL(context.Background(), "someone", false, identity, "sig-icla")
+	require.NoError(t, err)
+	require.NotNil(t, result)
 	assert.Equal(t, "sig-icla", result.SignatureID)
 	assert.Equal(t, "https://s3.example.org/contract-group/cla-group-1/icla/user-a/sig-icla.pdf", result.URL)
 	assert.Equal(t, int64(900), result.ExpiresInSeconds)
 
-	result, err = svc.GetMyClaPdfURL(context.Background(), "someone", false, &Identity{}, "sig-ecla")
-	assert.NoError(t, err)
+	result, err = svc.GetMyClaPdfURL(context.Background(), "someone", false, identity, "sig-ecla")
+	require.NoError(t, err)
 	assert.Nil(t, result, "ECLAs have no signed PDF")
 
-	result, err = svc.GetMyClaPdfURL(context.Background(), "someone", false, &Identity{}, "sig-unsigned")
-	assert.NoError(t, err)
+	result, err = svc.GetMyClaPdfURL(context.Background(), "someone", false, identity, "sig-unsigned")
+	require.NoError(t, err)
 	assert.Nil(t, result, "unsigned records have no signed PDF")
 
-	result, err = svc.GetMyClaPdfURL(context.Background(), "someone", false, &Identity{}, "sig-of-somebody-else")
-	assert.NoError(t, err)
+	result, err = svc.GetMyClaPdfURL(context.Background(), "someone", false, identity, "sig-of-somebody-else")
+	require.NoError(t, err)
 	assert.Nil(t, result, "signatures not owned by the resolved identity are not found")
 }
 
@@ -498,19 +559,16 @@ func TestGetMyClaPdfURLOwnershipEnforced(t *testing.T) {
 	}}
 	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
-	// a non-admin cannot resolve somebody else's signature, even when passing that
-	// person's identity keys explicitly - they are skipped, so the PDF is not found
 	result, err := svc.GetMyClaPdfURL(context.Background(), "someone", false, &Identity{
 		LfUsername: "victim",
 		Emails:     []string{"victim@example.org"},
 	}, "sig-victim")
-	assert.NoError(t, err)
-	assert.Nil(t, result)
+	require.NoError(t, err)
+	assert.Nil(t, result, "a non-admin cannot resolve somebody else's signature")
 
-	// an admin can
 	result, err = svc.GetMyClaPdfURL(context.Background(), "staff-admin", true, &Identity{LfUsername: "victim"}, "sig-victim")
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }
 
 func TestIdentityIsEmpty(t *testing.T) {

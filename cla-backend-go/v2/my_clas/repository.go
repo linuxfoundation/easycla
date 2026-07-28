@@ -12,8 +12,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
+	"github.com/go-openapi/strfmt"
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -21,26 +24,25 @@ import (
 // Repository interface defines the data access methods for the My CLAs module
 type Repository interface {
 	GetUserCLASignatures(ctx context.Context, userID string) ([]*signatures.ItemSignature, error)
+	GetUsersBySecondaryEmails(ctx context.Context, emails []string) ([]*v1Models.User, error)
 }
 
 type repository struct {
-	stage              string
 	dynamoDBClient     *dynamodb.DynamoDB
 	signatureTableName string
+	usersTableName     string
 }
 
 // NewRepository creates a new instance of the My CLAs repository
 func NewRepository(awsSession *session.Session, stage string) Repository {
 	return repository{
-		stage:              stage,
 		dynamoDBClient:     dynamodb.New(awsSession),
 		signatureTableName: fmt.Sprintf("cla-%s-signatures", stage),
+		usersTableName:     fmt.Sprintf("cla-%s-users", stage),
 	}
 }
 
-// GetUserCLASignatures returns all ICLA and ECLA signature records referencing the
-// given EasyCLA user ID. Unlike the v1 signatures repository GetUserSignatures, the
-// query does not exclude records with signature_user_ccla_company_id set (ECLAs).
+// GetUserCLASignatures returns all ICLA and ECLA signature records referencing the given EasyCLA user ID
 func (repo repository) GetUserCLASignatures(ctx context.Context, userID string) ([]*signatures.ItemSignature, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.repository.GetUserCLASignatures",
@@ -71,7 +73,7 @@ func (repo repository) GetUserCLASignatures(ctx context.Context, userID string) 
 
 	var results []*signatures.ItemSignature
 	for {
-		queryResults, queryErr := repo.dynamoDBClient.Query(queryInput)
+		queryResults, queryErr := repo.dynamoDBClient.QueryWithContext(ctx, queryInput)
 		if queryErr != nil {
 			log.WithFields(f).WithError(queryErr).Warn("error retrieving user CLA signatures")
 			return nil, queryErr
@@ -91,4 +93,74 @@ func (repo repository) GetUserCLASignatures(ctx context.Context, userID string) 
 	}
 
 	return results, nil
+}
+
+// GetUsersBySecondaryEmails returns the user records whose additional-emails set
+// (user_emails) contains any of the given emails - a single table scan for all values,
+// as the set attribute cannot be indexed
+func (repo repository) GetUsersBySecondaryEmails(ctx context.Context, emails []string) ([]*v1Models.User, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.my_clas.repository.GetUsersBySecondaryEmails",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"emails":         emails,
+	}
+
+	if len(emails) == 0 {
+		return nil, nil
+	}
+
+	filter := expression.Name("user_emails").Contains(emails[0])
+	for _, email := range emails[1:] {
+		filter = filter.Or(expression.Name("user_emails").Contains(email))
+	}
+
+	expr, err := expression.NewBuilder().WithFilter(filter).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building expression for secondary emails scan")
+		return nil, err
+	}
+
+	scanInput := &dynamodb.ScanInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		FilterExpression:          expr.Filter(),
+		TableName:                 aws.String(repo.usersTableName),
+	}
+
+	var dbUsers []users.DBUser
+	for {
+		scanResults, scanErr := repo.dynamoDBClient.ScanWithContext(ctx, scanInput)
+		if scanErr != nil {
+			log.WithFields(f).WithError(scanErr).Warn("error scanning users by secondary emails")
+			return nil, scanErr
+		}
+
+		var page []users.DBUser
+		if unmarshalErr := dynamodbattribute.UnmarshalListOfMaps(scanResults.Items, &page); unmarshalErr != nil {
+			log.WithFields(f).WithError(unmarshalErr).Warn("error unmarshalling users from secondary emails scan")
+			return nil, unmarshalErr
+		}
+		dbUsers = append(dbUsers, page...)
+
+		if len(scanResults.LastEvaluatedKey) == 0 {
+			break
+		}
+		scanInput.ExclusiveStartKey = scanResults.LastEvaluatedKey
+	}
+
+	userModels := make([]*v1Models.User, 0, len(dbUsers))
+	for _, dbUser := range dbUsers {
+		userModels = append(userModels, &v1Models.User{
+			UserID:         dbUser.UserID,
+			LfUsername:     dbUser.LFUsername,
+			LfEmail:        strfmt.Email(dbUser.LFEmail),
+			Emails:         dbUser.UserEmails,
+			GithubID:       dbUser.UserGithubID,
+			GithubUsername: dbUser.UserGithubUsername,
+			GitlabID:       dbUser.UserGitlabID,
+			GitlabUsername: dbUser.UserGitlabUsername,
+		})
+	}
+
+	return userModels, nil
 }
