@@ -81,7 +81,7 @@ func (f *fakePlatform) GetUserByUsername(_ string) (*platformModels.User, error)
 	return f.user, nil
 }
 
-func (f *fakePlatform) ListUserIdentities(_ string) ([]*platformModels.UserIdentity, error) {
+func (f *fakePlatform) ListUserIdentities(_ context.Context, _ string) ([]*platformModels.UserIdentity, error) {
 	return f.identities, nil
 }
 
@@ -176,6 +176,9 @@ func newTestService(repo Repository, usersService UsersService, platform Platfor
 		projectsClaGroupsRepo: claGroups,
 		presign: func(filename string) (string, error) {
 			return "https://s3.example.org/" + filename, nil
+		},
+		documentExists: func(_ string) (bool, error) {
+			return true, nil
 		},
 	}
 }
@@ -545,6 +548,11 @@ func TestGetMyClaPdfURL(t *testing.T) {
 	result, err = svc.GetMyClaPdfURL(context.Background(), "someone", false, identity, "sig-of-somebody-else")
 	require.NoError(t, err)
 	assert.Nil(t, result, "signatures not owned by the resolved identity are not found")
+
+	svc.documentExists = func(_ string) (bool, error) { return false, nil }
+	result, err = svc.GetMyClaPdfURL(context.Background(), "someone", false, identity, "sig-icla")
+	require.NoError(t, err)
+	assert.Nil(t, result, "missing S3 objects are reported as not found instead of returning a dead URL")
 }
 
 func TestGetMyClaPdfURLOwnershipEnforced(t *testing.T) {
@@ -588,4 +596,5 @@ func TestIsNotFound(t *testing.T) {
 	assert.True(t, isNotFound(&utils.UserNotFound{UserEmail: "someone@example.org"}))
 	assert.True(t, isNotFound(openapiErrors.NotFound("user not found when searching by user_github_id: %s", "12345")))
 	assert.False(t, isNotFound(fmt.Errorf("connection refused")))
+	assert.False(t, isNotFound(fmt.Errorf("ResourceNotFoundException: requested resource not found")), "infrastructure errors must propagate, not read as user-not-found")
 }

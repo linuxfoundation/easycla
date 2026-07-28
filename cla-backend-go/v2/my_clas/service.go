@@ -63,7 +63,7 @@ type UsersService interface {
 // that identities are connected to the authenticated user's LF account
 type PlatformUsersService interface {
 	GetUserByUsername(lfUsername string) (*platformModels.User, error)
-	ListUserIdentities(userSFID string) ([]*platformModels.UserIdentity, error)
+	ListUserIdentities(ctx context.Context, userSFID string) ([]*platformModels.UserIdentity, error)
 }
 
 // SignaturesService is the subset of the v1 signatures service used to evaluate ECLA validity
@@ -96,6 +96,7 @@ type service struct {
 	companyRepo           CompanyRepository
 	projectsClaGroupsRepo ProjectsCLAGroupsRepository
 	presign               func(filename string) (string, error)
+	documentExists        func(filename string) (bool, error)
 }
 
 // NewService creates a new instance of the My CLAs service
@@ -108,6 +109,7 @@ func NewService(repo Repository, usersService UsersService, platformUsersService
 		companyRepo:           companyRepo,
 		projectsClaGroupsRepo: projectsClaGroupsRepo,
 		presign:               utils.GetDownloadLink,
+		documentExists:        utils.DocumentExists,
 	}
 }
 
@@ -247,6 +249,15 @@ func (s *service) GetMyClaPdfURL(ctx context.Context, currentUsername string, ad
 			}
 
 			filename := utils.SignedCLAFilename(sig.SignatureProjectID, utils.ClaTypeICLA, sig.SignatureReferenceID, sig.SignatureID)
+			exists, existsErr := s.documentExists(filename)
+			if existsErr != nil {
+				log.WithFields(f).WithError(existsErr).Warnf("unable to check the signed document existence for file: %s", filename)
+				return nil, existsErr
+			}
+			if !exists {
+				log.WithFields(f).Warnf("signed document does not exist in S3: %s", filename)
+				return nil, nil
+			}
 			url, urlErr := s.presign(filename)
 			if urlErr != nil {
 				log.WithFields(f).WithError(urlErr).Warnf("unable to generate a download link for file: %s", filename)
@@ -425,7 +436,7 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 	if platformUser.ID == "" {
 		return set
 	}
-	identityList, err := s.platformUsersService.ListUserIdentities(platformUser.ID)
+	identityList, err := s.platformUsersService.ListUserIdentities(ctx, platformUser.ID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to list the LF user's connected identities")
 		return set
@@ -642,8 +653,10 @@ func normalizeEmails(emails []string) []string {
 
 func trimAll(values []string) []string {
 	trimmed := make([]string, 0, len(values))
+	seen := make(map[string]bool)
 	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
+		if value = strings.TrimSpace(value); value != "" && !seen[value] {
+			seen[value] = true
 			trimmed = append(trimmed, value)
 		}
 	}
@@ -652,8 +665,12 @@ func trimAll(values []string) []string {
 
 func formatIDs(ids []int64) []string {
 	formatted := make([]string, 0, len(ids))
+	seen := make(map[int64]bool)
 	for _, id := range ids {
-		formatted = append(formatted, strconv.FormatInt(id, 10))
+		if !seen[id] {
+			seen[id] = true
+			formatted = append(formatted, strconv.FormatInt(id, 10))
+		}
 	}
 	return formatted
 }
@@ -667,8 +684,5 @@ func isNotFound(err error) bool {
 		return true
 	}
 	var apiErr openapiErrors.Error
-	if errors.As(err, &apiErr) && apiErr.Code() == http.StatusNotFound {
-		return true
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "not found")
+	return errors.As(err, &apiErr) && apiErr.Code() == http.StatusNotFound
 }

@@ -17,7 +17,11 @@ emails and GitHub/GitLab/Gerrit identities, with per-record validity evaluated a
 the *current* company CCLA approval lists — and download their signed ICLA PDFs via
 time-limited links. Every provided identity key is **verified to belong to the
 authenticated user** before it is searched (see "Identity ownership enforcement"), so
-the endpoints cannot be used to enumerate other people's CLA history:
+the endpoints cannot be used to freely enumerate other people's CLA history.
+"Belongs to" means the identity is *currently* attached to the caller's LF account
+(their EasyCLA user record or their platform user-service profile/identities) — the
+accepted product bar for this read-only surface; the recycled-alias trade-off this
+implies is documented under "Known limitations":
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -75,7 +79,7 @@ first rollout (after `acs-cli sync`), not steady-state behavior.
 | Parameter | Type | Repeatable | Meaning |
 |---|---|---|---|
 | `lfUsername` | string | no | LF username (LFID). **When omitted, defaults to the username of the authenticated principal** (from the token via `X-USERNAME`), so a plain `GET /v4/my-clas` returns the caller's own CLAs. For non-admin callers a value different from the token username is never searched (reported in `skippedIdentities`). |
-| `email` | string | yes | Email addresses of the user. Lowercased/trimmed and matched against the EasyCLA user records' primary email (`lf_email` GSI — index-backed). |
+| `email` | string | yes | Email addresses of the user. Lowercased/trimmed and matched against the EasyCLA user records' primary email (`lf_email` GSI — index-backed). All repeatable parameters are capped (`maxItems: 100`, `secondaryEmail: 20`) and deduplicated server-side. |
 | `secondaryEmail` | string | yes | Email addresses additionally matched against the EasyCLA user records' additional-emails set (`user_emails`). **This match is not index-backed** (the attribute is a DynamoDB string set, which cannot carry a GSI): all provided values (max 20, normalized + deduplicated) are matched in **one single table scan** — never one scan per value, and never for plain `email` values. Use sparingly. |
 | `githubId` | integer | yes | GitHub numeric user IDs linked to the LF identity (from Auth0 identities). The highest-precision key for pre-LF-login history. |
 | `githubUsername` | string | yes | GitHub usernames (hint only — usernames can be renamed/recycled; prefer `githubId`). |
@@ -382,7 +386,8 @@ Behavior:
    belonging to somebody else is a guaranteed 404 even if the caller passes that
    person's email/GitHub keys explicitly (covered by a dedicated unit test).
 2. Verifies the `signatureID` belongs to one of those records **and** is a signed
-   ICLA.
+   ICLA, then verifies the PDF object actually exists in S3 (`HeadObject`) — a missing
+   document returns 404 instead of a dead presigned URL.
 3. On success, returns a presigned S3 GET URL for
    `contract-group/{claGroupID}/icla/{userID}/{signatureID}.pdf` in the
    `cla-signature-files-{stage}` bucket, valid for **15 minutes**:
@@ -511,6 +516,16 @@ normal latency envelope.
 
 ## Known limitations / follow-ups
 
+- **Current possession of an identity grants access to its historical records —
+  accepted product decision.** A verified-as-currently-owned email or SCM username is
+  the bar for surfacing (and downloading) historical CLAs recorded under that
+  identity; a recycled/reassigned alias (e.g. a corporate email handed to a new
+  employee, a renamed GitHub handle re-registered by someone else, both also linked to
+  the new holder's LF account) can therefore surface the previous holder's records.
+  This matches how EasyCLA itself keys pre-LF-login history, keeps the M1 read-only
+  surface simple, and was explicitly chosen over a stable-ID corroboration scheme;
+  numeric `githubId`/`gitlabId` keys are immune (immutable) and remain the preferred
+  high-precision parameters.
 - **GitLab group approval lists** (`gitlab_org_approval_list`) are not re-evaluated
   live: group membership requires the GitLab group's OAuth token (the MR-gating
   service holds per-group credentials). When a CCLA uses GitLab group approvals and no

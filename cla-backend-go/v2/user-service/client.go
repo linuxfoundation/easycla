@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -279,7 +280,7 @@ func (usc *Client) ListUsersByUsername(lfUsername string) (*models.User, error) 
 
 // ListUserIdentities returns all identities (GitHub, Gerrit, etc.) connected to the
 // given user record (Salesforce ID), following the pagination
-func (usc *Client) ListUserIdentities(userSFID string) ([]*models.UserIdentity, error) {
+func (usc *Client) ListUserIdentities(ctx context.Context, userSFID string) ([]*models.UserIdentity, error) {
 	f := logrus.Fields{
 		"functionName": "ListUserIdentities",
 		"userSFID":     userSFID,
@@ -291,11 +292,12 @@ func (usc *Client) ListUserIdentities(userSFID string) ([]*models.UserIdentity, 
 		return nil, err
 	}
 
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 	const pageSize = int64(100)
 	var identities []*models.UserIdentity
 	for offset := int64(0); ; offset += pageSize {
 		url := fmt.Sprintf("https://%s/user-service/v1/users/%s/identities?pageSize=%d&offset=%d", usc.apiGwURL, userSFID, pageSize, offset)
-		request, reqErr := http.NewRequest("GET", url, nil)
+		request, reqErr := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if reqErr != nil {
 			log.WithFields(f).WithError(reqErr).Warn("problem building new request")
 			return nil, reqErr
@@ -305,7 +307,7 @@ func (usc *Client) ListUserIdentities(userSFID string) ([]*models.UserIdentity, 
 		request.Header.Set("Authorization", "Bearer "+tok)
 		request.Header.Set("Content-Type", "application/json")
 
-		response, doErr := http.DefaultClient.Do(request)
+		response, doErr := httpClient.Do(request)
 		if doErr != nil {
 			log.WithFields(f).WithError(doErr).Warn("problem listing user identities")
 			return nil, doErr
@@ -333,7 +335,7 @@ func (usc *Client) ListUserIdentities(userSFID string) ([]*models.UserIdentity, 
 		}
 
 		identities = append(identities, identityList.Data...)
-		if len(identityList.Data) == 0 || identityList.Metadata == nil || int64(len(identities)) >= identityList.Metadata.TotalSize {
+		if int64(len(identityList.Data)) < pageSize {
 			break
 		}
 	}
