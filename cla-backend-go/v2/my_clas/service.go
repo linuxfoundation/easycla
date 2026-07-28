@@ -7,12 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 
-	openapiErrors "github.com/go-openapi/errors"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
@@ -24,9 +22,10 @@ import (
 )
 
 const (
-	identitySourceGithub = "github"
-	identitySourceGitlab = "gitlab"
-	identitySourceGerrit = "gerrit"
+	identitySourceGithub       = "github"
+	identitySourceGitlab       = "gitlab"
+	identitySourceGerrit       = "gerrit"
+	identityDataSourcePlatform = "platform"
 )
 
 // Identity holds the caller-provided identity keys used to resolve EasyCLA user records
@@ -49,20 +48,10 @@ func (i *Identity) IsEmpty() bool {
 		len(i.GerritUsernames) == 0
 }
 
-// UsersService is the subset of the users service used to resolve identities to user records
-type UsersService interface {
-	GetUserByLFUserName(lfUserName string) (*v1Models.User, error)
-	GetUsersByLFEmail(userEmail string) ([]*v1Models.User, error)
-	GetUserByGitHubID(gitHubID string) (*v1Models.User, error)
-	GetUserByGitHubUsername(gitHubUsername string) (*v1Models.User, error)
-	GetUserByGitlabID(gitLabID int) (*v1Models.User, error)
-	GetUserByGitLabUsername(gitLabUsername string) (*v1Models.User, error)
-}
-
 // PlatformUsersService is the subset of the platform user-service client used to verify
 // that identities are connected to the authenticated user's LF account
 type PlatformUsersService interface {
-	GetUserByUsername(lfUsername string) (*platformModels.User, error)
+	GetUserByUsernameContext(ctx context.Context, lfUsername string) (*platformModels.User, error)
 	ListUserIdentities(ctx context.Context, userSFID string) ([]*platformModels.UserIdentity, error)
 }
 
@@ -90,7 +79,6 @@ type Service interface {
 
 type service struct {
 	repo                  Repository
-	usersService          UsersService
 	platformUsersService  PlatformUsersService
 	signaturesService     SignaturesService
 	companyRepo           CompanyRepository
@@ -100,10 +88,9 @@ type service struct {
 }
 
 // NewService creates a new instance of the My CLAs service
-func NewService(repo Repository, usersService UsersService, platformUsersService PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository) Service {
+func NewService(repo Repository, platformUsersService PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository) Service {
 	return &service{
 		repo:                  repo,
-		usersService:          usersService,
 		platformUsersService:  platformUsersService,
 		signaturesService:     signaturesService,
 		companyRepo:           companyRepo,
@@ -291,13 +278,14 @@ func (s *service) effectiveIdentity(ctx context.Context, currentUsername string,
 
 type platformIdentitySet struct {
 	emails    map[string]bool
-	usernames map[string]map[string]bool
+	usernames map[string]map[string][]string
 }
 
-// authorizeIdentity verifies each requested identity key against the authenticated
-// user's own EasyCLA record and, when not covered there, against the identities
-// connected to their LF account in the platform user-service - unverified keys are
-// dropped from the search and reported back
+// authorizeIdentity verifies each requested identity key against all of the
+// authenticated user's own EasyCLA records and, when not covered there, against the
+// identities connected to their LF account in the platform user-service - unverified
+// keys are dropped from the search and reported back; verified usernames are replaced
+// by their canonical spellings for the exact-match index lookups
 func (s *service) authorizeIdentity(ctx context.Context, currentUsername string, requested *Identity) (*Identity, []string, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.authorizeIdentity",
@@ -305,15 +293,21 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 		"currentUsername": currentUsername,
 	}
 
-	selfUser, err := s.usersService.GetUserByLFUserName(currentUsername)
-	if err != nil && !isNotFound(err) {
-		log.WithFields(f).WithError(err).Warn("unable to lookup the authenticated user's EasyCLA record")
+	selfUsers, err := s.repo.GetUsersByLFUsername(ctx, currentUsername)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to lookup the authenticated user's EasyCLA records")
 		return nil, nil, err
 	}
 
 	selfEmails := make(map[string]bool)
-	var selfGithubID, selfGithubUsername, selfGitlabID, selfGitlabUsername string
-	if selfUser != nil {
+	selfGithubIDs := make(map[string]bool)
+	selfGitlabIDs := make(map[string]bool)
+	selfUsernames := map[string]map[string][]string{
+		identitySourceGithub: {},
+		identitySourceGitlab: {},
+		identitySourceGerrit: {strings.ToLower(currentUsername): {currentUsername}},
+	}
+	for _, selfUser := range selfUsers {
 		if selfUser.LfEmail != "" {
 			selfEmails[normalizeEmail(string(selfUser.LfEmail))] = true
 		}
@@ -322,10 +316,14 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 				selfEmails[normalizeEmail(email)] = true
 			}
 		}
-		selfGithubID = strings.TrimSpace(selfUser.GithubID)
-		selfGithubUsername = strings.TrimSpace(selfUser.GithubUsername)
-		selfGitlabID = strings.TrimSpace(selfUser.GitlabID)
-		selfGitlabUsername = strings.TrimSpace(selfUser.GitlabUsername)
+		if id := strings.TrimSpace(selfUser.GithubID); id != "" {
+			selfGithubIDs[id] = true
+		}
+		if id := strings.TrimSpace(selfUser.GitlabID); id != "" {
+			selfGitlabIDs[id] = true
+		}
+		addCanonical(selfUsernames[identitySourceGithub], selfUser.GithubUsername)
+		addCanonical(selfUsernames[identitySourceGitlab], selfUser.GitlabUsername)
 	}
 
 	var platform *platformIdentitySet
@@ -338,15 +336,17 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 	emailAllowed := func(email string) bool {
 		return selfEmails[email] || platformIdentities().emails[email]
 	}
-	usernameAllowed := func(source, selfValue string) func(string) bool {
-		return func(username string) bool {
-			return (selfValue != "" && strings.EqualFold(username, selfValue)) ||
-				platformIdentities().usernames[source][strings.ToLower(username)]
+	canonFor := func(source string) func(string) []string {
+		return func(username string) []string {
+			key := strings.ToLower(username)
+			variants := append([]string{}, selfUsernames[source][key]...)
+			variants = append(variants, platformIdentities().usernames[source][key]...)
+			return variants
 		}
 	}
-	idAllowed := func(selfValue string) func(int64) bool {
+	idAllowed := func(selfIDs map[string]bool) func(int64) bool {
 		return func(id int64) bool {
-			return selfValue != "" && strconv.FormatInt(id, 10) == selfValue
+			return selfIDs[strconv.FormatInt(id, 10)]
 		}
 	}
 
@@ -358,21 +358,37 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 	}
 	appendAllowedStrings(requested.Emails, "email", normalizeEmail, emailAllowed, &allowed.Emails, &skipped)
 	appendAllowedStrings(requested.SecondaryEmails, "secondaryEmail", normalizeEmail, emailAllowed, &allowed.SecondaryEmails, &skipped)
-	appendAllowedIDs(requested.GithubIDs, "githubId", idAllowed(selfGithubID), &allowed.GithubIDs, &skipped)
-	appendAllowedStrings(requested.GithubUsernames, "githubUsername", strings.TrimSpace, usernameAllowed(identitySourceGithub, selfGithubUsername), &allowed.GithubUsernames, &skipped)
-	appendAllowedIDs(requested.GitlabIDs, "gitlabId", idAllowed(selfGitlabID), &allowed.GitlabIDs, &skipped)
-	appendAllowedStrings(requested.GitlabUsernames, "gitlabUsername", strings.TrimSpace, usernameAllowed(identitySourceGitlab, selfGitlabUsername), &allowed.GitlabUsernames, &skipped)
-	appendAllowedStrings(requested.GerritUsernames, "gerritUsername", strings.TrimSpace, usernameAllowed(identitySourceGerrit, currentUsername), &allowed.GerritUsernames, &skipped)
+	appendAllowedIDs(requested.GithubIDs, "githubId", idAllowed(selfGithubIDs), &allowed.GithubIDs, &skipped)
+	appendAllowedUsernames(requested.GithubUsernames, "githubUsername", canonFor(identitySourceGithub), &allowed.GithubUsernames, &skipped)
+	appendAllowedIDs(requested.GitlabIDs, "gitlabId", idAllowed(selfGitlabIDs), &allowed.GitlabIDs, &skipped)
+	appendAllowedUsernames(requested.GitlabUsernames, "gitlabUsername", canonFor(identitySourceGitlab), &allowed.GitlabUsernames, &skipped)
+	appendAllowedUsernames(requested.GerritUsernames, "gerritUsername", canonFor(identitySourceGerrit), &allowed.GerritUsernames, &skipped)
 
 	return allowed, skipped, nil
 }
 
+func addCanonical(canon map[string][]string, username string) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return
+	}
+	key := strings.ToLower(username)
+	for _, existing := range canon[key] {
+		if existing == username {
+			return
+		}
+	}
+	canon[key] = append(canon[key], username)
+}
+
 func appendAllowedStrings(values []string, param string, normalize func(string) string, allowed func(string) bool, dst *[]string, skipped *[]string) {
+	seen := make(map[string]bool)
 	for _, value := range values {
 		value = normalize(value)
-		if value == "" {
+		if value == "" || seen[value] {
 			continue
 		}
+		seen[value] = true
 		if allowed(value) {
 			*dst = append(*dst, value)
 		} else {
@@ -382,7 +398,12 @@ func appendAllowedStrings(values []string, param string, normalize func(string) 
 }
 
 func appendAllowedIDs(values []int64, param string, allowed func(int64) bool, dst *[]int64, skipped *[]string) {
+	seen := make(map[int64]bool)
 	for _, value := range values {
+		if seen[value] {
+			continue
+		}
+		seen[value] = true
 		if allowed(value) {
 			*dst = append(*dst, value)
 		} else {
@@ -391,9 +412,25 @@ func appendAllowedIDs(values []int64, param string, allowed func(int64) bool, ds
 	}
 }
 
-// loadPlatformIdentities collects the emails and per-source usernames connected to the
-// LF account - lookup failures yield an empty set, so the affected keys are skipped,
-// never allowed
+func appendAllowedUsernames(values []string, param string, canon func(string) []string, dst *[]string, skipped *[]string) {
+	seen := make(map[string]bool)
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[strings.ToLower(value)] {
+			continue
+		}
+		seen[strings.ToLower(value)] = true
+		if variants := canon(value); len(variants) > 0 {
+			*dst = append(*dst, append(variants, value)...)
+		} else {
+			*skipped = append(*skipped, param+":"+value)
+		}
+	}
+}
+
+// loadPlatformIdentities collects the emails and per-source canonical usernames
+// connected to the LF account - lookup failures yield an empty set, so the affected
+// keys are skipped, never allowed
 func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string) *platformIdentitySet {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.service.loadPlatformIdentities",
@@ -403,10 +440,10 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 
 	set := &platformIdentitySet{
 		emails: make(map[string]bool),
-		usernames: map[string]map[string]bool{
-			identitySourceGithub: make(map[string]bool),
-			identitySourceGitlab: make(map[string]bool),
-			identitySourceGerrit: make(map[string]bool),
+		usernames: map[string]map[string][]string{
+			identitySourceGithub: {},
+			identitySourceGitlab: {},
+			identitySourceGerrit: {},
 		},
 	}
 
@@ -414,7 +451,7 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 		return set
 	}
 
-	platformUser, err := s.platformUsersService.GetUserByUsername(lfUsername)
+	platformUser, err := s.platformUsersService.GetUserByUsernameContext(ctx, lfUsername)
 	if err != nil || platformUser == nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup the LF user in the platform user-service")
 		return set
@@ -445,11 +482,12 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 		if identity == nil {
 			continue
 		}
+		if identity.DataSource != "" && !strings.EqualFold(identity.DataSource, identityDataSourcePlatform) {
+			continue
+		}
 		source := strings.ToLower(strings.TrimSpace(identity.Source))
-		if identity.Username != "" {
-			if _, ok := set.usernames[source]; ok {
-				set.usernames[source][strings.ToLower(strings.TrimSpace(identity.Username))] = true
-			}
+		if canon, ok := set.usernames[source]; ok {
+			addCanonical(canon, identity.Username)
 		}
 		if identity.Email != "" {
 			set.emails[normalizeEmail(identity.Email)] = true
@@ -476,32 +514,34 @@ func (s *service) resolveUsers(ctx context.Context, identity *Identity) ([]*v1Mo
 			userModels = append(userModels, userModel)
 		}
 	}
-	addByLookup := func(values []string, what string, lookup func(string) ([]*v1Models.User, error)) error {
+	addByLookup := func(values []string, what string, lookup func(context.Context, string) ([]*v1Models.User, error)) error {
 		for _, value := range values {
-			if value == "" {
-				continue
-			}
-			matches, err := lookup(value)
-			if err != nil && !isNotFound(err) {
-				log.WithFields(f).WithError(err).Warnf("unable to lookup user by %s: %s", what, value)
+			matches, err := lookup(ctx, value)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to lookup users by %s: %s", what, value)
 				return err
 			}
 			add(matches...)
 		}
 		return nil
 	}
-	single := func(lookup func(string) (*v1Models.User, error)) func(string) ([]*v1Models.User, error) {
-		return func(value string) ([]*v1Models.User, error) {
-			userModel, err := lookup(value)
-			return []*v1Models.User{userModel}, err
+	addByIDLookup := func(ids []int64, what string, lookup func(context.Context, int64) ([]*v1Models.User, error)) error {
+		for _, id := range dedupeIDs(ids) {
+			matches, err := lookup(ctx, id)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to lookup users by %s: %d", what, id)
+				return err
+			}
+			add(matches...)
 		}
+		return nil
 	}
 
 	lfUsernames := trimAll(append([]string{identity.LfUsername}, identity.GerritUsernames...))
-	if err := addByLookup(lfUsernames, "LF username", single(s.usersService.GetUserByLFUserName)); err != nil {
+	if err := addByLookup(lfUsernames, "LF username", s.repo.GetUsersByLFUsername); err != nil {
 		return nil, err
 	}
-	if err := addByLookup(normalizeEmails(identity.Emails), "email", s.usersService.GetUsersByLFEmail); err != nil {
+	if err := addByLookup(normalizeEmails(identity.Emails), "email", s.repo.GetUsersByPrimaryEmail); err != nil {
 		return nil, err
 	}
 	if secondaryEmails := normalizeEmails(identity.SecondaryEmails); len(secondaryEmails) > 0 {
@@ -512,23 +552,16 @@ func (s *service) resolveUsers(ctx context.Context, identity *Identity) ([]*v1Mo
 		}
 		add(matches...)
 	}
-	if err := addByLookup(formatIDs(identity.GithubIDs), "GitHub ID", single(s.usersService.GetUserByGitHubID)); err != nil {
+	if err := addByIDLookup(identity.GithubIDs, "GitHub ID", s.repo.GetUsersByGithubID); err != nil {
 		return nil, err
 	}
-	if err := addByLookup(trimAll(identity.GithubUsernames), "GitHub username", single(s.usersService.GetUserByGitHubUsername)); err != nil {
+	if err := addByLookup(trimAll(identity.GithubUsernames), "GitHub username", s.repo.GetUsersByGithubUsername); err != nil {
 		return nil, err
 	}
-	gitlabByID := func(value string) (*v1Models.User, error) {
-		gitlabID, convErr := strconv.Atoi(value)
-		if convErr != nil {
-			return nil, convErr
-		}
-		return s.usersService.GetUserByGitlabID(gitlabID)
-	}
-	if err := addByLookup(formatIDs(identity.GitlabIDs), "GitLab ID", single(gitlabByID)); err != nil {
+	if err := addByIDLookup(identity.GitlabIDs, "GitLab ID", s.repo.GetUsersByGitlabID); err != nil {
 		return nil, err
 	}
-	if err := addByLookup(trimAll(identity.GitlabUsernames), "GitLab username", single(s.usersService.GetUserByGitLabUsername)); err != nil {
+	if err := addByLookup(trimAll(identity.GitlabUsernames), "GitLab username", s.repo.GetUsersByGitlabUsername); err != nil {
 		return nil, err
 	}
 
@@ -663,26 +696,14 @@ func trimAll(values []string) []string {
 	return trimmed
 }
 
-func formatIDs(ids []int64) []string {
-	formatted := make([]string, 0, len(ids))
+func dedupeIDs(ids []int64) []int64 {
+	deduped := make([]int64, 0, len(ids))
 	seen := make(map[int64]bool)
 	for _, id := range ids {
 		if !seen[id] {
 			seen[id] = true
-			formatted = append(formatted, strconv.FormatInt(id, 10))
+			deduped = append(deduped, id)
 		}
 	}
-	return formatted
-}
-
-func isNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var userNotFound *utils.UserNotFound
-	if errors.As(err, &userNotFound) {
-		return true
-	}
-	var apiErr openapiErrors.Error
-	return errors.As(err, &apiErr) && apiErr.Code() == http.StatusNotFound
+	return deduped
 }

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"testing"
 
-	openapiErrors "github.com/go-openapi/errors"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
@@ -19,80 +18,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type fakeUsers struct {
-	byLFUsername     map[string]*v1Models.User
-	byEmail          map[string][]*v1Models.User
-	byGithubID       map[string]*v1Models.User
-	byGithubUsername map[string]*v1Models.User
-	byGitlabID       map[int]*v1Models.User
-	byGitlabUsername map[string]*v1Models.User
-}
-
-func (f *fakeUsers) GetUserByLFUserName(lfUserName string) (*v1Models.User, error) {
-	return f.byLFUsername[lfUserName], nil
-}
-
-func (f *fakeUsers) GetUsersByLFEmail(userEmail string) ([]*v1Models.User, error) {
-	if userModels, ok := f.byEmail[userEmail]; ok {
-		return userModels, nil
-	}
-	return nil, &utils.UserNotFound{UserEmail: userEmail}
-}
-
-func (f *fakeUsers) GetUserByGitHubID(gitHubID string) (*v1Models.User, error) {
-	if userModel, ok := f.byGithubID[gitHubID]; ok {
-		return userModel, nil
-	}
-	return nil, openapiErrors.NotFound("user not found when searching by user_github_id: %s", gitHubID)
-}
-
-func (f *fakeUsers) GetUserByGitHubUsername(gitHubUsername string) (*v1Models.User, error) {
-	if userModel, ok := f.byGithubUsername[gitHubUsername]; ok {
-		return userModel, nil
-	}
-	return nil, openapiErrors.NotFound("user not found when searching by user_github_username: %s", gitHubUsername)
-}
-
-func (f *fakeUsers) GetUserByGitlabID(gitLabID int) (*v1Models.User, error) {
-	if userModel, ok := f.byGitlabID[gitLabID]; ok {
-		return userModel, nil
-	}
-	return nil, openapiErrors.NotFound("user not found when searching by user_gitlab_id: %d", gitLabID)
-}
-
-func (f *fakeUsers) GetUserByGitLabUsername(gitLabUsername string) (*v1Models.User, error) {
-	if userModel, ok := f.byGitlabUsername[gitLabUsername]; ok {
-		return userModel, nil
-	}
-	return nil, openapiErrors.NotFound("user not found when searching by user_gitlab_username: %s", gitLabUsername)
-}
-
-type fakePlatform struct {
-	user       *platformModels.User
-	identities []*platformModels.UserIdentity
-	lookups    int
-}
-
-func (f *fakePlatform) GetUserByUsername(_ string) (*platformModels.User, error) {
-	f.lookups++
-	if f.user == nil {
-		return nil, fmt.Errorf("user not found")
-	}
-	return f.user, nil
-}
-
-func (f *fakePlatform) ListUserIdentities(_ context.Context, _ string) ([]*platformModels.UserIdentity, error) {
-	return f.identities, nil
-}
-
 type fakeRepo struct {
 	byUserID         map[string][]*signatures.ItemSignature
+	byLFUsername     map[string][]*v1Models.User
+	byPrimaryEmail   map[string][]*v1Models.User
+	byGithubID       map[int64][]*v1Models.User
+	byGithubUsername map[string][]*v1Models.User
+	byGitlabID       map[int64][]*v1Models.User
+	byGitlabUsername map[string][]*v1Models.User
 	bySecondaryEmail map[string][]*v1Models.User
 	secondaryScans   int
 }
 
 func (f *fakeRepo) GetUserCLASignatures(_ context.Context, userID string) ([]*signatures.ItemSignature, error) {
 	return f.byUserID[userID], nil
+}
+
+func (f *fakeRepo) GetUsersByLFUsername(_ context.Context, lfUsername string) ([]*v1Models.User, error) {
+	return f.byLFUsername[lfUsername], nil
+}
+
+func (f *fakeRepo) GetUsersByPrimaryEmail(_ context.Context, email string) ([]*v1Models.User, error) {
+	return f.byPrimaryEmail[email], nil
+}
+
+func (f *fakeRepo) GetUsersByGithubID(_ context.Context, githubID int64) ([]*v1Models.User, error) {
+	return f.byGithubID[githubID], nil
+}
+
+func (f *fakeRepo) GetUsersByGithubUsername(_ context.Context, githubUsername string) ([]*v1Models.User, error) {
+	return f.byGithubUsername[githubUsername], nil
+}
+
+func (f *fakeRepo) GetUsersByGitlabID(_ context.Context, gitlabID int64) ([]*v1Models.User, error) {
+	return f.byGitlabID[gitlabID], nil
+}
+
+func (f *fakeRepo) GetUsersByGitlabUsername(_ context.Context, gitlabUsername string) ([]*v1Models.User, error) {
+	return f.byGitlabUsername[gitlabUsername], nil
 }
 
 func (f *fakeRepo) GetUsersBySecondaryEmails(_ context.Context, emails []string) ([]*v1Models.User, error) {
@@ -102,6 +65,24 @@ func (f *fakeRepo) GetUsersBySecondaryEmails(_ context.Context, emails []string)
 		matches = append(matches, f.bySecondaryEmail[email]...)
 	}
 	return matches, nil
+}
+
+type fakePlatform struct {
+	user       *platformModels.User
+	identities []*platformModels.UserIdentity
+	lookups    int
+}
+
+func (f *fakePlatform) GetUserByUsernameContext(_ context.Context, _ string) (*platformModels.User, error) {
+	f.lookups++
+	if f.user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+	return f.user, nil
+}
+
+func (f *fakePlatform) ListUserIdentities(_ context.Context, _ string) ([]*platformModels.UserIdentity, error) {
+	return f.identities, nil
 }
 
 type fakeSignatures struct {
@@ -166,10 +147,9 @@ func ecla(signatureID, companyID, signedOn string, approved bool) *signatures.It
 	return sig
 }
 
-func newTestService(repo Repository, usersService UsersService, platform PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, claGroups ProjectsCLAGroupsRepository) *service {
+func newTestService(repo Repository, platform PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, claGroups ProjectsCLAGroupsRepository) *service {
 	return &service{
 		repo:                  repo,
-		usersService:          usersService,
 		platformUsersService:  platform,
 		signaturesService:     signaturesService,
 		companyRepo:           companyRepo,
@@ -187,20 +167,20 @@ func TestGetMyClasUnionAndDedupe(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone", LfEmail: "someone@example.org", GithubID: "12345"}
 	userB := &v1Models.User{UserID: "user-b", GithubID: "12345"}
 
-	usersService := &fakeUsers{
-		byLFUsername: map[string]*v1Models.User{"someone": userA},
-		byEmail:      map[string][]*v1Models.User{"someone@example.org": {userA, userB}},
-		byGithubID:   map[string]*v1Models.User{"12345": userB},
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {icla("sig-1", "user-a", "cla-group-1", "2024-01-02T00:00:00Z", true)},
+			"user-b": {icla("sig-2", "user-b", "cla-group-1", "2025-01-02T00:00:00Z", true)},
+		},
+		byLFUsername:   map[string][]*v1Models.User{"someone": {userA}},
+		byPrimaryEmail: map[string][]*v1Models.User{"someone@example.org": {userA, userB}},
+		byGithubID:     map[int64][]*v1Models.User{12345: {userB}},
 	}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-a": {icla("sig-1", "user-a", "cla-group-1", "2024-01-02T00:00:00Z", true)},
-		"user-b": {icla("sig-2", "user-b", "cla-group-1", "2025-01-02T00:00:00Z", true)},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{names: map[string]string{"cla-group-1": "My CLA Group"}})
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{names: map[string]string{"cla-group-1": "My CLA Group"}})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{
-		Emails:    []string{"Someone@Example.org "},
-		GithubIDs: []int64{12345},
+		Emails:    []string{"Someone@Example.org ", "someone@example.org"},
+		GithubIDs: []int64{12345, 12345},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"user-a", "user-b"}, result.UserIds)
@@ -212,8 +192,35 @@ func TestGetMyClasUnionAndDedupe(t *testing.T) {
 	assert.Equal(t, "My CLA Group", result.Clas[0].ClaGroupName)
 }
 
+func TestGetMyClasMultipleRecordsSameLFID(t *testing.T) {
+	userA1 := &v1Models.User{UserID: "user-a1", LfUsername: "alice"}
+	userA2 := &v1Models.User{UserID: "user-a2", LfUsername: "alice", GithubID: "12345"}
+	userA3 := &v1Models.User{UserID: "user-a3", GithubID: "12345"}
+
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a1": {icla("sig-a1", "user-a1", "cla-group-1", "2024-01-01T00:00:00Z", true)},
+			"user-a2": {icla("sig-a2", "user-a2", "cla-group-1", "2024-02-01T00:00:00Z", true)},
+			"user-a3": {icla("sig-a3", "user-a3", "cla-group-1", "2024-03-01T00:00:00Z", true)},
+		},
+		byLFUsername: map[string][]*v1Models.User{"alice": {userA1, userA2}},
+		byGithubID:   map[int64][]*v1Models.User{12345: {userA2, userA3}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+
+	result, err := svc.GetMyClas(context.Background(), "alice", false, &Identity{GithubIDs: []int64{12345}})
+	require.NoError(t, err)
+	assert.Empty(t, result.SkippedIdentities, "a numeric ID stored on any of the caller's LFID records is authorized")
+	assert.ElementsMatch(t, []string{"user-a1", "user-a2", "user-a3"}, result.UserIds, "all records per key are unioned")
+	assert.Equal(t, int64(3), result.ResultCount)
+
+	pdf, err := svc.GetMyClaPdfURL(context.Background(), "alice", false, &Identity{}, "sig-a2")
+	require.NoError(t, err)
+	require.NotNil(t, pdf, "a PDF owned by the second LFID record is downloadable")
+}
+
 func TestGetMyClasNoMatches(t *testing.T) {
-	svc := newTestService(&fakeRepo{}, &fakeUsers{}, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc := newTestService(&fakeRepo{}, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "missing", false, &Identity{})
 	require.NoError(t, err)
@@ -226,19 +233,19 @@ func TestGetMyClasOwnershipRejectsForeignIdentities(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone", LfEmail: "someone@example.org", GithubID: "12345", GithubUsername: "someone-gh"}
 	victim := &v1Models.User{UserID: "user-v", LfUsername: "victim"}
 
-	usersService := &fakeUsers{
-		byLFUsername:     map[string]*v1Models.User{"someone": userA, "victim": victim},
-		byEmail:          map[string][]*v1Models.User{"victim@example.org": {victim}},
-		byGithubID:       map[string]*v1Models.User{"999": victim},
-		byGithubUsername: map[string]*v1Models.User{"victim-gh": victim},
-		byGitlabID:       map[int]*v1Models.User{7: victim},
-		byGitlabUsername: map[string]*v1Models.User{"victim-gl": victim},
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {icla("sig-own", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true)},
+			"user-v": {icla("sig-victim", "user-v", "cla-group-1", "2024-02-01T00:00:00Z", true)},
+		},
+		byLFUsername:     map[string][]*v1Models.User{"someone": {userA}, "victim": {victim}},
+		byPrimaryEmail:   map[string][]*v1Models.User{"victim@example.org": {victim}},
+		byGithubID:       map[int64][]*v1Models.User{999: {victim}},
+		byGithubUsername: map[string][]*v1Models.User{"victim-gh": {victim}},
+		byGitlabID:       map[int64][]*v1Models.User{7: {victim}},
+		byGitlabUsername: map[string][]*v1Models.User{"victim-gl": {victim}},
 	}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-a": {icla("sig-own", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true)},
-		"user-v": {icla("sig-victim", "user-v", "cla-group-1", "2024-02-01T00:00:00Z", true)},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{
 		LfUsername:      "victim",
@@ -270,25 +277,23 @@ func TestGetMyClasOwnershipRejectsForeignIdentities(t *testing.T) {
 func TestGetMyClasOwnershipViaEasyCLARecord(t *testing.T) {
 	userA := &v1Models.User{
 		UserID: "user-a", LfUsername: "someone", LfEmail: "someone@example.org",
-		Emails: []string{"alt@example.org", "alt2@example.org"}, GithubID: "12345", GithubUsername: "someone-gh",
-		GitlabID: "777", GitlabUsername: "someone-gl",
+		Emails:   []string{"alt@example.org", "alt2@example.org"},
+		GitlabID: "777",
 	}
 	userB := &v1Models.User{UserID: "user-b"}
 	userC := &v1Models.User{UserID: "user-c"}
 
-	usersService := &fakeUsers{
-		byLFUsername: map[string]*v1Models.User{"someone": userA},
-		byGitlabID:   map[int]*v1Models.User{777: userC},
-	}
 	repo := &fakeRepo{
 		byUserID: map[string][]*signatures.ItemSignature{
 			"user-b": {icla("sig-b", "user-b", "cla-group-1", "2024-01-01T00:00:00Z", true)},
 			"user-c": {icla("sig-c", "user-c", "cla-group-1", "2024-02-01T00:00:00Z", true)},
 		},
+		byLFUsername:     map[string][]*v1Models.User{"someone": {userA}},
+		byGitlabID:       map[int64][]*v1Models.User{777: {userC}},
 		bySecondaryEmail: map[string][]*v1Models.User{"alt@example.org": {userB}},
 	}
 	platform := &fakePlatform{}
-	svc := newTestService(repo, usersService, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc := newTestService(repo, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{
 		SecondaryEmails: []string{"Alt@Example.org", "alt2@example.org", "alt@example.org"},
@@ -298,7 +303,7 @@ func TestGetMyClasOwnershipViaEasyCLARecord(t *testing.T) {
 	assert.Empty(t, result.SkippedIdentities)
 	assert.ElementsMatch(t, []string{"user-a", "user-b", "user-c"}, result.UserIds)
 	assert.Equal(t, 1, repo.secondaryScans, "one scan for all secondary emails")
-	assert.Equal(t, 0, platform.lookups, "user-service is not consulted when the EasyCLA record covers the identities")
+	assert.Equal(t, 0, platform.lookups, "user-service is not consulted when the EasyCLA records cover the identities")
 }
 
 func TestGetMyClasOwnershipViaPlatformIdentities(t *testing.T) {
@@ -306,23 +311,24 @@ func TestGetMyClasOwnershipViaPlatformIdentities(t *testing.T) {
 	userGh := &v1Models.User{UserID: "user-gh"}
 	userGerrit := &v1Models.User{UserID: "user-gerrit"}
 
-	usersService := &fakeUsers{
-		byLFUsername:     map[string]*v1Models.User{"someone": userA, "old-ldap-id": userGerrit},
-		byGithubUsername: map[string]*v1Models.User{"octocat": userGh},
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-gh":     {icla("sig-gh", "user-gh", "cla-group-1", "2024-01-01T00:00:00Z", true)},
+			"user-gerrit": {icla("sig-gerrit", "user-gerrit", "cla-group-1", "2024-02-01T00:00:00Z", true)},
+		},
+		byLFUsername:     map[string][]*v1Models.User{"someone": {userA}, "old-ldap-id": {userGerrit}},
+		byGithubUsername: map[string][]*v1Models.User{"Octocat": {userGh}},
 	}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-gh":     {icla("sig-gh", "user-gh", "cla-group-1", "2024-01-01T00:00:00Z", true)},
-		"user-gerrit": {icla("sig-gerrit", "user-gerrit", "cla-group-1", "2024-02-01T00:00:00Z", true)},
-	}}
 	platform := &fakePlatform{
 		user: &platformModels.User{ID: "sfid-1", Username: "someone"},
 		identities: []*platformModels.UserIdentity{
 			{Source: "github", Username: "Octocat", Email: "someone-gh@example.org"},
 			{Source: "gerrit", Username: "old-ldap-id"},
 			{Source: "slack", Username: "not-a-code-identity"},
+			{Source: "github", Username: "lakecat", DataSource: "datalake"},
 		},
 	}
-	svc := newTestService(repo, usersService, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc := newTestService(repo, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{
 		GithubUsernames: []string{"octocat"},
@@ -330,25 +336,34 @@ func TestGetMyClasOwnershipViaPlatformIdentities(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Empty(t, result.SkippedIdentities)
-	assert.ElementsMatch(t, []string{"user-a", "user-gh", "user-gerrit"}, result.UserIds)
+	assert.ElementsMatch(t, []string{"user-a", "user-gh", "user-gerrit"}, result.UserIds,
+		"the canonical spelling from user-service finds records stored with exact-match keys")
 	assert.Equal(t, 1, platform.lookups, "platform identities are loaded once")
 
 	result, err = svc.GetMyClas(context.Background(), "someone", false, &Identity{
 		GithubUsernames: []string{"not-a-code-identity"},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"githubUsername:not-a-code-identity"}, result.SkippedIdentities)
+	assert.Equal(t, []string{"githubUsername:not-a-code-identity"}, result.SkippedIdentities,
+		"a slack username must not authorize a github search")
+
+	result, err = svc.GetMyClas(context.Background(), "someone", false, &Identity{
+		GithubUsernames: []string{"lakecat"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"githubUsername:lakecat"}, result.SkippedIdentities,
+		"a non-platform (datalake) identity must not authorize a search")
 }
 
 func TestGetMyClasAdminBypass(t *testing.T) {
 	victim := &v1Models.User{UserID: "user-v", LfUsername: "victim"}
-	usersService := &fakeUsers{
-		byLFUsername: map[string]*v1Models.User{"victim": victim},
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-v": {icla("sig-victim", "user-v", "cla-group-1", "2024-02-01T00:00:00Z", true)},
+		},
+		byLFUsername: map[string][]*v1Models.User{"victim": {victim}},
 	}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-v": {icla("sig-victim", "user-v", "cla-group-1", "2024-02-01T00:00:00Z", true)},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "staff-admin", true, &Identity{LfUsername: "victim"})
 	require.NoError(t, err)
@@ -362,15 +377,17 @@ func TestGetMyClasIclaValidity(t *testing.T) {
 	unsigned := icla("sig-3", "user-a", "cla-group-1", "2024-03-01T00:00:00Z", true)
 	unsigned.SignatureSigned = false
 
-	usersService := &fakeUsers{byLFUsername: map[string]*v1Models.User{"someone": userA}}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-a": {
-			icla("sig-1", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true),
-			icla("sig-2", "user-a", "cla-group-2", "2024-02-01T00:00:00Z", false),
-			unsigned,
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				icla("sig-1", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true),
+				icla("sig-2", "user-a", "cla-group-2", "2024-02-01T00:00:00Z", false),
+				unsigned,
+			},
 		},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
 	require.NoError(t, err)
@@ -395,8 +412,6 @@ func TestGetMyClasIclaValidity(t *testing.T) {
 
 func TestGetMyClasEclaValidity(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
-	usersService := &fakeUsers{byLFUsername: map[string]*v1Models.User{"someone": userA}}
-
 	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
 		"company-1": {CompanyID: "company-1", CompanyName: "Good Corp", SigningEntityName: "Good Corp LLC"},
 		"company-2": {CompanyID: "company-2", CompanyName: "Sanctioned Corp", IsSanctioned: true},
@@ -410,16 +425,19 @@ func TestGetMyClasEclaValidity(t *testing.T) {
 	}
 	docusignEraEcla := ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)
 	docusignEraEcla.SignatureType = utils.SignatureTypeCLA
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-a": {
-			docusignEraEcla,
-			ecla("sig-2", "company-2", "2024-02-01T00:00:00Z", true),
-			ecla("sig-3", "company-3", "2024-03-01T00:00:00Z", true),
-			ecla("sig-4", "company-1", "2024-04-01T00:00:00Z", false),
-			ecla("sig-5", "company-5", "2024-05-01T00:00:00Z", true),
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				docusignEraEcla,
+				ecla("sig-2", "company-2", "2024-02-01T00:00:00Z", true),
+				ecla("sig-3", "company-3", "2024-03-01T00:00:00Z", true),
+				ecla("sig-4", "company-1", "2024-04-01T00:00:00Z", false),
+				ecla("sig-5", "company-5", "2024-05-01T00:00:00Z", true),
+			},
 		},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
 	require.NoError(t, err)
@@ -447,7 +465,6 @@ func TestGetMyClasEclaValidity(t *testing.T) {
 
 func TestGetMyClasEclaNotOnCurrentApprovalList(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
-	usersService := &fakeUsers{byLFUsername: map[string]*v1Models.User{"someone": userA}}
 	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
 		"company-1": {CompanyID: "company-1", CompanyName: "Good Corp"},
 	}}
@@ -457,10 +474,13 @@ func TestGetMyClasEclaNotOnCurrentApprovalList(t *testing.T) {
 		},
 		approvedUserIDs: map[string]bool{},
 	}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
 	require.NoError(t, err)
@@ -471,7 +491,6 @@ func TestGetMyClasEclaNotOnCurrentApprovalList(t *testing.T) {
 
 func TestGetMyClasEclaGitlabGroupFallback(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
-	usersService := &fakeUsers{byLFUsername: map[string]*v1Models.User{"someone": userA}}
 	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
 		"company-1": {CompanyID: "company-1", CompanyName: "GitLab Group Corp"},
 	}}
@@ -481,10 +500,13 @@ func TestGetMyClasEclaGitlabGroupFallback(t *testing.T) {
 		},
 		approvedUserIDs: map[string]bool{},
 	}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
 	require.NoError(t, err)
@@ -494,7 +516,6 @@ func TestGetMyClasEclaGitlabGroupFallback(t *testing.T) {
 
 func TestGetMyClasEclaApprovalEvaluationError(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
-	usersService := &fakeUsers{byLFUsername: map[string]*v1Models.User{"someone": userA}}
 	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
 		"company-1": {CompanyID: "company-1", CompanyName: "Good Corp"},
 	}}
@@ -504,10 +525,13 @@ func TestGetMyClasEclaApprovalEvaluationError(t *testing.T) {
 		},
 		userIsApprovedErr: fmt.Errorf("bad approval pattern"),
 	}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
 	require.NoError(t, err, "approval-list evaluation problems must not fail the listing")
@@ -517,17 +541,19 @@ func TestGetMyClasEclaApprovalEvaluationError(t *testing.T) {
 
 func TestGetMyClaPdfURL(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
-	usersService := &fakeUsers{byLFUsername: map[string]*v1Models.User{"someone": userA}}
 	unsigned := icla("sig-unsigned", "user-a", "cla-group-1", "2024-03-01T00:00:00Z", true)
 	unsigned.SignatureSigned = false
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-a": {
-			icla("sig-icla", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true),
-			ecla("sig-ecla", "company-1", "2024-02-01T00:00:00Z", true),
-			unsigned,
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				icla("sig-icla", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true),
+				ecla("sig-ecla", "company-1", "2024-02-01T00:00:00Z", true),
+				unsigned,
+			},
 		},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 	identity := &Identity{}
 
 	result, err := svc.GetMyClaPdfURL(context.Background(), "someone", false, identity, "sig-icla")
@@ -558,14 +584,14 @@ func TestGetMyClaPdfURL(t *testing.T) {
 func TestGetMyClaPdfURLOwnershipEnforced(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
 	victim := &v1Models.User{UserID: "user-v", LfUsername: "victim"}
-	usersService := &fakeUsers{
-		byLFUsername: map[string]*v1Models.User{"someone": userA, "victim": victim},
-		byEmail:      map[string][]*v1Models.User{"victim@example.org": {victim}},
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-v": {icla("sig-victim", "user-v", "cla-group-1", "2024-02-01T00:00:00Z", true)},
+		},
+		byLFUsername:   map[string][]*v1Models.User{"someone": {userA}, "victim": {victim}},
+		byPrimaryEmail: map[string][]*v1Models.User{"victim@example.org": {victim}},
 	}
-	repo := &fakeRepo{byUserID: map[string][]*signatures.ItemSignature{
-		"user-v": {icla("sig-victim", "user-v", "cla-group-1", "2024-02-01T00:00:00Z", true)},
-	}}
-	svc := newTestService(repo, usersService, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
 	result, err := svc.GetMyClaPdfURL(context.Background(), "someone", false, &Identity{
 		LfUsername: "victim",
@@ -589,12 +615,4 @@ func TestIdentityIsEmpty(t *testing.T) {
 	assert.False(t, (&Identity{GitlabIDs: []int64{1}}).IsEmpty())
 	assert.False(t, (&Identity{GitlabUsernames: []string{"someone"}}).IsEmpty())
 	assert.False(t, (&Identity{GerritUsernames: []string{"someone"}}).IsEmpty())
-}
-
-func TestIsNotFound(t *testing.T) {
-	assert.False(t, isNotFound(nil))
-	assert.True(t, isNotFound(&utils.UserNotFound{UserEmail: "someone@example.org"}))
-	assert.True(t, isNotFound(openapiErrors.NotFound("user not found when searching by user_github_id: %s", "12345")))
-	assert.False(t, isNotFound(fmt.Errorf("connection refused")))
-	assert.False(t, isNotFound(fmt.Errorf("ResourceNotFoundException: requested resource not found")), "infrastructure errors must propagate, not read as user-not-found")
 }

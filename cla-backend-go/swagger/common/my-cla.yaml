@@ -61,4 +61,4 @@ properties:
   pdfAvailable:
     type: boolean
     x-omitempty: false
-    description: True when a signed PDF can be downloaded for this record (ICLA only)
+    description: True when the record is a signed ICLA eligible for PDF retrieval - object availability is verified by the PDF endpoint on request

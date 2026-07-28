@@ -24,6 +24,12 @@ import (
 // Repository interface defines the data access methods for the My CLAs module
 type Repository interface {
 	GetUserCLASignatures(ctx context.Context, userID string) ([]*signatures.ItemSignature, error)
+	GetUsersByLFUsername(ctx context.Context, lfUsername string) ([]*v1Models.User, error)
+	GetUsersByPrimaryEmail(ctx context.Context, email string) ([]*v1Models.User, error)
+	GetUsersByGithubID(ctx context.Context, githubID int64) ([]*v1Models.User, error)
+	GetUsersByGithubUsername(ctx context.Context, githubUsername string) ([]*v1Models.User, error)
+	GetUsersByGitlabID(ctx context.Context, gitlabID int64) ([]*v1Models.User, error)
+	GetUsersByGitlabUsername(ctx context.Context, gitlabUsername string) ([]*v1Models.User, error)
 	GetUsersBySecondaryEmails(ctx context.Context, emails []string) ([]*v1Models.User, error)
 }
 
@@ -95,9 +101,39 @@ func (repo repository) GetUserCLASignatures(ctx context.Context, userID string) 
 	return results, nil
 }
 
-// GetUsersBySecondaryEmails returns the user records whose additional-emails set
-// (user_emails) contains any of the given emails - a single table scan for all values,
-// as the set attribute cannot be indexed
+// GetUsersByLFUsername returns all user records matching the given LF username
+func (repo repository) GetUsersByLFUsername(ctx context.Context, lfUsername string) ([]*v1Models.User, error) {
+	return repo.queryUsers(ctx, "lf-username-index", expression.Key("lf_username").Equal(expression.Value(lfUsername)))
+}
+
+// GetUsersByPrimaryEmail returns all user records matching the given primary (lf_email) address
+func (repo repository) GetUsersByPrimaryEmail(ctx context.Context, email string) ([]*v1Models.User, error) {
+	return repo.queryUsers(ctx, "lf-email-index", expression.Key("lf_email").Equal(expression.Value(email)))
+}
+
+// GetUsersByGithubID returns all user records matching the given GitHub numeric ID
+func (repo repository) GetUsersByGithubID(ctx context.Context, githubID int64) ([]*v1Models.User, error) {
+	return repo.queryUsers(ctx, "github-id-index", expression.Key("user_github_id").Equal(expression.Value(githubID)))
+}
+
+// GetUsersByGithubUsername returns all user records matching the given GitHub username
+func (repo repository) GetUsersByGithubUsername(ctx context.Context, githubUsername string) ([]*v1Models.User, error) {
+	return repo.queryUsers(ctx, "github-username-index", expression.Key("user_github_username").Equal(expression.Value(githubUsername)))
+}
+
+// GetUsersByGitlabID returns all user records matching the given GitLab numeric ID
+func (repo repository) GetUsersByGitlabID(ctx context.Context, gitlabID int64) ([]*v1Models.User, error) {
+	return repo.queryUsers(ctx, "gitlab-id-index", expression.Key("user_gitlab_id").Equal(expression.Value(gitlabID)))
+}
+
+// GetUsersByGitlabUsername returns all user records matching the given GitLab username
+func (repo repository) GetUsersByGitlabUsername(ctx context.Context, gitlabUsername string) ([]*v1Models.User, error) {
+	return repo.queryUsers(ctx, "gitlab-username-index", expression.Key("user_gitlab_username").Equal(expression.Value(gitlabUsername)))
+}
+
+// GetUsersBySecondaryEmails returns the user records whose additional-emails set contains
+// any of the given emails - a single table scan for all values (the set attribute cannot
+// be indexed)
 func (repo repository) GetUsersBySecondaryEmails(ctx context.Context, emails []string) ([]*v1Models.User, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.repository.GetUsersBySecondaryEmails",
@@ -148,6 +184,55 @@ func (repo repository) GetUsersBySecondaryEmails(ctx context.Context, emails []s
 		scanInput.ExclusiveStartKey = scanResults.LastEvaluatedKey
 	}
 
+	return toUserModels(dbUsers), nil
+}
+
+func (repo repository) queryUsers(ctx context.Context, indexName string, condition expression.KeyConditionBuilder) ([]*v1Models.User, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.my_clas.repository.queryUsers",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"indexName":      indexName,
+	}
+
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building expression for users query")
+		return nil, err
+	}
+
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		TableName:                 aws.String(repo.usersTableName),
+		IndexName:                 aws.String(indexName),
+	}
+
+	var dbUsers []users.DBUser
+	for {
+		queryResults, queryErr := repo.dynamoDBClient.QueryWithContext(ctx, queryInput)
+		if queryErr != nil {
+			log.WithFields(f).WithError(queryErr).Warn("error querying users")
+			return nil, queryErr
+		}
+
+		var page []users.DBUser
+		if unmarshalErr := dynamodbattribute.UnmarshalListOfMaps(queryResults.Items, &page); unmarshalErr != nil {
+			log.WithFields(f).WithError(unmarshalErr).Warn("error unmarshalling users")
+			return nil, unmarshalErr
+		}
+		dbUsers = append(dbUsers, page...)
+
+		if len(queryResults.LastEvaluatedKey) == 0 {
+			break
+		}
+		queryInput.ExclusiveStartKey = queryResults.LastEvaluatedKey
+	}
+
+	return toUserModels(dbUsers), nil
+}
+
+func toUserModels(dbUsers []users.DBUser) []*v1Models.User {
 	userModels := make([]*v1Models.User, 0, len(dbUsers))
 	for _, dbUser := range dbUsers {
 		userModels = append(userModels, &v1Models.User{
@@ -161,6 +246,5 @@ func (repo repository) GetUsersBySecondaryEmails(ctx context.Context, emails []s
 			GitlabUsername: dbUser.UserGitlabUsername,
 		})
 	}
-
-	return userModels, nil
+	return userModels
 }
