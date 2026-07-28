@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LFX Self Serve — My CLAs mockup (empty state)</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #F3F4F8;
+    color: #1F2430;
+  }
+  .topbar { height: 6px; background: #111318; }
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 230px;
+    background: #FFFFFF;
+    border-right: 1px solid #E7E8EE;
+    padding: 20px 14px;
+    flex-shrink: 0;
+  }
+  .sidebar .who { display:flex; align-items:center; gap:10px; padding: 4px 8px 18px; }
+  .sidebar .avatar { width: 34px; height: 34px; border-radius: 50%; background:#1F2430; }
+  .sidebar .who b { font-size: 14px; }
+  .navtabs { display:flex; gap:4px; padding: 2px; background:#F1F2F6; border-radius:10px; margin-bottom: 18px; }
+  .navtabs div { flex:1; text-align:center; font-size:13px; padding:7px 6px; border-radius:8px; color:#5B6072; }
+  .navtabs div.active { background:#fff; color:#111318; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+  .navgroup-label { font-size: 11px; letter-spacing:.04em; color:#9AA0B4; margin: 16px 8px 6px; font-weight:600; }
+  .navitem { display:flex; align-items:center; gap:10px; font-size:13.5px; color:#3A3F52; padding:8px 8px; border-radius:8px; }
+  .navitem.active { background:#EEF3FC; color:#1D5FD6; font-weight:600; }
+  .navdot { width:16px; text-align:center; opacity:.7; }
+
+  main { flex:1; padding: 30px 40px 80px; max-width: 1180px; }
+  h1.pagetitle { font-size: 26px; font-weight:600; margin: 0 0 20px; color:#1B1E27; }
+
+  .profilecard {
+    background:#fff; border:1px solid #E7E8EE; border-radius:14px;
+    padding: 18px 22px; display:flex; align-items:center; justify-content:space-between; margin-bottom: 22px;
+  }
+  .profilecard .left { display:flex; align-items:center; gap:16px; }
+  .profilecard .bigavatar { width:52px; height:52px; border-radius:50%; background:#1F2430; }
+  .profilecard .name { font-size:16px; font-weight:700; margin:0; }
+  .profilecard .role { font-size:13px; color:#5B6072; margin:2px 0 0; }
+  .profilecard .meta { text-align:right; font-size:13px; color:#5B6072; line-height:1.6; }
+
+  .tabrow { display:flex; gap:28px; border-bottom:1px solid #E7E8EE; margin-bottom:24px; }
+  .tabrow div { font-size:14px; color:#5B6072; padding-bottom:12px; position:relative; cursor:default; display:flex; align-items:center; gap:6px;}
+  .tabrow div.active { color:#1D5FD6; font-weight:600; }
+  .tabrow div.active::after { content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:#1D5FD6; border-radius:2px; }
+
+  .section-head { display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
+  .section-head h2 { font-size:19px; margin:0; font-weight:700; color:#1B1E27; }
+  .subtext { font-size:13.5px; color:#5B6072; margin: 4px 0 18px; max-width: 640px; }
+
+  .infobox {
+    display:flex; gap:10px; align-items:flex-start; background:#EEF3FC; border:1px solid #D7E4FA;
+    color:#2C4D85; font-size:13px; padding:12px 14px; border-radius:10px; margin-bottom:18px;
+  }
+
+  .btn-primary {
+    background:#1D5FD6; border:1px solid #1D5FD6; color:#fff; font-size:13px; font-weight:600;
+    padding:9px 18px; border-radius:8px; cursor:pointer; white-space:nowrap; text-decoration:none; display:inline-block;
+  }
+  .btn-primary:hover { background:#184FB3; }
+
+  .emptystate {
+    background:#fff; border:1px solid #E7E8EE; border-radius:12px;
+    padding:56px 32px; text-align:center;
+  }
+  .emptystate .empty-icon {
+    width:48px; height:48px; border-radius:50%; background:#EEF0F5; color:#8A8FA0;
+    display:flex; align-items:center; justify-content:center; margin:0 auto 16px; font-size:20px;
+  }
+  .emptystate h3 { margin:0 0 6px; font-size:16px; font-weight:700; color:#1B1E27; }
+  .emptystate p { margin:0 0 20px; font-size:13.5px; color:#5B6072; max-width:380px; margin-left:auto; margin-right:auto; }
+</style>
+</head>
+<body>
+
+<div class="topbar"></div>
+<div class="shell">
+
+  <div class="sidebar">
+    <div class="who"><div class="avatar"></div><b>Heather Willson</b></div>
+    <div class="navtabs">
+      <div class="active">Me</div>
+      <div>Projects</div>
+      <div>Organization</div>
+    </div>
+
+    <div class="navgroup-label">MY ENGAGEMENT</div>
+    <div class="navitem"><span class="navdot">▤</span> My Dashboard</div>
+    <div class="navitem"><span class="navdot">▤</span> My Meetings</div>
+    <div class="navitem"><span class="navdot">▤</span> My Events</div>
+    <div class="navitem"><span class="navdot">▤</span> My Groups</div>
+
+    <div class="navgroup-label">MY ACCOUNT</div>
+    <div class="navitem active"><span class="navdot">◉</span> Profile</div>
+    <div class="navitem"><span class="navdot">◎</span> Settings</div>
+  </div>
+
+  <main>
+    <h1 class="pagetitle">Profile</h1>
+
+    <div class="profilecard">
+      <div class="left">
+        <div class="bigavatar"></div>
+        <div>
+          <p class="name">Heather Willson</p>
+          <p class="role">Manager, LFX and IT Support · IBM</p>
+        </div>
+      </div>
+      <div class="meta">
+        @HWillson<br>
+        hwillson@linuxfoundation.org
+      </div>
+    </div>
+
+    <div class="tabrow">
+      <div>Work history &amp; Affiliations</div>
+      <div>Identities</div>
+      <div>Individual Enrollment</div>
+      <div class="active">My CLAs</div>
+    </div>
+
+    <div class="section-head">
+      <h2>My CLAs</h2>
+    </div>
+
+    <div class="infobox">
+      <span>ⓘ</span>
+      <span>Your signed ICLAs (Individual CLA) and ECLAs (Employee CLA), matched to your Identities. Missing one? <a href="#" style="color:#1D5FD6; font-weight:600; text-decoration:none;">Link your Email, GitHub, or GitLab accounts →</a></span>
+    </div>
+
+    <div class="emptystate">
+      <div class="empty-icon">▤</div>
+      <h3>No CLAs on file yet</h3>
+      <p>We haven't found any signed ICLAs or ECLAs for your linked identities.</p>
+    </div>
+
+  </main>
+</div>
+
+</body>
+</html>

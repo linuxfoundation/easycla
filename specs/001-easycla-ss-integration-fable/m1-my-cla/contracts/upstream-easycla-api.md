@@ -1,4 +1,4 @@
-# Contract: EasyCLA endpoints consumed by M1
+# Contract: EasyCLA endpoints consumed by M1 (existing APIs — no changes)
 
 **Implementation update (PR #5125):** the endpoints below are superseded — that PR implements two consolidated read endpoints, `GET /v4/my-clas` and `GET /v4/my-clas/{signatureID}/pdf` (identity resolution, aggregation, ownership enforcement and validity evaluation inside EasyCLA; SS forwards all session-derived identity keys); see [docs/MY_CLAS_API.md](../../../../docs/MY_CLAS_API.md).
 
