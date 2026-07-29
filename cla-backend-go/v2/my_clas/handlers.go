@@ -93,6 +93,34 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 
 			return myClasOps.NewGetMyClaPdfOK().WithXRequestID(reqID).WithPayload(result)
 		})
+
+	api.MyClasGetMyIdentitiesHandler = myClasOps.GetMyIdentitiesHandlerFunc(
+		func(params myClasOps.GetMyIdentitiesParams, authUser *auth.User) middleware.Responder {
+			reqID := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
+			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+			f := logrus.Fields{
+				"functionName":   "v2.my_clas.handlers.GetMyIdentities",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"authUserName":   utils.StringValue(params.XUSERNAME),
+				"authUserEmail":  utils.StringValue(params.XEMAIL),
+			}
+
+			currentUsername, _ := principal(authUser)
+			if currentUsername == "" {
+				log.WithFields(f).Warn(missingUsernameMsg)
+				return myClasOps.NewGetMyIdentitiesUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, missingUsernameMsg))
+			}
+
+			result, err := service.GetMyIdentities(ctx, currentUsername)
+			if err != nil {
+				msg := "unable to lookup the identities for the authenticated user"
+				log.WithFields(f).WithError(err).Warn(msg)
+				return myClasOps.NewGetMyIdentitiesInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+			}
+
+			return myClasOps.NewGetMyIdentitiesOK().WithXRequestID(reqID).WithPayload(result)
+		})
 }
 
 func principal(authUser *auth.User) (string, bool) {

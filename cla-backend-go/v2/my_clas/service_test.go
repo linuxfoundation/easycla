@@ -605,6 +605,43 @@ func TestGetMyClaPdfURLOwnershipEnforced(t *testing.T) {
 	require.NotNil(t, result)
 }
 
+func TestGetMyIdentities(t *testing.T) {
+	profileEmail := "someone@example.org"
+	deletedEmail := "old@example.org"
+	deleted := true
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone", LfEmail: "Someone@Example.org", Emails: []string{"alt@example.org"}, GithubID: "12345", GithubUsername: "Octocat"}
+	userB := &v1Models.User{UserID: "user-b", LfUsername: "someone", GitlabID: "777", GitlabUsername: "octolab"}
+	repo := &fakeRepo{byLFUsername: map[string][]*v1Models.User{"someone": {userA, userB}}}
+	platform := &fakePlatform{
+		user: &platformModels.User{ID: "sfid-1", Username: "someone", Email: &profileEmail, Emails: []*platformModels.Email{{EmailAddress: &deletedEmail, IsDeleted: &deleted}}},
+		identities: []*platformModels.UserIdentity{
+			{Source: "github", Username: "Octocat", Email: "someone-gh@example.org"},
+			{Source: "gerrit", Username: "someone"},
+			{Source: "slack", Username: "not-a-code-identity"},
+		},
+	}
+	svc := newTestService(repo, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+
+	result, err := svc.GetMyIdentities(context.Background(), "someone")
+	require.NoError(t, err)
+	assert.Equal(t, "someone", result.LfUsername)
+	assert.Equal(t, []string{
+		"email:alt@example.org",
+		"email:someone-gh@example.org",
+		"email:someone@example.org",
+		"gerrit-username:someone",
+		"github-id:12345",
+		"github-username:Octocat",
+		"gitlab-id:777",
+		"gitlab-username:octolab",
+		"lf-username:someone",
+	}, result.Identities)
+	assert.Equal(t, int64(len(result.Identities)), result.ResultCount)
+
+	_, err = svc.GetMyIdentities(context.Background(), "")
+	assert.Error(t, err)
+}
+
 func TestIdentityIsEmpty(t *testing.T) {
 	assert.True(t, (&Identity{}).IsEmpty())
 	assert.True(t, (&Identity{LfUsername: " ", Emails: []string{"", "  "}, GerritUsernames: []string{" "}}).IsEmpty())

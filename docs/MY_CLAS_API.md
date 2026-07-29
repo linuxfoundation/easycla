@@ -436,6 +436,46 @@ employee signatures for the same reason: no document exists) — but replaces th
 role-based check with the **token-anchored identity-ownership check** described above,
 which is the right authorization model for "download *my own* signed document".
 
+## `GET /v4/my-clas/identities`
+
+Returns the deduplicated identities the **authenticated user** owns — no query
+parameters, always scoped to the token holder (an admin token returns the admin's own
+identities, not anyone else's). This is the identity-resolution counterpart to
+`lfx-self-serve` issue [#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161):
+instead of the Sanctions-Screening/SS side scanning `cla-*-users` client-side to map an
+identity back to an EasyCLA user, it can read the exact identity set EasyCLA already
+associates with the caller.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" "$GW/cla-service/v4/my-clas/identities"
+```
+
+The set is the **union of the two sources the list endpoint's ownership enforcement
+(step 0) trusts** — the identities on the caller's EasyCLA user records
+(`GetUsersByLFUsername`) and the identities connected to their LF account in the platform
+user-service (`loadPlatformIdentities`: profile emails + non-deleted connected identities).
+The service method `GetMyIdentities` reuses those same two calls, so this endpoint can
+never surface an identity that `/v4/my-clas` would refuse to search for that caller, and
+the My CLAs / PDF endpoints are left unchanged.
+
+Each entry is `"<type>:<value>"`, deduplicated and sorted; types are `lf-username`,
+`email`, `github-id`, `github-username`, `gitlab-id`, `gitlab-username`,
+`gerrit-username`. Response `200 my-identity-list`:
+
+```json
+{
+  "lfUsername": "lukaszgryglicki",
+  "resultCount": 3,
+  "identities": [
+    "email:lgryglicki@cncf.io",
+    "github-id:26589865",
+    "github-username:lukaszgryglicki"
+  ]
+}
+```
+
+A token carrying no username returns `401` (same as the list endpoint).
+
 ## How LFX Self Serve consumes this (M1 mapping)
 
 The SS server slice already on `lfx-self-serve` branch `feat/easycla-my-clas-server`
