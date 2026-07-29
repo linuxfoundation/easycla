@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -275,6 +276,134 @@ func (usc *Client) ListUsersByUsername(lfUsername string) (*models.User, error) 
 	}
 
 	return userList[0], nil
+}
+
+// GetUserByUsernameContext returns the user matching the given LF username, propagating
+// the request context (additive, context-aware variant of GetUserByUsername)
+func (usc *Client) GetUserByUsernameContext(ctx context.Context, lfUsername string) (*models.User, error) {
+	f := logrus.Fields{
+		"functionName": "GetUserByUsernameContext",
+		"lfUsername":   lfUsername,
+	}
+
+	tok, err := token.GetToken()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem obtaining token")
+		return nil, err
+	}
+
+	url := fmt.Sprintf("https://%s/user-service/v1/users?username=%s", usc.apiGwURL, lfUsername)
+	request, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem building new request")
+		return nil, err
+	}
+
+	request.Header.Set("X-API-KEY", usc.apiKey)
+	request.Header.Set("Authorization", "Bearer "+tok)
+	request.Header.Set("Content-Type", "application/json")
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	response, err := httpClient.Do(request)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem searching user")
+		return nil, err
+	}
+
+	defer func() {
+		closeErr := response.Body.Close()
+		if closeErr != nil {
+			log.WithFields(f).WithError(closeErr).Warn("error closing body")
+		}
+	}()
+
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem reading the user response")
+		return nil, err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		log.WithFields(f).Warnf("problem searching user - status: %d", response.StatusCode)
+		return nil, fmt.Errorf("searching user %s failed with status: %d", lfUsername, response.StatusCode)
+	}
+
+	userList, err := getUsers(data)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem processing the user response")
+		return nil, err
+	}
+
+	if len(userList) == 0 {
+		return nil, ErrUserNotFound
+	}
+
+	return userList[0], nil
+}
+
+// ListUserIdentities returns all identities (GitHub, Gerrit, etc.) connected to the
+// given user record (Salesforce ID), following the pagination
+func (usc *Client) ListUserIdentities(ctx context.Context, userSFID string) ([]*models.UserIdentity, error) {
+	f := logrus.Fields{
+		"functionName": "ListUserIdentities",
+		"userSFID":     userSFID,
+	}
+
+	tok, err := token.GetToken()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem obtaining token")
+		return nil, err
+	}
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	const pageSize = int64(100)
+	var identities []*models.UserIdentity
+	for offset := int64(0); ; offset += pageSize {
+		url := fmt.Sprintf("https://%s/user-service/v1/users/%s/identities?pageSize=%d&offset=%d", usc.apiGwURL, userSFID, pageSize, offset)
+		request, reqErr := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if reqErr != nil {
+			log.WithFields(f).WithError(reqErr).Warn("problem building new request")
+			return nil, reqErr
+		}
+
+		request.Header.Set("X-API-KEY", usc.apiKey)
+		request.Header.Set("Authorization", "Bearer "+tok)
+		request.Header.Set("Content-Type", "application/json")
+
+		response, doErr := httpClient.Do(request)
+		if doErr != nil {
+			log.WithFields(f).WithError(doErr).Warn("problem listing user identities")
+			return nil, doErr
+		}
+
+		data, readErr := io.ReadAll(response.Body)
+		closeErr := response.Body.Close()
+		if closeErr != nil {
+			log.WithFields(f).WithError(closeErr).Warn("error closing body")
+		}
+		if readErr != nil {
+			log.WithFields(f).WithError(readErr).Warn("problem reading the user identities response")
+			return nil, readErr
+		}
+
+		if response.StatusCode != http.StatusOK {
+			log.WithFields(f).Warnf("problem listing user identities - status: %d", response.StatusCode)
+			return nil, fmt.Errorf("listing user identities for user %s failed with status: %d", userSFID, response.StatusCode)
+		}
+
+		var identityList models.UserIdentityList
+		if unmarshalErr := json.Unmarshal(data, &identityList); unmarshalErr != nil {
+			log.WithFields(f).WithError(unmarshalErr).Warn("problem decoding the user identities response")
+			return nil, unmarshalErr
+		}
+
+		identities = append(identities, identityList.Data...)
+		if int64(len(identityList.Data)) < pageSize {
+			break
+		}
+	}
+
+	return identities, nil
 }
 
 // SearchUsersByEmail returns a single user based on the email parameter

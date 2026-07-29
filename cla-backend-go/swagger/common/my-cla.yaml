@@ -1,0 +1,64 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: My CLA
+description: A single signed ICLA or ECLA (employee acknowledgement) belonging to the resolved user identity
+properties:
+  signatureID:
+    type: string
+    description: The signature ID (UUID)
+  claType:
+    type: string
+    enum: [icla, ecla]
+    description: icla - individual CLA with a downloadable signed PDF, ecla - employee acknowledgement covered by the company CCLA, no PDF
+  claGroupID:
+    type: string
+    description: The CLA Group ID (UUID) the agreement was signed against
+  claGroupName:
+    type: string
+    description: The CLA Group name, omitted when the CLA Group record could not be resolved
+  companyID:
+    type: string
+    description: The company ID (UUID) of the employer, ECLA only
+  companyName:
+    type: string
+    description: The company name of the employer, ECLA only
+  signingEntityName:
+    type: string
+    description: The company signing entity name of the employer, ECLA only
+  userID:
+    type: string
+    description: The EasyCLA user record ID (UUID) owning this signature
+  signedOn:
+    type: string
+    description: The date/time the agreement was signed or acknowledged
+  signed:
+    type: boolean
+    x-omitempty: false
+    description: The signature_signed flag - always true, unsigned records are not returned
+  approved:
+    type: boolean
+    x-omitempty: false
+    description: The signature_approved flag - false when the signature was invalidated
+  valid:
+    type: boolean
+    x-omitempty: false
+    description: >
+      Computed validity. ICLA: signed and approved. ECLA: signed, approved, the employer is
+      not sanctioned, the employer still holds an approved+signed CCLA for the CLA Group, and
+      the user still matches the current CCLA approval lists (email, email domain,
+      GitHub/GitLab username, GitHub organization)
+  documentMajorVersion:
+    type: integer
+    x-omitempty: false
+    description: The major version of the CLA document that was signed
+  documentMinorVersion:
+    type: integer
+    x-omitempty: false
+    description: The minor version of the CLA document that was signed
+  pdfAvailable:
+    type: boolean
+    x-omitempty: false
+    description: True when the record is a signed ICLA eligible for PDF retrieval - object availability is verified by the PDF endpoint on request
