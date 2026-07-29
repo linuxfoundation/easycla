@@ -1,3 +1,4 @@
+#!/bin/bash
 cd cla-backend-go
 go build -o bin/cla-fbsd main.go
 cd ..
