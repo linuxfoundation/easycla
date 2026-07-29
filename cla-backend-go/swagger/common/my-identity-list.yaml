@@ -1,0 +1,22 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: My Identity List
+description: The deduplicated identities connected to the authenticated user, each formatted as "<type>:<value>"
+properties:
+  lfUsername:
+    type: string
+    description: The LF username (LFID) of the authenticated user the identities were resolved for
+  resultCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: The number of identities returned
+  identities:
+    type: array
+    x-omitempty: false
+    description: The identities the authenticated user owns, formatted as "<type>:<value>" (e.g. github-id:26589865, github-username:octocat, email:a@b.com), the same identity set the My CLAs API authorizes a non-admin caller to search
+    items:
+      type: string

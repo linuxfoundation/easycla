@@ -83,6 +83,7 @@ type ProjectsCLAGroupsRepository interface {
 type Service interface {
 	GetMyClas(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*models.MyClaList, error)
 	GetMyClaPdfURL(ctx context.Context, currentUsername string, admin bool, requested *Identity, signatureID string) (*models.MyClaPdf, error)
+	GetMyIdentities(ctx context.Context, currentUsername string) (*models.MyIdentityList, error)
 }
 
 type service struct {
@@ -268,6 +269,67 @@ func (s *service) GetMyClaPdfURL(ctx context.Context, currentUsername string, ad
 	}
 
 	return nil, nil
+}
+
+// GetMyIdentities returns the deduplicated "<type>:<value>" identities the authenticated user
+// owns - the union of their EasyCLA user records and their platform user-service account, the
+// same two sources authorizeIdentity uses to authorize a non-admin caller's identity keys
+func (s *service) GetMyIdentities(ctx context.Context, currentUsername string) (*models.MyIdentityList, error) {
+	if currentUsername == "" {
+		return nil, errors.New("no username on the authenticated principal")
+	}
+
+	selfUsers, err := s.repo.GetUsersByLFUsername(ctx, currentUsername)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool)
+	identities := []string{}
+	add := func(kind, value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		entry := kind + ":" + value
+		if seen[entry] {
+			return
+		}
+		seen[entry] = true
+		identities = append(identities, entry)
+	}
+
+	add("lf-username", currentUsername)
+	for _, selfUser := range selfUsers {
+		add("lf-username", selfUser.LfUsername)
+		add("email", normalizeEmail(string(selfUser.LfEmail)))
+		for _, email := range selfUser.Emails {
+			add("email", normalizeEmail(email))
+		}
+		add("github-id", selfUser.GithubID)
+		add("github-username", selfUser.GithubUsername)
+		add("gitlab-id", selfUser.GitlabID)
+		add("gitlab-username", selfUser.GitlabUsername)
+	}
+
+	platform := s.loadPlatformIdentities(ctx, currentUsername)
+	for email := range platform.emails {
+		add("email", email)
+	}
+	for source, byKey := range platform.usernames {
+		for _, variants := range byKey {
+			for _, variant := range variants {
+				add(source+"-username", variant)
+			}
+		}
+	}
+
+	sort.Strings(identities)
+	return &models.MyIdentityList{
+		LfUsername:  currentUsername,
+		Identities:  identities,
+		ResultCount: int64(len(identities)),
+	}, nil
 }
 
 func (s *service) effectiveIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {

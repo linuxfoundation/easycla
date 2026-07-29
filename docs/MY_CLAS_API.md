@@ -10,12 +10,13 @@ EasyCLA → LFX Self Serve integration program
 specs in [`specs/001-easycla-ss-integration-fable/m1-my-cla/`](https://github.com/linuxfoundation/easycla/tree/001-easycla-ss-integration/specs/001-easycla-ss-integration-fable/m1-my-cla)
 on the `001-easycla-ss-integration` branch).
 
-Two new **read-only** EasyCLA v2 endpoints (served under `/v4`, i.e.
+Three new **read-only** EasyCLA v2 endpoints (served under `/v4`, i.e.
 `/cla-service/v4/...` through lfx-gateway) let the authenticated user retrieve **all
 their current and historical ICLAs and ECLAs** — matched across their LF username,
 emails and GitHub/GitLab/Gerrit identities, with per-record validity evaluated against
-the *current* company CCLA approval lists — and download their signed ICLA PDFs via
-time-limited links. Every provided identity key is **verified to belong to the
+the *current* company CCLA approval lists — download their signed ICLA PDFs via
+time-limited links, and list the deduplicated identity set they own (the same set the
+list endpoint authorizes them to search). Every provided identity key is **verified to belong to the
 authenticated user** before it is searched (see "Identity ownership enforcement"), so
 the endpoints cannot be used to freely enumerate other people's CLA history.
 "Belongs to" means the identity is *currently* attached to the caller's LF account
@@ -27,18 +28,19 @@ implies is documented under "Known limitations":
 |---|---|---|
 | `GET` | `/v4/my-clas` | List all signed ICLAs/ECLAs matching the provided identity, with computed validity |
 | `GET` | `/v4/my-clas/{signatureID}/pdf` | Time-limited (15 min) presigned S3 URL for a signed ICLA PDF owned by the provided identity |
+| `GET` | `/v4/my-clas/identities` | List the deduplicated `<type>:<value>` identities the authenticated user owns (no query params) |
 
 ## Changed repositories and branches
 
 | Repository | Branch | Change |
 |---|---|---|
 | `easycla` | `unicron-easycla-my-clas-api` | New swagger paths/models, new `cla-backend-go/v2/my_clas` module, wiring in `cmd/server.go`, unit tests, this document |
-| `acs-cli` | `unicron-easycla-my-clas-api` | ACS resource/policy/role registration for the two new paths (`services/11-cla-service.yaml`) — must be `acs-cli sync`'d per environment before the endpoints are reachable through the gateway |
+| `acs-cli` | `unicron-easycla-my-clas-api` | ACS resource/policy/role registration for the three new paths (`services/11-cla-service.yaml`) — must be `acs-cli sync`'d per environment before the endpoints are reachable through the gateway |
 
 Files changed in `easycla`:
 
-- `cla-backend-go/swagger/cla.v2.yaml` — two new paths, eight new shared query parameters, three new definitions
-- `cla-backend-go/swagger/common/my-cla-list.yaml`, `my-cla.yaml`, `my-cla-pdf.yaml` — new response models
+- `cla-backend-go/swagger/cla.v2.yaml` — three new paths, eight new shared query parameters, four new definitions
+- `cla-backend-go/swagger/common/my-cla-list.yaml`, `my-cla.yaml`, `my-cla-pdf.yaml`, `my-identity-list.yaml` — new response models
 - `cla-backend-go/v2/my_clas/handlers.go` — swagger operation wiring (`Configure`)
 - `cla-backend-go/v2/my_clas/service.go` — identity ownership enforcement, resolution, aggregation, validity evaluation
 - `cla-backend-go/v2/my_clas/repository.go` — plural, paginated GSI queries for identity resolution, the user's ICLA/ECLA records query, and the single-scan secondary-email lookup
@@ -55,7 +57,7 @@ helper methods added to `v2/user-service/client.go`.
 
 ## Authentication
 
-Both endpoints use the standard v4 `lf-auth` security (base64 `X-ACL` header injected
+All three endpoints use the standard v4 `lf-auth` security (base64 `X-ACL` header injected
 by lfx-gateway), exactly like every other secured v4 endpoint:
 
 1. The caller (LFX Self Serve server) sends `GET /cla-service/v4/my-clas` with a user
@@ -63,10 +65,13 @@ by lfx-gateway), exactly like every other secured v4 endpoint:
    [`docs/easycla-ss-migration/role-mapping-feasibility.md`](https://github.com/linuxfoundation/easycla/blob/001-easycla-ss-integration/docs/easycla-ss-migration/role-mapping-feasibility.md)).
 2. lfx-gateway's `secured` chain validates the JWT (signature + issuer) and asks the
    ACS warden whether the username may access this path/method. With the `acs-cli`
-   change, both paths are registered `anyRole: true` and attached to the `user` role
-   (`ViewMyClas` policy) — mirroring `user_from_token` / `active_signature` — so **any
-   authenticated LF user** is authorized. Without a valid token the gateway returns
-   401/403 and the request never reaches EasyCLA.
+   change, all three paths are registered `anyRole: true` and attached to the `user` role
+   (`ViewMyClas` policy — resources `my_clas`, `my_clas_pdf`, `my_clas_identities`) —
+   mirroring `user_from_token` / `active_signature` — so **any authenticated LF user** is
+   authorized. `/v4/my-clas/identities` is registered as its own resource because the
+   `/v4/my-clas` path is matched exactly (the PDF route likewise needs its own
+   `/v4/my-clas/*/pdf` entry); an unregistered sub-path would be denied by the warden.
+   Without a valid token the gateway returns 401/403 and the request never reaches EasyCLA.
 3. The gateway injects `X-ACL`/`X-USERNAME`/`X-EMAIL`; the Lambda decodes them into the
    handler's `authUser` principal.
 
@@ -436,6 +441,46 @@ employee signatures for the same reason: no document exists) — but replaces th
 role-based check with the **token-anchored identity-ownership check** described above,
 which is the right authorization model for "download *my own* signed document".
 
+## `GET /v4/my-clas/identities`
+
+Returns the deduplicated identities the **authenticated user** owns — no query
+parameters, always scoped to the token holder (an admin token returns the admin's own
+identities, not anyone else's). This is the identity-resolution counterpart to
+`lfx-self-serve` issue [#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161):
+instead of the Sanctions-Screening/SS side scanning `cla-*-users` client-side to map an
+identity back to an EasyCLA user, it can read the exact identity set EasyCLA already
+associates with the caller.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" "$GW/cla-service/v4/my-clas/identities"
+```
+
+The set is the **union of the two sources the list endpoint's ownership enforcement
+(step 0) trusts** — the identities on the caller's EasyCLA user records
+(`GetUsersByLFUsername`) and the identities connected to their LF account in the platform
+user-service (`loadPlatformIdentities`: profile emails + non-deleted connected identities).
+The service method `GetMyIdentities` reuses those same two calls, so this endpoint can
+never surface an identity that `/v4/my-clas` would refuse to search for that caller, and
+the My CLAs / PDF endpoints are left unchanged.
+
+Each entry is `"<type>:<value>"`, deduplicated and sorted; types are `lf-username`,
+`email`, `github-id`, `github-username`, `gitlab-id`, `gitlab-username`,
+`gerrit-username`. Response `200 my-identity-list`:
+
+```json
+{
+  "lfUsername": "lukaszgryglicki",
+  "resultCount": 3,
+  "identities": [
+    "email:lgryglicki@cncf.io",
+    "github-id:26589865",
+    "github-username:lukaszgryglicki"
+  ]
+}
+```
+
+A token carrying no username returns `401` (same as the list endpoint).
+
 ## How LFX Self Serve consumes this (M1 mapping)
 
 The SS server slice already on `lfx-self-serve` branch `feat/easycla-my-clas-server`
@@ -462,12 +507,14 @@ with a TODO for the missing lookup endpoint. With this API it collapses to:
 - `GET /api/me/clas/:signatureId/pdf-url` → `GET /cla-service/v4/my-clas/{id}/pdf`
   with the same identity params; upstream 404 maps to SS 404 (never 403).
 
-This also supersedes the originally-contingent `GET /v4/users/by-identity` endpoint
+This also reshapes the originally-contingent `GET /v4/users/by-identity` endpoint
 (issue [#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161)): the
-same GSI-backed resolution now runs *inside* EasyCLA where the approval-list validity
-check — impossible to perform from SS, which cannot see approval lists — also lives.
-If a bare identity→user lookup is ever still wanted, the `resolveUsers` service
-function is the ready-made core of it.
+GSI-backed identity→user resolution now runs *inside* EasyCLA where the approval-list
+validity check — impossible to perform from SS, which cannot see approval lists — also
+lives, so SS never needs to scan `cla-*-users` itself. What #1161 actually needs is the
+inverse — the identity set already attached to the caller — and that is served directly
+by `GET /v4/my-clas/identities` (above). If a bare arbitrary identity→user lookup is
+ever still wanted, the `resolveUsers` service function is the ready-made core of it.
 
 ## Performance notes
 
@@ -516,7 +563,9 @@ assumption is to be confirmed on dev.
   not-on-current-approval-list) across both `signature_type` spellings; PDF
   ownership/eligibility (owned ICLA, ECLA, unsigned, not-owned, cross-user attempts
   with explicit foreign keys → 404, admin path) and S3 key shape; `Identity.IsEmpty`;
-  not-found error classification.
+  not-found error classification; `GetMyIdentities` union/dedupe/sort of the
+  `<type>:<value>` set across EasyCLA records + platform identities (deleted platform
+  emails and non-code sources excluded, empty-username error).
 - Read-only checks against the shared **dev** AWS environment: confirmed
   `reference-signature-index` on `cla-dev-signatures` and all six identity GSIs on
   `cla-dev-users`; sampled real ICLA/ECLA records to verify the
@@ -531,7 +580,9 @@ assumption is to be confirmed on dev.
   lfx-gateway. Suggested smoke test afterwards:
   `curl -H "Authorization: Bearer $TOK" "$GW/cla-service/v4/my-clas"` for a dev user
   with known ICLA/ECLA fixtures, then the returned `signatureID` through
-  `/my-clas/{id}/pdf` and download the URL (SC-001's ≥99% download check).
+  `/my-clas/{id}/pdf` and download the URL (SC-001's ≥99% download check), and
+  `curl -H "Authorization: Bearer $TOK" "$GW/cla-service/v4/my-clas/identities"` to
+  confirm the identity set (`IDENTITIES=1 ./utils/my_clas.sh`).
 
 ## Known limitations / follow-ups
 

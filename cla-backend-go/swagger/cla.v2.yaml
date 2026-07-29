@@ -2834,6 +2834,34 @@ paths:
       tags:
         - my_clas
 
+  /my-clas/identities:
+    get:
+      summary: Get My Identities
+      description: Returns the deduplicated identities connected to the authenticated user, each formatted as "<type>:<value>" - the union of the identities on their EasyCLA user records and the identities connected to their LF account in the platform user-service, i.e. exactly the identity set the My CLAs API authorizes a non-admin caller to search
+      operationId: getMyIdentities
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/my-identity-list'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - my_clas
+
   /user/{userID}/request-company-admin:
     post:
       summary: Request Manager
@@ -5035,6 +5063,9 @@ definitions:
 
   my-cla-pdf:
     $ref: './common/my-cla-pdf.yaml'
+
+  my-identity-list:
+    $ref: './common/my-identity-list.yaml'
 
   #--------------------------------------
   # Docusign Webhook Payload
