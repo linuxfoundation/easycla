@@ -103,7 +103,7 @@ sequenceDiagram
 
 | Endpoint group | What's checked | Where **[verified]** | Notes |
 |---|---|---|---|
-| Approval list `PUT …/approval-list` | project\|org tree scope from X-ACL; **staff-admin disallowed** | `v2/signatures/handlers.go:96,121` | Plus gateway warden check |
+| Approved List `PUT …/approval-list` | project\|org tree scope from X-ACL; **staff-admin disallowed** | `v2/signatures/handlers.go:96,121` | Plus gateway warden check |
 | CLA manager `POST/DELETE …/cla-manager` | project\|org tree scope; admin disallowed | `v2/cla_manager/handlers.go:64,116` | Write dual-updates signature ACL **and** ACS role (`v2/cla_manager/service.go:242,405`) |
 | CLA manager **designee** `POST` | **Nothing** — "anyone create assign a CLA manager designee...no permissions checks" (code comment) | `v2/cla_manager/handlers.go:158,189` | Invite variants also on the public router |
 | `POST /request-corporate-signature` | project\|org tree scope; admin disallowed | `v2/sign/handlers.go:123` | |
@@ -114,7 +114,7 @@ sequenceDiagram
 
 Two consequences worth naming plainly:
 
-1. **Enforcement is uneven.** Designee creation is unauthenticated-by-design; `ecla-auto-create` checks a different store (signature ACL) than approval-list edits (ACS scopes); staff admins can administer CLA groups but *cannot* touch approval lists or managers. **SS should mirror v4's decisions rather than re-derive them** — otherwise SS and the backend will disagree at exactly these seams.
+1. **Enforcement is uneven.** Designee creation is unauthenticated-by-design; `ecla-auto-create` checks a different store (signature ACL) than Approved List edits (ACS scopes); staff admins can administer CLA groups but *cannot* touch Approved Lists or managers. **SS should mirror v4's decisions rather than re-derive them** — otherwise SS and the backend will disagree at exactly these seams.
 2. **v4 trusts `X-ACL` unconditionally.** No authorizer or API-key requirement exists on the v4 stack itself (`cla-backend-go/serverless.yml`; the Corporate Console BFF's `X-API-KEY` header is required by nothing in this repo). The v4 Lambda has no HTTP/API-Gateway event — it's invoked lambda-to-lambda by the platform gateway (`serverless.yml:334-352`) **[verified]** — so the residual risk is invoke-permission scope, not a public URL: whether any principal beyond the gateway can invoke it with a forged X-ACL is **[inferred/unverified]** — spike 4; a hardening item independent of this program.
 
 ---
@@ -199,7 +199,7 @@ Candidate read paths, assessed:
 
 **B. OpenFGA copy now — rejected, evidence strengthened.** The copy would be non-enforcing (v4 checks X-ACL/ACS and signature ACLs; no FGA CLA types exist — `lfx-v2-fga-sync/docs/fga-catalog.md`), and there are *two* upstream truths to sync (§1), doubling the divergence surface. ACS's 30-min cache already causes UI-vs-enforcement drift today; adding a third eventually-consistent copy on top of an async assignment pipeline is the "SS says I can, EasyCLA says I can't" scenario. Model CLA in FGA at M6, when enforcement itself moves.
 
-**C. Org-admin = CLA manager — rejected.** Beyond the legal/product semantics change (who may alter approval lists and sign CCLAs): v4's write paths check **project|organization tuple scopes** with staff-admin explicitly disallowed (§3). `b2b_org#writer` has no project dimension, so the mapping either grants approval-list control per-company-across-all-projects (a semantics change) or requires rewriting v4 enforcement — which is M6, not a UI milestone.
+**C. Org-admin = CLA manager — rejected.** Beyond the legal/product semantics change (who may alter Approved Lists and sign CCLAs): v4's write paths check **project|organization tuple scopes** with staff-admin explicitly disallowed (§3). `b2b_org#writer` has no project dimension, so the mapping either grants Approved List control per-company-across-all-projects (a semantics change) or requires rewriting v4 enforcement — which is M6, not a UI milestone.
 
 **Net: the role difference is a contained adapter in the SS `cla` server module**, consistent with the program strategy (strangler with v4 as enforcement core until M6).
 

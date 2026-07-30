@@ -3,8 +3,8 @@ SPDX-License-Identifier: CC-BY-4.0 -->
 
 # EasyCLA → LFX Self Serve: Architecture Proposal
 
-**Status**: Reviewed by architecture (Eric Searcy, 2026-07-20) — feedback incorporated below (P2/P3 adjusted, P9 and one risk added)
-**Owner**: Michal (engineering) | **Date**: 2026-07-20
+**Status**: Reviewed by architecture (Eric Searcy, 2026-07-20) — feedback incorporated below (P2/P3 adjusted, P9 and one risk added). P10 subsequently approved 2026-07-28 and confirmed 2026-07-30 (see P10).
+**Owner**: Michal (engineering) | **Date**: 2026-07-20 (P10 updated 2026-07-30)
 
 This document is self-contained for review purposes. Implementation-level specs (milestone scopes, acceptance criteria, M1 plan) live in [specs/001-easycla-ss-integration-fable/](../../specs/001-easycla-ss-integration-fable/spec.md) — linked below only for deep dives.
 

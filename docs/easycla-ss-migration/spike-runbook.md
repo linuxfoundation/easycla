@@ -38,7 +38,7 @@ echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .   # inspect claims
 
 **Checkpoint (this is spike 1's core):** the decoded token must contain `http://lfx.dev/claims/username`. If it's present, Auth0 is granting the api-gw audience to this client and stamping the claim the gateway needs — spike 1 passes. If the exchange returns an error (e.g. `invalid_grant`, `access_denied`, or unauthorized audience), spike 1 has found the gap: the SS Auth0 client isn't authorized for that audience in dev — that's an Auth0 client-grant config item, not a code change.
 
-> Getting a refresh token: easiest is to pull it from a live dev SS session (`req.appSession.refresh_token`) — log into dev SS, grab it from the session store / a debug log. Alternatively run a one-off authorization-code+PKCE login against the dev client with `scope=openid offline_access`. Either way the token must carry `offline_access`.
+> Getting a refresh token: log into dev SS and read it from the session store (`req.appSession.refresh_token`) via a controlled inspection, or run a one-off authorization-code+PKCE login against the dev client with `scope=openid offline_access`. Either way the token must carry `offline_access`. The refresh token (and the client secret above) are reusable credentials — do not log or persist them, and revoke/discard the token once the spike is done.
 
 ## Step 2 — call a secured v4 endpoint
 
