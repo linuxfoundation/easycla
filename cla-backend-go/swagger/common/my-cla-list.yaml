@@ -1,0 +1,34 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: My CLA List
+description: The signed ICLAs and ECLAs matching the provided user identity
+properties:
+  lfUsername:
+    type: string
+    description: The LF username (LFID) the list was resolved for, omitted when none was provided
+  userIds:
+    type: array
+    x-omitempty: false
+    description: The EasyCLA user record IDs (UUIDs) matched from the provided identity
+    items:
+      type: string
+  skippedIdentities:
+    type: array
+    x-omitempty: false
+    description: Identity parameters that were not searched because they could not be verified as belonging to the authenticated user, formatted as "<parameter>:<value>"
+    items:
+      type: string
+  resultCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: The number of CLA records returned
+  clas:
+    type: array
+    x-omitempty: false
+    description: The CLA records, sorted by signedOn descending
+    items:
+      $ref: '#/definitions/my-cla'

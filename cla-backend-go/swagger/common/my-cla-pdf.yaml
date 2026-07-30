@@ -1,0 +1,19 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: My CLA PDF
+description: A time-limited download link for a signed ICLA PDF
+properties:
+  signatureID:
+    type: string
+    description: The signature ID (UUID)
+  url:
+    type: string
+    description: The presigned S3 download URL for the signed PDF
+  expiresInSeconds:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: The number of seconds the download URL remains valid (currently 900)
