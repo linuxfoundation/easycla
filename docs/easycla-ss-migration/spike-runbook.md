@@ -36,7 +36,7 @@ TOKEN=$(curl -s -X POST "$ISSUER/oauth/token" \
 echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .   # inspect claims
 ```
 
-**Checkpoint (this is spike 1's core):** the decoded token must contain `http://lfx.dev/claims/username`. If it's present, Auth0 is granting the api-gw audience to this client and stamping the claim the gateway needs — spike 1 passes. If the exchange returns an error (e.g. `invalid_grant`, `access_denied`, or unauthorized audience), spike 1 has found the gap: the SS Auth0 client isn't authorized for that audience in dev — that's an Auth0 client-grant config item, not a code change.
+**Checkpoint (this is spike 1's core prerequisite):** the decoded token must contain `http://lfx.dev/claims/username`. If it's present, Auth0 is granting the api-gw audience to this client and stamping the claim the gateway needs — the prerequisite is met (spike 1 is only "passed" once the secured `cla-managers` call below returns `200`; see `role-mapping-feasibility.md` line 227). If the exchange returns an error (e.g. `invalid_grant`, `access_denied`, or unauthorized audience), spike 1 has found the gap: the SS Auth0 client isn't authorized for that audience in dev — that's an Auth0 client-grant config item, not a code change.
 
 > Getting a refresh token: log into dev SS and read it from the session store (`req.appSession.refresh_token`) via a controlled inspection, or run a one-off authorization-code+PKCE login against the dev client with `scope=openid offline_access`. Either way the token must carry `offline_access`. The refresh token (and the client secret above) are reusable credentials — do not log or persist them, and revoke/discard the token once the spike is done.
 
@@ -63,9 +63,10 @@ Re-run step 1 with user B's refresh token, then hit the M1 read endpoint. First 
 ```bash
 USER_ID="<user-B-easycla-userID>"
 
+# $TOKEN here is user B's token — re-run Step 1 with B's refresh token first
 curl -s -o /dev/null -w "%{http_code}\n" \
   "https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/signatures/user/$USER_ID" \
-  -H "Authorization: Bearer $TOKEN_B"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 - **200** → **role-less users pass the secured router.** M1/M3 use user tokens exactly as proposed (P3); no fallback needed. Best outcome.
