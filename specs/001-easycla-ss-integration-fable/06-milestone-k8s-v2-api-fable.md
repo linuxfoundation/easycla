@@ -1,6 +1,6 @@
 # Milestone 6 — EasyCLA API as a V2 Kubernetes Service; DynamoDB → Postgres Evaluation
 
-**Status**: Draft — **decision milestone**, not committed scope | **Depends on**: M1–M5 (UI-first sequencing confirmed; hybrid-strangler alternative noted below) | **Retires**: Lambda/API-GW deployment (and the separate legacy `/v1`/`/v2` stack) | **Effort**: XL without DB migration; XXL with
+**Status**: Draft — **decision milestone**, not committed scope | **Depends on**: M1–M5 (UI-first sequencing confirmed; hybrid-strangler alternative noted below) | **Retires**: Lambda/API-GW deployment (including the legacy `/v1`/`/v2` Go surface, deployed from the same `cla-backend` serverless stack) | **Effort**: XL without DB migration; XXL with
 **Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
 
 ## What "being a V2 service" means (verified against the platform)
@@ -52,7 +52,7 @@ Because M3–M5 build SS↔v4 adapters and an ACS role bridge that M6 then repla
 
 1. **UI-first (current plan)**: full user value early; accept adapter rework in M6. Keep adapters thin (single SS server module) to bound the waste.
 2. **Platform-first**: rewrite API + roles first, migrate UIs onto the new service. Cleanest end-state, but ~a year of no user-visible progress and big-bang risk.
-3. **Hybrid strangler (recommended if M6 is truly committed)**: after M2, stand up a **CLA read/query V2 service** (the easy 70% of SS's needs; akin to the platform's query-service pattern) while writes stay on v4; M4/M5 consume it; M6 completes writes + roles + Python retirement. Spreads M6 across the program instead of stacking it at the end.
+3. **Hybrid strangler (recommended if M6 is truly committed)**: after M2, stand up a **CLA read/query V2 service** (the easy 70% of SS's needs; akin to the platform's query-service pattern) while writes stay on v4; M4/M5 consume it; M6 completes writes + roles + legacy Go surface consolidation. Spreads M6 across the program instead of stacking it at the end.
 
 ## Risks
 
@@ -69,4 +69,4 @@ Because M3–M5 build SS↔v4 adapters and an ACS role bridge that M6 then repla
 
 - SC-006 (zero lost events; latency/error parity over 30 days) and full E2E suite parity.
 - ACS CLA roles decommissioned only after one clean cycle of FGA-enforced operation.
-- Both Lambda stacks (main and legacy `/v1`/`/v2`) torn down; runbooks/on-call updated.
+- Main and legacy `/v1`/`/v2` API Lambdas torn down (auxiliary Lambdas like the Streams consumer may remain per Track A above); runbooks/on-call updated.

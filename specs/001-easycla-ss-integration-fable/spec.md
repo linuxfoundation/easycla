@@ -41,7 +41,7 @@ A contributor logs into LFX Self Serve and, under the Me lens, opens "My CLAs". 
 
 A contributor opens a PR on a CLA-gated GitHub repository. The EasyCLA status check fails with "Signed Agreement Missing". Clicking the check's details link now lands the contributor in Self Serve (instead of the Contributor Console), where they choose "Individual contributor", review the ICLA, and are taken through the electronic-signature ceremony. On completion they are returned to their PR and the status check turns green.
 
-**Why this priority**: The ICLA flow is the highest-volume contributor journey and the simpler of the two signing flows (no company, approval list, or CLA-manager involvement).
+**Why this priority**: The ICLA flow is the highest-volume contributor journey and the simpler of the two signing flows (no company, Approved List, or CLA-manager involvement).
 
 **Independent Test**: Open a PR against a dev-environment CLA-gated repo with an unsigned test identity, follow the failed check into Self Serve, sign the ICLA, and verify the PR check passes and the signature record and signed PDF exist.
 
@@ -56,16 +56,16 @@ A contributor opens a PR on a CLA-gated GitHub repository. The EasyCLA status ch
 
 ### User Story 3 (Milestone 3) - Employee acknowledges a corporate CLA via Self Serve (Priority: P3)
 
-A contributor whose employer has signed a CCLA clicks the failed PR check, lands in Self Serve, chooses "Corporate contributor", selects their company, and — being on the company's approval list — confirms the employee acknowledgement (ECLA). If they are not on the approval list they can notify their company's CLA managers; if their company has not signed a CCLA they can start the CLA-manager designation / company-admin invitation flow. After this milestone the Contributor Console is retired.
+A contributor whose employer has signed a CCLA clicks the failed PR check, lands in Self Serve, chooses "Corporate contributor", selects their company, and — being on the company's Approved List — confirms the employee acknowledgement (ECLA). If they are not on the Approved List they can notify their company's CLA managers; if their company has not signed a CCLA they can start the CLA-manager designation / company-admin invitation flow. After this milestone the Contributor Console is retired.
 
 **Why this priority**: Completes contributor-side parity but depends on the M2 plumbing and touches the EasyCLA role machinery (CLA manager designee, signatory invitations), which is the highest-complexity contributor flow.
 
-**Independent Test**: With a dev company holding a signed CCLA and an approval list, drive a test contributor through the corporate flow in Self Serve end-to-end; separately drive the not-on-list and no-CCLA branches.
+**Independent Test**: With a dev company holding a signed CCLA and an Approved List, drive a test contributor through the corporate flow in Self Serve end-to-end; separately drive the not-on-list and no-CCLA branches.
 
 **Acceptance Scenarios**:
 
 1. **Given** an approved employee of a CCLA-signed company, **When** they confirm the acknowledgement, **Then** an ECLA record is created and the PR check passes.
-2. **Given** an employee not on the approval list, **When** they request authorization, **Then** selected CLA managers are notified and the contributor sees a confirmation.
+2. **Given** an employee not on the Approved List, **When** they request authorization, **Then** selected CLA managers are notified and the contributor sees a confirmation.
 3. **Given** a company with no signed CCLA, **When** the contributor initiates CLA setup, **Then** they can either become CLA manager designee (with LF login) or invite a company admin, with the same outcomes as today's console.
 4. **Given** a CLA group that requires an ICLA in addition to the CCLA, **When** the employee completes the ECLA, **Then** they are prompted to sign the ICLA before being returned to the PR.
 5. **Given** a sanctioned company (per sanctions screening), **When** an employee attempts the corporate flow, **Then** the flow is blocked with the same messaging as today.
@@ -74,16 +74,16 @@ A contributor whose employer has signed a CCLA clicks the failed PR check, lands
 
 ### User Story 4 (Milestone 4) - CLA manager administers their company's CLAs in the Organization lens (Priority: P4)
 
-A CLA manager opens the Organization lens in Self Serve and manages everything they do in the Corporate Console today: view signed CCLAs per project, sign new CCLAs (as/with a CLA signatory), maintain approval lists (email, domain, GitHub org/username, GitLab), view employee acknowledgements, add/remove CLA managers, toggle auto-create-ECLA, view activity logs, and export CSVs. After parity is reached the Corporate Console is retired.
+A CLA manager opens the Organization lens in Self Serve and manages everything they do in the Corporate Console today: view signed CCLAs per project, sign new CCLAs (as/with a CLA signatory), maintain Approved Lists (email, domain, GitHub org/username, GitLab), view employee acknowledgements, add/remove CLA managers, toggle auto-create-ECLA, view activity logs, and export CSVs. After parity is reached the Corporate Console is retired.
 
 **Why this priority**: Large surface (the Corporate Console is ~160 frontend components plus its own GraphQL BFF) and depends on role-mapping decisions, but is used by a smaller, expert audience — parity risk is more contained than contributor flows.
 
-**Independent Test**: Execute the full Corporate Console regression suite (sign CCLA, edit approval list, add/remove manager, view acknowledgements, export CSV) against the Organization lens implementation and compare outcomes.
+**Independent Test**: Execute the full Corporate Console regression suite (sign CCLA, edit Approved List, add/remove manager, view acknowledgements, export CSV) against the Organization lens implementation and compare outcomes.
 
 **Acceptance Scenarios**:
 
 1. **Given** a user holding the CLA manager role for a company, **When** they open the Organization lens, **Then** they see CLA management for exactly the companies/projects their role covers.
-2. **Given** a CLA manager editing an approval list, **When** they add a domain entry with auto-create-ECLA enabled, **Then** matching employees gain acknowledgements exactly as the Corporate Console produces today.
+2. **Given** a CLA manager editing an Approved List, **When** they add a domain entry with auto-create-ECLA enabled, **Then** matching employees gain acknowledgements exactly as the Corporate Console produces today.
 3. **Given** a CLA signatory, **When** they initiate CCLA signing, **Then** the e-signature ceremony completes and the signed CCLA (with PDF) appears for the company/project.
 4. **Given** a user with no CLA role in a company, **When** they open the Organization lens, **Then** CLA management functions for that company are not accessible.
 
@@ -128,7 +128,7 @@ The platform team runs EasyCLA's APIs as an LFX V2 service on Kubernetes (replac
 - Employee changes company: prior ECLA remains historical; new acknowledgement needed — read views must not present a stale ECLA as authorizing.
 - DocuSign ceremony completed but webhook delayed/lost — PR stays red; users need a truthful "processing" state and support path.
 - Company appears in EasyCLA but has no Salesforce/organization-service record (or vice versa) — org-lens mapping must handle mismatches.
-- Approval-list entry removed while an employee's ECLA exists — signature invalidation semantics must match current behavior.
+- Approved List entry removed while an employee's ECLA exists — signature invalidation semantics must match current behavior.
 - Gerrit and GitLab contributors follow different entry paths than GitHub — each platform cuts over independently (sub-milestones), and the console stays reachable for platforms not yet migrated.
 - Self Serve unavailable while consoles are retired — PR remediation links would dead-end; rollback path (re-pointing the redirect base URL) must stay viable.
 - Sanctioned-company block must be enforced server-side in every new flow, not only in UI.
@@ -157,16 +157,16 @@ The platform team runs EasyCLA's APIs as an LFX V2 service on Kubernetes (replac
 **Milestone 3 — sign ECLA in Self Serve; retire Contributor Console**
 
 - **FR-020**: Self Serve MUST support company search/selection, including "add my company" with the same downstream org-creation behavior as today.
-- **FR-021**: Self Serve MUST run the pre-checks (company sanctioned, CCLA missing, approval list) and route each outcome to the equivalent flow: acknowledge, request authorization, or CLA setup.
-- **FR-022**: Employees on the approval list MUST be able to record an ECLA without any e-signature ceremony.
-- **FR-023**: Contributors not on the approval list MUST be able to notify selected CLA managers.
+- **FR-021**: Self Serve MUST run the pre-checks (company sanctioned, CCLA missing, Approved List) and route each outcome to the equivalent flow: acknowledge, request authorization, or CLA setup.
+- **FR-022**: Employees on the Approved List MUST be able to record an ECLA without any e-signature ceremony.
+- **FR-023**: Contributors not on the Approved List MUST be able to notify selected CLA managers.
 - **FR-024**: Contributors at companies without a CCLA MUST be able to (a) become CLA manager designee (requires LF login) or (b) invite a company admin — with identical role assignments and notifications as today.
 - **FR-025**: Where the CLA group requires ICLA-with-CCLA, the flow MUST chain into the ICLA flow before returning to the PR.
 - **FR-026**: The Contributor Console MUST be retired only after all three platform entry paths (GitHub, GitLab, Gerrit) have Self Serve equivalents (i.e., after M3c).
 
 **Milestone 4 — Organization lens CCLA management; retire Corporate Console**
 
-- **FR-030**: The Organization lens MUST reach feature parity with the Corporate Console inventory: CCLA signing initiation (signatory flow, including send-by-email), approval-list CRUD across all five criteria types, employee-acknowledgement views with search/pagination, CLA manager add/remove/designee, auto-create-ECLA toggle, signed-CLA views (foundation and project level), CCLA PDF access, activity logs with CSV export, and CLA metrics.
+- **FR-030**: The Organization lens MUST reach feature parity with the Corporate Console inventory: CCLA signing initiation (signatory flow, including send-by-email), Approved List CRUD across all five criteria types, employee-acknowledgement views with search/pagination, CLA manager add/remove/designee, auto-create-ECLA toggle, signed-CLA views (foundation and project level), CCLA PDF access, activity logs with CSV export, and CLA metrics.
 - **FR-031**: Access to org-lens CLA functions MUST be governed by the user's EasyCLA CLA-manager/signatory authority for that company (however mapped — see Open Decision on role bridging in milestone docs), and enforcement MUST be server-side.
 - **FR-032**: Role assignments made through Self Serve MUST remain consistent with the system of record used by EasyCLA's enforcement (approval emails, PR gating, notifications must keep working).
 
@@ -185,11 +185,11 @@ The platform team runs EasyCLA's APIs as an LFX V2 service on Kubernetes (replac
 
 - **CLA Group**: The unit of CLA policy for one or more projects; flags for ICLA/CCLA enabled and "CCLA requires ICLA"; owns document templates/versions.
 - **Signature (ICLA)**: Individual agreement; belongs to an EasyCLA user and CLA group; has a signed PDF; has validity/approved/signed flags and document version.
-- **Signature (CCLA)**: Corporate agreement; belongs to a company and CLA group; signed by a CLA signatory; has a signed PDF; carries the approval lists and auto-create-ECLA flag.
-- **Signature (ECLA / employee acknowledgement)**: Record that an employee acknowledged their company's CCLA for a CLA group; references user + company; **no PDF**; may be auto-created from approval-list changes.
+- **Signature (CCLA)**: Corporate agreement; belongs to a company and CLA group; signed by a CLA signatory; has a signed PDF; carries the Approved Lists and auto-create-ECLA flag.
+- **Signature (ECLA / employee acknowledgement)**: Record that an employee acknowledged their company's CCLA for a CLA group; references user + company; **no PDF**; may be auto-created from Approved List changes.
 - **EasyCLA User**: Contributor identity aggregating emails, GitHub/GitLab IDs, and optional LF username; distinct from the LF SSO account — the mapping is many-to-one and sometimes missing.
 - **Company (Signing Entity)**: Organization able to sign CCLAs; linked to the platform organization record (Salesforce ID); may have multiple signing entities.
-- **Approval List**: Per company+CLA group criteria (email, domain, GitHub org, GitHub username, GitLab) that authorize employees.
+- **Approved List**: Per company+CLA group criteria (email, domain, GitHub org, GitHub username, GitLab) that authorize employees.
 - **CLA Roles**: cla-manager, cla-signatory, cla-manager-designee — company- and project+company-scoped authorities that gate corporate CLA operations.
 - **Repository / Git Platform Enrollment**: GitHub orgs+repos, GitLab groups, Gerrit instances attached to CLA groups; drive PR/change gating.
 - **Event**: Audit-log entry for CLA activity, surfaced in consoles and exports.

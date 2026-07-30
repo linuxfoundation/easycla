@@ -27,7 +27,7 @@
 - [x] All functional requirements have clear acceptance criteria
 - [x] User scenarios cover primary flows (contributor view/sign ICLA/ECLA, org-lens management, project-lens admin, platform migration)
 - [x] Feature meets measurable outcomes defined in Success Criteria
-- [x] No implementation details leak into specification (spec.md)
+- [x] Implementation details in spec.md are limited to explicitly scoped M6 architecture decisions (Kubernetes, Postgres) called out as a separately gated milestone, not leaked into the M1–M5 behavior-level requirements
 
 ## Notes
 

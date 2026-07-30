@@ -44,7 +44,7 @@ FR-001…FR-006 in [spec.md](spec.md).
 - **API sufficiency**: `GET /users/{userID}/signatures` requires the EasyCLA `userID`. SS must first resolve LF identity → EasyCLA user(s). If no efficient lookup-by-LF-username/email endpoint exists in v4, add one small read endpoint to EasyCLA (`GET /v4/users/by-identity?...` or reuse existing user search) rather than scanning client-side. This is the only backend change anticipated.
 - **Authorization**: user-scoped data; the SS server must enforce "only the logged-in user's records" (derive `userID` server-side from the session, never trust a client-passed ID). Token model: user's bearer through the gateway if the EasyCLA v4 auth accepts it, else SS M2M with server-side subject binding — decide in design; crowdfunding token-exchange is the fallback pattern.
 - **Validity semantics**: define "valid ECLA" precisely from the signature flags (`signature_approved`, `signature_signed`, not revoked/invalidated) and current-employer semantics; superseded ICLA document versions shown with status, not hidden — matches what CLA enforcement would actually honor.
-- **Multiple EasyCLA users per person**: merge results by (type, project, company), dedupe; show all — an incomplete list here erodes trust in every later milestone.
+- **Multiple EasyCLA users per person**: merge results by signature/document identifier (not by (type, project, company) alone, which would hide superseded ICLA versions — see validity semantics above), dedupe; show all — an incomplete list here erodes trust in every later milestone.
 
 ## Risks
 
