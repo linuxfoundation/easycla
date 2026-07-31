@@ -365,7 +365,7 @@ Field reference (`my-cla` rows):
 | `claType` | `icla` \| `ecla` | See classification above; the UI renders `ICLA` / `ECLA · <company>` pills |
 | `claGroupID` | string | CLA Group UUID (`signature_project_id`) |
 | `claGroupName` | string | Resolved via `projects_cla_groups` repo (single `GetItem`, cached per request); **omitted from the JSON** (string fields marshal with `omitempty`) if the CLA group record is gone — solves the "payload carries no project display name" gap noted in M1 research R6. No v1 user-service/org-service IDs are exposed (architecture-proposal P9) |
-| `projectName` | string | The Salesforce project display name the CLA Group belongs to (a multi-project, foundation-level CLA Group resolves to its foundation). Name comes from the `projects_cla_groups` mapping table and is upgraded to the project-service `Name` when available; both cached per request. Rendered as the bold top line of the UI's Project cell (with `claGroupName` as the subtext). Omitted when it could not be resolved |
+| `projectName` | string | The Salesforce project display name the CLA Group belongs to (a foundation-level CLA Group — identified by a `projects_cla_groups` mapping whose `project_sfid == foundation_sfid` — resolves to its foundation). Name comes from the `projects_cla_groups` mapping table and is upgraded to the project-service `Name` when available; both cached per request. Rendered as the bold top line of the UI's Project cell (with `claGroupName` as the subtext). Omitted when it could not be resolved |
 | `projectLogo` | string | The project (or foundation) logo URL, fetched from the project-service by project SFID (cached per request). Rendered as the Project cell's logo tile (the consumer supplies a default-icon fallback). A project-service miss degrades to an empty logo without failing the listing; omitted when empty |
 | `companyID` / `companyName` / `signingEntityName` | string | ECLA only; resolved from the companies table (cached per request) |
 | `userID` | string | The owning EasyCLA user record — lets the consumer correlate rows with `userIds` and with other per-user endpoints |
@@ -534,6 +534,9 @@ Per request, with all caches request-scoped:
 - one GSI query per allowed identity key (typically 2–4);
 - one paginated GSI query per matched user record (typically 1–2);
 - one `GetItem` per distinct CLA group (name), one per distinct company (ECLAs only);
+- one `projects_cla_groups` GSI query per distinct CLA group (project name/logo resolution)
+  plus, when it resolves to a project/foundation SFID, up to one project-service HTTP call per
+  distinct SFID (both cached per request; a lookup miss degrades to an empty logo);
 - one CCLA query per distinct (CLA group, company) pair and one approval-list
   evaluation per (pair, user) — ECLAs only; the GitHub-org check may add one GitHub
   API call per evaluation when the CCLA actually uses org-based approval.

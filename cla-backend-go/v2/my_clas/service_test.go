@@ -5,6 +5,7 @@ package my_clas
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -132,9 +133,13 @@ func (f *fakeClaGroups) GetProjectsIdsForClaGroup(_ context.Context, claGroupID 
 
 type fakeProjectService struct {
 	byID map[string]*v2ProjectServiceModels.ProjectOutputDetailed
+	err  error
 }
 
 func (f *fakeProjectService) GetProject(projectSFID string) (*v2ProjectServiceModels.ProjectOutputDetailed, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	return f.byID[projectSFID], nil
 }
 
@@ -222,9 +227,10 @@ func TestGetMyClasProjectNameAndLogo(t *testing.T) {
 		mappings: map[string][]*projects_cla_groups.ProjectClaGroup{
 			// single-project CLA Group -> resolves to the project SFID
 			"cla-group-1": {{ClaGroupID: "cla-group-1", ProjectSFID: "proj-sfid-1", ProjectName: "Kubernetes"}},
-			// multi-project (foundation-level) CLA Group -> resolves to the foundation SFID
+			// foundation-level CLA Group -> identified by the marker row (ProjectSFID == FoundationSFID)
+			// and resolves to the foundation SFID
 			"cla-group-2": {
-				{ClaGroupID: "cla-group-2", ProjectSFID: "proj-sfid-2a", FoundationSFID: "found-sfid", FoundationName: "CNCF"},
+				{ClaGroupID: "cla-group-2", ProjectSFID: "found-sfid", FoundationSFID: "found-sfid", FoundationName: "CNCF", ProjectName: "CNCF"},
 				{ClaGroupID: "cla-group-2", ProjectSFID: "proj-sfid-2b", FoundationSFID: "found-sfid", FoundationName: "CNCF"},
 			},
 		},
@@ -278,6 +284,82 @@ func TestGetMyClasProjectLookupDegradesGracefully(t *testing.T) {
 	require.Len(t, result.Clas, 1)
 	assert.Equal(t, "Kubernetes", result.Clas[0].ProjectName, "the mapping-table name is kept when the project-service has no record")
 	assert.Empty(t, result.Clas[0].ProjectLogo, "a missing project logo degrades to empty")
+}
+
+// A CLA Group mapped to several projects with no foundation-marker row (no mapping where
+// ProjectSFID == FoundationSFID) is NOT foundation-level and must not be branded as its
+// foundation. It resolves deterministically to the lowest project SFID.
+func TestGetMyClasMultiProjectNonFoundation(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {icla("sig-1", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true)},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	claGroups := &fakeClaGroups{
+		names: map[string]string{"cla-group-1": "Multi CLA Group"},
+		mappings: map[string][]*projects_cla_groups.ProjectClaGroup{
+			"cla-group-1": {
+				{ClaGroupID: "cla-group-1", ProjectSFID: "proj-zeta", FoundationSFID: "found-x", FoundationName: "Umbrella", ProjectName: "Zeta"},
+				{ClaGroupID: "cla-group-1", ProjectSFID: "proj-alpha", FoundationSFID: "found-x", FoundationName: "Umbrella", ProjectName: "Alpha"},
+			},
+		},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, claGroups)
+	svc.projectService = &fakeProjectService{byID: map[string]*v2ProjectServiceModels.ProjectOutputDetailed{
+		"proj-alpha": {ProjectOutput: v2ProjectServiceModels.ProjectOutput{ProjectCommon: v2ProjectServiceModels.ProjectCommon{Name: "Alpha", ProjectLogo: "https://logos.example.org/alpha.png"}}},
+	}}
+
+	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 1)
+	assert.Equal(t, "Alpha", result.Clas[0].ProjectName, "resolves to the lowest project SFID, not the foundation")
+	assert.Equal(t, "https://logos.example.org/alpha.png", result.Clas[0].ProjectLogo)
+}
+
+// Both an actual project-service error and a nil project-service client are non-fatal: the
+// listing succeeds, the mapping-table name is kept, and the logo degrades to empty.
+func TestGetMyClasProjectServiceErrorAndNilClient(t *testing.T) {
+	newRepo := func() *fakeRepo {
+		userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+		return &fakeRepo{
+			byUserID: map[string][]*signatures.ItemSignature{
+				"user-a": {icla("sig-1", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true)},
+			},
+			byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+		}
+	}
+	newClaGroups := func() *fakeClaGroups {
+		return &fakeClaGroups{
+			names: map[string]string{"cla-group-1": "Kubernetes CLA Group"},
+			mappings: map[string][]*projects_cla_groups.ProjectClaGroup{
+				"cla-group-1": {{ClaGroupID: "cla-group-1", ProjectSFID: "proj-sfid-1", ProjectName: "Kubernetes"}},
+			},
+		}
+	}
+
+	t.Run("project-service returns an error", func(t *testing.T) {
+		svc := newTestService(newRepo(), &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, newClaGroups())
+		svc.projectService = &fakeProjectService{err: errors.New("project-service unavailable")}
+
+		result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+		require.NoError(t, err, "a project-service error must not fail the listing")
+		require.Len(t, result.Clas, 1)
+		assert.Equal(t, "Kubernetes", result.Clas[0].ProjectName, "the mapping-table name is kept on a project-service error")
+		assert.Empty(t, result.Clas[0].ProjectLogo, "the logo degrades to empty on a project-service error")
+	})
+
+	t.Run("nil project-service client", func(t *testing.T) {
+		svc := newTestService(newRepo(), &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, newClaGroups())
+		svc.projectService = nil
+
+		result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+		require.NoError(t, err, "a nil project-service client must not fail the listing")
+		require.Len(t, result.Clas, 1)
+		assert.Equal(t, "Kubernetes", result.Clas[0].ProjectName, "the mapping-table name is kept with no project-service client")
+		assert.Empty(t, result.Clas[0].ProjectLogo, "the logo degrades to empty with no project-service client")
+	})
 }
 
 func TestGetMyClasMultipleRecordsSameLFID(t *testing.T) {
