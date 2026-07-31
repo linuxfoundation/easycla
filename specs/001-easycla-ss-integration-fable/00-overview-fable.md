@@ -7,7 +7,7 @@
 
 ## 1. What we are doing and why
 
-EasyCLA today spans four UIs (Contributor Console, Corporate CLA Console, PCC EasyCLA module, plus the landing page) and a backend running as AWS Lambdas behind API Gateway / lfx-gateway. The program migrates all EasyCLA user-facing functionality into **LFX Self Serve (LFX One)** under its Me / Organization / Project lenses, retiring three UIs, and — as a separately gated decision — re-platforms the EasyCLA API as an LFX V2 Kubernetes service, optionally replacing DynamoDB with Postgres.
+EasyCLA today spans four UIs (Contributor Console, Corporate CLA Console, PCC EasyCLA module, plus the landing page) and a backend running as AWS Lambdas behind API Gateway / lfx-gateway. The program migrates all EasyCLA user-facing functionality into **LFX Self Serve (LFX One)** under its Me / Organization / Project lenses, retiring all four UIs, and — as a separately gated decision — re-platforms the EasyCLA API as an LFX V2 Kubernetes service, optionally replacing DynamoDB with Postgres.
 
 Six milestones, each independently shippable and reversible:
 
@@ -15,7 +15,7 @@ Six milestones, each independently shippable and reversible:
 |---|-----------|---------|-----|
 | M1 | Read-only "My CLAs" in Me lens | nothing | [01](01-milestone-read-only-me-lens-fable.md) |
 | M2 | Sign ICLA in SS (PR link → SS) | nothing | [02](02-milestone-sign-icla-fable.md) |
-| M3 | Sign ECLA in SS (corporate flow) | Contributor Console | [03](03-milestone-sign-ecla-fable.md) |
+| M3 | Sign ECLA in SS (corporate flow) | Contributor Console + easycla-landing-page | [03](03-milestone-sign-ecla-fable.md) |
 | M4 | CCLA management in Organization lens | Corporate CLA Console + its BFF | [04](04-milestone-ccla-org-lens-fable.md) |
 | M5 | EasyCLA admin in Project lens | PCC EasyCLA module | [05](05-milestone-project-lens-pcc-fable.md) |
 | M6 | API → Kubernetes V2 service (± Postgres) | Lambda/API GW deployment | [06](06-milestone-k8s-v2-api-fable.md) |
