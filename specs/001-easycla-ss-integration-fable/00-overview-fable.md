@@ -7,7 +7,7 @@
 
 ## 1. What we are doing and why
 
-EasyCLA today spans four UIs (Contributor Console, Corporate CLA Console, PCC EasyCLA module, plus the landing page) and a backend running as AWS Lambdas behind API Gateway / lfx-gateway. The program migrates all EasyCLA user-facing functionality into **LFX Self Serve (LFX One)** under its Me / Organization / Project lenses, retiring all four UIs, and — as a separately gated decision — re-platforms the EasyCLA API as an LFX V2 Kubernetes service, optionally replacing DynamoDB with Postgres.
+EasyCLA today spans four UIs (Contributor Console, Corporate CLA Console, PCC EasyCLA module, plus the landing page) and a backend running as AWS Lambdas behind API Gateway / lfx-gateway. The program migrates EasyCLA user-facing functionality into **LFX Self Serve (LFX One)** under its Me / Organization / Project lenses, retiring all four UIs — the one deliberate exception is emailed CCLA signatory signing, which stays an external, LF SSO-independent DocuSign path through M4 (see §5) — and — as a separately gated decision — re-platforms the EasyCLA API as an LFX V2 Kubernetes service, optionally replacing DynamoDB with Postgres.
 
 Six milestones, each independently shippable and reversible:
 
