@@ -132,11 +132,15 @@ func (f *fakeClaGroups) GetProjectsIdsForClaGroup(_ context.Context, claGroupID 
 }
 
 type fakeProjectService struct {
-	byID map[string]*v2ProjectServiceModels.ProjectOutputDetailed
-	err  error
+	byID  map[string]*v2ProjectServiceModels.ProjectOutputDetailed
+	err   error
+	calls map[string]int
 }
 
 func (f *fakeProjectService) GetProject(projectSFID string) (*v2ProjectServiceModels.ProjectOutputDetailed, error) {
+	if f.calls != nil {
+		f.calls[projectSFID]++
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -287,8 +291,9 @@ func TestGetMyClasProjectLookupDegradesGracefully(t *testing.T) {
 }
 
 // A CLA Group mapped to several projects with no foundation-marker row (no mapping where
-// ProjectSFID == FoundationSFID) is NOT foundation-level and must not be branded as its
-// foundation. It resolves deterministically to the lowest project SFID.
+// ProjectSFID == FoundationSFID) is NOT foundation-level and has no single project the
+// signature represents, so the project fields are left empty (the consumer falls back to
+// claGroupName) rather than being branded with an arbitrary one of the mapped projects.
 func TestGetMyClasMultiProjectNonFoundation(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
 	repo := &fakeRepo{
@@ -314,8 +319,41 @@ func TestGetMyClasMultiProjectNonFoundation(t *testing.T) {
 	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 1)
-	assert.Equal(t, "Alpha", result.Clas[0].ProjectName, "resolves to the lowest project SFID, not the foundation")
-	assert.Equal(t, "https://logos.example.org/alpha.png", result.Clas[0].ProjectLogo)
+	assert.Empty(t, result.Clas[0].ProjectName, "an ambiguous multi-project non-foundation group invents no project name")
+	assert.Empty(t, result.Clas[0].ProjectLogo, "an ambiguous multi-project non-foundation group invents no project logo")
+	assert.Equal(t, "Multi CLA Group", result.Clas[0].ClaGroupName, "the consumer falls back to claGroupName")
+}
+
+// The resolved project metadata is cached per request: several signatures for the same CLA
+// Group trigger only one project-service lookup.
+func TestGetMyClasProjectCacheHitPerRequest(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				icla("sig-1", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true),
+				icla("sig-2", "user-a", "cla-group-1", "2024-02-01T00:00:00Z", true),
+			},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	claGroups := &fakeClaGroups{
+		names: map[string]string{"cla-group-1": "Kubernetes CLA Group"},
+		mappings: map[string][]*projects_cla_groups.ProjectClaGroup{
+			"cla-group-1": {{ClaGroupID: "cla-group-1", ProjectSFID: "proj-sfid-1", ProjectName: "Kubernetes"}},
+		},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, claGroups)
+	projectSvc := &fakeProjectService{
+		byID:  map[string]*v2ProjectServiceModels.ProjectOutputDetailed{"proj-sfid-1": {ProjectOutput: v2ProjectServiceModels.ProjectOutput{ProjectCommon: v2ProjectServiceModels.ProjectCommon{Name: "Kubernetes", ProjectLogo: "https://logos.example.org/k8s.png"}}}},
+		calls: map[string]int{},
+	}
+	svc.projectService = projectSvc
+
+	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 2)
+	assert.Equal(t, 1, projectSvc.calls["proj-sfid-1"], "the project-service is queried once per distinct CLA group within a request")
 }
 
 // Both an actual project-service error and a nil project-service client are non-fatal: the

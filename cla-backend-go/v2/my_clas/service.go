@@ -754,9 +754,10 @@ func (s *service) projectInfo(ctx context.Context, cache map[string]projectInfo,
 	var projectSFID string
 	// Foundation-level CLA Groups are identified by a mapping whose ProjectSFID == FoundationSFID
 	// (the projects_cla_groups convention used by SignedAtFoundation), NOT by the number of
-	// mappings: such a group resolves to its foundation. A single project-level mapping resolves
-	// to that project; multiple project-level mappings with no foundation marker resolve
-	// deterministically to the lowest project SFID.
+	// mappings: such a group resolves to its foundation, and a single project-level mapping
+	// resolves to that project. Multiple project-level mappings with no foundation marker are
+	// left unresolved (empty name/logo, so the consumer falls back to claGroupName) rather than
+	// inventing an association with an arbitrary one of the mapped projects.
 	switch fm := foundationMapping(mappings); {
 	case fm != nil:
 		projectSFID = fm.FoundationSFID
@@ -764,15 +765,6 @@ func (s *service) projectInfo(ctx context.Context, cache map[string]projectInfo,
 	case len(mappings) == 1:
 		projectSFID = mappings[0].ProjectSFID
 		info.name = mappings[0].ProjectName
-	case len(mappings) > 1:
-		pick := mappings[0]
-		for _, m := range mappings[1:] {
-			if m.ProjectSFID < pick.ProjectSFID {
-				pick = m
-			}
-		}
-		projectSFID = pick.ProjectSFID
-		info.name = pick.ProjectName
 	}
 
 	if projectSFID != "" && s.projectService != nil {
