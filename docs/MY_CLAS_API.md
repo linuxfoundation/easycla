@@ -309,6 +309,8 @@ sampling (SC-001) and support.
       "claType": "icla",
       "claGroupID": "01af041c-...",
       "claGroupName": "CNCF - Kubernetes",
+      "projectName": "Kubernetes",
+      "projectLogo": "https://.../kubernetes.svg",
       "userID": "6e29e1a9-...",
       "signedOn": "2025-11-03T10:22:00Z",
       "signed": true,
@@ -363,6 +365,8 @@ Field reference (`my-cla` rows):
 | `claType` | `icla` \| `ecla` | See classification above; the UI renders `ICLA` / `ECLA · <company>` pills |
 | `claGroupID` | string | CLA Group UUID (`signature_project_id`) |
 | `claGroupName` | string | Resolved via `projects_cla_groups` repo (single `GetItem`, cached per request); **omitted from the JSON** (string fields marshal with `omitempty`) if the CLA group record is gone — solves the "payload carries no project display name" gap noted in M1 research R6. No v1 user-service/org-service IDs are exposed (architecture-proposal P9) |
+| `projectName` | string | The Salesforce project display name the CLA Group belongs to (a multi-project, foundation-level CLA Group resolves to its foundation). Name comes from the `projects_cla_groups` mapping table and is upgraded to the project-service `Name` when available; both cached per request. Rendered as the bold top line of the UI's Project cell (with `claGroupName` as the subtext). Omitted when it could not be resolved |
+| `projectLogo` | string | The project (or foundation) logo URL, fetched from the project-service by project SFID (cached per request). Rendered as the Project cell's logo tile (the consumer supplies a default-icon fallback). A project-service miss degrades to an empty logo without failing the listing; omitted when empty |
 | `companyID` / `companyName` / `signingEntityName` | string | ECLA only; resolved from the companies table (cached per request) |
 | `userID` | string | The owning EasyCLA user record — lets the consumer correlate rows with `userIds` and with other per-user endpoints |
 | `signedOn` | string | Signing/acknowledgement date (fallback: record creation date) |
@@ -497,8 +501,11 @@ with a TODO for the missing lookup endpoint. With this API it collapses to:
   it). The same full set goes on the PDF call (server-derived values from the
   session — and EasyCLA now **re-verifies** every key against the LF account
   server-side, so the enforcement is defense-in-depth rather than SS-only). Mapping to
-  `MyClaAgreement`: `kind = claType`, `projectName = claGroupName` (fixes the current
-  render-the-UUID fallback), `status` from `valid`, drop ECLAs with `valid=false`
+  `MyClaAgreement`: `kind = claType`, `projectName = projectName` (bold top line of the
+  Project cell) with `claGroupName` as its subtext and `projectLogo` as the logo tile
+  (falling back to `claGroupName` / a default icon when a field is absent — the endpoint
+  now supplies the distinct project name + logo, so the old `projectName = claGroupName`
+  UUID fallback is retired), `status` from `valid`, drop ECLAs with `valid=false`
   (FR-002), `pdfAvailable` as-is; identity telemetry from `userIds` and
   `skippedIdentities` (`matchedUserIds = userIds.length`, `unmatched = resultCount ===
   0 && userIds.length === 0` — skipped keys are the direct signal for issue

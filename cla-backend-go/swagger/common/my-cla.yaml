@@ -19,6 +19,12 @@ properties:
   claGroupName:
     type: string
     description: The CLA Group name, omitted when the CLA Group record could not be resolved
+  projectName:
+    type: string
+    description: The Salesforce project display name the CLA Group belongs to (a foundation-level CLA Group resolves to its foundation), omitted when it could not be resolved
+  projectLogo:
+    type: string
+    description: The project (or foundation) logo URL, omitted when the project has no logo or could not be resolved
   companyID:
     type: string
     description: The company ID (UUID) of the employer, ECLA only

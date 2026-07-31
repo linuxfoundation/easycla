@@ -13,6 +13,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	v2ProjectServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
 	platformModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -114,7 +115,8 @@ func (f *fakeCompanies) GetCompany(_ context.Context, companyID string) (*v1Mode
 }
 
 type fakeClaGroups struct {
-	names map[string]string
+	names    map[string]string
+	mappings map[string][]*projects_cla_groups.ProjectClaGroup
 }
 
 func (f *fakeClaGroups) GetCLAGroupNameByID(_ context.Context, claGroupID string) (string, error) {
@@ -122,6 +124,18 @@ func (f *fakeClaGroups) GetCLAGroupNameByID(_ context.Context, claGroupID string
 		return name, nil
 	}
 	return "", projects_cla_groups.ErrCLAGroupDoesNotExist
+}
+
+func (f *fakeClaGroups) GetProjectsIdsForClaGroup(_ context.Context, claGroupID string) ([]*projects_cla_groups.ProjectClaGroup, error) {
+	return f.mappings[claGroupID], nil
+}
+
+type fakeProjectService struct {
+	byID map[string]*v2ProjectServiceModels.ProjectOutputDetailed
+}
+
+func (f *fakeProjectService) GetProject(projectSFID string) (*v2ProjectServiceModels.ProjectOutputDetailed, error) {
+	return f.byID[projectSFID], nil
 }
 
 func icla(signatureID, userID, claGroupID, signedOn string, approved bool) *signatures.ItemSignature {
@@ -190,6 +204,80 @@ func TestGetMyClasUnionAndDedupe(t *testing.T) {
 	assert.Equal(t, "sig-2", result.Clas[0].SignatureID)
 	assert.Equal(t, "sig-1", result.Clas[1].SignatureID)
 	assert.Equal(t, "My CLA Group", result.Clas[0].ClaGroupName)
+}
+
+func TestGetMyClasProjectNameAndLogo(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				icla("sig-single", "user-a", "cla-group-1", "2024-02-01T00:00:00Z", true),
+				icla("sig-foundation", "user-a", "cla-group-2", "2024-01-01T00:00:00Z", true),
+			},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	claGroups := &fakeClaGroups{
+		names: map[string]string{"cla-group-1": "Kubernetes CLA Group", "cla-group-2": "CNCF CLA Group"},
+		mappings: map[string][]*projects_cla_groups.ProjectClaGroup{
+			// single-project CLA Group -> resolves to the project SFID
+			"cla-group-1": {{ClaGroupID: "cla-group-1", ProjectSFID: "proj-sfid-1", ProjectName: "Kubernetes"}},
+			// multi-project (foundation-level) CLA Group -> resolves to the foundation SFID
+			"cla-group-2": {
+				{ClaGroupID: "cla-group-2", ProjectSFID: "proj-sfid-2a", FoundationSFID: "found-sfid", FoundationName: "CNCF"},
+				{ClaGroupID: "cla-group-2", ProjectSFID: "proj-sfid-2b", FoundationSFID: "found-sfid", FoundationName: "CNCF"},
+			},
+		},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, claGroups)
+	svc.projectService = &fakeProjectService{byID: map[string]*v2ProjectServiceModels.ProjectOutputDetailed{
+		"proj-sfid-1": {ProjectOutput: v2ProjectServiceModels.ProjectOutput{ProjectCommon: v2ProjectServiceModels.ProjectCommon{Name: "Kubernetes", ProjectLogo: "https://logos.example.org/k8s.png"}}},
+		"found-sfid":  {ProjectOutput: v2ProjectServiceModels.ProjectOutput{ProjectCommon: v2ProjectServiceModels.ProjectCommon{Name: "Cloud Native Computing Foundation", ProjectLogo: "https://logos.example.org/cncf.png"}}},
+	}}
+
+	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 2)
+
+	byID := map[string]models.MyCla{}
+	for _, row := range result.Clas {
+		byID[row.SignatureID] = row
+	}
+
+	single := byID["sig-single"]
+	assert.Equal(t, "Kubernetes CLA Group", single.ClaGroupName, "the CLA group name is the subtext")
+	assert.Equal(t, "Kubernetes", single.ProjectName, "the project-service name wins over the mapping-table name")
+	assert.Equal(t, "https://logos.example.org/k8s.png", single.ProjectLogo)
+
+	foundation := byID["sig-foundation"]
+	assert.Equal(t, "CNCF CLA Group", foundation.ClaGroupName)
+	assert.Equal(t, "Cloud Native Computing Foundation", foundation.ProjectName, "a foundation-level CLA group resolves to its foundation")
+	assert.Equal(t, "https://logos.example.org/cncf.png", foundation.ProjectLogo)
+}
+
+func TestGetMyClasProjectLookupDegradesGracefully(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {icla("sig-1", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true)},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	// mapping table carries the project name but the project-service has no logo for the SFID
+	claGroups := &fakeClaGroups{
+		names: map[string]string{"cla-group-1": "Kubernetes CLA Group"},
+		mappings: map[string][]*projects_cla_groups.ProjectClaGroup{
+			"cla-group-1": {{ClaGroupID: "cla-group-1", ProjectSFID: "proj-sfid-1", ProjectName: "Kubernetes"}},
+		},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, claGroups)
+	svc.projectService = &fakeProjectService{byID: map[string]*v2ProjectServiceModels.ProjectOutputDetailed{}}
+
+	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	require.NoError(t, err, "a project-service miss must not fail the listing")
+	require.Len(t, result.Clas, 1)
+	assert.Equal(t, "Kubernetes", result.Clas[0].ProjectName, "the mapping-table name is kept when the project-service has no record")
+	assert.Empty(t, result.Clas[0].ProjectLogo, "a missing project logo degrades to empty")
 }
 
 func TestGetMyClasMultipleRecordsSameLFID(t *testing.T) {
