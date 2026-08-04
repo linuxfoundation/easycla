@@ -17,6 +17,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	v2ProjectServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
 	platformModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 	"github.com/sirupsen/logrus"
 )
@@ -74,9 +75,17 @@ type CompanyRepository interface {
 	GetCompany(ctx context.Context, companyID string) (*v1Models.Company, error)
 }
 
-// ProjectsCLAGroupsRepository is the subset of the projects-cla-groups repository used to resolve CLA Group names
+// ProjectsCLAGroupsRepository is the subset of the projects-cla-groups repository used to resolve
+// CLA Group names and the Salesforce project(s) a CLA Group is mapped to
 type ProjectsCLAGroupsRepository interface {
 	GetCLAGroupNameByID(ctx context.Context, claGroupID string) (string, error)
+	GetProjectsIdsForClaGroup(ctx context.Context, claGroupID string) ([]*projects_cla_groups.ProjectClaGroup, error)
+}
+
+// ProjectService is the subset of the project-service client used to resolve a project's
+// display name and logo from its Salesforce ID
+type ProjectService interface {
+	GetProject(projectSFID string) (*v2ProjectServiceModels.ProjectOutputDetailed, error)
 }
 
 // Service interface defines the My CLAs service methods
@@ -92,21 +101,29 @@ type service struct {
 	signaturesService     SignaturesService
 	companyRepo           CompanyRepository
 	projectsClaGroupsRepo ProjectsCLAGroupsRepository
+	projectService        ProjectService
 	presign               func(filename string) (string, error)
 	documentExists        func(filename string) (bool, error)
 }
 
 // NewService creates a new instance of the My CLAs service
-func NewService(repo Repository, platformUsersService PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository) Service {
+func NewService(repo Repository, platformUsersService PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository, projectService ProjectService) Service {
 	return &service{
 		repo:                  repo,
 		platformUsersService:  platformUsersService,
 		signaturesService:     signaturesService,
 		companyRepo:           companyRepo,
 		projectsClaGroupsRepo: projectsClaGroupsRepo,
+		projectService:        projectService,
 		presign:               utils.GetDownloadLink,
 		documentExists:        utils.DocumentExists,
 	}
+}
+
+// projectInfo holds the resolved Salesforce project display name and logo for a CLA Group
+type projectInfo struct {
+	name string
+	logo string
 }
 
 // GetMyClas returns all signed ICLAs and ECLAs of the EasyCLA user records matching the
@@ -138,6 +155,7 @@ func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin b
 
 	seen := make(map[string]bool)
 	claGroupNames := make(map[string]string)
+	projectInfos := make(map[string]projectInfo)
 	companies := make(map[string]*v1Models.Company)
 	cclas := make(map[string]*v1Models.Signature)
 	approvals := make(map[string]bool)
@@ -160,10 +178,16 @@ func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin b
 			if nameErr != nil {
 				return nil, nameErr
 			}
+			project, projectErr := s.projectInfo(ctx, projectInfos, sig.SignatureProjectID)
+			if projectErr != nil {
+				return nil, projectErr
+			}
 			row := models.MyCla{
 				SignatureID:          sig.SignatureID,
 				ClaGroupID:           sig.SignatureProjectID,
 				ClaGroupName:         claGroupName,
+				ProjectName:          project.name,
+				ProjectLogo:          project.logo,
 				UserID:               sig.SignatureReferenceID,
 				SignedOn:             signedOn(sig),
 				Signed:               sig.SignatureSigned,
@@ -706,6 +730,75 @@ func (s *service) claGroupName(ctx context.Context, cache map[string]string, cla
 	}
 	cache[claGroupID] = name
 	return name, nil
+}
+
+// projectInfo resolves the Salesforce project display name and logo the CLA Group belongs to,
+// cached per request. The name comes from the projects-cla-groups mapping table; the logo lives
+// only in the project-service and is fetched by project SFID (a foundation-level CLA Group
+// resolves to its foundation). A project-service lookup miss degrades to an empty logo rather
+// than failing the whole listing.
+func (s *service) projectInfo(ctx context.Context, cache map[string]projectInfo, claGroupID string) (projectInfo, error) {
+	if claGroupID == "" {
+		return projectInfo{}, nil
+	}
+	if info, ok := cache[claGroupID]; ok {
+		return info, nil
+	}
+
+	mappings, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
+	if err != nil {
+		return projectInfo{}, err
+	}
+
+	var info projectInfo
+	var projectSFID string
+	// Foundation-level CLA Groups are identified by a mapping whose ProjectSFID == FoundationSFID
+	// (the projects_cla_groups convention used by SignedAtFoundation), NOT by the number of
+	// mappings: such a group resolves to its foundation, and a single project-level mapping
+	// resolves to that project. Multiple project-level mappings with no foundation marker are
+	// left unresolved (empty name/logo, so the consumer falls back to claGroupName) rather than
+	// inventing an association with an arbitrary one of the mapped projects.
+	switch fm := foundationMapping(mappings); {
+	case fm != nil:
+		projectSFID = fm.FoundationSFID
+		info.name = fm.FoundationName
+	case len(mappings) == 1:
+		projectSFID = mappings[0].ProjectSFID
+		info.name = mappings[0].ProjectName
+	}
+
+	if projectSFID != "" && s.projectService != nil {
+		f := logrus.Fields{
+			"functionName":   "v2.my_clas.service.projectInfo",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     claGroupID,
+			"projectSFID":    projectSFID,
+		}
+		project, projectErr := s.projectService.GetProject(projectSFID)
+		if projectErr != nil {
+			log.WithFields(f).WithError(projectErr).Warn("unable to load the project details for the CLA group - leaving the logo empty")
+		} else if project != nil {
+			if project.Name != "" {
+				info.name = project.Name
+			}
+			info.logo = project.ProjectLogo
+		}
+	}
+
+	cache[claGroupID] = info
+	return info, nil
+}
+
+// foundationMapping returns the mapping row that marks a foundation-level CLA Group
+// (ProjectSFID == FoundationSFID, the projects_cla_groups convention used by
+// SignedAtFoundation), or nil when the CLA Group is not foundation-level.
+func foundationMapping(mappings []*projects_cla_groups.ProjectClaGroup) *projects_cla_groups.ProjectClaGroup {
+	for _, m := range mappings {
+		if m.FoundationSFID != "" && m.FoundationSFID == m.ProjectSFID {
+			return m
+		}
+	}
+	return nil
 }
 
 func (s *service) company(ctx context.Context, cache map[string]*v1Models.Company, companyID string) (*v1Models.Company, error) {
