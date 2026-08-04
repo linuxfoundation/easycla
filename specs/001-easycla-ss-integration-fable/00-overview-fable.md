@@ -14,7 +14,7 @@ Six milestones, each independently shippable and reversible:
 | # | Milestone | Retires | Doc |
 |---|-----------|---------|-----|
 | M1 | Read-only "My CLAs" in Me lens | nothing | [01](01-milestone-read-only-me-lens-fable.md) |
-| M2 | Sign ICLA in SS (PR link → SS) | nothing | [02](02-milestone-sign-icla-fable.md) |
+| M2 | Proactive CLA signing entry in SS, hands off to Contributor Console (revised 2026-08-04 — PR link stays pointed at the Console, not cut over) | nothing | [02](02-milestone-sign-icla-fable.md) |
 | M3 | Sign ECLA in SS (corporate flow) | Contributor Console + easycla-landing-page | [03](03-milestone-sign-ecla-fable.md) |
 | M4 | CCLA management in Organization lens | Corporate CLA Console + its BFF | [04](04-milestone-ccla-org-lens-fable.md) |
 | M5 | EasyCLA admin in Project lens | PCC EasyCLA module | [05](05-milestone-project-lens-pcc-fable.md) |
@@ -59,7 +59,7 @@ Six milestones, each independently shippable and reversible:
 **Strangler pattern with EasyCLA v4 as the enforcement core until M6.**
 
 1. **M1–M5: Self Serve is a new client of the existing EasyCLA APIs**, following the crowdfunding precedent: SS Express server gets a `cla` service module that calls `/cla-service/v3|v4` through lfx-gateway with the user's token (plus M2M where needed). No business logic is reimplemented; enforcement (Approved Lists, sanctions, roles) stays server-side in EasyCLA.
-2. **DocuSign never moves in M2–M4.** The consoles already only fetch a `sign_url` and redirect; SS does the same. A dedicated "DocuSign bridge service" is unnecessary — building one would duplicate webhook handling, PDF storage, and envelope state that already live in `v2/sign` (critical analysis in doc 02).
+2. **DocuSign never moves in M2–M4.** The consoles already only fetch a `sign_url` and redirect. *(Revised 2026-08-04: in M2 specifically, SS itself never reaches this step — it hands the user to the Contributor Console before signing starts, per Heather/PM; the Console fetches `sign_url` exactly as it does today. From M3 onward this point is under revisit along with M3's scope.)* A dedicated "DocuSign bridge service" is unnecessary — building one would duplicate webhook handling, PDF storage, and envelope state that already live in `v2/sign` (critical analysis in doc 02).
 3. **Roles: bridge, don't migrate, until M6.** SS org/project lenses gate UI via the user's self permission check against ACS (`user-service/v1/me/permissions/checks`, per architecture review 2026-07-20) rather than modeling CLA in OpenFGA early. Reason: EasyCLA's backend enforces via ACS on every write — a parallel OpenFGA model would be cosmetic (UI-gating only) while creating a second source of truth to keep in sync. CLA object types enter OpenFGA when the API is rewritten (M6), i.e., when enforcement itself moves.
 4. **Cutover per milestone is a config flip** (the SSM redirect base for contributor flows; lens feature flags for org/project), giving SC-007's rollback guarantee.
 
@@ -81,7 +81,7 @@ Partially. The role difference is the **defining challenge of M6** (and shapes M
 | Identity mapping gaps (LF account ↔ EasyCLA user records, esp. pre-LF-login history) | Users see empty/partial "My CLAs"; support load | M1 ships the mapping + telemetry on unmatched users before any signing moves |
 | ACS role assignment is async | Designee/manager flows in SS inherit today's retry-loop fragility | Keep retries server-side in SS; don't promise synchronous UX |
 | Dual-console period (feature drift) | Fixes must land twice | Freeze console feature work per area once its SS milestone starts |
-| Gerrit/GitLab slip behind GitHub | Console retirement blocked late | Per-platform sub-milestones (M2a–c, M3a–c) inside one release train, each with a parity checklist |
+| Gerrit/GitLab slip behind GitHub | Console retirement blocked late | Per-platform sub-milestones (M3a–c) inside one release train, each with a parity checklist. *(Revised 2026-08-04: M2 no longer has its own per-platform split — a single proactive-picker flow covers all platforms since the Console runs the platform-specific ceremony. M3's split itself is under revisit — see doc 03.)* |
 | Legacy `/v1`/`/v2` Go surface drifts from `/v4` during migration | Contributor flow outages | Single ownership of both surfaces; extend the existing parity/contract tests; absorb in M6 |
 | M6 rework of M3–M5 adapters | Wasted effort | Q3 decided at this review; keep SS↔EasyCLA integration behind one server-side module |
 | DocuSign webhook/timing edge cases resurface in new UI | "Signed but still red PR" complaints | Reuse backend flow untouched; add truthful pending states in SS |
@@ -115,6 +115,6 @@ Beyond the six milestones as described, the program must also account for:
 
 ## 6. Sequencing rationale & effort signal
 
-M1 (S) → M2 (M overall; sub-milestones M2a GitHub / M2b GitLab / M2c Gerrit) → M3 (L; M3a–M3c likewise) → M4 (XL) → M5 (L) → M6 (XL, or XXL with Postgres). M1–M3 build the contributor path in strictly increasing complexity; M4–M5 are parallelizable after M3's role-bridging pattern exists; M6 is gated on a separate go/no-go with the with/without-database analysis in doc 06.
+M1 (S) → M2 (M; single proactive-picker/hand-off flow, no per-platform split — revised 2026-08-04) → M3 (L; M3a–M3c, scope under revisit) → M4 (XL) → M5 (L) → M6 (XL, or XXL with Postgres). M1–M3 build the contributor path in strictly increasing complexity; M4–M5 are parallelizable after M3's role-bridging pattern exists; M6 is gated on a separate go/no-go with the with/without-database analysis in doc 06.
 
 Former open decisions Q1–Q3 are resolved in [spec.md](spec.md): contributor login is already mandatory in the console (no anonymous path needed), all three git platforms are in scope via per-platform sub-milestones, and sequencing is UI-first with M6 separately gated (the hybrid-strangler variant — an early CLA read/query V2 service — is the noted alternative if M6 is committed early).

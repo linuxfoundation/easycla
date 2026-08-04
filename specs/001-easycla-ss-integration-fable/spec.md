@@ -12,8 +12,8 @@
 |-----|-----------|
 | [00-overview-fable.md](00-overview-fable.md) | Program overview, current-state architecture, cross-cutting risks |
 | [01-milestone-read-only-me-lens-fable.md](01-milestone-read-only-me-lens-fable.md) | M1 — Read-only "My CLAs" in Me lens |
-| [02-milestone-sign-icla-fable.md](02-milestone-sign-icla-fable.md) | M2 — Sign ICLAs in Self Serve |
-| [03-milestone-sign-ecla-fable.md](03-milestone-sign-ecla-fable.md) | M3 — Sign ECLAs in Self Serve; retire Contributor Console |
+| [02-milestone-sign-icla-fable.md](02-milestone-sign-icla-fable.md) | M2 — Proactive CLA signing entry in Self Serve (hands off to Contributor Console; revised 2026-08-04) |
+| [03-milestone-sign-ecla-fable.md](03-milestone-sign-ecla-fable.md) | M3 — Sign ECLAs in Self Serve; retire Contributor Console (scope under revision, see doc) |
 | [04-milestone-ccla-org-lens-fable.md](04-milestone-ccla-org-lens-fable.md) | M4 — CCLA management in Organization lens; retire Corporate Console |
 | [05-milestone-project-lens-pcc-fable.md](05-milestone-project-lens-pcc-fable.md) | M5 — EasyCLA project administration in Project lens; remove from PCC |
 | [06-milestone-k8s-v2-api-fable.md](06-milestone-k8s-v2-api-fable.md) | M6 — EasyCLA API on Kubernetes as a V2 service; DynamoDB → Postgres evaluation |
@@ -37,24 +37,26 @@ A contributor logs into LFX Self Serve and, under the Me lens, opens "My CLAs". 
 
 ---
 
-### User Story 2 (Milestone 2) - Contributor signs an ICLA via Self Serve (Priority: P2)
+### User Story 2 (Milestone 2) - Contributor proactively starts CLA signing from Self Serve, hands off to Contributor Console (Priority: P2)
 
-A contributor opens a PR on a CLA-gated GitHub repository. The EasyCLA status check fails with "Signed Agreement Missing". Clicking the check's details link now lands the contributor in Self Serve (instead of the Contributor Console), where they choose "Individual contributor", review the ICLA, and are taken through the electronic-signature ceremony. On completion they are returned to their PR and the status check turns green.
+**Revised 2026-08-04** (per Heather, PM, Slack): the Contributor Console is **not** cut over or retired in M2, and the PR-check remediation link keeps pointing at the Console unchanged. Instead, M2 adds a new, additive entry point: a contributor can go to Self Serve without any PR context, pick a CLA Group (and possibly a GitHub org/repo) from a dropdown, choose whether they want to sign an ICLA or acknowledge an ECLA, and be handed off to the existing Contributor Console to complete the signing there — for both the ICLA and CCLA paths. SS does not run the signing ceremony itself in M2.
 
-**Why this priority**: The ICLA flow is the highest-volume contributor journey and the simpler of the two signing flows (no company, Approved List, or CLA-manager involvement).
+**Why this priority**: Delivers a self-initiated signing path (no failing PR required) using the Console's existing, already-working signing flow — lower-risk than moving DocuSign/ECLA logic natively into SS, while still giving contributors a reason to start using Self Serve.
 
-**Independent Test**: Open a PR against a dev-environment CLA-gated repo with an unsigned test identity, follow the failed check into Self Serve, sign the ICLA, and verify the PR check passes and the signature record and signed PDF exist.
+**Independent Test**: As a logged-in Self Serve user with no open PR, use the new "Sign a CLA" entry to pick a CLA Group and ICLA/ECLA, and verify landing in the Contributor Console pre-scoped to that CLA Group/sign type, ready to complete signing there.
 
 **Acceptance Scenarios**:
 
-1. **Given** an unauthorized contributor's PR, **When** they click the failed status check link, **Then** they arrive in Self Serve with the correct CLA group, user, and PR return-URL context preserved.
-2. **Given** a contributor who chose "Individual", **When** they proceed, **Then** they are handed to the e-signature ceremony and, on completion, redirected back to the originating PR.
-3. **Given** a completed ICLA signature, **When** EasyCLA re-evaluates the PR, **Then** the status check passes without manual intervention.
-4. **Given** a contributor who abandons signing, **When** they return via the PR link later, **Then** they can resume/restart without a stuck state.
+1. **Given** a logged-in Self Serve user with no PR context, **When** they open the new proactive signing entry, **Then** they can pick from CLA Groups available to them (narrowing by GitHub org/repo where applicable).
+2. **Given** a user who picked a CLA Group and ICLA, **When** they proceed, **Then** they are handed off to the Contributor Console's individual-signing flow, scoped to that CLA Group.
+3. **Given** a user who picked a CLA Group and ECLA/CCLA, **When** they proceed, **Then** they are handed off to the Contributor Console's corporate flow, scoped to that CLA Group.
+4. **Given** the existing PR-check status link, **When** a contributor clicks it, **Then** they still land directly in the Contributor Console as today — unaffected by the new SS entry point.
 
 ---
 
 ### User Story 3 (Milestone 3) - Employee acknowledges a corporate CLA via Self Serve (Priority: P3)
+
+**Note (2026-08-04)**: this story's premise (native ECLA signing in SS, Console retirement) was written assuming M2 moved ICLA signing natively into SS. M2 has since been revised to hand off to the Console instead (see User Story 2) and the Console is not cut over in M2 — so this story's scope needs to be revisited with Heather before it's current. Heather has also flagged that, for the CCLA path specifically, **how the user selects their organization in this flow may need to change** — noted here as an open question, not yet resolved. The narrative below is left as originally drafted and should be treated as unconfirmed pending that follow-up.
 
 A contributor whose employer has signed a CCLA clicks the failed PR check, lands in Self Serve, chooses "Corporate contributor", selects their company, and — being on the company's Approved List — confirms the employee acknowledgement (ECLA). If they are not on the Approved List they can notify their company's CLA managers; if their company has not signed a CCLA they can start the CLA-manager designation / company-admin invitation flow. After this milestone the Contributor Console is retired.
 
@@ -146,15 +148,15 @@ The platform team runs EasyCLA's APIs as an LFX V2 service on Kubernetes (replac
 - **FR-005**: The system MUST resolve the Self Serve identity (LF SSO) to the user's EasyCLA user record(s), including users with multiple linked emails/GitHub identities, and aggregate agreements across them.
 - **FR-006**: Users MUST see only their own agreements; no access to other users' signature data through this surface.
 
-**Milestone 2 — sign ICLA in Self Serve**
+**Milestone 2 — proactive CLA signing entry in Self Serve, hands off to Contributor Console** *(revised 2026-08-04, per Heather/PM; supersedes the original FR-010–FR-014 below)*
 
-- **FR-010**: The GitHub PR status-check remediation link MUST be switchable (per environment, without code release) between Contributor Console and Self Serve.
-- **FR-011**: Self Serve MUST present the individual-vs-corporate contributor decision with equivalent guidance to the Contributor Console.
-- **FR-012**: Self Serve MUST let a contributor complete the ICLA e-signature ceremony end-to-end, preserving the return-to-PR redirect, using the existing EasyCLA signing backend (envelope creation, callback processing, PDF storage remain in EasyCLA).
-- **FR-013**: The individual flow MUST reach parity on all three platforms — GitHub (M2a), GitLab (M2b), Gerrit (M2c) — delivered as sequential sub-milestones, each with its own independently switchable cutover.
-- **FR-014**: Signature completion MUST re-trigger PR check evaluation with no behavior change from today.
+- **FR-010**: The GitHub PR status-check remediation link stays pointed at the Contributor Console — no cutover, no per-environment switch, in M2. *(Superseded: previously required a Console↔SS switch; removed per the revision — the Console is not cut over in M2.)*
+- **FR-011**: Self Serve MUST offer a new, PR-independent entry point where a logged-in user picks a CLA Group (and, where applicable, a GitHub org/repo) and chooses ICLA or ECLA.
+- **FR-012**: Self Serve MUST hand off the user to the existing Contributor Console, pre-scoped to the chosen CLA Group and sign type, to complete the actual signing — for both the ICLA and CCLA paths. Self Serve MUST NOT call the signing-initiation endpoints (`request-individual-signature`, `request-employee-signature`, etc.) itself in M2.
+- **FR-013**: *(Deferred — no longer M2 scope)* Per-platform (GitHub/GitLab/Gerrit) sub-milestones for a native SS signing ceremony are not scheduled; M2's picker/hand-off applies uniformly regardless of platform, since the Console — not SS — completes the platform-specific ceremony.
+- **FR-014**: *(Removed — not applicable)* Signature completion / PR re-evaluation behavior is unchanged because SS does not run the ceremony; the Console's existing completion behavior applies as-is.
 
-**Milestone 3 — sign ECLA in Self Serve; retire Contributor Console**
+**Milestone 3 — sign ECLA in Self Serve; retire Contributor Console** *(scope under revision — see [03-milestone-sign-ecla-fable.md](03-milestone-sign-ecla-fable.md) revision note; FR-020–FR-026 below are unconfirmed pending follow-up with Heather)*
 
 - **FR-020**: Self Serve MUST support company search/selection, including "add my company" with the same downstream org-creation behavior as today.
 - **FR-021**: Self Serve MUST run the pre-checks (company sanctioned, CCLA missing, Approved List) and route each outcome to the equivalent flow: acknowledge, request authorization, or CLA setup.
@@ -199,8 +201,8 @@ The platform team runs EasyCLA's APIs as an LFX V2 service on Kubernetes (replac
 ### Measurable Outcomes
 
 - **SC-001** (M1): 100% of a sampled user population's signed ICLAs and valid ECLAs visible in the Contributor Console's data are also visible in Self Serve; ICLA PDF download success rate ≥ 99%.
-- **SC-002** (M2): ≥ 95% of contributors who start the ICLA flow from a PR link in Self Serve complete it without support intervention, matching or beating the Contributor Console's current completion rate; median time from PR link click to green check unchanged or better.
-- **SC-003** (M3): All contributor journeys (individual, corporate-approved, corporate-not-approved, corporate-no-CCLA) completable in Self Serve; Contributor Console traffic reaches ~0 and the console is decommissioned.
+- **SC-002** (M2): *(revised 2026-08-04 — M2 no longer runs the signing ceremony in SS)* ≥ 95% of contributors who start the new proactive picker in Self Serve are successfully handed off to the Contributor Console pre-scoped to the right CLA Group/sign type, without support intervention. *(Original text, now superseded: "≥ 95% of contributors who start the ICLA flow from a PR link in Self Serve complete it without support intervention, matching or beating the Contributor Console's current completion rate; median time from PR link click to green check unchanged or better.")*
+- **SC-003** (M3): *(unconfirmed pending M3 scope revisit — see 03-milestone-sign-ecla-fable.md)* All contributor journeys (individual, corporate-approved, corporate-not-approved, corporate-no-CCLA) completable in Self Serve; Contributor Console traffic reaches ~0 and the console is decommissioned.
 - **SC-004** (M4): Corporate Console regression checklist passes 100% in the Organization lens; Corporate Console decommissioned with no increase in CLA-related support tickets over the following quarter.
 - **SC-005** (M5): A new project can be fully CLA-onboarded in the Project lens without touching PCC; PCC EasyCLA module removed.
 - **SC-006** (M6): API cutover with zero lost webhook/callback events, error rate and p95 latency equal or better than the Lambda baseline over a 30-day window.
@@ -209,13 +211,13 @@ The platform team runs EasyCLA's APIs as an LFX V2 service on Kubernetes (replac
 ## Assumptions
 
 - The existing EasyCLA v3/v4 APIs remain the system of record and enforcement point through M1–M5; Self Serve integrates with them (as it already does with the crowdfunding backend) rather than reimplementing business logic. M6 is where reimplementation happens, if approved.
-- E-signature (DocuSign) integration stays inside the EasyCLA backend in M2–M4: Self Serve only requests a signing URL and hands the browser to the ceremony; envelope creation, webhooks, and PDF storage do not move. No new "DocuSign bridge" service is needed for the UI milestones (analysis in milestone 02 doc).
-- The PR status-check remediation URL is centrally configured in EasyCLA (per-environment parameter), so console→SS cutover and rollback are configuration changes, not code changes.
+- E-signature (DocuSign) integration stays inside the EasyCLA backend, unchanged, through M4: the Contributor Console (not Self Serve) requests the signing URL and hands the browser to the ceremony, for both the PR-redirect path and M2's new proactive-picker path; envelope creation, webhooks, and PDF storage do not move. *(Revised 2026-08-04: in the original framing SS itself requested the signing URL from M2 onward — that is no longer the plan; SS hands off to the Console before reaching that step. No new "DocuSign bridge" service is needed either way — analysis in milestone 02 doc.)*
+- The PR status-check remediation URL remains pointed at the Contributor Console through M2; no cutover happens in M2. *(Revised 2026-08-04: previously this assumption described an M2 console→SS cutover via a centrally-configured, per-environment parameter — that cutover is no longer M2 scope. Whether/when it happens is now bundled with M3's unresolved scope.)*
 - ECLAs have no signed PDF (confirmed in the data model); ICLAs and CCLAs do, stored in object storage with time-limited download links.
 - Role bridging strategy for M3–M5: EasyCLA/ACS remains the system of record for cla-manager/cla-signatory/cla-manager-designee; Self Serve consults/act-through EasyCLA APIs (server-side enforcement stays in EasyCLA). Modeling CLA roles natively in the platform's fine-grained-authorization system is deferred to M6 scope. There are currently no CLA object types in the platform authorization model.
 - PCC v1 remains operational until M5 completes; no EasyCLA work is done in PCC v2 (it has none today).
-- The legacy `/v1`/`/v2` API surface is served by Go (`cla-backend-legacy`, deployed from the `cla-backend` stack; the Python backend has been removed). Contributor flows keep calling these endpoints through M2–M3; the surface is absorbed into the main service in M6.
-- Gerrit and GitLab remain supported platforms; M2/M3 are split into per-platform sub-milestones and console retirement requires all three.
+- The legacy `/v1`/`/v2` API surface is served by Go (`cla-backend-legacy`, deployed from the `cla-backend` stack; the Python backend has been removed). Contributor flows keep calling these endpoints through M2–M3 (via the Contributor Console); the surface is absorbed into the main service in M6.
+- Gerrit and GitLab remain supported platforms. *(Revised 2026-08-04: M2's own per-platform split no longer applies — see Q2 above. M3's per-platform split and console-retirement-requires-all-three assumption stand as originally written but are themselves under revisit pending M3 scope follow-up.)*
 - Corporate Console's GraphQL BFF logic (aggregation, Salesforce lookups) is absorbed into Self Serve's Express server or EasyCLA APIs during M4; the BFF is retired with the console.
 - Sanctions screening (SSS) checks remain enforced in the backend for corporate flows regardless of UI.
 
@@ -232,5 +234,5 @@ The platform team runs EasyCLA's APIs as an LFX V2 service on Kubernetes (replac
 ## Resolved Decisions *(after review feedback, 2026-07-11)*
 
 - **Q1 — Contributor login**: RESOLVED — already the status quo. The Contributor Console requires LF login for all flows, including ICLA (verified: the entry dashboard triggers `login()` for unauthenticated users; commit "feat: added lf login"). Self Serve's login requirement is therefore not a regression and no anonymous path is needed. Residual work: M1 identity mapping must still handle historical signatures created before the login requirement (EasyCLA user records without LF usernames).
-- **Q2 — Git platform scope**: RESOLVED — all three platforms are in scope. M2 and M3 are split into per-platform sub-milestones (M2a GitHub, M2b GitLab, M2c Gerrit; likewise M3a–M3c), each with its own cutover switch and parity checklist; the Contributor Console retires only after M3c.
+- **Q2 — Git platform scope**: RESOLVED for M3 as originally scoped — all three platforms are in scope, split into per-platform sub-milestones (M3a GitHub, M3b GitLab, M3c Gerrit), each with its own cutover switch and parity checklist; the Contributor Console retires only after M3c. *(Revised 2026-08-04: M2's own per-platform split, M2a/M2b/M2c, no longer applies — M2 is now a single proactive picker/hand-off flow that works the same way regardless of git platform, since the Contributor Console, not SS, runs the platform-specific ceremony. M3's per-platform split and Console-retirement timing remain as stated here but are themselves under revisit — see the M3 doc's revision note.)*
 - **Q3 — Sequencing of the platform rewrite**: RESOLVED — UI-first: M1–M5 build against the existing v4 APIs with deliberately thin adapters (single SS server module); M6 remains a separately gated decision. Noted alternative worth revisiting at the M6 go/no-go: the hybrid strangler (stand up a CLA read/query V2 service after M2 for M4/M5 to consume) spreads M6 risk across the program and reduces adapter rework if M6 is committed early.

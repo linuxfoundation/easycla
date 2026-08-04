@@ -1,7 +1,15 @@
 # Milestone 3 — Sign ECLAs in Self Serve; retire the Contributor Console
 
-**Status**: Draft | **Depends on**: M2 | **Retires**: Contributor Console | **Effort**: L
+**Status**: Draft — scope under revision, see note below | **Depends on**: M2 | **Retires**: Contributor Console | **Effort**: L
 **Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
+
+## Revision note (2026-08-04)
+
+M2 was revised (per Heather, PM, on Slack) to hand off signing to the Contributor Console rather than move it natively into SS — the Console is **not** cut over in M2. That changes the premise this M3 doc was written against: it currently assumes M2 already moved ICLA signing natively into SS and extends the same native-signing model to ECLA/CCLA before retiring the Console. That assumption needs to be revisited with Heather before M3's scope/goal/exit-criteria below can be trusted as written.
+
+One specific input already in hand: Heather flagged that **for the CCLA path, how the user selects their organization in this flow may need to be revisited** — i.e., the org-selection UX (today's company search/add flow, see "Current state" #1 below) shouldn't be assumed to carry over unchanged into whatever M3 becomes. This is noted here as an open question, not yet resolved into a scope change.
+
+The rest of this document is left as originally drafted (native ECLA signing in SS, Console retirement) pending that follow-up conversation — treat it as **stale/unconfirmed**, not current scope.
 
 ## Goal
 
