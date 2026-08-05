@@ -1,27 +1,27 @@
-# Implementation Plan: Milestone 2 — Proactive CLA signing entry in Self Serve (hands off to Contributor Console)
+# Implementation Plan: Milestone 2 — My CLAs actions: proactive sign entry, invalidation, status
 
 **Branch**: `docs/easycla-ss-m2-speckit` | **Date**: 2026-08-04 | **Spec**: [spec.md](spec.md)
-**Input**: M2 feature spec [spec.md](spec.md) (extracted from the program spec's User Story 2, revised 2026-08-04 — [../spec.md](../spec.md)) and [../02-milestone-sign-icla-fable.md](../02-milestone-sign-icla-fable.md). M1 is a completed dependency; M3–M6 are roadmap context only.
+**Input**: M2 feature spec [spec.md](spec.md) (extracted from the program spec's User Story 2, revised 2026-08-04 — [../spec.md](../spec.md)), [../02-milestone-sign-icla-fable.md](../02-milestone-sign-icla-fable.md), and the [M2 UI mockup v8](https://github.com/linuxfoundation/easyclav2-migration-planning/blob/main/Mockups/M2/EasyCLA_MyCLAs_v8_Full_Prototype_v8.html). M1 is a completed dependency; M3–M6 are roadmap context only.
 
 ## Summary
 
-Add a "Sign a CLA" page to LFX Self Serve's Me lens: a searchable list of CLA Groups. On selection, SS resolves the user's EasyCLA `userID` server-side (existing `GET /v4/user-from-token`, lookup-or-create) and redirects to the Contributor Console's existing decision-screen URL — `{console}/#/cla/project/{claGroupID}/user/{userID}`, the same shape the PR-check link uses. The ICLA/ECLA choice, its legal guidance, and all signing logic stay in the Console. SS makes no signing-initiation calls and never touches DocuSign; nothing is cut over or retired.
+Extend M1's **My CLAs** page (Me lens) per the mockup: (1) a "+ Sign a CLA" inline search (project / CLA group / repo source) that resolves the user's EasyCLA `userID` server-side (existing `GET /v4/user-from-token`) and — after an account-authorization step for the platform they'll contribute with — redirects to the Contributor Console's existing decision-screen URL (`{console}/#/cla/project/{claGroupID}/user/{userID}`); (2) per-row **CLA invalidation** with confirmation modals (ICLA via the existing `invalidateICLA` endpoint with SS-side ownership enforcement; ECLA needs a new backend endpoint), blocked server-side during impersonation via SS's existing impersonation-readonly middleware; (3) a **status** column (Valid / Needs attention / Invalidated) with a "Request approval →" deep link into the Console for ECLAs that no longer match approval criteria.
 
-**Constraints**: simple and straightforward (no new services, state, or contracts — reuse the Console's existing deep-link entry); independently deliverable in ~2 weeks.
+The ICLA/ECLA choice, its legal guidance, and all signing logic stay in the Console. SS makes no signing-initiation calls and never touches DocuSign; nothing is cut over or retired.
 
-The SS-side build is deliberately thin: one page, one or two server routes, one redirect. The milestone's real design work is the two `/speckit.clarify` items in [spec.md](spec.md): **GitHub identity binding** (a proactive ICLA must land on a user record the PR check can match — recommended: require M1's GitHub-account linking for the ICLA path) and the **proactive-ICLA active-signature gap** (Console + backend assume PR-derived context on the GitHub ICLA path; the Gerrit path proves a no-PR shape already works). Both are scoped and evidenced in the spec's "Verified Console/backend facts" section; neither is resolved here.
+**Constraints**: simple and straightforward (reuse the Console's deep-link entry, existing endpoints, and existing SS middleware); independently deliverable in ~2 weeks — see Complexity Tracking for what threatens that.
 
 ## Technical Context
 
-**Language/Version**: TypeScript (Angular 20.3 frontend + Node 22 / Express 4 SSR server) in `lfx-self-serve`. `cla-backend-go` / `easycla-contributor-console` changes only if the clarify items land inside M2 (planning decision).
-**Primary Dependencies**: `apps/lfx-one` (PrimeNG 20, standalone components, signals), Express server services (`MicroserviceProxyService` / `ApiClientService` pattern), LaunchDarkly feature flags, EasyCLA v2/v4 REST APIs via lfx-gateway. Reuses M1's `cla` server module seam.
-**Storage**: none in SS (stateless: list CLA Groups, resolve `userID`, redirect). EasyCLA DynamoDB + S3 untouched.
-**Testing**: lfx-self-serve conventions — Jest/Karma unit tests for services/components, server route tests, Cypress/E2E per repo norms (verify exact harness during implementation).
+**Language/Version**: TypeScript (Angular 20.3 frontend + Node 22 / Express 4 SSR server) in `lfx-self-serve`; Go 1.25 in `cla-backend-go` for the ECLA-invalidation endpoint (and possibly status evaluation / no-PR ICLA shape, per clarify outcomes).
+**Primary Dependencies**: `apps/lfx-one` (PrimeNG 20, standalone components, signals), Express server services (`MicroserviceProxyService` / `ApiClientService` pattern), existing impersonation-readonly middleware, LaunchDarkly feature flags, EasyCLA v2/v4 REST APIs via lfx-gateway. Extends M1's `my-clas` module and `cla` server module.
+**Storage**: none in SS (stateless). EasyCLA DynamoDB + S3 untouched except via existing/new EasyCLA endpoints.
+**Testing**: lfx-self-serve conventions — Jest/Karma unit tests, server route tests (incl. impersonation-block and ownership-enforcement paths), Cypress/E2E per repo norms; `cla-backend-go` unit tests for any new endpoint.
 **Target Platform**: LFX One web app (SSR, Kubernetes via ArgoCD).
-**Project Type**: web application (feature surface in existing monorepo).
-**Performance Goals**: picker interactive with CLA-Group list < 2s p95; hand-off redirect adds no perceptible latency.
-**Constraints**: no EasyCLA writes and no signing-initiation calls from SS (FR-005); server-side identity derivation only (never trust client-supplied user IDs); PR-check remediation link untouched (FR-006); feature-flagged dark launch; 2-week delivery budget.
-**Scale/Scope**: all LFX contributors; 1 new Me-lens page, ~1–2 server routes (CLA-Group listing + `userID` resolution/hand-off), 0 new upstream endpoints unless the CLA-Group listing question (FR-007) requires one.
+**Project Type**: web application (feature surface in existing monorepo) + small swagger-first backend slice.
+**Performance Goals**: My CLAs interactive < 2s p95 including status; sign-entry search results < 1s p95; hand-off redirect adds no perceptible latency.
+**Constraints**: only writes from SS are invalidation calls (FR-007/FR-008) — no signing-initiation calls (FR-005); server-side identity derivation and ownership enforcement (never trust client-supplied user IDs); invalidation blocked during impersonation (FR-009); PR-check remediation link untouched (FR-006); feature-flagged dark launch; 2-week delivery budget.
+**Scale/Scope**: all LFX contributors; extends 1 existing Me-lens page, ~3–4 server routes (CLA-Group search, `userID` resolution/hand-off, ICLA invalidate, ECLA invalidate), 1 new upstream endpoint (ECLA invalidation) + possibly a status/listing extension per clarify outcomes.
 
 ## Constitution Check
 
@@ -29,11 +29,11 @@ The SS-side build is deliberately thin: one page, one or two server routes, one 
 
 `.specify/memory/constitution.md` is the unratified template — no project-specific gates exist. Default gates applied:
 
-- **Simplicity**: no new services, storage, state, or contracts — the hand-off is the Console's existing deep-link URL, and the ICLA/ECLA choice is not duplicated in SS. PASS.
-- **Security**: `userID` derived server-side from the session via `user-from-token`; SS makes no signing calls and exposes no arbitrary-user lookup; the Console/backend remain the enforcement point for signing. PASS.
-- **No speculative work**: native SS signing, SSM cutover, per-platform splits, org/repo selection, and sign-type UI are all explicitly excluded. PASS.
+- **Simplicity**: no new services, storage, or state; extends M1's page and module; hand-off is the Console's existing deep link; invalidation reuses the existing ICLA endpoint and the existing impersonation middleware. The ECLA endpoint is the one genuinely new backend piece. PASS.
+- **Security**: `userID` derived server-side; `invalidateICLA` has no upstream ownership check, so the SS server enforces self-only invalidation and blocks impersonated sessions (existing middleware); no arbitrary-user lookup exposed. PASS with these requirements carried into contracts.
+- **No speculative work**: native SS signing, SSM cutover, per-platform splits, org/repo selection, sign-type UI, and approval-list management are all explicitly excluded. PASS.
 
-**Post-Phase-1 re-check**: pending — re-run after `/speckit.clarify` resolves the GitHub-identity-binding and active-signature questions (see Open questions in [spec.md](spec.md)).
+**Post-Phase-1 re-check**: pending — re-run after `/speckit.clarify` resolves the five open questions in [spec.md](spec.md).
 
 ## Project Structure
 
@@ -43,12 +43,12 @@ The SS-side build is deliberately thin: one page, one or two server routes, one 
 specs/001-easycla-ss-integration-fable/          # program level (review docs, in PR #5132)
 ├── m1-my-cla/                                   # M1 (already on dev)
 └── m2-sign-cla-handoff/                         # this milestone's feature directory
-    ├── spec.md              # extracted M2 spec (US2 / FR-001…FR-008, revised 2026-08-04)
+    ├── spec.md              # extracted M2 spec (US2 / FR-001…FR-011, revised 2026-08-04)
     ├── plan.md              # This file
-    ├── research.md          # Phase 0 output — TBD by /speckit.plan (resolves the 3 open questions)
+    ├── research.md          # Phase 0 output — TBD by /speckit.plan (resolves the 5 open questions)
     ├── data-model.md        # Phase 1 output — TBD
     ├── quickstart.md        # Phase 1 output — TBD
-    ├── contracts/           # TBD — expected small: hand-off URL + CLA-Group listing
+    ├── contracts/           # TBD — hand-off URL, CLA-Group search, invalidation (incl. new ECLA endpoint)
     └── tasks.md             # Phase 2 output (/speckit.tasks — not created here)
 ```
 
@@ -58,23 +58,25 @@ Primary repo: `linuxfoundation/lfx-self-serve`
 
 ```text
 apps/lfx-one/src/
-├── app/modules/sign-cla/                        # NEW Me-lens page: searchable CLA Group list → hand-off
-├── app/layouts/main-layout/main-layout.component.ts   # EDIT: add Me-lens entry behind flag
-├── app/app.routes.ts                            # EDIT: register the route (lens: 'me', flag-guarded)
+├── app/modules/my-clas/                         # EXTEND M1's page: "+ Sign a CLA" card, Invalidate actions + modals, status column
+├── app/app.routes.ts                            # EDIT only if a sub-route is needed (flag-guarded)
 └── server/
-    ├── routes/clas.route.ts                     # EXTEND (M1's cla route): list CLA Groups; resolve userID + build hand-off URL
-    ├── controllers/clas.controller.ts           # EXTEND: session → user-from-token → hand-off orchestration
-    └── services/cla.service.ts                  # EXTEND: CLA-Group listing client (endpoint TBD, FR-007)
+    ├── routes/clas.route.ts                     # EXTEND: CLA-Group search; userID resolution + hand-off; invalidate routes (impersonation-blocked)
+    ├── controllers/clas.controller.ts           # EXTEND: hand-off orchestration; ownership-enforced invalidation
+    └── services/cla.service.ts                  # EXTEND: CLA-Group search client; invalidateICLA/ECLA clients; status mapping
 ```
 
-Conditional repos (only if the clarify items land inside M2): `easycla-contributor-console` (handle missing active-signature on the individual dashboard) and `cla-backend-go` (no-PR ICLA request shape; Gerrit-type precedent in `v2/sign`).
+Secondary repo: `linuxfoundation/easycla` `cla-backend-go` — new self-service ECLA-invalidation endpoint, swagger-first (`swagger/cla.v2.yaml` → `make swagger` → handler/service), no schema changes expected. Conditional (per clarify): status-evaluation extension to `GET /v4/my-clas`; no-PR ICLA request shape in `v2/sign` (+ matching `easycla-contributor-console` tweak).
 
-**Structure Decision**: extend M1's `cla` server module — the picker reuses the session→identity→EasyCLA-read seam M1 established. The Angular surface is one page in the same shape as M1's `my-clas` module. No sign-type UI, no org/repo picker: the Console's decision screen owns everything after CLA-Group selection.
+**Structure Decision**: everything lands in M1's existing `my-clas` module and `cla` server seam — the mockup is explicitly an extension of the M1 page, not a new surface. The Console's decision screen owns everything after CLA-Group selection.
 
 ## Complexity Tracking
 
-No constitution violations. Schedule risks, in order:
+No constitution violations. Schedule risks against the 2-week budget, in order:
 
-1. **GitHub identity binding** (spec open question 1) — if resolution requires backend enrichment work, it competes with the 2-week budget; the fallback (require M1's GitHub link as a precondition, hand off the GitHub-anchored record) is the simple path.
-2. **Proactive-ICLA gap** (spec open question 2) — Console + backend delta; decide in/out of M2 at `/speckit.clarify`. ECLA works proactively with zero changes, so a worst-case fallback exists but weakens the milestone.
-3. **CLA-Group listing** (spec open question 3) — new read endpoint would add a swagger-first `cla-backend-go` slice.
+1. **ECLA-invalidation endpoint** (spec open question 2) — the one guaranteed new backend piece; semantics (signature + approval-list effects + events) need defining before the SS UI can land.
+2. **Status evaluation** (open question 3) — if "needs attention" requires new approval-criteria matching surface in `/v4/my-clas`, that's a second backend slice.
+3. **Account-authorization mechanics** (open question 1) — direction adopted from the mockup; per-platform mechanics could grow (GitLab/Gerrit); cap M2 to what the hand-off needs.
+4. **Proactive-ICLA gap** (open question 4) — Console + backend delta; Gerrit precedent bounds it, but it competes with 1–2 for backend time.
+
+If the budget forces a cut, the mockup's pieces degrade independently: sign entry + ICLA invalidation ride existing endpoints; ECLA invalidation and status enrichment are the deferrable slices — decide at `/speckit.plan`.

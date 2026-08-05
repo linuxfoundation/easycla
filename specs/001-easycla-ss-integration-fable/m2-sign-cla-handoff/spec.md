@@ -1,65 +1,90 @@
-# Feature Specification: M2 — Proactive CLA signing entry in Self Serve (hands off to Contributor Console)
+# Feature Specification: M2 — My CLAs actions: proactive sign entry (hands off to Console), CLA invalidation, status
 
 **Parent program**: [../spec.md](../spec.md) (EasyCLA → LFX Self Serve Integration) | **Milestone doc**: [../02-milestone-sign-icla-fable.md](../02-milestone-sign-icla-fable.md)
+**UI mockup (source of truth)**: [EasyCLA_MyCLAs_v8_Full_Prototype_v8.html](https://github.com/linuxfoundation/easyclav2-migration-planning/blob/main/Mockups/M2/EasyCLA_MyCLAs_v8_Full_Prototype_v8.html)
 **Created**: 2026-08-04 | **Status**: Planned (see [plan.md](plan.md))
 
 This is the extracted, implementable slice for Milestone 2. Program-wide context, assumptions, and resolved decisions live in the parent spec; this file is what `/speckit.plan`, `/speckit.tasks`, and `/speckit.implement` operate on.
 
-> **Scope (revised 2026-08-04, per Heather/PM)**: M2 is purely additive — it retires nothing and cuts nothing over. Self Serve never runs the DocuSign ceremony; it hands off to the existing Contributor Console for signing. See the User Story below.
+> **Scope (revised 2026-08-04, per Heather/PM; UI per mockup v8)**: M2 extends M1's **My CLAs** page with three additions — a proactive "Sign a CLA" entry that hands off to the existing Contributor Console, per-CLA **invalidation**, and a richer **status** column. Self Serve never runs the DocuSign ceremony; nothing is cut over or retired; the PR-check remediation link is unchanged.
 
 > **Link note**: the upward links `../spec.md` and `../02-milestone-sign-icla-fable.md` point at program-level docs still under review in PR #5132 (targeting `dev`); they resolve once #5132 merges. The `m1-my-cla/` sibling folder is already on `dev`.
 
 ## Constraints
 
 - **Simple and straightforward** — no new services, no new state, no bespoke contracts where an existing one works. Prefer reusing what the Console and EasyCLA backend already do.
-- **Independently deliverable in ~2 weeks** — M2 must ship on its own. Anything that threatens that budget gets cut or deferred, not absorbed.
+- **Independently deliverable in ~2 weeks** — M2 must ship on its own. Schedule risks are called out below; `/speckit.plan` decides sequencing within the milestone.
 
 ## User Story (P2)
 
-A contributor who wants to sign a CLA — without first hitting a failing PR check — logs into LFX Self Serve and, under the Me lens, opens "Sign a CLA". They pick which CLA Group they need to sign for and are handed off to the existing Contributor Console's decision screen for that CLA Group, where they choose Individual or Corporate contributor (as PR-referred contributors do today) and complete the signing there. The DocuSign ceremony, the ICLA/ECLA choice, and all signing logic stay in the Console, exactly as today.
+A contributor opens **My CLAs** (M1's page) in the Self Serve Me lens. There they can:
+
+1. **Sign a CLA** — click "+ Sign a CLA", search by project name, CLA group name, or linked repo source (GitHub, GitLab, or Gerrit), pick a CLA Group, and continue to the existing Contributor Console decision screen to complete the signing (ICLA/ECLA choice and the DocuSign ceremony stay in the Console). Before the Console opens, they are asked to authorize the account they'll contribute with (GitHub, GitLab, or Gerrit).
+2. **Invalidate a CLA** — each signed CLA row offers an Invalidate action with a confirmation modal. For an ICLA: "This will mark your ICLA for {project} as invalid… This action cannot be undone." For an ECLA: "Confirm you no longer work at {company}?" — confirming ends their coverage under that company's CCLA.
+3. **See status** — each row shows a status: Valid, or "Needs attention" with a note (e.g. an ECLA that is signed but no longer matches the company's approval criteria), with a "Request approval →" link into the Console's existing request-authorization flow where applicable.
 
 **Acceptance Scenarios**:
 
-1. **Given** a logged-in contributor with no failing PR, **When** they open "Sign a CLA" in the Me lens and select a CLA Group, **Then** they land on the Contributor Console's decision screen for that CLA Group (`/#/cla/project/{claGroupID}/user/{userID}`), with the ICLA/ECLA choice and its legal guidance presented by the Console — not re-implemented in SS.
-2. **Given** the contributor proceeds as Corporate Contributor from that decision screen, **When** they complete the employee acknowledgement, **Then** the ECLA is recorded exactly as in today's PR-referred flow (this path has no PR-context dependency — verified).
-3. **Given** the contributor proceeds as Individual Contributor, **When** they reach the signing step, **Then** the ICLA flow completes and the resulting signature is attached to a user record resolvable from their GitHub commits (see Open questions — this is the milestone's main design question).
-4. **Given** the existing "Signed Agreement Missing" PR-check link, **When** any contributor clicks it, **Then** it behaves exactly as before M2 — same Console URL shape, unchanged; the proactive picker is a parallel path to the same destination.
+1. **Given** a logged-in contributor on My CLAs, **When** they open "+ Sign a CLA", search, and select a CLA Group, **Then** they land on the Contributor Console's decision screen for that CLA Group (`/#/cla/project/{claGroupID}/user/{userID}`), with the ICLA/ECLA choice and its legal guidance presented by the Console — not re-implemented in SS.
+2. **Given** the contributor selected a CLA Group, **When** they continue to sign, **Then** they are first asked to authorize the account they want to use (GitHub, GitLab, or Gerrit) so the resulting signature is bound to the identity their contributions come from (see Open questions for mechanics).
+3. **Given** a contributor with a signed ICLA, **When** they click Invalidate and confirm, **Then** the ICLA is invalidated via the existing EasyCLA endpoint, the row's status changes to Invalidated, and the action is recorded in the EasyCLA event log.
+4. **Given** a contributor with a valid ECLA, **When** they click Invalidate, **Then** the modal asks them to confirm they no longer work at that company, and confirming ends their ECLA coverage.
+5. **Given** a support user **impersonating** a contributor in Self Serve, **When** they view My CLAs, **Then** invalidation is not possible — the SS server rejects any invalidation request for an impersonated session regardless of what the UI shows.
+6. **Given** a contributor whose ECLA no longer matches the company's approval criteria, **When** they view My CLAs, **Then** the row shows "Needs attention" with an explanatory note and a "Request approval →" link into the Console's request-authorization flow.
+7. **Given** the existing "Signed Agreement Missing" PR-check link, **When** any contributor clicks it, **Then** it behaves exactly as before M2 — unchanged; the proactive entry is a parallel path to the same Console.
 
 ## Functional Requirements
 
-- **FR-001**: Self Serve MUST offer a new, PR-independent "Sign a CLA" entry point in the Me lens for logged-in users.
-- **FR-002**: The picker MUST let the user find and select a CLA Group — a simple searchable list (project/CLA Group names). No org/repo selection step: the signing unit is the CLA Group, and the Console hand-off URL carries only `claGroupID` + `userID`. Org/repo names MAY be used as search metadata to help users find the right CLA Group, nothing more.
-- **FR-003**: On selection, Self Serve MUST hand off to the Contributor Console's existing decision-screen URL — `{console}/#/cla/project/{claGroupID}/user/{userID}` — the same shape the PR-check link uses, without the optional `?redirect=` param (there is no PR to return to). The ICLA/ECLA choice, its legal guidance text, and the `project_icla_enabled`/`project_ccla_enabled` gating stay in the Console; SS MUST NOT re-implement them.
-- **FR-004**: Self Serve MUST resolve the EasyCLA `userID` for the hand-off server-side from the session identity, via the existing `GET /v4/user-from-token` endpoint (which looks up by LF username/email and creates the user record if missing). No client-supplied user IDs.
-- **FR-005**: Self Serve MUST NOT call any signing-initiation endpoint (`request-individual-signature`, `request-employee-signature`, `check-prepare-employee-signature`, etc.). The Console makes those calls, exactly as it does today.
+**Sign a CLA (entry + hand-off)**
+
+- **FR-001**: My CLAs MUST offer a "+ Sign a CLA" action expanding an inline search: one search box matching project names, CLA group names, and linked repo/org sources (GitHub, GitLab, Gerrit) as search metadata. No org/repo selection step — the signing unit is the CLA Group. *([NEEDS CLARIFICATION]: listing endpoint.)*
+- **FR-002**: On selection, Self Serve MUST hand off to the Contributor Console's existing decision-screen URL — `{console}/#/cla/project/{claGroupID}/user/{userID}` — without the optional `?redirect=` param. The ICLA/ECLA choice, legal guidance, and `project_icla_enabled`/`project_ccla_enabled` gating stay in the Console; SS MUST NOT re-implement them.
+- **FR-003**: Self Serve MUST resolve the EasyCLA `userID` server-side from the session identity via the existing `GET /v4/user-from-token` endpoint (lookup-or-create). No client-supplied user IDs.
+- **FR-004**: Before the hand-off, the user MUST be taken through an account-authorization step for the platform they'll contribute with (GitHub, GitLab, or Gerrit — per the mockup's note), so a proactively signed CLA lands on a user record resolvable from their commits. Reuse M1's account-linking flow where possible. *([NEEDS CLARIFICATION]: mechanics per platform.)*
+- **FR-005**: Self Serve MUST NOT call any signing-initiation endpoint (`request-individual-signature`, `request-employee-signature`, etc.). The Console makes those calls, exactly as today.
 - **FR-006**: Self Serve MUST NOT change the GitHub PR status-check remediation link. No SSM cutover or per-environment switch in M2.
-- **FR-007**: Self Serve MUST enumerate the CLA Groups available to present in the picker. *([NEEDS CLARIFICATION]: listing endpoint.)*
-- **FR-008**: A proactively signed ICLA MUST be attached to a user record resolvable from the contributor's GitHub commits, or the signature will not turn their PRs green. *([NEEDS CLARIFICATION]: GitHub identity binding — the milestone's main design question, see below.)*
+
+**Invalidation**
+
+- **FR-007**: Each signed ICLA row MUST offer Invalidate with a confirmation modal (copy per mockup; irreversible). Confirming calls the existing `PUT /v4/cla-group/{claGroupID}/user/{userID}/icla`. Because that endpoint performs **no ownership check** (verified), the SS server MUST enforce that users can only invalidate their own ICLAs — same enforcement-point pattern as M1.
+- **FR-008**: Each valid ECLA row MUST offer Invalidate framed as "Confirm you no longer work at {company}?". *([NEEDS CLARIFICATION]: no self-service ECLA-invalidation endpoint exists — new `cla-backend-go` work; see Open questions.)*
+- **FR-009**: Invalidation MUST be impossible during Self Serve **impersonation**: the invalidation route(s) MUST be blocked server-side for impersonated sessions using SS's existing impersonation-readonly middleware (`apps/lfx-one/src/server/middleware/impersonation-readonly.middleware.ts`) — not merely hidden in the UI.
+
+**Status**
+
+- **FR-010**: Each row MUST show a status: Valid; "Needs attention" with an explanatory note (e.g. ECLA signed but no longer matching the company's approval-list criteria); Invalidated after invalidation. *([NEEDS CLARIFICATION]: where the approval-criteria evaluation comes from.)*
+- **FR-011**: "Needs attention" ECLA rows MUST link "Request approval →" into the Contributor Console's existing request-authorization flow (deep link; no new SS flow).
 
 ## Success Criteria
 
-- **SC-002** (M2): ≥ 95% of contributors who start the proactive picker in Self Serve land on the Contributor Console decision screen for the right CLA Group without support intervention.
+- **SC-002** (M2): ≥ 95% of contributors who start the proactive sign entry land on the Contributor Console decision screen for the right CLA Group without support intervention.
+- Invalidation: 100% of invalidation attempts during impersonation are rejected server-side; invalidations are attributable in the EasyCLA event log.
 
 ## Scope boundaries
 
-**In**: Me-lens "Sign a CLA" page (searchable CLA Group list), SS server route(s) for CLA-Group listing and `userID` resolution, hand-off redirect, feature flag.
+**In**: My CLAs page extensions per mockup v8 — "+ Sign a CLA" search + hand-off (incl. pre-hand-off account authorization), ICLA/ECLA invalidation with confirmation modals, impersonation write-block, status column + notes, "Request approval →" deep link, feature flag.
 
-**Out**: any DocuSign/webhook/PDF changes; signing UI or ICLA/ECLA choice in SS (Console owns both); org/repo selection step; PR-redirect cutover (`CLAContributorv2Base` SSM flip); CCLA/approval-list management (M4); corporate org-selection UX polish (Heather flagged this for M3).
+**Out**: any DocuSign/webhook/PDF changes; signing UI or ICLA/ECLA choice in SS (Console owns both); org/repo selection step; PR-redirect cutover (`CLAContributorv2Base` SSM flip); approval-list management (M4); corporate org-selection UX polish (Heather flagged this for M3).
 
 ## Verified Console/backend facts (2026-08-04)
 
-Read from `easycla-contributor-console` and `cla-backend-go`/`cla-backend-legacy`:
+Read from `easycla-contributor-console`, `cla-backend-go`/`cla-backend-legacy`, and `lfx-self-serve`:
 
-- The Console decision screen (`cla/project/:projectId/user/:userId` → `ClaDashboardComponent`) fetches the project itself, gates ICLA/ECLA by the project flags, and treats `?redirect=` as optional (used only by "Exit EasyCLA"). It is deep-linkable today.
+- The Console decision screen (`cla/project/:projectId/user/:userId` → `ClaDashboardComponent`) fetches the project itself, gates ICLA/ECLA by the project flags, and treats `?redirect=` as optional. It is deep-linkable today.
 - `GET /v4/user-from-token` exists and does lookup-or-create by LF username → LF email (`cla-backend-go/cmd/server.go`, `v2/current_user`). Records it creates carry **no GitHub identity**.
-- The PR check resolves commit authors to user records by **GitHub ID → GitHub username → email** (`cla-backend-go/github/github_repository.go`). A signature on an LF-only record does not reliably match.
-- The Console's **ECLA path has no PR-context dependency** — works proactively as-is. The **ICLA GitHub path does not**: the Console requires an active-signature record (`/v2/user/{id}/active-signature`, created only by the PR flow) and errors with "go back to your pull request" without it; the backend's `return_url_type=github` request hard-requires that record's `repository_id`/`pull_request_id` to build the DocuSign callback (`v2/sign/service.go`). The Gerrit-type request has no such dependency — precedent that no-PR ICLA signing already works in the backend.
+- The PR check resolves commit authors by **GitHub ID → GitHub username → email** (`cla-backend-go/github/github_repository.go`) — hence FR-004's account-authorization step.
+- The Console's **ECLA path has no PR-context dependency** — works proactively as-is. The **ICLA GitHub path does not**: the Console requires an active-signature record (created only by the PR flow) and the backend's `return_url_type=github` request hard-requires its `repository_id`/`pull_request_id` for the DocuSign callback (`v2/sign/service.go`). The Gerrit-type request has no such dependency — precedent that no-PR ICLA signing already works.
+- **ICLA invalidation endpoint exists**: `PUT /v4/cla-group/{claGroupID}/user/{userID}/icla` (`invalidateICLA`), logs an `InvalidatedSignature` event — but the handler performs **no ownership check** (`v2/signatures/handlers.go`); SS is the enforcement point.
+- **No self-service ECLA-invalidation endpoint exists** (invalidation logic exists internally in the approval-list flow only).
+- SS already blocks writes during impersonation via `impersonation-readonly.middleware.ts` (returns `AuthorizationError`); FR-009 reuses it.
 
 ## Open questions (for `/speckit.clarify`)
 
-1. **GitHub identity binding (primary)** — a proactive ICLA must end up on a user record the PR check can match (GitHub ID/username; email is unreliable — commit emails are often GitHub noreply). When coming from a PR this is guaranteed by construction (the user record is created *from* the commit author); the proactive flow is LF-first and must capture the GitHub identity explicitly. Recommended direction: require a GitHub-linked LF account for the ICLA path, reusing M1's existing "Link your GitHub account" flow (Auth0 identity linking — effectively a one-time GitHub sign-in), and ensure the hand-off references a record carrying that GitHub identity (the existing GitHub-anchored record where one exists, else enrich). Do **not** build a bespoke GitHub OAuth step into the signing path. Needs design + likely a Heather touchpoint.
-2. **Proactive ICLA active-signature gap** — Console + backend both assume PR-derived context on the GitHub ICLA path (facts above). Recommended direction: a no-PR request shape mirroring the existing Gerrit behavior (small Console + backend delta), with the post-sign return going to SS or a Console success screen. Whether this lands inside M2's two weeks or immediately after is a planning decision.
-3. **CLA-Group listing** — which endpoint enumerates CLA Groups (+ project names, and org/repo names as search metadata) for the picker; reuse from M1's lens if possible, else new read endpoint. Estimate risk.
+1. **Account-authorization mechanics (direction adopted)** — the mockup resolves the *what*: users authorize their GitHub/GitLab/Gerrit account before the Console opens. To clarify: the *how* per platform (Auth0 identity linking as in M1 vs. an OAuth step in the flow), and how the authorized identity gets bound to the EasyCLA user record used in the hand-off (existing GitHub-anchored record vs. enriching the LF-created one).
+2. **ECLA invalidation endpoint** — new `cla-backend-go` API (swagger-first) for an employee ending their own CCLA coverage; define semantics (signature invalidation + approval-list effects + events). Main backend schedule risk.
+3. **Status evaluation** — source for "no longer matches approval criteria": extend `GET /v4/my-clas` vs. a separate check; must not require SS to re-implement approval-list logic. Second schedule risk.
+4. **Proactive ICLA active-signature gap** — Console + backend assume PR-derived context on the GitHub ICLA path (facts above). Recommended: a no-PR request shape mirroring the existing Gerrit behavior (small Console + backend delta).
+5. **CLA-Group listing** — which endpoint enumerates CLA Groups (+ project names and org/repo sources as search metadata); reuse from M1's lens if possible, else new read endpoint.
 
 ## Design artifacts
 
