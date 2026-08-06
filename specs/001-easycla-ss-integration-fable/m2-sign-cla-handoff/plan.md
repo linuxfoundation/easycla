@@ -5,7 +5,7 @@
 
 ## Summary
 
-Extend M1's **My CLAs** page (Me lens) per the mockup: (1) a "+ Sign a CLA" inline search (project / CLA group / repo source) that resolves the user's EasyCLA `userID` server-side (existing `GET /v4/user-from-token`) and — after an account-authorization step for the platform they'll contribute with — redirects to the Contributor Console's existing decision-screen URL (`{console}/#/cla/project/{claGroupID}/user/{userID}`); (2) per-row **CLA invalidation** with confirmation modals (ICLA via the existing `invalidateICLA` endpoint with SS-side ownership enforcement; ECLA needs a new backend endpoint), blocked server-side during impersonation via SS's existing impersonation-readonly middleware; (3) a **status** column (Valid / Needs attention / Invalidated) with a "Request approval →" deep link into the Console for ECLAs that no longer match approval criteria.
+Extend M1's **My CLAs** page (Me lens) per the mockup: (1) a "+ Sign a CLA" inline search (project / CLA group / repo source) that resolves the user's EasyCLA `userID` server-side (existing `GET /v4/user-from-token`) and — after an account-authorization step for the platform they'll contribute with — redirects to the Contributor Console's existing decision-screen URL (`{console}/#/cla/project/{claGroupID}/user/{userID}`); (2) per-row **CLA invalidation** with confirmation modals (ICLA via the existing `invalidateICLA` endpoint with SS-side ownership enforcement; ECLA needs a new backend endpoint), blocked server-side during impersonation via SS's existing impersonation-readonly middleware; (3) a **status** column (Valid / Needs attention / Invalidated) with a "Request approval →" deep link into the Console for ECLAs that no longer match Approved List criteria.
 
 The ICLA/ECLA choice, its legal guidance, and all signing logic stay in the Console. SS makes no signing-initiation calls and never touches DocuSign; nothing is cut over or retired.
 
@@ -20,7 +20,7 @@ The ICLA/ECLA choice, its legal guidance, and all signing logic stay in the Cons
 **Target Platform**: LFX One web app (SSR, Kubernetes via ArgoCD).
 **Project Type**: web application (feature surface in existing monorepo) + small swagger-first backend slice.
 **Performance Goals**: My CLAs interactive < 2s p95 including status; sign-entry search results < 1s p95; hand-off redirect adds no perceptible latency.
-**Constraints**: only writes from SS are invalidation calls (FR-007/FR-008) — no signing-initiation calls (FR-005); server-side identity derivation and ownership enforcement (never trust client-supplied user IDs); invalidation blocked during impersonation (FR-009); PR-check remediation link untouched (FR-006); feature-flagged dark launch; 2-week delivery budget.
+**Constraints**: the only *contributor-facing* writes from SS are invalidation calls (FR-007/FR-008) — no signing-initiation calls (FR-005); the one implicit write is the lookup-or-create side effect of `GET /v4/user-from-token` (FR-003) when resolving the EasyCLA user record, plus any identity-linking side effects of the account-authorization step (FR-004); server-side identity derivation and ownership enforcement (never trust client-supplied user IDs); invalidation blocked during impersonation (FR-009); PR-check remediation link untouched (FR-006); feature-flagged dark launch; 2-week delivery budget.
 **Scale/Scope**: all LFX contributors; extends 1 existing Me-lens page, ~3–4 server routes (CLA-Group search, `userID` resolution/hand-off, ICLA invalidate, ECLA invalidate), 1 new upstream endpoint (ECLA invalidation) + possibly a status/listing extension per clarify outcomes.
 
 ## Constitution Check
@@ -31,7 +31,7 @@ The ICLA/ECLA choice, its legal guidance, and all signing logic stay in the Cons
 
 - **Simplicity**: no new services, storage, or state; extends M1's page and module; hand-off is the Console's existing deep link; invalidation reuses the existing ICLA endpoint and the existing impersonation middleware. The ECLA endpoint is the one genuinely new backend piece. PASS.
 - **Security**: `userID` derived server-side; `invalidateICLA` has no upstream ownership check, so the SS server enforces self-only invalidation and blocks impersonated sessions (existing middleware); no arbitrary-user lookup exposed. PASS with these requirements carried into contracts.
-- **No speculative work**: native SS signing, SSM cutover, per-platform splits, org/repo selection, sign-type UI, and approval-list management are all explicitly excluded. PASS.
+- **No speculative work**: native SS signing, SSM cutover, per-platform splits, org/repo selection, sign-type UI, and Approved List management are all explicitly excluded. PASS.
 
 **Post-Phase-1 re-check**: pending — re-run after `/speckit.clarify` resolves the five open questions in [spec.md](spec.md).
 
@@ -74,7 +74,7 @@ Secondary repo: `linuxfoundation/easycla` `cla-backend-go` — new self-service 
 
 No constitution violations. Schedule risks against the 2-week budget, in order:
 
-1. **ECLA-invalidation endpoint** (spec open question 2) — the one guaranteed new backend piece; semantics (signature + approval-list effects + events) need defining before the SS UI can land.
+1. **ECLA-invalidation endpoint** (spec open question 2) — the one guaranteed new backend piece; semantics (signature + Approved List effects + events) need defining before the SS UI can land.
 2. **Status evaluation** (open question 3) — if "needs attention" requires new approval-criteria matching surface in `/v4/my-clas`, that's a second backend slice.
 3. **Account-authorization mechanics** (open question 1) — direction adopted from the mockup; per-platform mechanics could grow (GitLab/Gerrit); cap M2 to what the hand-off needs.
 4. **Proactive-ICLA gap** (open question 4) — Console + backend delta; Gerrit precedent bounds it, but it competes with 1–2 for backend time.
