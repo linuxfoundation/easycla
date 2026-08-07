@@ -76,7 +76,7 @@ No constitution violations. Schedule risks against the 2-week budget, in order:
 
 1. **ECLA-invalidation endpoint** (spec open question 2) — the one guaranteed new backend piece; semantics (signature + Approved List effects + events) need defining before the SS UI can land.
 2. **Status evaluation** (open question 3) — if "needs attention" requires new approval-criteria matching surface in `/v4/my-clas`, that's a second backend slice.
-3. **Account-authorization mechanics** (open question 1) — direction adopted from the mockup; per-platform mechanics could grow (GitLab/Gerrit); cap M2 to what the hand-off needs.
+3. **Account-authorization mechanics** (open question 1) — largely retired by the per-platform matrix: Gerrit needs no step (same LF SSO), GitLab is out of M2 scope until SS ships GitLab linking, leaving only the GitHub link/picker path (reuses M1's flow) plus first-timer record enrichment.
 4. **Proactive-ICLA gap** (open question 4) — Console + backend delta; Gerrit precedent bounds it, but it competes with 1–2 for backend time.
 
 If the budget forces a cut, the mockup's pieces degrade independently: sign entry + ICLA invalidation ride existing endpoints; ECLA invalidation and status enrichment are the deferrable slices — decide at `/speckit.plan`.
