@@ -44,10 +44,10 @@ A contributor opens **My CLAs** (M1's page) in the Self Serve Me lens. There the
 - **FR-005**: Self Serve MUST NOT call any signing-initiation endpoint (`request-individual-signature`, `request-employee-signature`, etc.). The Console makes those calls, exactly as today.
 - **FR-006**: Self Serve MUST NOT change the GitHub PR status-check remediation link. No SSM cutover or per-environment switch in M2.
 
-**Invalidation**
+**Invalidation** — primary use cases (per PM, 2026-08-07): *ICLA* — the contributor signed an ICLA when they should have signed an ECLA (contributing on an employer's behalf) and needs to correct it; *ECLA* — the contributor changed employers. Both scenarios end with the user signing the correct/new agreement via the "+ Sign a CLA" entry, so the post-invalidation state SHOULD point there.
 
-- **FR-007**: Each signed ICLA row MUST offer Invalidate with a confirmation modal (copy per mockup; irreversible). Confirming calls the existing `PUT /v4/cla-group/{claGroupID}/user/{userID}/icla`. Because that endpoint performs **no ownership check** (verified), the SS server MUST enforce that users can only invalidate their own ICLAs — same enforcement-point pattern as M1.
-- **FR-008**: Each valid ECLA row MUST offer Invalidate framed as "Confirm you no longer work at {company}?". *([NEEDS CLARIFICATION]: no self-service ECLA-invalidation endpoint exists — new `cla-backend-go` work; see Open questions.)*
+- **FR-007**: Each signed ICLA row MUST offer Invalidate with a confirmation modal (copy per mockup; irreversible). Confirming calls the existing `PUT /v4/cla-group/{claGroupID}/user/{userID}/icla`. Because that endpoint performs **no ownership check** (verified), the SS server MUST enforce that users can only invalidate their own ICLAs — same enforcement-point pattern as M1. The invalidated record is kept for audit — past contributions remain attributed to it.
+- **FR-008**: Each valid ECLA row MUST offer Invalidate framed as "Confirm you no longer work at {company}?". The company's Approved List is not mutated; the company's CLA managers are notified so they can update it. *([NEEDS CLARIFICATION]: no self-service ECLA-invalidation endpoint exists — new `cla-backend-go` work; see Open questions.)*
 - **FR-009**: Invalidation MUST be impossible during Self Serve **impersonation**: the invalidation route(s) MUST be blocked server-side for impersonated sessions using SS's existing impersonation-readonly middleware (`apps/lfx-one/src/server/middleware/impersonation-readonly.middleware.ts`) — not merely hidden in the UI.
 
 **Status**
