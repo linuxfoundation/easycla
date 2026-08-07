@@ -74,9 +74,9 @@ Secondary repo: `linuxfoundation/easycla` `cla-backend-go` — new self-service 
 
 No constitution violations. Schedule risks against the 2-week budget, in order:
 
-1. **ECLA-invalidation endpoint** (spec open question 2) — the one guaranteed new backend piece; semantics (signature + Approved List effects + events) need defining before the SS UI can land.
-2. **Status evaluation** (open question 3) — if "needs attention" requires new approval-criteria matching surface in `/v4/my-clas`, that's a second backend slice.
-3. **Account-authorization mechanics** (open question 1) — largely retired by the per-platform matrix: Gerrit needs no step (same LF SSO), GitLab is out of M2 scope until SS ships GitLab linking, leaving only the GitHub link/picker path (reuses M1's flow) plus first-timer record enrichment.
-4. **Proactive-ICLA gap** (open question 4) — Console + backend delta; Gerrit precedent bounds it, but it competes with 1–2 for backend time.
+1. **ECLA-invalidation endpoint** (spec open question 2) — the one guaranteed new backend piece; semantics settled (per-signature flag flip, no Approved List mutation, notifications, backend ownership check) — execution risk only.
+2. **Proactive-ICLA gap** (open question 4) — Console + backend delta; Gerrit precedent bounds it; the only other backend deliverable competing with 1.
+3. **Account-authorization mechanics** (open question 1) — retired: Gerrit needs no step (same LF SSO), GitLab is conditional on SS shipping GitLab linking (config flip, M2 doesn't block), GitHub reuses M1's linking + picker; first-timer enrichment is a call to the existing v1 `updateUser` API.
+4. **Status evaluation** (open question 3) — retired: `GET /v4/my-clas` already computes the coverage evaluation per ECLA row; M2 exposes it as a status field instead of collapsing it into `Valid`.
 
-If the budget forces a cut, the mockup's pieces degrade independently: sign entry + ICLA invalidation ride existing endpoints; ECLA invalidation and status enrichment are the deferrable slices — decide at `/speckit.plan`.
+If the budget forces a cut, the mockup's pieces degrade independently: sign entry, ICLA invalidation, and the status column ride existing endpoints/evaluations; ECLA invalidation (with FR-008a templates) is the deferrable slice — decide at `/speckit.plan`.
