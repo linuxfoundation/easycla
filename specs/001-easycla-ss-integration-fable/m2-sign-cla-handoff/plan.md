@@ -1,11 +1,11 @@
 # Implementation Plan: Milestone 2 — My CLAs actions: proactive sign entry, invalidation, status
 
 **Branch**: `docs/easycla-ss-m2-speckit` | **Date**: 2026-08-04 | **Spec**: [spec.md](spec.md)
-**Input**: M2 feature spec [spec.md](spec.md) (extracted from the program spec's User Story 2, revised 2026-08-04 — [../spec.md](../spec.md)), [../02-milestone-sign-icla-fable.md](../02-milestone-sign-icla-fable.md), and the [M2 UI mockup v8](https://github.com/linuxfoundation/easyclav2-migration-planning/blob/main/Mockups/M2/EasyCLA_MyCLAs_v8_Full_Prototype_v8.html). M1 is a completed dependency; M3–M6 are roadmap context only.
+**Input**: M2 feature spec [spec.md](spec.md) (extracted from the program spec's User Story 2, revised 2026-08-04 — [../spec.md](../spec.md)), [../02-milestone-sign-icla-fable.md](../02-milestone-sign-icla-fable.md), and the [M2 UI mockup Final/v16](https://github.com/linuxfoundation/easyclav2-migration-planning/blob/main/Mockups/M2/EasyCLA_MyCLAs_Full_Prototype_Final.html). M1 is a completed dependency; M3–M6 are roadmap context only.
 
 ## Summary
 
-Extend M1's **My CLAs** page (Me lens) per the mockup: (1) a "+ Sign a CLA" inline search (project / CLA group / repo source) that resolves the user's EasyCLA `userID` server-side (existing `GET /v4/user-from-token`) and — after an account-authorization step for the platform they'll contribute with — redirects to the Contributor Console's existing decision-screen URL (`{console}/#/cla/project/{claGroupID}/user/{userID}`); (2) per-row **CLA invalidation** with confirmation modals (ICLA via the existing `invalidateICLA` endpoint with SS-side ownership enforcement; ECLA needs a new backend endpoint), blocked server-side during impersonation via SS's existing impersonation-readonly middleware; (3) a **status** column (Valid / Needs attention / Invalidated) with a "Request approval →" deep link into the Console for ECLAs that no longer match Approved List criteria.
+Extend M1's **My CLAs** page (Me lens) per the mockup: (1) a "Sign CLA" modal search (project / CLA group / repo source / pasted repo link) that resolves the user's EasyCLA `userID` server-side (existing `GET /v4/user-from-token`) and — after an account-authorization step for the platform they'll contribute with — redirects to the Contributor Console's existing decision-screen URL (`{console}/#/cla/project/{claGroupID}/user/{userID}`); (2) per-row **CLA invalidation** with confirmation modals (ICLA via the existing `invalidateICLA` endpoint with SS-side ownership enforcement; ECLA needs a new backend endpoint), blocked server-side during impersonation via SS's existing impersonation-readonly middleware; (3) a **status** column (Valid / Needs attention / Invalidated) with a "Request approval →" deep link into the Console for ECLAs that no longer match Approved List criteria.
 
 The ICLA/ECLA choice, its legal guidance, and all signing logic stay in the Console. SS makes no signing-initiation calls and never touches DocuSign; nothing is cut over or retired.
 
@@ -58,7 +58,7 @@ Primary repo: `linuxfoundation/lfx-self-serve`
 
 ```text
 apps/lfx-one/src/
-├── app/modules/my-clas/                         # EXTEND M1's page: "+ Sign a CLA" card, Invalidate actions + modals, status column
+├── app/modules/my-clas/                         # EXTEND M1's page: "Sign CLA" modal, Invalidate actions + modals, status column
 ├── app/app.routes.ts                            # EDIT only if a sub-route is needed (flag-guarded)
 └── server/
     ├── routes/clas.route.ts                     # EXTEND: CLA-Group search; userID resolution + hand-off; invalidate routes (impersonation-blocked)
