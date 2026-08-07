@@ -66,7 +66,7 @@ apps/lfx-one/src/
     └── services/cla.service.ts                  # EXTEND: CLA-Group search client; invalidateICLA/ECLA clients; status mapping
 ```
 
-Secondary repo: `linuxfoundation/easycla` `cla-backend-go` — new self-service ECLA-invalidation endpoint, swagger-first (`swagger/cla.v2.yaml` → `make swagger` → handler/service), no schema changes expected. Conditional (per clarify): status-evaluation extension to `GET /v4/my-clas`; no-PR ICLA request shape in `v2/sign` (+ matching `easycla-contributor-console` tweak).
+Secondary repo: `linuxfoundation/easycla` `cla-backend-go` — new self-service ECLA-invalidation endpoint, swagger-first (`swagger/cla.v2.yaml` → `make swagger` → handler/service). Schema impact is limited to **additive** attributes on the signatures table per FR-008b (invalidation timestamp + reason/actor, the latter doubling as FR-008's durable self-exclusion marker) — no migrations, but the attributes are read by v1/v2 code paths, so consumers must tolerate empty values on pre-M2 records. Conditional (per clarify): status-evaluation extension to `GET /v4/my-clas`; no-PR ICLA request shape in `v2/sign` (+ matching `easycla-contributor-console` tweak).
 
 **Structure Decision**: everything lands in M1's existing `my-clas` module and `cla` server seam — the mockup is explicitly an extension of the M1 page, not a new surface. The Console's decision screen owns everything after CLA-Group selection.
 
