@@ -13,7 +13,7 @@ This is the extracted, implementable slice for Milestone 2. Program-wide context
 ## Constraints
 
 - **Simple and straightforward** — no new services, no new state, no bespoke contracts where an existing one works. Prefer reusing what the Console and EasyCLA backend already do.
-- **Independently deliverable in ~2 weeks** — M2 must ship on its own. Schedule risks are called out below; `/speckit.plan` decides sequencing within the milestone.
+- **Independently deliverable in ~3 weeks** — M2 must ship on its own. Schedule risks are called out below; `/speckit.plan` decides sequencing within the milestone.
 
 ## User Story (P2)
 
@@ -27,7 +27,7 @@ A contributor opens **My CLAs** (M1's page) in the Self Serve Me lens. There the
 
 1. **Given** a logged-in contributor on My CLAs, **When** they open the "Sign CLA" modal, search, and select a CLA Group, **Then** they land on the Contributor Console's decision screen for that CLA Group (`/#/cla/project/{claGroupID}/user/{userID}`), with the ICLA/ECLA choice and its legal guidance presented by the Console — not re-implemented in SS.
 2. **Given** the contributor selected a GitHub-backed CLA Group, **When** they continue to sign, **Then** they are first asked to authorize (link) the GitHub account they want to use — one-time, skipped if already linked, with an account picker when more than one GitHub account is linked — so the resulting signature is bound to the identity their contributions come from. Gerrit-backed CLA Groups skip this step (same LF SSO as Self Serve). (See Open questions for mechanics.)
-3. **Given** a contributor with a signed ICLA, **When** they click Invalidate and confirm, **Then** the ICLA is invalidated via the existing EasyCLA endpoint, the row's status changes to Invalidated, and the action is recorded in the EasyCLA event log.
+3. **Given** a contributor with a signed ICLA, **When** they click Invalidate and confirm, **Then** that specific ICLA signature is invalidated (signature-ID-targeted — see FR-007), the row's status changes to Invalidated, and the action is recorded in the EasyCLA event log with a self-invalidation reason.
 4. **Given** a contributor with a valid ECLA, **When** they click Invalidate, **Then** the modal explains this confirms they're no longer covered under that company's CCLA for the project (copy per mockup, typed INVALIDATE confirmation), and confirming ends their ECLA coverage.
 5. **Given** a support user **impersonating** a contributor in Self Serve, **When** they view My CLAs, **Then** invalidation is not possible — the SS server rejects any invalidation request for an impersonated session regardless of what the UI shows.
 6. **Given** a contributor whose ECLA no longer matches the company's Approved List criteria, **When** they view My CLAs, **Then** the row shows "Needs attention" with an explanatory note and a "Request approval →" link into the Console's request-authorization flow.
