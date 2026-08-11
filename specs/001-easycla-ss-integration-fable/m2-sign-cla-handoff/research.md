@@ -60,11 +60,18 @@ So the precedent is real and bounds the work — but note it proves a **weaker**
 
 The no-PR shape must not require a live GitHub OAuth session — identity is bound server-side by SS before hand-off. Nothing in the traced code conflicts with this: neither `postIndivdualRequestSignature` nor the backend's proactive path needs a GitHub token, only `user.GithubID` already stored on the record.
 
-### Note: one spec claim is inaccurate
+### Deep-linkability of the decision screen — confirmed, no gap
 
-spec.md's verified-facts says the Console decision screen "fetches the project itself." It does not — `ClaDashboardComponent` reads the project from storage: `JSON.parse(this.storageService.getItem(AppSettings.PROJECT))` (`cla-dashboard.component.ts:63`), and `ngOnInit` *removes* that key first (`:57`). The ICLA/ECLA gating getters (`hasIclaEnabled`/`hasCclaEnabled`, `:96-103`) therefore read an **empty project** on a cold deep link, so both buttons render disabled until something populates storage — the Gerrit path does this via `getGerritProjectInfo()` (`gerrit-dashboard.component.ts:59-75`); there is no equivalent on the `cla/project/:projectId/user/:userId` route.
+An intermediate version of this document claimed the decision screen does not fetch its project and would render both buttons disabled on a cold deep link. **That was wrong and is retracted** — it came from reading `cla-dashboard.component.ts` without its template.
 
-**This is a third, previously unrecorded gap in FR-002's hand-off**, and it affects both ICLA *and* ECLA — including the ECLA path the spec calls "works proactively as-is." Recommend the Console populate the project from `projectId` on this route (a `getProject`-equivalent fetch in `ClaDashboardComponent`), which also removes the storage dependency for the PR flow. Needs confirmation against a running dev Console before it's treated as settled — a deep-link smoke test would decide it in minutes.
+The fetch is in the embedded child component. `cla-dashboard.component.html:3` wires `<app-project-title (successEmitter)="setProject($event)" (errorEmitter)="hasErrorPresent($event)">`, and `ProjectTitleComponent.getProject()` fetches the project by ID and emits it back into the container (`project-title.component.ts:46-58`). The container's storage read (`cla-dashboard.component.ts:63`) is a fallback the child overwrites. **FR-002's hand-off works as specified.**
+
+Two ordering/data dependencies worth carrying into the contracts:
+
+- `ProjectTitleComponent.getProject()` sources `projectId` from **storage**, not the route. The container writes `PROJECT_ID` from the route param in `ngOnInit` (`:65`) and the child reads it in `ngAfterViewInit`, so the ordering is correct — but the hand-off depends on writable browser storage. `ClaDashboardComponent` already surfaces a private-window warning (`:69-75`), so this is a pre-existing property of the Console, not something M2 introduces.
+- `getUser()` emits an error and shows "There is an invalid user ID in the URL" when `USER_ID` is absent (`project-title.component.ts:84-101`). It is written from the route's `:userId`, so FR-002's URL shape satisfies it — but a placeholder or unresolved ID would fail here. This **reinforces FR-003**: SS must resolve a real `userID` server-side before redirecting.
+
+Method note: the original error was a single-file read where the component's template was load-bearing. Component-level claims about this Console need the `.html` read alongside the `.ts`.
 
 ---
 
@@ -115,7 +122,7 @@ New swagger-first endpoint in `cla-backend-go` for self-service ECLA invalidatio
 
 - **Risk 2 shrinks** — the no-PR delta is two branch conditions plus a request-shape addition, in known locations. Keep the GitHub sign entry; don't narrow to Gerrit-only for schedule reasons.
 - **Risk 1 is well-defined but genuinely new work** — endpoint + three call-site guards + two notification templates + additive attributes. Still the largest single M2 backend item.
-- **One new item, not previously tracked**: the Console decision screen's empty-project-on-deep-link gap (Spike 1's note). Affects FR-002 for *both* ICLA and ECLA. Needs a dev smoke test to confirm, then likely a small `ClaDashboardComponent` fetch.
+- **No new items.** An intermediate draft added a fifth risk for a supposed Console empty-project gap; it was retracted on further tracing (see Spike 1's deep-linkability section). FR-002's hand-off needs no Console-side project fetch.
 
 ### Remaining open
 
